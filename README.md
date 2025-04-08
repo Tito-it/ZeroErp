@@ -4,7 +4,7 @@ description: Documentazione Zero solution
 
 # Zero
 
-## 📘 Documentazione Ufficiale Completa Progetto Zero ERP (in definizione)
+## 📘 Documentazione Ufficiale Progetto Zero ERP (in definizione)
 
 ### Introduzione
 
