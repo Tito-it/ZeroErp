@@ -1,4 +1,8 @@
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Tito-it/Zero_logo/main/Logo%20Zero%20Erp.png" alt="Zero ERP Logo" width="250"/>
+</p>
+
 
 # 📦 Zero ERP - Open Source ERP Framework  
 **Licenza: GPL v3**
@@ -94,6 +98,6 @@ Tutti i contributori sono tenuti a rispettare principi di **collaborazione**, **
 
 ## ✉️ Contatti
 
-- Referente tecnico: [Michele Carlo Titini]
-- Email: [mc.titini@gmail.com]
+- Referente tecnico: [inserire nome]
+- Email: [inserire email]
 - Community in fase di attivazione
