@@ -1,6 +1,67 @@
+Zero ERP - Open Source ERP Framework
+Licenza: GPL v3
+
+✅ Cos'è Zero ERP
+Zero ERP è un sistema gestionale ERP open-source, flessibile e modulare, pensato per:
+    • Utility (Gas, Energia, Acqua)
+    • Multi-servizi
+    • Fatturazione e Gestione Commerciale
+    • Piccole, Medie e Grandi aziende
+Obiettivi
+    • Creare una base ERP scalabile e configurabile
+    • Fornire un framework moderno per progetti verticali
+    • Supportare esigenze standard e di settore
+
+✅ Tecnologie utilizzate
+    • Python (Django)
+    • PostgreSQL (JSONB, GIS ready)
+    • Vue.js (Frontend)
+    • Docker + CI/CD
+    • Autenticazione JWT, crittografia avanzata
+
+✅ Funzionalità previste
+    • Anagrafiche Generali
+    • Gestione multi-indirizzo avanzata
+    • Gestione multi-servizio
+    • Moduli: Fatturazione, Contratti, Forniture, POD/PDR, Cabine REMI
+    • Sistema Permessi e Menu dinamico avanzato
+    • Multi-livello di configurazione (Globale, Cliente, Utente)
+
+✅ Come contribuire
+Requisiti
+    • Conoscenza di Python e Django
+    • Familiarità con Database Relazionali (PostgreSQL preferibile)
+    • Esperienza base con Vue.js (o volontà di imparare)
+Modalità
+    1. Fork del repository
+    2. Creazione branch personale
+    3. Creazione di Pull Request
+    4. Revisione da parte del team di sviluppo
+Per suggerimenti o problemi, aprire una Issue.
+
+✅ Community e Supporto
+    • Documentazione su GitBook
+    • Roadmap pubblica
+    • Issue Tracker GitHub aperto
+Per proposte e collaborazioni:
+    • Referente: [inserire nome]
+    • Email: [inserire email]
+
+✅ Codice di Condotta
+Tutti i partecipanti sono tenuti a rispettare le regole di collaborazione, educazione e condivisione open-source.
+
+
+
+
+
+
 ---
 description: Documentazione Zero solution
 ---
+
+
+
+
 
 # Zero
 
