@@ -19,7 +19,7 @@ Fornire una guida operativa per:
 
 **3. Layout dei file**  
 ```plaintext
-src/main/resources/db/
+ZeroErp/db/
 ├─ changelog-master.yaml       # master changelog unico
 ├─ baseline/                   # snapshot iniziale (punto 0)
 │   ├─ 000-tables-config.yaml  # schema config
