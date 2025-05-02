@@ -1,7 +1,5 @@
 # ✨ Prefazione – *Zero ERP: un progetto costruito un mattone alla volta*
 
-
-# ✨ Prefazione – *Zero ERP: un progetto costruito un mattone alla volta*
 C’è chi scrive codice per necessità.  
 C’è chi scrive codice per mestiere.  
 E poi c’è chi lo fa per costruire una casa, una casa in cui ogni abitante si sentirà a proprio agio come avvolto in un abbraccio.    
