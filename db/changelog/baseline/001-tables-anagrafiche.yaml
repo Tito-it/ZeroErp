@@ -1,0 +1,1204 @@
+databaseChangeLog:
+- changeSet:
+    id: 1745771026966-1
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: pk_soggetto
+            defaultValueComputed: gen_random_uuid()
+            name: id
+            type: UUID
+        - column:
+            name: codice
+            type: TEXT
+        - column:
+            name: ragione_sociale
+            type: TEXT
+        - column:
+            name: cognome
+            type: TEXT
+        - column:
+            name: nome
+            type: TEXT
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: F
+            name: tipo_soggetto
+            remarks: F=Fisico, G=Giuridico, X=Fisico Forzato
+            type: CHAR(1)
+        - column:
+            defaultValue: M
+            name: sesso
+            remarks: M=Maschio, F=Femmina, S=Soggetto, X=Non indicato
+            type: CHAR(1)
+        - column:
+            constraints:
+              nullable: false
+            name: stato_id
+            type: INTEGER
+        - column:
+            name: partita_iva
+            type: TEXT
+        - column:
+            name: piva_gruppo_acquisto
+            type: TEXT
+        - column:
+            name: codice_fiscale
+            type: TEXT
+        - column:
+            name: data_nascita
+            type: date
+        - column:
+            name: comune_id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_insert
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_insert
+            type: TEXT
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_update
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_update
+            type: TEXT
+        - column:
+            name: contatto_ruolo_id
+            type: INTEGER
+        - column:
+            name: identificativo_old
+            remarks: Utilizzare per conversione da altri applicativi
+            type: VARCHAR
+        - column:
+            defaultValueComputed: GENERATED ALWAYS AS COALESCE(codice_fiscale, partita_iva)
+              STORED
+            name: id_fiscale_univoco_cf_piva
+            remarks: Unisce i codici fiscali e partita iva in un campo. Si ottiene
+              l'univocità del soggetto
+            type: TEXT
+        - column:
+            defaultValueComputed: GENERATED ALWAYS AS COALESCE(ragione_sociale, ((cognome
+              || ' '::text) || nome)) STORED
+            name: ragione_sociale_completa
+            type: TEXT
+        - column:
+            constraints:
+              nullable: false
+            name: default_contatto_id
+            type: INTEGER
+        remarks: Anagrafica soggetti (persone fisiche e giuridiche)
+        schemaName: anagrafiche
+        tableName: soggetti
+- changeSet:
+    id: 1745771026966-2
+    author: mctit (generated)
+    changes:
+    - createSequence:
+        cacheSize: 1
+        cycle: false
+        dataType: bigint
+        incrementBy: 1
+        maxValue: 9223372036854775807
+        minValue: 1
+        schemaName: anagrafiche
+        sequenceName: dati_societari_id_seq
+        startValue: 1
+- changeSet:
+    id: 1745771026966-3
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            autoIncrement: true
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: pk_soggetti_ruoli
+            name: id
+            remarks: ID interno della relazione soggetto-ruolo
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: soggetto_id
+            remarks: Riferimento al soggetto (UUID)
+            type: UUID
+        - column:
+            constraints:
+              nullable: false
+            name: ruolo_id
+            remarks: Riferimento al ruolo
+            type: INTEGER
+        - column:
+            defaultValueComputed: '{}'
+            name: extra
+            remarks: Dati aggiuntivi in formato JSONB per ruolo
+            type: JSONB
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: date_insert
+            remarks: Data inserimento
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            name: user_insert
+            remarks: Utente inserimento
+            type: VARCHAR(30)
+        - column:
+            name: date_update
+            remarks: Data ultima modifica
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            name: user_update
+            remarks: Utente ultima modifica
+            type: VARCHAR(30)
+        remarks: Relazione tra soggetti e ruoli assegnati
+        schemaName: anagrafiche
+        tableName: soggetti_ruoli
+- changeSet:
+    id: 1745771026966-4
+    author: mctit (generated)
+    changes:
+    - createSequence:
+        cacheSize: 1
+        cycle: false
+        dataType: integer
+        incrementBy: 1
+        maxValue: 2147483647
+        minValue: 1
+        schemaName: anagrafiche
+        sequenceName: soggetti_ruoli_id_seq
+        startValue: 1
+- changeSet:
+    id: 1745771026966-5
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            autoIncrement: true
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: pk_gestori
+            name: id
+            remarks: Id Gestore Sistema Informativo
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: soggetto_id
+            remarks: Riferimento al soggetto gestore
+            type: UUID
+        - column:
+            constraints:
+              nullable: false
+            name: soggetto_ruolo_id
+            remarks: Riferimento alla relazione soggetto-ruolo di tipo Gestore
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: descrizione
+            remarks: Descrizione per visualizzazione
+            type: CHAR(50)
+        - column:
+            constraints:
+              nullable: false
+            name: cd_prod_software
+            remarks: Prodotto software utilizzato
+            type: CHAR(20)
+        - column:
+            constraints:
+              nullable: false
+            name: valuta_id
+            remarks: Valuta utilizzata per la gestione
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: iban
+            remarks: IBAN bancario del gestore
+            type: CHAR(35)
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: date_insert
+            remarks: Data di inserimento
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            name: user_insert
+            remarks: Utente che ha effettuato inserimento
+            type: VARCHAR(30)
+        - column:
+            name: date_update
+            remarks: Data ultima modifica
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            name: user_update
+            remarks: Utente ultima modifica
+            type: VARCHAR(30)
+        remarks: Società gestore del Sistema Informativo
+        schemaName: anagrafiche
+        tableName: gestori
+- changeSet:
+    id: 1745771026966-6
+    author: mctit (generated)
+    changes:
+    - createSequence:
+        cacheSize: 1
+        cycle: false
+        dataType: integer
+        incrementBy: 1
+        maxValue: 2147483647
+        minValue: 1
+        schemaName: anagrafiche
+        sequenceName: gestori_id_seq
+        startValue: 1
+- changeSet:
+    id: 1745771026966-7
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            autoIncrement: true
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: pk_gestori_utilities_ruoli
+            name: id
+            remarks: ID della relazione gestore-utility-ruolo
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: gestore_id
+            remarks: Riferimento al gestore (anagrafiche.gestori)
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: utility_id
+            remarks: Riferimento al servizio/utility (config.utilities)
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: ruolo_id
+            remarks: Riferimento al ruolo funzionale (config.tipi_ruoli)
+            type: INTEGER
+        - column:
+            defaultValueComputed: '{}'
+            name: extra
+            remarks: Parametri addizionali per la relazione (JSONB)
+            type: JSONB
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: date_insert
+            remarks: Data di inserimento
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_insert
+            remarks: Utente che ha inserito il record
+            type: VARCHAR(80)
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: date_update
+            remarks: Data ultima modifica
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_update
+            remarks: Utente che ha modificato il record
+            type: VARCHAR(80)
+        remarks: Associazione tra gestore, servizio (utility) e ruolo funzionale
+        schemaName: anagrafiche
+        tableName: gestori_utilities_ruoli
+- changeSet:
+    id: 1745771026966-8
+    author: mctit (generated)
+    changes:
+    - createSequence:
+        cacheSize: 1
+        cycle: false
+        dataType: integer
+        incrementBy: 1
+        maxValue: 2147483647
+        minValue: 1
+        schemaName: anagrafiche
+        sequenceName: gestori_utilities_ruoli_id_seq
+        startValue: 1
+- changeSet:
+    id: 1745771026966-9
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            autoIncrement: true
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: pk_contatti
+            name: id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: tipo_contatto_id
+            remarks: FK al tipo di contatto (config.tipi_contatti)
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: soggetto_id
+            remarks: Riferimento al soggetto principale
+            type: UUID
+        - column:
+            constraints:
+              nullable: false
+            name: soggetto_ruolo_id
+            remarks: Riferimento alla specifica assegnazione ruolo del soggetto
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: utility_id
+            remarks: Riferimento al servizio/utility (config.utilities)
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: nominativo
+            remarks: Nome della persona di riferimento per il contatto
+            type: VARCHAR(100)
+        - column:
+            name: email
+            remarks: Indirizzo email del contatto
+            type: VARCHAR(100)
+        - column:
+            name: telefono
+            remarks: Numero di telefono fisso
+            type: VARCHAR(20)
+        - column:
+            name: cellulare
+            remarks: Numero di telefono mobile
+            type: VARCHAR(20)
+        - column:
+            name: pec
+            remarks: Indirizzo PEC per fatturazione elettronica
+            type: VARCHAR(100)
+        - column:
+            name: note
+            remarks: Note aggiuntive
+            type: TEXT
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: date_insert
+            remarks: Data di inserimento
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_insert
+            remarks: Utente che ha inserito il record
+            type: TEXT
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: date_update
+            remarks: Data ultima modifica
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_update
+            remarks: Utente ultima modifica
+            type: TEXT
+        - column:
+            constraints:
+              nullable: false
+            defaultValueBoolean: false
+            name: is_default
+            remarks: Flag che indica il contatto default per il soggetto
+            type: BOOLEAN
+        remarks: Contatti generici e specifici (soggetto/ruolo/servizio)
+        schemaName: anagrafiche
+        tableName: contatti
+- changeSet:
+    id: 1745771026966-10
+    author: mctit (generated)
+    changes:
+    - createSequence:
+        cacheSize: 1
+        cycle: false
+        dataType: integer
+        incrementBy: 1
+        maxValue: 2147483647
+        minValue: 1
+        schemaName: anagrafiche
+        sequenceName: contatti_id_seq
+        startValue: 1
+- changeSet:
+    id: 1745771026966-11
+    author: mctit (generated)
+    changes:
+    - createSequence:
+        cacheSize: 1
+        cycle: false
+        dataType: bigint
+        incrementBy: 1
+        maxValue: 9223372036854775807
+        minValue: 1
+        schemaName: anagrafiche
+        sequenceName: indirizzi_dettaglio_id_seq
+        startValue: 1
+- changeSet:
+    id: 1745771026966-12
+    author: mctit (generated)
+    changes:
+    - createSequence:
+        cacheSize: 1
+        cycle: false
+        dataType: bigint
+        incrementBy: 1
+        maxValue: 9223372036854775807
+        minValue: 1
+        schemaName: anagrafiche
+        sequenceName: indirizzi_id_seq
+        startValue: 1
+- changeSet:
+    id: 1745771026966-13
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            autoIncrement: true
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: pk_istanze_utilities
+            name: id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: soggetto_ruolo_id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            defaultValueBoolean: false
+            name: fittizia
+            remarks: Flag per generazione automatica senza dettagli (true/false)
+            type: BOOLEAN
+        - column:
+            constraints:
+              nullable: false
+            name: codice_istanza
+            remarks: Codice identificativo univoco della istanza (es. ISTA-YYYYMMDD-001)
+            type: VARCHAR(30)
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: I
+            name: proprietario_inquilino
+            remarks: P=Proprietario, I=Inquilino
+            type: CHAR(1)
+        - column:
+            name: destinazione_immobile
+            type: CHAR(2)
+        - column:
+            name: num_concessione
+            type: VARCHAR(20)
+        - column:
+            name: data_concessione
+            type: date
+        - column:
+            name: sezione_catastale
+            type: CHAR(5)
+        - column:
+            name: foglio_catastale
+            type: CHAR(5)
+        - column:
+            name: particella
+            type: CHAR(5)
+        - column:
+            name: subalterno
+            type: CHAR(5)
+        - column:
+            name: anno_protocollo
+            type: INTEGER
+        - column:
+            name: superficie
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            defaultValueBoolean: false
+            name: immobile_rurale
+            remarks: Indica se immobile è rurale
+            type: BOOLEAN
+        - column:
+            name: tipo_accatastamento
+            type: CHAR(1)
+        - column:
+            name: categoria_catastale
+            type: VARCHAR(10)
+        - column:
+            name: classe_catastale
+            type: VARCHAR(10)
+        - column:
+            name: rendita_catastale
+            type: numeric(12, 2)
+        - column:
+            name: consistenza
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_insert
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_insert
+            type: VARCHAR(80)
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_update
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_update
+            type: VARCHAR(80)
+        - column:
+            name: account_code
+            type: VARCHAR(30)
+        remarks: Entità preliminare che rappresenta una istanza di attivazione per
+          una utility per un soggetto/ruolo
+        schemaName: anagrafiche
+        tableName: istanze_utilities
+- changeSet:
+    id: 1745771026966-14
+    author: mctit (generated)
+    changes:
+    - createSequence:
+        cacheSize: 1
+        cycle: false
+        dataType: bigint
+        incrementBy: 1
+        maxValue: 9223372036854775807
+        minValue: 1
+        schemaName: anagrafiche
+        sequenceName: istanze_utilities_id_seq
+        startValue: 1
+- changeSet:
+    id: 1745771026966-15
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            autoIncrement: true
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: pk_billing_account
+            name: id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: istanza_id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: soggetto_ruolo_id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: utility_id
+            type: INTEGER
+        - column:
+            name: parent_account_id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: account_code
+            type: VARCHAR(30)
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_DATE
+            name: valid_from
+            type: date
+        - column:
+            name: valid_to
+            type: date
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_insert
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_insert
+            type: VARCHAR(80)
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_update
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_update
+            type: VARCHAR(80)
+        remarks: Storico dei codici cliente definitivi per utility
+        schemaName: anagrafiche
+        tableName: billing_account
+- changeSet:
+    id: 1745771026966-16
+    author: mctit (generated)
+    changes:
+    - createSequence:
+        cacheSize: 1
+        cycle: false
+        dataType: bigint
+        incrementBy: 1
+        maxValue: 9223372036854775807
+        minValue: 1
+        schemaName: anagrafiche
+        sequenceName: billing_account_id_seq
+        startValue: 1
+- changeSet:
+    id: 1745771026966-17
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            autoIncrement: true
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: pk_clienti
+            name: id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: soggetto_ruolo_id
+            remarks: FK al ruolo cliente originario
+            type: INTEGER
+        - column:
+            name: istanza_id
+            remarks: FK all'istanza di attivazione da cui è nato il cliente
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: N
+            name: tipo_gg_scadenza_ft
+            remarks: 'Tipo calcolo giorni scadenza fattura: G=Somma giorni, M=Fine
+              mese, F=Fine mese+somma, N=Non definito'
+            type: CHAR(1)
+        - column:
+            constraints:
+              nullable: false
+            defaultValueNumeric: 0
+            name: nr_giorni_scadenza
+            remarks: Numero giorni da sommare alla data emissione
+            type: INTEGER
+        - column:
+            name: modalita_pagamento_id
+            remarks: FK alla modalità di pagamento
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: N
+            name: cliente_pa
+            remarks: S=Pubblica Amministrazione, N=Privato
+            type: CHAR(1)
+        - column:
+            name: codice_cig
+            remarks: Codice CIG
+            type: VARCHAR(20)
+        - column:
+            name: codice_cup
+            remarks: Codice CUP
+            type: VARCHAR(20)
+        - column:
+            name: cod_commessa
+            remarks: Codice commessa o convenzione
+            type: VARCHAR(100)
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: N
+            name: split_payment
+            remarks: Flag split payment S/N
+            type: CHAR(1)
+        - column:
+            name: cd_cliente_importato
+            remarks: Codice cliente importato da altro software
+            type: VARCHAR(30)
+        - column:
+            constraints:
+              nullable: false
+            name: stato_cliente_id
+            remarks: FK allo stato cliente (attivo, sospeso, etc.)
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: iva_id
+            remarks: FK alla tabella IVA per aliquota applicata
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            defaultValueBoolean: true
+            name: servizio_da_fatturare
+            remarks: Indica se il cliente è attivo per fatturazione
+            type: BOOLEAN
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_insert
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_insert
+            type: VARCHAR(80)
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_update
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_update
+            type: VARCHAR(80)
+        - column:
+            name: utility_id
+            type: INTEGER
+        remarks: Tabella anagrafica generale clienti per tutte le utilities
+        schemaName: anagrafiche
+        tableName: clienti
+- changeSet:
+    id: 1745771026966-18
+    author: mctit (generated)
+    changes:
+    - createSequence:
+        cacheSize: 1
+        cycle: false
+        dataType: bigint
+        incrementBy: 1
+        maxValue: 9223372036854775807
+        minValue: 1
+        schemaName: anagrafiche
+        sequenceName: clienti_id_seq
+        startValue: 1
+- changeSet:
+    id: 1745771026966-19
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            autoIncrement: true
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: pk_dati_societari
+            name: id_dati_societari
+            type: BIGINT
+        - column:
+            constraints:
+              nullable: false
+            name: soggetto_id
+            remarks: 'FK su anagrafiche.soggetti(id): un soggetto può avere al più
+              una riga dati societari'
+            type: UUID
+        - column:
+            constraints:
+              nullable: false
+            name: forma_giuridica
+            remarks: Forma giuridica (es. SRL, SPA, SNC, ecc.)
+            type: TEXT
+        - column:
+            constraints:
+              nullable: false
+            name: capitale_sociale
+            remarks: Capitale sociale in Euro, formato 15,2
+            type: numeric(15, 2)
+        - column:
+            constraints:
+              nullable: false
+            name: id_prov_iscri_rea
+            remarks: Provincia di iscrizione REA (config.province.id)
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: iscrizione_rea
+            remarks: Numero iscrizione REA
+            type: VARCHAR(30)
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: SU
+            name: socio_unico
+            remarks: Socio unico (SU = Sì, SM = Socio multiplo)
+            type: SOCIO_UNICO_ENUM
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: LN
+            name: liquidazione
+            remarks: Liquidazione (LS = In liquidazione, LN = Non in liquidazione)
+            type: LIQUIDAZIONE_ENUM
+        - column:
+            constraints:
+              nullable: false
+            name: destinatario_fe
+            remarks: Codice destinatario per fattura elettronica (SDI)
+            type: CHAR(10)
+        - column:
+            name: pec_fatturazione
+            remarks: PEC dedicata alla fatturazione elettronica
+            type: VARCHAR(100)
+        - column:
+            name: codice_sdi
+            remarks: Codice SDI per fatturazione elettronica
+            type: VARCHAR(10)
+        - column:
+            name: data_costituzione
+            remarks: Data di costituzione dell’azienda
+            type: date
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_insert
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_insert
+            type: TEXT
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_update
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_update
+            type: TEXT
+        remarks: Dati societari estesi per i soggetti di tipo aziendali
+        schemaName: anagrafiche
+        tableName: dati_societari
+- changeSet:
+    id: 1745771026966-20
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            autoIncrement: true
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: pk_indirizzi_dettaglio
+            name: id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: stradario_id
+            type: INTEGER
+        - column:
+            name: civico
+            type: INTEGER
+        - column:
+            name: estensione_civico
+            type: VARCHAR(10)
+        - column:
+            name: palazzina
+            type: VARCHAR(50)
+        - column:
+            name: interno
+            type: VARCHAR(10)
+        - column:
+            name: piano
+            type: VARCHAR(10)
+        - column:
+            name: civic_geoloc
+            type: geometry(Point,4326)
+        - column:
+            name: altro
+            remarks: Campo libero per informazioni aggiuntive non strutturate
+            type: TEXT
+        - column:
+            constraints:
+              nullable: false
+            name: via_norm
+            type: TEXT
+        - column:
+            constraints:
+              nullable: false
+            name: civico_norm
+            type: TEXT
+        - column:
+            name: street_geoloc
+            type: geometry(Point,4326)
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_insert
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_insert
+            type: VARCHAR(80)
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_update
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_update
+            type: VARCHAR(80)
+        - column:
+            name: scala
+            type: VARCHAR(10)
+        - column:
+            defaultValueComputed: GENERATED ALWAYS AS TRIM(BOTH FROM (((((via_norm
+              || COALESCE((', '::text || civico_norm), ''::text)) || COALESCE((',
+              Pal.'::text || (palazzina)::text), ''::text)) || COALESCE((', Scala
+              '::text || (scala)::text), ''::text)) || COALESCE((', P'::text || (piano)::text),
+              ''::text)) || COALESCE((', Int.'::text || (interno)::text), ''::text)))
+              STORED
+            name: indirizzo_normalizzato
+            type: TEXT
+        remarks: Dettaglio degli indirizzi, collegate allo stradario
+        schemaName: anagrafiche
+        tableName: indirizzi_dettaglio
+- changeSet:
+    id: 1745771026966-21
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            autoIncrement: true
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: pr_indirizzi_pk
+            name: id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: soggetto_ruolo_id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: tipo_indirizzo_id
+            type: INTEGER
+        - column:
+            name: indirizzo_dettaglio_id
+            remarks: FK facoltativo al dettaglio civico/geoloc in anagrafiche.indirizzi_dettaglio
+            type: INTEGER
+        - column:
+            name: indirizzo_libero
+            remarks: Testo libero se non ho un record normalizzato
+            type: TEXT
+        - column:
+            name: stato_id
+            remarks: Stato (usato per CF e internazionalizzazione)
+            type: INTEGER
+        - column:
+            name: administrative_area
+            remarks: Suddivisione amministrativa per indirizzi esteri (es. stato,
+              regione)
+            type: VARCHAR(100)
+        - column:
+            name: locality
+            remarks: Città o municipalità per indirizzi esteri
+            type: VARCHAR(100)
+        - column:
+            name: sublocality
+            remarks: Frazione o quartiere per indirizzi esteri
+            type: VARCHAR(100)
+        - column:
+            name: postal_box
+            remarks: Casella postale (PO Box) per indirizzi esteri
+            type: VARCHAR(20)
+        - column:
+            name: geoloc
+            type: geometry(Point,4326)
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_insert
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_insert
+            type: VARCHAR(80)
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_update
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            constraints:
+              nullable: false
+            defaultValue: CURRENT_USER
+            name: user_update
+            type: VARCHAR(80)
+        - column:
+            name: comune_id
+            type: INTEGER
+        - column:
+            name: codice_postale_id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            defaultValueBoolean: false
+            name: modifica_storica
+            remarks: Se true, al prossimo UPDATE/DELETE verrà creato uno snapshot
+              in storico.indirizzi
+            type: BOOLEAN
+        remarks: Associa a un soggetto/ruolo un indirizzo di un certo tipo, normalizzato
+          o libero, con supporto internazionale
+        schemaName: anagrafiche
+        tableName: indirizzi
+- changeSet:
+    id: 1745771026966-22
+    author: mctit (generated)
+    changes:
+    - createSequence:
+        cacheSize: 1
+        cycle: false
+        dataType: bigint
+        incrementBy: 1
+        maxValue: 9223372036854775807
+        minValue: 1
+        schemaName: anagrafiche
+        sequenceName: billing_account_codice_seq
+        startValue: 1
+- changeSet:
+    id: 1745771026966-23
+    author: mctit (generated)
+    changes:
+    - createSequence:
+        cacheSize: 1
+        cycle: false
+        dataType: bigint
+        incrementBy: 1
+        maxValue: 9223372036854775807
+        minValue: 1
+        schemaName: anagrafiche
+        sequenceName: istanze_utilities_codice_seq
+        startValue: 1
+- changeSet:
+    id: 1745771026966-24
+    author: mctit (generated)
+    changes:
+    - createSequence:
+        cacheSize: 1
+        cycle: false
+        dataType: bigint
+        incrementBy: 1
+        maxValue: 9223372036854775807
+        minValue: 1
+        schemaName: anagrafiche
+        sequenceName: soggetti_codice_seq
+        startValue: 1
+

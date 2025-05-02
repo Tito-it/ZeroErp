@@ -1,0 +1,1905 @@
+databaseChangeLog:
+  - preConditions:
+      - onFail: HALT
+      - sqlCheck:
+          expectedResult: "170004"
+          sql: "SHOW server_version_num"
+
+  - changeSet:
+      id: enable-postgis
+      author: mctit
+      comment: Abilita l'estensione PostGIS per tipi e indici spaziali
+      changes:
+      - sql:
+          sql: CREATE EXTENSION IF NOT EXISTS postgis;
+  - changeSet:
+        id: enable-uuid-ossp
+        author: mctit
+        changes:
+          - sql:
+              dbms: postgresql
+              sql: CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+  - changeSet:
+      id: enable-postgis-topology
+      author: mctit
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: CREATE EXTENSION IF NOT EXISTS postgis_topology;
+
+  - changeSet:
+      id: 1745763446253-1
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_stati_pratiche
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: cod_stato
+              type: VARCHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              type: VARCHAR(100)
+          - column:
+              constraints:
+                nullable: false
+              name: cd_int_stato
+              type: VARCHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: VARCHAR(80)
+          schemaName: config
+          tableName: stati_pratiche
+  - changeSet:
+      id: 1745763446253-2
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_tipi_attivita
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: cod_tipo_attivita
+              type: VARCHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              type: VARCHAR(100)
+          - column:
+              constraints:
+                nullable: false
+              name: cd_int_tipo_attivita
+              type: VARCHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: VARCHAR(80)
+          schemaName: config
+          tableName: tipi_attivita
+  - changeSet:
+      id: 1745763446253-3
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_tipi_documenti
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: cod_tipo_documento
+              type: VARCHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              type: VARCHAR(100)
+          - column:
+              constraints:
+                nullable: false
+              name: cd_int_tipo_documento
+              type: VARCHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: VARCHAR(80)
+          schemaName: config
+          tableName: tipi_documenti
+  - changeSet:
+      id: 1745763446253-4
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_tipi_ruoli
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: cod_ruolo
+              type: VARCHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              type: VARCHAR(100)
+          - column:
+              constraints:
+                nullable: false
+              name: cd_int_ruolo
+              type: VARCHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: VARCHAR(80)
+          schemaName: config
+          tableName: tipi_ruoli
+  - changeSet:
+      id: 1745763446253-5
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_utilities
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: cod_utility
+              type: VARCHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              type: VARCHAR(100)
+          - column:
+              constraints:
+                nullable: false
+              name: cd_int_utility
+              type: VARCHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: VARCHAR(80)
+          schemaName: config
+          tableName: utilities
+  - changeSet:
+      id: 1745763446253-6
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: stati_pratiche_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-7
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: tipi_attivita_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-8
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: tipi_documenti_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-9
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: tipi_ruoli_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-10
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_stati
+              name: id
+              type: INTEGER
+          - column:
+              name: sigla_stato
+              remarks: Sigla dello stato (es. IT, FR, DE)
+              type: VARCHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              remarks: Nome descrittivo dello stato
+              type: VARCHAR(100)
+          - column:
+              name: codice_iso2
+              remarks: Codice ISO 3166-1 alpha-2
+              type: CHAR(2)
+          - column:
+              name: codice_iso3
+              remarks: Codice ISO 3166-1 alpha-3
+              type: CHAR(3)
+          - column:
+              name: codice_telefonico
+              remarks: Prefisso internazionale telefonico (es. +39)
+              type: VARCHAR(10)
+          - column:
+              name: continente
+              remarks: Nome del continente di appartenenza
+              type: VARCHAR(50)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: VARCHAR(80)
+          - column:
+              name: extra_country
+              remarks: Metadati estesi specifici del paese, es. codice catastale e ISTAT
+                (per l’Italia)
+              type: JSONB
+          remarks: Stati (ex nazioni), inclusi codici catastali, ISO, telefonici e continente
+          schemaName: config
+          tableName: stati
+  - changeSet:
+      id: 1745763446253-11
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: stati_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-12
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_toponomastica
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              remarks: Descrizione del tipo di toponimo (es. VIA, STRADA, PIAZZA)
+              type: VARCHAR(100)
+          - column:
+              name: stato_id
+              remarks: Collegamento allo stato di riferimento
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: VARCHAR(80)
+          remarks: 'Toponomastica: tipologie di vie, strade, piazze, ecc.'
+          schemaName: config
+          tableName: toponomastica
+  - changeSet:
+      id: 1745763446253-13
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: toponomastica_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-14
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_stradario_generale
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: toponomastica_id
+              remarks: Collegamento alla tipologia di toponimo (es. VIA, PIAZZA)
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              remarks: Descrizione estesa della strada (es. Roma)
+              type: VARCHAR(100)
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione_breve
+              remarks: Descrizione breve della strada (es. RM)
+              type: VARCHAR(50)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: VARCHAR(80)
+          remarks: 'Stradario generale: vie, strade, piazze con riferimento alla toponomastica.'
+          schemaName: config
+          tableName: stradario_generale
+  - changeSet:
+      id: 1745763446253-15
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: stradario_generale_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-16
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_regioni
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              remarks: Descrizione regione (es. Lazio)
+              type: CHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              name: stato_id
+              remarks: Stato di riferimento della regione
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: VARCHAR(80)
+          - column:
+              name: extra_country
+              type: JSONB
+          remarks: Regioni (italiane o estere) con riferimento allo stato e codice ISTAT
+          schemaName: config
+          tableName: regioni
+  - changeSet:
+      id: 1745763446253-17
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: regioni_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-18
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_province
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              remarks: Descrizione della provincia
+              type: CHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              name: sigla
+              remarks: Sigla della provincia (es. RM, MI)
+              type: CHAR(10)
+          - column:
+              name: regione_id
+              remarks: Regione di appartenenza
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: VARCHAR(80)
+          - column:
+              name: extra_country
+              remarks: 'Contiene dati ISTAT e fiscali: "codice_istat", "provincia_accisa_id"
+                (relazione ricorsiva, opzionale), "stato_utilizzo"'
+              type: JSONB
+          remarks: Province con codici ISTAT, regione e collegamento a provincia di
+            riferimento per accise
+          schemaName: config
+          tableName: province
+  - changeSet:
+      id: 1745763446253-19
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: province_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-20
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_ambiti
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: codice
+              type: CHAR(4)
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              type: CHAR(100)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: VARCHAR(80)
+          - column:
+              name: extra_country
+              type: JSONB
+          schemaName: config
+          tableName: ambiti
+  - changeSet:
+      id: 1745763446253-21
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: ambiti_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-22
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_comuni
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: ''
+              name: descrizione
+              remarks: Nome del comune
+              type: VARCHAR(100)
+          - column:
+              name: provincia_id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: stato_id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: VARCHAR(80)
+          - column:
+              name: extra_country
+              type: JSONB
+          - column:
+              constraints:
+                nullable: false
+              defaultValueBoolean: false
+              name: storicizza
+              remarks: Se true esegue trigger per storicizzare su storico.comuni
+              type: BOOLEAN
+          remarks: Comuni italiani ed esteri
+          schemaName: config
+          tableName: comuni
+  - changeSet:
+      id: 1745763446253-23
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: comuni_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-24
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_codici_postali
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: codice_postale
+              remarks: Codice di avviamento postale (CAP)
+              type: CHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              name: comune_id
+              remarks: Collegamento al comune di riferimento
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              remarks: Data di inserimento del record
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              remarks: Utente che ha inserito il record
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              remarks: Data di ultima modifica
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              remarks: Utente che ha effettuato ultima modifica
+              type: VARCHAR(80)
+          remarks: Codici di avviamento postale associati ai comuni (normalizzati)
+          schemaName: config
+          tableName: codici_postali
+  - changeSet:
+      id: 1745763446253-25
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: codici_postali_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-26
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: stradario_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-27
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_sistema_codici
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: codice_tipo
+              type: TEXT
+          - column:
+              name: descrizione
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              name: prefisso
+              type: TEXT
+          - column:
+              name: separatore
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              defaultValueNumeric: 6
+              name: lunghezza_numero
+              type: INTEGER
+          - column:
+              defaultValueBoolean: true
+              name: usa_sequenza
+              type: BOOLEAN
+          - column:
+              name: nome_sequenza
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              defaultValueBoolean: true
+              name: attivo
+              type: BOOLEAN
+          - column:
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: TEXT
+          - column:
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: TEXT
+          schemaName: config
+          tableName: sistema_codici
+  - changeSet:
+      id: 1745763446253-28
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: sistema_codici_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-29
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_contatto_ruolo
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              remarks: Descrizione estesa del ruolo
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione_breve
+              remarks: Descrizione breve del ruolo
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              remarks: Nome utente leggibile (es. da current_user), utile per log e
+                tracciabilità
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              remarks: Nome utente leggibile (es. da current_user), utile per log e
+                tracciabilità
+              type: TEXT
+          remarks: Ruolo del contatto anagrafico
+          schemaName: config
+          tableName: contatti_ruoli
+  - changeSet:
+      id: 1745763446253-30
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_messaggi_errore
+              name: codice
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_messaggi_errore
+              defaultValue: it
+              name: lingua
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              name: messaggio
+              type: TEXT
+          remarks: Catalogo centralizzato dei messaggi (errori, avvisi, ecc.) con supporto
+            i18n
+          schemaName: config
+          tableName: messaggi_errore
+  - changeSet:
+      id: 1745763446253-31
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_valute
+              name: id
+              remarks: Id.Valuta
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: cd_valuta
+              remarks: Codice interno della valuta
+              type: CHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              name: iso_code
+              remarks: Codice ISO 4217 (es. EUR, USD)
+              type: CHAR(3)
+          - column:
+              name: iso_num_code
+              remarks: Codice numerico ISO 4217 (es. 978 per EUR)
+              type: SMALLINT
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione_valuta
+              remarks: Descrizione estesa della valuta
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              name: simbolo
+              remarks: Simbolo della valuta (€/$/£...)
+              type: VARCHAR(8)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: date_insert
+              remarks: Data di inserimento
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              remarks: Utente che ha effettuato inserimento
+              type: VARCHAR(30)
+          - column:
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: date_update
+              remarks: Data ultima modifica
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              defaultValue: CURRENT_USER
+              name: user_update
+              remarks: Utente ultima modifica
+              type: VARCHAR(30)
+          remarks: Definizione Valute
+          schemaName: config
+          tableName: valute
+  - changeSet:
+      id: 1745763446253-32
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: valute_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-33
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_tipi_contatti
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              remarks: Descrizione estesa del tipo di contatto
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              name: cod_int_tipo_contatto
+              remarks: Codice interno del tipo di contatto, non modificabile
+              type: VARCHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              remarks: Data di inserimento record
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              remarks: Utente di inserimento
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              remarks: Data di ultima modifica
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              remarks: Utente ultima modifica
+              type: TEXT
+          remarks: Tipi di contatto anagrafico
+          schemaName: config
+          tableName: tipi_contatti
+  - changeSet:
+      id: 1745763446253-34
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: tipi_contatti_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-35
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_tipi_indirizzi
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: cod_int_tipo_indirizzo
+              remarks: Codice interno fisso del tipo indirizzo (non modificabile dopo
+                inserimento).
+              type: VARCHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: TEXT
+          remarks: Catalogo tipi indirizzo (residenza, domicilio fiscale, fornitura,
+            ecc.).
+          schemaName: config
+          tableName: tipi_indirizzi
+  - changeSet:
+      id: 1745763446253-36
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: tipi_indirizzi_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-37
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_modalita_pagamento
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: cod_modalita
+              remarks: Codice interno della modalità di pagamento
+              type: CHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              remarks: Descrizione della modalità di pagamento
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              remarks: Data di creazione del record
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              remarks: Utente che ha creato il record
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              remarks: Data di ultima modifica
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              remarks: Utente che ha modificato il record
+              type: VARCHAR(80)
+          remarks: Catalogo delle modalità di pagamento (es. RID, BONIFICO, CONTANTI)
+          schemaName: config
+          tableName: modalita_pagamento
+  - changeSet:
+      id: 1745763446253-38
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: modalita_pagamento_id_seq
+          startValue: 24
+  - changeSet:
+      id: 1745763446253-39
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_stati_cliente
+              name: id
+              remarks: 'PK: Identificativo dello stato cliente'
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: cod_int_stato_cliente
+              remarks: Codice interno non modificabile dello stato cliente
+              type: CHAR(5)
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: ''
+              name: desc_stato_cliente
+              remarks: Descrizione estesa dello stato cliente
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              name: desc_breve_stato
+              remarks: Descrizione breve dello stato cliente
+              type: CHAR(20)
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: S
+              name: check_lettura
+              remarks: Abilita check letture (S/N)
+              type: CHAR(1)
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: S
+              name: abilita_fattura
+              remarks: Abilita fattura (S/N)
+              type: CHAR(1)
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: IS
+              name: stato_cliente
+              remarks: Valore interno del tipo stato cliente, non modificabile
+              type: CHAR(2)
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: I
+              name: stato_cliente_ia
+              remarks: 'Stato cliente primario: A=Altro, I=Istanza'
+              type: CHAR(1)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              remarks: Data di inserimento record
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              remarks: Utente di inserimento
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              remarks: Data di ultima modifica
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              remarks: Utente ultima modifica
+              type: TEXT
+          remarks: Stati cliente (AT=Attivo, IS=Istanza, CH=Chiuso, SM=Sosp.Morosita,
+            AN=Annullato, CE=Cess.Amministrativa, LE=Legale)
+          schemaName: config
+          tableName: stati_cliente
+  - changeSet:
+      id: 1745763446253-40
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_conti_contabili
+              name: id
+              remarks: 'PK: Identificativo del conto contabile'
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: codice_conto
+              remarks: Codice univoco del conto contabile
+              type: VARCHAR(20)
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione
+              remarks: Descrizione estesa del conto contabile
+              type: VARCHAR(100)
+          - column:
+              constraints:
+                nullable: false
+              name: tipo_conto
+              remarks: 'Tipo di conto: A=Acquisto, V=Vendita'
+              type: CHAR(1)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              remarks: Data di inserimento record
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              remarks: Utente di inserimento
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              remarks: Data di ultima modifica
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              remarks: Utente ultima modifica
+              type: TEXT
+          remarks: Tabella dei conti contabili per IVA e scritture, con distinzione
+            Acquisto/Vendita
+          schemaName: config
+          tableName: conti_contabili
+  - changeSet:
+      id: 1745763446253-41
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_iva_natura
+              name: id
+              remarks: PK sequence‑generated
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: codice_natura
+              remarks: Codice natura IVA (es. N1, N2, …)
+              type: CHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              name: descrizione_natura
+              remarks: Descrizione della natura IVA
+              type: VARCHAR(250)
+          remarks: Codici natura IVA per fatturazione elettronica
+          schemaName: config
+          tableName: iva_natura
+  - changeSet:
+      id: 1745763446253-42
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: iva_natura_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-43
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_iva
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: codice_iva
+              type: CHAR(10)
+          - column:
+              constraints:
+                nullable: false
+              name: desc_iva
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              name: desc_breve_iva
+              type: VARCHAR(40)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueNumeric: !!float '0'
+              name: aliquota_iva
+              type: numeric(5, 2)
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: ''
+              name: assoggettamento_iva
+              type: CHAR(2)
+          - column:
+              name: natura_iva_id
+              type: INTEGER
+          - column:
+              name: conto_iva_acquisti_id
+              type: INTEGER
+          - column:
+              name: conto_iva_vendita_id
+              type: INTEGER
+          - column:
+              name: id_iva_split
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: TEXT
+          schemaName: config
+          tableName: iva
+  - changeSet:
+      id: 1745763446253-44
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: iva_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-45
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_iva_stati
+              name: iva_id
+              remarks: FK al codice IVA principale (config.iva.id)
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_iva_stati
+              name: stato_id
+              remarks: FK allo stato/paese (config.stati.id)
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: aliquota_override
+              remarks: Aliquota da applicare per questo Paese
+              type: numeric(5, 2)
+          - column:
+              constraints:
+                nullable: false
+              name: assoggettamento_override
+              remarks: Assoggettamento IVA override per Paese
+              type: CHAR(2)
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              remarks: Data di inserimento record
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_insert
+              remarks: Utente di inserimento
+              type: TEXT
+          - column:
+              constraints:
+                nullable: false
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              remarks: Data di ultima modifica
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              constraints:
+                nullable: false
+              defaultValue: CURRENT_USER
+              name: user_update
+              remarks: Utente ultima modifica
+              type: TEXT
+          remarks: Override di aliquota/assoggettamento IVA per specifico Paese
+          schemaName: config
+          tableName: iva_stati
+  - changeSet:
+      id: 1745763446253-46
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: utilities_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-47
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: contatti_ruoli_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-48
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: stati_cliente_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-49
+      author: mctit (generated)
+      changes:
+      - createSequence:
+          cacheSize: 1
+          cycle: false
+          dataType: integer
+          incrementBy: 1
+          maxValue: 2147483647
+          minValue: 1
+          schemaName: config
+          sequenceName: conti_contabili_id_seq
+          startValue: 1
+  - changeSet:
+      id: 1745763446253-50
+      author: mctit (generated)
+      changes:
+      - createTable:
+          columns:
+          - column:
+              autoIncrement: true
+              constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_stradario
+              name: id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: comune_id
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              name: via_id
+              type: INTEGER
+          - column:
+              name: geoloc
+              type: geometry(Point,4326)
+          - column:
+              name: extra_info
+              type: JSONB
+          - column:
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_insert
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              defaultValue: CURRENT_USER
+              name: user_insert
+              type: VARCHAR(80)
+          - column:
+              defaultValueComputed: CURRENT_TIMESTAMP
+              name: data_update
+              type: TIMESTAMP WITHOUT TIME ZONE
+          - column:
+              defaultValue: CURRENT_USER
+              name: user_update
+              type: VARCHAR(80)
+          - column:
+              constraints:
+                nullable: false
+              name: codice_postale_id
+              remarks: Riferimento obbligatorio al CAP (tabella codici_postali)
+              type: INTEGER
+          - column:
+              constraints:
+                nullable: false
+              defaultValueBoolean: false
+              name: storicizza
+              remarks: Se true esegue trigger per storicizzare su storico.stradario
+              type: BOOLEAN
+          remarks: Stradario con CAP obbligatorio esclusivamente sulle vie
+          schemaName: config
+          tableName: stradario
+

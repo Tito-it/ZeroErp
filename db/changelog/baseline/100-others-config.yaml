@@ -1,0 +1,834 @@
+databaseChangeLog:
+- changeSet:
+    id: 1745765956379-1
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cd_int_stato
+        constraintName: uq_stati_pratiche_cd_int_stato
+        schemaName: config
+        tableName: stati_pratiche
+- changeSet:
+    id: 1745765956379-2
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cod_stato
+        constraintName: uq_stati_pratiche_cod_stato
+        schemaName: config
+        tableName: stati_pratiche
+- changeSet:
+    id: 1745765956379-3
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cd_int_tipo_attivita
+        constraintName: uq_tipi_attivita_cd_int_tipo_attivita
+        schemaName: config
+        tableName: tipi_attivita
+- changeSet:
+    id: 1745765956379-4
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cod_tipo_attivita
+        constraintName: uq_tipi_attivita_cod_tipo_attivita
+        schemaName: config
+        tableName: tipi_attivita
+- changeSet:
+    id: 1745765956379-5
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cd_int_tipo_documento
+        constraintName: uq_tipi_documenti_cd_int_tipo_documento
+        schemaName: config
+        tableName: tipi_documenti
+- changeSet:
+    id: 1745765956379-6
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cod_tipo_documento
+        constraintName: uq_tipi_documenti_cod_tipo_documento
+        schemaName: config
+        tableName: tipi_documenti
+- changeSet:
+    id: 1745765956379-7
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cd_int_ruolo
+        constraintName: uq_tipi_ruoli_cd_int_ruolo
+        schemaName: config
+        tableName: tipi_ruoli
+- changeSet:
+    id: 1745765956379-8
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cod_ruolo
+        constraintName: uq_tipi_ruoli_cod_ruolo
+        schemaName: config
+        tableName: tipi_ruoli
+- changeSet:
+    id: 1745765956379-9
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cd_int_utility
+        constraintName: uq_utilities_cd_int_utility
+        schemaName: config
+        tableName: utilities
+- changeSet:
+    id: 1745765956379-10
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cod_utility
+        constraintName: uq_utilities_cod_utility
+        schemaName: config
+        tableName: utilities
+- changeSet:
+    id: 1745765956379-11
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: sigla_stato
+        indexName: ix_sigla_stato
+        schemaName: config
+        tableName: stati
+- changeSet:
+    id: 1745765956379-12
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: descrizione
+        indexName: ix_descrizione_stato
+        schemaName: config
+        tableName: stati
+- changeSet:
+    id: 1745765956379-13
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: codice_iso2
+        indexName: ix_iso2
+        schemaName: config
+        tableName: stati
+- changeSet:
+    id: 1745765956379-14
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: codice_iso3
+        indexName: ix_iso3
+        schemaName: config
+        tableName: stati
+- changeSet:
+    id: 1745765956379-15
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: ((extra_country ->> 'stato_utilizzo'::text))
+        indexName: ix_stato_utilizzo_jsonb
+        schemaName: config
+        tableName: stati
+- changeSet:
+    id: 1745765956379-16
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: stato_id
+        indexName: idx_toponomastica_stato_id
+        schemaName: config
+        tableName: toponomastica
+- changeSet:
+    id: 1745765956379-17
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: descrizione
+        constraintName: uq_toponomastica_descrizione
+        schemaName: config
+        tableName: toponomastica
+- changeSet:
+    id: 1745765956379-18
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: toponomastica_id
+        indexName: ix_toponomastica_id
+        schemaName: config
+        tableName: stradario_generale
+- changeSet:
+    id: 1745765956379-19
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: toponomastica_id, descrizione
+        constraintName: uq_toponomastica_descr
+        schemaName: config
+        tableName: stradario_generale
+- changeSet:
+    id: 1745765956379-20
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: descrizione
+        indexName: ix_descrizione_regione
+        schemaName: config
+        tableName: regioni
+- changeSet:
+    id: 1745765956379-21
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: stato_id
+        indexName: ix_stato_regione
+        schemaName: config
+        tableName: regioni
+- changeSet:
+    id: 1745765956379-22
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: descrizione
+        indexName: ix_descrizione_provincia
+        schemaName: config
+        tableName: province
+- changeSet:
+    id: 1745765956379-23
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: regione_id
+        indexName: ix_regione_provincia
+        schemaName: config
+        tableName: province
+- changeSet:
+    id: 1745765956379-24
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: ((extra_country ->> 'stato_utilizzo'::text))
+        indexName: ix_province_stato_utilizzo_jsonb
+        schemaName: config
+        tableName: province
+- changeSet:
+    id: 1745765956379-25
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: sigla
+        constraintName: uq_province_sigla
+        schemaName: config
+        tableName: province
+- changeSet:
+    id: 1745765956379-26
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: ((extra_country ->> 'stato_utilizzo'::text))
+        - column:
+            name: ((extra_country ->> 'settore'::text))
+        - column:
+            name: ((extra_country ->> 'codice_ambito'::text))
+        indexName: ix_ambiti_extra_country_keys
+        schemaName: config
+        tableName: ambiti
+- changeSet:
+    id: 1745765956379-27
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: descrizione
+        indexName: ix_ambiti_descrizione
+        schemaName: config
+        tableName: ambiti
+- changeSet:
+    id: 1745765956379-28
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: codice
+        constraintName: uq_ambiti_codice
+        schemaName: config
+        tableName: ambiti
+- changeSet:
+    id: 1745765956379-29
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: provincia_id
+        indexName: ix_provincia_id
+        schemaName: config
+        tableName: comuni
+- changeSet:
+    id: 1745765956379-30
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: stato_id
+        indexName: ix_stato_id
+        schemaName: config
+        tableName: comuni
+- changeSet:
+    id: 1745765956379-31
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: descrizione
+        indexName: ix_descrizione_comune
+        schemaName: config
+        tableName: comuni
+- changeSet:
+    id: 1745765956379-32
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: codice_postale
+        indexName: ix_codici_postali_codice
+        schemaName: config
+        tableName: codici_postali
+- changeSet:
+    id: 1745765956379-33
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: comune_id
+        indexName: ix_codici_postali_comune_id
+        schemaName: config
+        tableName: codici_postali
+- changeSet:
+    id: 1745765956379-34
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: codice_tipo
+        constraintName: uq_sistema_codici_codice_tipo
+        schemaName: config
+        tableName: sistema_codici
+- changeSet:
+    id: 1745765956379-35
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: descrizione
+        constraintName: uq_contatto_ruolo_contatto_ruolo_descrizione
+        schemaName: config
+        tableName: contatti_ruoli
+- changeSet:
+    id: 1745765956379-36
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: descrizione_valuta
+        indexName: idx_valute_desc_valuta
+        schemaName: config
+        tableName: valute
+- changeSet:
+    id: 1745765956379-37
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cd_valuta
+        constraintName: uq_cd_valuta
+        schemaName: config
+        tableName: valute
+- changeSet:
+    id: 1745765956379-38
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: iso_code
+        constraintName: uq_iso_code
+        schemaName: config
+        tableName: valute
+- changeSet:
+    id: 1745765956379-39
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cod_int_tipo_contatto
+        constraintName: uq_tipi_contatti_cod_int_contatto
+        schemaName: config
+        tableName: tipi_contatti
+- changeSet:
+    id: 1745765956379-40
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cod_int_tipo_indirizzo
+        constraintName: uq_tipi_indirizzi_cod_int_tipo_indirizzo
+        schemaName: config
+        tableName: tipi_indirizzi
+- changeSet:
+    id: 1745765956379-41
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cod_modalita
+        constraintName: uq_modalita_pagamento_cod
+        schemaName: config
+        tableName: modalita_pagamento
+- changeSet:
+    id: 1745765956379-42
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: desc_stato_cliente
+        indexName: idx_stati_cli_desc
+        schemaName: config
+        tableName: stati_cliente
+- changeSet:
+    id: 1745765956379-43
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: cod_int_stato_cliente
+        constraintName: uq_stati_cli_cod_unq
+        schemaName: config
+        tableName: stati_cliente
+- changeSet:
+    id: 1745765956379-44
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: tipo_conto
+        indexName: ix_conti_contabili_tipo_conto
+        schemaName: config
+        tableName: conti_contabili
+- changeSet:
+    id: 1745765956379-45
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: descrizione
+        indexName: ix_conti_contabili_descrizione
+        schemaName: config
+        tableName: conti_contabili
+- changeSet:
+    id: 1745765956379-46
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: codice_conto
+        constraintName: uq_conti_contabili_codice_conto
+        schemaName: config
+        tableName: conti_contabili
+- changeSet:
+    id: 1745765956379-47
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: codice_natura
+        constraintName: uq_iva_natura_codice
+        schemaName: config
+        tableName: iva_natura
+- changeSet:
+    id: 1745765956379-48
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: desc_iva
+        indexName: ix_iva_desc
+        schemaName: config
+        tableName: iva
+- changeSet:
+    id: 1745765956379-49
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: codice_iva
+        constraintName: uq_iva_codice
+        schemaName: config
+        tableName: iva
+- changeSet:
+    id: 1745765956379-50
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: stato_id
+        indexName: ix_iva_stati_stato
+        schemaName: config
+        tableName: iva_stati
+- changeSet:
+    id: 1745765956379-51
+    author: mctit (generated)
+    comment: Indice spaziale GIST per geoloc
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: geoloc
+        indexName: ix_stradario_geoloc
+        type: GIST 
+        schemaName: config
+        tableName: stradario
+- changeSet:
+    id: 1745765956379-52
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: comune_id
+        indexName: ix_stradario_comune
+        schemaName: config
+        tableName: stradario
+- changeSet:
+    id: 1745765956379-53
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: codice_postale_id
+        indexName: ix_stradario_codice_postale_id
+        schemaName: config
+        tableName: stradario
+- changeSet:
+    id: 1745765956379-54
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: via_id
+        indexName: ix_stradario_via_id
+        schemaName: config
+        tableName: stradario
+- changeSet:
+    id: 1745765956379-55
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: comune_id, via_id
+        constraintName: uq_stradario_comune_via
+        schemaName: config
+        tableName: stradario
+
+- changeSet:
+    id: 1745765956379-82
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: comune_id
+        baseTableName: codici_postali
+        baseTableSchemaName: config
+        constraintName: fk_codici_postali_comune_id
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: comuni
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-83
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: conto_iva_acquisti_id
+        baseTableName: iva
+        baseTableSchemaName: config
+        constraintName: fk_iva_conto_acq
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: conti_contabili
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-84
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: conto_iva_vendita_id
+        baseTableName: iva
+        baseTableSchemaName: config
+        constraintName: fk_iva_conto_ven
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: conti_contabili
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-85
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: natura_iva_id
+        baseTableName: iva
+        baseTableSchemaName: config
+        constraintName: fk_iva_natura
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: iva_natura
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-86
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: id_iva_split
+        baseTableName: iva
+        baseTableSchemaName: config
+        constraintName: fk_iva_split
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: iva
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-87
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: iva_id
+        baseTableName: iva_stati
+        baseTableSchemaName: config
+        constraintName: fk_iva_stati_iva
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: CASCADE
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: iva
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-88
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: stato_id
+        baseTableName: iva_stati
+        baseTableSchemaName: config
+        constraintName: fk_iva_stati_stato
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stati
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-89
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: regione_id
+        baseTableName: province
+        baseTableSchemaName: config
+        constraintName: fk_province_regione_id
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: regioni
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-90
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: provincia_id
+        baseTableName: comuni
+        baseTableSchemaName: config
+        constraintName: fk_provincia
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: province
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-91
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: stato_id
+        baseTableName: regioni
+        baseTableSchemaName: config
+        constraintName: fk_regioni_stato_id
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stati
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-92
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: stato_id
+        baseTableName: comuni
+        baseTableSchemaName: config
+        constraintName: fk_stato
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stati
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-93
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: codice_postale_id
+        baseTableName: stradario
+        baseTableSchemaName: config
+        constraintName: fk_stradario_codice_postale_id
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: codici_postali
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-94
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: comune_id
+        baseTableName: stradario
+        baseTableSchemaName: config
+        constraintName: fk_stradario_comune_id
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: comuni
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-95
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: toponomastica_id
+        baseTableName: stradario_generale
+        baseTableSchemaName: config
+        constraintName: fk_stradario_generale_toponomastica_id
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: toponomastica
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-96
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: via_id
+        baseTableName: stradario
+        baseTableSchemaName: config
+        constraintName: fk_stradario_via_id
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stradario_generale
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745765956379-97
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: stato_id
+        baseTableName: toponomastica
+        baseTableSchemaName: config
+        constraintName: fk_toponomastica_stato_id
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stati
+        referencedTableSchemaName: config
+        validate: true
+

@@ -1,0 +1,237 @@
+databaseChangeLog:
+- changeSet:
+    id: 1745773123574-201
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/anagrafiche/fn_generate_account_code.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745773123574-202
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/anagrafiche/trgfn_contatti_ins_upd_set_default_contatto.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745773123574-203
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/anagrafiche/trgfn_gestori_ins_upd_check_ruolo_gestore.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745773123574-204
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/anagrafiche/trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+
+- changeSet:
+    id: 1745773123574-205
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/anagrafiche/trgfn_indirizzi_ins_upd_clean_fields.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745773123574-206
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/anagrafiche/trgfn_indirizzi_upd_dlt_storico_indirizzi.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745773123574-207
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/anagrafiche/trgfn_istanze_utilities_ins_set_istanza_codice.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745773123574-208
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/anagrafiche/trgfn_soggetti_ins_genera_cdsoggetto.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745773123574-209
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/anagrafiche/trgfn_soggetti_ins_upd_check_soggetto_contatti.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745773123574-210
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/anagrafiche/trgfn_soggetti_ins_upd_valida_piva_cdfiscale.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745773123574-211   
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_contatti_ins_upd_set_default_contatto
+              BEFORE INSERT OR UPDATE  
+              ON anagrafiche.contatti 
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contatto();
+
+- changeSet:
+    id: 1745773123574-212   
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_gestori_ins_upd_check_ruolo_gestore
+              BEFORE INSERT OR UPDATE  
+              ON anagrafiche.gestori 
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore();
+
+- changeSet:
+    id: 1745773123574-213  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio
+              BEFORE INSERT OR UPDATE  
+              ON anagrafiche.indirizzi_dettaglio 
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio();
+
+- changeSet:
+    id: 1745773123574-214  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_indirizzi_ins_upd_clean_fields
+              BEFORE INSERT OR UPDATE  
+              ON anagrafiche.indirizzi
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_clean_fields();
+
+- changeSet:
+    id: 1745773123574-215  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_indirizzi_upd_dlt_storico_indirizzi
+              BEFORE INSERT OR DELETE  
+              ON anagrafiche.indirizzi
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_upd_dlt_storico_indirizzi();
+
+- changeSet:
+    id: 1745773123574-216  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_istanze_utilities_ins_set_istanza_codice
+              BEFORE INSERT 
+              ON anagrafiche.istanze_utilities
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_ins_set_istanza_codice();
+
+- changeSet:
+    id: 1745773123574-217  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_soggetti_ins_genera_cdsoggetto
+              BEFORE INSERT 
+              ON anagrafiche.soggetti
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_genera_cdsoggetto();
+
+- changeSet:
+    id: 1745773123574-218  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_soggetti_ins_upd_check_soggetto_contatti
+              BEFORE INSERT OR UPDATE
+              ON anagrafiche.soggetti
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti();
+
+- changeSet:
+    id: 1745773123574-219  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_soggetti_ins_upd_valida_piva_cdfiscale
+              BEFORE INSERT OR UPDATE
+              ON anagrafiche.soggetti
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_valida_piva_cdfiscale();

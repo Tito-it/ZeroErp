@@ -1,0 +1,12 @@
+databaseChangeLog:
+  # Prima validi/leggi SOLO la baseline
+  - includeAll:
+      path: baseline
+      relativeToChangelogFile: true
+      errorIfMissingOrEmpty: true
+
+  # Poi applichi (in update) tutte le migrations effettive
+  - includeAll:
+      path: migrations
+      relativeToChangelogFile: true
+      errorIfMissingOrEmpty: false

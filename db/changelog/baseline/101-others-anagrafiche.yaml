@@ -1,0 +1,1045 @@
+databaseChangeLog:
+- changeSet:
+    id: 1745773123574-1
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: contatto_ruolo_id
+        indexName: idx_anagrafiche_soggetti_contatto_ruolo_id
+        schemaName: anagrafiche
+        tableName: soggetti
+- changeSet:
+    id: 1745773123574-2
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: comune_id
+        indexName: idx_anagrafiche_soggetti_comune_id
+        schemaName: anagrafiche
+        tableName: soggetti
+- changeSet:
+    id: 1745773123574-3
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: stato_id
+        indexName: idx_anagrafiche_soggetti_stato_id
+        schemaName: anagrafiche
+        tableName: soggetti
+- changeSet:
+    id: 1745773123574-4
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: ragione_sociale_completa
+        indexName: idx_ragione_sociale_completa
+        schemaName: anagrafiche
+        tableName: soggetti
+- changeSet:
+    id: 1745773123574-5
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: default_contatto_id
+        indexName: idx_soggetti_default_contatto
+        schemaName: anagrafiche
+        tableName: soggetti
+- changeSet:
+    id: 1745773123574-6
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: stato_id, id_fiscale_univoco_cf_piva
+        constraintName: key_soggetto_idstato_id_fiscale_univoco
+        schemaName: anagrafiche
+        tableName: soggetti
+- changeSet:
+    id: 1745773123574-7
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: codice
+        constraintName: key_soggetto_soggetto_codice
+        schemaName: anagrafiche
+        tableName: soggetti
+- changeSet:
+    id: 1745773123574-8
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: soggetto_id, ruolo_id
+        constraintName: uq_soggetto_ruolo
+        schemaName: anagrafiche
+        tableName: soggetti_ruoli
+        
+- changeSet:
+    id: 1745773123574-9
+    author: mctit
+    changes:
+      # 1) Rimuove l’indice “vuoto” creato con createIndex
+      - dropIndex:
+          schemaName: anagrafiche
+          tableName: gestori
+          indexName: uq_gestori_singleton
+
+      # 2) Aggiunge il vero exclusion constraint
+      - sql:
+          sql: |
+            ALTER TABLE anagrafiche.gestori
+            ADD CONSTRAINT uq_gestori_singleton
+              EXCLUDE USING gist ((1) WITH =)
+              WHERE (id IS NOT NULL);
+
+
+- changeSet:
+    id: 1745773123574-10
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: utility_id
+        indexName: ix_gur_utility
+        schemaName: anagrafiche
+        tableName: gestori_utilities_ruoli
+- changeSet:
+    id: 1745773123574-11
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: gestore_id, utility_id, ruolo_id
+        constraintName: uq_gest_util_ruolo
+        schemaName: anagrafiche
+        tableName: gestori_utilities_ruoli
+- changeSet:
+    id: 1745773123574-12
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: soggetto_id
+        indexName: ix_contatti_soggetto
+        schemaName: anagrafiche
+        tableName: contatti
+- changeSet:
+    id: 1745773123574-13
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: tipo_contatto_id
+        indexName: ix_contatti_tipo
+        schemaName: anagrafiche
+        tableName: contatti
+- changeSet:
+    id: 1745773123574-14
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: utility_id
+        indexName: ix_contatti_utility
+        schemaName: anagrafiche
+        tableName: contatti
+- changeSet:
+    id: 1745773123574-15
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: soggetto_id, soggetto_ruolo_id, utility_id, tipo_contatto_id
+        constraintName: uq_contatti_multilevel
+        schemaName: anagrafiche
+        tableName: contatti
+- changeSet:
+    id: 1745773123574-16
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: soggetto_ruolo_id
+        indexName: ix_istanze_utilities_soggetto_ruolo_id
+        schemaName: anagrafiche
+        tableName: istanze_utilities
+- changeSet:
+    id: 1745773123574-17
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: account_code
+        constraintName: uq_istanze_utilities_account_code
+        schemaName: anagrafiche
+        tableName: istanze_utilities
+- changeSet:
+    id: 1745773123574-18
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: codice_istanza
+        constraintName: uq_istanze_utilities_codice_istanza
+        schemaName: anagrafiche
+        tableName: istanze_utilities
+- changeSet:
+    id: 1745773123574-19
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: istanza_id
+        indexName: ix_billing_account_istanza
+        schemaName: anagrafiche
+        tableName: billing_account
+- changeSet:
+    id: 1745773123574-20
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: parent_account_id
+        indexName: ix_billing_account_parent
+        schemaName: anagrafiche
+        tableName: billing_account
+- changeSet:
+    id: 1745773123574-21
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: account_code
+        constraintName: uq_billing_account_code
+        schemaName: anagrafiche
+        tableName: billing_account
+- changeSet:
+    id: 1745773123574-22
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: istanza_id, utility_id
+        constraintName: uq_billing_instance_utility
+        schemaName: anagrafiche
+        tableName: billing_account
+- changeSet:
+    id: 1745773123574-23
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: cd_cliente_importato
+        indexName: ix_clienti_cd_importato
+        schemaName: anagrafiche
+        tableName: clienti
+- changeSet:
+    id: 1745773123574-24
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: utility_id
+        indexName: ix_cliente_utility
+        schemaName: anagrafiche
+        tableName: clienti
+- changeSet:
+    id: 1745773123574-25
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: civic_geoloc
+        indexName: ix_indirizzi_dettaglio_civic_geoloc_gist
+        schemaName: anagrafiche
+        tableName: indirizzi_dettaglio
+- changeSet:
+    id: 1745773123574-26
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: geoloc
+        indexName: ix_indirizzi_geoloc_gist
+        schemaName: anagrafiche
+        tableName: indirizzi
+- changeSet:
+    id: 1745773123574-27
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: codice_sdi
+        constraintName: uq_ds_codice_sdi
+        schemaName: anagrafiche
+        tableName: dati_societari
+- changeSet:
+    id: 1745773123574-28
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: pec_fatturazione
+        constraintName: uq_ds_pec_fatt
+        schemaName: anagrafiche
+        tableName: dati_societari
+- changeSet:
+    id: 1745773123574-29
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: id_prov_iscri_rea, iscrizione_rea
+        constraintName: uq_ds_prov_cea
+        schemaName: anagrafiche
+        tableName: dati_societari
+- changeSet:
+    id: 1745773123574-30
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: soggetto_id
+        constraintName: uq_ds_soggetto
+        schemaName: anagrafiche
+        tableName: dati_societari
+- changeSet:
+    id: 1745773123574-31
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: via_norm, civico_norm, interno, piano, palazzina
+        constraintName: uq_indirizzi_dettaglio_norm
+        schemaName: anagrafiche
+        tableName: indirizzi_dettaglio
+- changeSet:
+    id: 1745773123574-32
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: soggetto_ruolo_id
+        indexName: ix_indirizzi_soggetto_ruolo_id
+        schemaName: anagrafiche
+        tableName: indirizzi
+- changeSet:
+    id: 1745773123574-33
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: tipo_indirizzo_id
+        indexName: ix_indirizzi_tipo_indirizzo_id
+        schemaName: anagrafiche
+        tableName: indirizzi
+- changeSet:
+    id: 1745773123574-34
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: stato_id
+        indexName: ix_indirizzi_stato_id
+        schemaName: anagrafiche
+        tableName: indirizzi
+- changeSet:
+    id: 1745773123574-35
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: comune_id
+        indexName: ix_indirizzi_comune_id
+        schemaName: anagrafiche
+        tableName: indirizzi
+- changeSet:
+    id: 1745773123574-36
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: codice_postale_id
+        indexName: ix_indirizzi_codice_postale_id
+        schemaName: anagrafiche
+        tableName: indirizzi
+- changeSet:
+    id: 1745773123574-37
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_dettaglio_id
+        constraintName: uq_indirizzi_dettaglio_unique
+        schemaName: anagrafiche
+        tableName: indirizzi
+- changeSet:
+    id: 1745773123574-38
+    author: mctit (generated)
+    changes:
+    - addUniqueConstraint:
+        columnNames: soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_libero
+        constraintName: uq_indirizzi_libero_unique
+        schemaName: anagrafiche
+        tableName: indirizzi
+- changeSet:
+    id: 1745773123574-47
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: id
+        indexName: pk_soggetti_ruoli
+        schemaName: anagrafiche
+        tableName: soggetti_ruoli
+        unique: true
+- changeSet:
+    id: 1745773123574-48
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: id
+        indexName: pk_soggetto
+        schemaName: anagrafiche
+        tableName: soggetti
+        unique: true
+- changeSet:
+    id: 1745773123574-49
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: id
+        indexName: pr_indirizzi_pk
+        schemaName: anagrafiche
+        tableName: indirizzi
+        unique: true
+- changeSet:
+    id: 1745773123574-50
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: parent_account_id
+        baseTableName: billing_account
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_billing_account_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: billing_account
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-51
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: codice_postale_id
+        baseTableName: indirizzi
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_codici_postali_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: codici_postali
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-52
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: comune_id
+        baseTableName: indirizzi
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_comuni_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: comuni
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-53
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: comune_id
+        baseTableName: soggetti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_comuni_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: comuni
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-54
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: default_contatto_id
+        baseTableName: soggetti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_contatti_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: NO ACTION
+        referencedColumnNames: id
+        referencedTableName: contatti
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-55
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: contatto_ruolo_id
+        baseTableName: soggetti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_contatti_ruoli_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: contatti_ruoli
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-56
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: gestore_id
+        baseTableName: gestori_utilities_ruoli
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_gestori_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: CASCADE
+        onUpdate: NO ACTION
+        referencedColumnNames: id
+        referencedTableName: gestori
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-57
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: indirizzo_dettaglio_id
+        baseTableName: indirizzi
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_indirizzi_dettaglio_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: indirizzi_dettaglio
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-58
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: istanza_id
+        baseTableName: billing_account
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_istanze_utilities_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: istanze_utilities
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-59
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: istanza_id
+        baseTableName: clienti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_istanze_utilities_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: istanze_utilities
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-60
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: iva_id
+        baseTableName: clienti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_iva_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: iva
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-61
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: modalita_pagamento_id
+        baseTableName: clienti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_modalita_pagamento_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: modalita_pagamento
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-62
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: id_prov_iscri_rea
+        baseTableName: dati_societari
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_province_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: province
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-63
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: soggetto_id
+        baseTableName: contatti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_soggetti_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: CASCADE
+        onUpdate: NO ACTION
+        referencedColumnNames: id
+        referencedTableName: soggetti
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-64
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: soggetto_id
+        baseTableName: dati_societari
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_soggetti_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: CASCADE
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: soggetti
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-65
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: soggetto_id
+        baseTableName: gestori
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_soggetti_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: NO ACTION
+        referencedColumnNames: id
+        referencedTableName: soggetti
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-66
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: soggetto_id
+        baseTableName: soggetti_ruoli
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_soggetti_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: CASCADE
+        onUpdate: NO ACTION
+        referencedColumnNames: id
+        referencedTableName: soggetti
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-67
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: soggetto_ruolo_id
+        baseTableName: billing_account
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_soggetti_ruoli_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: soggetti_ruoli
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-68
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: soggetto_ruolo_id
+        baseTableName: clienti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_soggetti_ruoli_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: soggetti_ruoli
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-69
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: soggetto_ruolo_id
+        baseTableName: contatti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_soggetti_ruoli_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: CASCADE
+        onUpdate: NO ACTION
+        referencedColumnNames: id
+        referencedTableName: soggetti_ruoli
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-70
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: soggetto_ruolo_id
+        baseTableName: gestori
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_soggetti_ruoli_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: NO ACTION
+        referencedColumnNames: id
+        referencedTableName: soggetti_ruoli
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-71
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: soggetto_ruolo_id
+        baseTableName: indirizzi
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_soggetti_ruoli_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: soggetti_ruoli
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-72
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: soggetto_ruolo_id
+        baseTableName: istanze_utilities
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_soggetti_ruoli_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: soggetti_ruoli
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745773123574-73
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: stato_cliente_id
+        baseTableName: clienti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_stati_cliente_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stati_cliente
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-74
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: stato_id
+        baseTableName: indirizzi
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_stati_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stati
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-75
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: stato_id
+        baseTableName: soggetti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_stati_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stati
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-76
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: stradario_id
+        baseTableName: indirizzi_dettaglio
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_stradario_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stradario
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-77
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: tipo_contatto_id
+        baseTableName: contatti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_tipi_contatti_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: NO ACTION
+        referencedColumnNames: id
+        referencedTableName: tipi_contatti
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-78
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: tipo_indirizzo_id
+        baseTableName: indirizzi
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_tipi_indirizzo_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: RESTRICT
+        referencedColumnNames: id
+        referencedTableName: tipi_indirizzi
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-79
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: ruolo_id
+        baseTableName: gestori_utilities_ruoli
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_tipi_ruoli_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: NO ACTION
+        referencedColumnNames: id
+        referencedTableName: tipi_ruoli
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-80
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: ruolo_id
+        baseTableName: soggetti_ruoli
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_tipi_ruoli_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: NO ACTION
+        referencedColumnNames: id
+        referencedTableName: tipi_ruoli
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-81
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: utility_id
+        baseTableName: billing_account
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_utilities_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: utilities
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-82
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: utility_id
+        baseTableName: clienti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_utilities_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: utilities
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-83
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: utility_id
+        baseTableName: contatti
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_utilities_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: CASCADE
+        onUpdate: NO ACTION
+        referencedColumnNames: id
+        referencedTableName: utilities
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-84
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: utility_id
+        baseTableName: gestori_utilities_ruoli
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_utilities_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: NO ACTION
+        referencedColumnNames: id
+        referencedTableName: utilities
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745773123574-85
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: valuta_id
+        baseTableName: gestori
+        baseTableSchemaName: anagrafiche
+        constraintName: fk_valute_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: NO ACTION
+        referencedColumnNames: id
+        referencedTableName: valute
+        referencedTableSchemaName: config
+        validate: true
+

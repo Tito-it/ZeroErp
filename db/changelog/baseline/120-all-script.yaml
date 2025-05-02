@@ -1,0 +1,197 @@
+databaseChangeLog:
+- changeSet:
+    id: 1745834914429-1
+    author: mctit (generated)
+    changes:
+    - createView:
+        fullDefinition: false
+        remarks: 'Estensione Italia: province con accisa, regioni e codici ISTAT/catastali
+          via jsonb.'
+        schemaName: script
+        selectQuery: |-
+          SELECT p.id AS id_provincia,
+              lpad((p.extra_country ->> 'codice_istat'::text), 3, '0'::text) AS ita_codice_istat_provincia,
+              p.descrizione AS ita_nome_provincia,
+              p.sigla AS ita_sigla_provincia,
+              acc.id AS id_provincia_accisa,
+              acc.descrizione AS ita_provincia_accisa,
+              acc.sigla AS ita_sigla_accisa,
+              r.id AS id_regione,
+              lpad((r.extra_country ->> 'codice_istat'::text), 2, '0'::text) AS ita_codice_istat_regione,
+              r.descrizione AS ita_nome_regione,
+              ((r.extra_country ->> 'mezzogiorno'::text))::character(1) AS ita_mezzogiorno,
+              s.id AS id_stato,
+              s.sigla_stato AS ita_sigla_stato,
+              s.descrizione AS ita_nome_stato,
+              (s.extra_country ->> 'codice_istat'::text) AS ita_codice_istat_stato,
+              (s.extra_country ->> 'codice_catastale'::text) AS ita_codice_catastale_stato
+             FROM (((config.province p
+               LEFT JOIN config.province acc ON ((acc.id = ((p.extra_country ->> 'provincia_accisa_id'::text))::integer)))
+               JOIN config.regioni r ON ((p.regione_id = r.id)))
+               JOIN config.stati s ON ((r.stato_id = s.id)));
+        viewName: vw_ita_province_regioni
+- changeSet:
+    id: 1745834914429-2
+    author: mctit (generated)
+    changes:
+    - createView:
+        fullDefinition: false
+        remarks: 'Estensione dei dati degli stati: include info ISTAT, catastale e
+          contesto da jsonb.'
+        schemaName: script
+        selectQuery: |-
+          SELECT id,
+              descrizione,
+              sigla_stato,
+              codice_iso2,
+              codice_iso3,
+              codice_telefonico,
+              continente,
+              (extra_country ->> 'codice_istat'::text) AS codice_istat,
+              (extra_country ->> 'codice_catastale'::text) AS codice_catastale,
+              (extra_country ->> 'stato_utilizzo'::text) AS stato_utilizzo
+             FROM config.stati s;
+        viewName: vw_stati_estesi
+- changeSet:
+    id: 1745834914429-3
+    author: mctit (generated)
+    changes:
+    - createView:
+        fullDefinition: false
+        remarks: 'Stradario esteso: tipo toponimo + nome strada, stato e indirizzo
+          composito.'
+        schemaName: script
+        selectQuery: |-
+          SELECT v.id AS id_via,
+              t.id AS id_toponomastica,
+              t.descrizione AS tipo_toponimo,
+              s.sigla_stato,
+              v.descrizione AS nome_strada,
+              v.descrizione_breve,
+              concat(t.descrizione, ' ', v.descrizione) AS indirizzo_generale
+             FROM ((config.stradario_generale v
+               JOIN config.toponomastica t ON ((v.toponomastica_id = t.id)))
+               LEFT JOIN config.stati s ON ((t.stato_id = s.id)));
+        viewName: vw_stradario_esteso
+- changeSet:
+    id: 1745834914429-4
+    author: mctit (generated)
+    changes:
+    - createView:
+        fullDefinition: false
+        schemaName: script
+        selectQuery: |-
+          SELECT s.id AS id_stradario,
+              c.id AS id_comune,
+              c.descrizione AS comune,
+              p.sigla AS provincia,
+              cp.codice_postale,
+              ve.indirizzo_generale,
+              s.geoloc,
+              s.extra_info
+             FROM ((((config.stradario s
+               JOIN config.comuni c ON ((s.comune_id = c.id)))
+               JOIN config.province p ON ((c.provincia_id = p.id)))
+               JOIN config.codici_postali cp ON ((s.codice_postale_id = cp.id)))
+               JOIN vw_stradario_esteso ve ON ((s.via_id = ve.id_via)));
+        viewName: vw_indirizzo_completo
+
+- changeSet:
+    id: 1745834914429-5
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/script/fn_get_contatto_fallback.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745834914429-6
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/script/fn_get_indirizzi_by_ruolo.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745834914429-7
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/script/fn_get_indirizzo.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745834914429-8
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/script/fn_get_messaggio.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745834914429-9
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/script/fn_get_stradario.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745834914429-10
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/script/fn_get_tipo_contatto_id.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745834914429-11
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/script/fn_get_vie_discendenti.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+
+- changeSet:
+    id: 1745834914429-13
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/script/fn_valida_codice_fiscale.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745834914429-14
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/script/fn_valida_partita_iva.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false

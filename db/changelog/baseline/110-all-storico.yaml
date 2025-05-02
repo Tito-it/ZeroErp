@@ -1,0 +1,725 @@
+databaseChangeLog:
+- changeSet:
+    id: 1745776279312-10
+    author: mctit
+    changes:
+      - createSequence:
+          schemaName: storico
+          sequenceName: comuni_id_seq
+          startValue: 1
+
+
+- changeSet:
+    id: 1745776279312-1
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            name: id
+            type: INTEGER
+            autoIncrement: true
+            constraints:
+              nullable: false
+              primaryKey: true
+              primaryKeyName: pk_comuni
+        - column:
+            name: descrizione
+            type: TEXT
+        - column:
+            name: extra_country
+            remarks: Dati estesi del comune (JSONB)
+            type: JSONB
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_DATE
+            name: valid_from
+            type: date
+        - column:
+            name: valid_to
+            type: date
+        - column:
+            defaultValue: A
+            name: stato
+            remarks: A=Attivo, S=Soppresso, F=Fuso, D=Diviso
+            type: CHAR(1)
+        - column:
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_insert
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            defaultValue: CURRENT_USER
+            name: user_insert
+            type: VARCHAR(80)
+        - column:
+            name: comune_id
+            type: INTEGER
+        remarks: Storico dei comuni con dati anagrafici e JSONB
+        schemaName: storico
+        tableName: comuni
+
+- changeSet:
+    id: 1745776279312-11
+    author: mctit
+    changes:
+      - createSequence:
+          schemaName: storico
+          sequenceName: comune_trasformazioni_id_seq
+          startValue: 1
+
+- changeSet:
+    id: 1745776279312-2
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            name: id
+            type: INTEGER
+            autoIncrement: true
+            constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_comune_trasformazioni
+        - column:
+            constraints:
+              nullable: false
+            name: id_comune_orig
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: id_comune_nuovo
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: tipo_evento
+            remarks: A=Accorpamento, S=Scissione
+            type: CHAR(1)
+        - column:
+            constraints:
+              nullable: false
+            name: data_evento
+            type: date
+        - column:
+            name: note
+            type: TEXT
+        - column:
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_insert
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            defaultValue: CURRENT_USER
+            name: user_insert
+            type: VARCHAR(80)
+        remarks: 'Trasformazioni tra comuni: accorpamenti e scissioni'
+        schemaName: storico
+        tableName: comune_trasformazioni
+
+- changeSet:
+    id: 1745776279312-12
+    author: mctit
+    changes:
+      - createSequence:
+          schemaName: storico
+          sequenceName: stradario_id_seq
+          startValue: 1
+
+- changeSet:
+    id: 1745776279312-3
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            name: id
+            type: INTEGER
+            autoIncrement: true
+            constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_stradario
+        - column:
+            constraints:
+              nullable: false
+            name: via_id
+            remarks: Collegamento alla via (config.stradario.id)
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: comune_id
+            type: INTEGER
+        - column:
+            name: codice_postale_id
+            type: INTEGER
+        - column:
+            name: descrizione_via
+            remarks: Descrizione testuale storica della via
+            type: TEXT
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_DATE
+            name: valid_from
+            remarks: Data inizio validità storica
+            type: date
+        - column:
+            name: valid_to
+            remarks: Data fine validità (se nota)
+            type: date
+        - column:
+            defaultValue: A
+            name: stato
+            remarks: 'Stato della via nel periodo: A=Attiva, S=Soppressa, F=Fusa,
+              D=Divisa'
+            type: CHAR(1)
+        - column:
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_insert
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            defaultValue: CURRENT_USER
+            name: user_insert
+            type: VARCHAR(80)
+        - column:
+            name: stradario_id
+            type: INTEGER
+        remarks: Storico dei riferimenti alle vie nel tempo
+        schemaName: storico
+        tableName: stradario
+- changeSet:
+    id: 1745776279312-13
+    author: mctit
+    changes:
+      - createSequence:
+          schemaName: storico
+          sequenceName: stradario_trasformazioni_id_seq
+          startValue: 1
+
+
+- changeSet:
+    id: 1745776279312-4
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            name: id
+            type: INTEGER
+            autoIncrement: true
+            constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_stradario_trasformazioni
+
+        - column:
+            constraints:
+              nullable: false
+            name: via_id_orig
+            remarks: Via originale
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: via_id_nuovo
+            remarks: Via risultante dalla trasformazione
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: tipo_evento
+            remarks: 'Tipo evento: R=Rinominata, F=Fusa, D=Divisa'
+            type: CHAR(1)
+        - column:
+            constraints:
+              nullable: false
+            name: data_evento
+            type: date
+        - column:
+            name: note
+            type: TEXT
+        - column:
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_insert
+            type: TIMESTAMP WITHOUT TIME ZONE
+        - column:
+            defaultValue: CURRENT_USER
+            name: user_insert
+            type: VARCHAR(80)
+        remarks: Trasformazioni storiche delle vie (stradario)
+        schemaName: storico
+        tableName: stradario_trasformazioni
+
+- changeSet:
+    id: 1745776279312-14
+    author: mctit
+    changes:
+      - createSequence:
+          schemaName: storico
+          sequenceName: indirizzi_id_seq
+          startValue: 1
+- changeSet:
+    id: 1745776279312-5
+    author: mctit (generated)
+    changes:
+    - createTable:
+        columns:
+        - column:
+            name: id
+            type: INTEGER
+            autoIncrement: true
+            constraints:
+                nullable: false
+                primaryKey: true
+                primaryKeyName: pk_indirizzi
+        - column:
+            constraints:
+              nullable: false
+            name: soggetto_ruolo_id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            name: tipo_indirizzo_id
+            type: INTEGER
+        - column:
+            name: indirizzi_dettaglio_id
+            type: INTEGER
+        - column:
+            name: indirizzo_libero
+            type: TEXT
+        - column:
+            name: stato_id
+            type: INTEGER
+        - column:
+            constraints:
+              nullable: false
+            defaultValueComputed: CURRENT_DATE
+            name: valid_from
+            remarks: Data inizio validità indirizzo (inclusiva), con fuso orario
+            type: TIMESTAMP WITH TIME ZONE
+        - column:
+            name: valid_to
+            remarks: Data fine validità indirizzo (esclusiva), con fuso orario
+            type: TIMESTAMP WITH TIME ZONE
+        - column:
+            defaultValueComputed: CURRENT_TIMESTAMP
+            name: data_insert
+            remarks: Data di inserimento del record storico, con fuso orario
+            type: TIMESTAMP WITH TIME ZONE
+        - column:
+            defaultValue: CURRENT_USER
+            name: user_insert
+            remarks: Utente che ha creato il record storico
+            type: VARCHAR(80)
+        - column:
+            name: comune_id
+            type: INTEGER
+        - column:
+            name: codice_postale_id
+            type: INTEGER
+        - column:
+            name: administrative_area
+            type: VARCHAR(100)
+        - column:
+            name: locality
+            type: VARCHAR(100)
+        - column:
+            name: sublocality
+            type: VARCHAR(100)
+        - column:
+            name: postal_box
+            type: VARCHAR(20)
+        - column:
+            name: geoloc
+            type: PUBLIC.GEOMETRY
+        - column:
+            name: indirizzi_id
+            remarks: Id dell'indirizzo su schema anagrafiche per collegamento diretto.
+            type: INTEGER
+        remarks: Storico degli indirizzi associati a soggetto/ruolo per tipo indirizzo
+        schemaName: storico
+        tableName: indirizzi
+- changeSet:
+    id: 1745776279312-6
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: descrizione
+        indexName: ix_storico_comuni_descrizione
+        schemaName: storico
+        tableName: comuni
+- changeSet:
+    id: 1745776279312-7
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            defaultValueComputed: CURRENT_DATE
+            name: valid_from
+        - column:
+            name: valid_to
+        indexName: ix_storico_comuni_valid
+        schemaName: storico
+        tableName: comuni
+- changeSet:
+    id: 1745776279312-8
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: id_comune_orig
+        indexName: ix_comune_trasformazioni_orig
+        schemaName: storico
+        tableName: comune_trasformazioni
+- changeSet:
+    id: 1745776279312-9
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: id_comune_nuovo
+        indexName: ix_comune_trasformazioni_nuovo
+        schemaName: storico
+        tableName: comune_trasformazioni
+- changeSet:
+    id: 1745776279312-10
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: via_id
+        indexName: ix_storico_stradario_via_id
+        schemaName: storico
+        tableName: stradario
+- changeSet:
+    id: 1745776279312-11
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            defaultValueComputed: CURRENT_DATE
+            name: valid_from
+        - column:
+            name: valid_to
+        indexName: ix_storico_stradario_valid_periodo
+        schemaName: storico
+        tableName: stradario
+- changeSet:
+    id: 1745776279312-12
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: comune_id
+        indexName: ix_storico_stradario_comune
+        schemaName: storico
+        tableName: stradario
+- changeSet:
+    id: 1745776279312-13
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: via_id_orig
+        indexName: ix_stradario_trasf_via_orig
+        schemaName: storico
+        tableName: stradario_trasformazioni
+- changeSet:
+    id: 1745776279312-14
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: via_id_nuovo
+        indexName: ix_stradario_trasf_via_nuovo
+        schemaName: storico
+        tableName: stradario_trasformazioni
+- changeSet:
+    id: 1745776279312-15
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: soggetto_ruolo_id
+        indexName: ix_storico_indirizzi_soggetto_ruolo
+        schemaName: storico
+        tableName: indirizzi
+- changeSet:
+    id: 1745776279312-16
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            name: tipo_indirizzo_id
+        indexName: ix_storico_indirizzi_tipo
+        schemaName: storico
+        tableName: indirizzi
+- changeSet:
+    id: 1745776279312-17
+    author: mctit (generated)
+    changes:
+    - createIndex:
+        columns:
+        - column:
+            defaultValueComputed: CURRENT_DATE
+            name: valid_from
+        - column:
+            name: valid_to
+        indexName: ix_storico_indirizzi_periodo
+        schemaName: storico
+        tableName: indirizzi
+- changeSet:
+    id: 1745776279312-18
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: codice_postale_id
+        baseTableName: indirizzi
+        baseTableSchemaName: storico
+        constraintName: fk_codici_postali_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: codici_postali
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745776279312-19
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: codice_postale_id
+        baseTableName: stradario
+        baseTableSchemaName: storico
+        constraintName: fk_codici_postali_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: codici_postali
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745776279312-20
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: comune_id
+        baseTableName: comuni
+        baseTableSchemaName: storico
+        constraintName: fk_comuni_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: comuni
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745776279312-21
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: comune_id
+        baseTableName: indirizzi
+        baseTableSchemaName: storico
+        constraintName: fk_comuni_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: comuni
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745776279312-22
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: comune_id
+        baseTableName: stradario
+        baseTableSchemaName: storico
+        constraintName: fk_comuni_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: comuni
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745776279312-23
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: indirizzi_id
+        baseTableName: indirizzi
+        baseTableSchemaName: storico
+        constraintName: fk_indirizzi_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: indirizzi
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745776279312-24
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: indirizzi_dettaglio_id
+        baseTableName: indirizzi
+        baseTableSchemaName: storico
+        constraintName: fk_indirizzi_dettaglio_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: indirizzi_dettaglio
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745776279312-25
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: soggetto_ruolo_id
+        baseTableName: indirizzi
+        baseTableSchemaName: storico
+        constraintName: fk_soggetti_ruoli_anagrafiche
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: CASCADE
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: soggetti_ruoli
+        referencedTableSchemaName: anagrafiche
+        validate: true
+- changeSet:
+    id: 1745776279312-26
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: stato_id
+        baseTableName: indirizzi
+        baseTableSchemaName: storico
+        constraintName: fk_stati_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stati
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745776279312-27
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: stradario_id
+        baseTableName: stradario
+        baseTableSchemaName: storico
+        constraintName: fk_stradario_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: SET NULL
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stradario
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745776279312-28
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: via_id_nuovo
+        baseTableName: stradario_trasformazioni
+        baseTableSchemaName: storico
+        constraintName: fk_stradario_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stradario
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745776279312-29
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: via_id
+        baseTableName: stradario
+        baseTableSchemaName: storico
+        constraintName: fk_stradario_via_id_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stradario
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745776279312-30
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: via_id_orig
+        baseTableName: stradario_trasformazioni
+        baseTableSchemaName: storico
+        constraintName: fk_stradario_via_orig_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: stradario
+        referencedTableSchemaName: config
+        validate: true
+- changeSet:
+    id: 1745776279312-31
+    author: mctit (generated)
+    changes:
+    - addForeignKeyConstraint:
+        baseColumnNames: tipo_indirizzo_id
+        baseTableName: indirizzi
+        baseTableSchemaName: storico
+        constraintName: fk_tipi_indirizzi_config
+        deferrable: false
+        initiallyDeferred: false
+        onDelete: RESTRICT
+        onUpdate: CASCADE
+        referencedColumnNames: id
+        referencedTableName: tipi_indirizzi
+        referencedTableSchemaName: config
+        validate: true
+

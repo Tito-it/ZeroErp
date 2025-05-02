@@ -1,0 +1,293 @@
+databaseChangeLog:
+- changeSet:
+    id: 1745765956379-201
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/config/trgfn_iva_ins_upd_check_conti_iva.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745765956379-202
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/config/fn_get_iva_override.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745765956379-203
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/config/trgfn_tipi_contatti_upd_lock_cod_interno.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745765956379-204
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/config/trgfn_tipi_indirizzi_upd_lock_cod_interno.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+
+- changeSet:
+    id: 1745765956379-205
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/config/trgfn_stati_cliente_upd_lock_codiceinterno.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745765956379-206
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/config/trgfn_comuni_upd_dlt_storico_comuni.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745765956379-207
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/config/trgfn_stradario_upd_dlt_storico_stradario.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+
+- changeSet:
+    id: 1745765956379-208
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/config/trgfn_stati_pratiche_upd_lock_codiceinterno.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745765956379-209
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/config/trgfn_tipi_attivita_upd_lock_codiceinterno.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+
+- changeSet:
+    id: 1745765956379-210
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/config/trgfn_tipi_documenti_upd_lock_codiceinterno.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745765956379-211
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/config/trgfn_tipi_ruoli_upd_lock_codiceinterno.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+- changeSet:
+    id: 1745765956379-212
+    author: mctit
+    runOnChange: true
+    changes:
+      - sqlFile:
+          path: sql/config/trgfn_utilities_upd_lock_codiceinterno.sql
+          relativeToChangelogFile: true
+          splitStatements: false
+          stripComments: false
+
+
+
+- changeSet:
+    id: 1745765956379-221  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_comuni_upd_dlt_storico_comuni
+              BEFORE  UPDATE or DELETE  
+              ON config.comuni 
+              FOR EACH ROW
+              EXECUTE FUNCTION config.trgfn_comuni_upd_dlt_storico_comuni();
+
+- changeSet:
+    id: 1745765956379-222  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_iva_ins_upd_check_conti_iva
+              BEFORE    INSERT or UPDATE
+              ON config.iva
+              FOR EACH ROW
+              EXECUTE FUNCTION config.trgfn_iva_ins_upd_check_conti_iva();
+
+- changeSet:
+    id: 1745765956379-223  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_stati_cliente_upd_lock_codiceinterno
+              BEFORE  UPDATE  
+              ON config.stati_cliente 
+              FOR EACH ROW
+              EXECUTE FUNCTION config.trgfn_stati_cliente_upd_lock_codiceinterno();
+
+- changeSet:
+    id: 1745765956379-224 
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_stati_pratiche_upd_lock_codiceinterno
+              BEFORE INSERT  or   UPDATE
+              ON config.stati_pratiche
+              FOR EACH ROW
+              EXECUTE FUNCTION config.trgfn_stati_pratiche_upd_lock_codiceinterno();
+
+
+- changeSet:
+    id: 1745765956379-225  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_stradario_upd_dlt_storico_stradario
+              BEFORE  UPDATE or DELETE  
+              ON config.stradario 
+              FOR EACH ROW
+              EXECUTE FUNCTION config.trgfn_stradario_upd_dlt_storico_stradario();
+
+- changeSet:
+    id: 1745765956379-226  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_tipi_attivita_upd_lock_codiceinterno
+              BEFORE  UPDATE 
+              ON config.tipi_attivita
+              FOR EACH ROW
+              EXECUTE FUNCTION config.trgfn_tipi_attivita_upd_lock_codiceinterno();
+
+- changeSet:
+    id: 1745765956379-227  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_tipi_contatti_upd_lock_cod_interno
+              BEFORE  UPDATE  
+              ON config.tipi_contatti
+              FOR EACH ROW
+              EXECUTE FUNCTION config.trgfn_tipi_contatti_upd_lock_cod_interno();
+
+- changeSet:
+    id: 1745765956379-228 
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_tipi_documenti_upd_lock_codiceinterno
+              BEFORE  UPDATE  
+              ON config.tipi_documenti
+              FOR EACH ROW
+              EXECUTE FUNCTION config.trgfn_tipi_documenti_upd_lock_codiceinterno();
+
+
+- changeSet:
+    id: 1745765956379-229  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_tipi_indirizzi_upd_lock_cod_interno
+              BEFORE  UPDATE 
+              ON config.tipi_indirizzi
+              FOR EACH ROW
+              EXECUTE FUNCTION config.trgfn_tipi_indirizzi_upd_lock_cod_interno();
+
+- changeSet:
+    id: 1745765956379-230  
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_tipi_ruoli_upd_lock_codiceinterno
+              BEFORE  UPDATE  
+              ON config.tipi_ruoli
+              FOR EACH ROW
+              EXECUTE FUNCTION config.trgfn_tipi_ruoli_upd_lock_codiceinterno();
+
+- changeSet:
+    id: 1745765956379-231 
+    author: mctit
+    changes:
+      - sql:
+          splitStatements: false
+          stripComments: false
+          sql: |
+            CREATE TRIGGER trg_utilities_upd_lock_codiceinterno
+              BEFORE  UPDATE  
+              ON config.utilities
+              FOR EACH ROW
+              EXECUTE FUNCTION config.trgfn_utilities_upd_lock_codiceinterno();
