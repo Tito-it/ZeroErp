@@ -20,10 +20,10 @@
 
 **Zero ERP** è un sistema ERP modulare, scalabile e open source, pensato per:
 
-- Utility (Gas, Energia, Acqua, Fonia)
 - Multi-servizi
 - Fatturazione, contratti e anagrafiche
 - Piccole, medie e grandi imprese
+- Utility (Gas, Energia, Acqua, Fonia)
 
 ### 🎯 Obiettivi principali
 

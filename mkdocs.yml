@@ -1,0 +1,20 @@
+
+# Table of contents
+site_name: Zero ERP Documentation
+# site_url: http://example.com           # opzionale, later
+repo_url: https://github.com/Tito-it/ZeroErp
+repo_name: Tito-it/ZeroErp
+docs_dir: docs
+site_dir: site
+theme:
+  name: material
+nav:
+  - Home: index.md
+  - Guida Utente:
+      - Installazione: guida_installazione.md
+      - Uso Base: uso_base.md
+  - Sviluppatori:
+      - API: dev/api.md
+plugins:
+  - search
+
