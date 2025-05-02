@@ -17,6 +17,7 @@ E ora possono vivere in modo nuovo: libero, aperto,condiviso
 Un progetto che vuole unire ciò che è solido con ciò che è essenziale.  
 Un ERP che ha imparato a eliminare il superfluo, per far spazio alla chiarezza.  
 Una piattaforma che non nasce solo per fatturare, ma per durare, essere capita e, se possibile, anche amata.
+
 Il tempo, gli eventi  che portano a  svolte impreviste  della Vita , mi hanno fatto comprendere nuovi valori e oggi so con certezza che è tempo per costruire con verità.
 E questo progetto non è solo la mia libertà, ma anche la certezza che renderà più liberi tutti gli abitanti di questa casa.
 
