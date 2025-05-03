@@ -26,7 +26,7 @@ BEGIN
      );
 
   IF v_count = 0 THEN
-    RAISE EXCEPTION '%', config.fn_get_messaggio('E_SOGGETTO_NO_CONTATTI');
+    RAISE EXCEPTION '%', script.fn_get_messaggio('E_SOGGETTO_NO_CONTATTI');
   END IF;
 
   RETURN NEW;

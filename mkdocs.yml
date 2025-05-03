@@ -10,9 +10,15 @@ theme:
   name: material
 nav:
   - Home: index.md
-  - Guida Utente:
-      - Installazione: guida_installazione.md
-      - Uso Base: uso_base.md
+  - Introduzione:
+      - License: LICENSE.md
+      - Manifesto: manifesto.md
+      - Readme: README.md
+      #- Cos'è Zero ERP: zero_erp.md
+      #- Funzionalità: funzionalita.md
+  #- Guida Utente:
+  #    - Installazione: guida_installazione.md
+  #    - Uso Base: uso_base.md
   - Sviluppatori:
       - API: dev/api.md
 plugins:

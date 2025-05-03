@@ -14,7 +14,7 @@ BEGIN
 
     IF codice_ruolo IS DISTINCT FROM 'GE' THEN
         RAISE EXCEPTION '%',
-            config.fn_get_messaggio('E_GESTORE_RUOLO_MANCANTE');
+            script.fn_get_messaggio('E_GESTORE_RUOLO_MANCANTE');
     END IF;
 
     RETURN NEW;

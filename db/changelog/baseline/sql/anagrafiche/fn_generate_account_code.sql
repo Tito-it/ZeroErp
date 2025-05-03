@@ -18,14 +18,17 @@ BEGIN
    WHERE codice_tipo = tipo AND attivo = TRUE
    LIMIT 1;
 
-  IF seq_name IS NULL THEN
-    RAISE EXCEPTION 'Sequenza non configurata per tipo %', tipo;
-  END IF;
-
-  -- Genera valore sequenziale
-  EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
-  new_code := prefix || sep || lpad(seq_val::TEXT, len, '0');
-
+IF seq_name IS NOT NULL THEN
+      EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
+      new_code := prefix || sep || lpad(seq_val::TEXT, len, '0');
+    ELSE
+      -- ora il messaggio viene letto dalla tabella e “tipo” passato al posto di %
+      RAISE EXCEPTION '%',
+        script.fn_get_messaggio('SEQUENZA_NON_CONFIGURATA', tipo);
+    END IF;
+  
+  
+  
   -- Inserisce record in billing_account
   INSERT INTO anagrafiche.billing_account(
     istanza_id,
