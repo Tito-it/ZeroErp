@@ -1,0 +1,16 @@
+databaseChangeLog:
+  - changeSet:
+      id: 100-create-schemas
+      author: mctit
+      comment: Crea tutti gli schemi necessari (se non esistono già)
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE SCHEMA IF NOT EXISTS anagrafiche;
+              CREATE SCHEMA IF NOT EXISTS config;
+              CREATE SCHEMA IF NOT EXISTS dbops;
+              CREATE SCHEMA IF NOT EXISTS script;
+              CREATE SCHEMA IF NOT EXISTS storico;
+              CREATE SCHEMA IF NOT EXISTS data_conversion;
