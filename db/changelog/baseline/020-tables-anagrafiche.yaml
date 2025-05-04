@@ -89,15 +89,15 @@ databaseChangeLog:
             remarks: Utilizzare per conversione da altri applicativi
             type: VARCHAR
         - column:
-            defaultValueComputed: GENERATED ALWAYS AS COALESCE(codice_fiscale, partita_iva)
+            defaultValueComputed: GENERATED ALWAYS AS (COALESCE(codice_fiscale, partita_iva))
               STORED
             name: id_fiscale_univoco_cf_piva
             remarks: Unisce i codici fiscali e partita iva in un campo. Si ottiene
               l'univocità del soggetto
             type: TEXT
         - column:
-            defaultValueComputed: GENERATED ALWAYS AS COALESCE(ragione_sociale, ((cognome
-              || ' '::text) || nome)) STORED
+            defaultValueComputed: GENERATED ALWAYS AS (COALESCE(ragione_sociale, ((cognome
+              || ' '::text) || nome))) STORED
             name: ragione_sociale_completa
             type: TEXT
         - column:
@@ -150,7 +150,7 @@ databaseChangeLog:
             remarks: Riferimento al ruolo
             type: INTEGER
         - column:
-            defaultValueComputed: '{}'
+            defaultValueComputed: "'{}'::jsonb"
             name: extra
             remarks: Dati aggiuntivi in formato JSONB per ruolo
             type: JSONB
@@ -315,7 +315,7 @@ databaseChangeLog:
             remarks: Riferimento al ruolo funzionale (config.tipi_ruoli)
             type: INTEGER
         - column:
-            defaultValueComputed: '{}'
+            defaultValueComputed: "'{}'::jsonb"
             name: extra
             remarks: Parametri addizionali per la relazione (JSONB)
             type: JSONB
@@ -915,14 +915,14 @@ databaseChangeLog:
             defaultValue: SU
             name: socio_unico
             remarks: Socio unico (SU = Sì, SM = Socio multiplo)
-            type: SOCIO_UNICO_ENUM
+            type: anagrafiche.SOCIO_UNICO_ENUM
         - column:
             constraints:
               nullable: false
             defaultValue: LN
             name: liquidazione
             remarks: Liquidazione (LS = In liquidazione, LN = Non in liquidazione)
-            type: LIQUIDAZIONE_ENUM
+            type: anagrafiche.LIQUIDAZIONE_ENUM
         - column:
             constraints:
               nullable: false
@@ -1050,11 +1050,11 @@ databaseChangeLog:
             name: scala
             type: VARCHAR(10)
         - column:
-            defaultValueComputed: GENERATED ALWAYS AS TRIM(BOTH FROM (((((via_norm
+            defaultValueComputed: GENERATED ALWAYS AS (TRIM(BOTH FROM (((((via_norm
               || COALESCE((', '::text || civico_norm), ''::text)) || COALESCE((',
               Pal.'::text || (palazzina)::text), ''::text)) || COALESCE((', Scala
               '::text || (scala)::text), ''::text)) || COALESCE((', P'::text || (piano)::text),
-              ''::text)) || COALESCE((', Int.'::text || (interno)::text), ''::text)))
+              ''::text)) || COALESCE((', Int.'::text || (interno)::text), ''::text))))
               STORED
             name: indirizzo_normalizzato
             type: TEXT

@@ -149,7 +149,7 @@ databaseChangeLog:
               format('CREATE INDEX idx_%I_%I_%s ON %I.%I(%s);'::text, fk.schema_name, fk.table_name, array_to_string(fk.fk_cols, '_'::text), fk.schema_name, fk.table_name, array_to_string(fk.fk_cols, ', '::text)) AS create_index_suggestion
              FROM ((fk_grouped fk
                LEFT JOIN indexed_columns idx ON (((fk.schema_name = idx.schema_name) AND (fk.table_name = idx.table_name) AND (fk.fk_cols = idx.indexed_cols))))
-               LEFT JOIN fk_index_policy pol ON (((fk.schema_name = pol.schema_name) AND (fk.table_name = pol.table_name) AND (fk.constraint_name = pol.constraint_name))))
+               LEFT JOIN dbops.fk_index_policy pol ON (((fk.schema_name = pol.schema_name) AND (fk.table_name = pol.table_name) AND (fk.constraint_name = pol.constraint_name))))
             WHERE ((idx.index_name IS NULL) AND (COALESCE(pol.consentito, true) = true))
             ORDER BY fk.schema_name, fk.table_name;
         viewName: vw_fk_senza_indice

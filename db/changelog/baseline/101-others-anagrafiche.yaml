@@ -86,19 +86,39 @@ databaseChangeLog:
     id: 1745773123574-9
     author: mctit
     changes:
-      # 1) Rimuove l’indice “vuoto” creato con createIndex
-      - dropIndex:
-          schemaName: anagrafiche
-          tableName: gestori
-          indexName: uq_gestori_singleton
+      
 
       # 2) Aggiunge il vero exclusion constraint
       - sql:
+          splitStatements: false
+          stripComments: true
+          
           sql: |
-            ALTER TABLE anagrafiche.gestori
-            ADD CONSTRAINT uq_gestori_singleton
-              EXCLUDE USING gist ((1) WITH =)
-              WHERE (id IS NOT NULL);
+            DROP INDEX IF EXISTS anagrafiche.uq_gestori_singleton;
+
+            -- Assicuriamoci di avere gli operatori GIST su integer
+            CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+            DO $$
+                BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint c
+                    JOIN pg_class t ON c.conrelid = t.oid
+                    JOIN pg_namespace n ON t.relnamespace = n.oid
+                    WHERE c.conname = 'uq_gestori_singleton'
+                    AND n.nspname = 'anagrafiche'
+                ) THEN
+                    
+                    ALTER TABLE anagrafiche.gestori
+                    ADD CONSTRAINT uq_gestori_singleton
+                    EXCLUDE USING gist (
+                        id WITH =
+                    )
+                    WHERE (id IS NOT NULL);
+                END IF;
+                END;
+            $$;
 
 
 - changeSet:
@@ -394,42 +414,7 @@ databaseChangeLog:
         constraintName: uq_indirizzi_libero_unique
         schemaName: anagrafiche
         tableName: indirizzi
-- changeSet:
-    id: 1745773123574-47
-    author: mctit (generated)
-    changes:
-    - createIndex:
-        columns:
-        - column:
-            name: id
-        indexName: pk_soggetti_ruoli
-        schemaName: anagrafiche
-        tableName: soggetti_ruoli
-        unique: true
-- changeSet:
-    id: 1745773123574-48
-    author: mctit (generated)
-    changes:
-    - createIndex:
-        columns:
-        - column:
-            name: id
-        indexName: pk_soggetto
-        schemaName: anagrafiche
-        tableName: soggetti
-        unique: true
-- changeSet:
-    id: 1745773123574-49
-    author: mctit (generated)
-    changes:
-    - createIndex:
-        columns:
-        - column:
-            name: id
-        indexName: pr_indirizzi_pk
-        schemaName: anagrafiche
-        tableName: indirizzi
-        unique: true
+
 - changeSet:
     id: 1745773123574-50
     author: mctit (generated)

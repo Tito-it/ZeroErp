@@ -93,7 +93,7 @@ databaseChangeLog:
                JOIN config.comuni c ON ((s.comune_id = c.id)))
                JOIN config.province p ON ((c.provincia_id = p.id)))
                JOIN config.codici_postali cp ON ((s.codice_postale_id = cp.id)))
-               JOIN vw_stradario_esteso ve ON ((s.via_id = ve.id_via)));
+               JOIN script.vw_stradario_esteso ve ON ((s.via_id = ve.id_via)));
         viewName: vw_indirizzo_completo
 
 - changeSet:

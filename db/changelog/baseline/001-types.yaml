@@ -1,0 +1,25 @@
+databaseChangeLog:
+  - changeSet:
+      id: 1745771026966-19-type-socio-unico
+      author: mctit
+      changes:
+        - sql:
+            comment: "Creazione del tipo ENUM per socio_unico"
+            sql: |
+              CREATE TYPE anagrafiche.socio_unico_enum AS ENUM (
+                'SU', -- Socio unico
+                'NA'  -- Non socio unico
+              );
+
+  - changeSet:
+      id: 1745771026966-20-type-liquidazione
+      author: mctit
+      changes:
+        - sql:
+            comment: "Creazione del tipo ENUM per liquidazione"
+            sql: |
+              CREATE TYPE anagrafiche.liquidazione_enum AS ENUM (
+                'LN', -- In liquidazione
+                'NA', -- Non in liquidazione
+                'CL'  -- Chiuso
+              );

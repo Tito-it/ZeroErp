@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION trgfn_soggetti_ins_upd_valida_piva_cdfiscale()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_valida_piva_cdfiscale()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
