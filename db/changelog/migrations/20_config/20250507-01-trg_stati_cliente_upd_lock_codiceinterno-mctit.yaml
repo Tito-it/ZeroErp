@@ -1,0 +1,26 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20250507-01-trg_stati_cliente_upd_lock_codiceinterno  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER trg_stati_cliente_upd_lock_codiceinterno
+                  BEFORE UPDATE 
+                  ON config.stati_cliente
+                  FOR EACH ROW
+                  WHEN (old.cd_int_stato_cliente::text IS DISTINCT FROM 
+                        new.cd_int_stato_cliente::text)
+                EXECUTE FUNCTION script.trgfn_lock_columns(
+                  'cod_int_stato_cliente', 
+                  'CODICE_NON_MODIFICABILE'
+                );
+
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_stati_cliente_upd_lock_codiceinterno 
+                ON config.stati_cliente
+                IS 'Blocca la modifica del codice stato cliente interno';

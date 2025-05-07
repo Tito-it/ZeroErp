@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20250507-01-trgfn_lock_columns
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - "9:ac61732b506a83b84fbf099d0396d355"  # il vecchio checksum
+      changes:
+        - sqlFile:
+            path: sql/trgfn_lock_columns.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
