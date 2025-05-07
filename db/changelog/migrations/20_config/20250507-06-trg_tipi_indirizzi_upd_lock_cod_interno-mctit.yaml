@@ -1,0 +1,28 @@
+databaseChangeLog:
+  
+
+  - changeSet:
+      id: 20250507-06-trg_tipi_indirizzi_upd_lock_cod_interno
+      author: mctit
+      runOnChange: true 
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER trg_tipi_indirizzi_upd_lock_cod_interno
+                BEFORE UPDATE 
+                ON config.tipi_indirizzi
+                FOR EACH ROW
+                WHEN (old.cod_int_tipo_indirizzo::text IS DISTINCT FROM 
+                      new.cod_int_tipo_indirizzo::text)
+                EXECUTE FUNCTION script.trgfn_lock_columns(
+                  'cod_int_tipo_indirizzo', 
+                  'CODICE_NON_MODIFICABILE'
+                );
+
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_tipi_indirizzi_upd_lock_cod_interno 
+                ON config.tipi_indirizzi
+                IS 'Il codice interno tipo indirizzo non può essere modificato';

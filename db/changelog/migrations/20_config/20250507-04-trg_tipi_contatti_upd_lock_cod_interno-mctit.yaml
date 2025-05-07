@@ -1,0 +1,28 @@
+databaseChangeLog:
+  
+
+  - changeSet:
+      id: 20250507-04-trg_tipi_contatti_upd_lock_cod_interno  
+      author: mctit
+      runOnChange: true 
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER trg_tipi_contatti_upd_lock_cod_interno
+                BEFORE UPDATE 
+                ON config.tipi_contatti
+                FOR EACH ROW
+                WHEN (old.cod_int_tipo_contatto::text IS DISTINCT FROM 
+                      new.cod_int_tipo_contatto::text)
+                EXECUTE FUNCTION script.trgfn_lock_columns(
+                  'cd_int_tipo_attivita', 
+                  'CODICE_NON_MODIFICABILE'
+                );
+
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_tipi_contatti_upd_lock_cod_interno 
+                ON config.tipi_contatti
+                IS 'Blocca la modifica del codice interno tipo contratto';

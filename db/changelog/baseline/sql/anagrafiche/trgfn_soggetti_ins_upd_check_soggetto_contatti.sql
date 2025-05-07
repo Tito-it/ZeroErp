@@ -15,7 +15,7 @@ BEGIN
 --   • un contatto con almeno un canale non nullo
 -- ====================================================================
   SELECT COUNT(*) INTO v_count
-    FROM anagrafiche.contatti c
+    FROM anagrafiche.contatti c 	
    WHERE c.soggetto_id = NEW.id
      AND (
        c.is_default

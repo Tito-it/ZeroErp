@@ -5,8 +5,14 @@ databaseChangeLog:
       relativeToChangelogFile: true
       errorIfMissingOrEmpty: true
 
-  # Poi applichi (in update) tutte le migrations effettive
+  
+# Esempio di eccezioni quando non si può eseguire l'ordine alfabetico in migartionis
+#  - include:
+#      file: migrations/script/20250507-01-trgfn-blocco-colonna-mctit.yaml 
+
+
+  # Poi tutto il resto (ordina alfabeticamente dentro ogni schema)
   - includeAll:
       path: migrations
       relativeToChangelogFile: true
-      errorIfMissingOrEmpty: false
+      errorIfMissingOrEmpty: false  

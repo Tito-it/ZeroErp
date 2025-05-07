@@ -1,0 +1,28 @@
+databaseChangeLog:
+  
+
+  - changeSet:
+      id: 20250507-07-trg_tipi_ruoli_upd_lock_codiceinterno
+      author: mctit
+      runOnChange: true 
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER trg_tipi_ruoli_upd_lock_codiceinterno
+                BEFORE UPDATE 
+                ON config.tipi_ruoli
+                FOR EACH ROW
+                 WHEN (old.cd_int_ruolo::text IS DISTINCT FROM 
+                      new.cd_int_ruolo::text)
+                EXECUTE FUNCTION script.trgfn_lock_columns(
+                  'cd_int_ruolo', 
+                  'CODICE_NON_MODIFICABILE'
+                );
+
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_tipi_ruoli_upd_lock_codiceinterno 
+                ON config.tipi_ruoli
+                IS 'Il codice interno ruolo non può essere modificato';
