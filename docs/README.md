@@ -38,6 +38,7 @@
 
 - 🐍 Python (Django)
 - 🐘 PostgreSQL (con supporto JSONB, GIS)
+- 🐘 Liquibase
 - ⚡ Vue.js (frontend SPA)
 - 🐳 Docker + CI/CD
 - 🔐 Autenticazione JWT e crittografia avanzata
