@@ -13,8 +13,8 @@ databaseChangeLog:
                   BEFORE UPDATE 
                   ON config.stati_cliente
                   FOR EACH ROW
-                  WHEN (old.cd_int_stato_cliente::text IS DISTINCT FROM 
-                        new.cd_int_stato_cliente::text)
+                  WHEN (old.cod_int_stato_cliente::text IS DISTINCT FROM 
+                        new.cod_int_stato_cliente::text)
                 EXECUTE FUNCTION script.trgfn_lock_columns(
                   'cod_int_stato_cliente', 
                   'CODICE_NON_MODIFICABILE'
