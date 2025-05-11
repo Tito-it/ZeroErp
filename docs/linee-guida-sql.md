@@ -1,20 +1,24 @@
-**Linee Guida SQL: Best Practice e Convenzioni in Zero ERP**
+## Best Practice e Convenzioni in Zero ERP
+
+> 👀 **Vedi anche:**  
+> Per come applicare queste best practice nelle migrazioni, consulta il documento  
+> [Liquibase Setup & Workflow](liquibase-setup-workflow.md).
 
 ---
 
-## 1. Schemi Principali
+### 1. Schemi Principali
 
 Organizzati per funzionalità e responsabilità:
 
-* **`anagrafiche`**: dati anagrafici (soggetti, indirizzi, contatti) con chiavi UUID per entità core citeturn1file0
-* **`config`**: tabelle di lookup e parametri (statI, nazioni, tipi\_contatti) citeturn1file0
-* **`script`**: logica applicativa (viste, funzioni PL/pgSQL legate ai processi ERP) citeturn1file0
-* **`dbops`**: strumenti DB (viste/funzioni tecniche per DBA, monitoring, metadata) citeturn1file0
-* **`storico`**: tabelle di audit/storico con versioning temporale dei dati citeturn1file0
+* **`anagrafiche`**: dati anagrafici (soggetti, indirizzi, contatti) con chiavi UUID per entità core 
+* **`config`**: tabelle di lookup e parametri (statI, nazioni, tipi\_contatti) 
+* **`script`**: logica applicativa (viste, funzioni PL/pgSQL legate ai processi ERP) 
+* **`dbops`**: strumenti DB (viste/funzioni tecniche per DBA, monitoring, metadata) 
+* **`storico`**: tabelle di audit/storico con versioning temporale dei dati 
 
 ---
 
-## 2. Convenzioni di Naming
+### 2. Convenzioni di Naming
 
 Uniformità e chiarezza nel codice DDL:
 
@@ -38,7 +42,7 @@ Uniformità e chiarezza nel codice DDL:
 
 ---
 
-## 3. Gestione delle Chiavi Primarie
+### 3. Gestione delle Chiavi Primarie
 
 1. **UUID** per entità master (anagrafiche.soggetti):
 
@@ -61,14 +65,14 @@ Uniformità e chiarezza nel codice DDL:
 
 ---
 
-## 4. Eccezioni e Alternative
+### 4. Eccezioni e Alternative
 
 * **UUID vs SERIAL**: usare UUID quando serve unicità globale o sharding; SERIAL su tabelle di log e storicizzazione.
 * **Foreign Key con composti**: preferire surrogate key (`id`) e colonne FK (`<table>_id`) piuttosto che chiavi composte.
 * **Campi tecnici**: evitare prefissi in `dbops`; usare solo `vw_...` e `fn_...` per uniformità
 ---
 
-## 5. Trigger e Funzioni
+### 5. Trigger e Funzioni
 
 * **Trigger Functions** (PL/pgSQL, `schema.trgfn_<table>_<descr>`):
 
@@ -93,14 +97,14 @@ Uniformità e chiarezza nel codice DDL:
 
 ---
 
-## 6. Viste (Views)
+### 6. Viste (Views)
 
 * **Applicative**: `vw_<descrittivo>` in schema `script`, es. `vw_clienti_attivi` 
 * **Tecniche**: in schema `dbops`, senza prefisso extra, es. `vw_function_list` 
 
 ---
 
-## 7. Colonne di Audit e Log
+### 7. Colonne di Audit e Log
 
 Standardizzare i campi di auditing:
 
@@ -115,7 +119,7 @@ I trigger o constraint di sistema possono aggiornare `date_update/user_update` s
 
 ---
 
-## 8. Indici
+### 8. Indici
 
 * **Naming**: `idx_<table>_<column>` o `ix_<table>_<column>`
 * **Tipologia**: B-Tree per default; GIN/GIST per JSONB/Geometrie.

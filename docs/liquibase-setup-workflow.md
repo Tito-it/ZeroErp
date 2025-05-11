@@ -1,5 +1,12 @@
 **Documento di Avvio e Struttura di Liquibase**
 
+
+> 📘 **Approfondimento SQL:**  
+> ** IMPORTANTE **
+> Tutte le attività SQL generate tramite Liquibase devono rispettare le convenzioni definite nel documento :
+> [Linee Guida SQL](linee-guida-sql.md).
+
+
 #### 1. Obiettivo
 
 Descrivere la configurazione iniziale e il workflow di Liquibase per il progetto **ZeroErp**:
@@ -180,8 +187,6 @@ Per ogni nuova modifica:
 
 
 
-
-
 #### 10. Convenzioni e Best Practice
 
 * **Numerazione progressiva**: garantisce ordine e evita collisioni
@@ -194,10 +199,6 @@ Per ogni nuova modifica:
 ---
 
 
-** IMPORTANTE **
-   Riferimento alle Convenzioni SQL
-
-   Tutte le attività SQL generate tramite Liquibase devono rispettare le convenzioni definite nel documento "Linee Guida SQL: Best Practice e Convenzioni in Zero ERP
-
+   
 
 *Documento redatto e condiviso con il team ZeroErp.*
