@@ -21,7 +21,7 @@
 **Zero ERP** è un sistema ERP modulare, scalabile e open source, pensato per:
 
 - Multi-servizi
-- Fatturazione, contratti e anagrafiche
+- Fatturazione, contratti e anagrafiche, Magazzino, Ordini
 - Piccole, medie e grandi imprese
 - Utility (Gas, Energia, Acqua, Fonia)
 
@@ -38,8 +38,7 @@
 
 - 🐍 Python (Django)
 - 🐘 PostgreSQL (con supporto JSONB, GIS)
-- 🐘 Liquibase
-- ⚡ Vue.js (frontend SPA)
+- ⚡ Vue.js (SPA, build con Vite)
 - 🐳 Docker + CI/CD
 - 🔐 Autenticazione JWT e crittografia avanzata
 
@@ -49,8 +48,8 @@
 
 - 📇 Anagrafiche generali centralizzate
 - 📍 Gestione multi-indirizzo con classificazione
-- 🔌 Integrazione multi-servizio (Gas, Energia, Acqua, ecc.)
-- 📄 Moduli: Fatturazione, Contratti, Forniture, POD/PDR, REMI
+- 🔌 Integrazione multi-servizio (Base, Gas, Energia, Acqua, ecc.) 
+- 📄 Moduli: Fatturazione, Contratti, Forniture, Magazzino, Ordini
 - 🔐 Sistema permessi e menu dinamico per ruolo
 - ⚙️ Configurazione multilivello: Globale, Cliente, Utente
 
@@ -66,10 +65,10 @@
 
 ### 📌 Modalità
 
-1. Fai un **fork** del repository
-2. Lavora su un tuo **branch personale**
-3. Crea una **pull request**
-4. Discussione e revisione da parte del team
+
+1. Lavora su un tuo **branch personale**
+2. Crea una **pull request**
+3. Discussione e revisione da parte del team
 
 ✉️ Per dubbi o suggerimenti, apri una **Issue**.
 
@@ -79,15 +78,10 @@
 
 - Documentazione tecnica: **in corso di pubblicazione su GitBook**
 - Roadmap e changelog disponibili nel repository
-- Glossario, flussi e riferimenti normativi ARERA
 
 ---
 
-## 🧱 Struttura del progetto
 
-- 📁 **Schema `script`**: funzioni, procedure e view centralizzate
-- 📁 **Schema `storico`**: tutte le tabelle con storicizzazione temporale
-- 📁 **Schema `config`**: configurazioni, anagrafiche, territori
 
 ---
 

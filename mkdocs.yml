@@ -1,26 +1,41 @@
-
-# Table of contents
 site_name: Zero ERP Documentation
-# site_url: http://example.com           # opzionale, later
 repo_url: https://github.com/Tito-it/ZeroErp
 repo_name: Tito-it/ZeroErp
+
 docs_dir: docs
 site_dir: site
+
 theme:
   name: material
+
 nav:
   - Home: index.md
+
   - Introduzione:
-      - License: LICENSE.md
+      - Cos’è Zero ERP: introduzione.md
       - Manifesto: manifesto.md
-      - Readme: README.md
-      #- Cos'è Zero ERP: zero_erp.md
-      #- Funzionalità: funzionalita.md
-  #- Guida Utente:
-  #    - Installazione: guida_installazione.md
-  #    - Uso Base: uso_base.md
+      - Licenza: license.md
+
+  - Installazione:
+      - Prerequisiti: installazione.md
+      
+
+  - Architettura:
+      - Panoramica: architettura.md
+      - Flusso Dati: flusso-dati.md
+      - Database:
+          - Liquibase Setup & Workflow: liquibase-setup-workflow.md
+          - Linee Guida SQL: linee-guida-sql.md
+      
+
   - Sviluppatori:
       - API: dev/api.md
+
 plugins:
   - search
 
+markdown_extensions:
+  - toc:
+      permalink: true
+  - admonition
+  - pymdownx.superfences
