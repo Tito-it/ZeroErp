@@ -7,32 +7,40 @@ site_dir: site
 
 theme:
   name: material
-
-nav:
-  - Home: index.md
-
-  - Introduzione:
-      - Cos’è Zero ERP: introduzione.md
-      - Manifesto: manifesto.md
-      - Licenza: license.md
-
-  - Installazione:
-      - Prerequisiti: installazione.md
-      
-
-  - Architettura:
-      - Panoramica: architettura.md
-      - Flusso Dati: flusso-dati.md
-      - Database:
-          - Liquibase Setup & Workflow: liquibase-setup-workflow.md
-          - Linee Guida SQL: linee-guida-sql.md
-      
-
-  - Sviluppatori:
-      - API: dev/api.md
+  
+  language: it            # lingua di default: Italiano
 
 plugins:
   - search
+  - i18n:
+      default_language: it
+      docs_structure: folder
+      material_alternate: true
+      languages:
+        - locale: it
+          name: Italiano
+          default: true
+          build: true
+        - locale: en
+          name: English
+          build: true
+
+nav:
+  - Home: index.md
+  - Introduzione:
+      - Cos’è Zero ERP: it/introduzione.md
+      - Manifesto: it/manifesto.md
+      - Licenza: it/LICENSE.md
+  - Installazione:
+      - Prerequisiti: it/installazione.md
+  - Architettura:
+      - Panoramica: it/architettura.md
+      - Flusso Dati: it/flusso-dati.md
+      - Database:
+          - Liquibase Setup & Workflow: it/liquibase-setup-workflow.md
+          - Linee Guida SQL: it/linee-guida-sql.md
+  - Sviluppatori:
+      - API: it/dev/api.md
 
 markdown_extensions:
   - toc:
