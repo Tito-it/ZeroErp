@@ -109,10 +109,10 @@ Uniformità e chiarezza nel codice DDL:
 Standardizzare i campi di auditing:
 
 ```sql
-date_insert    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+date_insert    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE
 user_insert    TEXT      NOT NULL DEFAULT CURRENT_USER
-data_update    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-user_update    TEXT      NOT NULL DEFAULT CURRENT_USER
+data_update    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE
+user_update    TEXT      NOT NULL DEFAULT CURRENT_USER 
 ```
 
 I trigger o constraint di sistema possono aggiornare `date_update/user_update` su UPDATE manuale o con `trigger` dedicato.
