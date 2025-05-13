@@ -1,0 +1,434 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20250512-101
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: ambiti
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: ambiti
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+  
+  - changeSet:
+      id: 20250512-102
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: codici_postali
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: codici_postali
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-103
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: comuni
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: comuni
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-104
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: contatti_ruoli
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: contatti_ruoli
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-105
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: iva
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: iva
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-106
+      author: mctit
+      changes:
+        
+          - addColumn:
+              schemaName: config
+              tableName:  iva_natura
+              columns:
+                  - column:
+                      name: data_insert
+                      type: TIMESTAMP WITH TIME ZONE
+                      defaultValueComputed: CURRENT_TIMESTAMP
+                      constraints:
+                        nullable: false
+                  - column:
+                      name: data_update
+                      type: TIMESTAMP WITH TIME ZONE
+                      defaultValueComputed: CURRENT_TIMESTAMP
+                      constraints:
+                        nullable: false
+
+
+  - changeSet:
+      id: 20250512-107
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName:  iva_stati
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: iva_stati
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-108
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: modalita_pagamento
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: modalita_pagamento
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-109
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: province
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: province
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  
+
+  - changeSet:
+      id: 20250512-110
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: sistema_codici
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: sistema_codici
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+    
+  - changeSet:
+      id: 20250512-111 
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: stati
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: stati
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-112 
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: stati_cliente
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: stati_cliente
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+    
+  - changeSet:
+      id: 20250512-113 
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: stati_pratiche
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: stati_pratiche
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-114 
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: stradario
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: stradario
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-115 
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: stradario_generale
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: stradario_generale
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-116 
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: tipi_attivita
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: tipi_attivita
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-117
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: tipi_contatti
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: tipi_contatti
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-118
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: tipi_documenti
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: tipi_documenti
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-119 
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: tipi_indirizzi
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: tipi_indirizzi
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-120 
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: tipi_ruoli
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: tipi_ruoli
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-121 
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: toponomastica
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: toponomastica
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-122 
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: utilities
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: utilities
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-123 
+      author: mctit
+      changes:
+        
+          # 1) Drop delle colonne con nome errato
+          - dropColumn:
+              schemaName: config
+              tableName: valute
+              columnName: date_insert
+          - dropColumn:
+              schemaName: config
+              tableName: valute
+              columnName: date_update
+
+            # 2) Aggiunta delle colonne corrette
+          - addColumn:
+              schemaName: config
+              tableName:  valute
+              columns:
+                  - column:
+                      name: data_insert
+                      type: TIMESTAMP WITH TIME ZONE
+                      defaultValueComputed: CURRENT_TIMESTAMP
+                      constraints:
+                        nullable: false
+                  - column:
+                      name: data_update
+                      type: TIMESTAMP WITH TIME ZONE
+                      defaultValueComputed: CURRENT_TIMESTAMP
+                      constraints:
+                        nullable: false
+
+  - changeSet:
+      id: 20250512-124 
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: conti_contabili
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: conti_contabili
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-125
+      author: mctit
+      changes:
+        
+          - modifyDataType:
+              schemaName: config
+              tableName: regioni
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: config
+              tableName: regioni
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  # changeSet finale per marcare il punto con un tag univoco
+  - changeSet:
+      id: 20250512-199
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: release-2025-05-12_02
