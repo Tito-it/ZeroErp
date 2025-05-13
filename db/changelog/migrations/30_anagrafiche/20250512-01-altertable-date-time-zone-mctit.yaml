@@ -1,0 +1,285 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20250512-01
+      author: mctit
+      changes:
+        - modifyDataType:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: data_insert
+            newDataType: TIMESTAMP WITH TIME ZONE
+
+        - dropDefaultValue:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: data_insert
+        - addDefaultValue:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: data_insert
+            defaultValueComputed: CURRENT_TIMESTAMP
+
+        - modifyDataType:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: data_update
+            newDataType: TIMESTAMP WITH TIME ZONE
+
+        - dropDefaultValue:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: data_update
+        - addDefaultValue:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: data_update
+            defaultValueComputed: CURRENT_TIMESTAMP
+
+  - changeSet:
+      id: 20250512-02
+      author: mctit
+      changes:
+        - modifyDataType:
+            schemaName: anagrafiche
+            tableName: clienti
+            columnName: data_insert
+            newDataType: TIMESTAMP WITH TIME ZONE
+        - dropDefaultValue:
+            schemaName: anagrafiche 
+            tableName: clienti
+            columnName: data_insert
+        - addDefaultValue:
+            schemaName: anagrafiche
+            tableName: clienti
+            columnName: data_insert
+            defaultValueComputed: CURRENT_TIMESTAMP
+
+        - modifyDataType:
+            schemaName: anagrafiche
+            tableName: clienti
+            columnName: data_update
+            newDataType: TIMESTAMP WITH TIME ZONE
+        - dropDefaultValue:
+            schemaName: anagrafiche
+            tableName: clienti
+            columnName: data_update
+        - addDefaultValue:
+            schemaName: anagrafiche
+            tableName: clienti
+            columnName: data_update
+            defaultValueComputed: CURRENT_TIMESTAMP
+            
+  - changeSet:
+        id: 20250512-03
+        author: mctit
+        changes:
+            # 1) Drop delle colonne con nome errato
+          - dropColumn:
+              schemaName: anagrafiche
+              tableName: contatti
+              columnName: date_insert
+          - dropColumn:
+              schemaName: anagrafiche
+              tableName: contatti
+              columnName: date_update
+
+            # 2) Aggiunta delle colonne corrette
+          - addColumn:
+              schemaName: anagrafiche
+              tableName: contatti
+              columns:
+                  - column:
+                      name: data_insert
+                      type: TIMESTAMP WITH TIME ZONE
+                      defaultValueComputed: CURRENT_TIMESTAMP
+                      constraints:
+                        nullable: false
+                  - column:
+                      name: data_update
+                      type: TIMESTAMP WITH TIME ZONE
+                      defaultValueComputed: CURRENT_TIMESTAMP
+                      constraints:
+                        nullable: false
+
+  
+  - changeSet:
+        id: 20250512-04
+        author: mctit
+        changes:
+          - modifyDataType:
+              schemaName: anagrafiche      
+              tableName: dati_societari
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+          - modifyDataType:
+              schemaName: anagrafiche
+              tableName: dati_societari
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+        id: 20250512-05
+        author: mctit
+        changes:
+            # 1) Drop delle colonne con nome errato
+          - dropColumn:
+              schemaName: anagrafiche
+              tableName: gestori
+              columnName: date_insert
+          - dropColumn:
+              schemaName: anagrafiche
+              tableName: gestori
+              columnName: date_update
+
+            # 2) Aggiunta delle colonne corrette
+          - addColumn:
+              schemaName: anagrafiche
+              tableName: gestori
+              columns:
+                  - column:
+                      name: data_insert
+                      type: TIMESTAMP WITH TIME ZONE
+                      defaultValueComputed: CURRENT_TIMESTAMP
+                      constraints:
+                        nullable: false
+                  - column:
+                      name: data_update
+                      type: TIMESTAMP WITH TIME ZONE
+                      defaultValueComputed: CURRENT_TIMESTAMP
+                      constraints:
+                        nullable: false
+
+  - changeSet:
+        id: 20250512-06
+        author: mctit
+        changes:
+            # 1) Drop delle colonne con nome errato
+          - dropColumn:
+              schemaName: anagrafiche
+              tableName: gestori_utilities_ruoli
+              columnName: date_insert
+          - dropColumn:
+              schemaName: anagrafiche
+              tableName: gestori_utilities_ruoli
+              columnName: date_update
+
+            # 2) Aggiunta delle colonne corrette
+          - addColumn:
+              schemaName: anagrafiche
+              tableName: gestori_utilities_ruoli
+              columns:
+                  - column:
+                      name: data_insert
+                      type: TIMESTAMP WITH TIME ZONE
+                      defaultValueComputed: CURRENT_TIMESTAMP
+                      constraints:
+                        nullable: false
+                  - column:
+                      name: data_update
+                      type: TIMESTAMP WITH TIME ZONE
+                      defaultValueComputed: CURRENT_TIMESTAMP
+                      constraints:
+                        nullable: false
+
+  - changeSet:
+        id: 20250512-07
+        author: mctit
+        changes:
+          - modifyDataType:
+              schemaName: anagrafiche
+              tableName: indirizzi
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: anagrafiche
+              tableName: indirizzi
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+        id: 20250512-08
+        author: mctit
+        changes:
+          - modifyDataType:
+              schemaName: anagrafiche
+              tableName: indirizzi_dettaglio
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: anagrafiche
+              tableName: indirizzi_dettaglio
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+        id: 20250512-09
+        author: mctit
+        changes:
+          - modifyDataType:
+              schemaName: anagrafiche 
+              tableName: istanze_utilities
+              columnName: data_insert
+              newDataType: TIMESTAMP WITH TIME ZONE
+          - modifyDataType:
+              schemaName: anagrafiche
+              tableName: istanze_utilities
+              columnName: data_update
+              newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-10
+      author: mctit
+      changes:
+        - modifyDataType:
+            schemaName: anagrafiche
+            tableName: soggetti  
+            columnName: data_insert
+            newDataType: TIMESTAMP WITH TIME ZONE
+        - modifyDataType:
+            schemaName: anagrafiche
+            tableName: soggetti
+            columnName: data_update
+            newDataType: TIMESTAMP WITH TIME ZONE
+
+  - changeSet:
+      id: 20250512-12
+      author: mctit
+      changes:
+          # 1) Drop delle colonne con nome errato
+          - dropColumn:
+              schemaName: anagrafiche
+              tableName: soggetti_ruoli
+              columnName: date_insert
+          - dropColumn:
+              schemaName: anagrafiche
+              tableName: soggetti_ruoli
+              columnName: date_update
+
+            # 2) Aggiunta delle colonne corrette
+          - addColumn:
+              schemaName: anagrafiche
+              tableName:  soggetti_ruoli
+              columns:
+                  - column:
+                      name: data_insert
+                      type: TIMESTAMP WITH TIME ZONE
+                      defaultValueComputed: CURRENT_TIMESTAMP
+                      constraints:
+                        nullable: false
+                  - column:
+                      name: data_update
+                      type: TIMESTAMP WITH TIME ZONE
+                      defaultValueComputed: CURRENT_TIMESTAMP
+                      constraints:
+                        nullable: false
+
+
+ 
+  # changeSet finale per marcare il punto con un tag univoco
+  - changeSet:
+      id: 20250512-99
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: release-2025-05-12_01
