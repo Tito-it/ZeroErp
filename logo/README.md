@@ -2,6 +2,9 @@ Zero/ZeroErp Logo - Ufficiale
 <p align="left">
   <img src="https://raw.githubusercontent.com/Tito-it/Zero_logo/main/Logo%20Zero%20Erp.png" alt="Zero ERP Logo" width="250"/>
 </p>
+<p align="right">
+  <img src="https://github.com/Tito-it/ZeroErp/blob/main/logo/Logo%20Zero%20solo%20logo.png" alt="Zero ERP Logo" width="250"/>
+</p>
 
 🚀 Benvenuto nel repository ufficiale del logo "Zero/ZeroErp". Questo logo è stato creato da Michele Carlo Titini ed è protetto da una licenza personalizzata.
 📜 Licenza e Diritti d’Autore
