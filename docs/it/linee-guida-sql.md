@@ -1,4 +1,4 @@
-## Best Practice e Convenzioni in Zero ERP
+**Best Practice e Convenzioni in Zero ERP**
 
 > 👀 **Vedi anche:**  
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
