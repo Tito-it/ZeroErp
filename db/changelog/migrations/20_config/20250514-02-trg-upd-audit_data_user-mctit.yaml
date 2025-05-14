@@ -1,0 +1,558 @@
+databaseChangeLog:
+
+  
+  - changeSet:
+      id: 20250514-11  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_ambiti_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.ambiti
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_ambiti_audit_data_user 
+                ON config.ambiti
+                IS 'Aggiorna(audit) i valori di data e user ';
+  - changeSet:
+      id: 20250514-12  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_codici_postali_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.codici_postali
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_codici_postali_audit_data_user 
+                ON config.codici_postali
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-13  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_comuni_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.comuni
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_comuni_audit_data_user 
+                ON config.comuni
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-14  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_contatti_ruoli_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.contatti_ruoli
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_contatti_ruoli_audit_data_user 
+                ON config.contatti_ruoli
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-15
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_conti_contabili_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.conti_contabili
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_conti_contabili_audit_data_user 
+                ON config.conti_contabili
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-16  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_iva_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.iva
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_iva_audit_data_user 
+                ON config.iva
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-17
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_iva_natura_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.iva_natura
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_iva_natura_audit_data_user 
+                ON config.iva_natura
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+
+  - changeSet:
+      id: 20250514-18
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_iva_stati_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.iva_stati
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_iva_stati_audit_data_user 
+                ON config.iva_stati
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+
+  - changeSet:
+      id: 20250514-19  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_modalita_pagamento_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.modalita_pagamento
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_modalita_pagamento_audit_data_user 
+                ON config.modalita_pagamento
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-20
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_province_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.province
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_province_audit_data_user 
+                ON config.province
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+
+  - changeSet:
+      id: 20250514-21
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_regioni_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.regioni
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_regioni_audit_data_user 
+                ON config.regioni
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-22
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_sistema_codici_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.sistema_codici
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_sistema_codici_audit_data_user 
+                ON config.sistema_codici
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+
+  - changeSet:
+      id: 20250514-23  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_stati_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.stati
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_stati_audit_data_user 
+                ON config.stati
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-24 
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_stati_cliente_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.stati_cliente
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_stati_cliente_audit_data_user 
+                ON config.stati_cliente
+                IS 'Aggiorna(audit) i valori di data e user ';
+          
+
+  - changeSet:
+      id: 20250514-25  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_stati_pratiche_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.stati_pratiche
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_stati_pratiche_audit_data_user 
+                ON config.stati_pratiche
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-26  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_stradario_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.stradario
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_stradario_audit_data_user 
+                ON config.stradario
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-27
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_stradario_generale_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.stradario_generale
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_stradario_generale_audit_data_user 
+                ON config.stradario_generale
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-28  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_tipi_attivita_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.tipi_attivita
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_tipi_attivita_audit_data_user 
+                ON config.tipi_attivita
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+
+  - changeSet:
+      id: 20250514-29
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_tipi_contatti_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.tipi_contatti
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_tipi_contatti_audit_data_user 
+                ON config.tipi_contatti
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+
+  - changeSet:
+      id: 20250514-30  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_tipi_documenti_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.tipi_documenti
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_tipi_documenti_audit_data_user 
+                ON config.tipi_documenti
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-31
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_tipi_indirizzi_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.tipi_indirizzi
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_tipi_indirizzi_audit_data_user 
+                ON config.tipi_indirizzi
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-32  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_tipi_ruoli_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.tipi_ruoli
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_tipi_ruoli_audit_data_user 
+                ON config.tipi_ruoli
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+  - changeSet:
+      id: 20250514-33  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_toponomastica_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.toponomastica
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_toponomastica_audit_data_user 
+                ON config.toponomastica
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+
+  - changeSet:
+      id: 20250514-34
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_utilities_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.utilities
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_utilities_audit_data_user 
+                ON config.utilities
+                IS 'Aggiorna(audit) i valori di data e user ';
+    
+  - changeSet:
+      id: 20250514-35  
+      author: mctit
+      runOnChange: true   
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER  trg_upd_valute_audit_data_user
+                  BEFORE UPDATE 
+                  ON config.valute
+                  FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_upd_valute_audit_data_user 
+                ON config.valute
+                IS 'Aggiorna(audit) i valori di data e user ';
+
+
+  
+ 
+  - changeSet:
+      id: 20250514-36
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_upd_valute_audit ON config.valute;
+              DROP TRIGGER IF EXISTS trg_upd_utilities_audit ON config.utilities;
+
+
+   # changeSet finale per marcare il punto con un tag univoco
+  - changeSet:
+      id: 20250514-99
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: release-2025-05-14_02
+
+

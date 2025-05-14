@@ -1,0 +1,55 @@
+databaseChangeLog:
+
+  # 2) Trigger su config.valute (solo se mancante)
+  - changeSet:
+      id: 20250514-02
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1
+                    FROM pg_trigger t
+                    JOIN pg_class c ON t.tgrelid = c.oid
+                    JOIN pg_namespace n ON c.relnamespace = n.oid
+                   WHERE t.tgname = 'trg_upd_valute_audit'
+                     AND n.nspname = 'config'
+                     AND c.relname = 'valute'
+                ) THEN
+                  CREATE TRIGGER trg_upd_valute_audit
+                  BEFORE UPDATE ON config.valute
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                END IF;
+              END
+              $$;
+
+  # 3) Trigger su config.utilities (solo se mancante)
+  - changeSet:
+      id: 20250514-03
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1
+                    FROM pg_trigger t
+                    JOIN pg_class c ON t.tgrelid = c.oid
+                    JOIN pg_namespace n ON c.relnamespace = n.oid
+                   WHERE t.tgname = 'trg_upd_utilities_audit'
+                     AND n.nspname = 'config'
+                     AND c.relname = 'utilities'
+                ) THEN
+                  CREATE TRIGGER trg_upd_utilities_audit
+                  BEFORE UPDATE ON config.utilities
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                END IF;
+              END
+              $$;
