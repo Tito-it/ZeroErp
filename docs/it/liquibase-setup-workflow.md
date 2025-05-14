@@ -36,13 +36,21 @@ ZeroErp/db/changelog/
 │   ├─ 000-tables-config.yaml    # schema config
 │   ├─ 001-tables-anagrafiche.yaml
 │   └─ sql/<schema>/…            # script SQL originali
-└─ migrations/                   # evoluzioni future
-    ├─ 0_script/                 # step 0–99 (changelog generici)
+└─ migrations/                   # step 0–99 (changelog generici)
+    ├─ 00_bootstrap/            ← qui i changelog “primi passi”
+    │   ├─ 
+    │   ├─ 20250514-01-fn-trigger-audit-generic.yaml
+    │   └─ sql/<schema>/… 
+    ├─ 10_script/                 # step 0–99 (changelog generici)
     │   ├─ 20250507-01-trgfn-blocco-colonna-mctit.yaml
     │   └─ sql/<schema>/…        # script SQL di quel changeSet
-    ├─ 20_config/                # changeSet prefissati 100–199
+    ├─ 20_config/                # 
     │   └─ sql/<schema>/…        # script SQL di configurazione
-    ├─ 30_anagrafiche/           # changeSet prefissati 200–299
+    ├─ 30_anagrafiche/           # 
+    │   └─ sql/<schema>/…
+    ├─ 40_storico/               
+    │   └─ sql/<schema>/…
+    ├─ 50_dbops/               
     │   └─ sql/<schema>/…
     └─ …
 ```
@@ -73,8 +81,8 @@ databaseChangeLog:
 ```
 
 * Il caricamento avviene in ordine alfabetico basato sui nomi dei file.
-* Se serve imporre un ordine diverso per singoli file, usare `include` anziché `includeAll`.
-
+* Utilizzare la cartella boostrap se serve imporre un ordine diverso, o per attività generiche.
+* Se serve imporre un ordine diverso per singoli file, usare `include` anziché `includeAll`. E' consigliato l'utilizzo del metodo descritto al punto precedente.
 ---
 
 #### 5. File `liquibase.properties`

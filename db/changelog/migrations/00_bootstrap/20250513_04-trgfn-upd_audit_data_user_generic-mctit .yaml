@@ -1,0 +1,17 @@
+databaseChangeLog:
+  # 1) Funzione generica (crea o aggiorna sempre)
+  - changeSet:
+      id: 20250514_01-01 
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_upd_audit_data_user_generic()
+              RETURNS TRIGGER AS $$
+              BEGIN
+                NEW.data_update := CURRENT_TIMESTAMP;
+                NEW.user_update := CURRENT_USER;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;

@@ -1,0 +1,122 @@
+databaseChangeLog:
+  # 1) Abilita l’estensione pgcrypto per la cifratura
+  - changeSet:
+      id: 20250513-01
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+  # 2) Crea lo schema “internal” e ne revoca i privilegi al PUBLIC
+  - changeSet:
+      id: 20250513-02
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- 1) Creazione del ruolo se non esiste
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_roles WHERE rolname = 'zeroerp_app'
+                ) THEN
+                  CREATE ROLE zeroerp_app LOGIN;
+                END IF;
+              END
+              $$;
+
+              -- 2) Creazione dello schema e gestione dei privilegi
+              CREATE SCHEMA IF NOT EXISTS internal;
+              REVOKE ALL ON SCHEMA internal FROM PUBLIC;
+              GRANT USAGE ON SCHEMA internal TO zeroerp_app;
+
+
+
+  # 3) Tabella nascosta con metadati criptati
+  - changeSet:
+      id: 20250513-03
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: internal
+            tableName: project_metadata
+            columns:
+              - column:
+                  name: id
+                  type: BIGSERIAL
+                  constraints:
+                    primaryKey: true
+              - column:
+                  name: info_encrypted
+                  type: BYTEA
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - sql:
+            splitStatements: false
+            sql: |
+              INSERT INTO internal.project_metadata (info_encrypted)
+              VALUES (
+                -- il literal BYTEA: \x + la tua stringa esadecimale
+                E'\\xc30d04070302249ff7258d8908d879d280014a68780b2865a5e2db1cdab9801c89cd05faadd631854ed78c29aec17d7df77c5d2b844f618b3678e3d220bf8b51391f5c274187d5a9105288933b9e81e100002ccecddb03c76ac97a62242f7ff6914aa940481ed168989bd76e5b31c9fcf6816fb5f1affb9dd55231d48ac8c1b47c6ec2f5558f9b1c126216f58fd366dfa8'::bytea
+              );
+
+  # 4) Tabella per il tracking della versione in uso
+  - changeSet:
+      id: 20250513-04
+      author: mctit
+      changes:
+        - createTable:
+            tableName: version_info
+            columns:
+              - column:
+                  name: id
+                  type: BIGSERIAL
+                  constraints:
+                    primaryKey: true
+              - column:
+                  name: app_name
+                  type: VARCHAR(100)
+                  defaultValue: "ZeroErp"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: last_updated_by
+                  type: VARCHAR(100)
+                  defaultValueComputed: CURRENT_USER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: last_updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - insert:
+            tableName: version_info
+            columns:
+              - column:
+                  name: app_name
+                  value: "ZeroErp"
+              - column:
+                  name: version
+                  value: "0.1.0"

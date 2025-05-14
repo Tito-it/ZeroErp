@@ -1,0 +1,30 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20250513-200
+      author: mctit
+      changes:
+        # 1) Funzione PL/pgSQL per aggiornare i campi di audit
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION internal.trgfn_audit_version_info()
+              RETURNS TRIGGER AS $$
+              BEGIN
+                NEW.last_updated_at := CURRENT_TIMESTAMP;
+                NEW.last_updated_by := CURRENT_USER;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+
+        # 2) Trigger su version_info
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rimuovo eventuale trigger preesistente
+              DROP TRIGGER IF EXISTS trg_version_info_audit ON public.version_info;
+
+              -- Creo il nuovo trigger
+              CREATE TRIGGER trg_version_info_audit
+              BEFORE UPDATE ON public.version_info
+              FOR EACH ROW
+              EXECUTE FUNCTION internal.trgfn_audit_version_info();
