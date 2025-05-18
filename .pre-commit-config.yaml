@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: check-license-header
+        name: Controlla header licenza
+        entry: bash scripts/check-license.sh
+        language: script
+        files: \.(py|js|vue|ya?ml)$
+        exclude: ^docs/

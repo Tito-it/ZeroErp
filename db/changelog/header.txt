@@ -1,4 +1,5 @@
 # ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Liquibase changelog per Zero ERP
 # Copyright (C) 2025 Tid (Michele Carlo Titini) 
 #
