@@ -1,5 +1,12 @@
+﻿# ------------------------------------------------------------
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
 databaseChangeLog:
-  # 1) Abilita l’estensione pgcrypto per la cifratura
+  # 1) Abilita l'estensione pgcrypto per la cifratura
   - changeSet:
       id: 20250513-01
       author: mctit
@@ -9,7 +16,7 @@ databaseChangeLog:
             sql: |
               CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-  # 2) Crea lo schema “internal” e ne revoca i privilegi al PUBLIC
+  # 2) Crea lo schema "internal" e ne revoca i privilegi al PUBLIC
   - changeSet:
       id: 20250513-02
       author: mctit

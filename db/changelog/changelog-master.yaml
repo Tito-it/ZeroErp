@@ -1,3 +1,10 @@
+﻿# ------------------------------------------------------------
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
 databaseChangeLog:
   # Prima validi/leggi SOLO la baseline
   - includeAll:
@@ -6,7 +13,7 @@ databaseChangeLog:
       errorIfMissingOrEmpty: true
 
   
-# Esempio di eccezioni quando non si può eseguire l'ordine alfabetico in migartionis
+# Esempio di eccezioni quando non si puÃ² eseguire l'ordine alfabetico in migartionis
 #  - include:
 #      file: migrations/script/20250507-01-trgfn-blocco-colonna-mctit.yaml 
 
