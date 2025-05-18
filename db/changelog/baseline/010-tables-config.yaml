@@ -1,3 +1,10 @@
+﻿# ------------------------------------------------------------
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
 databaseChangeLog:
   - preConditions:
       - onFail: HALT
@@ -425,7 +432,7 @@ databaseChangeLog:
           - column:
               name: extra_country
               remarks: Metadati estesi specifici del paese, es. codice catastale e ISTAT
-                (per l’Italia)
+                (per l'Italia)
               type: JSONB
           remarks: Stati (ex nazioni), inclusi codici catastali, ISO, telefonici e continente
           schemaName: config
@@ -1595,13 +1602,13 @@ databaseChangeLog:
                 primaryKey: true
                 primaryKeyName: pk_iva_natura
               name: id
-              remarks: PK sequence‑generated
+              remarks: PK sequence-generated
               type: INTEGER
           - column:
               constraints:
                 nullable: false
               name: codice_natura
-              remarks: Codice natura IVA (es. N1, N2, …)
+              remarks: Codice natura IVA (es. N1, N2, ..)
               type: CHAR(10)
           - column:
               constraints:

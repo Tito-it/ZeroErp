@@ -1,3 +1,10 @@
+﻿# ------------------------------------------------------------
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
 databaseChangeLog:
 - changeSet:
     id: 1745771026966-1
@@ -914,7 +921,7 @@ databaseChangeLog:
               nullable: false
             defaultValue: SU
             name: socio_unico
-            remarks: Socio unico (SU = Sì, SM = Socio multiplo)
+            remarks: Socio unico (SU = Socio unico, SM = Socio multiplo)
             type: anagrafiche.SOCIO_UNICO_ENUM
         - column:
             constraints:
@@ -939,7 +946,7 @@ databaseChangeLog:
             type: VARCHAR(10)
         - column:
             name: data_costituzione
-            remarks: Data di costituzione dell’azienda
+            remarks: Data di costituzione dell'azienda
             type: date
         - column:
             constraints:
