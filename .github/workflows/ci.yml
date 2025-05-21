@@ -19,6 +19,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: zeroerp
+          POSTGRES_USER: zeroerp
+          POSTGRES_PASSWORD: secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U zeroerp"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+  
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,13 +52,38 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+
+      - name: Install Liquibase CLI
+        run: |
+          sudo apt-get update
+          # Assicuriamoci di avere Java
+          sudo apt-get install -y default-jre unzip wget
+          # Scarica l’ultima release 4.x di Liquibase (adatta la versione se serve)
+          wget https://github.com/liquibase/liquibase/releases/download/v4.15.0/liquibase-4.15.0.zip -O liquibase.zip
+          unzip liquibase.zip -d liquibase
+          sudo mv liquibase /opt/liquibase
+          # Metti /opt/liquibase nella PATH
+          echo "/opt/liquibase" >> $GITHUB_PATH
+    
+
       - name: Run pre-commit hooks
         run: |
           source .venv/bin/activate
           pre-commit run --all-files
 
+      - name: Applica migrazioni Liquibase
+        run: |
+          source .venv/bin/activate
+          liquibase \
+            --url=jdbc:postgresql://localhost:5432/zeroerp \
+            --username=zeroerp \
+            --password=secret \
+            --changeLogFile=db/changelog/changelog-master.yaml \
+            update 
+          
       - name: Genera doc DB
         run: |
+          source .venv/bin/activate
           # Esportiamo in ambiente le variabili che serve allo script
           echo "DB_HOST=${{ secrets.DB_HOST }}"       >> $GITHUB_ENV
           echo "DB_PORT=${{ secrets.DB_PORT }}"       >> $GITHUB_ENV
@@ -49,7 +91,12 @@ jobs:
           echo "POSTGRESQL_USER=${{ secrets.POSTGRESQL_USER }}" >> $GITHUB_ENV
           echo "POSTGRESQL_PWD=${{ secrets.POSTGRESQL_PWD }}"   >> $GITHUB_ENV
 
+          # Costruiamo dinamicamente il DSN
+          echo "DATABASE_DSN=host=$DB_HOST port=$DB_PORT dbname=$DB_NAME user=$POSTGRESQL_USER password=$POSTGRESQL_PWD" >> $GITHUB_ENV
+
+
           # Ora chiamiamo lo script: legge DB_HOST, DB_PORT, ecc. dall'env
+          source .venv/bin/activate
           python scripts/gen_db_docs.py
        
       

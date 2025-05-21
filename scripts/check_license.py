@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys, subprocess, re, itertools
 
+
 REQUIRED = "Copyright (C)"
 EXTS = re.compile(r".*\.(py|js|vue|ya?ml)$")
 EXCLUDE = re.compile(r"^docs/")

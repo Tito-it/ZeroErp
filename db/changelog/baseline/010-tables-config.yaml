@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 databaseChangeLog:
   - preConditions:
-      - onFail: HALT
+      - onFail: MARK_RAN
       - sqlCheck:
           expectedResult: "170004"
           sql: "SHOW server_version_num"
