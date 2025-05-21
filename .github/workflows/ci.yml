@@ -78,6 +78,7 @@ jobs:
             --url=jdbc:postgresql://localhost:5432/zeroerp \
             --username=zeroerp \
             --password=secret \
+            --changeLogFile=db/changelog/changelog-master.yaml \
             update 
           
       - name: Genera doc DB
