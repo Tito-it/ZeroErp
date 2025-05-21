@@ -7,10 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 
-
 ## Autogenerazione della documentazione delle tabelle e delle funzioni
-
-# Di seguito uno **script Python** di esempio che:
 
 #1. Si collega al tuo database PostgreSQL  
 #2. Estrae da `information_schema.columns` i campi di ogni tabella  
