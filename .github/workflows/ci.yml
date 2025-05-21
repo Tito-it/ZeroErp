@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+name: CI
+
+on:
+  push:
+    branches: [ Tito-dev ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pre-commit hooks
+        run: |
+          source .venv/bin/activate
+          pre-commit run --all-files
+
+      - name: Genera doc DB
+        run: |
+          # Esportiamo in ambiente le variabili che serve allo script
+          echo "DB_HOST=${{ secrets.DB_HOST }}"       >> $GITHUB_ENV
+          echo "DB_PORT=${{ secrets.DB_PORT }}"       >> $GITHUB_ENV
+          echo "DB_NAME=${{ secrets.DB_NAME }}"       >> $GITHUB_ENV
+          echo "POSTGRESQL_USER=${{ secrets.POSTGRESQL_USER }}" >> $GITHUB_ENV
+          echo "POSTGRESQL_PWD=${{ secrets.POSTGRESQL_PWD }}"   >> $GITHUB_ENV
+
+          # Ora chiamiamo lo script: legge DB_HOST, DB_PORT, ecc. dall'env
+          python scripts/gen_db_docs.py
+       
+      
+      - name: Build MkDocs site
+        run: |
+          source .venv/bin/activate
+          mkdocs build --strict
