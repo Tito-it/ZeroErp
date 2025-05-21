@@ -1,8 +1,8 @@
 **Documento di Avvio e Struttura di Liquibase**
 
+> 👀 **Vedi anche** 
 
-> 📘 **Approfondimento SQL:**  
-> ** IMPORTANTE **
+> Approfondimento SQL:  
 > Tutte le attività SQL generate tramite Liquibase devono rispettare le convenzioni definite nel documento :
 > [Linee Guida SQL](linee-guida-sql.md).
 
