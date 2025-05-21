@@ -7,7 +7,6 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 
-#
 name: CI
 
 on:
