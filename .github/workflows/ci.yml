@@ -19,6 +19,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: zeroerp
+          POSTGRES_USER: zeroerp
+          POSTGRES_PASSWORD: secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U zeroerp"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+  
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -40,6 +57,15 @@ jobs:
           source .venv/bin/activate
           pre-commit run --all-files
 
+      - name: Applica migrazioni Liquibase
+        run: |
+          source .venv/bin/activate
+          liquibase \
+            --url=jdbc:postgresql://localhost:5432/zeroerp \
+            --username=zeroerp \
+            --password=secret \
+            update 
+          
       - name: Genera doc DB
         run: |
           source .venv/bin/activate
@@ -49,6 +75,10 @@ jobs:
           echo "DB_NAME=${{ secrets.DB_NAME }}"       >> $GITHUB_ENV
           echo "POSTGRESQL_USER=${{ secrets.POSTGRESQL_USER }}" >> $GITHUB_ENV
           echo "POSTGRESQL_PWD=${{ secrets.POSTGRESQL_PWD }}"   >> $GITHUB_ENV
+
+          # Costruiamo dinamicamente il DSN
+          echo "DATABASE_DSN=host=$DB_HOST port=$DB_PORT dbname=$DB_NAME user=$POSTGRESQL_USER password=$POSTGRESQL_PWD" >> $GITHUB_ENV
+
 
           # Ora chiamiamo lo script: legge DB_HOST, DB_PORT, ecc. dall'env
           source .venv/bin/activate
