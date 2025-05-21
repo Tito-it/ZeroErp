@@ -42,6 +42,7 @@ jobs:
 
       - name: Genera doc DB
         run: |
+          source .venv/bin/activate
           # Esportiamo in ambiente le variabili che serve allo script
           echo "DB_HOST=${{ secrets.DB_HOST }}"       >> $GITHUB_ENV
           echo "DB_PORT=${{ secrets.DB_PORT }}"       >> $GITHUB_ENV
@@ -50,6 +51,7 @@ jobs:
           echo "POSTGRESQL_PWD=${{ secrets.POSTGRESQL_PWD }}"   >> $GITHUB_ENV
 
           # Ora chiamiamo lo script: legge DB_HOST, DB_PORT, ecc. dall'env
+          source .venv/bin/activate
           python scripts/gen_db_docs.py
        
       
