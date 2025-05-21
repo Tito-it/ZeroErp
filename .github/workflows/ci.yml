@@ -21,7 +21,8 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17
+        # Postgres 17 con PostGIS 3.3 già preinstallato
+        image: postgis/postgis:17-3.3
         env:
           POSTGRES_DB: zeroerp
           POSTGRES_USER: zeroerp
