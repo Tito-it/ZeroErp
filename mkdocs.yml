@@ -1,3 +1,13 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
 site_name: Zero ERP Documentation
 repo_url: https://github.com/Tito-it/ZeroErp
 repo_name: Tito-it/ZeroErp
@@ -39,6 +49,17 @@ nav:
       - Database:
           - Liquibase Setup & Workflow: it/liquibase-setup-workflow.md
           - Linee Guida SQL: it/linee-guida-sql.md
+  - DB Zero:
+      - Panoramica: dbzero/index.md
+      - Schemi:
+          - Anagrafiche: dbzero/anagrafiche/index.md
+          - Config:     dbzero/config/index.md
+          - Dbops:      dbzero/dbops/index.md
+          - Script:     dbzero/script/index.md
+          - Storico:    dbzero/storico/index.md
+          - Public:     dbzero/public/index.md
+          - Topology:   dbzero/topology/index.md
+
   - Sviluppatori:
       - API: it/dev/api.md
 

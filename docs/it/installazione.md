@@ -1,10 +1,15 @@
 # Installazione
 
 ## Prerequisiti
-- Python 3.x  
-- **Django (ultima versione stabile,  5.2)**  
-- PostgreSQL 17+  
-- **Node.js 18.x+** 
+- Python   
+- Django   
+- PostgreSQL
+- Liquibase
+- Vue3  
+- Node.js  
+
+→ Per le versioni consigliate, vedi [Versioni supportate](versioni-supportate.md).
+
 
 ## Setup ambiente
 ```bash
