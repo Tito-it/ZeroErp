@@ -16,8 +16,6 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION config.trgfn_stati_pratiche_upd_lock_codiceinterno()
-    OWNER TO titodb;
 
 COMMENT ON FUNCTION config.trgfn_stati_pratiche_upd_lock_codiceinterno()
     IS 'Blocco codice interno stato pratica';
