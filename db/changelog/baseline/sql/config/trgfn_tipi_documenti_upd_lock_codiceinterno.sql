@@ -17,7 +17,7 @@ END;
 $BODY$;
 
 ALTER FUNCTION config.trgfn_tipi_documenti_upd_lock_codiceinterno()
-    OWNER TO postgres;
+    OWNER TO titodb;
 
 COMMENT ON FUNCTION config.trgfn_tipi_documenti_upd_lock_codiceinterno()
     IS 'Blocca modifica al codice interno tipo documento.Before';

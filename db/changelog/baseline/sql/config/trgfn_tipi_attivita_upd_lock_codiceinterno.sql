@@ -17,4 +17,4 @@ END;
 $BODY$;
 
 ALTER FUNCTION config.trgfn_tipi_attivita_upd_lock_codiceinterno()
-    OWNER TO postgres;
+    OWNER TO titodb;

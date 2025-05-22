@@ -17,7 +17,7 @@ END;
 $BODY$;
 
 ALTER FUNCTION config.trgfn_utilities_upd_lock_codiceinterno()
-    OWNER TO postgres;
+    OWNER TO titodb;
 
 COMMENT ON FUNCTION config.trgfn_utilities_upd_lock_codiceinterno()
     IS 'Blocca modifica del codice interno utility';
