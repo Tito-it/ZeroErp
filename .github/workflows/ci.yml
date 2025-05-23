@@ -85,11 +85,7 @@ jobs:
       - name: Genera doc DB
         # Qui sopra non serve più caricare i tuoi secrets, ma usiamo quelli del servizio
         env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_NAME: zeroerp
-          POSTGRESQL_USER: zeroerp
-          POSTGRESQL_PWD: secret
+          DATABASE_DSN: "host=localhost port=5432 dbname=zeroerp user=zeroerp password=secret"
   
         run: |
           # Ora chiamiamo lo script: legge DB_HOST, DB_PORT, ecc. dall'env
