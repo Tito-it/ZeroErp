@@ -24,7 +24,7 @@ plugins:
   - i18n:
       default_language: it
       docs_structure: folder
-      material_alternate: true
+      
       languages:
         - locale: it
           name: Italiano

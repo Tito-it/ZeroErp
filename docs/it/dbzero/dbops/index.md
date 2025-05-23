@@ -1,0 +1,15 @@
+# Schema `dbops`
+
+## Tabelle
+- [audit_log](tabelle/audit_log.md)
+- [fk_index_policy](tabelle/fk_index_policy.md)
+
+## Funzioni
+- [fn_admin_merge_comune](funzioni/fn_admin_merge_comune.md)
+- [fn_admin_merge_stradario](funzioni/fn_admin_merge_stradario.md)
+- [fn_create_gestore](funzioni/fn_create_gestore.md)
+- [fn_foreign_keys_info](funzioni/fn_foreign_keys_info.md)
+- [fn_list_indices](funzioni/fn_list_indices.md)
+- [fn_migrate_add_indirizzo_normalizzato](funzioni/fn_migrate_add_indirizzo_normalizzato.md)
+- [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md)
+- [fn_search_column_usage](funzioni/fn_search_column_usage.md)

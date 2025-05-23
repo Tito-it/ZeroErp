@@ -29,6 +29,7 @@ psycopg2-binary==2.9.10
 Pygments==2.19.1
 pymdown-extensions==10.15
 python-dateutil==2.9.0.post0
+python-dotenv==1.1.0
 PyYAML==6.0.2
 pyyaml_env_tag==1.1
 requests==2.32.3
