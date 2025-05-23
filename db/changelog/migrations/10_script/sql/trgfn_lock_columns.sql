@@ -1,3 +1,8 @@
+
+--
+--liquibase formatted sql
+--changeset mctit:20250507-01-trgfn_lock_columns runOnChange:true
+
 -- FUNCTION: script.trgfn_lock_columns()
 
 -- DROP FUNCTION IF EXISTS script.trgfn_lock_columns();
@@ -42,8 +47,6 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION script.trgfn_lock_columns()
-    OWNER TO postgres;
 
 COMMENT ON FUNCTION script.trgfn_lock_columns()
     IS 'Controlla che il valore della colonna non sia modificato';

@@ -6,13 +6,19 @@
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
-databaseChangeLog:
-  - preConditions:
-      - onFail: MARK_RAN
-      - sqlCheck:
-          expectedResult: "170004"
-          sql: "SHOW server_version_num"
 
+databaseChangeLog:
+  - changeSet:
+      id: 010-tables-config
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 170004
+            sql: "SHOW server_version_num"
+
+
+  
   - changeSet:
       id: enable-postgis
       author: mctit

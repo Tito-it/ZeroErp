@@ -33,8 +33,6 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()
-    OWNER TO postgres;
 
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()
     IS 'Constraint trigger che verifica la presenza di almeno un contatto default o con canale valorizzato per ogni soggetto.';

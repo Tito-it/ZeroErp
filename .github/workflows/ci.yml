@@ -21,7 +21,8 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17
+        # Postgres 17 con PostGIS 3.5 già preinstallato
+        image: postgis/postgis:17-3.5
         env:
           POSTGRES_DB: zeroerp
           POSTGRES_USER: zeroerp
@@ -82,19 +83,11 @@ jobs:
             update 
           
       - name: Genera doc DB
+        # Qui sopra non serve più caricare i tuoi secrets, ma usiamo quelli del servizio
+        env:
+          DATABASE_DSN: "host=localhost port=5432 dbname=zeroerp user=zeroerp password=secret"
+  
         run: |
-          source .venv/bin/activate
-          # Esportiamo in ambiente le variabili che serve allo script
-          echo "DB_HOST=${{ secrets.DB_HOST }}"       >> $GITHUB_ENV
-          echo "DB_PORT=${{ secrets.DB_PORT }}"       >> $GITHUB_ENV
-          echo "DB_NAME=${{ secrets.DB_NAME }}"       >> $GITHUB_ENV
-          echo "POSTGRESQL_USER=${{ secrets.POSTGRESQL_USER }}" >> $GITHUB_ENV
-          echo "POSTGRESQL_PWD=${{ secrets.POSTGRESQL_PWD }}"   >> $GITHUB_ENV
-
-          # Costruiamo dinamicamente il DSN
-          echo "DATABASE_DSN=host=$DB_HOST port=$DB_PORT dbname=$DB_NAME user=$POSTGRESQL_USER password=$POSTGRESQL_PWD" >> $GITHUB_ENV
-
-
           # Ora chiamiamo lo script: legge DB_HOST, DB_PORT, ecc. dall'env
           source .venv/bin/activate
           python scripts/gen_db_docs.py
