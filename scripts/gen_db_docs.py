@@ -16,11 +16,18 @@
 
 
 import os
+from dotenv import load_dotenv
 import psycopg2
 from psycopg2.extras import DictCursor
 
-# CONFIGURAZIONE: leggile da env oppure sostituisci direttamente
-DB_DSN = os.getenv("DATABASE_DSN", "host=localhost dbname=zeroerp user=me password=secret")
+
+# 1) Carica .env (privato, non committato)
+load_dotenv(dotenv_path="internal.env", override=True)
+
+# 2) Carica .envgit (committato, fornisce DB_DOC_SCHEMAS e default DSN)
+load_dotenv(dotenv_path="git.env", override=False)
+
+
 
 # Dove generare i file
 OUT_DIR = "docs/it/dbzero"
