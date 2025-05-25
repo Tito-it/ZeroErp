@@ -16,13 +16,12 @@ site_dir: site
 
 theme:
   name: material
-  
   language: it            # lingua di default: Italiano
 
 plugins:
   - search
   - i18n:
-      default_language: it
+      #default_language: it
       docs_structure: folder
       
       languages:
@@ -44,7 +43,7 @@ nav:
       - Prerequisiti: it/installazione.md
   - Architettura:
       - Panoramica: it/architettura.md
-      - Flusso Dati: it/flusso-dati.md
+      #- Flusso Dati: it/flusso-dati.md
       - Database:
           - Liquibase Setup & Workflow: it/liquibase-setup-workflow.md
           - Linee Guida SQL: it/linee-guida-sql.md
