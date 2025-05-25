@@ -16,7 +16,7 @@ Il database è suddiviso in più schemi, ognuno con responsabilità e oggetti (t
 - Facilitare manutenzione e evoluzione indipendente  
 - Riflettere chiaramente l’organizzazione funzionale del sistema
 
-🔗 **Diagramma ER**: [Visualizza il modello Entity-Relationship](../ER-diagram.md)
+🔗 **Diagramma ER**:
 
 ---
 
