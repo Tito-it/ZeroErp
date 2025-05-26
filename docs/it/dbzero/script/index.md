@@ -14,3 +14,5 @@
 - [fn_valida_partita_iva](funzioni/fn_valida_partita_iva.md)
 - [trgfn_lock_columns](funzioni/trgfn_lock_columns.md)
 - [trgfn_upd_audit_data_user_generic](funzioni/trgfn_upd_audit_data_user_generic.md)
+
+## Documentazione Manuale

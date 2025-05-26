@@ -19,7 +19,9 @@ theme:
   language: it            # lingua di default: Italiano
 
 plugins:
+
   - search
+  - include-markdown
   - i18n:
       #default_language: it
       docs_structure: folder

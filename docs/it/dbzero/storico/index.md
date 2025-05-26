@@ -8,3 +8,5 @@
 - [stradario_trasformazioni](tabelle/stradario_trasformazioni.md)
 
 ## Funzioni
+
+## Documentazione Manuale

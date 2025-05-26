@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/soggetti.md" %}
 # Tabella `soggetti`
 
 | Colonna | Tipo | Nullable | Default |
