@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/conti_contabili.md" %}
 # Tabella `conti_contabili`
 
 | Colonna | Tipo | Nullable | Default |

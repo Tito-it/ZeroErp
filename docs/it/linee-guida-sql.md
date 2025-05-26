@@ -7,14 +7,8 @@
 ---
 
 ### 1. Schemi Principali
+{% include-markdown "it/schemidb.md" %}
 
-Organizzati per funzionalità e responsabilità:
-
-* **`anagrafiche`**: dati anagrafici (soggetti, indirizzi, contatti) con chiavi UUID per entità core 
-* **`config`**: tabelle di lookup e parametri (statI, nazioni, tipi\_contatti) 
-* **`script`**: logica applicativa (viste, funzioni PL/pgSQL legate ai processi ERP) 
-* **`dbops`**: strumenti DB (viste/funzioni tecniche per DBA, monitoring, metadata) 
-* **`storico`**: tabelle di audit/storico con versioning temporale dei dati 
 
 ---
 
