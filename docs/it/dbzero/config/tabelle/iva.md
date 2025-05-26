@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/iva.md" %}
 # Tabella `iva`
 
 | Colonna | Tipo | Nullable | Default |
