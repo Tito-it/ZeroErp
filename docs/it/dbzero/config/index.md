@@ -33,3 +33,5 @@
 - [trgfn_comuni_upd_dlt_storico_comuni](funzioni/trgfn_comuni_upd_dlt_storico_comuni.md)
 - [trgfn_iva_ins_upd_check_conti_iva](funzioni/trgfn_iva_ins_upd_check_conti_iva.md)
 - [trgfn_stradario_upd_dlt_storico_stradario](funzioni/trgfn_stradario_upd_dlt_storico_stradario.md)
+
+## Documentazione Manuale

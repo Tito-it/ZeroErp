@@ -13,3 +13,5 @@
 - [fn_migrate_add_indirizzo_normalizzato](funzioni/fn_migrate_add_indirizzo_normalizzato.md)
 - [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md)
 - [fn_search_column_usage](funzioni/fn_search_column_usage.md)
+
+## Documentazione Manuale

@@ -26,7 +26,6 @@ BASE_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, os.pardir))
 
 # 1) Carica internal.env dal root (privato, non committato)
 load_dotenv(dotenv_path=os.path.join(BASE_DIR, "internal.env"), override=True)
-
 # 2) Carica git.env dal root (committato)
 load_dotenv(dotenv_path=os.path.join(BASE_DIR, "git.env"), override=False)
 
@@ -49,6 +48,7 @@ schemas = [s.strip() for s in db_schemas.split(",") if s.strip()]
 # Directory di output dei file markdown (path assoluto)
 OUT_DIR = os.path.abspath(os.path.join(BASE_DIR, "docs", "it", "dbzero"))
 
+# Funzione per generare Markdown delle tabelle
 def gen_table_md(schema, table, cur):
     cur.execute(
         """
@@ -59,14 +59,15 @@ def gen_table_md(schema, table, cur):
         """, (schema, table)
     )
     cols = cur.fetchall()
-    md = [f"# Tabella `{table}`\n",
-          "| Colonna | Tipo | Nullable | Default |",
-          "|---------|------|----------|---------|"]
+    lines = [f"# Tabella `{table}`\n",
+             "| Colonna | Tipo | Nullable | Default |",
+             "|---------|------|----------|---------|"]
     for col in cols:
         default = col.get("column_default") or ""
-        md.append(f"| {col['column_name']} | {col['data_type']} | {col['is_nullable']} | {default} |")
-    return "\n".join(md)
+        lines.append(f"| {col['column_name']} | {col['data_type']} | {col['is_nullable']} | {default} |")
+    return "\n".join(lines)
 
+# Funzione per generare Markdown delle funzioni
 def gen_function_md(schema, func, cur):
     cur.execute(
         """
@@ -81,23 +82,34 @@ def gen_function_md(schema, func, cur):
     row = cur.fetchone()
     if not row:
         return ""
-    md = [f"# Funzione `{row['proname']}`\n",
-          "```sql",
-          f"CREATE FUNCTION {row['proname']}({row['args']})",
-          "```",
-          "\n**Definizione completa:**\n",
-          "```sql",
-          row.get("defn", "").strip(),
-          "```"]
-    return "\n".join(md)
+    lines = [f"# Funzione `{row['proname']}`\n",
+             "```sql",
+             f"CREATE FUNCTION {row['proname']}({row['args']})",
+             "```",
+             "\n**Definizione completa:**\n",
+             "```sql",
+             row.get("defn", "").strip(),
+             "```"]
+    return "\n".join(lines)
 
+# Inserisce include-markdown se esiste doc manuale nella cartella manual all'interno dello schema
+def include_manual(schema, kind, name):
+    # kind: 'tabelle' o 'funzioni'
+    manual_path = os.path.join(OUT_DIR, schema, 'manual', f"{name}.md")
+    if os.path.isfile(manual_path):
+        # percorso relativo da docs_dir
+        rel = os.path.relpath(manual_path, start=os.path.join(BASE_DIR, 'docs'))
+        # usa forward slash per MkDocs
+        rel = rel.replace('\\', '/')
+        return f"{{% include-markdown \"{rel}\" %}}\n"
+    return ""
+
+# Scrive index.md per ciascuno schema
 def write_index(schema_dir, schema):
-    # Genera index.md per uno schema
     index_path = os.path.join(schema_dir, 'index.md')
     tables_dir = os.path.join(schema_dir, 'tabelle')
     funcs_dir = os.path.join(schema_dir, 'funzioni')
     lines = [f"# Schema `{schema}`\n"]
-    # Elenco tabelle
     if os.path.isdir(tables_dir):
         lines.append('## Tabelle')
         for fname in sorted(os.listdir(tables_dir)):
@@ -105,7 +117,6 @@ def write_index(schema_dir, schema):
                 name = os.path.splitext(fname)[0]
                 lines.append(f"- [{name}](tabelle/{fname})")
         lines.append('')
-    # Elenco funzioni
     if os.path.isdir(funcs_dir):
         lines.append('## Funzioni')
         for fname in sorted(os.listdir(funcs_dir)):
@@ -113,11 +124,19 @@ def write_index(schema_dir, schema):
                 name = os.path.splitext(fname)[0]
                 lines.append(f"- [{name}](funzioni/{fname})")
         lines.append('')
-    # Scrivi file
+    # includi directory manual se esiste
+    manual_dir = os.path.join(schema_dir, 'manual')
+    if os.path.isdir(manual_dir):
+        lines.append('## Documentazione Manuale')
+        for fname in sorted(os.listdir(manual_dir)):
+            if fname.endswith('.md'):
+                name = os.path.splitext(fname)[0]
+                lines.append(f"- [{name}](manual/{fname})")
+        lines.append('')
     with open(index_path, 'w', encoding='utf-8') as f:
         f.write("\n".join(lines))
 
-
+# Funzione principale
 def main():
     conn = psycopg2.connect(dsn=DB_DSN, cursor_factory=DictCursor)
     cur = conn.cursor()
@@ -126,6 +145,7 @@ def main():
         schema_dir = os.path.join(OUT_DIR, schema)
         os.makedirs(os.path.join(schema_dir, "tabelle"), exist_ok=True)
         os.makedirs(os.path.join(schema_dir, "funzioni"), exist_ok=True)
+        os.makedirs(os.path.join(schema_dir, "manual"), exist_ok=True)
 
         # Tabelle
         cur.execute(
@@ -137,10 +157,10 @@ def main():
         )
         for r in cur.fetchall():
             tbl = r.get("table_name")
-            md = gen_table_md(schema, tbl, cur)
             path = os.path.join(schema_dir, "tabelle", f"{tbl}.md")
+            content = include_manual(schema, 'tabelle', tbl) + gen_table_md(schema, tbl, cur)
             with open(path, "w", encoding="utf-8") as f:
-                f.write(md)
+                f.write(content)
 
         # Funzioni
         cur.execute(
@@ -152,12 +172,12 @@ def main():
         )
         for r in cur.fetchall():
             fn = r.get("routine_name")
-            md = gen_function_md(schema, fn, cur)
             path = os.path.join(schema_dir, "funzioni", f"{fn}.md")
+            content = include_manual(schema, 'funzioni', fn) + gen_function_md(schema, fn, cur)
             with open(path, "w", encoding="utf-8") as f:
-                f.write(md)
+                f.write(content)
 
-        # Genera index.md nello schema
+        # Genera index.md
         write_index(schema_dir, schema)
 
     cur.close()

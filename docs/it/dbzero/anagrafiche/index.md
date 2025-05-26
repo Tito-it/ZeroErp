@@ -24,3 +24,6 @@
 - [trgfn_soggetti_ins_genera_cdsoggetto](funzioni/trgfn_soggetti_ins_genera_cdsoggetto.md)
 - [trgfn_soggetti_ins_upd_check_soggetto_contatti](funzioni/trgfn_soggetti_ins_upd_check_soggetto_contatti.md)
 - [trgfn_soggetti_ins_upd_valida_piva_cdfiscale](funzioni/trgfn_soggetti_ins_upd_valida_piva_cdfiscale.md)
+
+## Documentazione Manuale
+- [soggetti](manual/soggetti.md)
