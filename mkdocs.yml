@@ -17,7 +17,10 @@ site_dir: site
 theme:
   name: material
   language: it            # lingua di default: Italiano
-
+features:
+    - navigation.sections
+   
+    - navigation.istant
 plugins:
 
   - search
@@ -57,8 +60,7 @@ nav:
           - Dbops:      dbzero/dbops/index.md
           - Script:     dbzero/script/index.md
           - Storico:    dbzero/storico/index.md
-          #- Public:     dbzero/public/index.md
-          #- Topology:   dbzero/topology/index.md
+         
 
   - Sviluppatori:
       - API: it/dev/api.md
