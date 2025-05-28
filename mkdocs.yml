@@ -17,16 +17,14 @@ site_dir: site
 theme:
   name: material
   language: it            # lingua di default: Italiano
-features:
+  features:
     - navigation.sections
-   
-    - navigation.istant
+    - navigation.expand
 plugins:
 
   - search
   - include-markdown
   - i18n:
-      #default_language: it
       docs_structure: folder
       
       languages:
