@@ -32,16 +32,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 18368_19395_15_not_null |  |
-| CHECK | 18368_19395_1_not_null |  |
-| CHECK | 18368_19395_21_not_null |  |
-| CHECK | 18368_19395_22_not_null |  |
-| CHECK | 18368_19395_23_not_null |  |
-| CHECK | 18368_19395_24_not_null |  |
-| CHECK | 18368_19395_2_not_null |  |
-| CHECK | 18368_19395_3_not_null |  |
-| CHECK | 18368_19395_4_not_null |  |
-| CHECK | 18368_19395_5_not_null |  |
 | CHECK | chk_istanza_utilities_imm_rurale |  |
 | CHECK | chk_istanza_utilities_prop_inquilino |  |
 | CHECK | chk_istanze_utilities_fittizia |  |

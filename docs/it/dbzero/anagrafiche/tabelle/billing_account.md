@@ -19,23 +19,13 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 18368_19423_10_not_null |  |
-| CHECK | 18368_19423_11_not_null |  |
-| CHECK | 18368_19423_12_not_null |  |
-| CHECK | 18368_19423_1_not_null |  |
-| CHECK | 18368_19423_2_not_null |  |
-| CHECK | 18368_19423_3_not_null |  |
-| CHECK | 18368_19423_4_not_null |  |
-| CHECK | 18368_19423_6_not_null |  |
-| CHECK | 18368_19423_7_not_null |  |
-| CHECK | 18368_19423_9_not_null |  |
 | FOREIGN KEY | fk_billing_account_anagrafiche | parent_account_id |
 | FOREIGN KEY | fk_istanze_utilities_anagrafiche | istanza_id, istanza_id |
 | FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
 | FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
 | PRIMARY KEY | pk_billing_account | id |
 | UNIQUE | uq_billing_account_code | account_code |
-| UNIQUE | uq_billing_instance_utility | utility_id, istanza_id |
+| UNIQUE | uq_billing_instance_utility | istanza_id, utility_id |
 
 ## Indici
 | Nome | Definizione |

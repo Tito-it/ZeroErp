@@ -15,12 +15,7 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16962_19295_1_not_null |  |
-| CHECK | 16962_19295_2_not_null |  |
-| CHECK | 16962_19295_3_not_null |  |
-| CHECK | 16962_19295_4_not_null |  |
-| CHECK | 16962_19295_5_not_null |  |
-| FOREIGN KEY | fk_stradario_config | stradario_id, via_id_nuovo |
+| FOREIGN KEY | fk_stradario_config | via_id_nuovo, stradario_id |
 | FOREIGN KEY | fk_stradario_via_orig_config | via_id_orig |
 | PRIMARY KEY | pk_stradario_trasformazioni | id |
 

@@ -25,17 +25,9 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 18368_19085_10_not_null |  |
-| CHECK | 18368_19085_11_not_null |  |
-| CHECK | 18368_19085_13_not_null |  |
-| CHECK | 18368_19085_14_not_null |  |
-| CHECK | 18368_19085_15_not_null |  |
-| CHECK | 18368_19085_16_not_null |  |
-| CHECK | 18368_19085_1_not_null |  |
-| CHECK | 18368_19085_2_not_null |  |
 | FOREIGN KEY | fk_stradario_config | stradario_id |
 | PRIMARY KEY | pk_indirizzi_dettaglio | id |
-| UNIQUE | uq_indirizzi_dettaglio_norm | interno, via_norm, civico_norm, palazzina, piano |
+| UNIQUE | uq_indirizzi_dettaglio_norm | interno, via_norm, palazzina, piano, civico_norm |
 
 ## Indici
 | Nome | Definizione |

@@ -18,16 +18,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 18368_18832_12_not_null |  |
-| CHECK | 18368_18832_13_not_null |  |
-| CHECK | 18368_18832_1_not_null |  |
-| CHECK | 18368_18832_2_not_null |  |
-| CHECK | 18368_18832_3_not_null |  |
-| CHECK | 18368_18832_4_not_null |  |
-| CHECK | 18368_18832_5_not_null |  |
-| CHECK | 18368_18832_6_not_null |  |
-| CHECK | 18368_18832_7_not_null |  |
-| CHECK | 18368_18832_9_not_null |  |
 | FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id, soggetto_id, soggetto_id, soggetto_id |
 | FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
 | FOREIGN KEY | fk_valute_config | valuta_id |

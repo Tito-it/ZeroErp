@@ -15,14 +15,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_16618_1_not_null |  |
-| CHECK | 16601_16618_2_not_null |  |
-| CHECK | 16601_16618_3_not_null |  |
-| CHECK | 16601_16618_4_not_null |  |
-| CHECK | 16601_16618_5_not_null |  |
-| CHECK | 16601_16618_6_not_null |  |
-| CHECK | 16601_16618_7_not_null |  |
-| CHECK | 16601_16618_8_not_null |  |
 | PRIMARY KEY | pk_tipi_documenti | id |
 | UNIQUE | uq_tipi_documenti_cd_int_tipo_documento | cd_int_tipo_documento |
 | UNIQUE | uq_tipi_documenti_cod_tipo_documento | cod_tipo_documento |

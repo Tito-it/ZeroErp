@@ -10,9 +10,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_18606_1_not_null |  |
-| CHECK | 16601_18606_2_not_null |  |
-| CHECK | 16601_18606_3_not_null |  |
 | PRIMARY KEY | pk_messaggi_errore | codice, lingua |
 
 ## Indici

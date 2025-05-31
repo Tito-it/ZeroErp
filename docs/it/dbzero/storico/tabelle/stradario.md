@@ -18,13 +18,9 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16962_19264_1_not_null |  |
-| CHECK | 16962_19264_2_not_null |  |
-| CHECK | 16962_19264_3_not_null |  |
-| CHECK | 16962_19264_6_not_null |  |
 | FOREIGN KEY | fk_codici_postali_config | codice_postale_id, codice_postale_id |
 | FOREIGN KEY | fk_comuni_config | comune_id, comune_id, comune_id |
-| FOREIGN KEY | fk_stradario_config | stradario_id, via_id_nuovo |
+| FOREIGN KEY | fk_stradario_config | via_id_nuovo, stradario_id |
 | FOREIGN KEY | fk_stradario_via_id_config | via_id |
 | PRIMARY KEY | pk_stradario | id |
 

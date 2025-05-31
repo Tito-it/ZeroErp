@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/codici_postali.md" %}
 # Tabella `codici_postali`
 
 ## Campi principali
@@ -14,13 +15,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_16945_1_not_null |  |
-| CHECK | 16601_16945_2_not_null |  |
-| CHECK | 16601_16945_3_not_null |  |
-| CHECK | 16601_16945_4_not_null |  |
-| CHECK | 16601_16945_5_not_null |  |
-| CHECK | 16601_16945_6_not_null |  |
-| CHECK | 16601_16945_7_not_null |  |
 | FOREIGN KEY | fk_codici_postali_comune_id | comune_id |
 | PRIMARY KEY | pk_codici_postali | id |
 

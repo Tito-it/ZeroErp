@@ -19,18 +19,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_19525_10_not_null |  |
-| CHECK | 16601_19525_11_not_null |  |
-| CHECK | 16601_19525_12_not_null |  |
-| CHECK | 16601_19525_1_not_null |  |
-| CHECK | 16601_19525_2_not_null |  |
-| CHECK | 16601_19525_3_not_null |  |
-| CHECK | 16601_19525_4_not_null |  |
-| CHECK | 16601_19525_5_not_null |  |
-| CHECK | 16601_19525_6_not_null |  |
-| CHECK | 16601_19525_7_not_null |  |
-| CHECK | 16601_19525_8_not_null |  |
-| CHECK | 16601_19525_9_not_null |  |
 | CHECK | chk_stati_cli_abilita_fattura |  |
 | CHECK | chk_stati_cli_check_lettura |  |
 | CHECK | chk_stati_cli_stato_cliente |  |

@@ -16,12 +16,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 18506_19971_1_not_null |  |
-| CHECK | 18506_19971_2_not_null |  |
-| CHECK | 18506_19971_3_not_null |  |
-| CHECK | 18506_19971_4_not_null |  |
-| CHECK | 18506_19971_6_not_null |  |
-| CHECK | 18506_19971_9_not_null |  |
 | PRIMARY KEY | pk_audit_log | id |
 
 ## Indici

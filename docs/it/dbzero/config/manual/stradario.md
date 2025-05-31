@@ -1,5 +1,13 @@
 # 📘 Documentazione Concettuale – Tabella `config.stradario`
 
+>  👀 **Vedi anche** 
+
+> Approfondimento Tabelle:  
+> - [config.comuni](../comuni)      
+> - [config.stradario_generale](../stradario_generale)   
+> - [config.codici_postali](../codici_postali)  
+
+
 La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciascun comune, completando il processo di indirizzamento con informazioni di localizzazione e dettagli aggiuntivi.
 
 ---

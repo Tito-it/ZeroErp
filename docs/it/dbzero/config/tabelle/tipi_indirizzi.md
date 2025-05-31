@@ -14,13 +14,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_19020_1_not_null |  |
-| CHECK | 16601_19020_2_not_null |  |
-| CHECK | 16601_19020_3_not_null |  |
-| CHECK | 16601_19020_4_not_null |  |
-| CHECK | 16601_19020_5_not_null |  |
-| CHECK | 16601_19020_6_not_null |  |
-| CHECK | 16601_19020_7_not_null |  |
 | CHECK | chk_cod_int_tipo_indirizzo |  |
 | PRIMARY KEY | pk_tipi_indirizzi | id |
 | UNIQUE | uq_tipi_indirizzi_cod_int_tipo_indirizzo | cod_int_tipo_indirizzo |

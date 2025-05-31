@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/regioni.md" %}
 # Tabella `regioni`
 
 ## Campi principali
@@ -15,13 +16,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_16789_10_not_null |  |
-| CHECK | 16601_16789_1_not_null |  |
-| CHECK | 16601_16789_2_not_null |  |
-| CHECK | 16601_16789_4_not_null |  |
-| CHECK | 16601_16789_7_not_null |  |
-| CHECK | 16601_16789_8_not_null |  |
-| CHECK | 16601_16789_9_not_null |  |
 | FOREIGN KEY | fk_regioni_stato_id | stato_id |
 | PRIMARY KEY | pk_regioni | id |
 

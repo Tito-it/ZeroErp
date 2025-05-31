@@ -23,19 +23,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 18368_18636_13_not_null |  |
-| CHECK | 18368_18636_14_not_null |  |
-| CHECK | 18368_18636_15_not_null |  |
-| CHECK | 18368_18636_16_not_null |  |
-| CHECK | 18368_18636_1_not_null |  |
-| CHECK | 18368_18636_2_not_null |  |
-| CHECK | 18368_18636_3_not_null |  |
-| CHECK | 18368_18636_4_not_null |  |
-| CHECK | 18368_18636_5_not_null |  |
-| CHECK | 18368_18636_6_not_null |  |
-| CHECK | 18368_18636_7_not_null |  |
-| CHECK | 18368_18636_8_not_null |  |
-| CHECK | 18368_18636_9_not_null |  |
 | FOREIGN KEY | fk_province_config | id_prov_iscri_rea |
 | FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id, soggetto_id, soggetto_id, soggetto_id |
 | PRIMARY KEY | pk_dati_societari | id_dati_societari |

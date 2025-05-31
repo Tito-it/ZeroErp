@@ -14,13 +14,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_18457_1_not_null |  |
-| CHECK | 16601_18457_2_not_null |  |
-| CHECK | 16601_18457_3_not_null |  |
-| CHECK | 16601_18457_4_not_null |  |
-| CHECK | 16601_18457_5_not_null |  |
-| CHECK | 16601_18457_6_not_null |  |
-| CHECK | 16601_18457_7_not_null |  |
 | PRIMARY KEY | pk_contatto_ruolo | id |
 | UNIQUE | uq_contatto_ruolo_contatto_ruolo_descrizione | descrizione |
 

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/province.md" %}
 # Tabella `province`
 
 ## Campi principali
@@ -16,13 +17,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_16809_10_not_null |  |
-| CHECK | 16601_16809_1_not_null |  |
-| CHECK | 16601_16809_2_not_null |  |
-| CHECK | 16601_16809_3_not_null |  |
-| CHECK | 16601_16809_7_not_null |  |
-| CHECK | 16601_16809_8_not_null |  |
-| CHECK | 16601_16809_9_not_null |  |
 | FOREIGN KEY | fk_province_regione_id | regione_id |
 | PRIMARY KEY | pk_province | id |
 | UNIQUE | uq_province_sigla | sigla |

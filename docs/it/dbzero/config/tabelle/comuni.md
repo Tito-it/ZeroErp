@@ -18,14 +18,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_16907_10_not_null |  |
-| CHECK | 16601_16907_11_not_null |  |
-| CHECK | 16601_16907_15_not_null |  |
-| CHECK | 16601_16907_1_not_null |  |
-| CHECK | 16601_16907_2_not_null |  |
-| CHECK | 16601_16907_6_not_null |  |
-| CHECK | 16601_16907_8_not_null |  |
-| CHECK | 16601_16907_9_not_null |  |
 | FOREIGN KEY | fk_provincia | provincia_id |
 | FOREIGN KEY | fk_stato | stato_id |
 | PRIMARY KEY | pk_comuni | id |

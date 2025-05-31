@@ -14,13 +14,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_18923_1_not_null |  |
-| CHECK | 16601_18923_2_not_null |  |
-| CHECK | 16601_18923_3_not_null |  |
-| CHECK | 16601_18923_4_not_null |  |
-| CHECK | 16601_18923_5_not_null |  |
-| CHECK | 16601_18923_6_not_null |  |
-| CHECK | 16601_18923_7_not_null |  |
 | CHECK | chk_tipi_contatti_descr_non_vuota |  |
 | PRIMARY KEY | pk_tipi_contatti | id |
 | UNIQUE | uq_tipi_contatti_cod_int_contatto | cod_int_tipo_contatto |
