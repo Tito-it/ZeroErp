@@ -1,5 +1,6 @@
 # Tabella `gestori_utilities_ruoli`
 
+## Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('anagrafiche.gestori_utilities_ruoli_id_seq'::regclass) |
@@ -11,3 +12,32 @@
 | user_update | character varying | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
+
+## Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | 18368_18857_10_not_null |  |
+| CHECK | 18368_18857_11_not_null |  |
+| CHECK | 18368_18857_1_not_null |  |
+| CHECK | 18368_18857_2_not_null |  |
+| CHECK | 18368_18857_3_not_null |  |
+| CHECK | 18368_18857_4_not_null |  |
+| CHECK | 18368_18857_7_not_null |  |
+| CHECK | 18368_18857_9_not_null |  |
+| FOREIGN KEY | fk_gestori_anagrafiche | gestore_id |
+| FOREIGN KEY | fk_tipi_ruoli_config | ruolo_id, ruolo_id |
+| FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
+| PRIMARY KEY | pk_gestori_utilities_ruoli | id |
+| UNIQUE | uq_gest_util_ruolo | ruolo_id, utility_id, gestore_id |
+
+## Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_gur_utility | `CREATE INDEX ix_gur_utility ON anagrafiche.gestori_utilities_ruoli USING btree (utility_id)` |
+| pk_gestori_utilities_ruoli | `CREATE UNIQUE INDEX pk_gestori_utilities_ruoli ON anagrafiche.gestori_utilities_ruoli USING btree (id)` |
+| uq_gest_util_ruolo | `CREATE UNIQUE INDEX uq_gest_util_ruolo ON anagrafiche.gestori_utilities_ruoli USING btree (gestore_id, utility_id, ruolo_id)` |
+
+## Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_upd_gestori_utilities_ruoli_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

@@ -1,5 +1,6 @@
 # Tabella `indirizzi_dettaglio`
 
+## Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('anagrafiche.indirizzi_dettaglio_id_seq'::regclass) |
@@ -20,3 +21,32 @@
 | user_update | character varying | NO | CURRENT_USER |
 | scala | character varying | YES |  |
 | indirizzo_normalizzato | text | YES |  |
+
+## Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | 18368_19085_10_not_null |  |
+| CHECK | 18368_19085_11_not_null |  |
+| CHECK | 18368_19085_13_not_null |  |
+| CHECK | 18368_19085_14_not_null |  |
+| CHECK | 18368_19085_15_not_null |  |
+| CHECK | 18368_19085_16_not_null |  |
+| CHECK | 18368_19085_1_not_null |  |
+| CHECK | 18368_19085_2_not_null |  |
+| FOREIGN KEY | fk_stradario_config | stradario_id |
+| PRIMARY KEY | pk_indirizzi_dettaglio | id |
+| UNIQUE | uq_indirizzi_dettaglio_norm | interno, via_norm, civico_norm, palazzina, piano |
+
+## Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_indirizzi_dettaglio_civic_geoloc_gist | `CREATE INDEX ix_indirizzi_dettaglio_civic_geoloc_gist ON anagrafiche.indirizzi_dettaglio USING gist (civic_geoloc)` |
+| pk_indirizzi_dettaglio | `CREATE UNIQUE INDEX pk_indirizzi_dettaglio ON anagrafiche.indirizzi_dettaglio USING btree (id)` |
+| uq_indirizzi_dettaglio_norm | `CREATE UNIQUE INDEX uq_indirizzi_dettaglio_norm ON anagrafiche.indirizzi_dettaglio USING btree (via_norm, civico_norm, interno, piano, palazzina)` |
+
+## Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio()` |
+| trg_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio()` |
+| trg_upd_indirizzi_dettaglio_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

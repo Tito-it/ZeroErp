@@ -1,5 +1,6 @@
 # Tabella `contatti`
 
+## Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('anagrafiche.contatti_id_seq'::regclass) |
@@ -18,3 +19,40 @@
 | is_default | boolean | NO | false |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
+
+## Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | 18368_18964_13_not_null |  |
+| CHECK | 18368_18964_15_not_null |  |
+| CHECK | 18368_18964_16_not_null |  |
+| CHECK | 18368_18964_17_not_null |  |
+| CHECK | 18368_18964_18_not_null |  |
+| CHECK | 18368_18964_1_not_null |  |
+| CHECK | 18368_18964_2_not_null |  |
+| CHECK | 18368_18964_3_not_null |  |
+| CHECK | 18368_18964_4_not_null |  |
+| CHECK | 18368_18964_5_not_null |  |
+| CHECK | 18368_18964_6_not_null |  |
+| FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id, soggetto_id, soggetto_id, soggetto_id |
+| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
+| FOREIGN KEY | fk_tipi_contatti_config | tipo_contatto_id |
+| FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
+| PRIMARY KEY | pk_contatti | id |
+| UNIQUE | uq_contatti_multilevel | soggetto_ruolo_id, soggetto_id, tipo_contatto_id, utility_id |
+
+## Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_contatti_soggetto | `CREATE INDEX ix_contatti_soggetto ON anagrafiche.contatti USING btree (soggetto_id)` |
+| ix_contatti_tipo | `CREATE INDEX ix_contatti_tipo ON anagrafiche.contatti USING btree (tipo_contatto_id)` |
+| ix_contatti_utility | `CREATE INDEX ix_contatti_utility ON anagrafiche.contatti USING btree (utility_id)` |
+| pk_contatti | `CREATE UNIQUE INDEX pk_contatti ON anagrafiche.contatti USING btree (id)` |
+| uq_contatti_multilevel | `CREATE UNIQUE INDEX uq_contatti_multilevel ON anagrafiche.contatti USING btree (soggetto_id, soggetto_ruolo_id, utility_id, tipo_contatto_id)` |
+
+## Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_contatti_ins_upd_set_default_contatto | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contatto()` |
+| trg_contatti_ins_upd_set_default_contatto | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contatto()` |
+| trg_upd_contatti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

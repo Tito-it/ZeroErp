@@ -1,5 +1,6 @@
 # Tabella `stradario`
 
+## Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('storico.stradario_id_seq'::regclass) |
@@ -13,3 +14,24 @@
 | data_insert | timestamp without time zone | YES | CURRENT_TIMESTAMP |
 | user_insert | character varying | YES | CURRENT_USER |
 | stradario_id | integer | YES |  |
+
+## Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | 16962_19264_1_not_null |  |
+| CHECK | 16962_19264_2_not_null |  |
+| CHECK | 16962_19264_3_not_null |  |
+| CHECK | 16962_19264_6_not_null |  |
+| FOREIGN KEY | fk_codici_postali_config | codice_postale_id, codice_postale_id |
+| FOREIGN KEY | fk_comuni_config | comune_id, comune_id, comune_id |
+| FOREIGN KEY | fk_stradario_config | stradario_id, via_id_nuovo |
+| FOREIGN KEY | fk_stradario_via_id_config | via_id |
+| PRIMARY KEY | pk_stradario | id |
+
+## Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_storico_stradario_comune | `CREATE INDEX ix_storico_stradario_comune ON storico.stradario USING btree (comune_id)` |
+| ix_storico_stradario_valid_periodo | `CREATE INDEX ix_storico_stradario_valid_periodo ON storico.stradario USING btree (valid_from, valid_to)` |
+| ix_storico_stradario_via_id | `CREATE INDEX ix_storico_stradario_via_id ON storico.stradario USING btree (via_id)` |
+| pk_stradario | `CREATE UNIQUE INDEX pk_stradario ON storico.stradario USING btree (id)` |

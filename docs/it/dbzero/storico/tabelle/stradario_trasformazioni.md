@@ -1,5 +1,6 @@
 # Tabella `stradario_trasformazioni`
 
+## Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('storico.stradario_trasformazioni_id_seq'::regclass) |
@@ -10,3 +11,22 @@
 | note | text | YES |  |
 | data_insert | timestamp without time zone | YES | CURRENT_TIMESTAMP |
 | user_insert | character varying | YES | CURRENT_USER |
+
+## Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | 16962_19295_1_not_null |  |
+| CHECK | 16962_19295_2_not_null |  |
+| CHECK | 16962_19295_3_not_null |  |
+| CHECK | 16962_19295_4_not_null |  |
+| CHECK | 16962_19295_5_not_null |  |
+| FOREIGN KEY | fk_stradario_config | stradario_id, via_id_nuovo |
+| FOREIGN KEY | fk_stradario_via_orig_config | via_id_orig |
+| PRIMARY KEY | pk_stradario_trasformazioni | id |
+
+## Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_stradario_trasf_via_nuovo | `CREATE INDEX ix_stradario_trasf_via_nuovo ON storico.stradario_trasformazioni USING btree (via_id_nuovo)` |
+| ix_stradario_trasf_via_orig | `CREATE INDEX ix_stradario_trasf_via_orig ON storico.stradario_trasformazioni USING btree (via_id_orig)` |
+| pk_stradario_trasformazioni | `CREATE UNIQUE INDEX pk_stradario_trasformazioni ON storico.stradario_trasformazioni USING btree (id)` |

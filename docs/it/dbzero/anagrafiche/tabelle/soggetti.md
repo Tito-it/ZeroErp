@@ -1,6 +1,7 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/soggetti.md" %}
 # Tabella `soggetti`
 
+## Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | uuid | NO | gen_random_uuid() |
@@ -25,3 +26,49 @@
 | id_fiscale_univoco_cf_piva | text | YES |  |
 | ragione_sociale_completa | text | YES |  |
 | default_contatto_id | integer | NO |  |
+
+## Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | 18368_18407_18_not_null |  |
+| CHECK | 18368_18407_19_not_null |  |
+| CHECK | 18368_18407_1_not_null |  |
+| CHECK | 18368_18407_20_not_null |  |
+| CHECK | 18368_18407_21_not_null |  |
+| CHECK | 18368_18407_26_not_null |  |
+| CHECK | 18368_18407_6_not_null |  |
+| CHECK | 18368_18407_8_not_null |  |
+| CHECK | chk_cf_o_piva |  |
+| CHECK | chk_soggetti_tipo_coerenza |  |
+| CHECK | chk_soggetto_soggetto_sesso |  |
+| CHECK | chk_soggetto_soggetto_tipo |  |
+| CHECK | chk_tipo_soggetto |  |
+| FOREIGN KEY | fk_comuni_config | comune_id, comune_id |
+| FOREIGN KEY | fk_contatti_anagrafiche | default_contatto_id |
+| FOREIGN KEY | fk_contatti_ruoli_config | contatto_ruolo_id |
+| FOREIGN KEY | fk_stati_config | stato_id, stato_id |
+| PRIMARY KEY | pk_soggetto | id |
+| UNIQUE | key_soggetto_idstato_id_fiscale_univoco | id_fiscale_univoco_cf_piva, stato_id |
+| UNIQUE | key_soggetto_soggetto_codice | codice |
+
+## Indici
+| Nome | Definizione |
+|------|-------------|
+| idx_anagrafiche_soggetti_comune_id | `CREATE INDEX idx_anagrafiche_soggetti_comune_id ON anagrafiche.soggetti USING btree (comune_id)` |
+| idx_anagrafiche_soggetti_contatto_ruolo_id | `CREATE INDEX idx_anagrafiche_soggetti_contatto_ruolo_id ON anagrafiche.soggetti USING btree (contatto_ruolo_id)` |
+| idx_anagrafiche_soggetti_stato_id | `CREATE INDEX idx_anagrafiche_soggetti_stato_id ON anagrafiche.soggetti USING btree (stato_id)` |
+| idx_ragione_sociale_completa | `CREATE INDEX idx_ragione_sociale_completa ON anagrafiche.soggetti USING btree (ragione_sociale_completa)` |
+| idx_soggetti_default_contatto | `CREATE INDEX idx_soggetti_default_contatto ON anagrafiche.soggetti USING btree (default_contatto_id)` |
+| key_soggetto_idstato_id_fiscale_univoco | `CREATE UNIQUE INDEX key_soggetto_idstato_id_fiscale_univoco ON anagrafiche.soggetti USING btree (stato_id, id_fiscale_univoco_cf_piva)` |
+| key_soggetto_soggetto_codice | `CREATE UNIQUE INDEX key_soggetto_soggetto_codice ON anagrafiche.soggetti USING btree (codice)` |
+| pk_soggetto | `CREATE UNIQUE INDEX pk_soggetto ON anagrafiche.soggetti USING btree (id)` |
+
+## Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_soggetti_ins_genera_cdsoggetto | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_genera_cdsoggetto()` |
+| trg_soggetti_ins_upd_check_soggetto_contatti | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |
+| trg_soggetti_ins_upd_check_soggetto_contatti | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |
+| trg_soggetti_ins_upd_valida_piva_cdfiscale | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_valida_piva_cdfiscale()` |
+| trg_soggetti_ins_upd_valida_piva_cdfiscale | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_valida_piva_cdfiscale()` |
+| trg_upd_soggetti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

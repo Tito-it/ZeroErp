@@ -1,5 +1,6 @@
 # Tabella `comune_trasformazioni`
 
+## Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('storico.comune_trasformazioni_id_seq'::regclass) |
@@ -10,3 +11,20 @@
 | note | text | YES |  |
 | data_insert | timestamp without time zone | YES | CURRENT_TIMESTAMP |
 | user_insert | character varying | YES | CURRENT_USER |
+
+## Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | 16962_16984_1_not_null |  |
+| CHECK | 16962_16984_2_not_null |  |
+| CHECK | 16962_16984_3_not_null |  |
+| CHECK | 16962_16984_4_not_null |  |
+| CHECK | 16962_16984_5_not_null |  |
+| PRIMARY KEY | pk_comune_trasformazioni | id |
+
+## Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_comune_trasformazioni_nuovo | `CREATE INDEX ix_comune_trasformazioni_nuovo ON storico.comune_trasformazioni USING btree (id_comune_nuovo)` |
+| ix_comune_trasformazioni_orig | `CREATE INDEX ix_comune_trasformazioni_orig ON storico.comune_trasformazioni USING btree (id_comune_orig)` |
+| pk_comune_trasformazioni | `CREATE UNIQUE INDEX pk_comune_trasformazioni ON storico.comune_trasformazioni USING btree (id)` |

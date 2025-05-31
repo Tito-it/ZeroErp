@@ -35,7 +35,13 @@
 - [trgfn_stradario_upd_dlt_storico_stradario](funzioni/trgfn_stradario_upd_dlt_storico_stradario.md)
 
 ## Documentazione Manuale
+- [comuni](manual/comuni.md)
 - [conti_contabili](manual/conti_contabili.md)
 - [fn_get_iva_override](manual/fn_get_iva_override.md)
 - [iva](manual/iva.md)
 - [iva_stati](manual/iva_stati.md)
+- [stradario](manual/stradario.md)
+- [stradario_generale](manual/stradario_generale.md)
+- [toponomastica](manual/toponomastica.md)
+- [utilities](manual/utilities.md)
+- [valute](manual/valute.md)

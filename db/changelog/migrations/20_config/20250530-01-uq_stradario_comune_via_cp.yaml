@@ -1,0 +1,45 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+
+  # 1) Metto un tag prima di cambiare il vincolo
+  - changeSet:
+      id: 20250530-00-tag-prima-di-uq-stradario
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: state-before-uq-stradario
+
+  # 2) Rimuovo il vincolo vecchio e ne creo uno nuovo con codice_postale
+  - changeSet:
+      id: 20250531-01-rimuovi-e-rigenera-uq-stradario
+      author: mctit
+      changes:
+        # 2.1) Rimuovo il vincolo UNIQUE esistente
+        - dropUniqueConstraint:
+            schemaName: config
+            tableName: stradario
+            constraintName: uq_stradario_comune_via
+
+        # 2.2) Creo il nuovo vincolo UNIQUE includendo anche codice_postale
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: stradario
+            constraintName: uq_stradario_comune_via_cp
+            columnNames: comune_id,via_id,codice_postale_id
+
+  # 3) Metto un altro tag subito dopo aver ricreato il vincolo
+  - changeSet:
+      id: 20250530-01-uq_stradario_comune_via_cp
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: release-2025-05-30_01-uq_stradario_comune_via_cp

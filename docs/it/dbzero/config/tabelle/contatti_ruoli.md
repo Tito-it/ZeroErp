@@ -1,5 +1,6 @@
 # Tabella `contatti_ruoli`
 
+## Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.contatti_ruoli_id_seq'::regclass) |
@@ -9,3 +10,27 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
 | user_update | text | NO | CURRENT_USER |
+
+## Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | 16601_18457_1_not_null |  |
+| CHECK | 16601_18457_2_not_null |  |
+| CHECK | 16601_18457_3_not_null |  |
+| CHECK | 16601_18457_4_not_null |  |
+| CHECK | 16601_18457_5_not_null |  |
+| CHECK | 16601_18457_6_not_null |  |
+| CHECK | 16601_18457_7_not_null |  |
+| PRIMARY KEY | pk_contatto_ruolo | id |
+| UNIQUE | uq_contatto_ruolo_contatto_ruolo_descrizione | descrizione |
+
+## Indici
+| Nome | Definizione |
+|------|-------------|
+| pk_contatto_ruolo | `CREATE UNIQUE INDEX pk_contatto_ruolo ON config.contatti_ruoli USING btree (id)` |
+| uq_contatto_ruolo_contatto_ruolo_descrizione | `CREATE UNIQUE INDEX uq_contatto_ruolo_contatto_ruolo_descrizione ON config.contatti_ruoli USING btree (descrizione)` |
+
+## Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_upd_contatti_ruoli_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
