@@ -7,12 +7,8 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 
-## Autogenerazione della documentazione delle tabelle e delle funzioni
 
-#1. Si collega al tuo database PostgreSQL  
-#2. Estrae da `information_schema.columns` i campi di ogni tabella  
-#3. Estrae da `information_schema.routines` (e `pg_get_function_identity_arguments` / `pg_get_functiondef`) le signature delle funzioni  
-#4. Produce per ciascuna tabella un file Markdown con la sezione “Campi principali” e per ciascuna funzione un file con “Signature” e “Descrizione”
+
 
 #!/usr/bin/env python3
 import os
@@ -24,12 +20,11 @@ from psycopg2.extras import DictCursor
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, os.pardir))
 
-# 1) Carica internal.env dal root (privato, non committato)
+# Carica variabili d'ambiente
 load_dotenv(dotenv_path=os.path.join(BASE_DIR, "internal.env"), override=True)
-# 2) Carica git.env dal root (committato)
 load_dotenv(dotenv_path=os.path.join(BASE_DIR, "git.env"), override=False)
 
-# Costruiamo la stringa di connessione completa (DSN)
+# Costruisci DSN
 dsn_env = os.getenv("DATABASE_DSN")
 if dsn_env and "<" not in dsn_env:
     DB_DSN = dsn_env
@@ -41,15 +36,26 @@ else:
     pwd = os.getenv("POSTGRESQL_PWD", "")
     DB_DSN = f"host={host} port={port} dbname={dbname} user={user} password={pwd}"
 
-# Lista degli schemi da documentare
+# Schemi da documentare
 db_schemas = os.getenv("DB_DOC_SCHEMAS", "")
 schemas = [s.strip() for s in db_schemas.split(",") if s.strip()]
 
-# Directory di output dei file markdown (path assoluto)
-OUT_DIR = os.path.abspath(os.path.join(BASE_DIR, "docs", "it", "dbzero"))
+# Percorsi
+DOCS_DIR = os.path.join(BASE_DIR, "docs")
+OUT_DIR = os.path.join(DOCS_DIR, "it", "dbzero")
 
-# Funzione per generare Markdown delle tabelle
+# Include manuale
+def include_manual(schema, kind, name):
+    manual_path = os.path.join(OUT_DIR, schema, "manual", f"{name}.md")
+    if os.path.isfile(manual_path):
+        rel = os.path.relpath(manual_path, start=DOCS_DIR).replace('\\', '/')
+        return f"{{% include-markdown \"{rel}\" %}}\n"
+    return ""
+
+# Genera Markdown tabella con colonne, vincoli, indici, trigger
 def gen_table_md(schema, table, cur):
+    lines = [f"# Tabella `{table}`\n"]
+    # Colonne
     cur.execute(
         """
         SELECT column_name, data_type, is_nullable, column_default
@@ -59,15 +65,61 @@ def gen_table_md(schema, table, cur):
         """, (schema, table)
     )
     cols = cur.fetchall()
-    lines = [f"# Tabella `{table}`\n",
-             "| Colonna | Tipo | Nullable | Default |",
-             "|---------|------|----------|---------|"]
+    lines += ["## Campi principali", "| Colonna | Tipo | Nullable | Default |", "|---------|------|----------|---------|"]
     for col in cols:
         default = col.get("column_default") or ""
         lines.append(f"| {col['column_name']} | {col['data_type']} | {col['is_nullable']} | {default} |")
+    # Vincoli
+    cur.execute(
+        """
+        SELECT tc.constraint_type, tc.constraint_name,
+               string_agg(kcu.column_name, ', ') AS columns
+        FROM information_schema.table_constraints tc
+        LEFT JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+         AND tc.table_schema = kcu.table_schema
+        WHERE tc.table_schema=%s AND tc.table_name=%s
+        GROUP BY tc.constraint_type, tc.constraint_name
+        ORDER BY tc.constraint_type, tc.constraint_name
+        """, (schema, table)
+    )
+    constraints = cur.fetchall()
+    if constraints:
+        lines += ["", "## Vincoli", "| Tipo | Nome | Colonne |", "|------|------|---------|"]
+        for con in constraints:
+            lines.append(f"| {con['constraint_type']} | {con['constraint_name']} | {con['columns'] or ''} |")
+    # Indici
+    cur.execute(
+        """
+        SELECT indexname, indexdef
+        FROM pg_indexes
+        WHERE schemaname = %s AND tablename = %s
+        ORDER BY indexname
+        """, (schema, table)
+    )
+    indexes = cur.fetchall()
+    if indexes:
+        lines += ["", "## Indici", "| Nome | Definizione |", "|------|-------------|"]
+        for idx in indexes:
+            lines.append(f"| {idx['indexname']} | `{idx['indexdef']}` |")
+    # Trigger
+    cur.execute(
+        """
+        SELECT trigger_name, action_timing, event_manipulation,
+               action_statement
+        FROM information_schema.triggers
+        WHERE trigger_schema = %s AND event_object_table = %s
+        ORDER BY trigger_name
+        """, (schema, table)
+    )
+    triggers = cur.fetchall()
+    if triggers:
+        lines += ["", "## Trigger", "| Nome | Timing | Evento | Azione |", "|------|--------|--------|--------|"]
+        for trg in triggers:
+            lines.append(f"| {trg['trigger_name']} | {trg['action_timing']} | {trg['event_manipulation']} | `{trg['action_statement']}` |")
     return "\n".join(lines)
 
-# Funzione per generare Markdown delle funzioni
+# Genera Markdown funzione
 def gen_function_md(schema, func, cur):
     cur.execute(
         """
@@ -82,29 +134,10 @@ def gen_function_md(schema, func, cur):
     row = cur.fetchone()
     if not row:
         return ""
-    lines = [f"# Funzione `{row['proname']}`\n",
-             "```sql",
-             f"CREATE FUNCTION {row['proname']}({row['args']})",
-             "```",
-             "\n**Definizione completa:**\n",
-             "```sql",
-             row.get("defn", "").strip(),
-             "```"]
+    lines = [f"# Funzione `{row['proname']}`\n", "```sql", f"CREATE FUNCTION {row['proname']}({row['args']})", "```", "\n**Definizione completa:**\n", "```sql", row.get("defn", "").strip(), "```"]
     return "\n".join(lines)
 
-# Inserisce include-markdown se esiste doc manuale nella cartella manual all'interno dello schema
-def include_manual(schema, kind, name):
-    # kind: 'tabelle' o 'funzioni'
-    manual_path = os.path.join(OUT_DIR, schema, 'manual', f"{name}.md")
-    if os.path.isfile(manual_path):
-        # percorso relativo da docs_dir
-        rel = os.path.relpath(manual_path, start=os.path.join(BASE_DIR, 'docs'))
-        # usa forward slash per MkDocs
-        rel = rel.replace('\\', '/')
-        return f"{{% include-markdown \"{rel}\" %}}\n"
-    return ""
-
-# Scrive index.md per ciascuno schema
+# Scrive index.md per schema
 def write_index(schema_dir, schema):
     index_path = os.path.join(schema_dir, 'index.md')
     tables_dir = os.path.join(schema_dir, 'tabelle')
@@ -124,7 +157,6 @@ def write_index(schema_dir, schema):
                 name = os.path.splitext(fname)[0]
                 lines.append(f"- [{name}](funzioni/{fname})")
         lines.append('')
-    # includi directory manual se esiste
     manual_dir = os.path.join(schema_dir, 'manual')
     if os.path.isdir(manual_dir):
         lines.append('## Documentazione Manuale')
@@ -136,11 +168,10 @@ def write_index(schema_dir, schema):
     with open(index_path, 'w', encoding='utf-8') as f:
         f.write("\n".join(lines))
 
-# Funzione principale
+# Main
 def main():
     conn = psycopg2.connect(dsn=DB_DSN, cursor_factory=DictCursor)
     cur = conn.cursor()
-
     for schema in schemas:
         schema_dir = os.path.join(OUT_DIR, schema)
         os.makedirs(os.path.join(schema_dir, "tabelle"), exist_ok=True)
@@ -156,7 +187,7 @@ def main():
             """, (schema,)
         )
         for r in cur.fetchall():
-            tbl = r.get("table_name")
+            tbl = r['table_name']
             path = os.path.join(schema_dir, "tabelle", f"{tbl}.md")
             content = include_manual(schema, 'tabelle', tbl) + gen_table_md(schema, tbl, cur)
             with open(path, "w", encoding="utf-8") as f:
@@ -171,15 +202,13 @@ def main():
             """, (schema,)
         )
         for r in cur.fetchall():
-            fn = r.get("routine_name")
+            fn = r['routine_name']
             path = os.path.join(schema_dir, "funzioni", f"{fn}.md")
             content = include_manual(schema, 'funzioni', fn) + gen_function_md(schema, fn, cur)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
 
-        # Genera index.md
         write_index(schema_dir, schema)
-
     cur.close()
     conn.close()
 
