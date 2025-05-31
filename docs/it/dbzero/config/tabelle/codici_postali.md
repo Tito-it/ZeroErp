@@ -1,5 +1,6 @@
 # Tabella `codici_postali`
 
+## Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.codici_postali_id_seq'::regclass) |
@@ -9,3 +10,28 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
 | user_update | character varying | NO | CURRENT_USER |
+
+## Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | 16601_16945_1_not_null |  |
+| CHECK | 16601_16945_2_not_null |  |
+| CHECK | 16601_16945_3_not_null |  |
+| CHECK | 16601_16945_4_not_null |  |
+| CHECK | 16601_16945_5_not_null |  |
+| CHECK | 16601_16945_6_not_null |  |
+| CHECK | 16601_16945_7_not_null |  |
+| FOREIGN KEY | fk_codici_postali_comune_id | comune_id |
+| PRIMARY KEY | pk_codici_postali | id |
+
+## Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_codici_postali_codice | `CREATE INDEX ix_codici_postali_codice ON config.codici_postali USING btree (codice_postale)` |
+| ix_codici_postali_comune_id | `CREATE INDEX ix_codici_postali_comune_id ON config.codici_postali USING btree (comune_id)` |
+| pk_codici_postali | `CREATE UNIQUE INDEX pk_codici_postali ON config.codici_postali USING btree (id)` |
+
+## Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_upd_codici_postali_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

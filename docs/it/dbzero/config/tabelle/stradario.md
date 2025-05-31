@@ -1,5 +1,7 @@
+{% include-markdown "it/dbzero/config/manual/stradario.md" %}
 # Tabella `stradario`
 
+## Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.stradario_id_seq'::regclass) |
@@ -13,3 +15,35 @@
 | user_update | character varying | YES | CURRENT_USER |
 | codice_postale_id | integer | NO |  |
 | storicizza | boolean | NO | false |
+
+## Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | 16601_18253_11_not_null |  |
+| CHECK | 16601_18253_12_not_null |  |
+| CHECK | 16601_18253_1_not_null |  |
+| CHECK | 16601_18253_2_not_null |  |
+| CHECK | 16601_18253_3_not_null |  |
+| CHECK | chk_geoloc_srid |  |
+| FOREIGN KEY | fk_stradario_codice_postale_id | codice_postale_id |
+| FOREIGN KEY | fk_stradario_comune_id | comune_id |
+| FOREIGN KEY | fk_stradario_via_id | via_id |
+| PRIMARY KEY | pk_stradario | id |
+| UNIQUE | uq_stradario_comune_via_cp | codice_postale_id, via_id, comune_id |
+
+## Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_stradario_codice_postale_id | `CREATE INDEX ix_stradario_codice_postale_id ON config.stradario USING btree (codice_postale_id)` |
+| ix_stradario_comune | `CREATE INDEX ix_stradario_comune ON config.stradario USING btree (comune_id)` |
+| ix_stradario_geoloc | `CREATE INDEX ix_stradario_geoloc ON config.stradario USING gist (geoloc)` |
+| ix_stradario_via_id | `CREATE INDEX ix_stradario_via_id ON config.stradario USING btree (via_id)` |
+| pk_stradario | `CREATE UNIQUE INDEX pk_stradario ON config.stradario USING btree (id)` |
+| uq_stradario_comune_via_cp | `CREATE UNIQUE INDEX uq_stradario_comune_via_cp ON config.stradario USING btree (comune_id, via_id, codice_postale_id)` |
+
+## Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_stradario_upd_dlt_storico_stradario | BEFORE | DELETE | `EXECUTE FUNCTION config.trgfn_stradario_upd_dlt_storico_stradario()` |
+| trg_stradario_upd_dlt_storico_stradario | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_stradario_upd_dlt_storico_stradario()` |
+| trg_upd_stradario_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
