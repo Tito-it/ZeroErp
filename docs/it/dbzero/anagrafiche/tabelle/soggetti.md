@@ -30,14 +30,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 18368_18407_18_not_null |  |
-| CHECK | 18368_18407_19_not_null |  |
-| CHECK | 18368_18407_1_not_null |  |
-| CHECK | 18368_18407_20_not_null |  |
-| CHECK | 18368_18407_21_not_null |  |
-| CHECK | 18368_18407_26_not_null |  |
-| CHECK | 18368_18407_6_not_null |  |
-| CHECK | 18368_18407_8_not_null |  |
 | CHECK | chk_cf_o_piva |  |
 | CHECK | chk_soggetti_tipo_coerenza |  |
 | CHECK | chk_soggetto_soggetto_sesso |  |
@@ -48,7 +40,7 @@
 | FOREIGN KEY | fk_contatti_ruoli_config | contatto_ruolo_id |
 | FOREIGN KEY | fk_stati_config | stato_id, stato_id |
 | PRIMARY KEY | pk_soggetto | id |
-| UNIQUE | key_soggetto_idstato_id_fiscale_univoco | id_fiscale_univoco_cf_piva, stato_id |
+| UNIQUE | key_soggetto_idstato_id_fiscale_univoco | stato_id, id_fiscale_univoco_cf_piva |
 | UNIQUE | key_soggetto_soggetto_codice | codice |
 
 ## Indici

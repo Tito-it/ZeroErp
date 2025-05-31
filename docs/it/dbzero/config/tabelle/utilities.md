@@ -16,14 +16,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_16634_1_not_null |  |
-| CHECK | 16601_16634_2_not_null |  |
-| CHECK | 16601_16634_3_not_null |  |
-| CHECK | 16601_16634_4_not_null |  |
-| CHECK | 16601_16634_5_not_null |  |
-| CHECK | 16601_16634_6_not_null |  |
-| CHECK | 16601_16634_7_not_null |  |
-| CHECK | 16601_16634_8_not_null |  |
 | CHECK | chk_cd_int_utility |  |
 | CHECK | chk_cod_utility_non_vuoto |  |
 | CHECK | chk_descrizione_non_vuota |  |

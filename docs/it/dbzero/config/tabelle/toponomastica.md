@@ -15,12 +15,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_16736_1_not_null |  |
-| CHECK | 16601_16736_2_not_null |  |
-| CHECK | 16601_16736_4_not_null |  |
-| CHECK | 16601_16736_5_not_null |  |
-| CHECK | 16601_16736_6_not_null |  |
-| CHECK | 16601_16736_7_not_null |  |
 | FOREIGN KEY | fk_toponomastica_stato_id | stato_id |
 | PRIMARY KEY | pk_toponomastica | id |
 | UNIQUE | uq_toponomastica_descrizione | descrizione |

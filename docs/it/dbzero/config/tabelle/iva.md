@@ -22,16 +22,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_19605_11_not_null |  |
-| CHECK | 16601_19605_12_not_null |  |
-| CHECK | 16601_19605_13_not_null |  |
-| CHECK | 16601_19605_14_not_null |  |
-| CHECK | 16601_19605_1_not_null |  |
-| CHECK | 16601_19605_2_not_null |  |
-| CHECK | 16601_19605_3_not_null |  |
-| CHECK | 16601_19605_4_not_null |  |
-| CHECK | 16601_19605_5_not_null |  |
-| CHECK | 16601_19605_6_not_null |  |
 | CHECK | chk_iva_assoggettamento |  |
 | FOREIGN KEY | fk_iva_conto_acq | conto_iva_acquisti_id |
 | FOREIGN KEY | fk_iva_conto_ven | conto_iva_vendita_id |

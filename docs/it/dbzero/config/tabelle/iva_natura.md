@@ -12,11 +12,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_19573_1_not_null |  |
-| CHECK | 16601_19573_2_not_null |  |
-| CHECK | 16601_19573_3_not_null |  |
-| CHECK | 16601_19573_4_not_null |  |
-| CHECK | 16601_19573_5_not_null |  |
 | PRIMARY KEY | pk_iva_natura | id |
 | UNIQUE | uq_iva_natura_codice | codice_natura |
 

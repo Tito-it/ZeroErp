@@ -1,5 +1,13 @@
 # 📘 Documentazione Concettuale – Tabella `config.stradario_generale`
 
+>  👀 **Vedi anche** 
+
+> Approfondimento Tabelle:  
+> - [config.stradario](../stradario)      
+> - [config.toponomastica](../toponomastica) 
+
+
+
 La tabella **`config.stradario_generale`** elenca i nomi delle vie, strade e piazze, associandoli ai tipi di toponimo definiti in **`config.toponomastica`**. Agisce come base indipendente dalla localizzazione geografica: per ottenere l’indirizzo completo e posizionarlo su un comune specifico, si collega alla tabella **`config.stradario`**.
 
 ---

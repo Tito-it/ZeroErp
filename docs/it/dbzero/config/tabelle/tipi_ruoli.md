@@ -15,14 +15,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_16626_1_not_null |  |
-| CHECK | 16601_16626_2_not_null |  |
-| CHECK | 16601_16626_3_not_null |  |
-| CHECK | 16601_16626_4_not_null |  |
-| CHECK | 16601_16626_5_not_null |  |
-| CHECK | 16601_16626_6_not_null |  |
-| CHECK | 16601_16626_7_not_null |  |
-| CHECK | 16601_16626_8_not_null |  |
 | PRIMARY KEY | pk_tipi_ruoli | id |
 | UNIQUE | uq_tipi_ruoli_cd_int_ruolo | cd_int_ruolo |
 | UNIQUE | uq_tipi_ruoli_cod_ruolo | cod_ruolo |

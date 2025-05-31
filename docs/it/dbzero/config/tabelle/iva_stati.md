@@ -16,18 +16,10 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_19831_1_not_null |  |
-| CHECK | 16601_19831_2_not_null |  |
-| CHECK | 16601_19831_3_not_null |  |
-| CHECK | 16601_19831_4_not_null |  |
-| CHECK | 16601_19831_5_not_null |  |
-| CHECK | 16601_19831_6_not_null |  |
-| CHECK | 16601_19831_7_not_null |  |
-| CHECK | 16601_19831_8_not_null |  |
 | CHECK | chk_iva_stati_assoggettamento_override |  |
 | FOREIGN KEY | fk_iva_stati_iva | iva_id |
 | FOREIGN KEY | fk_iva_stati_stato | stato_id |
-| PRIMARY KEY | pk_iva_stati | stato_id, iva_id |
+| PRIMARY KEY | pk_iva_stati | iva_id, stato_id |
 
 ## Indici
 | Nome | Definizione |

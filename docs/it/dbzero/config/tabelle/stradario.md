@@ -19,17 +19,12 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_18253_11_not_null |  |
-| CHECK | 16601_18253_12_not_null |  |
-| CHECK | 16601_18253_1_not_null |  |
-| CHECK | 16601_18253_2_not_null |  |
-| CHECK | 16601_18253_3_not_null |  |
 | CHECK | chk_geoloc_srid |  |
 | FOREIGN KEY | fk_stradario_codice_postale_id | codice_postale_id |
 | FOREIGN KEY | fk_stradario_comune_id | comune_id |
 | FOREIGN KEY | fk_stradario_via_id | via_id |
 | PRIMARY KEY | pk_stradario | id |
-| UNIQUE | uq_stradario_comune_via_cp | codice_postale_id, via_id, comune_id |
+| UNIQUE | uq_stradario_comune_via_cp | comune_id, via_id, codice_postale_id |
 
 ## Indici
 | Nome | Definizione |

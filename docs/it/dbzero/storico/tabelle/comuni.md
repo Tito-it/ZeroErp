@@ -16,8 +16,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16962_16972_1_not_null |  |
-| CHECK | 16962_16972_4_not_null |  |
 | FOREIGN KEY | fk_comuni_config | comune_id, comune_id, comune_id |
 
 ## Indici

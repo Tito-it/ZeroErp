@@ -23,17 +23,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 18368_18964_13_not_null |  |
-| CHECK | 18368_18964_15_not_null |  |
-| CHECK | 18368_18964_16_not_null |  |
-| CHECK | 18368_18964_17_not_null |  |
-| CHECK | 18368_18964_18_not_null |  |
-| CHECK | 18368_18964_1_not_null |  |
-| CHECK | 18368_18964_2_not_null |  |
-| CHECK | 18368_18964_3_not_null |  |
-| CHECK | 18368_18964_4_not_null |  |
-| CHECK | 18368_18964_5_not_null |  |
-| CHECK | 18368_18964_6_not_null |  |
 | FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id, soggetto_id, soggetto_id, soggetto_id |
 | FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
 | FOREIGN KEY | fk_tipi_contatti_config | tipo_contatto_id |

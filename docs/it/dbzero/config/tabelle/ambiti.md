@@ -15,13 +15,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_16890_1_not_null |  |
-| CHECK | 16601_16890_2_not_null |  |
-| CHECK | 16601_16890_3_not_null |  |
-| CHECK | 16601_16890_4_not_null |  |
-| CHECK | 16601_16890_5_not_null |  |
-| CHECK | 16601_16890_6_not_null |  |
-| CHECK | 16601_16890_7_not_null |  |
 | PRIMARY KEY | pk_ambiti | id |
 | UNIQUE | uq_ambiti_codice | codice |
 

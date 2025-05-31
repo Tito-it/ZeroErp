@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/stati.md" %}
 # Tabella `stati`
 
 ## Campi principali
@@ -19,12 +20,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_16707_10_not_null |  |
-| CHECK | 16601_16707_11_not_null |  |
-| CHECK | 16601_16707_12_not_null |  |
-| CHECK | 16601_16707_1_not_null |  |
-| CHECK | 16601_16707_3_not_null |  |
-| CHECK | 16601_16707_9_not_null |  |
 | PRIMARY KEY | pk_stati | id |
 
 ## Indici

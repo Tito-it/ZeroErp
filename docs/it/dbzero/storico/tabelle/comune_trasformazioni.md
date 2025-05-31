@@ -15,11 +15,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16962_16984_1_not_null |  |
-| CHECK | 16962_16984_2_not_null |  |
-| CHECK | 16962_16984_3_not_null |  |
-| CHECK | 16962_16984_4_not_null |  |
-| CHECK | 16962_16984_5_not_null |  |
 | PRIMARY KEY | pk_comune_trasformazioni | id |
 
 ## Indici

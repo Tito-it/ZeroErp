@@ -15,12 +15,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 18368_18809_10_not_null |  |
-| CHECK | 18368_18809_1_not_null |  |
-| CHECK | 18368_18809_2_not_null |  |
-| CHECK | 18368_18809_3_not_null |  |
-| CHECK | 18368_18809_6_not_null |  |
-| CHECK | 18368_18809_9_not_null |  |
 | FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id, soggetto_id, soggetto_id, soggetto_id |
 | FOREIGN KEY | fk_tipi_ruoli_config | ruolo_id, ruolo_id |
 | PRIMARY KEY | pk_soggetti_ruoli | id |

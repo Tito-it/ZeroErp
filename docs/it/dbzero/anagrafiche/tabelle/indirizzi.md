@@ -25,14 +25,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 18368_19205_14_not_null |  |
-| CHECK | 18368_19205_15_not_null |  |
-| CHECK | 18368_19205_16_not_null |  |
-| CHECK | 18368_19205_17_not_null |  |
-| CHECK | 18368_19205_1_not_null |  |
-| CHECK | 18368_19205_21_not_null |  |
-| CHECK | 18368_19205_2_not_null |  |
-| CHECK | 18368_19205_3_not_null |  |
 | CHECK | chk_indirizzi_dettaglio_exclusive |  |
 | CHECK | chk_indirizzi_fallback_required |  |
 | FOREIGN KEY | fk_codici_postali_config | codice_postale_id |
@@ -43,7 +35,7 @@
 | FOREIGN KEY | fk_tipi_indirizzo_config | tipo_indirizzo_id |
 | PRIMARY KEY | pr_indirizzi_pk | id |
 | UNIQUE | uq_indirizzi_dettaglio_unique | indirizzo_dettaglio_id, tipo_indirizzo_id, soggetto_ruolo_id |
-| UNIQUE | uq_indirizzi_libero_unique | indirizzo_libero, soggetto_ruolo_id, tipo_indirizzo_id |
+| UNIQUE | uq_indirizzi_libero_unique | tipo_indirizzo_id, soggetto_ruolo_id, indirizzo_libero |
 
 ## Indici
 | Nome | Definizione |

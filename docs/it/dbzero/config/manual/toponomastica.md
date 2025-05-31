@@ -1,5 +1,14 @@
 # 📘 Documentazione Concettuale – Tabella `config.toponomastica`
 
+>  👀 **Vedi anche** 
+
+> Approfondimento Tabelle:  
+> - [config.stati](../stati)   
+> - [config.comuni](../comuni)   
+> - [config.stradario](../stradario)        
+> - [config.stradario_generale](../stradario_generale)  
+
+
 La tabella **`config.toponomastica`** raccoglie i tipi di toponimi utilizzati per la composizione degli indirizzi: è la base per lo **`stradario_generale`**, dove ogni record di toponimo si combina con un nome specifico per generare l’indirizzo completo.
 
 ---

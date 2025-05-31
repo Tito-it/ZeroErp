@@ -15,14 +15,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_16602_1_not_null |  |
-| CHECK | 16601_16602_2_not_null |  |
-| CHECK | 16601_16602_3_not_null |  |
-| CHECK | 16601_16602_4_not_null |  |
-| CHECK | 16601_16602_5_not_null |  |
-| CHECK | 16601_16602_6_not_null |  |
-| CHECK | 16601_16602_7_not_null |  |
-| CHECK | 16601_16602_8_not_null |  |
 | PRIMARY KEY | pk_stati_pratiche | id |
 | UNIQUE | uq_stati_pratiche_cd_int_stato | cd_int_stato |
 | UNIQUE | uq_stati_pratiche_cod_stato | cod_stato |

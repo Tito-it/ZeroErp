@@ -16,17 +16,9 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_16755_1_not_null |  |
-| CHECK | 16601_16755_2_not_null |  |
-| CHECK | 16601_16755_3_not_null |  |
-| CHECK | 16601_16755_4_not_null |  |
-| CHECK | 16601_16755_5_not_null |  |
-| CHECK | 16601_16755_6_not_null |  |
-| CHECK | 16601_16755_7_not_null |  |
-| CHECK | 16601_16755_8_not_null |  |
 | FOREIGN KEY | fk_stradario_generale_toponomastica_id | toponomastica_id |
 | PRIMARY KEY | pk_stradario_generale | id |
-| UNIQUE | uq_toponomastica_descr | descrizione, toponomastica_id |
+| UNIQUE | uq_toponomastica_descr | toponomastica_id, descrizione |
 
 ## Indici
 | Nome | Definizione |

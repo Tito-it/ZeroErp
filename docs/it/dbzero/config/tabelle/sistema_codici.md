@@ -20,11 +20,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_18439_1_not_null |  |
-| CHECK | 16601_18439_2_not_null |  |
-| CHECK | 16601_18439_4_not_null |  |
-| CHECK | 16601_18439_6_not_null |  |
-| CHECK | 16601_18439_9_not_null |  |
 | PRIMARY KEY | pk_sistema_codici | id |
 | UNIQUE | uq_sistema_codici_codice_tipo | codice_tipo |
 

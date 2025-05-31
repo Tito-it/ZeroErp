@@ -79,6 +79,8 @@ def gen_table_md(schema, table, cur):
           ON tc.constraint_name = kcu.constraint_name
          AND tc.table_schema = kcu.table_schema
         WHERE tc.table_schema=%s AND tc.table_name=%s
+        AND NOT (tc.constraint_type = 'CHECK' AND 
+                tc.constraint_name LIKE '%%_not_null') 
         GROUP BY tc.constraint_type, tc.constraint_name
         ORDER BY tc.constraint_type, tc.constraint_name
         """, (schema, table)

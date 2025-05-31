@@ -25,10 +25,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16962_19320_1_not_null |  |
-| CHECK | 16962_19320_2_not_null |  |
-| CHECK | 16962_19320_3_not_null |  |
-| CHECK | 16962_19320_9_not_null |  |
 | FOREIGN KEY | fk_codici_postali_config | codice_postale_id, codice_postale_id |
 | FOREIGN KEY | fk_comuni_config | comune_id, comune_id, comune_id |
 | FOREIGN KEY | fk_indirizzi_anagrafiche | indirizzi_id |

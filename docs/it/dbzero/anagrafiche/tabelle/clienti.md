@@ -27,19 +27,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 18368_19754_11_not_null |  |
-| CHECK | 18368_19754_13_not_null |  |
-| CHECK | 18368_19754_14_not_null |  |
-| CHECK | 18368_19754_15_not_null |  |
-| CHECK | 18368_19754_16_not_null |  |
-| CHECK | 18368_19754_17_not_null |  |
-| CHECK | 18368_19754_18_not_null |  |
-| CHECK | 18368_19754_19_not_null |  |
-| CHECK | 18368_19754_1_not_null |  |
-| CHECK | 18368_19754_2_not_null |  |
-| CHECK | 18368_19754_4_not_null |  |
-| CHECK | 18368_19754_5_not_null |  |
-| CHECK | 18368_19754_7_not_null |  |
 | CHECK | chk_clienti_pa |  |
 | CHECK | chk_clienti_scadenza_logic |  |
 | CHECK | chk_clienti_servizio_da_fatturare |  |

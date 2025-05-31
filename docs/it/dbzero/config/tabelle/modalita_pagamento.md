@@ -14,13 +14,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_19464_1_not_null |  |
-| CHECK | 16601_19464_2_not_null |  |
-| CHECK | 16601_19464_3_not_null |  |
-| CHECK | 16601_19464_4_not_null |  |
-| CHECK | 16601_19464_5_not_null |  |
-| CHECK | 16601_19464_6_not_null |  |
-| CHECK | 16601_19464_7_not_null |  |
 | PRIMARY KEY | pk_modalita_pagamento | id |
 | UNIQUE | uq_modalita_pagamento_cod | cod_modalita |
 

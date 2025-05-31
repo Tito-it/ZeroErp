@@ -18,14 +18,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_18760_11_not_null |  |
-| CHECK | 16601_18760_12_not_null |  |
-| CHECK | 16601_18760_1_not_null |  |
-| CHECK | 16601_18760_2_not_null |  |
-| CHECK | 16601_18760_3_not_null |  |
-| CHECK | 16601_18760_5_not_null |  |
-| CHECK | 16601_18760_6_not_null |  |
-| CHECK | 16601_18760_8_not_null |  |
 | PRIMARY KEY | pk_valute | id |
 | UNIQUE | uq_cd_valuta | cd_valuta |
 | UNIQUE | uq_iso_code | iso_code |

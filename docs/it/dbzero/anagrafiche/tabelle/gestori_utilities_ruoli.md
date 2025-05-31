@@ -16,14 +16,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 18368_18857_10_not_null |  |
-| CHECK | 18368_18857_11_not_null |  |
-| CHECK | 18368_18857_1_not_null |  |
-| CHECK | 18368_18857_2_not_null |  |
-| CHECK | 18368_18857_3_not_null |  |
-| CHECK | 18368_18857_4_not_null |  |
-| CHECK | 18368_18857_7_not_null |  |
-| CHECK | 18368_18857_9_not_null |  |
 | FOREIGN KEY | fk_gestori_anagrafiche | gestore_id |
 | FOREIGN KEY | fk_tipi_ruoli_config | ruolo_id, ruolo_id |
 | FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |

@@ -35,11 +35,15 @@
 - [trgfn_stradario_upd_dlt_storico_stradario](funzioni/trgfn_stradario_upd_dlt_storico_stradario.md)
 
 ## Documentazione Manuale
+- [codici_postali](manual/codici_postali.md)
 - [comuni](manual/comuni.md)
 - [conti_contabili](manual/conti_contabili.md)
 - [fn_get_iva_override](manual/fn_get_iva_override.md)
 - [iva](manual/iva.md)
 - [iva_stati](manual/iva_stati.md)
+- [province](manual/province.md)
+- [regioni](manual/regioni.md)
+- [stati](manual/stati.md)
 - [stradario](manual/stradario.md)
 - [stradario_generale](manual/stradario_generale.md)
 - [toponomastica](manual/toponomastica.md)

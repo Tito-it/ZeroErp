@@ -15,14 +15,6 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 16601_16610_1_not_null |  |
-| CHECK | 16601_16610_2_not_null |  |
-| CHECK | 16601_16610_3_not_null |  |
-| CHECK | 16601_16610_4_not_null |  |
-| CHECK | 16601_16610_5_not_null |  |
-| CHECK | 16601_16610_6_not_null |  |
-| CHECK | 16601_16610_7_not_null |  |
-| CHECK | 16601_16610_8_not_null |  |
 | PRIMARY KEY | pk_tipi_attivita | id |
 | UNIQUE | uq_tipi_attivita_cd_int_tipo_attivita | cd_int_tipo_attivita |
 | UNIQUE | uq_tipi_attivita_cod_tipo_attivita | cod_tipo_attivita |

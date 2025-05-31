@@ -12,11 +12,7 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | 18506_18522_1_not_null |  |
-| CHECK | 18506_18522_2_not_null |  |
-| CHECK | 18506_18522_3_not_null |  |
-| CHECK | 18506_18522_4_not_null |  |
-| PRIMARY KEY | fk_index_policy_pkey | table_name, constraint_name, schema_name |
+| PRIMARY KEY | fk_index_policy_pkey | schema_name, table_name, constraint_name |
 
 ## Indici
 | Nome | Definizione |
