@@ -1,0 +1,24 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+  
+  
+  - changeSet:
+      id: 20250601-05-trgfn_stradario_upd_dlt_storico_stradario
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+      changes:
+        - sqlFile:
+            path: sql/trgfn_stradario_upd_dlt_storico_stradario.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false

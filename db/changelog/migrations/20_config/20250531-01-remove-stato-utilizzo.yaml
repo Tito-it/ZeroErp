@@ -1,0 +1,43 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+
+  # 1) Rimuove la chiave "stato_utilizzo" dal JSONB extra_country in config.province
+  - changeSet:
+      id: 20250531-01-remove-stato-utilizzo-province
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              UPDATE config.province
+                 SET extra_country = extra_country - 'stato_utilizzo';
+
+  # 2) Rimuove la chiave "stato_utilizzo" dal JSONB extra_country in config.regioni
+  - changeSet:
+      id: 20250531-02-remove-stato-utilizzo-regioni
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              UPDATE config.regioni
+                 SET extra_country = extra_country - 'stato_utilizzo';
+
+  # 3) Rimuove la chiave "stato_utilizzo" dal JSONB extra_country in config.comuni
+  - changeSet:
+      id: 20250531-03-remove-stato-utilizzo-comuni
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              UPDATE config.comuni
+                 SET extra_country = extra_country - 'stato_utilizzo';

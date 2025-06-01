@@ -6,7 +6,7 @@
 > - [config.comuni](../comuni)      
 > - [config.stradario_generale](../stradario_generale)   
 > - [config.codici_postali](../codici_postali)  
-
+> - [storico.stradario](../storico/stradario) 
 
 La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciascun comune, completando il processo di indirizzamento con informazioni di localizzazione e dettagli aggiuntivi.
 
@@ -22,7 +22,8 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
   Collega ogni via a un codice postale obbligatorio (`codice_postale_id`), gestito nella tabella `config.codici_postali`.
 * **Informazioni estese**
   Il campo `extra_info` (JSONB) permette di memorizzare dati aggiuntivi, come eventuali frazioni, indicazioni o note specifiche.
-
+* **Storicizzazione**
+  Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.stradario`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
 ---
 
 ## 🔗 Collegamenti con Altre Tabelle
@@ -33,7 +34,8 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
   Il campo `via_id` fa riferimento al catalogo neutro di prefissi e nomi delle vie.
 * **`config.codici_postali`**
   `codice_postale_id` impone il CAP di competenza per ciascuna via.
-
+* **`storico.stradario`**
+  `storico` True attiva il trigger per il salvataggio delle informazioni.
 ---
 
 ## 💡 Vantaggi Operativi

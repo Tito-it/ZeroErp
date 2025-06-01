@@ -10,3 +10,4 @@
 ## Funzioni
 
 ## Documentazione Manuale
+- [stradario](manual/stradario.md)
