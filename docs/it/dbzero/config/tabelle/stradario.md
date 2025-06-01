@@ -6,7 +6,7 @@
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.stradario_id_seq'::regclass) |
 | comune_id | integer | NO |  |
-| via_id | integer | NO |  |
+| stradario_generale_id | integer | NO |  |
 | geoloc | USER-DEFINED | YES |  |
 | extra_info | jsonb | YES |  |
 | data_insert | timestamp with time zone | YES | CURRENT_TIMESTAMP |
@@ -22,9 +22,9 @@
 | CHECK | chk_geoloc_srid |  |
 | FOREIGN KEY | fk_stradario_codice_postale_id | codice_postale_id |
 | FOREIGN KEY | fk_stradario_comune_id | comune_id |
-| FOREIGN KEY | fk_stradario_via_id | via_id |
+| FOREIGN KEY | fk_stradario_stradario_generale_id | stradario_generale_id |
 | PRIMARY KEY | pk_stradario | id |
-| UNIQUE | uq_stradario_comune_via_cp | comune_id, via_id, codice_postale_id |
+| UNIQUE | uq_stradario_comune_stradario_gen_cp | stradario_generale_id, codice_postale_id, comune_id |
 
 ## Indici
 | Nome | Definizione |
@@ -32,9 +32,9 @@
 | ix_stradario_codice_postale_id | `CREATE INDEX ix_stradario_codice_postale_id ON config.stradario USING btree (codice_postale_id)` |
 | ix_stradario_comune | `CREATE INDEX ix_stradario_comune ON config.stradario USING btree (comune_id)` |
 | ix_stradario_geoloc | `CREATE INDEX ix_stradario_geoloc ON config.stradario USING gist (geoloc)` |
-| ix_stradario_via_id | `CREATE INDEX ix_stradario_via_id ON config.stradario USING btree (via_id)` |
+| ix_stradario_stradario_generale_id | `CREATE INDEX ix_stradario_stradario_generale_id ON config.stradario USING btree (stradario_generale_id)` |
 | pk_stradario | `CREATE UNIQUE INDEX pk_stradario ON config.stradario USING btree (id)` |
-| uq_stradario_comune_via_cp | `CREATE UNIQUE INDEX uq_stradario_comune_via_cp ON config.stradario USING btree (comune_id, via_id, codice_postale_id)` |
+| uq_stradario_comune_stradario_gen_cp | `CREATE UNIQUE INDEX uq_stradario_comune_stradario_gen_cp ON config.stradario USING btree (comune_id, stradario_generale_id, codice_postale_id)` |
 
 ## Trigger
 | Nome | Timing | Evento | Azione |

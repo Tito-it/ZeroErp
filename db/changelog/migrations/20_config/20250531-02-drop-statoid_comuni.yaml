@@ -1,0 +1,35 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+
+  - changeSet:
+      id: 20250531-01-drop-stato_id-comuni
+      author: mctit
+      changes:
+        # 1) Rimuove il vincolo di foreign key su stato_id
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: comuni
+            constraintName: fk_stato
+
+        # 2) Rimuove la colonna stato_id da config.comuni
+        - dropColumn:
+            schemaName: config
+            tableName: comuni
+            columnName: stato_id
+
+  # 3) Metto un altro tag subito dopo aver ricreato il vincolo
+  - changeSet:
+      id: 20250531-02-drop-stato_id-comuni
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: release-2025-05-31_01-drop-stato_id-comuni
