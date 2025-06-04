@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/tipi_ruoli.md" %}
 # Tabella `tipi_ruoli`
 
 ## Campi principali

@@ -31,6 +31,7 @@
       <td><strong>script</strong></td>
       <td>
         Logica applicativa (viste e funzioni) legate ai processi ERP.
+        Favorisce riuso, mantenibilità e isolamento della logica.
         <ul>
           <li>Esempi: <code>vw_clienti_attivi</code>, <code>fn_calcolo_fattura()</code></li>
           <li>Include anche: <code>fn_get_stradario_by_indirizzo()</code>, etc.</li>
@@ -50,7 +51,8 @@
     <tr>
       <td><strong>storico</strong></td>
       <td>
-        Tabelle di audit/storico con versioning temporale dei dati.
+        Tabelle di audit/storico con versioning temporale dei dati. 
+        Tutte le tabelle che richiedono "storicizzazione" saranno replicate qui
         <ul>
           <li>Esempi: <code>soggetti_storico</code>, <code>contratti_storico</code></li>
           <li>Usato per audit, confronto tra versioni, report du dati storici</li>

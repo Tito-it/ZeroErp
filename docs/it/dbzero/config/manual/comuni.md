@@ -1,17 +1,17 @@
-# 📘 Documentazione Concettuale – Tabella `config.comuni`
+## 📘 Documentazione Concettuale – Tabella `config.comuni`
 
 >  👀 **Vedi anche** 
 
-> Approfondimento Tabelle:  
-> - [config.stradario](../stradario)      
-> - [config.stradario_generale](../stradario_generale)  
+> Approfondimento Tabelle:   
+>  - [config.province](../province)        
+>  - [storico.comuni](/dbzero/storico/tabelle/comuni)  
 
 
 La tabella **`config.comuni`** censisce i comuni (italiani ed esteri) all’interno di uno stato, fornendo la base per la geolocalizzazione degli indirizzi e per l’associazione con lo stradario.
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 * **Censimento dei comuni**
   Elenco dei comuni presenti in ciascuno stato, identificati da nome e collegamento gerarchico a provincia e stato.
@@ -20,10 +20,20 @@ La tabella **`config.comuni`** censisce i comuni (italiani ed esteri) all’inte
 * **Integrazione con lo stradario**
   L’associazione tra `config.stradario_generale` (prefissi e nomi delle vie) e `config.comuni` genera la tabella `config.stradario`, che contiene l’indirizzo completo con la localizzazione geografica sul comune di appartenenza.
   Utilizzata per associare i record di **`config.stradario`** al comune di appartenenza, completa il percorso di indirizzamento.
+* **Storicizzazione**
+  Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.stradario`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
 
 ---
 
-## 💡 Vantaggi Operativi
+### 🔗 Collegamenti con Altre Tabelle
+
+* **`config.province`**
+  Il campo `provincia_id` identifica al provincia di appartenenza..
+* **`storico.comune`**
+  `storico` True attiva il trigger per il salvataggio delle informazioni.
+---
+
+### 💡 Vantaggi Operativi
 
 * **Flessibilità**
   L’uso di un campo JSONB per attributi extra consente di adattare la struttura dei dati alle diverse normative nazionali senza modifiche allo schema.

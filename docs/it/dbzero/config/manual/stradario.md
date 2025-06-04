@@ -1,4 +1,4 @@
-# 📘 Documentazione Concettuale – Tabella `config.stradario`
+## 📘 Documentazione Concettuale – Tabella `config.stradario`
 
 >  👀 **Vedi anche** 
 
@@ -12,7 +12,7 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 * **Mappa comunale delle vie**
   Contiene l’elenco delle strade e vie di ogni comune, con riferimento al prefisso e al nome forniti da `config.stradario_generale`.
@@ -24,9 +24,10 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
   Il campo `extra_info` (JSONB) permette di memorizzare dati aggiuntivi, come eventuali frazioni, indicazioni o note specifiche.
 * **Storicizzazione**
   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.stradario`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
+  
 ---
 
-## 🔗 Collegamenti con Altre Tabelle
+### 🔗 Collegamenti con Altre Tabelle
 
 * **`config.comuni`**
   Il campo `comune_id` identifica il comune di appartenenza, instaurando la relazione tra strade e territorio.
@@ -38,7 +39,7 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
   `storico` True attiva il trigger per il salvataggio delle informazioni.
 ---
 
-## 💡 Vantaggi Operativi
+### 💡 Vantaggi Operativi
 
 * **Copertura completa del territorio**
   Permette di mappare ogni strada all’interno del comune, gestendo situazioni di vie duplicate con CAP diversi.

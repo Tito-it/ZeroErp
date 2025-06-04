@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/sistema_codici.md" %}
 # Tabella `sistema_codici`
 
 ## Campi principali

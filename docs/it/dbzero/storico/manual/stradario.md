@@ -1,15 +1,15 @@
-# 📘 Documentazione Concettuale – Tabella `storico.stradario`
+## 📘 Documentazione Concettuale – Tabella `storico.stradario`
 
 >  👀 **Vedi anche** 
 
 > Approfondimento Tabelle:  
-> - [config.stradario](../config/stradario)    
+> - [config.stradario](/dbzero/config/tabelle/stradario)    
 
 La tabella **`storico.stradario`** archivia la cronologia delle modifiche alle vie presenti in `config.stradario`, consentendo di tracciare l’evoluzione degli indirizzi nel tempo.
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 * **Storico modifiche**
   Memorizza ogni cambiamento sulle vie (aggiunta, modifica, cancellazione) registrato in `config.stradario`, garantendo la tracciabilità storica.
@@ -20,7 +20,7 @@ La tabella **`storico.stradario`** archivia la cronologia delle modifiche alle v
 
 ---
 
-## 🔄 Meccanismo di Popolamento
+### 🔄 Meccanismo di Popolamento
 
 * **Trigger su `config.stradario`**
   Ogni volta che un record viene aggiornato o cancellato in `config.stradario`, e il flag `storicizza` è **true**, il trigger copia i valori principali nella tabella storica, includendo:
@@ -32,7 +32,7 @@ La tabella **`storico.stradario`** archivia la cronologia delle modifiche alle v
 
 ---
 
-## 💡 Vantaggi Operativi
+### 💡 Vantaggi Operativi
 
 * **Tracciabilità completa**
   Ogni modifica di indirizzo è immortalata con dettagli significativi, facilitando audit e report storici.

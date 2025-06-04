@@ -10,4 +10,5 @@
 ## Funzioni
 
 ## Documentazione Manuale
+- [comuni](manual/comuni.md)
 - [stradario](manual/stradario.md)

@@ -75,18 +75,3 @@ Utilizzata per:
 
 ---
 
-## 🏗️ Struttura degli schemi
-
-Abbiamo stabilito di organizzare logicamente il database PostgreSQL con:
-
-### 🟦 `script` (nuovo schema)
-- Contiene **funzioni**, **procedure** e **view** centralizzate
-- Favorisce riuso, mantenibilità e isolamento della logica
-
-### 🟫 `storico` (schema storico)
-- Tutte le tabelle che richiedono **storicizzazione** saranno replicate qui
-- Include tabelle con campi `valid_from`, `valid_to`, `stato`
-- Garantisce tracciabilità dei cambiamenti territoriali e normativi
-
-> Questa struttura favorisce la chiarezza e la separazione delle responsabilità tra dati attivi e dati storici o computazionali.
-

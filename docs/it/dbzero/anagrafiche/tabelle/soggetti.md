@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | uuid | NO | gen_random_uuid() |
-| codice | text | YES |  |
+| codice_soggetto | text | YES |  |
 | ragione_sociale | text | YES |  |
 | cognome | text | YES |  |
 | nome | text | YES |  |
@@ -41,7 +41,7 @@
 | FOREIGN KEY | fk_stati_config | stato_id, stato_id |
 | PRIMARY KEY | pk_soggetto | id |
 | UNIQUE | key_soggetto_idstato_id_fiscale_univoco | stato_id, id_fiscale_univoco_cf_piva |
-| UNIQUE | key_soggetto_soggetto_codice | codice |
+| UNIQUE | key_soggetto_soggetto_codice | codice_soggetto |
 
 ## Indici
 | Nome | Definizione |
@@ -52,15 +52,16 @@
 | idx_ragione_sociale_completa | `CREATE INDEX idx_ragione_sociale_completa ON anagrafiche.soggetti USING btree (ragione_sociale_completa)` |
 | idx_soggetti_default_contatto | `CREATE INDEX idx_soggetti_default_contatto ON anagrafiche.soggetti USING btree (default_contatto_id)` |
 | key_soggetto_idstato_id_fiscale_univoco | `CREATE UNIQUE INDEX key_soggetto_idstato_id_fiscale_univoco ON anagrafiche.soggetti USING btree (stato_id, id_fiscale_univoco_cf_piva)` |
-| key_soggetto_soggetto_codice | `CREATE UNIQUE INDEX key_soggetto_soggetto_codice ON anagrafiche.soggetti USING btree (codice)` |
+| key_soggetto_soggetto_codice | `CREATE UNIQUE INDEX key_soggetto_soggetto_codice ON anagrafiche.soggetti USING btree (codice_soggetto)` |
 | pk_soggetto | `CREATE UNIQUE INDEX pk_soggetto ON anagrafiche.soggetti USING btree (id)` |
 
 ## Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_soggetti_ins_genera_cdsoggetto | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_genera_cdsoggetto()` |
-| trg_soggetti_ins_upd_check_soggetto_contatti | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |
 | trg_soggetti_ins_upd_check_soggetto_contatti | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |
+| trg_soggetti_ins_upd_check_soggetto_contatti | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |
+| trg_soggetti_ins_upd_genera_cdsoggetto | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto()` |
+| trg_soggetti_ins_upd_genera_cdsoggetto | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto()` |
 | trg_soggetti_ins_upd_valida_piva_cdfiscale | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_valida_piva_cdfiscale()` |
 | trg_soggetti_ins_upd_valida_piva_cdfiscale | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_valida_piva_cdfiscale()` |
 | trg_upd_soggetti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
