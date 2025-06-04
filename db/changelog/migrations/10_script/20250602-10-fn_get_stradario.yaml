@@ -7,14 +7,36 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 
+## Attenzione: per un mio errore questa file andava in errore nella CI.
+## Dopo la creazione della V2, per risolvere lascio traccia della V1
+## ma con il meccanismo inserito non sarà mai eseguita.
 
 databaseChangeLog:
-  
-  
-  # Versione 1
+  # —————————————————————————————————————————
+  # Versione 1: v1 di fn_get_stradario (saltata via MARK_RAN)
+  # —————————————————————————————————————————
   - changeSet:
       id: 20250602-10-fn_get_stradario_v1
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+
+      preconditions:
+        onFail: MARK_RAN
+        onError: HALT
+        onUpdateSQL: FAIL
+      preconditions:
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*)
+              FROM pg_proc p
+              JOIN pg_namespace n ON p.pronamespace = n.oid
+              WHERE n.nspname = 'script'
+                AND p.proname = 'fn_get_stradario'
+                AND pg_catalog.pg_get_function_identity_arguments(p.oid) = 'integer, text'
+
       changes:
         - sqlFile:
             path: sql/fn_get_stradario_v1.sql
@@ -22,7 +44,9 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
 
-# Metto un  tag fine modifiche
+  # —————————————————————————————————————————
+  # Versione 1 – Tag di checkpoint
+  # —————————————————————————————————————————
   - changeSet:
       id: 20250601-11-fn_get_stradario_v1
       author: mctit
