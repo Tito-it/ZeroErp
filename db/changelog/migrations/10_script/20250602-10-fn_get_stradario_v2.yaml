@@ -14,11 +14,14 @@ databaseChangeLog:
   - changeSet:
       id: 20250602-11-fn_get_stradario_v2
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
       changes:
         - sql:
             splitStatements: false
             sql: |
-              DROP FUNCTION IF EXISTS script.fn_get_stradario;  
+              DROP FUNCTION IF EXISTS script.fn_get_stradario(integer, text);
         - sqlFile:
             path: sql/fn_get_stradario_v2.sql
             relativeToChangelogFile: true
