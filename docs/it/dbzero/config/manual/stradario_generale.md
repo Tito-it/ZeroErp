@@ -1,4 +1,4 @@
-# 📘 Documentazione Concettuale – Tabella `config.stradario_generale`
+## 📘 Documentazione Concettuale – Tabella `config.stradario_generale`
 
 >  👀 **Vedi anche** 
 
@@ -12,7 +12,7 @@ La tabella **`config.stradario_generale`** elenca i nomi delle vie, strade e pia
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 * **Composizione del toponimo**
   Unisce il prefisso toponomastico (es. `VIA`, `PIAZZA`) al nome specifico (es. `Garibaldi`, `Roma`) per formare la descrizione completa.
@@ -23,7 +23,7 @@ La tabella **`config.stradario_generale`** elenca i nomi delle vie, strade e pia
 
 ---
 
-## 💡 Vantaggi Operativi
+### 💡 Vantaggi Operativi
 
 * **Standardizzazione dei nomi**
   Assicura che tutte le vie e piazze abbiano una descrizione uniforme, evitando varianti e duplicazioni.

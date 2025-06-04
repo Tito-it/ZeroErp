@@ -1,4 +1,4 @@
-# 📘 Documentazione Concettuale – Tabella `config.stati`
+## 📘 Documentazione Concettuale – Tabella `config.stati`
 
 >  👀 **Vedi anche** 
 
@@ -13,7 +13,7 @@ La tabella **`config.stati`** censisce gli stati (o paesi), fornendo codici uffi
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 * **Elenco degli stati/paesi**
   Contiene tutte le nazioni riconosciute, con sigle e codici ISO standard (ISO 3166-1 alpha-2 e alpha-3) e prefisso telefonico internazionale.
@@ -34,7 +34,7 @@ La tabella **`config.stati`** censisce gli stati (o paesi), fornendo codici uffi
 
 ---
 
-## 💡 Vantaggi Operativi
+### 💡 Vantaggi Operativi
 
 * **Unicità e interoperabilità**
   L’uso di codici ISO2 e ISO3 standard assicura che tutti i riferimenti geografici siano consistenti e compatibili con sistemi esterni (es. servizi di geolocalizzazione, normative fiscali).

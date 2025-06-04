@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/soggetti_ruoli.md" %}
 # Tabella `soggetti_ruoli`
 
 ## Campi principali

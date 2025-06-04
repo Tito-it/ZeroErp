@@ -1,108 +1,102 @@
-# 📘 Documentazione Anagrafica Soggetti - Zero ERP
+## 📘 Documentazione Concettuale – Tabella `anagrafiche.soggetti`
 
-Questa documentazione descrive le regole di progettazione e implementazione della tabella anagrafica `anagrafiche.soggetti` in **Zero ERP**.
+>  👀 **Vedi anche** 
+> Approfondimento Tabelle:  
+>  - [anagrafiche.soggetti_ruoli](../soggetti_ruoli)  
+>  - [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)    
 
----
-
-## ✅ Obiettivi dell'Anagrafica Soggetti
-
-Garantire coerenza, qualità, univocità e facilità di ricerca nelle informazioni dei soggetti (persone fisiche, giuridiche e fisiche forzate).
-
----
-
-## 📌 Struttura della Tabella
-
-### Colonne principali:
-- `tipo_soggetto` ENUM (`F`, `G`, `X`)
-  - `F`: Persona fisica
-  - `G`: Persona giuridica
-  - `X`: Persona fisica forzata (CF che a causa di riscontro devono essere forzati o enti iniziano con 8)
-
-- Campi identificativi:
-  - `codice_fiscale` (CHAR)
-  - `partita_iva` (CHAR)
-  - `ragione_sociale` (VARCHAR)
-  - `nome` (VARCHAR)
-  - `cognome` (VARCHAR)
-
-- Campi utili per conversioni:
-  - `identificativo_old` (VARCHAR)
+Questa documentazione descrive le regole di progettazione e implementazione della tabella anagrafica **`anagrafiche.soggetti`** in Zero ERP, senza ripetere la struttura SQL automatica. Contiene informazioni su vincoli, campi generati e relazioni con altre tabelle.
 
 ---
 
-## 🚩 Regole di Validazione Condizionale
+### 🎯 Scopo Principale
 
-| Tipo soggetto | Campi obbligatori                                |
-|---------------|---------------------------------------------------|
-| **F (Fisico)**| `nome`, `cognome`, `codice_fiscale`               |
-| **G (Giuridico)**| `ragione_sociale`, `partita_iva`               |
-| **X (Fisico Forzato)**| `codice_fiscale’|
+- **Coerenza dei dati**  
+  Garantire che ogni soggetto—persona fisica, giuridica o fisica forzata—sia identificato in modo univoco e validato secondo le regole aziendali.
 
-**Inoltre**, obbligatorio che almeno uno tra `codice_fiscale` e `partita_iva` sia sempre valorizzato.
+- **Univocità basata su CF/P.IVA**  
+  Utilizzare un campo generato (`id_fiscale_univoco_cf_piva`) che unisca codice fiscale e partita IVA per evitare duplicati all’interno dello stesso stato.
 
-### Esempio Constraint SQL:
-```sql
-ALTER TABLE anagrafiche.soggetti
-ADD CONSTRAINT chk_cf_o_piva
-CHECK (
-    codice_fiscale IS NOT NULL OR partita_iva IS NOT NULL
-);
-
-ALTER TABLE anagrafiche.soggetti
-ADD CONSTRAINT chk_tipo_soggetto
-CHECK (
-    (tipo_soggetto = 'F' AND nome IS NOT NULL AND cognome IS NOT NULL AND codice_fiscale IS NOT NULL) OR
-    (tipo_soggetto = 'G' AND ragione_sociale IS NOT NULL AND partita_iva IS NOT NULL) OR
-    (tipo_soggetto = 'X' AND codice_fiscale  is not null ')
-);
-```
+- **Ricerca semplificata**  
+  Creare un campo generato (`ragione_sociale_completa`) che unisca automaticamente ragione sociale, cognome e nome, facilitando le query di ricerca testuale.
 
 ---
 
-## 🔗 Campo Identificativo Univoco
+### 🔗 Collegamenti con Altre Tabelle
 
-Per garantire l'univocità assoluta del soggetto in base al `codice_fiscale` o `partita_iva`, è stato aggiunto un campo generato automaticamente:
+- **`config.comuni`**  
+  - Il campo `comune_id` fa riferimento a `config.comuni(id)`.  
+  - Se un comune viene eliminato, la cancellazione è vietata finché esistono riferimenti (`ON DELETE RESTRICT`).  
+  - Se l’ID di un comune cambia, si propaga la modifica (`ON UPDATE CASCADE`).
 
-```sql
-ALTER TABLE anagrafiche.soggetti
-ADD COLUMN identificativo_univoco TEXT GENERATED ALWAYS AS (
-    COALESCE(codice_fiscale, partita_iva)
-) STORED UNIQUE;
-```
+- **`anagrafiche.contatti`**  
+  - Il campo `default_contatto_id` fa riferimento a `anagrafiche.contatti(id)`.  
+  - Ogni soggetto deve avere un contatto valido: la cancellazione di un contatto di default richiede una gestione manuale (`ON DELETE RESTRICT`).
 
-- PostgreSQL crea automaticamente un indice fisico su questo campo per prestazioni ottimali.
+- **`config.contatti_ruoli`**  
+  - Il campo `contatto_ruolo_id` fa riferimento a `config.contatti_ruoli(id)`.  
+  - I ruoli di contatto non possono essere eliminati se sono ancora in uso (`ON DELETE RESTRICT`); eventuali aggiornamenti si propagano (`ON UPDATE CASCADE`).
 
----
-
-## 🔍 Campo "Ragione Sociale Completa" per Ricerca
-
-Per facilitare le ricerche, è presente un campo generato automaticamente che combina `ragione_sociale` oppure `cognome` e `nome`:
-
-```sql
-ALTER TABLE anagrafiche.soggetti
-ADD COLUMN ragione_sociale_completa TEXT GENERATED ALWAYS AS (
-    COALESCE(ragione_sociale, cognome || ' ' || nome)
-) STORED;
-
-CREATE INDEX idx_ragione_sociale_completa ON anagrafiche.soggetti (ragione_sociale_completa);
-```
-
-### Esempi di comportamento:
-
-|tipo_soggetto|ragione_sociale|nome|cognome|ragione_sociale_completa (GENERATA)|
-|-------------|---------------|----|-------|-----------------------------------|
-|F|null|Mario|Rossi|Mario Rossi|
-|G|ABC srl|null|null|ABC srl|
-|X|null|null|null|null|
+- **`config.stati`**  
+  - Il campo `stato_id` fa riferimento a `config.stati(id)`.  
+  - Uno stato non può essere eliminato se esistono soggetti associati (`ON DELETE RESTRICT`); modifiche di ID si propaghino (`ON UPDATE CASCADE`).
 
 ---
 
-## 🧩 Raccomandazioni future
+### 🚩 Regole di Validazione Condizionale
 
-- Gestire dettagli ulteriori tramite codice applicativo (Django).
-- Creare API REST per integrazione front-end.
-- Aggiornare costantemente questa documentazione per ogni modifica strutturale.
+1. **Campo `tipo_soggetto`**  
+   - Valori ammessi:  
+     - `F` = Persona fisica  
+     - `G` = Persona giuridica  
+     - `X` = Persona fisica forzata (per codici fiscali “speciali” o enti particolari)
+
+2. **Check su `sesso`**  
+   - Valori ammessi:  
+     - `M` (Maschio)  
+     - `F` (Femmina)  
+     - `S` (Soggetto generico)  
+     - `X` (Non indicato)
+
+3. **Vincolo di presenza di CF o P.IVA**  
+   Almeno uno tra `codice_fiscale` o `partita_iva` deve essere valorizzato.
+
+4. **Coerenza tra `tipo_soggetto` e campi anagrafici**  
+   - Se `tipo_soggetto = 'F'`, devono essere presenti `nome`, `cognome` e `codice_fiscale`.  
+   - Se `tipo_soggetto = 'G'`, devono essere presenti `ragione_sociale` e `partita_iva`.  
+   - Se `tipo_soggetto = 'X'`, deve essere presente almeno `codice_fiscale`.
+
+5. **Ulteriore coerenza per soggetti di tipo “X”**  
+   Se `tipo_soggetto = 'X'`, deve esserci almeno `ragione_sociale` oppure entrambi `cognome` e `nome`.
 
 ---
 
-> 🧠 **"Dati ordinati oggi, facilità di gestione domani."**
+### 🔍 Campi Generati e Indicizzazione
+
+- **`id_fiscale_univoco_cf_piva`** (colonna generata)  
+  - Definito come `COALESCE(codice_fiscale, partita_iva)`.  
+  - Garantisce l’univocità del soggetto all’interno dello stesso stato.
+
+- **`ragione_sociale_completa`** (colonna generata)  
+  - Definito come `COALESCE(ragione_sociale, (cognome || ' ' || nome))`.  
+  - Studiato per semplificare le ricerche testuali senza concatenare manualmente valori.
+
+---
+
+### 💡 Vantaggi Operativi
+
+- **Univocità e integrità dei dati**  
+  Grazie al campo generato `id_fiscale_univoco_cf_piva` abbinato a `stato_id`, si evita la duplicazione di soggetti con lo stesso CF o P.IVA per uno stesso stato.
+
+- **Ricerca efficiente**  
+  Il campo `ragione_sociale_completa` consente ricerche full-text immediate, sia per persone fisiche sia per aziende, migliorando le performance delle query.
+
+- **Riduzione delle inconsistenze**  
+  I vincoli condizionali su `tipo_soggetto`, `sesso` e CF/P.IVA catturano automaticamente eventuali inserimenti errati, riducendo la necessità di controlli manuali in fase applicativa.
+
+- **Facilità di manutenzione**  
+  Separando le informazioni “statiche” dall’anagrafica generica e sfruttando colonne generate, si evita di duplicare logiche di concatenamento o controlli sui dati, semplificando eventuali evoluzioni future.
+
+---
+
+> 🧠 **“Un’Anagrafica Soggetti solida e coerente: controlli condizionali e campi generati assicurano dati puliti, ricercabili e univoci, senza dover ripetere informazioni in fase applicativa.”**

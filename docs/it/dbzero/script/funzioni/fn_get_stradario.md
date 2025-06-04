@@ -8,7 +8,7 @@ CREATE FUNCTION fn_get_stradario(p_comune_id integer, p_indirizzo text)
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_stradario(p_comune_id integer DEFAULT NULL::integer, p_indirizzo text DEFAULT ''::text)
- RETURNS TABLE(stradario_id integer, via_id integer, toponomastica_id integer, descrizione_toponomastica character varying, sigla_stato character varying, descrizione_via character varying, descrizione_breve character varying, cod_postale character varying, comune character varying, provincia character varying, geoloc geometry, descrizione_completa text)
+ RETURNS TABLE(stradario_id integer, via_id integer, toponomastica_id integer, descrizione_toponomastica character varying, sigla_stato character varying, descrizione_via character varying, descrizione_breve character varying, cod_postale character, comune character varying, provincia character, geoloc geometry, descrizione_completa text)
  LANGUAGE plpgsql
 AS $function$
 BEGIN
@@ -30,7 +30,7 @@ BEGIN
       CONCAT_WS(' ', t.descrizione, v.descrizione) 
                                AS descrizione_completa
     FROM config.stradario s
-      JOIN config.stradario_generale v  ON s.via_id = v.id
+      JOIN config.stradario_generale v  ON s.stradario_generale_id = v.id
       JOIN config.toponomastica t       ON v.toponomastica_id = t.id
       JOIN config.comuni c              ON s.comune_id = c.id
       JOIN config.province pr           ON c.provincia_id = pr.id
@@ -52,9 +52,9 @@ BEGIN
       st.sigla_stato            AS sigla_stato,
       v.descrizione             AS descrizione_via,
       v.descrizione_breve       AS descrizione_breve,
-      ''::character varying     AS cod_postale,
+      ''::character             AS cod_postale,
       ''::character varying     AS comune,
-      ''::character varying     AS provincia,
+      ''::character             AS provincia,
       NULL::geometry            AS geoloc,
       CONCAT_WS(' ', t.descrizione, v.descrizione)
                                AS descrizione_completa

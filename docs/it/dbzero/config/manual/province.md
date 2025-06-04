@@ -1,4 +1,4 @@
-# 📘 Documentazione Concettuale – Tabella `config.province`
+## 📘 Documentazione Concettuale – Tabella `config.province`
 
 >  👀 **Vedi anche** 
 
@@ -11,7 +11,7 @@ La tabella **`config.province`** censisce le province all’interno di uno stato
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 * **Elenco delle province**
   Contiene tutte le province di uno stato (es. in Italia: RM, MI, FI), con sigla e nome descrittivo.
@@ -27,7 +27,7 @@ La tabella **`config.province`** censisce le province all’interno di uno stato
 
 ---
 
-## 💡 Vantaggi Operativi
+### 💡 Vantaggi Operativi
 
 * **Gerarchia geografica coerente**
   Integrando `config.province` con `config.regioni` e `config.stati`, si ottiene una struttura top-down di stati→regioni→province, fondamentale per reportistica territoriale e logistica.

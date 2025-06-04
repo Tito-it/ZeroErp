@@ -1,10 +1,10 @@
-# 📘 Documentazione Concettuale – Tabella `utilities`
+## 📘 Documentazione Concettuale – Tabella `utilities`
 
 La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si definiscono i settori funzionali dell’applicazione, sia quelli comuni a tutte le aziende sia le estensioni specifiche per ogni ramo di attività.
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 * **Definizione del settore**
   Tabella dove si definiscono i tipi di "utilities" a cui l’azienda è rivolta. Ogni record identifica un settore di business specifico: per esempio manifatturiero, gas o telecom.
@@ -13,7 +13,7 @@ La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si 
 
 ---
 
-## 🛠 Flessibilità e Configurabilità
+### 🛠 Flessibilità e Configurabilità
 
 * **Architettura modulare**
   Le funzionalità core (anagrafiche, preventivi, magazzino, fatturazione, reportistica, notifiche) costituiscono la base su cui si innestano i moduli verticali.
@@ -24,7 +24,7 @@ La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si 
 
 ---
 
-## 🚀 Modalità “Base” e Settori Verticali
+### 🚀 Modalità “Base” e Settori Verticali
 
 1. **Utility "Base"**
 
@@ -48,7 +48,7 @@ La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si 
 
 ---
 
-## 💡 Vantaggi Operativi
+### 💡 Vantaggi Operativi
 
 * **Deployment Light**
   Nessun deploy di codice richiesto per attivare o disattivare moduli: basta un update in tabella.

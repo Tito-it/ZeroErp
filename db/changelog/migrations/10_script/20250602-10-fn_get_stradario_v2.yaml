@@ -1,0 +1,35 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+
+  
+  # Versione 2 (quando modifichi la logica)
+  - changeSet:
+      id: 20250602-11-fn_get_stradario_v2
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_stradario;  
+        - sqlFile:
+            path: sql/fn_get_stradario_v2.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250602-12-fn_get_stradario_v2
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250602-12-fn_get_stradario_v1

@@ -1,4 +1,4 @@
-# 📘 Documentazione Concettuale – Tabella `config.codici_postali`
+## 📘 Documentazione Concettuale – Tabella `config.codici_postali`
 
 > 👀 **Vedi anche** 
 
@@ -11,7 +11,7 @@ La tabella **`config.codici_postali`** censisce i codici di avviamento postale (
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 * **Elenco dei codici postali**
   Per ogni comune (city/municipality), memorizza tutti i codici postali (Postal Code o ZIP Code) validi per quell’area geografica.
@@ -27,7 +27,7 @@ La tabella **`config.codici_postali`** censisce i codici di avviamento postale (
 
 ---
 
-## 💡 Vantaggi Operativi
+### 💡 Vantaggi Operativi
 
 * **Copertura capillare del territorio**
   Gestisce più CAP per un solo comune, utile per suddividere zone interne come frazioni, quartieri o uffici postali specifici.

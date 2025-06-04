@@ -21,9 +21,10 @@ theme:
     - navigation.sections
     - navigation.expand
 plugins:
-
-  - search
   - include-markdown
+      #base_path: docs
+  - search
+  
   - i18n:
       docs_structure: folder
       
@@ -35,6 +36,13 @@ plugins:
         - locale: en
           name: English
           build: true
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - admonition
+  - codehilite
+  - pymdownx.superfences
 
 nav:
   - Home: index.md
@@ -62,9 +70,3 @@ nav:
 
   - Sviluppatori:
       - API: it/dev/api.md
-
-markdown_extensions:
-  - toc:
-      permalink: true
-  - admonition
-  - pymdownx.superfences

@@ -1,4 +1,4 @@
-# 📘 Documentazione Concettuale – Tabella `config.regioni`
+## 📘 Documentazione Concettuale – Tabella `config.regioni`
 
 >  👀 **Vedi anche** 
 
@@ -10,7 +10,7 @@ La tabella **`config.regioni`** censisce le regioni (italiane e di altri stati),
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 * **Elenco delle regioni**
   Comprende tutte le regioni appartenenti a uno stato (es. in Italia: `Lazio`, `Campania`, `Sicilia`), con collegamento al rispettivo `stato_id` in **`config.stati`**.
@@ -26,7 +26,7 @@ La tabella **`config.regioni`** censisce le regioni (italiane e di altri stati),
 
 ---
 
-## 💡 Vantaggi Operativi
+### 💡 Vantaggi Operativi
 
 * **Coerenza geografica**
   Utilizzando `config.regioni` assieme a `config.province` e `config.comuni`, si ottiene una gerarchia completa dei territori, necessaria per reportistica, logistica e compliance fiscale.

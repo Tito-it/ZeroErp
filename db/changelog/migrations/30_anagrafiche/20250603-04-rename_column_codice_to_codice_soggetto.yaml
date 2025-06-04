@@ -1,0 +1,31 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+
+  
+  - changeSet:
+      id: 20250603-11-rename_column_codice_to_codice_soggetto
+      author: mctit
+      changes:
+        - renameColumn:
+            schemaName: anagrafiche
+            tableName: soggetti
+            oldColumnName: codice
+            newColumnName: codice_soggetto
+            columnDataType: TEXT
+        
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250603-90-rename_column_codice_to_codice_soggetto   
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250603-04-rename_column_codice_to_codice_soggetto

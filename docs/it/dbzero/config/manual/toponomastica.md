@@ -1,4 +1,4 @@
-# 📘 Documentazione Concettuale – Tabella `config.toponomastica`
+## 📘 Documentazione Concettuale – Tabella `config.toponomastica`
 
 >  👀 **Vedi anche** 
 
@@ -13,7 +13,7 @@ La tabella **`config.toponomastica`** raccoglie i tipi di toponimi utilizzati pe
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 * **Censimento dei toponimi**
   Elenco delle tipologie di vie, strade, piazze, viali, ecc., utilizzate come prefisso negli indirizzi.
@@ -25,7 +25,7 @@ La tabella **`config.toponomastica`** raccoglie i tipi di toponimi utilizzati pe
 ---
 
 
-## 💡 Vantaggi Operativi
+### 💡 Vantaggi Operativi
 
 * **Standardizzazione degli indirizzi**
   Assicura coerenza nella definizione dei prefissi toponomastici, evitando errori di inserimento.
