@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/dati_societari.md" %}
 # Tabella `dati_societari`
 
 ## Campi principali

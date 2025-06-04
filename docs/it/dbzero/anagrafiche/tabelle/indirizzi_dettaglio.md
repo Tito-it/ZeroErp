@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/indirizzi_dettaglio.md" %}
 # Tabella `indirizzi_dettaglio`
 
 ## Campi principali

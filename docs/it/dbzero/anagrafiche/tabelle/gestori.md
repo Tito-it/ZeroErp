@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/gestori.md" %}
 # Tabella `gestori`
 
 ## Campi principali

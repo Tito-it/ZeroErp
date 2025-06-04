@@ -2,7 +2,8 @@
 
 >  👀 **Vedi anche** 
 > Approfondimento Tabelle:  
->  - [anagrafiche.soggetti_ruoli](../soggetti_ruoli)  
+>  - [anagrafiche.soggetti_ruoli](../soggetti_ruoli) 
+>  - [anagrafiche.dati_societari](../dati_societari)   
 >  - [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)    
 
 Questa documentazione descrive le regole di progettazione e implementazione della tabella anagrafica **`anagrafiche.soggetti`** in Zero ERP, senza ripetere la struttura SQL automatica. Contiene informazioni su vincoli, campi generati e relazioni con altre tabelle.
@@ -19,6 +20,9 @@ Questa documentazione descrive le regole di progettazione e implementazione dell
 
 - **Ricerca semplificata**  
   Creare un campo generato (`ragione_sociale_completa`) che unisca automaticamente ragione sociale, cognome e nome, facilitando le query di ricerca testuale.
+
+- **Dettagli societari**  
+  Le informazioni dettagliate per le aziende vengono descritti nella tabella `anagrafiche.dati_societari` 
 
 ---
 

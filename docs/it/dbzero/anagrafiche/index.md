@@ -27,5 +27,8 @@
 - [trgfn_soggetti_ins_upd_valida_piva_cdfiscale](funzioni/trgfn_soggetti_ins_upd_valida_piva_cdfiscale.md)
 
 ## Documentazione Manuale
+- [dati_societari](manual/dati_societari.md)
+- [gestori](manual/gestori.md)
+- [indirizzi_dettaglio](manual/indirizzi_dettaglio.md)
 - [soggetti](manual/soggetti.md)
 - [soggetti_ruoli](manual/soggetti_ruoli.md)
