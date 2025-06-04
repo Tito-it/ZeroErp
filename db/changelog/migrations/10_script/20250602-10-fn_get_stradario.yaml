@@ -22,11 +22,11 @@ databaseChangeLog:
       validCheckSums:
         - ANY
 
-      preconditions:
+      preConditions:
         onFail: MARK_RAN
         onError: HALT
         onUpdateSQL: FAIL
-      preconditions:
+      preConditions:
         - sqlCheck:
             expectedResult: "1"
             sql: >
