@@ -8,7 +8,6 @@
 # ------------------------------------------------------------
 
 databaseChangeLog:
-
   
   # Versione 2 (quando modifichi la logica)
   - changeSet:
@@ -27,7 +26,6 @@ databaseChangeLog:
             relativeToChangelogFile: true
             splitStatements: false
             stripComments: false
-
 
 # Metto un  tag fine modifiche
   - changeSet:

@@ -15,12 +15,12 @@ databaseChangeLog:
   # —————————————————————————————————————————
   # Versione 1: v1 di fn_get_stradario (saltata via MARK_RAN)
   # —————————————————————————————————————————
-  - changeSet:
-      id: 20250602-10-fn_get_stradario_v1
-      author: mctit
-      runOnChange: true
-      validCheckSums:
-        - ANY
+  #- changeSet:
+  #    id: 20250602-10-fn_get_stradario_v1
+  #    author: mctit
+  #    runOnChange: true
+  #    validCheckSums:
+  #      - ANY
 
   #    preConditions:
   #      onFail: MARK_RAN
@@ -50,6 +50,10 @@ databaseChangeLog:
   - changeSet:
       id: 20250601-11-fn_get_stradario_v1
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+
       changes:
         - tagDatabase:
             tag: 20250601-11-fn_get_stradario_v1
