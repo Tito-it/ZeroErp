@@ -22,27 +22,27 @@ databaseChangeLog:
       validCheckSums:
         - ANY
 
-      preConditions:
-        onFail: MARK_RAN
-        onError: HALT
-        onUpdateSQL: FAIL
-      preConditions:
-        - sqlCheck:
-            expectedResult: "1"
-            sql: >
-              SELECT count(*)
-              FROM pg_proc p
-              JOIN pg_namespace n ON p.pronamespace = n.oid
-              WHERE n.nspname = 'script'
-                AND p.proname = 'fn_get_stradario'
-                AND pg_catalog.pg_get_function_identity_arguments(p.oid) = 'integer, text'
+  #    preConditions:
+  #      onFail: MARK_RAN
+  #      onError: HALT
+  #      onUpdateSQL: FAIL
+     
+  #      - sqlCheck:
+  #          expectedResult: "1"
+  #          sql: >
+  #            SELECT count(*)
+  #            FROM pg_proc p
+  #            JOIN pg_namespace n ON p.pronamespace = n.oid
+  #            WHERE n.nspname = 'script'
+  #              AND p.proname = 'fn_get_stradario'
+  #              AND pg_catalog.pg_get_function_identity_arguments(p.oid) = 'integer, text'
 
-      changes:
-        - sqlFile:
-            path: sql/fn_get_stradario_v1.sql
-            relativeToChangelogFile: true
-            splitStatements: false
-            stripComments: false
+  #    changes:
+  #      - sqlFile:
+  #          path: sql/fn_get_stradario_v1.sql
+  #          relativeToChangelogFile: true
+  #          splitStatements: false
+  #          stripComments: false
 
   # —————————————————————————————————————————
   # Versione 1 – Tag di checkpoint
