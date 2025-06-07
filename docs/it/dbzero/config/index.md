@@ -41,6 +41,7 @@
 - [fn_get_iva_override](manual/fn_get_iva_override.md)
 - [iva](manual/iva.md)
 - [iva_stati](manual/iva_stati.md)
+- [messaggi_errore](manual/messaggi_errore.md)
 - [province](manual/province.md)
 - [regioni](manual/regioni.md)
 - [sistema_codici](manual/sistema_codici.md)

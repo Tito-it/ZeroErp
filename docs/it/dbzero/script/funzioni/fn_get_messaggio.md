@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_get_messaggio.md" %}
 # Funzione `fn_get_messaggio`
 
 ```sql
@@ -15,13 +16,11 @@ AS $function$
 DECLARE
   tmpl TEXT;
 BEGIN
-
--- Restituisce il testo messaggio
-
+  -- Restituisce il testo messaggio
   SELECT messaggio INTO tmpl
     FROM config.messaggi_errore
-   WHERE codice = p_codice
-     AND lingua = p_lingua;
+  WHERE codice = p_codice
+    AND lingua = p_lingua;
 
   IF tmpl IS NULL THEN
     RETURN '[MESSAGGIO NON DEFINITO: ' || p_codice || ']';

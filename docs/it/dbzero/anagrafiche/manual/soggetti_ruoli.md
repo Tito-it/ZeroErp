@@ -6,6 +6,8 @@
 >  - [anagrafiche.soggetti](../soggetti)  
 > - [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)    
 
+> Approfondimento trigger e funzioni:   
+> - [script.tipi_ruoli](/dbzero/script/funzioni/fn_check_ins_soggetto_ruolo)
 
 La tabella **`anagrafiche.soggetti_ruoli`** funge da collegamento (linking table) tra i soggetti registrati nel sistema e i ruoli definiti in `config.tipi_ruoli`, permettendo di assegnare a ciascun soggetto - individuo o azienda - uno o più ruoli specifici all’interno del software Zero ERP.
 

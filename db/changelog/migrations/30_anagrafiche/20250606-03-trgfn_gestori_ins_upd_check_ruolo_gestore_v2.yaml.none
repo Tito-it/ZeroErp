@@ -1,0 +1,36 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+
+  - changeSet:
+      id: 20250606-13-trgfn_gestori_ins_upd_check_ruolo_gestore_v2
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore();
+        - sqlFile:
+            path: sql/trgfn_gestori_ins_upd_check_ruolo_gestore_v2.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250602-90-trgfn_gestori_ins_upd_check_ruolo_gestore_v2
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250602-03-trgfn_gestori_ins_upd_check_ruolo_gestore_v2

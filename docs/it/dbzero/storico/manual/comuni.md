@@ -1,4 +1,4 @@
-# 📘 Documentazione Concettuale – Tabella `storico.comuni`
+## 📘 Documentazione Concettuale – Tabella `storico.comuni`
 
 >  👀 **Vedi anche** 
 
@@ -10,7 +10,7 @@ La tabella **`storico.comuni`** conserva la cronologia delle modifiche ai comuni
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 * **Archiviazione storica**
   Riproduce lo schema di `config.comuni` per mantenere la storia completa di ogni record quando il flag `storicizza` è impostato a **true**.
@@ -23,7 +23,7 @@ La tabella **`storico.comuni`** conserva la cronologia delle modifiche ai comuni
 
 ---
 
-## 🔄 Meccanismo di Popolamento
+### 🔄 Meccanismo di Popolamento
 
 * **Replica della struttura**
   `storico.comuni` presenta le stesse colonne di `config.comuni` (inclusi i nuovi campi come `provincia_id`), più i campi di date di validità (se previsti) per tracciare il periodo di efficacia.
@@ -40,7 +40,7 @@ La tabella **`storico.comuni`** conserva la cronologia delle modifiche ai comuni
 
 ---
 
-## 💡 Vantaggi Operativi
+### 💡 Vantaggi Operativi
 
 * **Tracciabilità completa**
   Permette di ricostruire l’evoluzione amministrativa dei comuni, analizzando modifiche, abilitazioni/disabilitazioni e variazioni di gerarchie territoriali.

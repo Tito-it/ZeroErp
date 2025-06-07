@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/messaggi_errore.md" %}
 # Tabella `messaggi_errore`
 
 ## Campi principali
