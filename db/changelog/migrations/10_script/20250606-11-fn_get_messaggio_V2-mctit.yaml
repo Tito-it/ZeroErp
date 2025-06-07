@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  # Versione 2 della funzione fn_get_messaggio
+  - changeSet:
+      id: 20250606-11-fn_get_messaggio_v2
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_messaggio(text, text, text);
+              CREATE OR REPLACE FUNCTION script.fn_get_messaggio(
+                p_codice text,
+                p_valore text DEFAULT NULL::text,
+                p_lingua text DEFAULT 'it'::text)
+                  RETURNS text
+                  LANGUAGE 'plpgsql'
+                  COST 100
+                  IMMUTABLE PARALLEL UNSAFE
+              AS $BODY$
+              DECLARE
+                tmpl TEXT;
+              BEGIN
+                -- Restituisce il testo messaggio
+                SELECT messaggio INTO tmpl
+                  FROM config.messaggi_errore
+                WHERE codice = p_codice
+                  AND lingua = p_lingua;
+
+                IF tmpl IS NULL THEN
+                  RETURN '[MESSAGGIO NON DEFINITO: ' || p_codice || ']';
+                END IF;
+
+                IF p_valore IS NOT NULL THEN
+                  RETURN REPLACE(tmpl, '%', p_valore);
+                ELSE
+                  RETURN tmpl;
+                END IF;
+              END;
+              $BODY$;
+
+              COMMENT ON FUNCTION script.fn_get_messaggio(text, text, text)
+                  IS 'Restituisce il messaggio formattato per codice, valore e lingua. Vengono sostituiti tutti i placeholder';
+
+  # Tag di fine modifica per fn_get_messaggio v2
+  - changeSet:
+      id: 20250606-90-tag-fn_get_messaggio_v2
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250606-11-fn_get_messaggio_v2

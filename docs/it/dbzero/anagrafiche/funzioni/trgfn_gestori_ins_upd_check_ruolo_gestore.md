@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_gestori_ins_upd_check_ruolo_gestore.md" %}
 # Funzione `trgfn_gestori_ins_upd_check_ruolo_gestore`
 
 ```sql
@@ -11,22 +12,20 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-DECLARE
-    codice_ruolo TEXT;
-BEGIN
--- Verifica che sia definito effettivamente come gestore
-    SELECT r.cd_int_ruolo
-    INTO codice_ruolo
-    FROM anagrafiche.soggetti_ruoli sr
-    JOIN config.tipi_ruoli r ON r.id = sr.ruolo_id
-    WHERE sr.id = NEW.soggetto_ruolo_id;
+ BEGIN
+       -- FUNCTION: 
+       --   Ogni volta che inserisco/aggiorno in gestori, gestisco la
+       --   creazione/verifica della riga corrispondente in soggetti_ruoli
+       --   alimentando poi in NEW.soggetto_ruolo_id il record finale.
 
-    IF codice_ruolo IS DISTINCT FROM 'GE' THEN
-        RAISE EXCEPTION '%',
-            script.fn_get_messaggio('E_GESTORE_RUOLO_MANCANTE');
-    END IF;
-
-    RETURN NEW;
-END;
-$function$
+     -- Sostituisco NEW.soggetto_ruolo_id con l'ID vero (nuovo o esistente),
+     -- delegando completamente alla funzione generica:
+     NEW.soggetto_ruolo_id := script.fn_check_ins_soggetto_ruolo(
+                               p_soggetto_id       := NEW.soggetto_id,
+                               p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
+                               p_cd_int_ruolo      := 'GE'
+                             );
+     RETURN NEW;
+ END;
+ $function$
 ```

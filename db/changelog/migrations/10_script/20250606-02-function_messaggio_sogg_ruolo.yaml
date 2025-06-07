@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  # Versione 2 (quando modifichi la logica)
+  - changeSet:
+      id: 20250606-11-fn_get_messaggio_v2
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_messaggio(text, text, text);
+        - sqlFile:
+            path: sql/fn_get_messaggio_v2.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+
+  - changeSet:
+      id: 20250606-12-fn_check_ins_soggetto_ruolo_v2
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_ins_soggetto_ruolo(uuid, integer, character varying);
+        - sqlFile:
+            path: sql/fn_check_ins_soggetto_ruolo_v2.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+            stripComments: false
+
+
+  
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250602-90-function_messaggio_sogg_ruolo
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250602-02-function_messaggio_sogg_ruolo
