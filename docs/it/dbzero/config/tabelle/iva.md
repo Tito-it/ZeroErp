@@ -23,6 +23,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_iva_assoggettamento |  |
+| CHECK | chk_iva_assoggettamento_aliquota |  |
 | FOREIGN KEY | fk_iva_conto_acq | conto_iva_acquisti_id |
 | FOREIGN KEY | fk_iva_conto_ven | conto_iva_vendita_id |
 | FOREIGN KEY | fk_iva_natura | natura_iva_id |

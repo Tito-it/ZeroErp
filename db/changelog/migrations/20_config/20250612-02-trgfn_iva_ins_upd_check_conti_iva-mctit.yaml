@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+
+  - changeSet:
+      id: 20250612-02-trgfn_iva_ins_upd_check_conti_iva
+      author: mctit
+      comments: >
+        Crea la funzione di controllo sui conti IVA in fase di inserimento/aggiornamento
+        della tabella config.iva.
+        La funzione verifica che i conti IVA di acquisto e vendita siano rispettivamente
+        di tipo 'A' (acquisti) e 'V' (vendite).
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_iva_ins_upd_check_conti_iva()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_tipo_acq CHAR(1);
+                v_tipo_ven CHAR(1);
+              BEGIN
+                -- 
+                -- Constraint trigger per validare i conti IVA in config.iva
+                --    conto_iva_acquisti deve riferirsi a un conto di tipo A
+                --    conto_iva_vendita deve riferirsi a un conto di tipo V
+                -- Usa messaggi centralizzati in config.messaggi_errore
+                -- Schema: config
+                -- 
+                
+                -- Validazione conto acquisti
+                IF NEW.conto_iva_acquisti_id IS NOT NULL THEN
+                  SELECT tipo_conto INTO v_tipo_acq
+                    FROM config.conti_contabili
+                   WHERE id = NEW.conto_iva_acquisti_id;
+                  IF v_tipo_acq IS DISTINCT FROM 'A' THEN
+                    RAISE EXCEPTION '%', config.fn_get_messaggio('E_IVA_CONTO_ACQ_ERR');
+                  END IF;
+                END IF;
+
+                -- Validazione conto vendita
+                IF NEW.conto_iva_vendita_id IS NOT NULL THEN
+                  SELECT tipo_conto INTO v_tipo_ven
+                    FROM config.conti_contabili
+                   WHERE id = NEW.conto_iva_vendita_id;
+                  IF v_tipo_ven IS DISTINCT FROM 'V' THEN
+                    RAISE EXCEPTION '%', config.fn_get_messaggio('E_IVA_CONTO_VEN_ERR');
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_iva_ins_upd_check_conti_iva()
+                  IS 'Controlla i vincoli sui conti IVA in fase di inserimento/aggiornamento.La funzione verifica che i conti IVA di acquisto e vendita siano rispettivamente
+                   di tipo A (acquisti) e V (vendite).';  
+
+  - changeSet:
+      id: 20250612-90-trgfn_iva_ins_upd_check_conti_iva
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250612-02-trgfn_iva_ins_upd_check_conti_iva

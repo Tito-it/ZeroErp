@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/iva_natura.md" %}
 # Tabella `iva_natura`
 
 ## Campi principali
