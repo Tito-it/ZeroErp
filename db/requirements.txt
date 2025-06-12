@@ -34,7 +34,7 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.1.0
 PyYAML==6.0.2
 pyyaml_env_tag==1.1
-requests==2.32.3
+requests==2.32.4
 six==1.17.0
 urllib3==2.4.0
 virtualenv==20.31.2
