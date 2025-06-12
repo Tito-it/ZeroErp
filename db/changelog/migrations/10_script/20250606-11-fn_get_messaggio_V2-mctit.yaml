@@ -9,9 +9,9 @@
 
 databaseChangeLog:
   
-  # Versione 2 della funzione fn_get_messaggio
+  # Versione 2 (quando modifichi la logica)
   - changeSet:
-      id: 20250606-11-fn_get_messaggio_v2
+      id: 20250606-11-fn_get_messaggio_v1
       author: mctit
       runOnChange: true
       validCheckSums:
@@ -33,7 +33,13 @@ databaseChangeLog:
               DECLARE
                 tmpl TEXT;
               BEGIN
-                -- Restituisce il testo messaggio
+                /* 
+                   Restituisce il testo messaggio
+                   
+                   Viene recupearto il messaggio se non esiste si rimanda l'errore messaggio non definito  , 
+                   se esiste vengono sotituiti tutti gli eventuali placeholder con l'array
+                */
+
                 SELECT messaggio INTO tmpl
                   FROM config.messaggi_errore
                 WHERE codice = p_codice
@@ -53,11 +59,12 @@ databaseChangeLog:
 
               COMMENT ON FUNCTION script.fn_get_messaggio(text, text, text)
                   IS 'Restituisce il messaggio formattato per codice, valore e lingua. Vengono sostituiti tutti i placeholder';
+  
 
-  # Tag di fine modifica per fn_get_messaggio v2
+# Metto un  tag fine modifiche
   - changeSet:
-      id: 20250606-90-tag-fn_get_messaggio_v2
+      id: 20250602-90-fn_get_messaggio_v2
       author: mctit
       changes:
         - tagDatabase:
-            tag: 20250606-11-fn_get_messaggio_v2
+            tag: 20250602-11-fn_get_messaggio_v2

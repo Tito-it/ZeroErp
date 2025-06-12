@@ -50,5 +50,7 @@
 - [stradario_generale](manual/stradario_generale.md)
 - [tipi_ruoli](manual/tipi_ruoli.md)
 - [toponomastica](manual/toponomastica.md)
+- [trg_stradario_upd_dlt_storico_stradario](manual/trg_stradario_upd_dlt_storico_stradario.md)
+- [trgfn_stradario_upd_dlt_storico_stradario](manual/trgfn_stradario_upd_dlt_storico_stradario.md)
 - [utilities](manual/utilities.md)
 - [valute](manual/valute.md)

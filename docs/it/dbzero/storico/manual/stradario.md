@@ -1,9 +1,13 @@
 ## 📘 Documentazione Concettuale – Tabella `storico.stradario`
 
 >  👀 **Vedi anche** 
-
+>
 > Approfondimento Tabelle:  
 > - [config.stradario](/dbzero/config/tabelle/stradario)    
+>
+> Approfondimenti funzioni:   
+> - [config.trgfn_stradario_upd_dlt_storico_stradario](/dbzero/config/funzioni/trgfn_stradario_upd_dlt_storico_stradario)
+
 
 La tabella **`storico.stradario`** archivia la cronologia delle modifiche alle vie presenti in `config.stradario`, consentendo di tracciare l’evoluzione degli indirizzi nel tempo.
 

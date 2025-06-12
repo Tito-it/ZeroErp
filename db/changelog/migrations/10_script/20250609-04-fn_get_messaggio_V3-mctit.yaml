@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  # Versione 3 della funzione fn_get_messaggio
+  - changeSet:
+      id: 20250609-04-fn_get_messaggio_v3
+      author: mctit
+      comments: >
+        Versione 3 della funzione fn_get_messaggio.
+        Aggiunta la gestione del parametro p_lingua, che permette di specificare la lingua del messaggio.
+        Se non viene specificata, viene utilizzata la lingua dell'utente corrente o 'it' come fallback.
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_messaggio(text, text, text);
+              CREATE OR REPLACE FUNCTION script.fn_get_messaggio(
+                    p_codice   text,
+                    p_valore   text DEFAULT NULL,
+                    p_lingua   text DEFAULT NULL
+                )
+                RETURNS text
+                LANGUAGE plpgsql
+                IMMUTABLE PARALLEL UNSAFE
+                AS $BODY$
+                DECLARE
+                  tmpl TEXT;
+                  lingua_eff text;
+                BEGIN
+                  /* 
+                   Restituisce il testo messaggio
+                   
+                   Viene recupearto il messaggio se non esiste si rimanda l'errore messaggio non definito  , 
+                   se esiste vengono sotituiti tutti gli eventuali placeholder con l'array
+                */
+                  -- Risolvo la lingua: 
+                  --   1) quella passata, 
+                  --   2) altrimenti la GUC myapp.user_language, 
+                  --   3) altrimenti 'it'
+                  lingua_eff := coalesce(
+                    p_lingua,
+                    current_setting('myapp.user_language', true),
+                    'it'
+                  );
+
+                  SELECT messaggio INTO tmpl
+                    FROM config.messaggi_errore
+                  WHERE codice  = p_codice
+                    AND lingua  = lingua_eff;
+
+                  IF tmpl IS NULL THEN
+                    RETURN '[MESSAGGIO NON DEFINITO: ' || p_codice || ']';
+                  END IF;
+
+                  IF p_valore IS NOT NULL THEN
+                    RETURN format(tmpl, p_valore);
+                  ELSE
+                    RETURN tmpl;
+                  END IF;
+                END;
+                $BODY$;
+
+                  COMMENT ON FUNCTION script.fn_get_messaggio(text, text, text)
+                    IS 'Restituisce il messaggio formattato per codice, valore e lingua.
+                        Vengono sostituiti tutti i placeholder. Se il messaggio non è definito,
+                        restituisce un messaggio di errore predefinito.';
+
+  # Tag di fine modifica per fn_get_messaggio v3
+  - changeSet:
+      id: 20250609-90-tag-fn_get_messaggio_v3
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250609-04-fn_get_messaggio_v3

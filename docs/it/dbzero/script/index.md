@@ -23,3 +23,4 @@
 - [fn_get_messaggio](manual/fn_get_messaggio.md)
 - [fn_get_stradario](manual/fn_get_stradario.md)
 - [trgfn_lock_columns](manual/trgfn_lock_columns.md)
+- [trgfn_upd_audit_data_user_generic](manual/trgfn_upd_audit_data_user_generic.md)
