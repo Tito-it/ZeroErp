@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  # Versione 2 (quando modifichi la logica)
+  - changeSet:
+      id: 20250609-02-trgfn_lock_columns_v2
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              
+
+                -- DROP FUNCTION IF EXISTS script.trgfn_lock_columns();
+
+                CREATE OR REPLACE FUNCTION script.trgfn_lock_columns()
+                    RETURNS trigger
+                    LANGUAGE 'plpgsql'
+                    COST 100
+                    VOLATILE NOT LEAKPROOF
+                AS $BODY$
+                DECLARE
+                  n_args  int := array_length(TG_ARGV,1);
+                  i       int;
+                  col     text;
+                  msgcode text;
+                  oldval  text;
+                  newval  text;
+                BEGIN
+
+                -- Scopo: Verificare per le colonne di input che il loro valore 
+                --        non sia modificabile. Attenzione passare i parametri a 
+                --		  coppie: colonna, msgcode.
+                --
+                -- Input : Array di colonne da verificare e codice relativo messaggio di errore
+                --         passare i parametri a coppie: colonna, msgcode.
+                --  
+                  IF n_args % 2 <> 0 THEN
+                  RAISE EXCEPTION '%',
+                        script.fn_get_messaggio(
+                        p_codice => 'E_ARGOMENTI_A_COPPIE'
+                        );
+                  END IF;
+
+                  FOR i IN 1..n_args BY 2 LOOP
+                    col     := TG_ARGV[i-1];
+                    msgcode := TG_ARGV[i];
+
+                    EXECUTE format('SELECT ($1).%I::text, ($2).%I::text', col, col)
+                      USING OLD, NEW INTO oldval, newval;
+
+                    IF oldval IS DISTINCT FROM newval THEN
+                      
+                    RAISE EXCEPTION '%',
+                          script.fn_get_messaggio(
+                          p_codice => 'E_COLONNA_NON_MODIFICABILE' ,
+                          p_valori => ARRAY[col]    -- qui col va in posizione %s
+                          -- p_lingua non è specificato, quindi vale 'it'
+                          );
+                    END IF;
+                  END LOOP;
+
+                  RETURN NEW;
+                END;
+                $BODY$;
+
+                COMMENT ON FUNCTION script.trgfn_lock_columns()
+                    IS 'Controlla che il valore della colonna (o colonne) non sia modificato';
+
+              
+        
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250609-900-trgfn_lock_columns_v2
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250609-02-trgfn_lock_columns_v2

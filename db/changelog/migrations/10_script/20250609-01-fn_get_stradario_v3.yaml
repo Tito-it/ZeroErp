@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  # Versione 2 (quando modifichi la logica)
+  - changeSet:
+      id: 20250609-01-fn_get_stradario_v3
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              
+              DROP FUNCTION IF EXISTS script.fn_get_stradario(integer, text);
+
+              CREATE OR REPLACE FUNCTION script.fn_get_stradario(p_comune_id integer DEFAULT NULL::integer, p_indirizzo text DEFAULT ''::text)
+                RETURNS TABLE(stradario_id integer, via_id integer, toponomastica_id integer, descrizione_toponomastica character varying, sigla_stato character varying, descrizione_via character varying, descrizione_breve character varying, cod_postale character , comune character varying, provincia character, geoloc geometry, descrizione_completa text)
+                LANGUAGE plpgsql
+                AS $function$
+                BEGIN
+                  -- Funzione per ottenere le informazioni dello stradario
+                  /* La funzione se indicato unno specifico comune restituisce le informazioni
+                      relative a tutte le vie di quel comune, altrimenti restituisce tutte le vie
+                      dello stradario_generale che contengono l'indirizzo indicato.
+                      
+                      p_comune_id: ID del comune (opzionale)
+                      p_indirizzo: stringa da cercare nell'indirizzo (opzionale)
+                     */
+
+                  IF p_comune_id IS NOT NULL THEN
+                    -- ricerca filtrata per comune
+                    RETURN QUERY
+                    SELECT
+                      s.id                      AS stradario_id,
+                      v.id                      AS via_id,
+                      t.id                      AS toponomastica_id,
+                      t.descrizione             AS descrizione_toponomastica,
+                      st.sigla_stato            AS sigla_stato,
+                      v.descrizione             AS descrizione_via,
+                      v.descrizione_breve       AS descrizione_breve,
+                      cp.codice_postale         AS cod_postale,
+                      c.descrizione             AS comune,
+                      pr.sigla                  AS provincia,
+                      s.geoloc                  AS geoloc,
+                      CONCAT_WS(' ', t.descrizione, v.descrizione) 
+                                              AS descrizione_completa
+                    FROM config.stradario s
+                      JOIN config.stradario_generale v  ON s.stradario_generale_id = v.id
+                      JOIN config.toponomastica t       ON v.toponomastica_id = t.id
+                      JOIN config.comuni c              ON s.comune_id = c.id
+                      JOIN config.province pr           ON c.provincia_id = pr.id
+                      JOIN config.codici_postali cp     ON s.codice_postale_id = cp.id
+                      LEFT JOIN config.stati st         ON t.stato_id = st.id
+                    WHERE s.comune_id = p_comune_id
+                      AND (t.descrizione || ' ' || v.descrizione)
+                          ILIKE '%' || p_indirizzo || '%'
+                    ORDER BY v.descrizione;
+
+                  ELSE
+                    -- ricerca libera su tutto lo stradario_generale
+                    RETURN QUERY
+                    SELECT
+                      NULL::integer             AS stradario_id,
+                      v.id                      AS via_id,
+                      t.id                      AS toponomastica_id,
+                      t.descrizione             AS descrizione_toponomastica,
+                      st.sigla_stato            AS sigla_stato,
+                      v.descrizione             AS descrizione_via,
+                      v.descrizione_breve       AS descrizione_breve,
+                      ''::character             AS cod_postale,
+                      ''::character varying     AS comune,
+                      ''::character             AS provincia,
+                      NULL::geometry            AS geoloc,
+                      CONCAT_WS(' ', t.descrizione, v.descrizione)
+                                              AS descrizione_completa
+                    FROM config.stradario_generale v
+                      JOIN config.toponomastica t   ON v.toponomastica_id = t.id
+                      LEFT JOIN config.stati st     ON t.stato_id = st.id
+                    WHERE (t.descrizione || ' ' || v.descrizione)
+                          ILIKE '%' || p_indirizzo || '%'
+                    ORDER BY v.descrizione;
+                  END IF;
+                END;
+                $function$;
+
+                COMMENT ON FUNCTION script.fn_get_stradario(integer, text) IS
+                  'Restituisce le informazioni dello stradario filtrate per comune e/o indirizzo.
+                   Se p_comune_id è specificato, restituisce le vie di quel comune;
+                   altrimenti restituisce tutte le vie che contengono l''indirizzo indicato.';
+        
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250609-900-fn_get_stradario_v3
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250609-01-fn_get_stradario_v3

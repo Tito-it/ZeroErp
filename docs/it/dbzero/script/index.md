@@ -21,3 +21,6 @@
 - [fn_check_ins_soggetto_ruolo](manual/fn_check_ins_soggetto_ruolo.md)
 - [fn_generate_codice](manual/fn_generate_codice.md)
 - [fn_get_messaggio](manual/fn_get_messaggio.md)
+- [fn_get_stradario](manual/fn_get_stradario.md)
+- [trgfn_lock_columns](manual/trgfn_lock_columns.md)
+- [trgfn_upd_audit_data_user_generic](manual/trgfn_upd_audit_data_user_generic.md)

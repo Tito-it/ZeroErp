@@ -1,0 +1,175 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+  
+  
+  - changeSet:
+      id: 20250610-10-trgfn_stradario_upd_dlt_storico_stradario_v2
+      author: mctit
+      comments: >
+          Genera la funzione e relativo trigger che
+          Storicizza  la tabella config.stradario su storico.stradario
+      runOnChange: true
+      validCheckSums:
+          - ANY
+      changes:
+          - sql:
+                splitStatements: false
+                sql: |
+                    -- 1) Rimuovo trigger e funzione, anche se owner è postgres
+                     DROP TRIGGER IF EXISTS trg_stradario_upd_dlt_storico_stradario 
+                      ON config.stradario CASCADE;
+                    DROP FUNCTION IF EXISTS config.trgfn_stradario_upd_dlt_storico_stradario() CASCADE;
+                    
+                    -- 2) Creo la nuova funzione
+                        CREATE OR REPLACE FUNCTION config.trgfn_stradario_upd_dlt_storico_stradario()
+                          RETURNS trigger   LANGUAGE plpgsql AS $$
+                          BEGIN
+                            IF TG_OP = 'UPDATE' AND NEW.storicizza THEN
+            
+                              -- 1) Se esiste uno snapshot aperto, lo chiudo; altrimenti lo creo da OLD
+                              IF EXISTS (
+                                SELECT 1
+                                  FROM storico.stradario
+                                 WHERE stradario_id = OLD.id
+                                   AND valid_to IS NULL
+                              ) THEN
+                                UPDATE storico.stradario
+                                   SET valid_to = CURRENT_DATE
+                                 WHERE stradario_id = OLD.id
+                                   AND valid_to   IS NULL;
+                              ELSE
+                                INSERT INTO storico.stradario (
+                                  stradario_id,
+                                  stradario_generale_id, comune_id, codice_postale_id,
+                                  descrizione_via,
+                                  geoloc, extra_info,
+                                  valid_to,
+                                  data_insert, user_insert
+                                )
+                                VALUES (
+                                  OLD.id,
+                                  OLD.stradario_generale_id, OLD.comune_id, OLD.codice_postale_id,
+                                  (SELECT descrizione
+                                     FROM config.stradario_generale
+                                    WHERE id = OLD.stradario_generale_id),
+                                  OLD.geoloc, OLD.extra_info,
+                                  CURRENT_DATE,
+                                  NOW(),
+                                  CURRENT_USER
+                                );
+                              END IF;
+            
+                              -- 2) Inserisco sempre lo snapshot NEW
+                              INSERT INTO storico.stradario (
+                                stradario_id,
+                                stradario_generale_id, comune_id, codice_postale_id,
+                                descrizione_via,
+                                geoloc, extra_info,
+                                valid_from,
+                                data_insert, user_insert
+                              )
+                              VALUES (
+                                NEW.id,
+                                NEW.stradario_generale_id, NEW.comune_id, NEW.codice_postale_id,
+                                (SELECT descrizione
+                                   FROM config.stradario_generale
+                                  WHERE id = NEW.stradario_generale_id),
+                                NEW.geoloc, NEW.extra_info,
+                                CURRENT_DATE,
+                                NOW(),
+                                CURRENT_USER
+                              );
+            
+                              -- 3) Reset del flag prima dell’UPDATE
+                              NEW.storicizza := false;
+            
+                              RETURN NEW;
+            
+                            ELSIF TG_OP = 'DELETE' THEN
+            
+                              -- 1) Se esiste uno snapshot aperto, lo chiudo; altrimenti creo uno “finale”
+                              IF EXISTS (
+                                SELECT 1
+                                  FROM storico.stradario
+                                 WHERE stradario_id = OLD.id
+                                   AND valid_to IS NULL
+                              ) THEN
+                                UPDATE storico.stradario
+                                   SET valid_to = CURRENT_DATE
+                                 WHERE stradario_id = OLD.id
+                                   AND valid_to   IS NULL;
+                              ELSE
+                                INSERT INTO storico.stradario (
+                                  stradario_id,
+                                  stradario_generale_id, comune_id, codice_postale_id,
+                                  descrizione_via,
+                                  geoloc, extra_info,
+                                  valid_to,
+                                  data_insert, user_insert
+                                )
+                                VALUES (
+                                  OLD.id,
+                                  OLD.stradario_generale_id, OLD.comune_id, OLD.codice_postale_id,
+                                  (SELECT descrizione
+                                     FROM config.stradario_generale
+                                    WHERE id = OLD.stradario_generale_id),
+                                  OLD.geoloc, OLD.extra_info,
+                                  CURRENT_DATE,
+                                  NOW(),
+                                  CURRENT_USER
+                                );
+                              END IF;
+            
+                              RETURN OLD;
+                            END IF;
+            
+                            -- Per tutte le altre operazioni (UPDATE senza flag, INSERT, ecc.)
+                            IF TG_OP = 'UPDATE' THEN
+                              RETURN NEW;
+                            ELSE
+                              RETURN OLD;
+                            END IF;
+                          END;
+                          $$;
+                        
+                          COMMENT ON FUNCTION config.trgfn_stradario_upd_dlt_storico_stradario()
+                            IS 'Storicizza  la tabella config.stradario su storico.stradario';  
+
+  - changeSet:
+      id: 20250610-03-trgfn_stradario_upd_dlt_storico_stradario_v2
+      author: mctit
+      comments: >
+        Associa il trigger
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |        
+              CREATE OR REPLACE TRIGGER trg_stradario_upd_dlt_storico_stradario
+                    BEFORE DELETE OR UPDATE 
+                    ON config.stradario
+                    FOR EACH ROW
+                    EXECUTE FUNCTION config.trgfn_stradario_upd_dlt_storico_stradario();
+                
+                COMMENT ON TRIGGER trg_stradario_upd_dlt_storico_stradario ON config.stradario
+                    IS 'Mantiene allineata la tabella storico_stradario';
+                                    
+
+          # Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250602-900-trgfn_stradario_upd_dlt_storico_stradario_v2
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250602-13-trgfn_stradario_upd_dlt_storico_stradario_v2

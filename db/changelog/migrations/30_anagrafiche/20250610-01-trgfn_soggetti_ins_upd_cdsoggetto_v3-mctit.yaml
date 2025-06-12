@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+
+  
+  - changeSet:
+      id: 20250610-01-trgfn_soggetti_ins_upd_cdsoggetto_v3
+      author: mctit
+      comments: >
+        Crea la funzione trigger anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto
+        che invoca script.fn_generate_codice('soggetto') se NEW.soggetto_codice è NULL.
+        Viene eliminata la precedente versione che conteneva tutta la logica.
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- 1) Rimuovo trigger e funzione, anche se owner è postgres
+               DROP TRIGGER IF EXISTS trg_soggetti_ins_upd_genera_cdsoggetto 
+                ON anagrafiche.soggetti CASCADE;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto() CASCADE;
+              
+              -- 2) Creo la nuova funzione
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto()
+                RETURNS trigger
+                LANGUAGE plpgsql
+                AS $$
+              BEGIN
+                /*	 Se il codice soggetto è null si richiama la funzione per la generazione automatico, 
+                    il codice sarà generato come indicato nella tabella sistema_codici 
+                */
+                IF (TG_OP = 'INSERT' OR TG_OP = 'UPDATE' ) AND NEW.codice_soggetto IS NULL THEN
+                  NEW.codice_soggetto := script.fn_generate_codice('soggetto');
+                END IF;
+                RETURN NEW;
+              END;
+              $$;
+
+               COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto()
+                    IS 'Crea la funzione trigger anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto
+                        che invoca script.fn_generate_codice(soggetto) se NEW.soggetto_codice è NULL.
+                        Viene eliminata la precedente versione che conteneva tutta la logica.';
+
+
+  - changeSet:
+      id: 20250610-02-trgfn_soggetti_ins_upd_cdsoggetto_v3
+      author: mctit
+      comments: >
+        Associa il trigger anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto
+        sulla tabella anagrafiche.soggetti per INSERT e UPDATE.
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |        
+              CREATE TRIGGER trg_soggetti_ins_upd_genera_cdsoggetto
+                BEFORE INSERT OR UPDATE ON anagrafiche.soggetti
+                FOR EACH ROW
+                EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto();
+
+
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250603-900-trgfn_soggetti_ins_upd_cdsoggetto_v3
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250603-04-trgfn_soggetti_ins_upd_cdsoggetto_v3

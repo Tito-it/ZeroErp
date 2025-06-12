@@ -3,68 +3,96 @@
 > 👀 **Vedi anche**
 
 > Approfondimenti tabelle:   
-> * [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)  
+> - [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)  
 
 
-
-La funzione **`script.fn_get_messaggio(p_codice text, p_valore text DEFAULT NULL, p_lingua text DEFAULT 'it') RETURNS text`** recupera il testo di un messaggio dalla tabella `config.messaggi_errore`, con supporto multilingua e sostituzione di placeholder.
+La funzione **`script.fn_get_messaggio(p_codice text, p_valore text DEFAULT NULL, p_lingua text DEFAULT NULL) RETURNS text`** recupera e formatta un messaggio dall’archivio centralizzato, con supporto per placeholder e internazionalizzazione.
 
 ---
 
 ### 🎯 Scopo Principale
 
 * **Centralizzare i testi**
-  Mantenere in tabella tutti i messaggi di errore e informativi, evitando di hard‑codarli nelle procedure, trigger o sorgenti SQL.
-* **Internazionalizzazione**
-  Supportare più lingue per gli stessi messaggi semplicemente tramite il parametro `p_lingua`.
+  Conservare tutti i messaggi (errori, avvisi, info) in tabella, evitando hard‑coding in trigger, procedure o sorgenti SQL.
+* **Internazionalizzazione avanzata**
+  Selezionare dinamicamente la lingua di output in base a:
+
+  1. parametro `p_lingua`
+  2. impostazione configurazione `myapp.user_language`
+  3. default `'it'`
 * **Placeholder dinamici**
-  Applicare sostituzioni dei placeholder `%s` all’interno del messaggio, consentendo di inserire uno o più valori dinamici direttamente nel template.
+  Utilizzare `format()` per sostituire i placeholder `%s` nel template con i valori runtime, abilitando messaggi parametrizzati.
 
 ---
 
 ### 🔍 Parametri di Input
 
-| Nome       | Tipo   | Descrizione                                                                                         |
-| ---------- | ------ | --------------------------------------------------------------------------------------------------- |
-| `p_codice` | `text` | Codice del messaggio da recuperare (campo `codice` in `config.messaggi_errore`).                    |
-| `p_valore` | `text` | Valore da sostituire al placeholder `%s`; se `NULL`, il messaggio viene restituito senza modifiche. |
-| `p_lingua` | `text` | Codice lingua (es. `it`, `en`); default `it`.                                                       |
+| Nome       | Tipo   | Default |Descrizione                                           |
+| ---------- | ------ | ------- |----------------------------------------------------- |
+| `p_codice` | `text` | —       | Codice del messaggio (`codice` in `config.messaggi_errore`). |
+| `p_valore` | `text` | `NULL`  | Valore da sostituire al placeholder `%s`; se `NULL`, nessuna         sostituzione viene applicata.|
+| `p_lingua` | `text` | `NULL`  | Lingua desiderata (es. `it`, `en`); se `NULL`, usa `myapp.user_language` o fallback a `it`. |
 
 ---
 
-### ⚙️ Comportamento
+### ⚙️ Comportamento Interno
 
-1. **Recupero del template**
-   Seleziona il campo `messaggio` da `config.messaggi_errore` dove `codice = p_codice` e `lingua = p_lingua`.
-2. **Messaggio non definito**
-   Se non viene trovato un record, restituisce:
+1. **Determinazione lingua effettiva**
 
-   > `[MESSAGGIO NON DEFINITO: <p_codice>]`
-3. **Sostituzione placeholder**
-   Se `p_valore` non è `NULL`, sostituisce ogni occorrenza di `%s` nel template con il contenuto di `p_valore`.
+   ```plpgsql
+   lingua_eff := coalesce(
+     p_lingua,
+     current_setting('myapp.user_language', true),
+     'it'
+   );
+   ```
+2. **Recupero del template**
+
+   ```plpgsql
+   SELECT messaggio
+     INTO tmpl
+     FROM config.messaggi_errore
+    WHERE codice = p_codice
+      AND lingua = lingua_eff;
+   ```
+3. **Messaggio non definito**
+
+   * Se `tmpl IS NULL`, restituisce:
+
+     ```text
+     [MESSAGGIO NON DEFINITO: <p_codice>]
+     ```
+4. **Sostituzione placeholder**
+
+   * Se `p_valore IS NOT NULL`, restituisce:
+
+     ```plpgsql
+     format(tmpl, p_valore)
+     ```
+   * Altrimenti restituisce `tmpl` originale.
 
 ---
 
 ### 🔒 Valore di Ritorno
 
 * **`text`**
-  Il messaggio finale, con eventuali sostituzioni di `%s` applicate.
+  Messaggio finale, con eventuale sostituzione di `%s` applicata.
 
 ---
 
 ### 💡 Vantaggi Operativi
 
 * **Manutenzione semplificata**
-  Tutti i testi sono centralizzati in una tabella, modificabili senza intervenire sul codice.
+  Modifiche ai messaggi avvengono unicamente in tabella, senza interventi su sorgenti PL/pgSQL.
 * **Coerenza e uniformità**
-  Unico punto di gestione dei messaggi applicativi, evitando duplicazioni e incongruenze.
-* **Supporto multilingua**
-  Traduzioni gestite inserendo più righe nella tabella per codici e lingue differenti.
-* **Flessibilità tramite placeholder**
-  Permette di generare messaggi contestualizzati con parametri dinamici sostituiti al posto di `%s`.
+  Un solo punto di definizione e recupero per tutti i testi applicativi.
+* **Internazionalizzazione flessibile**
+  Supporto per lingua utente tramite GUC e fallback gerarchico.
+* **Messaggi parametrizzati**
+  Placeholder `%s` sostituiti dinamicamente, per contesti runtime variabili.
 * **Best practice**
-  Separare i contenuti testuali dal codice aumenta la qualità del progetto e facilita le future estensioni.
+  Separazione tra codici di business e contenuti testuali, migliorando qualità e riusabilità.
 
 ---
 
-> 🧠 **“Centralizzare i messaggi in tabella e utilizzare placeholder `%s` rende l’applicazione più pulita, coerente e facilmente traducibile.”**
+> 🧠 **“Centralizzare e parametrizzare i messaggi in tabella con supporto multilingua e placeholder `%s` è una best practice per mantenere il codice pulito, manutenibile e traducibile.”**
