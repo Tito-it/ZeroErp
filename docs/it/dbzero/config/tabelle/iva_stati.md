@@ -16,6 +16,7 @@
 ## Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_iva_assoggettamento_aliquota_iva_stati |  |
 | CHECK | chk_iva_stati_assoggettamento_override |  |
 | FOREIGN KEY | fk_iva_stati_iva | iva_id |
 | FOREIGN KEY | fk_iva_stati_stato | stato_id |

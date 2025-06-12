@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+
+  - changeSet:
+      id: 20250612-01-add-chk-iva-assoggettamento-aliquota
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+          - ANY
+      comments: >
+          Aggiunge il vincolo di check per la tabella config.iva
+          assoggettamento iva può essere vuoto o aliquota iva può essere 0 o NULL 
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.iva
+                DROP CONSTRAINT IF EXISTS chk_iva_assoggettamento_aliquota;
+
+              ALTER TABLE config.iva
+                ADD CONSTRAINT chk_iva_assoggettamento_aliquota
+                  CHECK (
+                    assoggettamento_iva = ''
+                    OR aliquota_iva = 0
+                    OR aliquota_iva IS NULL
+                  );
+
+              COMMENT ON CONSTRAINT chk_iva_assoggettamento_aliquota
+                ON config.iva
+              IS 'Assoggettamento iva può essere vuoto o aliquota iva può essere 0 o NULL';
+
+  - changeSet:
+      id: 20250612-90-add-chk-iva-assoggettamento-aliquota
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250612-02-add-chk-iva-assoggettamento-aliquota
+
