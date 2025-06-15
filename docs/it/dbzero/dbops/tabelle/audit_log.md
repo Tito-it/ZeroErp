@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/audit_log.md" %}
 # Tabella `audit_log`
 
 ## Campi principali
@@ -11,7 +12,7 @@
 | status | text | NO |  |
 | message | text | YES |  |
 | duration_ms | integer | YES |  |
-| tx_id | uuid | NO | gen_random_uuid() |
+| tx_id | uuid | NO | (md5((txid_current())::text))::uuid |
 
 ## Vincoli
 | Tipo | Nome | Colonne |
