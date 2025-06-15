@@ -15,3 +15,8 @@
 - [fn_search_column_usage](funzioni/fn_search_column_usage.md)
 
 ## Documentazione Manuale
+- [fn_search_column_usage](manual/fn_search_column_usage.md)
+- [vw_catalogo_oggetti](manual/vw_catalogo_oggetti.md)
+- [vw_fk_senza_indice](manual/vw_fk_senza_indice.md)
+- [vw_function_list](manual/vw_function_list.md)
+- [vw_trigger_functions](manual/vw_trigger_functions.md)

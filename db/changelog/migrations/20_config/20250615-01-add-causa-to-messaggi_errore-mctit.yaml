@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+
+  - changeSet:
+      id: 20250615-01-add-causa-to-messaggi_errore
+      author: mctit
+      changes:
+        # 1) Aggiunge la colonna "causa"
+        - addColumn:
+            schemaName: config
+            tableName: messaggi_errore
+            columns:
+              - column:
+                  name: causa
+                  type: text
+                  remarks: Descrive la causa dell’errore e suggerisce come risolverlo
+
+        # 2) Aggiunge la colonna "soluzione"
+        - addColumn:
+            schemaName: config
+            tableName: messaggi_errore
+            columns:
+              - column:
+                  name: soluzione
+                  type: text
+                  remarks: Suggerimenti per la risoluzione del problema
+
+        # 3) Commenti sulle nuove colonne
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN config.messaggi_errore.causa 
+                IS 'Causa del messaggio: breve descrizione del problema riscontrato';
+              COMMENT ON COLUMN config.messaggi_errore.soluzione 
+                IS 'Suggerimenti o passi per risolvere il problema indicato nella causa';
+
+        # 4) Imposta l'owner della tabella a titodb
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.messaggi_errore
+                OWNER TO titodb;
+  - changeSet:
+      id: 20250615-90-trgfn_iva_ins_upd_check_conti_iva
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250615-01-add-causa-to-messaggi_errore

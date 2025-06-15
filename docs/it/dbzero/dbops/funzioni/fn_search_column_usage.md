@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_search_column_usage.md" %}
 # Funzione `fn_search_column_usage`
 
 ```sql
