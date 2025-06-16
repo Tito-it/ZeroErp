@@ -1,8 +1,8 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.soggetti`
 
 >  👀 **Vedi anche** 
-> Approfondimento Tabelle:  
->  - [anagrafiche.soggetti_ruoli](../soggetti_ruoli) 
+> Approfondimento Tabelle:   
+>  - [anagrafiche.soggetti_ruoli](../soggetti_ruoli)   
 >  - [anagrafiche.dati_societari](../dati_societari)   
 >  - [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)    
 
