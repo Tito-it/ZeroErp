@@ -12,6 +12,9 @@ databaseChangeLog:
   - changeSet:
       id: 20250615-01-add-causa-to-messaggi_errore
       author: mctit
+      runOnChange: true
+      validCheckSums:
+          - ANY
       changes:
         # 1) Aggiunge la colonna "causa"
         - addColumn:

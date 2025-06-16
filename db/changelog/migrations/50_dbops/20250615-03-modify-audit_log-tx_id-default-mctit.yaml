@@ -12,6 +12,9 @@ databaseChangeLog:
   - changeSet:
       id: 20250615-21-modify-audit_log-tx_id-default
       author: mctit
+      runOnChange: true
+      validCheckSums:
+          - ANY
       comments: >
         Aggiorna il default di tx_id in dbops.audit_log per usare
         (md5(txid_current()::text))::uuid anziché gen_random_uuid().
@@ -24,15 +27,15 @@ databaseChangeLog:
                 ALTER COLUMN tx_id
                 SET DEFAULT (md5(txid_current()::text))::uuid;
 
-        - sql:
-            splitStatements: false
-            stripComments: false
-            sql: |
-              -- Imposta l’owner della tabella e della sequenza al ruolo titodb
-              ALTER TABLE dbops.audit_log
-                OWNER TO titodb;
-              ALTER SEQUENCE IF EXISTS dbops.audit_log_id_seq
-                OWNER TO titodb;
+      #  - sql:
+      #     splitStatements: false
+       #     stripComments: false
+       #     sql: |
+       #       -- Imposta l’owner della tabella e della sequenza al ruolo titodb
+       #       ALTER TABLE dbops.audit_log
+       #         OWNER TO zeroerp;
+       #       ALTER SEQUENCE IF EXISTS dbops.audit_log_id_seq
+       #         OWNER TO zeroerp;
 
   - changeSet:
       id: 20250615-90-modify-audit_log-tx_id-default

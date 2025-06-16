@@ -11,9 +11,23 @@ databaseChangeLog:
   - changeSet:
       id: 20250615-01-01-restructure-messaggi_errore-pk
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+
+      preConditions:
+        onFail: MARK_RAN
+        onError: MARK_RAN
+        not:
+            - columnExists:
+                schemaName: config
+                tableName: messaggi_errore
+                columnName: id
+
       comments: >
         Aggiunge una colonna id BIGINT PK, popola i valori esistenti,
         converte la PK composita in UNIQUE(codice, lingua).
+      
       changes:
 
         # 1) Creazione della sequenza per id
@@ -76,14 +90,32 @@ databaseChangeLog:
             constraintName: uq_messaggi_errore_codice_lingua
 
         # 8) (Opzionale) Riassegna l’owner al ruolo applicativo
-        - sql:
-            splitStatements: false
-            sql: |
-              ALTER TABLE config.messaggi_errore
-                OWNER TO titodb;
-              ALTER SEQUENCE config.messaggi_errore_id_seq
-                OWNER TO titodb;
+       # - sql:
+       #     splitStatements: false
+       #     sql: |
+       #       ALTER TABLE config.messaggi_errore
+       #         OWNER TO titodb;
+       #       ALTER SEQUENCE config.messaggi_errore_id_seq
+       #         OWNER TO titodb
 
+  ################################################################
+  # 2) Sempre, sia in CI che in locale, riallinea l’owner a titodb
+  ################################################################
+  #- changeSet:
+  #    id: 20250615-02-fix-owner-messaggi_errore
+  #    author: mctit
+  #    runAlways: true
+  #    comments: >
+  #      (Solo reimposta l’owner, non tocca la struttura)
+  #    changes:
+  #      - sql:
+  #          splitStatements: false
+  #          stripComments: false
+  #          sql: |
+  #            ALTER TABLE config.messaggi_errore
+  #              OWNER TO zeroerp;
+  #            ALTER SEQUENCE IF EXISTS config.messaggi_errore_id_seq
+  #              OWNER TO zeroerp;
       rollback:
         - sql:
             splitStatements: false
