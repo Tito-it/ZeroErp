@@ -2,6 +2,7 @@
 
 ## Tabelle
 - [audit_log](tabelle/audit_log.md)
+- [error_log](tabelle/error_log.md)
 - [fk_index_policy](tabelle/fk_index_policy.md)
 
 ## Funzioni
@@ -15,3 +16,10 @@
 - [fn_search_column_usage](funzioni/fn_search_column_usage.md)
 
 ## Documentazione Manuale
+- [audit_log](manual/audit_log.md)
+- [error_log](manual/error_log.md)
+- [fn_search_column_usage](manual/fn_search_column_usage.md)
+- [vw_catalogo_oggetti](manual/vw_catalogo_oggetti.md)
+- [vw_fk_senza_indice](manual/vw_fk_senza_indice.md)
+- [vw_function_list](manual/vw_function_list.md)
+- [vw_trigger_functions](manual/vw_trigger_functions.md)

@@ -1,0 +1,124 @@
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+# 1) Crea la sequenza per la PK
+  - changeSet:
+      id: 20250615-10-table_error_log
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE SEQUENCE IF NOT EXISTS dbops.error_log_id_seq
+                START WITH 1
+                INCREMENT BY 1;
+                
+                
+  # 2) Crea la tabella dbops.error_log con colonne area, function_name, error_code, message, cause, solution, context, tx_id
+  - changeSet:
+      id: 20250615-11-table_error_log
+      author: mctit
+      comments: >
+        Crea la tabella di appoggio per log degli errori, con informazioni su area, funzione, colleggata a messaggi_errore e contesto.
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: error_log
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  defaultValueComputed: "nextval('dbops.error_log_id_seq')"
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: occurred_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: area
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: function_name
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: messaggio_errore_id
+                  type: BIGINT 
+                  constraints:
+                    nullable: false
+              - column:
+                  name: context
+                  type: JSONB
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: UUID
+                  defaultValueComputed: "(md5(txid_current()::text))::uuid"
+                  constraints:
+                    nullable: false
+      
+        - sql:
+            stripComments: false
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE dbops.error_log
+                IS 'Log centralizzato di errori, con informazioni su area, funzione, colleggata a messaggi_errore e contesto';
+              COMMENT ON COLUMN dbops.error_log.area 
+                IS 'Area di provenienza errore esempio: database, backend, frontend ';
+              COMMENT ON COLUMN dbops.error_log.function_name 
+                IS 'Nome della funzione o metodo che ha generato l’errore(trg,func,app,ecc.)';
+               
+              COMMENT ON COLUMN dbops.error_log.context 
+                IS 'parametri, valori, utente, ecc.';
+              COMMENT ON COLUMN dbops.error_log.tx_id
+                IS 'ID della transazione corrente, utile per tracciare errori in contesti transazionali'; 
+              COMMENT ON COLUMN dbops.error_log.occurred_at
+                IS 'Timestamp with time zone when the error occurred';
+              
+  # 3) Aggiunge FK su message_id
+  - changeSet:
+      id: 20250615-13-table_error_log
+      author: mctit
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: dbops
+            baseTableName: error_log
+            baseColumnNames: messaggio_errore_id
+            referencedTableSchemaName: config
+            referencedTableName: messaggi_errore
+            referencedColumnNames: id
+            constraintName: fk_error_log_messaggio_errore_id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+  # 4) Commenta la FK appena creata
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON CONSTRAINT fk_error_log_messaggio_errore_id
+                ON dbops.error_log
+                IS 'FK verso config.messaggi_errore(codice, lingua): collega il log all errore definito';
+
+  - changeSet:
+      id: 20250615-90-table_error_log
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250615-10-table_error_log

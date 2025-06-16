@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Tabella `config.iva`
+## 📘 Documentazione Concettuale – Tabella `config.iva` 
 
 > 👀 **Vedi anche**
 >

@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20250615-01-01-restructure-messaggi_errore-pk
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+
+      preConditions:
+        onFail: MARK_RAN
+        onError: MARK_RAN
+        not:
+            - columnExists:
+                schemaName: config
+                tableName: messaggi_errore
+                columnName: id
+
+      comments: >
+        Aggiunge una colonna id BIGINT PK, popola i valori esistenti,
+        converte la PK composita in UNIQUE(codice, lingua).
+      
+      changes:
+
+        # 1) Creazione della sequenza per id
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE SEQUENCE IF NOT EXISTS config.messaggi_errore_id_seq
+                START WITH 1
+                INCREMENT BY 1
+                
+
+        # 2) Aggiunta della colonna id (temporaneamente NULLABLE)
+        - addColumn:
+            schemaName: config
+            tableName: messaggi_errore
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  defaultValueComputed: "nextval('config.messaggi_errore_id_seq')"
+                  constraints:
+                    nullable: true
+
+        # 3) Popolamento dell’id per le righe esistenti
+        - sql:
+            splitStatements: false
+            sql: |
+              UPDATE config.messaggi_errore
+                SET id = nextval('config.messaggi_errore_id_seq')
+               WHERE id IS NULL;
+
+        # 4) Impostazione NOT NULL su id
+        - modifyDataType:
+            schemaName: config
+            tableName: messaggi_errore
+            columnName: id
+            newDataType: BIGINT
+        - addNotNullConstraint:
+            schemaName: config
+            tableName: messaggi_errore
+            columnName: id      
+
+        # 5) Rimozione della PK composita
+        - dropPrimaryKey:
+            schemaName: config
+            tableName: messaggi_errore
+
+        # 6) Creazione del nuovo PK su id
+        - addPrimaryKey:
+            schemaName: config
+            tableName: messaggi_errore
+            columnNames: id
+            constraintName: pk_messaggi_errore
+
+        # 7) Reintroduzione del vincolo UNIQUE su (codice, lingua)
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: messaggi_errore
+            columnNames: codice,lingua
+            constraintName: uq_messaggi_errore_codice_lingua
+
+        # 8) (Opzionale) Riassegna l’owner al ruolo applicativo
+       # - sql:
+       #     splitStatements: false
+       #     sql: |
+       #       ALTER TABLE config.messaggi_errore
+       #         OWNER TO titodb;
+       #       ALTER SEQUENCE config.messaggi_errore_id_seq
+       #         OWNER TO titodb
+
+  ################################################################
+  # 2) Sempre, sia in CI che in locale, riallinea l’owner a titodb
+  ################################################################
+  #- changeSet:
+  #    id: 20250615-02-fix-owner-messaggi_errore
+  #    author: mctit
+  #    runAlways: true
+  #    comments: >
+  #      (Solo reimposta l’owner, non tocca la struttura)
+  #    changes:
+  #      - sql:
+  #          splitStatements: false
+  #          stripComments: false
+  #          sql: |
+  #            ALTER TABLE config.messaggi_errore
+  #              OWNER TO zeroerp;
+  #            ALTER SEQUENCE IF EXISTS config.messaggi_errore_id_seq
+  #              OWNER TO zeroerp;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Torna alla PK composita, rimuovendo id
+              ALTER TABLE config.messaggi_errore
+                DROP CONSTRAINT uq_messaggi_errore_codice_lingua,
+                DROP CONSTRAINT pk_messaggi_errore;
+              ALTER TABLE config.messaggi_errore
+                ADD CONSTRAINT pk_messaggi_errore PRIMARY KEY (codice, lingua);
+              ALTER SEQUENCE config.messaggi_errore_id_seq OWNED BY NONE;
+        - dropColumn:
+            schemaName: config
+            tableName: messaggi_errore
+            columnName: id
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP SEQUENCE IF EXISTS config.messaggi_errore_id_seq;
+
+  - changeSet:
+      id: 20250615-90-restructure-messaggi_errore-pk
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250615-01-01-restructure-messaggi_errore-pk

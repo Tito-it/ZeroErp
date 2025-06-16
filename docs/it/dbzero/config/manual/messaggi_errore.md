@@ -1,61 +1,91 @@
 ## 📘 Documentazione Concettuale – Tabella `config.messaggi_errore`
 
 > 👀 **Vedi anche**
-
+>
+> Approfondimento tabelle:    
+> - [dbops.error_log](/dbzero/dbops/tabelle/error_log)    
+> - [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)    
+>
 > Approfondimenti funzioni:   
 > - [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)  
 
-La tabella **`config.messaggi_errore`** è il catalogo centralizzato dei testi utilizzati dall’applicazione (errori, avvisi, messaggi informativi) con supporto per l’internazionalizzazione (i18n). Ogni record definisce un messaggio univoco, differenziato per codice e lingua.
+La tabella **`config.messaggi_errore`** è il **catalogo centralizzato** dei testi applicativi (errori, avvisi, messaggi informativi) con supporto per internazionalizzazione (i18n). Ogni record definisce un messaggio univoco, differenziato per codice e lingua, corredato di causa e suggerimenti di soluzione.
 
 ---
 
 ### 🎯 Scopo Principale
 
-* **Centralizzare i messaggi**
-  Raggruppare in un’unica tabella tutti i testi di errore e di notifica, evitando hard‑coding nei sorgenti SQL, trigger o procedure.
-
-* **Supporto multilingua**
-  Gestire versioni localizzate degli stessi messaggi tramite il campo `lingua`, semplificando traduzioni e manutenzione.
-
-* **Placeholder dinamici**
-  Consentire l’uso di placeholder `%s` nel campo `messaggio`, che verranno sostituiti a runtime dalla funzione `script.fn_get_messaggio` con valori specifici.
+* **Centralizzare i messaggi**: evitare hard‑coding nei sorgenti SQL, trigger o procedure.
+* **Supporto multilingua**: gestire versioni localizzate tramite il campo `lingua` (es. `it`, `en`).
+* **Placeholder dinamici**: usare `%s` nel campo `messaggio`, sostituiti a runtime dalla funzione `script.fn_get_messaggio` con valori contestuali.
+* **Collegamento ai log**: tabelle come `dbops.error_log` e `dbops.audit_log` fanno riferimento a `config.messaggi_errore` per arricchire i record di log con testi coerenti.
 
 ---
 
 ### 🔍 Struttura dei Campi
 
-| Nome        | Tipo | PK | Descrizione                                                                                    |
-| ----------- | ---- | -- | ---------------------------------------------------------------------------------------------- |
-| `codice`    | text | ✓  | Codice univoco del messaggio (chiave primaria insieme a `lingua`).                             |
-| `lingua`    | text | ✓  | Codice lingua (es. `it`, `en`); default `it`. Identifica la localizzazione del messaggio.      |
-| `messaggio` | text |    | Testo del messaggio, che può contenere uno o più placeholder `%s` da sostituire dinamicamente. |
+| Nome        | Tipo   | Dettagli                                                                             |
+| ----------- | ------ | ------------------------------------------------------------------------------------ |
+| `codice`    | text   | Codice logico del messaggio (es. `ERR001`, `WARN_TIMEOUT`); parte della PK           |
+| `lingua`    | text   | ISO code della lingua (default: `it`); parte della PK                                |
+| `messaggio` | text   | Testo principale, può contenere placeholder `%s`                                     |
+| `causa`     | text   | Causa del messaggio: breve descrizione del problema riscontrato                      |
+| `soluzione` | text   | Suggerimenti o passi per risolvere il problema indicato nella causa                  |
+| `id`        | bigint | PK surrogata, generata automaticamente da sequenza (`config.messaggi_errore_id_seq`) |
 
 ---
 
 ### 🔒 Vincoli di Integrità
 
-* **Primary Key**
-  `pk_messaggi_errore(codice, lingua)` garantisce l’unicità di ogni coppia codice‑lingua.
+* **Primary Key**: `pk_messaggi_errore (id)` garantisce l’identificativo univoco.
+* **Unique Constraint**: `uq_messaggi_errore_codice_lingua (codice, lingua)` per evitare duplicati della medesima traduzione.
+
+---
+
+### ⚙️ Relazioni Operative ed Esempi
+
+1. **Collegamento con error\_log**
+
+   ```sql
+   SELECT e.id,
+          me.codice,
+          me.messaggio,
+          e.context
+     FROM dbops.error_log e
+     JOIN config.messaggi_errore me
+       ON e.messaggio_errore_id = me.id;
+   ```
+2. **Uso in audit\_log o procedure**
+
+   ```sql
+   -- Recupera e formatta un messaggio con placeholder
+   SELECT script.fn_get_messaggio(
+     'ERR001', 'it', ARRAY[e.order_id::text]
+   );
+   ```
+3. **Inserimento di un nuovo messaggio**
+
+   ```sql
+   INSERT INTO config.messaggi_errore(
+     codice, lingua, messaggio, causa, soluzione
+   ) VALUES (
+     'WARN_DISCOUNT', 'en',
+     'Order %s has no discount applied',
+     'Nessuna regola di sconto trovata',
+     'Verificare la configurazione delle promozioni'
+   );
+   ```
 
 ---
 
 ### 💡 Vantaggi Operativi
 
-* **Manutenzione semplificata**
-  Tutti i testi applicativi sono gestiti in un’unica tabella, modificabili senza interventi sul codice.
-
-* **Consistenza**
-  Unico punto di verità per i messaggi, riduce duplicazioni e incoerenze fra diversi componenti.
-
-* **Internazionalizzazione**
-  Aggiunta di nuove lingue semplicemente inserendo record per lo stesso `codice` con `lingua` diversa.
-
-* **Flessibilità dei testi**
-  Placeholder `%s` supportati in fase di recupero garantiscono messaggi contestualizzati e parametrizzati.
-
-* **Best practice**
-  Separare i contenuti testuali dal codice SQL migliora leggibilità, manutenzione e qualità del progetto.
+* **Manutenzione semplificata**: testi gestiti in un’unica tabella.
+* **Consistenza e coerenza**: unico punto di verità per i messaggi.
+* **Internazionalizzazione**: aggiunta di nuove lingue facile e veloce.
+* **Parametrizzazione**: placeholder `%s` consentono messaggi contestualizzati.
+* **Integrazione con log**: collegamento trasparente a tabelle di log per ricostruire flussi e storici.
 
 ---
 
-> 🧠 **“Un catalogo centralizzato e multilingua dei messaggi applicativi, con placeholder `%s` per parametri dinamici, garantisce coerenza, manutenibilità e facilità di traduzione.”**
+> 🧠 **“Un catalogo centralizzato, multilingua e parametrizzato dei messaggi applicativi favorisce coerenza, facilità di manutenzione e miglior supporto agli utenti.”**
