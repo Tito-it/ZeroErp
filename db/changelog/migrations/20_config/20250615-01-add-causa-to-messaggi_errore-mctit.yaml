@@ -15,6 +15,15 @@ databaseChangeLog:
       runOnChange: true
       validCheckSums:
           - ANY
+      preConditions:
+        onFail: MARK_RAN
+        onError: MARK_RAN
+        not:
+            - columnExists:
+                schemaName: config
+                tableName: messaggi_errore
+                columnName: causa
+
       changes:
         # 1) Aggiunge la colonna "causa"
         - addColumn:
@@ -47,12 +56,12 @@ databaseChangeLog:
                 IS 'Suggerimenti o passi per risolvere il problema indicato nella causa';
 
         # 4) Imposta l'owner della tabella a titodb
-        - sql:
-            splitStatements: false
-            stripComments: false
-            sql: |
-              ALTER TABLE config.messaggi_errore
-                OWNER TO titodb;
+        #- sql:
+        #    splitStatements: false
+        #    stripComments: false
+        #    sql: |
+        #      ALTER TABLE config.messaggi_errore
+        #        OWNER TO titodb;
   - changeSet:
       id: 20250615-90-trgfn_iva_ins_upd_check_conti_iva
       author: mctit
