@@ -4,6 +4,7 @@
 
 ## Funzioni
 - [fn_check_ins_soggetto_ruolo](funzioni/fn_check_ins_soggetto_ruolo.md)
+- [fn_ensure_logconn](funzioni/fn_ensure_logconn.md)
 - [fn_generate_codice](funzioni/fn_generate_codice.md)
 - [fn_get_contatto_fallback](funzioni/fn_get_contatto_fallback.md)
 - [fn_get_indirizzi_by_ruolo](funzioni/fn_get_indirizzi_by_ruolo.md)
@@ -20,6 +21,7 @@
 
 ## Documentazione Manuale
 - [fn_check_ins_soggetto_ruolo](manual/fn_check_ins_soggetto_ruolo.md)
+- [fn_ensure_logconn](manual/fn_ensure_logconn.md)
 - [fn_generate_codice](manual/fn_generate_codice.md)
 - [fn_get_messaggio](manual/fn_get_messaggio.md)
 - [fn_get_stradario](manual/fn_get_stradario.md)

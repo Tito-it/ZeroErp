@@ -58,6 +58,13 @@ nav:
       - Database:
           - Liquibase Setup & Workflow: it/liquibase-setup-workflow.md
           - Linee Guida SQL: it/linee-guida-sql.md
+          - Db PostgresSQL: 
+              - Panoramica: it/postgresql-intro.md
+              - Parmetri personalizzati (GUC): it/parametri-personalizzati-(GUC).md
+              - Estensioni:
+                      - Utilizzate: it/postgresql-estensioni-utilizzate.md
+                      - dblink: it/dblink.md
+              
   - DB Zero:
       - Panoramica: dbzero/index.md
       - Schemi:

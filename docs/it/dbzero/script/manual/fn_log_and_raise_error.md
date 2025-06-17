@@ -8,112 +8,136 @@
 >
 > Approfondimenti funzioni:   
 > - [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)     
+> - [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)     
 
 
-La funzione **`script.fn_log_and_raise_error`** centralizza il flusso di gestione errori in PL/pgSQL: recupera testo, causa e soluzione dal catalogo dei messaggi, scrive un record nel log errori e quindi rialza un’eccezione con dettaglio e hint.
+La funzione **`script.fn_log_and_raise_error`** unifica logging ed escalation di errori in PL/pgSQL, utilizzando l’estensione **dblink** per inserire record di log in una sessione separata e garantire commit immediato, quindi solleva un’eccezione con messaggio, dettaglio e hint.
 
 ---
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_log_and_raise_error(
-  p_area               text,          -- 'database' / 'backend' / 'frontend'
-  p_function_name      text,          -- nome di trigger o funzione chiamante
-  p_messaggio_errore_id bigint,       -- FK su config.messaggi_errore.id
-  p_context            jsonb   DEFAULT '{}'::jsonb  -- payload di contesto
+  p_area           TEXT,                       -- 'database' / 'backend' / 'frontend' / 'job'
+  p_function_name  TEXT,                       -- nome di trigger o funzione chiamante
+  p_error_code     TEXT,                       -- codice testuale di messaggio (config.messaggi_errore.codice)
+  p_context        JSONB,                      -- payload di contesto (parametri, variabili, metadata)
+  VARIADIC p_valori TEXT[]                     -- valori da sostituire a '%s' nel template messaggio
 )
-RETURNS void
+RETURNS VOID
 LANGUAGE plpgsql
 VOLATILE
 AS $$
-...implementazione...
+...implementazione completa con dblink_exec...
 $$;
 ```
 
 ### 🎯 Scopo Principale
 
-* **Centralizzare la gestione errori** in un unico punto, evitando duplicazioni di codice e garantendo uniformità.
-* **Log automatico**: registra sempre il contesto e la transazione prima di interrompere l’esecuzione.
-* **Eccezioni contestuali**: fornisce `DETAIL` e `HINT` con causa e suggerimento di soluzione.
+* **Entrypoint unificato** per error handling: evita duplicazioni di log e raise in trigger, procedure e funzioni.
+* **Logging remoto sicuro**: usa `dblink_exec` su connessione permanente fornita da `script.fn_ensure_logconn()`, per isolare il log dall’eventuale rollback della sessione principale.
+* **Escalation immediata**: rialza l’eccezione con `DETAIL` e `HINT` recuperati dalla tabella dei messaggi.
 
 ---
 
 ### 🔍 Parametri
 
-| Parametro               | Tipo     | Descrizione                                                                          |
-| ----------------------- | -------- | ------------------------------------------------------------------------------------ |
-| `p_area`                | `text`   | Ambito di provenienza (`database`, `backend`, `frontend`, `job`, etc.)               |
-| `p_function_name`       | `text`   | Nome del trigger/funzione o componente che ha rilevato l’errore                      |
-| `p_messaggio_errore_id` | `bigint` | FK verso `config.messaggi_errore(id)`, specifica il codice e la lingua del messaggio |
-| `p_context`             | `jsonb`  | Oggetto JSON con variabili, parametri e metadati utili per il debugging              |
+| Parametro         | Tipo     | Descrizione                                                                        |
+| ----------------- | -------- | ---------------------------------------------------------------------------------- |
+| `p_area`          | `TEXT`   | Ambito di origine (`database`, `backend`, `frontend`, `job`, etc.)                 |
+| `p_function_name` | `TEXT`   | Nome del trigger/funzione o componente chiamante                                   |
+| `p_error_code`    | `TEXT`   | Codice del messaggio da cercare in `config.messaggi_errore.codice`                 |
+| `p_context`       | `JSONB`  | Contesto in formato JSONB (es. parametri, utente, stack trace)                     |
+| `p_valori`        | `TEXT[]` | Array variadico di valori per sostituire i placeholder `%s` nel template messaggio |
 
 ---
 
 ### ⚙️ Flusso di Esecuzione
 
-1. **Recupero del messaggio**
+1. **Assicuro connessione dblink**
 
    ```plpgsql
-   SELECT messaggio, causa, soluzione
-     INTO v_messaggio, v_causa, v_soluzione
-     FROM config.messaggi_errore
-    WHERE id = p_messaggio_errore_id
-      AND lingua = coalesce(current_setting('myapp.user_language', true), 'it');
+   PERFORM script.fn_ensure_logconn();
    ```
-2. **Scrittura nel log errori**
+
+2. **Recupero messaggio e metadati**
 
    ```plpgsql
-   INSERT INTO dbops.error_log(
-     occurred_at, area, function_name,
-     messaggio_errore_id, context, tx_id
-   ) VALUES (
-     now(), p_area, p_function_name,
-     p_messaggio_errore_id, p_context,
-     (md5(txid_current()::text))::uuid
-   );
+   SELECT id, messaggio, causa, soluzione
+     INTO v_id, v_messaggio, v_causa, v_soluzione
+   FROM config.messaggi_errore
+   WHERE codice = p_error_code
+     AND lingua = v_lingua;
    ```
-3. **Rialzo dell’eccezione**
+
+   Se non trovato, imposta testo, causa e soluzione di default indicativi.
+
+3. **Formattazione del messaggio**
 
    ```plpgsql
-   RAISE EXCEPTION '%', v_messaggio
-     USING
-       DETAIL = coalesce(v_causa, ''),
-       HINT   = coalesce(v_soluzione, '');
+   IF array_length(p_valori,1) IS NOT NULL THEN
+     v_messaggio := format(v_messaggio, VARIADIC p_valori);
+   END IF;
    ```
 
-   L’eccezione interrompe l’esecuzione, mostrando il messaggio principale, il dettaglio della causa e l’hint di soluzione.
+4. **Preparazione dell’INSERT remoto**
+
+   ```plpgsql
+   sql_text :=
+     'INSERT INTO dbops.error_log(occurred_at, area, function_name,' ||
+     ' messaggio_errore_id, context, tx_id) VALUES (' ||
+     'now(), ' || quote_literal(p_area) || ', ' || quote_literal(p_function_name) || ', ' ||
+     coalesce(v_id::text,'NULL') || ', ' || quote_literal(v_context::text) || '::jsonb, ' ||
+     quote_literal(md5(txid_current()::text)) || '::uuid' || ');';
+   ```
+
+5. **Esecuzione tramite dblink**
+
+   ```plpgsql
+   PERFORM dblink_exec('logconn', sql_text);
+   ```
+
+6. **Sollevamento dell’eccezione**
+
+   ```plpgsql
+   RAISE EXCEPTION '%', coalesce(v_messaggio, '[Errore sconosciuto]')
+     USING DETAIL = coalesce(v_causa,''),
+           HINT   = coalesce(v_soluzione,'');
+   ```
 
 ---
 
-### 🔒 Comportamento e Side Effect
+### 🔒 Comportamenti e Side Effects
 
-* **Volatile**: il comportamento dipende dallo stato e modifica la tabella di log.
-* **Transazionale**: `tx_id` consente di collegare errori e audit via `dbops.audit_log` o altre entità.
-* **Contesto**: salva il payload JSON, utile per ricostruire lo stato al momento dell’errore.
+* **Volatile**: invoca `dblink_exec`, quindi non idempotente.
+* **Connessione permanente**: `logconn` gestita da `script.fn_ensure_logconn()` per evitare overhead di connessioni multiple.
+* **Separazione transazionale**: l’INSERT remoto non viene rollbackato insieme alla sessione principale.
 
 ---
 
 ### ⚙️ Esempi di Utilizzo
 
-1. **In un trigger PL/pgSQL**
+1. **Trigger PL/pgSQL con placeholder**
 
    ```plpgsql
-   IF NEW.amount < 0 THEN
+   IF NEW.status = 'ERROR' THEN
      PERFORM script.fn_log_and_raise_error(
-       'database', TG_NAME, 1001,
-       jsonb_build_object('id', OLD.id, 'amount', NEW.amount)
+       'database', TG_NAME, 'ERR_INVALID_STATUS',
+       jsonb_build_object('id', OLD.id),
+       OLD.status, NEW.status
      );
    END IF;
    ```
 
-2. **In una procedura lato backend**
+2. **Procedure backend**
 
    ```plpgsql
    BEGIN
-     -- logica di business...
-   EXCEPTION WHEN others THEN
+     -- operazioni...
+   EXCEPTION WHEN OTHERS THEN
      PERFORM script.fn_log_and_raise_error(
-       'backend', 'process_orders', 2002,
-       jsonb_build_object('payload', to_jsonb(order_data))
+       'backend', 'sync_data', 'ERR_TIMEOUT',
+       jsonb_build_object('user', current_user),
+       now()::text
      );
    END;
    ```
@@ -122,11 +146,11 @@ $$;
 
 ### 💡 Vantaggi Operativi
 
-* **Uniformità**: un solo standard per logging e gestione eccezioni.
-* **Tracciabilità completa**: messaggio, causa, contesto e transazione sono collegati.
-* **Manutenibilità**: modifiche ai testi di errore avvengono centralmente in `config.messaggi_errore`.
-* **Supporto al debug**: hint e cause dettagliate guidano l’operatore verso la soluzione.
+* **Resilienza dei log**: l’uso di dblink isola il logging dall’eventuale rollback.
+* **Flessibilità**: placeholder `%s` e `p_valori` rendono i messaggi dinamici e contestuali.
+* **Manutenibilità**: modifiche ai messaggi avvengono solo in `config.messaggi_errore`.
+* **Tracciabilità completa**: contesto, transazione e multilingua integrate nel flusso.
 
 ---
 
-> 🧠 **“Centralizzare logica di error handling e log in una funzione dedicata semplifica il codice, migliora la tracciabilità e accelera le attività di debugging.”**
+> 🧠 **“Una funzione centralizzata che combina dblink per log persistente e raise exception con template dinamici semplifica error handling, migliorando la robustezza del sistema.”**
