@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  # 
+  - changeSet:
+      id: 20250617-01-fn_ensure_logconn
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+                -- DROP FUNCTION IF EXISTS script.trgfn_lock_columns();
+                CREATE OR REPLACE FUNCTION script.fn_ensure_logconn()
+                  RETURNS void LANGUAGE plpgsql AS $$
+                BEGIN
+                  -- prova ad aprire la connessione dblink 'logconn' usando la GUC
+                  PERFORM dblink_connect_u(
+                    'logconn',
+                    current_setting('dblink.log_connection', true)
+                  );
+                EXCEPTION WHEN duplicate_object THEN
+                  -- se logconn esiste già, ignora
+                  NULL;
+                END;
+                $$;
+                COMMENT ON FUNCTION script.fn_ensure_logconn()
+                  IS 'Verifica che la connessione dblink logconn sia attiva. 
+                      Se non lo è, la crea usando la GUC dblink.log_connection.';
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250617-90-fn_ensure_logconn
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250617-01-fn_ensure_logconn_v1
