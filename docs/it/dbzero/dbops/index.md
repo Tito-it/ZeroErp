@@ -9,6 +9,7 @@
 - [fn_admin_merge_comune](funzioni/fn_admin_merge_comune.md)
 - [fn_admin_merge_stradario](funzioni/fn_admin_merge_stradario.md)
 - [fn_create_gestore](funzioni/fn_create_gestore.md)
+- [fn_find_function_usage](funzioni/fn_find_function_usage.md)
 - [fn_foreign_keys_info](funzioni/fn_foreign_keys_info.md)
 - [fn_list_indices](funzioni/fn_list_indices.md)
 - [fn_migrate_add_indirizzo_normalizzato](funzioni/fn_migrate_add_indirizzo_normalizzato.md)
@@ -18,6 +19,7 @@
 ## Documentazione Manuale
 - [audit_log](manual/audit_log.md)
 - [error_log](manual/error_log.md)
+- [fn_find_function_usage](manual/fn_find_function_usage.md)
 - [fn_search_column_usage](manual/fn_search_column_usage.md)
 - [vw_catalogo_oggetti](manual/vw_catalogo_oggetti.md)
 - [vw_fk_senza_indice](manual/vw_fk_senza_indice.md)
