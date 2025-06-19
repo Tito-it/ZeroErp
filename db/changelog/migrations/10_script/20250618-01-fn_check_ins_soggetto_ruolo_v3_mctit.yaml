@@ -9,9 +9,9 @@
 
 databaseChangeLog:
   
-  # Versione 2  Sql nel file. Imporante non usare la cartella sql.
+  # 
   - changeSet:
-      id: 20250606-12-fn_check_ins_soggetto_ruolo_v2
+      id: 20250618-01-fn_check_ins_soggetto_ruolo
       author: mctit
       runOnChange: true
       validCheckSums:
@@ -20,7 +20,7 @@ databaseChangeLog:
         - sql:
             splitStatements: false
             sql: |
-              DROP FUNCTION IF EXISTS script.fn_check_ins_soggetto_ruolo(uuid, integer, character varying);
+              
               CREATE OR REPLACE FUNCTION script.fn_check_ins_soggetto_ruolo(
                     p_soggetto_id        UUID,
                     p_soggetto_ruolo_id  INTEGER,
@@ -48,8 +48,6 @@ databaseChangeLog:
                     --       ruolo_id = <id trovato da cd_int_ruolo>
                     --   - Se non lo trova, RAISE EXCEPTION
                     --   - Se lo trova, restituisce p_soggetto_ruolo_id
-
-
                     -- 1) Trovo l'ID del ruolo corrispondente a cd_int_ruolo
                     SELECT r.id
                       INTO v_ruolo_id
@@ -58,14 +56,14 @@ databaseChangeLog:
                     LIMIT 1;
 
                     IF v_ruolo_id IS NULL THEN
-                         
-                          RAISE EXCEPTION '%', 
-                          script.fn_get_messaggio(
-                          'E_COD_INT_RUOLO', '',
-                          VARIADIC ARRAY[
-                              p_cd_int_ruolo::text
-                              ]
-                              );				
+                        PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_check_ins_soggetto_ruolo',
+                          'E_COD_INT_RUOLO',
+                          jsonb_build_object('cd_int_ruolo', p_cd_int_ruolo),
+                          p_cd_int_ruolo::text
+                        );
+                        -- wrapper farà RAISE EXCEPTION
                     END IF;
 
                     -- 2) Se soggetto_ruolo_id non è passato (NULL o 0), creiamo un nuovo record
@@ -79,13 +77,12 @@ databaseChangeLog:
                             v_ruolo_id,
                             current_user
                         )
-                        RETURNING id
-                        INTO v_new_id;
+                        RETURNING id INTO v_new_id;
 
                         RETURN v_new_id;
                     END IF;
 
-                    -- 3) Altrimenti (p_soggetto_ruolo_id > 0), verifico che quel record esista e corrisponda
+                    -- 3) Altrimenti verifico che il record esista e corrisponda
                     SELECT COUNT(*) 
                       INTO v_count
                     FROM anagrafiche.soggetti_ruoli sr
@@ -94,15 +91,20 @@ databaseChangeLog:
                       AND sr.ruolo_id    = v_ruolo_id;
 
                     IF v_count = 0 THEN
-                            RAISE EXCEPTION '%', 
-                        script.fn_get_messaggio(
-                        'E_SOGGETTI_RUOLI', '',
-                        VARIADIC ARRAY[
+                        PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_check_ins_soggetto_ruolo',
+                          'E_SOGGETTI_RUOLI',
+                          jsonb_build_object(
+                            'soggetto_ruolo_id', p_soggetto_ruolo_id,
+                            'soggetto_id',       p_soggetto_id,
+                            'ruolo_id',          v_ruolo_id
+                          ),
                           p_soggetto_ruolo_id::text,
                           p_soggetto_id::text,
                           v_ruolo_id::text
-                            ]
-                            );
+                        );
+                        -- wrapper farà RAISE EXCEPTION
                     END IF;
 
                     -- Se siamo qui, il record esiste: restituisco lo stesso ID passato
@@ -110,14 +112,16 @@ databaseChangeLog:
                 END;
                 $$;
 
+
+
                 COMMENT ON FUNCTION script.fn_check_ins_soggetto_ruolo(UUID, INTEGER, VARCHAR) IS
                   'Se p_soggetto_ruolo_id è NULL o 0, crea un nuovo legame in anagrafiche.soggetti_ruoli per il soggetto e il ruolo di codice p_cd_int_ruolo.
                   Altrimenti verifica l''esistenza del record. Ritorna sempre l''ID del record in soggetti_ruoli.';
 
   # Tag di fine modifica per fn_get_messaggio v2
   - changeSet:
-      id: 20250606-90-fn_check_ins_soggetto_ruolo_v2
+      id: 20250618-90-fn_check_ins_soggetto_ruolo
       author: mctit
       changes:
         - tagDatabase:
-            tag: 20250606-12-fn_check_ins_soggetto_ruolo_v2
+            tag: 20250618-01-fn_check_ins_soggetto_ruolo

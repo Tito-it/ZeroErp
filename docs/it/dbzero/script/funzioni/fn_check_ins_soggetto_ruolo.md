@@ -31,8 +31,6 @@ AS $function$
       --       ruolo_id = <id trovato da cd_int_ruolo>
       --   - Se non lo trova, RAISE EXCEPTION
       --   - Se lo trova, restituisce p_soggetto_ruolo_id
-
-
       -- 1) Trovo l'ID del ruolo corrispondente a cd_int_ruolo
       SELECT r.id
         INTO v_ruolo_id
@@ -41,14 +39,14 @@ AS $function$
       LIMIT 1;
 
       IF v_ruolo_id IS NULL THEN
-           
-            RAISE EXCEPTION '%', 
-            script.fn_get_messaggio(
-            'E_COD_INT_RUOLO', '',
-            VARIADIC ARRAY[
-                p_cd_int_ruolo::text
-                ]
-                );				
+          PERFORM script.fn_log_and_raise_error(
+            'database',
+            'fn_check_ins_soggetto_ruolo',
+            'E_COD_INT_RUOLO',
+            jsonb_build_object('cd_int_ruolo', p_cd_int_ruolo),
+            p_cd_int_ruolo::text
+          );
+          -- wrapper farà RAISE EXCEPTION
       END IF;
 
       -- 2) Se soggetto_ruolo_id non è passato (NULL o 0), creiamo un nuovo record
@@ -62,13 +60,12 @@ AS $function$
               v_ruolo_id,
               current_user
           )
-          RETURNING id
-          INTO v_new_id;
+          RETURNING id INTO v_new_id;
 
           RETURN v_new_id;
       END IF;
 
-      -- 3) Altrimenti (p_soggetto_ruolo_id > 0), verifico che quel record esista e corrisponda
+      -- 3) Altrimenti verifico che il record esista e corrisponda
       SELECT COUNT(*) 
         INTO v_count
       FROM anagrafiche.soggetti_ruoli sr
@@ -77,15 +74,20 @@ AS $function$
         AND sr.ruolo_id    = v_ruolo_id;
 
       IF v_count = 0 THEN
-              RAISE EXCEPTION '%', 
-          script.fn_get_messaggio(
-          'E_SOGGETTI_RUOLI', '',
-          VARIADIC ARRAY[
+          PERFORM script.fn_log_and_raise_error(
+            'database',
+            'fn_check_ins_soggetto_ruolo',
+            'E_SOGGETTI_RUOLI',
+            jsonb_build_object(
+              'soggetto_ruolo_id', p_soggetto_ruolo_id,
+              'soggetto_id',       p_soggetto_id,
+              'ruolo_id',          v_ruolo_id
+            ),
             p_soggetto_ruolo_id::text,
             p_soggetto_id::text,
             v_ruolo_id::text
-              ]
-              );
+          );
+          -- wrapper farà RAISE EXCEPTION
       END IF;
 
       -- Se siamo qui, il record esiste: restituisco lo stesso ID passato

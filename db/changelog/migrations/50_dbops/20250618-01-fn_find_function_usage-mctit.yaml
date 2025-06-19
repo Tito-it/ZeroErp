@@ -1,0 +1,84 @@
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20250618-01-fn_find_function_usage
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+          - ANY
+      comments: >
+        Restituisce le funzioni, trigger e event trigger che 
+        fanno riferimento alla funzione indicata.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- Funzione per individuare dove viene usata una funzione PL/pgSQL
+                  CREATE OR REPLACE FUNCTION dbops.fn_find_function_usage(
+                      p_function_name TEXT
+                  )
+                  RETURNS TABLE(
+                      object_type   TEXT,
+                      schema_name   TEXT,
+                      object_name   TEXT
+                  )
+                  LANGUAGE sql
+                  STABLE
+                  AS $$
+                  -- 1) Funzioni che richiamano p_function_name nel loro corpo
+                  SELECT
+                    'function'::TEXT AS object_type,
+                    ns.nspname AS schema_name,
+                    p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' AS object_name
+                  FROM pg_proc p
+                  JOIN pg_namespace ns ON ns.oid = p.pronamespace
+                  WHERE p.prosrc LIKE '%' || p_function_name || '%'  -- presenza del nome nel sorgente PL/pgSQL
+                    AND p.proname <> p_function_name
+
+                  UNION ALL
+
+                  -- 2) Trigger che invocano p_function_name
+                  SELECT
+                    'trigger'::TEXT AS object_type,
+                    ns.nspname AS schema_name,
+                    rel.relname AS object_name
+                  FROM pg_trigger tr
+                  JOIN pg_proc tgt ON tgt.oid = tr.tgfoid
+                  JOIN pg_class rel  ON rel.oid = tr.tgrelid
+                  JOIN pg_namespace ns ON ns.oid = rel.relnamespace
+                  WHERE tgt.proname = p_function_name
+
+                  UNION ALL
+
+                  -- 3) Event trigger che invocano p_function_name
+                  SELECT
+                    'event_trigger'::TEXT AS object_type,
+                    NULL::TEXT AS schema_name,
+                    et.evtevent || ' on ' || tgt.proname AS object_name
+                  FROM pg_event_trigger et
+                  JOIN pg_proc tgt ON tgt.oid = et.evtfoid
+                  WHERE tgt.proname = p_function_name
+                  $$;
+
+                  COMMENT ON FUNCTION dbops.fn_find_function_usage(TEXT)
+                    IS 'Restituisce le funzioni, trigger e event trigger che fanno riferimento alla funzione indicata.';
+
+
+      
+
+  - changeSet:
+      id: 20250618-90-fn_find_function_usage
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250618-01-fn_find_function_usage
