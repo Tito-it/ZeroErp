@@ -1,0 +1,70 @@
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20250620-03-fn_find_file_usage
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+          - ANY
+      comments: >
+        trova tutte le foreign key che fanno riferimento
+        ad una tabella specificata in input
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                  
+                  CREATE OR REPLACE FUNCTION dbops.fn_find_file_usage(
+                      p_target_table regclass
+                  )
+                  RETURNS TABLE(
+                      table_with_fk   regclass,  -- tabella che contiene la FK
+                      fk_column       name,      -- colonna FK
+                      referenced_table regclass, -- tabella referenziata (== p_target_table)
+                      pk_column       name       -- colonna PK referenziata
+                  )
+                  LANGUAGE sql
+                  STABLE
+                  AS $$
+                    -- ================================================
+                    -- Funzione: dbops.fn_find_file_usage(regclass)
+                    -- Scopo:   trova tutte le foreign key che fanno riferimento
+                    --          ad una tabella specificata in input
+                    -- ================================================
+
+                    SELECT
+                      c.conrelid::regclass               AS table_with_fk,
+                      a.attname                          AS fk_column,
+                      c.confrelid::regclass             AS referenced_table,
+                      af.attname                         AS pk_column
+                    FROM pg_constraint c
+                    JOIN pg_class t   ON c.conrelid = t.oid
+                    JOIN pg_attribute a ON a.attrelid = t.oid
+                                      AND a.attnum = ANY(c.conkey)
+                    JOIN pg_class ft  ON c.confrelid = ft.oid
+                    JOIN pg_attribute af ON af.attrelid = ft.oid
+                                        AND af.attnum = ANY(c.confkey)
+                    WHERE c.contype = 'f'
+                      AND c.confrelid = p_target_table;
+                  $$;
+
+                  COMMENT ON FUNCTION dbops.fn_find_function_usage(TEXT)
+                    IS 'trova tutte le foreign key che fanno riferimento
+                        ad una tabella specificata in input.';
+
+  - changeSet:
+      id: 20250620-90-fn_find_file_usage
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250620-03-fn_find_file_usage

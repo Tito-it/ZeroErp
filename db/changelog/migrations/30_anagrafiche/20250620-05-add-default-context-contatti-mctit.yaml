@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250620-05-add-default-context-contatti
+      author: mctit
+      changes:
+        - addColumn:
+            tableName: contatti
+            schemaName: anagrafiche
+            columns:
+              - column:
+                  name: default_context
+                  type: varchar(20)
+                  constraints:
+                    nullable: true
+
+        - sql:
+            comment: "Aggiorna dati esistenti impostando default_context coerentemente"
+            sql: |
+              UPDATE anagrafiche.contatti
+              SET default_context = 
+                CASE 
+                  WHEN utility_id IS NOT NULL THEN 'utility'
+                  WHEN soggetto_ruolo_id IS NOT NULL THEN 'ruolo'
+                  ELSE 'soggetto'
+                END
+              WHERE is_default;
+
+        - sql:
+            sql: |
+              COMMENT ON COLUMN anagrafiche.contatti.default_context IS
+              'Contesto rispetto al quale questo contatto è default (soggetto|ruolo|utility)';
+
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250620-90-add-default-context-contatti  
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250620-05-add-default-context-contatti

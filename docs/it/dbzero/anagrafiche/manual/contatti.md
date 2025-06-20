@@ -1,0 +1,140 @@
+## 📘 Documentazione Concettuale – Tabella `anagrafiche.contatti`
+
+> 👀 **Vedi anche**
+> Approfondimento tabelle:    
+> - [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
+> - [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
+> - [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)    
+> - [config.utilities](/dbzero/config/tabelle/utilities)    
+>
+> Approfondimenti funzioni:   
+> - [anagrafiche.trgfn_contatti_ins_upd_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_ins_upd_set_default_contatto)     
+> - [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
+
+
+La tabella **`anagrafiche.contatti`** è il **punto di raccolta centralizzato** per tutte le informazioni di contatto nell’applicazione, a diversi livelli di granularità:
+
+- **Soggetto** (`soggetto_id` obbligatorio)  
+- **Ruolo assegnato al soggetto** (`soggetto_ruolo_id`, opzionale)  
+- **Servizio/utility** (`utility_id`, opzionale)  
+
+In questo modo è possibile definire:
+
+1. **Contatto “globale” del soggetto**  
+   (solo `soggetto_id`, `soggetto_ruolo_id` e `utility_id` a `NULL`)
+
+2. **Contatto legato a uno specifico ruolo**  
+   (ad es. l’amministratore di un soggetto, con `soggetto_ruolo_id` valorizzato)
+
+3. **Contatto associato a un servizio/utility**  
+   (ad es. referente tecnico per un determinato servizio)
+
+---
+
+
+### 🎯 Scopo Principale
+
+* **Centralizzare i contatti**  
+  Un’unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.
+
+* **Gestire livelli di contesto**  
+  Tramite i campi `soggetto_ruolo_id` e `utility_id` (che possono essere **`NULL`**), si modellano contatti generici o specifici.
+
+* **Identificare il contatto “default”**  
+  Il flag `is_default` permette di marcare un solo contatto di riferimento per ciascun soggetto.
+
+---
+
+### 🔍 Vincoli e Relazioni
+
+- **`PK (id)`**: identificatore univoco del contact record.  
+- **`UNIQUE (soggetto_id, soggetto_ruolo_id, utility_id, tipo_contatto_id)`**  
+  Garantisce una sola entry per combinazione di soggetto/ruolo/utility e tipo di contatto.  
+- **Foreign Keys**  
+  - `soggetto_id` → `anagrafiche.soggetti(id)` **ON DELETE CASCADE**  
+  - `soggetto_ruolo_id` → `anagrafiche.soggetti_ruoli(id)` **ON DELETE CASCADE**  
+  - `tipo_contatto_id` → `config.tipi_contatti(id)` **ON DELETE RESTRICT**  
+  - `utility_id` → `config.utilities(id)` **ON DELETE CASCADE**  
+
+---
+
+### ⚙️ Relazioni e Trigger
+
+- **Trigger `trg_contatti_ins_upd_set_default_contatto`**  
+  Assicura che esista al più un contatto `is_default = TRUE` per ogni `soggetto_id`:  
+  - Se `NEW.is_default = TRUE`, resetta gli altri a `FALSE`.  
+  - Se nessun contatto precedente è `default`, marca automaticamente il primo inserito/aggiornato.
+
+- **Trigger `trg_upd_contatti_audit_data_user`**  
+  Aggiorna i campi `data_update` e `user_update` ad ogni modifica.
+
+
+---
+
+### 🔗 Indici
+
+* `ix_contatti_soggetto` su `soggetto_id` per ricerche rapide per soggetto.
+* `ix_contatti_tipo` su `tipo_contatto_id` per filtrare contatti per tipologia.
+* `ix_contatti_utility` su `utility_id` per isolare contatti per servizio.
+
+Migliorano le performance nelle query di recupero contatti per soggetto, tipo o servizio.
+
+
+---
+
+### ⚙️ Esempi di Utilizzo
+
+```sql
+-- 1) Contatto globale per il soggetto UUID '123e4567-e89b-12d3-a456-426614174000'
+INSERT INTO anagrafiche.contatti (
+  tipo_contatto_id, soggetto_id,
+  nominativo, email, telefono, is_default
+) VALUES (
+  1, '123e4567-e89b-12d3-a456-426614174000',
+  'Mario Rossi', 'm.rossi@example.com', '0123456789', TRUE
+);
+
+-- 2) Contatto specifico per ruolo (soggetto_ruolo_id = 10)
+INSERT INTO anagrafiche.contatti (
+  tipo_contatto_id, soggetto_id, soggetto_ruolo_id,
+  nominativo, cellulare
+) VALUES (
+  2, '123e4567-e89b-12d3-a456-426614174000', 10,
+  'Luca Bianchi', '3801234567'
+);
+
+-- 3) Contatto per utility (utility_id = 5)
+INSERT INTO anagrafiche.contatti (
+  tipo_contatto_id, soggetto_id, utility_id,
+  nominativo, pec
+) VALUES (
+  3, '123e4567-e89b-12d3-a456-426614174000', 5,
+  'Ufficio Tecnico', 'tecnico@azienda.pec'
+);
+
+-- 4) Impostare un contatto come default (il trigger resetta gli altri)
+UPDATE anagrafiche.contatti
+   SET is_default = TRUE
+ WHERE id = 42;
+
+-- 5) Recuperare il contatto default di un soggetto
+SELECT *
+  FROM anagrafiche.contatti
+ WHERE soggetto_id = '123e4567-e89b-12d3-a456-426614174000'
+   AND is_default;
+
+---
+
+### 💡 Vantaggi Operativi
+
+ - Flessibilità: un singolo modello per ogni combinazione soggetto/ruolo/servizio e tipo di contatto.
+
+ - Univocità: constraint e trigger assicurano coerenza e un solo contatto predefinito per soggetto.
+
+ - Manutenzione semplificata: aggiornare o estendere i tipi di contatto avviene solo in tabelle di configurazione.
+
+ - Tracciabilità: audit dei cambiamenti con timestamp e utente, per compliance e debugging.
+
+---
+
+> 🧠 **Centralizzare i contatti in un’unica tabella con supporto multi-contesto e contact default migliora coerenza, performance e usabilità del sistema.”**
