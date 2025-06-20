@@ -32,7 +32,12 @@ BEGIN
      );
 
   IF v_count = 0 THEN
-    RAISE EXCEPTION '%', script.fn_get_messaggio('E_SOGGETTO_NO_CONTATTI');
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      TG_NAME,
+      'E_SOGGETTO_NO_CONTATTI',
+      jsonb_build_object('soggetto_id', NEW.id)
+    );
   END IF;
 
   RETURN NEW;
