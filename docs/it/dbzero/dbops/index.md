@@ -9,6 +9,8 @@
 - [fn_admin_merge_comune](funzioni/fn_admin_merge_comune.md)
 - [fn_admin_merge_stradario](funzioni/fn_admin_merge_stradario.md)
 - [fn_create_gestore](funzioni/fn_create_gestore.md)
+- [fn_find_file_usage (2)](funzioni/fn_find_file_usage (2).md)
+- [fn_find_file_usage](funzioni/fn_find_file_usage.md)
 - [fn_find_function_usage](funzioni/fn_find_function_usage.md)
 - [fn_foreign_keys_info](funzioni/fn_foreign_keys_info.md)
 - [fn_list_indices](funzioni/fn_list_indices.md)

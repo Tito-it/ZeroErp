@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/tipi_contatti.md" %}
 # Tabella `tipi_contatti`
 
 ## Campi principali

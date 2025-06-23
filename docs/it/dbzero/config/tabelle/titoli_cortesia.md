@@ -1,9 +1,10 @@
-# Tabella `contatti_ruoli`
+{% include-markdown "it/dbzero/config/manual/titoli_cortesia.md" %}
+# Tabella `titoli_cortesia`
 
 ## Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.contatti_ruoli_id_seq'::regclass) |
+| id | integer | NO | nextval('config.titoli_cortesia_id_seq'::regclass) |
 | descrizione | text | NO |  |
 | descrizione_breve | text | NO |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
@@ -20,10 +21,10 @@
 ## Indici
 | Nome | Definizione |
 |------|-------------|
-| pk_contatto_ruolo | `CREATE UNIQUE INDEX pk_contatto_ruolo ON config.contatti_ruoli USING btree (id)` |
-| uq_contatto_ruolo_contatto_ruolo_descrizione | `CREATE UNIQUE INDEX uq_contatto_ruolo_contatto_ruolo_descrizione ON config.contatti_ruoli USING btree (descrizione)` |
+| pk_contatto_ruolo | `CREATE UNIQUE INDEX pk_contatto_ruolo ON config.titoli_cortesia USING btree (id)` |
+| uq_contatto_ruolo_contatto_ruolo_descrizione | `CREATE UNIQUE INDEX uq_contatto_ruolo_contatto_ruolo_descrizione ON config.titoli_cortesia USING btree (descrizione)` |
 
 ## Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_upd_contatti_ruoli_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_upd_titoli_cortesia_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_contatti_ins_upd_set_default_contatto.md" %}
 # Funzione `trgfn_contatti_ins_upd_set_default_contatto`
 
 ```sql

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/contatti.md" %}
 # Tabella `contatti`
 
 ## Campi principali
@@ -6,8 +7,8 @@
 | id | integer | NO | nextval('anagrafiche.contatti_id_seq'::regclass) |
 | tipo_contatto_id | integer | NO |  |
 | soggetto_id | uuid | NO |  |
-| soggetto_ruolo_id | integer | NO |  |
-| utility_id | integer | NO |  |
+| soggetto_ruolo_id | integer | YES |  |
+| utility_id | integer | YES |  |
 | nominativo | character varying | NO |  |
 | email | character varying | YES |  |
 | telefono | character varying | YES |  |
@@ -19,6 +20,8 @@
 | is_default | boolean | NO | false |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
+| titolo_cortesia_id | integer | YES |  |
+| default_context | character varying | YES |  |
 
 ## Vincoli
 | Tipo | Nome | Colonne |
@@ -26,9 +29,10 @@
 | FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id, soggetto_id, soggetto_id, soggetto_id |
 | FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
 | FOREIGN KEY | fk_tipi_contatti_config | tipo_contatto_id |
+| FOREIGN KEY | fk_titoli_cortesia_config | titolo_cortesia_id, titolo_cortesia_id |
 | FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
 | PRIMARY KEY | pk_contatti | id |
-| UNIQUE | uq_contatti_multilevel | soggetto_ruolo_id, soggetto_id, tipo_contatto_id, utility_id |
+| UNIQUE | uq_contatti_multilevel | soggetto_ruolo_id, utility_id, soggetto_id, tipo_contatto_id |
 
 ## Indici
 | Nome | Definizione |

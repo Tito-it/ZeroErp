@@ -38,16 +38,27 @@ BEGIN
 
   -- 2) Se non trovato, imposto dei default
   IF NOT FOUND THEN
-    v_messaggio := '[MESSAGGIO NON DEFINITO: ' || p_error_code || ']';
-    v_causa     := 'Catalogo non contiene ' 
-                || quote_literal(p_error_code)
-                || ' per lingua ' 
-                || quote_literal(v_lingua);
-    v_soluzione := 'Verificare record in config.messaggi_errore con codice='
-                || quote_literal(p_error_code)
-                || ' e lingua='
-                || quote_literal(v_lingua);
-    v_id := NULL;
+     -- a) si cerca nella tabella messaggi_errore il messaggio di default
+     SELECT messaggio || ' ' || p_error_code, causa, soluzione
+      INTO v_messaggio, v_causa, v_soluzione
+      FROM config.messaggi_errore
+     WHERE codice = 'MESSAGGIO_NON_DEFINITO'
+      AND lingua = v_lingua;
+
+     -- b) se non trovato, imposto un messaggio di default 
+    IF v_messaggio IS NULL THEN  
+        v_messaggio := '[MESSAGGIO NON DEFINITO: ' || p_error_code 
+                    || ' - aggiungere inoltre in config.messaggi_errore  il messaggio con codice : MESSAGGIO_NON_DEFINITO  ]';
+        v_causa     := 'Catalogo non contiene ' 
+                    || quote_literal(p_error_code)
+                    || ' per lingua ' 
+                    || quote_literal(v_lingua);
+        v_soluzione := 'Verificare record in config.messaggi_errore con codice='
+                    || quote_literal(p_error_code)
+                    || ' e lingua='
+                    || quote_literal(v_lingua);
+        v_id := NULL;
+    END IF;
   END IF;
 
   -- 3) Se ho placeholder values, applico format()
@@ -70,7 +81,7 @@ BEGIN
 
   -- lo eseguo in un'altra sessione: commit immediato
   PERFORM dblink_exec('logconn', sql_text);
-  
+
   -- 5) RAISE con DETAIL (causa) e HINT (soluzione)
   RAISE EXCEPTION '%', coalesce(v_messaggio, '[Errore sconosciuto]')
     USING

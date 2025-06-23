@@ -1,0 +1,66 @@
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: zeroerp-postgres
+    env_file:
+      - ./internal.env
+    ports:
+      - '5432:5432'
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4:9 
+    container_name: zeroerp-pgadmin
+    env_file:
+      - ./internal.env
+    ports:
+      - '8080:80'
+    depends_on:
+      - postgres
+#env_file:
+    #  - ./internal.env        
+  liquibase:
+    image: liquibase/liquibase:latest
+    container_name: zeroerp-liquibase
+    environment:
+      - LIQUIBASE_URL=jdbc:postgresql://postgres:5432/Zero
+      - LIQUIBASE_USERNAME=titodb
+      - LIQUIBASE_PASSWORD=<rimossa>
+      - LIQUIBASE_CHANGELOG_FILE=changelog-master.yaml  
+    volumes:
+      - ./ZeroErp/db:/liquibase/changelog
+    working_dir: /liquibase/changelog
+    command: >
+      --url="jdbc:postgresql://postgres:5432/Zero"
+      --username="titodb"
+      --password="Titopost68$"
+      --changeLogFile="changelog-master.yaml" 
+      update
+    depends_on:
+      - postgres
+    
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    container_name: zeroerp-django
+    command: >
+      sh -c "python manage.py migrate &&
+             gunicorn backend.wsgi:application --bind 0.0.0.0:8000"
+    env_file:
+      - ./internal.env
+    environment:
+      - DB_HOST=postgres   # <-- override DB_HOST senza duplicare altri dati
+    ports:
+      - '8000:8000'
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - liquibase
+
+volumes:
+  db_data:

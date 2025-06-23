@@ -1,10 +1,12 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.soggetti`
 
 >  👀 **Vedi anche** 
+>
 > Approfondimento Tabelle:   
->  - [anagrafiche.soggetti_ruoli](../soggetti_ruoli)   
->  - [anagrafiche.dati_societari](../dati_societari)   
+>  - [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
+>  - [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)   
 >  - [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)    
+>  - [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia)    
 
 Questa documentazione descrive le regole di progettazione e implementazione della tabella anagrafica **`anagrafiche.soggetti`** in Zero ERP, senza ripetere la struttura SQL automatica. Contiene informazioni su vincoli, campi generati e relazioni con altre tabelle.
 
@@ -37,9 +39,9 @@ Questa documentazione descrive le regole di progettazione e implementazione dell
   - Il campo `default_contatto_id` fa riferimento a `anagrafiche.contatti(id)`.  
   - Ogni soggetto deve avere un contatto valido: la cancellazione di un contatto di default richiede una gestione manuale (`ON DELETE RESTRICT`).
 
-- **`config.contatti_ruoli`**  
-  - Il campo `contatto_ruolo_id` fa riferimento a `config.contatti_ruoli(id)`.  
-  - I ruoli di contatto non possono essere eliminati se sono ancora in uso (`ON DELETE RESTRICT`); eventuali aggiornamenti si propagano (`ON UPDATE CASCADE`).
+- **`config.titoli_cortesia`**  
+  - Il campo `titolo_cortesia_id` fa riferimento a `config.titoli_cortesia(id)`.  
+  - I titoli cortesia non possono essere eliminati se sono ancora in uso (`ON DELETE RESTRICT`); eventuali aggiornamenti si propagano (`ON UPDATE CASCADE`).
 
 - **`config.stati`**  
   - Il campo `stato_id` fa riferimento a `config.stati(id)`.  
