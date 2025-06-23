@@ -9,7 +9,7 @@
 
 name: CI
 
-on:
+on: 
   push:
     branches: [ Tito-dev ]
   pull_request:
