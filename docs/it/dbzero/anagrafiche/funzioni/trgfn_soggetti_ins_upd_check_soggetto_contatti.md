@@ -31,6 +31,7 @@ BEGIN
     );
 
   IF v_count = 0 THEN
+
     -- Logga e solleva errore usando il wrapper centralizzato
     PERFORM script.fn_log_and_raise_error(
       'database',
@@ -40,6 +41,7 @@ BEGIN
       -- nessun placeholder da sostituire, quindi VARIADIC p_valori omesso
     );
     -- fn_log_and_raise_error darà RAISE EXCEPTION internamente
+
   END IF;
 
   RETURN NEW;
