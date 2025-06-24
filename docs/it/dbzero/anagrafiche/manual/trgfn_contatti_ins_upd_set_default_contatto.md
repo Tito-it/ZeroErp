@@ -1,88 +1,101 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_contatti_ins_upd_set_default_contatto()`
+## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_contatti_ins_upd_set_default_contatto`
 
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:    
+> - [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
 > - [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
 >
 > Approfondimento funzioni :    
 > - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
 
-La trigger function **`anagrafiche.trgfn_contatti_ins_upd_set_default_contatto()`** garantisce che, per ogni soggetto/ruolo/utility, esista al massimo un contatto contrassegnato come predefinito (`is_default = true`).
+
+La trigger function **`anagrafiche.trgfn_contatti_ins_upd_set_default_contatto()`** gestisce automaticamente il contatto predefinito per un soggetto, tenendo conto di un **contesto** dinamico (`soggetto`, `ruolo` o `utility`). Assicura che esista al massimo un contatto default per soggetto e contesto, ed aggiorna il riferimento `default_contatto_id` in `anagrafiche.soggetti` quando richiesto.
 
 ---
 
 ### 🎯 Scopo Principale
 
-* **Unicità del contatto predefinito**: assicura che quando un nuovo contatto viene marcato come default, tutti gli altri contatti dello stesso soggetto/ruolo/utility siano automaticamente resettati a `is_default = false`.
+* **Impostare il contatto default**
+  Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
+
+* **Contesto dinamico**
+  Utilizzare il campo `default_context` (valori: `soggetto`, `ruolo`, `utility`) per isolare i default per diversi ambiti di utilizzo.
+
+* **Sincronizzazione con anagrafica soggetti**
+  Se il contesto è `soggetto`, aggiornare in automatico `anagrafiche.soggetti.default_contatto_id` per mantenere il collegamento principale.
 
 ---
 
-### 🔍 Contesto e Associazione
+### 🔍 Parametri e Contesto
 
-* **Tabella:** `anagrafiche.contatti`
-* **Evento:** `BEFORE INSERT OR UPDATE`
-* **Ambito:** `FOR EACH ROW`
-* **Trigger DDL:**
+* **Trigger associato**: `BEFORE INSERT OR UPDATE` su `anagrafiche.contatti`.
+* **Colonne coinvolte**:
 
-  ```sql
-  CREATE TRIGGER trg_contatti_ins_upd_set_default_contatto
-    BEFORE INSERT OR UPDATE ON anagrafiche.contatti
-    FOR EACH ROW
-    EXECUTE FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contatto();
-  ```
+  * `NEW.is_default BOOLEAN`
+  * `NEW.default_context TEXT`
+  * `NEW.utility_id` (opzionale)
+  * `NEW.soggetto_ruolo_id` (opzionale)
+  * `NEW.soggetto_id UUID`
 
 ---
 
-### ⚙️ Comportamento
+### ⚙️ Flusso Logico
 
-1. **Se `NEW.is_default = TRUE`**
+1. **Azzeramento contesto**
 
-   * Non modifica il flag del record in lavorazione.
-   * Esegue un `UPDATE` su `anagrafiche.contatti` per impostare `is_default = FALSE` su tutti gli altri contatti dello stesso `soggetto_id` che risultino ancora default.
+   ```plpgsql
+   NEW.default_context := NULL;
+   ```
 
-2. **Se `NEW.is_default = FALSE`**
+2. **Determinazione contesto**
 
-   * Verifica se esiste già un contatto default per lo stesso `soggetto_id`:
+   ```plpgsql
+   ctx := CASE
+     WHEN NEW.utility_id        IS NOT NULL THEN 'utility'
+     WHEN NEW.soggetto_ruolo_id IS NOT NULL THEN 'ruolo'
+     ELSE 'soggetto'
+   END;
+   ```
 
-     ```sql
-     SELECT COUNT(*) INTO cnt
-       FROM anagrafiche.contatti
-      WHERE soggetto_id = NEW.soggetto_id
-        AND is_default;
-     ```
-   * Se **nessun** default è presente (`cnt = 0`), assegna automaticamente `NEW.is_default := TRUE`, garantendo almeno un contatto predefinito.
+3. **Gestione contatto marcato default**
+   Se `NEW.is_default = TRUE`:
 
-3. **Restituzione**
+   * Disabilita (`is_default = FALSE`) tutti i contatti esistenti dello stesso `soggetto_id` e `default_context` = `ctx`, eccetto `NEW.id`.
+   * Imposta `NEW.default_context := ctx`.
+   * Se `ctx = 'soggetto'`, aggiorna `anagrafiche.soggetti.default_contatto_id = NEW.id`.
+   * Restituisce `NEW`.
 
-   * `RETURN NEW` per proseguire con l’inserimento o l’aggiornamento.
+4. **Assegnazione primo default**
+   Se `NEW.is_default = FALSE` e non esistono contatti default per `soggetto_id` e `ctx`:
+
+   * Imposta `NEW.is_default := TRUE` e `NEW.default_context := ctx`.
+   * Se `ctx = 'soggetto'`, aggiorna `anagrafiche.soggetti.default_contatto_id = NEW.id`.
+
+5. **Chiusura**
+   Restituisce `NEW` con i valori aggiornati.
 
 ---
 
-### 📋 Esempio di Flusso Interno
+### 🔒 Vincoli e Assunzioni
 
-```plpgsql
--- Pseudocodice semplificato
-IF NEW.is_default THEN
-  UPDATE anagrafiche.contatti
-     SET is_default = FALSE
-   WHERE soggetto_id = NEW.soggetto_id
-     AND soggetto_ruolo_id = NEW.soggetto_ruolo_id
-     AND utility_id = NEW.utility_id
-     AND id <> NEW.id;
-END IF;
-
-RETURN NEW;
-```
+* **Contesto obbligatorio**: `default_context` viene sempre valorizzato a uno dei tre valori.
+* **Unico default per contesto**: la funzione garantisce un solo contatto `is_default = TRUE` per coppia (`soggetto_id`, `default_context`).
+* **Aggiornamento referenza soggetto**: solo per `default_context = 'soggetto'` si propaga l’ID contatto.
 
 ---
 
 ### 💡 Vantaggi Operativi
 
-* **User experience**: garantisce che in UI o API il contatto predefinito sia sempre univoco.
-* **Consistenza dei dati**: elimina la necessità di logiche complesse in applicazione per la gestione del default.
-* **Manutenibilità**: centralizza la logica di default direttamente nel database.
+* **Gestione semplificata dei default**
+  Automatizza l’impostazione del contatto principale per soggetti e ruoli.
+* **Contesti indipendenti**
+  Consente di avere contatti di default distinti per scopi diversi (`soggetto`, `ruolo`, `utility`) senza mescolarli.
+* **Sincronizzazione diretta**
+  Tiene coerente il campo `default_contatto_id` in `anagrafiche.soggetti` senza ulteriori query esterne.
+* **Manutenibilità**
+  Centralizza la logica di default in un’unica function, riutilizzabile in più trigger.
 
 ---
 
-> 🧠 **“Con una trigger function dedicata, il vincolo di un solo contatto default per combinazione soggetto/ruolo/utility è garantito automaticamente a livello database.”**
+> 🧠 **“Una trigger function flessibile che assegna e mantiene automaticamente il contatto predefinito in base a contesti distinti, semplificando la gestione dei dati di contatto.”**
