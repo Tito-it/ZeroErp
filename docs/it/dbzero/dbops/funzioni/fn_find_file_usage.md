@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_find_file_usage.md" %}
 # Funzione `fn_find_file_usage`
 
 ```sql

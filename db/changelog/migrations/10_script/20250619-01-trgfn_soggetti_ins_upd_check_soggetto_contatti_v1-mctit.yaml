@@ -31,7 +31,7 @@ databaseChangeLog:
                   -- ====================================================================
                   -- Verifica che il soggetto abbia almeno:
                   --   • un contatto di default (is_default = TRUE), oppure
-                  --   • un contatto con almeno un canale non nullo
+                  --   • un contatto con almeno un canale non nullo 
                   -- ====================================================================
                   SELECT COUNT(*) INTO v_count
                     FROM anagrafiche.contatti c
@@ -61,7 +61,7 @@ databaseChangeLog:
                 $function$;
 
                 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()
-                  IS 'Trigger che verifica al commit che un soggetto abbia almeno un contatto valido; utilizza fn_log_and_raise_error per log e exception.';
+                  IS 'Trigger che verifica al commit che un soggetto abbia almeno un contatto valido;utilizza fn_log_and_raise_error per log e exception.';
 
   # Tag di fine modifica per fn_get_messaggio v2
   - changeSet:

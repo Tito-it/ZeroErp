@@ -35,3 +35,4 @@
 - [soggetti_ruoli](manual/soggetti_ruoli.md)
 - [trgfn_contatti_ins_upd_set_default_contatto](manual/trgfn_contatti_ins_upd_set_default_contatto.md)
 - [trgfn_gestori_ins_upd_check_ruolo_gestore](manual/trgfn_gestori_ins_upd_check_ruolo_gestore.md)
+- [trgfn_soggetti_ins_upd_check_soggetto_contatti](manual/trgfn_soggetti_ins_upd_check_soggetto_contatti.md)

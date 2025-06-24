@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250623-01-trgfn_contatti_ins_upd_set_default_contatto
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - comment: "Trigger che imposta il primo contatto di un soggetto come default nel contesto corretto (soggetto|ruolo|utility) e ripulisce solo quelli dello stesso contesto."
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contatto()
+                  RETURNS trigger
+                  LANGUAGE plpgsql
+                  COST 100
+                  VOLATILE NOT LEAKPROOF
+                AS $BODY$
+                DECLARE
+                  cnt INTEGER;
+                  ctx TEXT;
+                BEGIN
+                  -- 1) Preparo il reset del context
+                  NEW.default_context := NULL;
+
+                  -- 2) Determino il contesto per questo contatto
+                  ctx := CASE
+                    WHEN NEW.utility_id        IS NOT NULL THEN 'utility'
+                    WHEN NEW.soggetto_ruolo_id IS NOT NULL THEN 'ruolo'
+                    ELSE 'soggetto'
+                  END;
+
+                  -- 3) Se il nuovo contatto è marcato default:
+                  IF NEW.is_default THEN
+                    UPDATE anagrafiche.contatti
+                      SET is_default = FALSE,
+                          default_context = NULL
+                    WHERE soggetto_id = NEW.soggetto_id
+                      AND id <> COALESCE(NEW.id,0)
+                      AND is_default
+                      AND default_context = ctx;  -- **solo quel contesto**
+
+                    NEW.default_context := ctx;
+                    -- Assegno il context e, se è 'soggetto', aggiorno anche la tabella soggetti
+                    
+                    IF ctx = 'soggetto' THEN
+                      UPDATE anagrafiche.soggetti
+                        SET default_contatto_id = NEW.id
+                      WHERE id = NEW.soggetto_id;
+                    END IF;
+                    RETURN NEW;
+                  END IF;
+
+                  -- 4) Altrimenti, se non esiste ancora alcun default in questo contesto,
+                  SELECT COUNT(*) INTO cnt
+                    FROM anagrafiche.contatti
+                  WHERE soggetto_id = NEW.soggetto_id
+                    AND is_default
+                    AND default_context = ctx;   -- **count limitato a quel contesto**
+
+                  IF cnt = 0 THEN
+                      NEW.is_default      := TRUE;
+                      NEW.default_context := ctx;
+
+                      IF ctx = 'soggetto' THEN
+                        UPDATE anagrafiche.soggetti
+                          SET default_contatto_id = NEW.id
+                        WHERE id = NEW.soggetto_id;
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+                END;
+                $BODY$;
+
+        - sql:
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contatto()
+               IS 'Trigger che imposta il primo contatto di un soggetto come default nel contesto corretto (soggetto|ruolo|utility), 
+               aggiorna default_contatto_id su soggetti e ripulisce solo quelli dello stesso contesto.';
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250623-90-trgfn_contatti_ins_upd_set_default_contatto
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250623-01-trgfn_contatti_ins_upd_set_default_contatto

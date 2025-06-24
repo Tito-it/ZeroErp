@@ -12,32 +12,60 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contat
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-DECLARE
+  DECLARE
     cnt INTEGER;
-BEGIN
-    -- Se il nuovo contatto è già marked default, lasciare com'è
+    ctx TEXT;
+  BEGIN
+    -- 1) Preparo il reset del context
+    NEW.default_context := NULL;
+
+    -- 2) Determino il contesto per questo contatto
+    ctx := CASE
+      WHEN NEW.utility_id        IS NOT NULL THEN 'utility'
+      WHEN NEW.soggetto_ruolo_id IS NOT NULL THEN 'ruolo'
+      ELSE 'soggetto'
+    END;
+
+    -- 3) Se il nuovo contatto è marcato default:
     IF NEW.is_default THEN
-        -- Rimuove eventuali altri default preesistenti
-        UPDATE anagrafiche.contatti
-           SET is_default = FALSE
-         WHERE soggetto_id = NEW.soggetto_id
-           AND id <> COALESCE(NEW.id, 0)
-           AND is_default;
-        RETURN NEW;
+      UPDATE anagrafiche.contatti
+        SET is_default = FALSE,
+            default_context = NULL
+      WHERE soggetto_id = NEW.soggetto_id
+        AND id <> COALESCE(NEW.id,0)
+        AND is_default
+        AND default_context = ctx;  -- **solo quel contesto**
+
+      NEW.default_context := ctx;
+      -- Assegno il context e, se è 'soggetto', aggiorno anche la tabella soggetti
+      
+      IF ctx = 'soggetto' THEN
+        UPDATE anagrafiche.soggetti
+          SET default_contatto_id = NEW.id
+        WHERE id = NEW.soggetto_id;
+      END IF;
+      RETURN NEW;
     END IF;
 
-    -- Controlla se il soggetto ha già un default
+    -- 4) Altrimenti, se non esiste ancora alcun default in questo contesto,
     SELECT COUNT(*) INTO cnt
       FROM anagrafiche.contatti
-     WHERE soggetto_id = NEW.soggetto_id
-       AND is_default;
+    WHERE soggetto_id = NEW.soggetto_id
+      AND is_default
+      AND default_context = ctx;   -- **count limitato a quel contesto**
 
-    -- Se non esiste alcun default, imposta il nuovo contatto come default
     IF cnt = 0 THEN
-        NEW.is_default := TRUE;
+        NEW.is_default      := TRUE;
+        NEW.default_context := ctx;
+
+        IF ctx = 'soggetto' THEN
+          UPDATE anagrafiche.soggetti
+            SET default_contatto_id = NEW.id
+          WHERE id = NEW.soggetto_id;
+        END IF;
     END IF;
 
     RETURN NEW;
-END;
-$function$
+  END;
+  $function$
 ```
