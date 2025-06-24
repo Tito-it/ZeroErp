@@ -1,6 +1,6 @@
 # Schema `config`
 
-## Tabelle
+## 📚 Tabelle
 - [ambiti](tabelle/ambiti.md)
 - [codici_postali](tabelle/codici_postali.md)
 - [comuni](tabelle/comuni.md)
@@ -28,13 +28,13 @@
 - [utilities](tabelle/utilities.md)
 - [valute](tabelle/valute.md)
 
-## Funzioni
+## ⚙️ Funzioni
 - [fn_get_iva_override](funzioni/fn_get_iva_override.md)
 - [trgfn_comuni_upd_dlt_storico_comuni](funzioni/trgfn_comuni_upd_dlt_storico_comuni.md)
 - [trgfn_iva_ins_upd_check_conti_iva](funzioni/trgfn_iva_ins_upd_check_conti_iva.md)
 - [trgfn_stradario_upd_dlt_storico_stradario](funzioni/trgfn_stradario_upd_dlt_storico_stradario.md)
 
-## Documentazione Manuale
+## 📝 Documentazione Manuale
 - [codici_postali](manual/codici_postali.md)
 - [comuni](manual/comuni.md)
 - [conti_contabili](manual/conti_contabili.md)

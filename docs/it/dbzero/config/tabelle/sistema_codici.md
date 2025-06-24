@@ -1,7 +1,7 @@
 {% include-markdown "it/dbzero/config/manual/sistema_codici.md" %}
-# Tabella `sistema_codici`
+# 📚 Tabella `sistema_codici`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.sistema_codici_id_seq'::regclass) |
@@ -18,19 +18,19 @@
 | data_update | timestamp with time zone | YES | CURRENT_TIMESTAMP |
 | user_update | text | YES | CURRENT_USER |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | PRIMARY KEY | pk_sistema_codici | id |
 | UNIQUE | uq_sistema_codici_codice_tipo | codice_tipo |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_sistema_codici | `CREATE UNIQUE INDEX pk_sistema_codici ON config.sistema_codici USING btree (id)` |
 | uq_sistema_codici_codice_tipo | `CREATE UNIQUE INDEX uq_sistema_codici_codice_tipo ON config.sistema_codici USING btree (codice_tipo)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_sistema_codici_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

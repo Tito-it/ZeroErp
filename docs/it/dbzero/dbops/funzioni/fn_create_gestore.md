@@ -1,4 +1,4 @@
-# Funzione `fn_create_gestore`
+# ⚙️ Funzione `fn_create_gestore`
 
 ```sql
 CREATE FUNCTION fn_create_gestore(p_codice text, p_ragione_sociale text, p_partita_iva character, p_codice_fiscale character, p_tipo_soggetto character, p_forma_giuridica text, p_capitale_sociale numeric, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_destinatario_fe character, p_cd_software text, p_valuta_id integer, p_iban character, p_cd_int_utility text, p_cd_int_ruolo_funzionale text)

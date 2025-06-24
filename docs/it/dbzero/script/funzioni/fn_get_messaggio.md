@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/script/manual/fn_get_messaggio.md" %}
-# Funzione `fn_get_messaggio`
+# ⚙️ Funzione `fn_get_messaggio`
 
 ```sql
 CREATE FUNCTION fn_get_messaggio(p_codice text, p_valore text, p_lingua text)

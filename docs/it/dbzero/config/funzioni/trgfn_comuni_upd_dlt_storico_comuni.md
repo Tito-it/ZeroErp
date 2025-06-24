@@ -1,4 +1,4 @@
-# Funzione `trgfn_comuni_upd_dlt_storico_comuni`
+# ⚙️ Funzione `trgfn_comuni_upd_dlt_storico_comuni`
 
 ```sql
 CREATE FUNCTION trgfn_comuni_upd_dlt_storico_comuni()

@@ -1,7 +1,7 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/indirizzi_dettaglio.md" %}
-# Tabella `indirizzi_dettaglio`
+# 📚 Tabella `indirizzi_dettaglio`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('anagrafiche.indirizzi_dettaglio_id_seq'::regclass) |
@@ -23,21 +23,21 @@
 | scala | character varying | YES |  |
 | indirizzo_normalizzato | text | YES |  |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_stradario_config | stradario_id |
 | PRIMARY KEY | pk_indirizzi_dettaglio | id |
 | UNIQUE | uq_indirizzi_dettaglio_norm | interno, via_norm, palazzina, piano, civico_norm |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_indirizzi_dettaglio_civic_geoloc_gist | `CREATE INDEX ix_indirizzi_dettaglio_civic_geoloc_gist ON anagrafiche.indirizzi_dettaglio USING gist (civic_geoloc)` |
 | pk_indirizzi_dettaglio | `CREATE UNIQUE INDEX pk_indirizzi_dettaglio ON anagrafiche.indirizzi_dettaglio USING btree (id)` |
 | uq_indirizzi_dettaglio_norm | `CREATE UNIQUE INDEX uq_indirizzi_dettaglio_norm ON anagrafiche.indirizzi_dettaglio USING btree (via_norm, civico_norm, interno, piano, palazzina)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio()` |

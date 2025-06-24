@@ -1,7 +1,7 @@
 {% include-markdown "it/dbzero/config/manual/valute.md" %}
-# Tabella `valute`
+# 📚 Tabella `valute`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.valute_id_seq'::regclass) |
@@ -15,14 +15,14 @@
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | PRIMARY KEY | pk_valute | id |
 | UNIQUE | uq_cd_valuta | cd_valuta |
 | UNIQUE | uq_iso_code | iso_code |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | idx_valute_desc_valuta | `CREATE INDEX idx_valute_desc_valuta ON config.valute USING btree (descrizione_valuta)` |
@@ -30,7 +30,7 @@
 | uq_cd_valuta | `CREATE UNIQUE INDEX uq_cd_valuta ON config.valute USING btree (cd_valuta)` |
 | uq_iso_code | `CREATE UNIQUE INDEX uq_iso_code ON config.valute USING btree (iso_code)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_valute_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

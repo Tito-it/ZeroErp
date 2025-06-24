@@ -1,6 +1,6 @@
-# Tabella `billing_account`
+# 📚 Tabella `billing_account`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('anagrafiche.billing_account_id_seq'::regclass) |
@@ -16,7 +16,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | NO | CURRENT_USER |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_billing_account_anagrafiche | parent_account_id |
@@ -27,7 +27,7 @@
 | UNIQUE | uq_billing_account_code | account_code |
 | UNIQUE | uq_billing_instance_utility | istanza_id, utility_id |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_billing_account_istanza | `CREATE INDEX ix_billing_account_istanza ON anagrafiche.billing_account USING btree (istanza_id)` |
@@ -36,7 +36,7 @@
 | uq_billing_account_code | `CREATE UNIQUE INDEX uq_billing_account_code ON anagrafiche.billing_account USING btree (account_code)` |
 | uq_billing_instance_utility | `CREATE UNIQUE INDEX uq_billing_instance_utility ON anagrafiche.billing_account USING btree (istanza_id, utility_id)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_billing_account_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

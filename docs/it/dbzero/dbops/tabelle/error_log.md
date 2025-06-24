@@ -1,7 +1,7 @@
 {% include-markdown "it/dbzero/dbops/manual/error_log.md" %}
-# Tabella `error_log`
+# 📚 Tabella `error_log`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO | nextval('dbops.error_log_id_seq'::regclass) |
@@ -12,13 +12,13 @@
 | context | jsonb | NO | '{}'::jsonb |
 | tx_id | uuid | NO | (md5((txid_current())::text))::uuid |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_error_log_messaggio_errore_id | messaggio_errore_id |
 | PRIMARY KEY | error_log_pkey | id |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | error_log_pkey | `CREATE UNIQUE INDEX error_log_pkey ON dbops.error_log USING btree (id)` |

@@ -1,4 +1,4 @@
-# Funzione `trgfn_indirizzi_upd_dlt_storico_indirizzi`
+# ⚙️ Funzione `trgfn_indirizzi_upd_dlt_storico_indirizzi`
 
 ```sql
 CREATE FUNCTION trgfn_indirizzi_upd_dlt_storico_indirizzi()

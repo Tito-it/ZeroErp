@@ -1,6 +1,6 @@
-# Tabella `indirizzi`
+# 📚 Tabella `indirizzi`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('storico.indirizzi_id_seq'::regclass) |
@@ -22,7 +22,7 @@
 | geoloc | USER-DEFINED | YES |  |
 | indirizzi_id | integer | YES |  |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_codici_postali_config | codice_postale_id, codice_postale_id |
@@ -34,7 +34,7 @@
 | FOREIGN KEY | fk_tipi_indirizzi_config | tipo_indirizzo_id |
 | PRIMARY KEY | pk_indirizzi | id |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_storico_indirizzi_periodo | `CREATE INDEX ix_storico_indirizzi_periodo ON storico.indirizzi USING btree (valid_from, valid_to)` |

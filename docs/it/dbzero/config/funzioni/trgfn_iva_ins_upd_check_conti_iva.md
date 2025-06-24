@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/config/manual/trgfn_iva_ins_upd_check_conti_iva.md" %}
-# Funzione `trgfn_iva_ins_upd_check_conti_iva`
+# ⚙️ Funzione `trgfn_iva_ins_upd_check_conti_iva`
 
 ```sql
 CREATE FUNCTION trgfn_iva_ins_upd_check_conti_iva()

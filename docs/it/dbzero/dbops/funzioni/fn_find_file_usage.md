@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/dbops/manual/fn_find_file_usage.md" %}
-# Funzione `fn_find_file_usage`
+# ⚙️ Funzione `fn_find_file_usage`
 
 ```sql
 CREATE FUNCTION fn_find_file_usage(p_target_table regclass)

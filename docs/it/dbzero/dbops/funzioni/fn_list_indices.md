@@ -1,4 +1,4 @@
-# Funzione `fn_list_indices`
+# ⚙️ Funzione `fn_list_indices`
 
 ```sql
 CREATE FUNCTION fn_list_indices(p_schema text, p_table text)

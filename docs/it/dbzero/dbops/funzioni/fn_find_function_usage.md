@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/dbops/manual/fn_find_function_usage.md" %}
-# Funzione `fn_find_function_usage`
+# ⚙️ Funzione `fn_find_function_usage`
 
 ```sql
 CREATE FUNCTION fn_find_function_usage(p_function_name text)

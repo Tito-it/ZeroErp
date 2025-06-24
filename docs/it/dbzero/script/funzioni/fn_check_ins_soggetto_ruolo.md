@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/script/manual/fn_check_ins_soggetto_ruolo.md" %}
-# Funzione `fn_check_ins_soggetto_ruolo`
+# ⚙️ Funzione `fn_check_ins_soggetto_ruolo`
 
 ```sql
 CREATE FUNCTION fn_check_ins_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id integer, p_cd_int_ruolo character varying)

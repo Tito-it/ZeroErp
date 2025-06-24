@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/script/manual/fn_get_stradario.md" %}
-# Funzione `fn_get_stradario`
+# ⚙️ Funzione `fn_get_stradario`
 
 ```sql
 CREATE FUNCTION fn_get_stradario(p_comune_id integer, p_indirizzo text)

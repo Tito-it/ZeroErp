@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/config/manual/trgfn_stradario_upd_dlt_storico_stradario.md" %}
-# Funzione `trgfn_stradario_upd_dlt_storico_stradario`
+# ⚙️ Funzione `trgfn_stradario_upd_dlt_storico_stradario`
 
 ```sql
 CREATE FUNCTION trgfn_stradario_upd_dlt_storico_stradario()

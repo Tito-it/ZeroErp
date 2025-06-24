@@ -1,4 +1,4 @@
-# Funzione `fn_get_indirizzo`
+# ⚙️ Funzione `fn_get_indirizzo`
 
 ```sql
 CREATE FUNCTION fn_get_indirizzo(p_soggetto_ruolo_id integer, p_tipo_codice character varying)

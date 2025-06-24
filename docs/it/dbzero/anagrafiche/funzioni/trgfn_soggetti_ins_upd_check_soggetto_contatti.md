@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_ins_upd_check_soggetto_contatti.md" %}
-# Funzione `trgfn_soggetti_ins_upd_check_soggetto_contatti`
+# ⚙️ Funzione `trgfn_soggetti_ins_upd_check_soggetto_contatti`
 
 ```sql
 CREATE FUNCTION trgfn_soggetti_ins_upd_check_soggetto_contatti()

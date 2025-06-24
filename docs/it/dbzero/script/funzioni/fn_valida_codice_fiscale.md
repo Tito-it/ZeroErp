@@ -1,4 +1,4 @@
-# Funzione `fn_valida_codice_fiscale`
+# ⚙️ Funzione `fn_valida_codice_fiscale`
 
 ```sql
 CREATE FUNCTION fn_valida_codice_fiscale(cf text)

@@ -1,7 +1,7 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/dati_societari.md" %}
-# Tabella `dati_societari`
+# 📚 Tabella `dati_societari`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id_dati_societari | bigint | NO | nextval('anagrafiche.dati_societari_id_seq'::regclass) |
@@ -21,7 +21,7 @@
 | data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
 | user_update | text | NO | CURRENT_USER |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_province_config | id_prov_iscri_rea |
@@ -32,7 +32,7 @@
 | UNIQUE | uq_ds_prov_cea | id_prov_iscri_rea, iscrizione_rea |
 | UNIQUE | uq_ds_soggetto | soggetto_id |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_dati_societari | `CREATE UNIQUE INDEX pk_dati_societari ON anagrafiche.dati_societari USING btree (id_dati_societari)` |
@@ -41,7 +41,7 @@
 | uq_ds_prov_cea | `CREATE UNIQUE INDEX uq_ds_prov_cea ON anagrafiche.dati_societari USING btree (id_prov_iscri_rea, iscrizione_rea)` |
 | uq_ds_soggetto | `CREATE UNIQUE INDEX uq_ds_soggetto ON anagrafiche.dati_societari USING btree (soggetto_id)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_dati_societari_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

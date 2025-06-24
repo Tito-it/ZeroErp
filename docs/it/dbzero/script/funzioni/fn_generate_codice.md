@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/script/manual/fn_generate_codice.md" %}
-# Funzione `fn_generate_codice`
+# ⚙️ Funzione `fn_generate_codice`
 
 ```sql
 CREATE FUNCTION fn_generate_codice(tipo text)

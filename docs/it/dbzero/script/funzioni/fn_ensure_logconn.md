@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/script/manual/fn_ensure_logconn.md" %}
-# Funzione `fn_ensure_logconn`
+# ⚙️ Funzione `fn_ensure_logconn`
 
 ```sql
 CREATE FUNCTION fn_ensure_logconn()

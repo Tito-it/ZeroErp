@@ -1,7 +1,7 @@
 {% include-markdown "it/dbzero/config/manual/utilities.md" %}
-# Tabella `utilities`
+# 📚 Tabella `utilities`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.utilities_id_seq'::regclass) |
@@ -13,7 +13,7 @@
 | data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
 | user_update | character varying | NO | CURRENT_USER |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_cd_int_utility |  |
@@ -23,14 +23,14 @@
 | UNIQUE | uq_utilities_cd_int_utility | cd_int_utility |
 | UNIQUE | uq_utilities_cod_utility | cod_utility |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_utilities | `CREATE UNIQUE INDEX pk_utilities ON config.utilities USING btree (id)` |
 | uq_utilities_cd_int_utility | `CREATE UNIQUE INDEX uq_utilities_cd_int_utility ON config.utilities USING btree (cd_int_utility)` |
 | uq_utilities_cod_utility | `CREATE UNIQUE INDEX uq_utilities_cod_utility ON config.utilities USING btree (cod_utility)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_utilities_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

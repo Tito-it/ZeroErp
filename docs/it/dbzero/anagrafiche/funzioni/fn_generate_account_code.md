@@ -1,4 +1,4 @@
-# Funzione `fn_generate_account_code`
+# ⚙️ Funzione `fn_generate_account_code`
 
 ```sql
 CREATE FUNCTION fn_generate_account_code(p_istanza_id integer, p_utility_id integer)

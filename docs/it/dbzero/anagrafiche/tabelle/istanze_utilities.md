@@ -1,6 +1,6 @@
-# Tabella `istanze_utilities`
+# 📚 Tabella `istanze_utilities`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('anagrafiche.istanze_utilities_id_seq'::regclass) |
@@ -29,7 +29,7 @@
 | user_update | character varying | NO | CURRENT_USER |
 | account_code | character varying | YES |  |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_istanza_utilities_imm_rurale |  |
@@ -40,7 +40,7 @@
 | UNIQUE | uq_istanze_utilities_account_code | account_code |
 | UNIQUE | uq_istanze_utilities_codice_istanza | codice_istanza |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_istanze_utilities_soggetto_ruolo_id | `CREATE INDEX ix_istanze_utilities_soggetto_ruolo_id ON anagrafiche.istanze_utilities USING btree (soggetto_ruolo_id)` |
@@ -48,7 +48,7 @@
 | uq_istanze_utilities_account_code | `CREATE UNIQUE INDEX uq_istanze_utilities_account_code ON anagrafiche.istanze_utilities USING btree (account_code)` |
 | uq_istanze_utilities_codice_istanza | `CREATE UNIQUE INDEX uq_istanze_utilities_codice_istanza ON anagrafiche.istanze_utilities USING btree (codice_istanza)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_istanze_utilities_ins_set_istanza_codice | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_ins_set_istanza_codice()` |

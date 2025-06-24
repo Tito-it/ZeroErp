@@ -1,4 +1,4 @@
-# Funzione `fn_migrate_add_indirizzo_normalizzato`
+# ⚙️ Funzione `fn_migrate_add_indirizzo_normalizzato`
 
 ```sql
 CREATE FUNCTION fn_migrate_add_indirizzo_normalizzato()

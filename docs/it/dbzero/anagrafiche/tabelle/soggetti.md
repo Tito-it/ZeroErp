@@ -1,7 +1,7 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/soggetti.md" %}
-# Tabella `soggetti`
+# 📚 Tabella `soggetti`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | uuid | NO | gen_random_uuid() |
@@ -27,7 +27,7 @@
 | ragione_sociale_completa | text | YES |  |
 | default_contatto_id | integer | YES |  |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_cf_o_piva |  |
@@ -43,7 +43,7 @@
 | UNIQUE | key_soggetto_idstato_id_fiscale_univoco | stato_id, id_fiscale_univoco_cf_piva |
 | UNIQUE | key_soggetto_soggetto_codice | codice_soggetto |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | idx_anagrafiche_soggetti_comune_id | `CREATE INDEX idx_anagrafiche_soggetti_comune_id ON anagrafiche.soggetti USING btree (comune_id)` |
@@ -55,7 +55,7 @@
 | key_soggetto_soggetto_codice | `CREATE UNIQUE INDEX key_soggetto_soggetto_codice ON anagrafiche.soggetti USING btree (codice_soggetto)` |
 | pk_soggetto | `CREATE UNIQUE INDEX pk_soggetto ON anagrafiche.soggetti USING btree (id)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_soggetti_ins_upd_check_soggetto_contatti | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |

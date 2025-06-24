@@ -1,6 +1,6 @@
-# Tabella `tipi_documenti`
+# 📚 Tabella `tipi_documenti`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.tipi_documenti_id_seq'::regclass) |
@@ -12,21 +12,21 @@
 | data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
 | user_update | character varying | NO | CURRENT_USER |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | PRIMARY KEY | pk_tipi_documenti | id |
 | UNIQUE | uq_tipi_documenti_cd_int_tipo_documento | cd_int_tipo_documento |
 | UNIQUE | uq_tipi_documenti_cod_tipo_documento | cod_tipo_documento |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_tipi_documenti | `CREATE UNIQUE INDEX pk_tipi_documenti ON config.tipi_documenti USING btree (id)` |
 | uq_tipi_documenti_cd_int_tipo_documento | `CREATE UNIQUE INDEX uq_tipi_documenti_cd_int_tipo_documento ON config.tipi_documenti USING btree (cd_int_tipo_documento)` |
 | uq_tipi_documenti_cod_tipo_documento | `CREATE UNIQUE INDEX uq_tipi_documenti_cod_tipo_documento ON config.tipi_documenti USING btree (cod_tipo_documento)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_tipi_contatti_upd_lock_cod_interno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('cd_int_tipo_documento', 'CODICE_NON_MODIFICABILE')` |

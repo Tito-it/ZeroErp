@@ -1,4 +1,4 @@
-# Funzione `trgfn_istanze_utilities_ins_set_istanza_codice`
+# ⚙️ Funzione `trgfn_istanze_utilities_ins_set_istanza_codice`
 
 ```sql
 CREATE FUNCTION trgfn_istanze_utilities_ins_set_istanza_codice()

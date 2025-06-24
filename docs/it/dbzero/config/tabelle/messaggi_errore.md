@@ -1,7 +1,7 @@
 {% include-markdown "it/dbzero/config/manual/messaggi_errore.md" %}
-# Tabella `messaggi_errore`
+# 📚 Tabella `messaggi_errore`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | codice | text | NO |  |
@@ -11,13 +11,13 @@
 | soluzione | text | YES |  |
 | id | bigint | NO | nextval('config.messaggi_errore_id_seq'::regclass) |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | PRIMARY KEY | pk_messaggi_errore | id |
 | UNIQUE | uq_messaggi_errore_codice_lingua | codice, lingua |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_messaggi_errore | `CREATE UNIQUE INDEX pk_messaggi_errore ON config.messaggi_errore USING btree (id)` |

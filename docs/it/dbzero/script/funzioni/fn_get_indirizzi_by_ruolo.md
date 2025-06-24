@@ -1,4 +1,4 @@
-# Funzione `fn_get_indirizzi_by_ruolo`
+# ⚙️ Funzione `fn_get_indirizzi_by_ruolo`
 
 ```sql
 CREATE FUNCTION fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id integer)

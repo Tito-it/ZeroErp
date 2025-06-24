@@ -1,4 +1,4 @@
-# Funzione `trgfn_soggetti_ins_upd_genera_cdsoggetto`
+# ⚙️ Funzione `trgfn_soggetti_ins_upd_genera_cdsoggetto`
 
 ```sql
 CREATE FUNCTION trgfn_soggetti_ins_upd_genera_cdsoggetto()

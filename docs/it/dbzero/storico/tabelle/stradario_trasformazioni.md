@@ -1,6 +1,6 @@
-# Tabella `stradario_trasformazioni`
+# 📚 Tabella `stradario_trasformazioni`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('storico.stradario_trasformazioni_id_seq'::regclass) |
@@ -12,14 +12,14 @@
 | data_insert | timestamp without time zone | YES | CURRENT_TIMESTAMP |
 | user_insert | character varying | YES | CURRENT_USER |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_stradario_config | stradario_id, via_id_nuovo |
 | FOREIGN KEY | fk_stradario_via_orig_config | via_id_orig |
 | PRIMARY KEY | pk_stradario_trasformazioni | id |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_stradario_trasf_via_nuovo | `CREATE INDEX ix_stradario_trasf_via_nuovo ON storico.stradario_trasformazioni USING btree (via_id_nuovo)` |

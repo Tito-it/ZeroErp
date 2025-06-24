@@ -1,7 +1,7 @@
 {% include-markdown "it/dbzero/config/manual/comuni.md" %}
-# Tabella `comuni`
+# 📚 Tabella `comuni`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.comuni_id_seq'::regclass) |
@@ -14,20 +14,20 @@
 | extra_country | jsonb | YES |  |
 | storicizza | boolean | NO | false |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_provincia | provincia_id |
 | PRIMARY KEY | pk_comuni | id |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_descrizione_comune | `CREATE INDEX ix_descrizione_comune ON config.comuni USING btree (descrizione)` |
 | ix_provincia_id | `CREATE INDEX ix_provincia_id ON config.comuni USING btree (provincia_id)` |
 | pk_comuni | `CREATE UNIQUE INDEX pk_comuni ON config.comuni USING btree (id)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_comuni_upd_dlt_storico_comuni | BEFORE | DELETE | `EXECUTE FUNCTION config.trgfn_comuni_upd_dlt_storico_comuni()` |

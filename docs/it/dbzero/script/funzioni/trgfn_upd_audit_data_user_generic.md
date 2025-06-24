@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/script/manual/trgfn_upd_audit_data_user_generic.md" %}
-# Funzione `trgfn_upd_audit_data_user_generic`
+# ⚙️ Funzione `trgfn_upd_audit_data_user_generic`
 
 ```sql
 CREATE FUNCTION trgfn_upd_audit_data_user_generic()

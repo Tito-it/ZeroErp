@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/config/manual/fn_get_iva_override.md" %}
-# Funzione `fn_get_iva_override`
+# ⚙️ Funzione `fn_get_iva_override`
 
 ```sql
 CREATE FUNCTION fn_get_iva_override(p_codice_iva text, p_stato_id integer)

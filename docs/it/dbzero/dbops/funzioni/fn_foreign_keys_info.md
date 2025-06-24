@@ -1,4 +1,4 @@
-# Funzione `fn_foreign_keys_info`
+# ⚙️ Funzione `fn_foreign_keys_info`
 
 ```sql
 CREATE FUNCTION fn_foreign_keys_info(tabella text)
