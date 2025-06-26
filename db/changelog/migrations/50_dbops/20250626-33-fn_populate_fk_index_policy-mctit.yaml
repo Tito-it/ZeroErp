@@ -1,0 +1,71 @@
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20250626-33-fn_populate_fk_index_policy
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+          - ANY
+      comments: >
+        Popola automaticamente dbops.fk_index_policy per tutte le FK senza indice, con consentito=false.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                  
+                  CREATE OR REPLACE FUNCTION dbops.fn_populate_fk_index_policy()
+                  RETURNS void
+                  LANGUAGE plpgsql
+                  AS $$
+                  DECLARE
+                    rec RECORD;
+                  BEGIN
+                    FOR rec IN
+                      SELECT schema_name, table_name, constraint_name
+                        FROM dbops.vw_fk_senza_indice
+                      WHERE (schema_name, table_name, constraint_name)
+                        NOT IN (
+                          SELECT schema_name, table_name, constraint_name
+                            FROM dbops.fk_index_policy
+                        )
+                    LOOP
+                      INSERT INTO dbops.fk_index_policy(
+                        schema_name,
+                        table_name,
+                        constraint_name,
+                        consentito,
+                        note
+                      ) VALUES (
+                        rec.schema_name,
+                        rec.table_name,
+                        rec.constraint_name,
+                        false,
+                        format(
+                          'Autopopulated: missing ix_%s_%s index',
+                          rec.table_name,
+                          rec.constraint_name
+                        )
+                      );
+                    END LOOP;
+                  END;
+                  $$;
+
+                  COMMENT ON FUNCTION dbops.fn_populate_fk_index_policy() IS
+                    'Popola automaticamente dbops.fk_index_policy per tutte le FK senza indice, con consentito=false.';
+
+  - changeSet:
+      id: 20250626-90-fn_populate_fk_index_policy
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250626-33-fn_populate_fk_index_policy

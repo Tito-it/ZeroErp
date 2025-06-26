@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fk_index_policy.md" %}
 # 📚 Tabella `fk_index_policy`
 
 ## 🗂️ Campi principali
