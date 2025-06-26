@@ -1,0 +1,132 @@
+## 📚 Documentazione Concettuale – Tabella `config.parameters`  
+
+> 👀 **Vedi anche**  
+>
+> Approfondimento Tabelle:   
+> - [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
+
+
+La tabella **`config.parameters`** implementa un’**architettura a due livelli** per la configurazione dinamica dell’applicazione:
+
+1. **Parametri di sistema (global defaults)**
+
+   * Archiviati in una single source of truth: `config.parameters` contiene tutti i valori di default e i metadati (descrizione, audit).
+2. **Parametri di contesto (override)**
+
+   * Vengono gestiti in `config.parameter_overrides` (vedi sezione dedicata).
+
+---
+
+### 🗂️ Campi principali
+
+| Colonna         | Tipo                        | Nullable | Default             | Descrizione                                   |
+| --------------- | --------------------------- | -------- | ------------------- | --------------------------------------------- |
+| `id`            | BIGINT                      | NO       | `nextval(...)`      | Chiave primaria univoca.                      |
+| `code`          | VARCHAR(100)                | NO       | —                   | Codice univoco del parametro (es. `TIMEOUT`). |
+| `default_value` | TEXT                        | NO       | —                   | Valore di default del parametro.              |
+| `description`   | TEXT                        | SÌ       | —                   | Descrizione estesa.                           |
+| `data_insert`   | TIMESTAMP WITHOUT TIME ZONE | NO       | `CURRENT_TIMESTAMP` | Data di creazione del record.                 |
+| `user_insert`   | VARCHAR(80)                 | NO       | `CURRENT_USER`      | Utente creazione.                             |
+| `data_update`   | TIMESTAMP WITHOUT TIME ZONE | NO       | `CURRENT_TIMESTAMP` | Data ultima modifica.                         |
+| `user_update`   | VARCHAR(80)                 | NO       | `CURRENT_USER`      | Utente ultima modifica.                       |
+
+---
+
+### 🔒 Vincoli
+
+| Tipo        | Nome                 | Colonne | Descrizione                    |
+| ----------- | -------------------- | ------- | ------------------------------ |
+| PRIMARY KEY | `pk_parameters`      | `id`    | Chiave primaria.               |
+| UNIQUE      | `uq_parameters_code` | `code`  | Garantisce unicità del codice. |
+
+---
+
+### 💡 Vantaggi Operativi
+
+1. **Override multi-livello** (tenant → user → session → function → default) garantito dallo schema.
+2. **Nessuna ripetizione di logica**: l’applicazione chiama una funzione centralizzata (es. `get_parameter_full`) che applica la catena di priorità.
+3. **Config runtime**: il tenant o utente può cambiare comportamenti senza toccare file YAML.
+4. **Audit**: possibili trigger su overrides per tracciare chi modifica cosa.
+5. **Best practice**: separare i secrets (es. password) in un Vault, usare Liquibase e caching lato applicazione per performance.
+
+---
+
+## 🔍 Approfondimenti e Esempi Avanzati
+
+### Esempio: Override Parametro “Valuta”
+
+Supponiamo di avere un parametro globale per la valuta di default:
+
+```sql
+INSERT INTO config.parameters(code, default_value, description)
+VALUES ('DEFAULT_CURRENCY', 'EUR', 'Valuta di default per le transazioni');
+```
+
+Un tenant specifico (tenant\_id = 100) vuole usare USD:
+
+```sql
+INSERT INTO config.parameter_overrides
+  (parameter_id, scope_type, scope_id, overridden_value)
+VALUES
+  ((SELECT id FROM config.parameters WHERE code='DEFAULT_CURRENCY'),
+   'tenant', '100', 'USD');
+```
+
+Per un utente VIP (user\_id = 42) si preferisce GBP:
+
+```sql
+INSERT INTO config.parameter_overrides
+  (parameter_id, scope_type, scope_id, overridden_value)
+VALUES
+  ((SELECT id FROM config.parameters WHERE code='DEFAULT_CURRENCY'),
+   'user', '42', 'GBP');
+```
+
+Chiamando:
+
+```sql
+SELECT config.get_parameter_full(
+  'DEFAULT_CURRENCY',
+  p_tenant_id   := 100,
+  p_user_id     := 42,
+  p_session_key := NULL,
+  p_function    := NULL
+);
+```
+
+otterremo **’GBP’**, in quanto l’override utente ha priorità su quello tenant.
+
+### Esempio: Override Parametro “Stato”
+
+Un parametro che definisce lo stato iniziale di un workflow:
+
+```sql
+INSERT INTO config.parameters(code, default_value, description)
+VALUES ('INITIAL_STATE', 'NEW', 'Stato iniziale del documento');
+```
+
+Durante l’elaborazione di una particolare funzione `invoice_process`, vogliamo impostare un override:
+
+```sql
+INSERT INTO config.parameter_overrides
+  (parameter_id, scope_type, scope_id, overridden_value)
+VALUES
+  ((SELECT id FROM config.parameters WHERE code='INITIAL_STATE'),
+   'function', 'invoice_process', 'PENDING_APPROVAL');
+```
+
+La chiamata:
+
+```sql
+SELECT config.get_parameter_full(
+  'INITIAL_STATE',
+  p_tenant_id   := NULL,
+  p_user_id     := NULL,
+  p_session_key := NULL,
+  p_function    := 'invoice_process'
+);
+```
+
+restituirà **’PENDING\_APPROVAL’**, senza impattare la configurazione globale.
+
+> 🧠 **“Questi esempi mostrano come il modello a due tabelle gestisca override precisi per valuta, stato o qualunque parametro, mantenendo la scalabilità e la manutenibilità.”**

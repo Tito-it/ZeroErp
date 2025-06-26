@@ -1,11 +1,11 @@
-## 📘 Documentazione Concettuale – Tabella `config.codici_postali`
+## 📚 Documentazione Concettuale – Tabella `config.codici_postali`
 
 > 👀 **Vedi anche** 
-
+>
 > Approfondimento Tabelle:  
-> - [config.comuni](../comuni)      
-> - [config.stradario](../stradario)      
-> - [config.stradario_generale](../stradario_generale)  
+> - [config.comuni](/dbzero/config/tabelle/comuni)      
+> - [config.stradario](/dbzero/config/tabelle/stradario)      
+> - [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)  
 
 La tabella **`config.codici_postali`** censisce i codici di avviamento postale (postal codes o ZIP codes) associati ai comuni, fornendo l’elenco completo di CAP per ogni città.
 

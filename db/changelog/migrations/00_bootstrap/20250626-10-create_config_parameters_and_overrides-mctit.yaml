@@ -1,0 +1,233 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250626-10-create_config_parameters_and_overrides
+      author: mctit
+      changes:
+
+        # 1. crea la tabella dei parametri
+        - createTable:
+            schemaName: config
+            tableName: parameters
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: default_value
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: TEXT
+              - column:
+                  name: data_insert
+                  type: TIMESTAMP WITHOUT TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: VARCHAR(80)
+                  defaultValue: CURRENT_USER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: TIMESTAMP WITHOUT TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: VARCHAR(80)
+                  defaultValue: CURRENT_USER
+                  constraints:
+                    nullable: false
+        # 1.bis) constraint su code
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: parameters
+            columnNames: code
+            constraintName: uq_parameters_code
+
+        # 2. crea la tabella degli override
+        - createTable:
+            schemaName: config
+            tableName: parameter_overrides
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: parameter_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: scope_type
+                  type: VARCHAR(20)
+                  remarks: "e.g. 'tenant','user','session','function'"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: scope_id
+                  type: TEXT
+                  remarks: "ID numerico o chiave di sessione o nome funzione"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: overridden_value
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: TIMESTAMP WITHOUT TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: VARCHAR(80)
+                  defaultValue: CURRENT_USER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: TIMESTAMP WITHOUT TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: VARCHAR(80)
+                  defaultValue: CURRENT_USER
+                  constraints:
+                    nullable: false
+
+         # 2.bis) constraint univoco su (parameter_id,scope_type,scope_id)
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: parameter_overrides
+            columnNames: parameter_id,scope_type,scope_id
+            constraintName: uq_overrides_param_scope
+
+
+        # 3. foreign key da overrides → parameters
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: parameter_overrides
+            baseColumnNames: parameter_id
+            referencedTableSchemaName: config
+            referencedTableName: parameters
+            referencedColumnNames: id
+            constraintName: fk_overrides_parameter
+            onDelete: RESTRICT    # non permette di cancellare un parametro se esistono override
+            onUpdate: CASCADE     # propaga l’eventuale nuovo id del parametro agli override
+
+
+  - changeSet:
+      id: 20250626-11-add-comments-and-triggers
+      author: mctit
+      changes:
+
+        # 1) commento sulla tabella parameters
+        - sql:
+            dbms: postgresql
+            sql: |
+              COMMENT ON TABLE config.parameters
+                IS 'Catalogo dei parametri di sistema, con valore di default e descrizione';
+
+        # 2) commento sugli indici / vincoli unici
+        - sql:
+            dbms: postgresql
+            sql: |
+              COMMENT ON INDEX config.uq_parameters_code
+                IS 'Indice unico sul codice alfanumerico di ciascun parametro';
+
+        # 3) commento sulla table overrides
+        - sql:
+            dbms: postgresql
+            sql: |
+              COMMENT ON TABLE config.parameter_overrides
+                IS 'Override dei parametri per ambiti (tenant, user, sessione, funzione)';
+
+        # 4) commento sull’indice unico degli overrides
+        - sql:
+            dbms: postgresql
+            sql: |
+              COMMENT ON INDEX config.uq_overrides_param_scope
+                IS 'Assicura un solo override per coppia (parameter, scope_type, scope_id)';
+
+        # 5) commento sulla FK overrides → parameters
+        - sql:
+            dbms: postgresql
+            sql: |
+              COMMENT ON CONSTRAINT fk_overrides_parameter ON config.parameter_overrides
+                IS 'FK che collega l’override al parametro di base';
+
+        # 6) crea trigger audit per config.parameters
+        - sql:
+            dbms: postgresql
+            sql: |
+              CREATE OR REPLACE TRIGGER trg_upd_parameters_audit_data_user
+                BEFORE UPDATE ON config.parameters
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+
+        # 7) commento sul trigger precedente
+        - sql:
+            dbms: postgresql
+            sql: |
+              COMMENT ON TRIGGER trg_upd_parameters_audit_data_user ON config.parameters
+                IS 'Aggiorna audit di data_update e user_update su config.parameters';
+
+        # 8) crea trigger audit per config.parameter_overrides
+        - sql:
+            dbms: postgresql
+            sql: |
+              CREATE OR REPLACE TRIGGER trg_upd_overrides_audit_data_user
+                BEFORE UPDATE ON config.parameter_overrides
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+
+        # 9) commento sul trigger precedente
+        - sql:
+            dbms: postgresql
+            sql: |
+              COMMENT ON TRIGGER trg_upd_overrides_audit_data_user ON config.parameter_overrides
+                IS 'Aggiorna audit di data_update e user_update su config.parameter_overrides';
+
+
+
+  # Tag this changeset for future reference
+  - changeSet:
+      id: 20250626-90-create_config_parameters_and_overrides
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250626-10-create-config_parameters_and_overrides
