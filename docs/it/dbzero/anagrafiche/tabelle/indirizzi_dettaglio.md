@@ -33,6 +33,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_anagrafiche_indirizzi_dettaglio_stradario_id | `CREATE INDEX ix_anagrafiche_indirizzi_dettaglio_stradario_id ON anagrafiche.indirizzi_dettaglio USING btree (stradario_id)` |
 | ix_indirizzi_dettaglio_civic_geoloc_gist | `CREATE INDEX ix_indirizzi_dettaglio_civic_geoloc_gist ON anagrafiche.indirizzi_dettaglio USING gist (civic_geoloc)` |
 | pk_indirizzi_dettaglio | `CREATE UNIQUE INDEX pk_indirizzi_dettaglio ON anagrafiche.indirizzi_dettaglio USING btree (id)` |
 | uq_indirizzi_dettaglio_norm | `CREATE UNIQUE INDEX uq_indirizzi_dettaglio_norm ON anagrafiche.indirizzi_dettaglio USING btree (via_norm, civico_norm, interno, piano, palazzina)` |

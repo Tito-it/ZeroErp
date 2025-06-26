@@ -24,6 +24,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_storico_comuni_comune_id | `CREATE INDEX ix_storico_comuni_comune_id ON storico.comuni USING btree (comune_id)` |
 | ix_storico_comuni_descrizione | `CREATE INDEX ix_storico_comuni_descrizione ON storico.comuni USING btree (descrizione)` |
 | ix_storico_comuni_provincia_id | `CREATE INDEX ix_storico_comuni_provincia_id ON storico.comuni USING btree (provincia_id)` |
 | ix_storico_comuni_valid | `CREATE INDEX ix_storico_comuni_valid ON storico.comuni USING btree (valid_from, valid_to)` |

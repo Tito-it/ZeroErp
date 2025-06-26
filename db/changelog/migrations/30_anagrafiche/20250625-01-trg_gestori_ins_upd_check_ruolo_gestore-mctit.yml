@@ -1,0 +1,40 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+
+- changeSet:
+      id: 20250625-01-trg_gestori_ins_upd_check_ruolo_gestore
+      author: mctit
+      comments: >
+        Associa il trigger trg_gestori_ins_upd_check_ruolo_gestore alla tabella anagrafiche.gestori.
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |        
+              CREATE OR REPLACE TRIGGER trg_gestori_ins_upd_check_ruolo_gestore
+                    BEFORE INSERT OR UPDATE 
+                    ON  anagrafiche.gestori
+                    FOR EACH ROW
+                    EXECUTE FUNCTION anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore();
+
+                COMMENT ON TRIGGER trg_gestori_ins_upd_check_ruolo_gestore ON anagrafiche.gestori
+                    IS 'Controlla il ruolo del gestore prima di inserire o aggiornare. Se non esiste lo genera tramite la funzione script.fn_check_ins_soggetto_ruolo.';
+                                    
+ # Metto un  tag fine modifiche
+- changeSet:
+      id: 20250625-90-trgfn_gestori_ins_upd_check_ruolo_gestore
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250625-01-trg_gestori_ins_upd_check_ruolo_gestore

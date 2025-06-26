@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250626-02-create_indexes_per_foreign_key
+      author: mctit
+      comments: "Crea indici per le colonne frequentemente filtrate nelle tabelle dello schema storico. 
+                 Sono indici per le foreign key che non sono stati creati automaticamente da Liquibase."
+      changes:
+        - createIndex:
+            indexName: ix_storico_comuni_comune_id
+            schemaName: storico
+            tableName: comuni
+            columns:
+              - column:
+                  name: comune_id
+        - createIndex:
+            indexName: ix_storico_indirizzi_codice_postale_id
+            schemaName: storico
+            tableName: indirizzi
+            columns:
+              - column:
+                  name: codice_postale_id
+        - createIndex:
+            indexName: ix_storico_indirizzi_comune_id
+            schemaName: storico
+            tableName: indirizzi
+            columns:
+              - column:
+                  name: comune_id
+        - createIndex:
+            indexName: ix_storico_indirizzi_indirizzi_dettaglio_id
+            schemaName: storico
+            tableName: indirizzi
+            columns:
+              - column:
+                  name: indirizzi_dettaglio_id
+        - createIndex:
+            indexName: ix_storico_indirizzi_indirizzi_id
+            schemaName: storico
+            tableName: indirizzi
+            columns:
+              - column:
+                  name: indirizzi_id
+        - createIndex:
+            indexName: ix_storico_indirizzi_stato_id
+            schemaName: storico
+            tableName: indirizzi
+            columns:
+              - column:
+                  name: stato_id
+        - createIndex:
+            indexName: ix_storico_stradario_codice_postale_id
+            schemaName: storico
+            tableName: stradario
+            columns:
+              - column:
+                  name: codice_postale_id
+        - createIndex:
+            indexName: ix_storico_stradario_stradario_id
+            schemaName: storico
+            tableName: stradario
+            columns:
+              - column:
+                  name: stradario_id
+
+                                    
+ # Metto un  tag fine modifiche
+  - changeSet:
+        id: 20250626-90-create_indexes_per_foreign_key
+        author: mctit
+        changes:
+          - tagDatabase:
+              tag: 20250626-02-create_indexes_per_foreign_key

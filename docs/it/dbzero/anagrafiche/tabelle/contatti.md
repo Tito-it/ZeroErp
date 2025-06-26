@@ -37,6 +37,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_anagrafiche_contatti_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_contatti_soggetto_ruolo_id ON anagrafiche.contatti USING btree (soggetto_ruolo_id)` |
+| ix_anagrafiche_contatti_titolo_cortesia_id | `CREATE INDEX ix_anagrafiche_contatti_titolo_cortesia_id ON anagrafiche.contatti USING btree (titolo_cortesia_id)` |
 | ix_contatti_soggetto | `CREATE INDEX ix_contatti_soggetto ON anagrafiche.contatti USING btree (soggetto_id)` |
 | ix_contatti_tipo | `CREATE INDEX ix_contatti_tipo ON anagrafiche.contatti USING btree (tipo_contatto_id)` |
 | ix_contatti_utility | `CREATE INDEX ix_contatti_utility ON anagrafiche.contatti USING btree (utility_id)` |

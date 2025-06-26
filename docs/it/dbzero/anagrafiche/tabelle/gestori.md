@@ -27,10 +27,15 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_anagrafiche_gestori_soggetto_id | `CREATE INDEX ix_anagrafiche_gestori_soggetto_id ON anagrafiche.gestori USING btree (soggetto_id)` |
+| ix_anagrafiche_gestori_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_gestori_soggetto_ruolo_id ON anagrafiche.gestori USING btree (soggetto_ruolo_id)` |
+| ix_anagrafiche_gestori_valuta_id | `CREATE INDEX ix_anagrafiche_gestori_valuta_id ON anagrafiche.gestori USING btree (valuta_id)` |
 | pk_gestori | `CREATE UNIQUE INDEX pk_gestori ON anagrafiche.gestori USING btree (id)` |
 | uq_gestori_singleton | `CREATE INDEX uq_gestori_singleton ON anagrafiche.gestori USING gist ((1)) WHERE (id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_gestori_ins_upd_check_ruolo_gestore | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore()` |
+| trg_gestori_ins_upd_check_ruolo_gestore | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore()` |
 | trg_upd_gestori_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

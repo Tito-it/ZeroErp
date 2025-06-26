@@ -35,6 +35,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_anagrafiche_dati_societari_id_prov_iscri_rea | `CREATE INDEX ix_anagrafiche_dati_societari_id_prov_iscri_rea ON anagrafiche.dati_societari USING btree (id_prov_iscri_rea)` |
 | pk_dati_societari | `CREATE UNIQUE INDEX pk_dati_societari ON anagrafiche.dati_societari USING btree (id_dati_societari)` |
 | uq_ds_codice_sdi | `CREATE UNIQUE INDEX uq_ds_codice_sdi ON anagrafiche.dati_societari USING btree (codice_sdi)` |
 | uq_ds_pec_fatt | `CREATE UNIQUE INDEX uq_ds_pec_fatt ON anagrafiche.dati_societari USING btree (pec_fatturazione)` |
