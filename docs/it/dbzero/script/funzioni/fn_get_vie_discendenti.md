@@ -1,4 +1,4 @@
-# Funzione `fn_get_vie_discendenti`
+# ⚙️ Funzione `fn_get_vie_discendenti`
 
 ```sql
 CREATE FUNCTION fn_get_vie_discendenti(p_via_id integer)

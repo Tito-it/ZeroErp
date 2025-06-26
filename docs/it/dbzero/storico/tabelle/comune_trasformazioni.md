@@ -1,6 +1,6 @@
-# Tabella `comune_trasformazioni`
+# 📚 Tabella `comune_trasformazioni`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('storico.comune_trasformazioni_id_seq'::regclass) |
@@ -12,12 +12,12 @@
 | data_insert | timestamp without time zone | YES | CURRENT_TIMESTAMP |
 | user_insert | character varying | YES | CURRENT_USER |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | PRIMARY KEY | pk_comune_trasformazioni | id |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_comune_trasformazioni_nuovo | `CREATE INDEX ix_comune_trasformazioni_nuovo ON storico.comune_trasformazioni USING btree (id_comune_nuovo)` |

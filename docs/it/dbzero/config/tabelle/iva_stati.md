@@ -1,7 +1,7 @@
 {% include-markdown "it/dbzero/config/manual/iva_stati.md" %}
-# Tabella `iva_stati`
+# 📚 Tabella `iva_stati`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | iva_id | integer | NO |  |
@@ -13,7 +13,7 @@
 | data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
 | user_update | text | NO | CURRENT_USER |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_iva_assoggettamento_aliquota_iva_stati |  |
@@ -22,13 +22,13 @@
 | FOREIGN KEY | fk_iva_stati_stato | stato_id |
 | PRIMARY KEY | pk_iva_stati | iva_id, stato_id |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_iva_stati_stato | `CREATE INDEX ix_iva_stati_stato ON config.iva_stati USING btree (stato_id)` |
 | pk_iva_stati | `CREATE UNIQUE INDEX pk_iva_stati ON config.iva_stati USING btree (iva_id, stato_id)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_iva_stati_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

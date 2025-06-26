@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  # 
+  - changeSet:
+      id: 20250624-01-fn_get_contatti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+          
+                  CREATE OR REPLACE FUNCTION script.fn_get_contatti(
+                      p_soggetto_id        UUID,
+                      p_soggetto_ruolo_id  INTEGER DEFAULT NULL,
+                      p_utility_id         INTEGER DEFAULT NULL,
+                      p_tipo_contatto_id   INTEGER DEFAULT NULL
+                  )
+                  RETURNS TABLE (
+                      id                 INTEGER,
+                      tipo_contatto_id   INTEGER,
+                      soggetto_id        UUID,
+                      soggetto_ruolo_id  INTEGER,
+                      utility_id         INTEGER,
+                      nominativo         VARCHAR,
+                      email              VARCHAR,
+                      telefono           VARCHAR,
+                      cellulare          VARCHAR,
+                      pec                VARCHAR,
+                      note               TEXT,
+                      is_default         BOOLEAN,
+                      default_context    VARCHAR
+                  )
+                  LANGUAGE sql
+                  AS $function$
+                  /*
+                    1) Validate mandatory p_soggetto_id: if NULL, raises via fn_log_and_raise_error.
+                    2) Build `candidates` filtered by parameters and assign a `priority`:
+                      - 1: soggetto+ruolo+utility
+                      - 2: soggetto+ruolo
+                      - 3: soggetto+utility
+                      - 4: soggetto (fallback)
+                    3) For each tipo_contatto_id pick the row with lowest priority.
+                  */
+                  WITH validate AS (
+                    SELECT script.fn_log_and_raise_error(
+                      'database',
+                      'fn_get_contatti',
+                      'ERRORE_PARAMETRI',
+                      jsonb_build_object(
+                        'soggetto_id',      p_soggetto_id,
+                        'soggetto_ruolo_id',p_soggetto_ruolo_id,
+                        'utility_id',       p_utility_id,
+                        'tipo_contatto_id', p_tipo_contatto_id
+                      ),
+                      COALESCE(p_soggetto_id::text, 'NULL')
+                    )
+                    WHERE p_soggetto_id IS NULL
+                  ),
+                  candidates AS (
+                    SELECT
+                      c.id,
+                      c.tipo_contatto_id,
+                      c.soggetto_id,
+                      c.soggetto_ruolo_id,
+                      c.utility_id,
+                      c.nominativo,
+                      c.email,
+                      c.telefono,
+                      c.cellulare,
+                      c.pec,
+                      c.note,
+                      c.is_default,
+                      c.default_context,
+
+                  CASE
+                    WHEN c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id
+                    AND c.utility_id        IS NOT DISTINCT FROM p_utility_id THEN 1
+                    WHEN c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id THEN 2
+                    WHEN c.utility_id        IS NOT DISTINCT FROM p_utility_id THEN 3
+                    ELSE 4
+                    END AS priority
+                    FROM anagrafiche.contatti AS c
+                    WHERE c.soggetto_id = p_soggetto_id
+                    AND (c.soggetto_ruolo_id IS NULL OR c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id)
+                    AND (c.utility_id        IS NULL OR c.utility_id        IS NOT DISTINCT FROM p_utility_id)
+                    AND (p_tipo_contatto_id IS NULL OR c.tipo_contatto_id = p_tipo_contatto_id)
+                    )
+
+                  SELECT
+                    sub.id,
+                    sub.tipo_contatto_id,
+                    sub.soggetto_id,
+                    sub.soggetto_ruolo_id,
+                    sub.utility_id,
+                    sub.nominativo,
+                    sub.email,
+                    sub.telefono,
+                    sub.cellulare,
+                    sub.pec,
+                    sub.note,
+                    sub.is_default,
+                    sub.default_context
+                  FROM (
+                    SELECT
+                      candidates.*,
+                      ROW_NUMBER() OVER (
+                        PARTITION BY candidates.tipo_contatto_id
+                        ORDER BY candidates.priority
+                      ) AS rn
+                    FROM candidates
+                  ) AS sub
+                  WHERE sub.rn = 1;
+                  $function$;
+
+
+                  COMMENT ON FUNCTION script.fn_get_contatti(UUID, INTEGER, INTEGER, INTEGER) IS
+                    'Restituisce per ogni tipo_contatto_id il contatto con priorità: 
+                    1) soggetto+ruolo+utility, 2) soggetto+ruolo, 3) soggetto+utility, 
+                    4) Soggetto (fallback). Filtra esattamente sui parametri passati. p_soggetto_id obbligatorio.';
+                
+  # Tag di fine modifica per fn_get_messaggio v2
+  - changeSet:
+      id: 20250620-90-fn_get_contatti
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250620-01-fn_get_contatti

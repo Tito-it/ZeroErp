@@ -1,0 +1,43 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  # 
+  - changeSet:
+      id: 20250624-02-deferrable-fk-default-contatto
+      author: mctit
+      changes:
+        # 1) Drop del vecchio vincolo FK
+        - dropForeignKeyConstraint:
+            baseTableName: soggetti
+            baseTableSchemaName: anagrafiche
+            constraintName: fk_contatti_anagrafiche
+
+        # 2) Aggiunta del vincolo FK deferrable
+        - addForeignKeyConstraint:
+            constraintName: fk_contatti_anagrafiche
+            baseTableName: soggetti
+            baseTableSchemaName: anagrafiche
+            baseColumnNames: default_contatto_id
+            referencedTableName: contatti
+            referencedTableSchemaName: anagrafiche
+            referencedColumnNames: id
+            onDelete: RESTRICT
+            onUpdate: NO ACTION
+            deferrable: true
+            initiallyDeferred: true
+
+  # Tag di fine modifica
+  - changeSet:
+      id: 20250624-90-fn_get_messaggio
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250624-02-deferrable-fk-default-contatto

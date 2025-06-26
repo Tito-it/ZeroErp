@@ -1,6 +1,6 @@
-# Tabella `clienti`
+# 📚 Tabella `clienti`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('anagrafiche.clienti_id_seq'::regclass) |
@@ -24,7 +24,7 @@
 | user_update | character varying | NO | CURRENT_USER |
 | utility_id | integer | YES |  |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_clienti_pa |  |
@@ -40,14 +40,19 @@
 | FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
 | PRIMARY KEY | pk_clienti | id |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_anagrafiche_clienti_istanza_id | `CREATE INDEX ix_anagrafiche_clienti_istanza_id ON anagrafiche.clienti USING btree (istanza_id)` |
+| ix_anagrafiche_clienti_iva_id | `CREATE INDEX ix_anagrafiche_clienti_iva_id ON anagrafiche.clienti USING btree (iva_id)` |
+| ix_anagrafiche_clienti_modalita_pagamento_id | `CREATE INDEX ix_anagrafiche_clienti_modalita_pagamento_id ON anagrafiche.clienti USING btree (modalita_pagamento_id)` |
+| ix_anagrafiche_clienti_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_clienti_soggetto_ruolo_id ON anagrafiche.clienti USING btree (soggetto_ruolo_id)` |
+| ix_anagrafiche_clienti_stato_cliente_id | `CREATE INDEX ix_anagrafiche_clienti_stato_cliente_id ON anagrafiche.clienti USING btree (stato_cliente_id)` |
 | ix_cliente_utility | `CREATE INDEX ix_cliente_utility ON anagrafiche.clienti USING btree (utility_id)` |
 | ix_clienti_cd_importato | `CREATE INDEX ix_clienti_cd_importato ON anagrafiche.clienti USING btree (cd_cliente_importato)` |
 | pk_clienti | `CREATE UNIQUE INDEX pk_clienti ON anagrafiche.clienti USING btree (id)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_clienti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

@@ -1,6 +1,6 @@
-# Tabella `indirizzi`
+# 📚 Tabella `indirizzi`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('storico.indirizzi_id_seq'::regclass) |
@@ -22,7 +22,7 @@
 | geoloc | USER-DEFINED | YES |  |
 | indirizzi_id | integer | YES |  |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_codici_postali_config | codice_postale_id, codice_postale_id |
@@ -34,10 +34,15 @@
 | FOREIGN KEY | fk_tipi_indirizzi_config | tipo_indirizzo_id |
 | PRIMARY KEY | pk_indirizzi | id |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_storico_indirizzi_codice_postale_id | `CREATE INDEX ix_storico_indirizzi_codice_postale_id ON storico.indirizzi USING btree (codice_postale_id)` |
+| ix_storico_indirizzi_comune_id | `CREATE INDEX ix_storico_indirizzi_comune_id ON storico.indirizzi USING btree (comune_id)` |
+| ix_storico_indirizzi_indirizzi_dettaglio_id | `CREATE INDEX ix_storico_indirizzi_indirizzi_dettaglio_id ON storico.indirizzi USING btree (indirizzi_dettaglio_id)` |
+| ix_storico_indirizzi_indirizzi_id | `CREATE INDEX ix_storico_indirizzi_indirizzi_id ON storico.indirizzi USING btree (indirizzi_id)` |
 | ix_storico_indirizzi_periodo | `CREATE INDEX ix_storico_indirizzi_periodo ON storico.indirizzi USING btree (valid_from, valid_to)` |
 | ix_storico_indirizzi_soggetto_ruolo | `CREATE INDEX ix_storico_indirizzi_soggetto_ruolo ON storico.indirizzi USING btree (soggetto_ruolo_id)` |
+| ix_storico_indirizzi_stato_id | `CREATE INDEX ix_storico_indirizzi_stato_id ON storico.indirizzi USING btree (stato_id)` |
 | ix_storico_indirizzi_tipo | `CREATE INDEX ix_storico_indirizzi_tipo ON storico.indirizzi USING btree (tipo_indirizzo_id)` |
 | pk_indirizzi | `CREATE UNIQUE INDEX pk_indirizzi ON storico.indirizzi USING btree (id)` |

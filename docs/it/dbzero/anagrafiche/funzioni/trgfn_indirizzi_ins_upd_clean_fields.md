@@ -1,4 +1,4 @@
-# Funzione `trgfn_indirizzi_ins_upd_clean_fields`
+# ⚙️ Funzione `trgfn_indirizzi_ins_upd_clean_fields`
 
 ```sql
 CREATE FUNCTION trgfn_indirizzi_ins_upd_clean_fields()

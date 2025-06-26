@@ -74,6 +74,7 @@ nav:
           - Script:     dbzero/script/index.md
           - Storico:    dbzero/storico/index.md
          
-
+  - Strumenti:
+      - Generatore Documentazione: dbzero/tools/gen_db_docs.md
   - Sviluppatori:
       - API: it/dev/api.md

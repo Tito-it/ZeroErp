@@ -1,7 +1,7 @@
 {% include-markdown "it/dbzero/storico/manual/stradario.md" %}
-# Tabella `stradario`
+# 📚 Tabella `stradario`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('storico.stradario_id_seq'::regclass) |
@@ -18,7 +18,7 @@
 | geoloc | USER-DEFINED | YES |  |
 | extra_info | jsonb | YES |  |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_codici_postali_config | codice_postale_id, codice_postale_id |
@@ -27,10 +27,12 @@
 | FOREIGN KEY | fk_stradario_config | via_id_nuovo, stradario_id |
 | PRIMARY KEY | pk_stradario | id |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_storico_stradario_codice_postale_id | `CREATE INDEX ix_storico_stradario_codice_postale_id ON storico.stradario USING btree (codice_postale_id)` |
 | ix_storico_stradario_comune | `CREATE INDEX ix_storico_stradario_comune ON storico.stradario USING btree (comune_id)` |
 | ix_storico_stradario_stradario_generale_id | `CREATE INDEX ix_storico_stradario_stradario_generale_id ON storico.stradario USING btree (stradario_generale_id)` |
+| ix_storico_stradario_stradario_id | `CREATE INDEX ix_storico_stradario_stradario_id ON storico.stradario USING btree (stradario_id)` |
 | ix_storico_stradario_valid_periodo | `CREATE INDEX ix_storico_stradario_valid_periodo ON storico.stradario USING btree (valid_from, valid_to)` |
 | pk_stradario | `CREATE UNIQUE INDEX pk_stradario ON storico.stradario USING btree (id)` |

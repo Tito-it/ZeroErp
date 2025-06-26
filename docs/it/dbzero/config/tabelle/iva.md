@@ -1,7 +1,7 @@
 {% include-markdown "it/dbzero/config/manual/iva.md" %}
-# Tabella `iva`
+# 📚 Tabella `iva`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.iva_id_seq'::regclass) |
@@ -19,7 +19,7 @@
 | data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
 | user_update | text | NO | CURRENT_USER |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_iva_assoggettamento |  |
@@ -31,14 +31,14 @@
 | PRIMARY KEY | pk_iva | id |
 | UNIQUE | uq_iva_codice | codice_iva |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_iva_desc | `CREATE INDEX ix_iva_desc ON config.iva USING btree (desc_iva)` |
 | pk_iva | `CREATE UNIQUE INDEX pk_iva ON config.iva USING btree (id)` |
 | uq_iva_codice | `CREATE UNIQUE INDEX uq_iva_codice ON config.iva USING btree (codice_iva)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_iva_ins_upd_check_conti_iva | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_iva_ins_upd_check_conti_iva()` |

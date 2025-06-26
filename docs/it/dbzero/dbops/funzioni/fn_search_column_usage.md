@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/dbops/manual/fn_search_column_usage.md" %}
-# Funzione `fn_search_column_usage`
+# ⚙️ Funzione `fn_search_column_usage`
 
 ```sql
 CREATE FUNCTION fn_search_column_usage(p_column_name text)

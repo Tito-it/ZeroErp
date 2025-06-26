@@ -1,6 +1,6 @@
-# Tabella `indirizzi`
+# 📚 Tabella `indirizzi`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('anagrafiche.indirizzi_id_seq'::regclass) |
@@ -22,7 +22,7 @@
 | codice_postale_id | integer | YES |  |
 | modifica_storica | boolean | NO | false |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_indirizzi_dettaglio_exclusive |  |
@@ -37,9 +37,10 @@
 | UNIQUE | uq_indirizzi_dettaglio_unique | indirizzo_dettaglio_id, tipo_indirizzo_id, soggetto_ruolo_id |
 | UNIQUE | uq_indirizzi_libero_unique | tipo_indirizzo_id, soggetto_ruolo_id, indirizzo_libero |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_anagrafiche_indirizzi_indirizzo_dettaglio_id | `CREATE INDEX ix_anagrafiche_indirizzi_indirizzo_dettaglio_id ON anagrafiche.indirizzi USING btree (indirizzo_dettaglio_id)` |
 | ix_indirizzi_codice_postale_id | `CREATE INDEX ix_indirizzi_codice_postale_id ON anagrafiche.indirizzi USING btree (codice_postale_id)` |
 | ix_indirizzi_comune_id | `CREATE INDEX ix_indirizzi_comune_id ON anagrafiche.indirizzi USING btree (comune_id)` |
 | ix_indirizzi_geoloc_gist | `CREATE INDEX ix_indirizzi_geoloc_gist ON anagrafiche.indirizzi USING gist (geoloc)` |
@@ -50,7 +51,7 @@
 | uq_indirizzi_dettaglio_unique | `CREATE UNIQUE INDEX uq_indirizzi_dettaglio_unique ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_dettaglio_id)` |
 | uq_indirizzi_libero_unique | `CREATE UNIQUE INDEX uq_indirizzi_libero_unique ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_libero)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_indirizzi_ins_upd_clean_fields | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_clean_fields()` |

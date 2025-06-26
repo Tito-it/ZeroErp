@@ -1,14 +1,14 @@
 # Schema `storico`
 
-## Tabelle
+## 📚 Tabelle
 - [comune_trasformazioni](tabelle/comune_trasformazioni.md)
 - [comuni](tabelle/comuni.md)
 - [indirizzi](tabelle/indirizzi.md)
 - [stradario](tabelle/stradario.md)
 - [stradario_trasformazioni](tabelle/stradario_trasformazioni.md)
 
-## Funzioni
+## ⚙️ Funzioni
 
-## Documentazione Manuale
+## 📝 Documentazione Manuale
 - [comuni](manual/comuni.md)
 - [stradario](manual/stradario.md)

@@ -54,7 +54,7 @@ def include_manual(schema, kind, name):
 
 # Genera Markdown tabella con colonne, vincoli, indici, trigger
 def gen_table_md(schema, table, cur):
-    lines = [f"# Tabella `{table}`\n"]
+    lines = [f"# 📚 Tabella `{table}`\n"]
     # Colonne
     cur.execute(
         """
@@ -65,7 +65,7 @@ def gen_table_md(schema, table, cur):
         """, (schema, table)
     )
     cols = cur.fetchall()
-    lines += ["## Campi principali", "| Colonna | Tipo | Nullable | Default |", "|---------|------|----------|---------|"]
+    lines += ["## 🗂️ Campi principali", "| Colonna | Tipo | Nullable | Default |", "|---------|------|----------|---------|"]
     for col in cols:
         default = col.get("column_default") or ""
         lines.append(f"| {col['column_name']} | {col['data_type']} | {col['is_nullable']} | {default} |")
@@ -87,7 +87,7 @@ def gen_table_md(schema, table, cur):
     )
     constraints = cur.fetchall()
     if constraints:
-        lines += ["", "## Vincoli", "| Tipo | Nome | Colonne |", "|------|------|---------|"]
+        lines += ["", "## 🔒 Vincoli", "| Tipo | Nome | Colonne |", "|------|------|---------|"]
         for con in constraints:
             lines.append(f"| {con['constraint_type']} | {con['constraint_name']} | {con['columns'] or ''} |")
     # Indici
@@ -101,7 +101,7 @@ def gen_table_md(schema, table, cur):
     )
     indexes = cur.fetchall()
     if indexes:
-        lines += ["", "## Indici", "| Nome | Definizione |", "|------|-------------|"]
+        lines += ["", "## 📑 Indici", "| Nome | Definizione |", "|------|-------------|"]
         for idx in indexes:
             lines.append(f"| {idx['indexname']} | `{idx['indexdef']}` |")
     # Trigger
@@ -116,7 +116,7 @@ def gen_table_md(schema, table, cur):
     )
     triggers = cur.fetchall()
     if triggers:
-        lines += ["", "## Trigger", "| Nome | Timing | Evento | Azione |", "|------|--------|--------|--------|"]
+        lines += ["", "## 🚨 Trigger", "| Nome | Timing | Evento | Azione |", "|------|--------|--------|--------|"]
         for trg in triggers:
             lines.append(f"| {trg['trigger_name']} | {trg['action_timing']} | {trg['event_manipulation']} | `{trg['action_statement']}` |")
     return "\n".join(lines)
@@ -136,7 +136,7 @@ def gen_function_md(schema, func, cur):
     row = cur.fetchone()
     if not row:
         return ""
-    lines = [f"# Funzione `{row['proname']}`\n", "```sql", f"CREATE FUNCTION {row['proname']}({row['args']})", "```", "\n**Definizione completa:**\n", "```sql", row.get("defn", "").strip(), "```"]
+    lines = [f"# ⚙️ Funzione `{row['proname']}`\n", "```sql", f"CREATE FUNCTION {row['proname']}({row['args']})", "```", "\n**Definizione completa:**\n", "```sql", row.get("defn", "").strip(), "```"]
     return "\n".join(lines)
 
 # Scrive index.md per schema
@@ -146,14 +146,14 @@ def write_index(schema_dir, schema):
     funcs_dir = os.path.join(schema_dir, 'funzioni')
     lines = [f"# Schema `{schema}`\n"]
     if os.path.isdir(tables_dir):
-        lines.append('## Tabelle')
+        lines.append('## 📚 Tabelle')
         for fname in sorted(os.listdir(tables_dir)):
             if fname.endswith('.md'):
                 name = os.path.splitext(fname)[0]
                 lines.append(f"- [{name}](tabelle/{fname})")
         lines.append('')
     if os.path.isdir(funcs_dir):
-        lines.append('## Funzioni')
+        lines.append('## ⚙️ Funzioni')
         for fname in sorted(os.listdir(funcs_dir)):
             if fname.endswith('.md'):
                 name = os.path.splitext(fname)[0]
@@ -161,7 +161,7 @@ def write_index(schema_dir, schema):
         lines.append('')
     manual_dir = os.path.join(schema_dir, 'manual')
     if os.path.isdir(manual_dir):
-        lines.append('## Documentazione Manuale')
+        lines.append('## 📝 Documentazione Manuale')
         for fname in sorted(os.listdir(manual_dir)):
             if fname.endswith('.md'):
                 name = os.path.splitext(fname)[0]

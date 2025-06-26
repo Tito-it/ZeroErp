@@ -1,6 +1,6 @@
 # Schema `anagrafiche`
 
-## Tabelle
+## 📚 Tabelle
 - [billing_account](tabelle/billing_account.md)
 - [clienti](tabelle/clienti.md)
 - [contatti](tabelle/contatti.md)
@@ -13,7 +13,7 @@
 - [soggetti](tabelle/soggetti.md)
 - [soggetti_ruoli](tabelle/soggetti_ruoli.md)
 
-## Funzioni
+## ⚙️ Funzioni
 - [fn_generate_account_code](funzioni/fn_generate_account_code.md)
 - [trgfn_contatti_ins_upd_set_default_contatto](funzioni/trgfn_contatti_ins_upd_set_default_contatto.md)
 - [trgfn_gestori_ins_upd_check_ruolo_gestore](funzioni/trgfn_gestori_ins_upd_check_ruolo_gestore.md)
@@ -26,7 +26,7 @@
 - [trgfn_soggetti_ins_upd_genera_cdsoggetto](funzioni/trgfn_soggetti_ins_upd_genera_cdsoggetto.md)
 - [trgfn_soggetti_ins_upd_valida_piva_cdfiscale](funzioni/trgfn_soggetti_ins_upd_valida_piva_cdfiscale.md)
 
-## Documentazione Manuale
+## 📝 Documentazione Manuale
 - [contatti](manual/contatti.md)
 - [dati_societari](manual/dati_societari.md)
 - [gestori](manual/gestori.md)

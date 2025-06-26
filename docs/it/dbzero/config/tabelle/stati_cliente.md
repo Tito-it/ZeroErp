@@ -1,6 +1,6 @@
-# Tabella `stati_cliente`
+# 📚 Tabella `stati_cliente`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.stati_cliente_id_seq'::regclass) |
@@ -16,7 +16,7 @@
 | data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
 | user_update | text | NO | CURRENT_USER |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_stati_cli_abilita_fattura |  |
@@ -26,14 +26,14 @@
 | PRIMARY KEY | pk_stati_cliente | id |
 | UNIQUE | uq_stati_cli_cod_unq | cod_int_stato_cliente |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | idx_stati_cli_desc | `CREATE INDEX idx_stati_cli_desc ON config.stati_cliente USING btree (desc_stato_cliente)` |
 | pk_stati_cliente | `CREATE UNIQUE INDEX pk_stati_cliente ON config.stati_cliente USING btree (id)` |
 | uq_stati_cli_cod_unq | `CREATE UNIQUE INDEX uq_stati_cli_cod_unq ON config.stati_cliente USING btree (cod_int_stato_cliente)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_stati_cliente_upd_lock_codiceinterno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('cod_int_stato_cliente', 'CODICE_NON_MODIFICABILE')` |

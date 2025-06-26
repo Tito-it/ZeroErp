@@ -1,4 +1,4 @@
-# Funzione `fn_normalize_indirizzo`
+# ⚙️ Funzione `fn_normalize_indirizzo`
 
 ```sql
 CREATE FUNCTION fn_normalize_indirizzo(p_comune_id integer, p_indirizzo_libero text)

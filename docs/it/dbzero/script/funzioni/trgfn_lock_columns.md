@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/script/manual/trgfn_lock_columns.md" %}
-# Funzione `trgfn_lock_columns`
+# ⚙️ Funzione `trgfn_lock_columns`
 
 ```sql
 CREATE FUNCTION trgfn_lock_columns()

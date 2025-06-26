@@ -1,4 +1,4 @@
-# Funzione `fn_get_tipo_contatto_id`
+# ⚙️ Funzione `fn_get_tipo_contatto_id`
 
 ```sql
 CREATE FUNCTION fn_get_tipo_contatto_id(p_cod_int_tipo_contatto character varying)

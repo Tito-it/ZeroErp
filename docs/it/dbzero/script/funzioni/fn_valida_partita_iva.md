@@ -1,4 +1,4 @@
-# Funzione `fn_valida_partita_iva`
+# ⚙️ Funzione `fn_valida_partita_iva`
 
 ```sql
 CREATE FUNCTION fn_valida_partita_iva(piva text)

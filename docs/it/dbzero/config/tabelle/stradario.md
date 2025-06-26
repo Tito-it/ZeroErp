@@ -1,7 +1,7 @@
 {% include-markdown "it/dbzero/config/manual/stradario.md" %}
-# Tabella `stradario`
+# 📚 Tabella `stradario`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.stradario_id_seq'::regclass) |
@@ -16,7 +16,7 @@
 | codice_postale_id | integer | NO |  |
 | storicizza | boolean | NO | false |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_geoloc_srid |  |
@@ -26,7 +26,7 @@
 | PRIMARY KEY | pk_stradario | id |
 | UNIQUE | uq_stradario_comune_stradario_gen_cp | stradario_generale_id, codice_postale_id, comune_id |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_stradario_codice_postale_id | `CREATE INDEX ix_stradario_codice_postale_id ON config.stradario USING btree (codice_postale_id)` |
@@ -36,7 +36,7 @@
 | pk_stradario | `CREATE UNIQUE INDEX pk_stradario ON config.stradario USING btree (id)` |
 | uq_stradario_comune_stradario_gen_cp | `CREATE UNIQUE INDEX uq_stradario_comune_stradario_gen_cp ON config.stradario USING btree (comune_id, stradario_generale_id, codice_postale_id)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_stradario_upd_dlt_storico_stradario | BEFORE | DELETE | `EXECUTE FUNCTION config.trgfn_stradario_upd_dlt_storico_stradario()` |

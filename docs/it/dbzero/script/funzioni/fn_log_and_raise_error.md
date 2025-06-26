@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/script/manual/fn_log_and_raise_error.md" %}
-# Funzione `fn_log_and_raise_error`
+# ⚙️ Funzione `fn_log_and_raise_error`
 
 ```sql
 CREATE FUNCTION fn_log_and_raise_error(p_area text, p_function_name text, p_error_code text, p_context jsonb, VARIADIC p_valori text[])

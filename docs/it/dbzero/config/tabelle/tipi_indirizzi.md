@@ -1,6 +1,6 @@
-# Tabella `tipi_indirizzi`
+# 📚 Tabella `tipi_indirizzi`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.tipi_indirizzi_id_seq'::regclass) |
@@ -11,20 +11,20 @@
 | data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
 | user_update | text | NO | CURRENT_USER |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_cod_int_tipo_indirizzo |  |
 | PRIMARY KEY | pk_tipi_indirizzi | id |
 | UNIQUE | uq_tipi_indirizzi_cod_int_tipo_indirizzo | cod_int_tipo_indirizzo |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_tipi_indirizzi | `CREATE UNIQUE INDEX pk_tipi_indirizzi ON config.tipi_indirizzi USING btree (id)` |
 | uq_tipi_indirizzi_cod_int_tipo_indirizzo | `CREATE UNIQUE INDEX uq_tipi_indirizzi_cod_int_tipo_indirizzo ON config.tipi_indirizzi USING btree (cod_int_tipo_indirizzo)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_tipi_indirizzi_upd_lock_cod_interno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('cod_int_tipo_indirizzo', 'CODICE_NON_MODIFICABILE')` |

@@ -1,4 +1,4 @@
-# Funzione `fn_admin_merge_comune`
+# ⚙️ Funzione `fn_admin_merge_comune`
 
 ```sql
 CREATE FUNCTION fn_admin_merge_comune(p_id_orig integer, p_id_target integer, p_event_type character, p_event_date date, p_note text)

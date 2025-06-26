@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250626-01-create_indexes_per_foreign_key
+      author: mctit
+      comments: "Crea indici per le colonne frequentemente filtrate nelle tabelle dello schema anagrafiche.
+                 Sono indici per le foreign key che non sono stati creati automaticamente da Liquibase."
+      changes:
+        - createIndex:
+            indexName: ix_anagrafiche_billing_account_soggetto_ruolo_id
+            schemaName: anagrafiche
+            tableName: billing_account
+            columns:
+              - column:
+                  name: soggetto_ruolo_id
+        - createIndex:
+            indexName: ix_anagrafiche_billing_account_utility_id
+            schemaName: anagrafiche
+            tableName: billing_account
+            columns:
+              - column:
+                  name: utility_id
+        - createIndex:
+            indexName: ix_anagrafiche_clienti_istanza_id
+            schemaName: anagrafiche
+            tableName: clienti
+            columns:
+              - column:
+                  name: istanza_id
+        - createIndex:
+            indexName: ix_anagrafiche_clienti_iva_id
+            schemaName: anagrafiche
+            tableName: clienti
+            columns:
+              - column:
+                  name: iva_id
+        - createIndex:
+            indexName: ix_anagrafiche_clienti_modalita_pagamento_id
+            schemaName: anagrafiche
+            tableName: clienti
+            columns:
+              - column:
+                  name: modalita_pagamento_id
+        - createIndex:
+            indexName: ix_anagrafiche_clienti_soggetto_ruolo_id
+            schemaName: anagrafiche
+            tableName: clienti
+            columns:
+              - column:
+                  name: soggetto_ruolo_id
+        - createIndex:
+            indexName: ix_anagrafiche_clienti_stato_cliente_id
+            schemaName: anagrafiche
+            tableName: clienti
+            columns:
+              - column:
+                  name: stato_cliente_id
+        - createIndex:
+            indexName: ix_anagrafiche_contatti_soggetto_ruolo_id
+            schemaName: anagrafiche
+            tableName: contatti
+            columns:
+              - column:
+                  name: soggetto_ruolo_id
+        - createIndex:
+            indexName: ix_anagrafiche_contatti_titolo_cortesia_id
+            schemaName: anagrafiche
+            tableName: contatti
+            columns:
+              - column:
+                  name: titolo_cortesia_id
+        - createIndex:
+            indexName: ix_anagrafiche_dati_societari_id_prov_iscri_rea
+            schemaName: anagrafiche
+            tableName: dati_societari
+            columns:
+              - column:
+                  name: id_prov_iscri_rea
+        - createIndex:
+            indexName: ix_anagrafiche_gestori_soggetto_id
+            schemaName: anagrafiche
+            tableName: gestori
+            columns:
+              - column:
+                  name: soggetto_id
+        - createIndex:
+            indexName: ix_anagrafiche_gestori_soggetto_ruolo_id
+            schemaName: anagrafiche
+            tableName: gestori
+            columns:
+              - column:
+                  name: soggetto_ruolo_id
+        - createIndex:
+            indexName: ix_anagrafiche_gestori_valuta_id
+            schemaName: anagrafiche
+            tableName: gestori
+            columns:
+              - column:
+                  name: valuta_id
+        - createIndex:
+            indexName: ix_anagrafiche_gestori_utilities_ruoli_gestore_id
+            schemaName: anagrafiche
+            tableName: gestori_utilities_ruoli
+            columns:
+              - column:
+                  name: gestore_id
+        - createIndex:
+            indexName: ix_anagrafiche_gestori_utilities_ruoli_ruolo_id
+            schemaName: anagrafiche
+            tableName: gestori_utilities_ruoli
+            columns:
+              - column:
+                  name: ruolo_id
+        - createIndex:
+            indexName: ix_anagrafiche_indirizzi_indirizzo_dettaglio_id
+            schemaName: anagrafiche
+            tableName: indirizzi
+            columns:
+              - column:
+                  name: indirizzo_dettaglio_id
+        - createIndex:
+            indexName: ix_anagrafiche_indirizzi_dettaglio_stradario_id
+            schemaName: anagrafiche
+            tableName: indirizzi_dettaglio
+            columns:
+              - column:
+                  name: stradario_id
+        - createIndex:
+            indexName: ix_anagrafiche_soggetti_ruoli_ruolo_id
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli
+            columns:
+              - column:
+                  name: ruolo_id
+        - createIndex:
+            indexName: ix_anagrafiche_soggetti_ruoli_soggetto_id
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli
+            columns:
+              - column:
+                  name: soggetto_id
+
+                                    
+ # Metto un  tag fine modifiche
+  - changeSet:
+        id: 20250626-90-create_indexes_per_foreign_key
+        author: mctit
+        changes:
+          - tagDatabase:
+              tag: 20250626-01-create_indexes_per_foreign_key

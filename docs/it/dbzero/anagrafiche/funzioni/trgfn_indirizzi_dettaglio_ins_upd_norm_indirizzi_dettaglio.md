@@ -1,4 +1,4 @@
-# Funzione `trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio`
+# ⚙️ Funzione `trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio`
 
 ```sql
 CREATE FUNCTION trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio()

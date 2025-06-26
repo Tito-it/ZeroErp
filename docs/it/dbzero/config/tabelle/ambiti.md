@@ -1,6 +1,6 @@
-# Tabella `ambiti`
+# 📚 Tabella `ambiti`
 
-## Campi principali
+## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.ambiti_id_seq'::regclass) |
@@ -12,13 +12,13 @@
 | user_update | character varying | NO | CURRENT_USER |
 | extra_country | jsonb | YES |  |
 
-## Vincoli
+## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | PRIMARY KEY | pk_ambiti | id |
 | UNIQUE | uq_ambiti_codice | codice |
 
-## Indici
+## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_ambiti_descrizione | `CREATE INDEX ix_ambiti_descrizione ON config.ambiti USING btree (descrizione)` |
@@ -26,7 +26,7 @@
 | pk_ambiti | `CREATE UNIQUE INDEX pk_ambiti ON config.ambiti USING btree (id)` |
 | uq_ambiti_codice | `CREATE UNIQUE INDEX uq_ambiti_codice ON config.ambiti USING btree (codice)` |
 
-## Trigger
+## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_ambiti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

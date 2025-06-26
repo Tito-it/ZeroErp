@@ -1,5 +1,5 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/trgfn_gestori_ins_upd_check_ruolo_gestore.md" %}
-# Funzione `trgfn_gestori_ins_upd_check_ruolo_gestore`
+# ⚙️ Funzione `trgfn_gestori_ins_upd_check_ruolo_gestore`
 
 ```sql
 CREATE FUNCTION trgfn_gestori_ins_upd_check_ruolo_gestore()

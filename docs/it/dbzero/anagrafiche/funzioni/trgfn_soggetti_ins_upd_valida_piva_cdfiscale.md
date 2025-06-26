@@ -1,4 +1,4 @@
-# Funzione `trgfn_soggetti_ins_upd_valida_piva_cdfiscale`
+# ⚙️ Funzione `trgfn_soggetti_ins_upd_valida_piva_cdfiscale`
 
 ```sql
 CREATE FUNCTION trgfn_soggetti_ins_upd_valida_piva_cdfiscale()

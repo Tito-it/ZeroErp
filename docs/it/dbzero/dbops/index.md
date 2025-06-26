@@ -1,11 +1,11 @@
 # Schema `dbops`
 
-## Tabelle
+## 📚 Tabelle
 - [audit_log](tabelle/audit_log.md)
 - [error_log](tabelle/error_log.md)
 - [fk_index_policy](tabelle/fk_index_policy.md)
 
-## Funzioni
+## ⚙️ Funzioni
 - [fn_admin_merge_comune](funzioni/fn_admin_merge_comune.md)
 - [fn_admin_merge_stradario](funzioni/fn_admin_merge_stradario.md)
 - [fn_create_gestore](funzioni/fn_create_gestore.md)
@@ -17,7 +17,7 @@
 - [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md)
 - [fn_search_column_usage](funzioni/fn_search_column_usage.md)
 
-## Documentazione Manuale
+## 📝 Documentazione Manuale
 - [audit_log](manual/audit_log.md)
 - [error_log](manual/error_log.md)
 - [fn_find_file_usage](manual/fn_find_file_usage.md)
