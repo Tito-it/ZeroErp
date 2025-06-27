@@ -67,7 +67,7 @@ SELECT
   fk.constraint_name,
   fk.fk_cols,
   format(
-    'CREATE INDEX idx_%I_%I_%s ON %I.%I(%s);',
+    'CREATE INDEX ix_%I_%I_%s ON %I.%I(%s);',
     fk.schema_name,
     fk.table_name,
     array_to_string(fk.fk_cols, '_'),

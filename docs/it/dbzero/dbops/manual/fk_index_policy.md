@@ -19,7 +19,7 @@ La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** pe
 
 * **Controllo centralizzato**: gestire in un unico punto l’abilitazione o meno degli indici sui vincoli referenziali, evitando di creare indici non necessari o ridondanti.
 * **Ottimizzazione delle performance**: disabilitare index su FK poco usati per ridurre overhead in scrittura, o forzare index su FK critici per migliorare le join.
-* **Audit e documentazione**: con la colonna `note` si tiene traccia delle motivazioni alla base delle scelte, facilitando review e manutenzione.
+* **Audit e documentazione**: con la colonna `dll_command` si tiene traccia delle motivazioni alla base delle scelte, facilitando review e manutenzione.
 * **Integrazione con script di DBOps**: gli script di deployment possono leggere questa tabella e generare dinamicamente DDL `CREATE INDEX` o `DROP INDEX` per applicare la policy.
 
 ---
@@ -34,7 +34,7 @@ La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** pe
      table_name,
      constraint_name,
      consentito,
-     note
+     dll_command
    ) VALUES (
      'anagrafiche',
      'soggetti_ruoli',
