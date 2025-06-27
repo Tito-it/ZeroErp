@@ -59,13 +59,21 @@ jobs:
           sudo apt-get update
           # Assicuriamoci di avere Java
           sudo apt-get install -y default-jre unzip wget
-          # Scarica l’ultima release 4.x di Liquibase (adatta la versione se serve)
-          wget https://github.com/liquibase/liquibase/releases/download/v4.15.0/liquibase-4.15.0.zip -O liquibase.zip
+          # Versione che usi in locale
+           LIQUIBASE_VERSION=4.31.0
+
+          # Scarica e scompatta
+          wget https://github.com/liquibase/liquibase/releases/download/v${LIQUIBASE_VERSION}/liquibase-${LIQUIBASE_VERSION}.zip -O liquibase.zip
           unzip liquibase.zip -d liquibase
+
+          # Sposta il contenuto in /opt/liquibase
           sudo mv liquibase /opt/liquibase
-          # Metti /opt/liquibase nella PATH
+
+          # Assicurati che il wrapper e la cartella 'lib' siano in PATH
           echo "/opt/liquibase" >> $GITHUB_PATH
-    
+
+          # Verifica
+          liquibase --version 
 
       - name: Run pre-commit hooks
         run: |
