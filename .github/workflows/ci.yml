@@ -64,11 +64,11 @@ jobs:
 
           # Scarica e scompatta
           wget https://github.com/liquibase/liquibase/releases/download/v${LIQUIBASE_VERSION}/liquibase-${LIQUIBASE_VERSION}.zip -O liquibase.zip
-          unzip liquibase.zip
+          
+          # crea la destinazione e scompatta direttamente lì
+          sudo mkdir -p /opt/liquibase
+          sudo unzip -q liquibase.zip -d /opt/liquibase
 
-          # la scompattazione crea la cartella liquibase-${LIQUIBASE_VERSION}
-          # spostala in /opt/liquibase
-          sudo mv liquibase-${LIQUIBASE_VERSION} /opt/liquibase
           # Assicurati che il wrapper e la cartella 'lib' siano in PATH
           echo "/opt/liquibase" >> $GITHUB_PATH
 
