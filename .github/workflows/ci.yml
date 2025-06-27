@@ -57,20 +57,20 @@ jobs:
       - name: Install Liquibase CLI
         run: |
           sudo apt-get update
-          # Assicuriamoci di avere Java
           sudo apt-get install -y default-jre unzip wget
+
           # Versione che usi in locale
           LIQUIBASE_VERSION=4.31.0
 
-          # Scarica e scompatta
+          # Scarica la ZIP ufficiale
           wget https://github.com/liquibase/liquibase/releases/download/v${LIQUIBASE_VERSION}/liquibase-${LIQUIBASE_VERSION}.zip -O liquibase.zip
-          
-          # Estrai in dir temporanea
+
+          # Estrai tutto in una cartella temporanea
           unzip -q liquibase.zip -d liquibase-temp
 
-          # Sposta il contenuto in /opt/liquibase
+          # Crea la destinazione e sposta qualunque cosa ci sia dentro liquibase-temp in /opt/liquibase
           sudo mkdir -p /opt/liquibase
-          sudo mv liquibase-temp/liquibase-${LIQUIBASE_VERSION}/* /opt/liquibase/
+          sudo mv liquibase-temp/* /opt/liquibase/
 
           # Pulisci
           rm -rf liquibase-temp liquibase.zip
@@ -80,6 +80,7 @@ jobs:
 
           # Verifica
           liquibase --version
+
 
       - name: Run pre-commit hooks
         run: |
