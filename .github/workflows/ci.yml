@@ -60,15 +60,15 @@ jobs:
           # Assicuriamoci di avere Java
           sudo apt-get install -y default-jre unzip wget
           # Versione che usi in locale
-           LIQUIBASE_VERSION=4.31.0
+          LIQUIBASE_VERSION=4.31.0
 
           # Scarica e scompatta
           wget https://github.com/liquibase/liquibase/releases/download/v${LIQUIBASE_VERSION}/liquibase-${LIQUIBASE_VERSION}.zip -O liquibase.zip
-          unzip liquibase.zip -d liquibase
+          unzip liquibase.zip
 
-          # Sposta il contenuto in /opt/liquibase
-          sudo mv liquibase /opt/liquibase
-
+          # la scompattazione crea la cartella liquibase-${LIQUIBASE_VERSION}
+          # spostala in /opt/liquibase
+          sudo mv liquibase-${LIQUIBASE_VERSION} /opt/liquibase
           # Assicurati che il wrapper e la cartella 'lib' siano in PATH
           echo "/opt/liquibase" >> $GITHUB_PATH
 
