@@ -85,6 +85,11 @@ jobs:
       - name: Applica migrazioni Liquibase
         run: |
           source .venv/bin/activate
+
+          # Se liquibase è installato in /opt/liquibase, aggiungilo al PATH
+          export PATH=/opt/liquibase:$PATH
+
+          # Ora liquibase sarà trovato
           liquibase \
             --url=jdbc:postgresql://localhost:5432/zeroerp \
             --username=zeroerp \
