@@ -59,26 +59,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y default-jre unzip wget
 
-          # Versione che usi in locale
           LIQUIBASE_VERSION=4.31.0
-
-          # Scarica la ZIP ufficiale
           wget https://github.com/liquibase/liquibase/releases/download/v${LIQUIBASE_VERSION}/liquibase-${LIQUIBASE_VERSION}.zip -O liquibase.zip
-
-          # Estrai tutto in una cartella temporanea
           unzip -q liquibase.zip -d liquibase-temp
 
-          # Crea la destinazione e sposta qualunque cosa ci sia dentro liquibase-temp in /opt/liquibase
           sudo mkdir -p /opt/liquibase
           sudo mv liquibase-temp/* /opt/liquibase/
-
-          # Pulisci
           rm -rf liquibase-temp liquibase.zip
 
-          # Aggiungi /opt/liquibase al PATH
-          echo "/opt/liquibase" >> $GITHUB_PATH
+          # Assicurati che lo script sia eseguibile
+          sudo chmod +x /opt/liquibase/liquibase
 
-          # Verifica
+          # Aggiorna il PATH **anche** per questo step
+          export PATH=/opt/liquibase:$PATH
+
+          # Ora funziona
           liquibase --version
 
 
