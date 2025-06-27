@@ -65,15 +65,21 @@ jobs:
           # Scarica e scompatta
           wget https://github.com/liquibase/liquibase/releases/download/v${LIQUIBASE_VERSION}/liquibase-${LIQUIBASE_VERSION}.zip -O liquibase.zip
           
-          # crea la destinazione e scompatta direttamente lì
-          sudo mkdir -p /opt/liquibase
-          sudo unzip -q liquibase.zip -d /opt/liquibase
+          # Estrai in dir temporanea
+          unzip -q liquibase.zip -d liquibase-temp
 
-          # Assicurati che il wrapper e la cartella 'lib' siano in PATH
+          # Sposta il contenuto in /opt/liquibase
+          sudo mkdir -p /opt/liquibase
+          sudo mv liquibase-temp/liquibase-${LIQUIBASE_VERSION}/* /opt/liquibase/
+
+          # Pulisci
+          rm -rf liquibase-temp liquibase.zip
+
+          # Aggiungi /opt/liquibase al PATH
           echo "/opt/liquibase" >> $GITHUB_PATH
 
           # Verifica
-          liquibase --version 
+          liquibase --version
 
       - name: Run pre-commit hooks
         run: |
