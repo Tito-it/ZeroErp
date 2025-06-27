@@ -16,7 +16,7 @@ DECLARE
   rec RECORD;
 BEGIN
   FOR rec IN
-    SELECT schema_name, table_name, constraint_name
+    SELECT schema_name, table_name, constraint_name, create_index_suggestion  
       FROM dbops.vw_fk_senza_indice
     WHERE (schema_name, table_name, constraint_name)
       NOT IN (
@@ -29,17 +29,13 @@ BEGIN
       table_name,
       constraint_name,
       consentito,
-      note
+      dll_command
     ) VALUES (
       rec.schema_name,
       rec.table_name,
       rec.constraint_name,
       false,
-      format(
-        'Autopopulated: missing ix_%s_%s index',
-        rec.table_name,
-        rec.constraint_name
-      )
+      rec.create_index_suggestion
     );
   END LOOP;
 END;

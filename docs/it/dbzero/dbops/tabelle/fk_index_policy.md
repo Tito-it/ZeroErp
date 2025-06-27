@@ -8,7 +8,7 @@
 | table_name | text | NO |  |
 | constraint_name | text | NO |  |
 | consentito | boolean | NO | true |
-| note | text | YES |  |
+| dll_command | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

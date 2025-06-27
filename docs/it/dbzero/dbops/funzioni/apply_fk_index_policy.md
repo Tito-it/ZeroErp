@@ -12,22 +12,18 @@ CREATE OR REPLACE PROCEDURE dbops.apply_fk_index_policy()
 AS $procedure$
 DECLARE
   rec RECORD;
+  idx_name TEXT;
 BEGIN
   FOR rec IN SELECT * FROM dbops.fk_index_policy LOOP
     IF rec.consentito THEN
-      EXECUTE format(
-        'CREATE INDEX IF NOT EXISTS ix_%I_%I ON %I.%I (%I)',
-        rec.table_name,
-        rec.constraint_name,
-        rec.schema_name,
-        rec.table_name,
-        rec.constraint_name
-      );
+      EXECUTE rec.dll_command;
     ELSE
-      EXECUTE format(
-        'DROP INDEX IF EXISTS ix_%I_%I',
-        rec.table_name,
-        rec.constraint_name
+         -- estraggo solo il nome dell'indice
+        idx_name := split_part(rec.dll_command, ' ', 6);
+        EXECUTE format(
+          'DROP INDEX IF EXISTS %I.%I',
+          rec.schema_name,
+          idx_name
       );
     END IF;
   END LOOP;
