@@ -1,0 +1,42 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+
+- changeSet:
+      id: 20250628-02-rename_index_config_idx_to_ix
+      author: mctit
+      
+      changes:
+
+        - sql:
+            sql: |
+              ALTER INDEX config.idx_toponomastica_stato_id
+                RENAME TO ix_config_toponomastica_stato_id;
+
+        - sql:
+            sql: |
+              ALTER INDEX config.idx_valute_desc_valuta
+                RENAME TO ix_config_valute_desc_valuta;
+
+        - sql:
+            sql: |
+              ALTER INDEX config.idx_stati_cli_desc
+                RENAME TO ix_config_stati_cli_desc;
+
+      
+ # Metto un  tag fine modifiche
+- changeSet:
+      id: 20250628-90-rename_index_config_idx_to_ix
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250628-02-rename_index_config_idx_to_ix
+      comments: "Rinomina gli indici da idx_ a ix_ per uniformità"

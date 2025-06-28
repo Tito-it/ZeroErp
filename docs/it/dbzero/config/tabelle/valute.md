@@ -25,7 +25,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| idx_valute_desc_valuta | `CREATE INDEX idx_valute_desc_valuta ON config.valute USING btree (descrizione_valuta)` |
+| ix_config_valute_desc_valuta | `CREATE INDEX ix_config_valute_desc_valuta ON config.valute USING btree (descrizione_valuta)` |
 | pk_valute | `CREATE UNIQUE INDEX pk_valute ON config.valute USING btree (id)` |
 | uq_cd_valuta | `CREATE UNIQUE INDEX uq_cd_valuta ON config.valute USING btree (cd_valuta)` |
 | uq_iso_code | `CREATE UNIQUE INDEX uq_iso_code ON config.valute USING btree (iso_code)` |
