@@ -9,6 +9,7 @@
 | constraint_name | text | NO |  |
 | consentito | boolean | NO | true |
 | dll_command | text | YES |  |
+| generated_by_script | boolean | YES | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

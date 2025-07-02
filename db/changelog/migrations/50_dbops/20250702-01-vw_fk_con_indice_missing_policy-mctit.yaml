@@ -1,0 +1,105 @@
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20250702-01-vw_fk_con_indice_missing_policy
+      author: mctit 
+      runOnChange: true
+      validCheckSums:
+            - ANY
+      changes:
+      - createView:
+          fullDefinition: false
+          remarks: Elenco tutti i vincoli foreign key che *hanno* 
+                    un indice e *non* sono ancora definiti in fk_index_policy
+          schemaName: dbops
+          replaceIfExists: true
+          selectQuery: |-
+            -- View: tutti i vincoli foreign key che *hanno* un indice e *non* sono ancora definiti in fk_index_policy
+
+              WITH fk_columns AS (
+                SELECT con.oid    AS constraint_oid,
+                      con.conname AS constraint_name,
+                      nsp.nspname AS schema_name,
+                      rel.relname AS table_name,
+                      unnest(con.conkey) AS attnum,
+                      con.conrelid
+                  FROM pg_constraint con
+                  JOIN pg_class rel ON rel.oid = con.conrelid
+                  JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+                WHERE con.contype = 'f'
+              ), fk_fields AS (
+                SELECT fk.constraint_name,
+                      fk.schema_name,
+                      fk.table_name,
+                      a.attname        AS column_name,
+                      fk.conrelid,
+                      fk.constraint_oid
+                  FROM fk_columns fk
+                  JOIN pg_attribute a
+                    ON a.attrelid = fk.conrelid AND a.attnum = fk.attnum
+              ), indexed_columns AS (
+                SELECT i.relname               AS index_name,
+                      n.nspname               AS schema_name,
+                      t.relname               AS table_name,
+                      array_agg(a.attname ORDER BY x.ordinality) AS indexed_cols
+                  FROM pg_index ix
+                  JOIN pg_class i    ON i.oid = ix.indexrelid
+                  JOIN pg_class t    ON t.oid = ix.indrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY x(attnum, ordinality) ON true
+                  JOIN pg_attribute a
+                    ON a.attrelid = t.oid AND a.attnum = x.attnum
+              GROUP BY i.relname, n.nspname, t.relname
+              ), fk_grouped AS (
+                SELECT fk.constraint_name,
+                      fk.schema_name,
+                      fk.table_name,
+                      array_agg(fk.column_name ORDER BY fk.column_name) AS fk_cols
+                  FROM fk_fields fk
+              GROUP BY fk.constraint_name, fk.schema_name, fk.table_name
+              )
+              SELECT
+                fk.schema_name,
+                fk.table_name,
+                fk.constraint_name,
+                fk.fk_cols,
+                idx.index_name,
+                format(
+                  'CREATE INDEX ix_%I_%I_%s ON %I.%I(%s);',
+                  fk.schema_name,
+                  fk.table_name,
+                  array_to_string(fk.fk_cols, '_'),
+                  fk.schema_name,
+                  fk.table_name,
+                  array_to_string(fk.fk_cols, ', ')
+                )                 AS create_index_suggestion
+              FROM fk_grouped fk
+              JOIN indexed_columns idx
+                ON fk.schema_name = idx.schema_name
+              AND fk.table_name  = idx.table_name
+              AND fk.fk_cols      = idx.indexed_cols
+              LEFT JOIN dbops.fk_index_policy pol
+                ON fk.schema_name     = pol.schema_name
+              AND fk.table_name      = pol.table_name
+              AND fk.constraint_name = pol.constraint_name
+              WHERE pol.constraint_name IS NULL
+                AND COALESCE(pol.consentito, true) = true
+              ORDER BY fk.schema_name, fk.table_name;
+  
+          viewName: vw_fk_con_indice_missing_policy
+
+  - changeSet:
+      id: 20250702-90-vw_fk_con_indice_missing_policy
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250702-01-vw_fk_con_indice_missing_policy
