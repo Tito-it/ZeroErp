@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fk_index_policy.md" %}
 # 📚 Tabella `fk_index_policy`
 
 ## 🗂️ Campi principali
@@ -7,7 +8,8 @@
 | table_name | text | NO |  |
 | constraint_name | text | NO |  |
 | consentito | boolean | NO | true |
-| note | text | YES |  |
+| dll_command | text | YES |  |
+| generated_by_script | boolean | YES | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

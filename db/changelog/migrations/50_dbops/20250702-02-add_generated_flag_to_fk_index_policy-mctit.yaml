@@ -1,0 +1,83 @@
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250702-02-add_generated_flag_to_fk_index_policy
+      author: mctit
+      changes:
+        # 1) Aggiunge colonna per indicare l'origine dello script
+        - addColumn:
+            schemaName: dbops
+            tableName: fk_index_policy 
+            columns:
+              - column:
+                  name: generated_by_script
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "True se l'indice suggerito è stato creato da Liquibase/script"
+        # 2) Commento sulla nuova colonna
+        - sql:
+            
+            sql: |
+              COMMENT ON COLUMN dbops.fk_index_policy.generated_by_script
+                IS 'Flag che indica se la foreign key è stata registrata automaticamente da script';
+
+  - changeSet:
+      id: 20250702-03-seed_fk_index_policy_from_view
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        # 3) Inserisce in fk_index_policy tutte le fk mancanti (derivate dalla view)
+        - sql: 
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_seed_fk_index_policy()
+                  RETURNS void 
+                  LANGUAGE plpgsql
+                  AS $function$
+                  BEGIN
+                    INSERT INTO dbops.fk_index_policy(
+                      schema_name,
+                      table_name,
+                      constraint_name,
+                      dll_command,
+                      consentito,
+                      generated_by_script
+                      
+                    )
+                    SELECT
+                      vw.schema_name,
+                      vw.table_name,
+                      vw.constraint_name,
+                      vw.create_index_suggestion,
+                      true,
+                      true
+                      
+                    FROM dbops.vw_fk_con_indice_missing_policy vw
+                    ON CONFLICT (schema_name, table_name, constraint_name) DO NOTHING;
+                  END;
+                  $function$;
+
+        # 4) Commento sullo script di seed
+        - sql:
+            dbms: postgresql
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_seed_fk_index_policy()
+                IS 'Registro policy indici per foreign key: seed automatico da view';
+
+  
+  - changeSet:
+      id: 20250702-90-add_generated_flag_to_fk_index_policy
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250702-02-add_generated_flag_to_fk_index_policy

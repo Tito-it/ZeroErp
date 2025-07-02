@@ -1,5 +1,18 @@
 ## 📘 Parametri Personalizzati (GUC) in PostgreSQL
 
+
+> 👀 **Vedi anche**  
+> 
+> Approfondimento Tabelle:   
+> - [config.parameters](/dbzero/config/tabelle/parameters)      
+> - [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
+>
+> Approfondimento funzioni :    
+> - [script.fn_get_parametr_full](/dbzero/script/funzioni/fn_get_parametr_full)     
+> 
+> All'interno del documento viene spiegata la differenza tra parametri GUC e parametri tabellari
+
+
 I **Parametri Personalizzati (GUC - Grand Unified Configuration)** di PostgreSQL consentono agli sviluppatori di definire e gestire variabili globali personalizzate per il proprio database o applicazione. Tali parametri permettono di configurare in modo flessibile il comportamento delle applicazioni, centralizzando impostazioni e facilitando manutenzione e configurazione.
 
 ---
@@ -76,13 +89,32 @@ Di seguito i parametri personalizzati (GUC) definiti in `postgresql.conf` e util
 
 ---
 
+### ⚖️ Confronto: GUC vs Modello a Tabelle
+
+| Caratteristica              | GUC PostgreSQL                                      | Tabella Override (`config.parameters` + `config.parameter_overrides`)              |
+| --------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **Livelli di applicazione** | `database`, `role`, `session`, **statici**          | `global → tenant → user → session → function` (dinamici)                           |
+| **Flessibilità**            | Rigido (solo livelli predefiniti)                   | Altamente estendibile a nuovi scope (es. ruolo, feature, modulo)                   |
+| **Versioning**              | No (config file o DDL)                              | Sì (versionato con Liquibase in script SQL)                                        |
+| **Audit**                   | Limitato (no audit built‑in)                        | Sì (campi `data_insert`, `user_insert`, trigger di audit)                          |
+| **Accesso runtime**         | Solo `SET` o `current_setting`                      | API/Query dirette a database, integrabili in endpoint REST                         |
+| **Use case ideale**         | Parametri **DB‑centrici** (work\_mem, search\_path) | Parametri **business‑centrici** (timeout, currency, workflow, feature flags, etc.) |
+
+> **Quando scegliere...**
+>
+> * **GUC PostgreSQL**: per configurazioni strettamente tecniche o performance‑oriented, con requisiti statici o legati al ruolo DB.
+> * **Tabella Override**: per impostazioni dinamiche, multi‑tenant e variabili in base a user/session/function, con tracciamento e versioning completo.
+
+---
+
 ### 🔒 Best Practices
 
 * Utilizzare nomi di parametri chiari e descrittivi, preferibilmente con prefissi applicativi (ad esempio, `myapp.`).
 * Evitare di esporre informazioni sensibili o credenziali direttamente nei parametri GUC, soprattutto in ambienti di produzione.
-* Nota: in casi eccezionali, come per dblink.log_connection, la stringa di connessione può includere credenziali per garantire funzionalità di logging remoto. Assicurarsi in questi casi di limitare l'accesso al file di configurazione e al database a ruoli con privilegi ridotti.
-* Documentare chiaramente ciascun parametro, includendo scopo, formato e uso previsto per agevolare la manutenzione e l’integrazione.
+* Documentare chiaramente ciascun parametro, includendo scopo, formato e uso previsto.
+* Cache lato applicazione: caricare in memoria i parametri all’avvio e rinnovarli periodicamente (es. TTL 5’).
+* Per i secrets, utilizzare un Vault dedicato anziché GUC o tabelle.
 
 ---
 
-> 🧠 **“I parametri personalizzati (GUC) forniscono uno strumento potente e flessibile per la configurazione centralizzata, contribuendo alla modularità e facilità di gestione del sistema.”**
+> 🧠 **“I parametri GUC sono ideali per la configurazione DB‑centric; per logica applicativa e scenari multi‑tenant multi‑scope, il modello a tabelle offre flessibilità, versioning e audit.”**

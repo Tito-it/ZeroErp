@@ -1,0 +1,21 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250626-31-apply_pr_apply_fk_index_policy
+      author: mctit
+      comments: "esegue la procedure apply_fk_index_policy nello schema dbops"
+      runAlways: true
+      changes:
+        
+        - sql:
+            splitStatements: false
+            sql: |
+              CALL dbops.apply_fk_index_policy();

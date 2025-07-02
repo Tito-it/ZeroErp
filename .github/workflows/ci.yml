@@ -57,15 +57,25 @@ jobs:
       - name: Install Liquibase CLI
         run: |
           sudo apt-get update
-          # Assicuriamoci di avere Java
           sudo apt-get install -y default-jre unzip wget
-          # Scarica l’ultima release 4.x di Liquibase (adatta la versione se serve)
-          wget https://github.com/liquibase/liquibase/releases/download/v4.15.0/liquibase-4.15.0.zip -O liquibase.zip
-          unzip liquibase.zip -d liquibase
-          sudo mv liquibase /opt/liquibase
-          # Metti /opt/liquibase nella PATH
-          echo "/opt/liquibase" >> $GITHUB_PATH
-    
+
+          LIQUIBASE_VERSION=4.31.0
+          wget https://github.com/liquibase/liquibase/releases/download/v${LIQUIBASE_VERSION}/liquibase-${LIQUIBASE_VERSION}.zip -O liquibase.zip
+          unzip -q liquibase.zip -d liquibase-temp
+
+          sudo mkdir -p /opt/liquibase
+          sudo mv liquibase-temp/* /opt/liquibase/
+          rm -rf liquibase-temp liquibase.zip
+
+          # Assicurati che lo script sia eseguibile
+          sudo chmod +x /opt/liquibase/liquibase
+
+          # Aggiorna il PATH **anche** per questo step
+          export PATH=/opt/liquibase:$PATH
+
+          # Ora funziona
+          liquibase --version
+
 
       - name: Run pre-commit hooks
         run: |
@@ -75,6 +85,11 @@ jobs:
       - name: Applica migrazioni Liquibase
         run: |
           source .venv/bin/activate
+
+          # Se liquibase è installato in /opt/liquibase, aggiungilo al PATH
+          export PATH=/opt/liquibase:$PATH
+
+          # Ora liquibase sarà trovato
           liquibase \
             --url=jdbc:postgresql://localhost:5432/zeroerp \
             --username=zeroerp \

@@ -4,6 +4,11 @@
 >
 > Approfondimento Tabelle:   
 > - [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
+>
+> Approfondimento parametri tabellari Vs GUC
+> - [parametri-personalizzati-(GUC)](/parametri-personalizzati-(GUC)) 
+>
+> All'interno del documento viene spiegata la differenza tra parametri GUC e parametri tabellari
 
 
 La tabella **`config.parameters`** implementa un’**architettura a due livelli** per la configurazione dinamica dell’applicazione:
@@ -128,5 +133,26 @@ SELECT config.get_parameter_full(
 ```
 
 restituirà **’PENDING\_APPROVAL’**, senza impattare la configurazione globale.
+
+
+### ⚖️ Confronto: GUC vs Modello a Tabelle
+
+| Caratteristica              | GUC PostgreSQL                                      | Tabella Override (`config.parameters` + `config.parameter_overrides`)              |
+| --------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **Livelli di applicazione** | `database`, `role`, `session`, **statici**          | `global → tenant → user → session → function` (dinamici)                           |
+| **Flessibilità**            | Rigido (solo livelli predefiniti)                   | Altamente estendibile a nuovi scope (es. ruolo, feature, modulo)                   |
+| **Versioning**              | No (config file o DDL)                              | Sì (versionato con Liquibase in script SQL)                                        |
+| **Audit**                   | Limitato (no audit built‑in)                        | Sì (campi `data_insert`, `user_insert`, trigger di audit)                          |
+| **Accesso runtime**         | Solo `SET` o `current_setting`                      | API/Query dirette a database, integrabili in endpoint REST                         |
+| **Use case ideale**         | Parametri **DB‑centrici** (work\_mem, search\_path) | Parametri **business‑centrici** (timeout, currency, workflow, feature flags, etc.) |
+
+> **Quando scegliere...**
+>
+> * **GUC PostgreSQL**: per configurazioni strettamente tecniche o performance‑oriented, con requisiti statici o legati al ruolo DB.
+> * **Tabella Override**: per impostazioni dinamiche, multi‑tenant e variabili in base a user/session/function, con tracciamento e versioning completo.
+
+---
+
+
 
 > 🧠 **“Questi esempi mostrano come il modello a due tabelle gestisca override precisi per valuta, stato o qualunque parametro, mantenendo la scalabilità e la manutenibilità.”**

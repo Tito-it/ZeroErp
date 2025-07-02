@@ -2,7 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> * Tabella di policy `dbops.fk_index_policy`
+> Approfondimento Tabelle:   
+> - [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
+> 
 > * Catalogo dei vincoli FK in PostgreSQL (`pg_constraint`, `pg_class`, `pg_namespace`)
 
 La view **`dbops.vw_fk_senza_indice`** elenca tutte le foreign key definite negli schemi monitorati che **non hanno un indice associato** sulle colonne di riferimento, suggerendo lo statement `CREATE INDEX` corrispondente e rispettando eventuali eccezioni definite in `dbops.fk_index_policy`.
@@ -67,7 +69,7 @@ SELECT
   fk.constraint_name,
   fk.fk_cols,
   format(
-    'CREATE INDEX idx_%I_%I_%s ON %I.%I(%s);',
+    'CREATE INDEX ix_%I_%I_%s ON %I.%I(%s);',
     fk.schema_name,
     fk.table_name,
     array_to_string(fk.fk_cols, '_'),

@@ -23,7 +23,7 @@ Uniformità e chiarezza nel codice DDL:
 | **Colonna PK**    | `id`                               | `id UUID`, `id SERIAL`                |
 | **Sequenza**      | `<table>_id_seq`                   | `storico.comuni_id_seq`               |
 | **FK**            | `<referenced_table>_id`            | `soggetto_id`, `utility_id`           |
-| **Indice**        | `idx_<table>_<column>`             | `idx_contatti_soggetto`               |
+| **Indice**        | `ix_<table>_<column>`              | `ix_contatti_soggetto`                |
 | **Vista**         | prefisso `vw_`                     | `vw_clienti_attivi`                   |
 | **Funzione**      | prefisso `fn_`                     | `fn_calcolo_fattura()`                |
 | **Trigger Func.** | prefisso `trgfn_`                  | `trgfn_contatti_set_default()`        |
@@ -115,9 +115,9 @@ I trigger o constraint di sistema possono aggiornare `date_update/user_update` s
 
 ### 8. Indici
 
-* **Naming**: `idx_<table>_<column>` o `ix_<table>_<column>`
+* **Naming**: `ix_<table>_<column>`
 * **Tipologia**: B-Tree per default; GIN/GIST per JSONB/Geometrie.
-* **Parziali**: `CREATE UNIQUE INDEX idx_contatti_default ON contatti(soggetto_id) WHERE is_default;` per default logic 
+* **Parziali**: `CREATE UNIQUE INDEX ix_contatti_default ON contatti(soggetto_id) WHERE is_default;` per default logic 
 
 ---
 
