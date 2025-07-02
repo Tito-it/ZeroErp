@@ -24,6 +24,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_config_province_regione_id | `CREATE INDEX ix_config_province_regione_id ON config.province USING btree (regione_id)` |
 | ix_descrizione_provincia | `CREATE INDEX ix_descrizione_provincia ON config.province USING btree (descrizione)` |
 | ix_province_stato_utilizzo_jsonb | `CREATE INDEX ix_province_stato_utilizzo_jsonb ON config.province USING btree (((extra_country ->> 'stato_utilizzo'::text)))` |
 | ix_regione_provincia | `CREATE INDEX ix_regione_provincia ON config.province USING btree (regione_id)` |

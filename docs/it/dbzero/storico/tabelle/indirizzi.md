@@ -43,6 +43,8 @@
 | ix_storico_indirizzi_indirizzi_id | `CREATE INDEX ix_storico_indirizzi_indirizzi_id ON storico.indirizzi USING btree (indirizzi_id)` |
 | ix_storico_indirizzi_periodo | `CREATE INDEX ix_storico_indirizzi_periodo ON storico.indirizzi USING btree (valid_from, valid_to)` |
 | ix_storico_indirizzi_soggetto_ruolo | `CREATE INDEX ix_storico_indirizzi_soggetto_ruolo ON storico.indirizzi USING btree (soggetto_ruolo_id)` |
+| ix_storico_indirizzi_soggetto_ruolo_id | `CREATE INDEX ix_storico_indirizzi_soggetto_ruolo_id ON storico.indirizzi USING btree (soggetto_ruolo_id)` |
 | ix_storico_indirizzi_stato_id | `CREATE INDEX ix_storico_indirizzi_stato_id ON storico.indirizzi USING btree (stato_id)` |
 | ix_storico_indirizzi_tipo | `CREATE INDEX ix_storico_indirizzi_tipo ON storico.indirizzi USING btree (tipo_indirizzo_id)` |
+| ix_storico_indirizzi_tipo_indirizzo_id | `CREATE INDEX ix_storico_indirizzi_tipo_indirizzo_id ON storico.indirizzi USING btree (tipo_indirizzo_id)` |
 | pk_indirizzi | `CREATE UNIQUE INDEX pk_indirizzi ON storico.indirizzi USING btree (id)` |
