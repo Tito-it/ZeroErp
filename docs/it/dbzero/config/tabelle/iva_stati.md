@@ -25,6 +25,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_config_iva_stati_stato_id | `CREATE INDEX ix_config_iva_stati_stato_id ON config.iva_stati USING btree (stato_id)` |
 | ix_iva_stati_stato | `CREATE INDEX ix_iva_stati_stato ON config.iva_stati USING btree (stato_id)` |
 | pk_iva_stati | `CREATE UNIQUE INDEX pk_iva_stati ON config.iva_stati USING btree (iva_id, stato_id)` |
 

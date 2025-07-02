@@ -49,8 +49,10 @@
 | ix_anagrafiche_soggetti_comune_id | `CREATE INDEX ix_anagrafiche_soggetti_comune_id ON anagrafiche.soggetti USING btree (comune_id)` |
 | ix_anagrafiche_soggetti_contatto_ruolo_id | `CREATE INDEX ix_anagrafiche_soggetti_contatto_ruolo_id ON anagrafiche.soggetti USING btree (titolo_cortesia_id)` |
 | ix_anagrafiche_soggetti_default_contatto | `CREATE INDEX ix_anagrafiche_soggetti_default_contatto ON anagrafiche.soggetti USING btree (default_contatto_id)` |
+| ix_anagrafiche_soggetti_default_contatto_id | `CREATE INDEX ix_anagrafiche_soggetti_default_contatto_id ON anagrafiche.soggetti USING btree (default_contatto_id)` |
 | ix_anagrafiche_soggetti_ragione_sociale_completa | `CREATE INDEX ix_anagrafiche_soggetti_ragione_sociale_completa ON anagrafiche.soggetti USING btree (ragione_sociale_completa)` |
 | ix_anagrafiche_soggetti_stato_id | `CREATE INDEX ix_anagrafiche_soggetti_stato_id ON anagrafiche.soggetti USING btree (stato_id)` |
+| ix_anagrafiche_soggetti_titolo_cortesia_id | `CREATE INDEX ix_anagrafiche_soggetti_titolo_cortesia_id ON anagrafiche.soggetti USING btree (titolo_cortesia_id)` |
 | key_soggetto_idstato_id_fiscale_univoco | `CREATE UNIQUE INDEX key_soggetto_idstato_id_fiscale_univoco ON anagrafiche.soggetti USING btree (stato_id, id_fiscale_univoco_cf_piva)` |
 | key_soggetto_soggetto_codice | `CREATE UNIQUE INDEX key_soggetto_soggetto_codice ON anagrafiche.soggetti USING btree (codice_soggetto)` |
 | pk_soggetto | `CREATE UNIQUE INDEX pk_soggetto ON anagrafiche.soggetti USING btree (id)` |

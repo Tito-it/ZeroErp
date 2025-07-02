@@ -74,7 +74,7 @@ databaseChangeLog:
                 fk.fk_cols,
                 idx.index_name,
                 format(
-                  'CREATE INDEX ix_%I_%I_%s ON %I.%I(%s);',
+                  'CREATE INDEX IF NOT EXISTS ix_%I_%I_%s ON %I.%I(%s);',
                   fk.schema_name,
                   fk.table_name,
                   array_to_string(fk.fk_cols, '_'),

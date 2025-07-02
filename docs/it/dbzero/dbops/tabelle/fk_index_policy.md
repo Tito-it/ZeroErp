@@ -10,6 +10,10 @@
 | consentito | boolean | NO | true |
 | dll_command | text | YES |  |
 | generated_by_script | boolean | YES | false |
+| user_insert | character varying | NO | CURRENT_USER |
+| data_insert | timestamp with time zone | NO | now() |
+| user_update | character varying | YES |  |
+| data_update | timestamp with time zone | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -20,3 +24,8 @@
 | Nome | Definizione |
 |------|-------------|
 | fk_index_policy_pkey | `CREATE UNIQUE INDEX fk_index_policy_pkey ON dbops.fk_index_policy USING btree (schema_name, table_name, constraint_name)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_audit_fk_index_policy | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

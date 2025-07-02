@@ -22,6 +22,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_config_regioni_stato_id | `CREATE INDEX ix_config_regioni_stato_id ON config.regioni USING btree (stato_id)` |
 | ix_descrizione_regione | `CREATE INDEX ix_descrizione_regione ON config.regioni USING btree (descrizione)` |
 | ix_stato_regione | `CREATE INDEX ix_stato_regione ON config.regioni USING btree (stato_id)` |
 | pk_regioni | `CREATE UNIQUE INDEX pk_regioni ON config.regioni USING btree (id)` |

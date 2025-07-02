@@ -27,6 +27,7 @@
 |------|-------------|
 | ix_anagrafiche_gestori_utilities_ruoli_gestore_id | `CREATE INDEX ix_anagrafiche_gestori_utilities_ruoli_gestore_id ON anagrafiche.gestori_utilities_ruoli USING btree (gestore_id)` |
 | ix_anagrafiche_gestori_utilities_ruoli_ruolo_id | `CREATE INDEX ix_anagrafiche_gestori_utilities_ruoli_ruolo_id ON anagrafiche.gestori_utilities_ruoli USING btree (ruolo_id)` |
+| ix_anagrafiche_gestori_utilities_ruoli_utility_id | `CREATE INDEX ix_anagrafiche_gestori_utilities_ruoli_utility_id ON anagrafiche.gestori_utilities_ruoli USING btree (utility_id)` |
 | ix_gur_utility | `CREATE INDEX ix_gur_utility ON anagrafiche.gestori_utilities_ruoli USING btree (utility_id)` |
 | pk_gestori_utilities_ruoli | `CREATE UNIQUE INDEX pk_gestori_utilities_ruoli ON anagrafiche.gestori_utilities_ruoli USING btree (id)` |
 | uq_gest_util_ruolo | `CREATE UNIQUE INDEX uq_gest_util_ruolo ON anagrafiche.gestori_utilities_ruoli USING btree (gestore_id, utility_id, ruolo_id)` |
