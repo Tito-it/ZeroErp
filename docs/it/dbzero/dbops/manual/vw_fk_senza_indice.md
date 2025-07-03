@@ -4,6 +4,9 @@
 >
 > Approfondimento Tabelle:   
 > - [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
+> Approfondimento funzioni:   
+> - [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)   
+> - [dbops.vw_duplicate_indexes](/dbzero/dbops/manual/vw_duplicate_indexes)  
 > 
 > * Catalogo dei vincoli FK in PostgreSQL (`pg_constraint`, `pg_class`, `pg_namespace`)
 

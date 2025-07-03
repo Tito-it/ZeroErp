@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+
+- changeSet:
+      id: 20250703-01-drop_duplicate_index
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: "Rimuove gli indici duplicati in anagrafiche"
+      changes:
+        - dropIndex:
+            indexName: ix_billing_account_istanza
+            schemaName: anagrafiche
+            tableName: billing_account
+            ifExists: true
+      changes:
+        - dropIndex:
+            indexName: ix_billing_account_parent
+            schemaName: anagrafiche
+            tableName: billing_account
+            ifExists: true
+      changes:
+        - dropIndex:
+            indexName: ix_billing_account_istanza
+            schemaName: anagrafiche
+            tableName: billing_account
+            ifExists: true
+      changes:
+        - dropIndex:
+            indexName: ix_cliente_utility
+            schemaName: anagrafiche
+            tableName: clienti
+            ifExists: true
+      changes:
+        - dropIndex:
+            indexName: ix_cliente_utility
+            schemaName: anagrafiche
+            tableName: clienti
+            ifExists: true
+      changes:
+        - dropIndex:
+            indexName: ix_contatti_soggetto
+            schemaName: anagrafiche
+            tableName: contatti
+            ifExists: true
+      changes:
+        - dropIndex:
+            indexName: ix_contatti_utility
+            schemaName: anagrafiche
+            tableName: contatti
+            ifExists: true
+      
+      changes:
+        - dropIndex:
+            indexName: ix_gur_utility
+            schemaName: anagrafiche
+            tableName: gestione_utenti_ruoli
+            ifExists: true
+
+      changes:
+        - dropIndex:
+            indexName: ix_contatti_utility
+            schemaName: anagrafiche
+            tableName: contatti
+            ifExists: true
+- changeSet:
+      id: 20250703-02-drop_duplicate_index
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY     
+      changes:
+        - dropIndex:
+            indexName: ix_contatti_soggetto
+            schemaName: anagrafiche
+            tableName: contatti
+            ifExists: true
+       
+      changes:
+        - dropIndex:
+            indexName: ix_contatti_tipo
+            schemaName: anagrafiche
+            tableName: contatti
+            ifExists: true
+      changes:
+        - dropIndex:
+            indexName: ix_anagrafiche_soggetti_default_contatto
+            schemaName: anagrafiche
+            tableName: soggetti
+            ifExists: true
+      
+      changes:
+        - dropIndex:
+            indexName: ix_anagrafiche_soggetti_contatto_ruolo_id
+            schemaName: anagrafiche
+            tableName: soggetti
+            ifExists: true
+      changes:
+        - dropIndex:
+            indexName: ix_contatti_tipo
+            schemaName: anagrafiche
+            tableName: contatti
+      changes:
+        - dropIndex:
+            indexName: ix_contatti_soggetto
+            schemaName: anagrafiche
+            tableName: contatti
+      changes:
+        - dropIndex:
+            indexName: ix_anagrafiche_soggetti_default_contatto
+            schemaName: anagrafiche
+            tableName: soggetti
+
+ # Metto un  tag fine modifiche
+- changeSet:
+      id: 20250703-90-drop_duplicate_index
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250703-01-drop_duplicate_index
+      comments: "Rimuove gli indici duplicati in anagrafiche"

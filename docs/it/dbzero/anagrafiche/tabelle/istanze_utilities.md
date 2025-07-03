@@ -43,7 +43,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_anagrafiche_istanze_utilities_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_istanze_utilities_soggetto_ruolo_id ON anagrafiche.istanze_utilities USING btree (soggetto_ruolo_id)` |
 | ix_istanze_utilities_soggetto_ruolo_id | `CREATE INDEX ix_istanze_utilities_soggetto_ruolo_id ON anagrafiche.istanze_utilities USING btree (soggetto_ruolo_id)` |
 | pk_istanze_utilities | `CREATE UNIQUE INDEX pk_istanze_utilities ON anagrafiche.istanze_utilities USING btree (id)` |
 | uq_istanze_utilities_account_code | `CREATE UNIQUE INDEX uq_istanze_utilities_account_code ON anagrafiche.istanze_utilities USING btree (account_code)` |

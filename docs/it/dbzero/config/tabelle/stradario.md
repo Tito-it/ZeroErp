@@ -29,11 +29,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_config_stradario_codice_postale_id | `CREATE INDEX ix_config_stradario_codice_postale_id ON config.stradario USING btree (codice_postale_id)` |
-| ix_config_stradario_comune_id | `CREATE INDEX ix_config_stradario_comune_id ON config.stradario USING btree (comune_id)` |
-| ix_config_stradario_stradario_generale_id | `CREATE INDEX ix_config_stradario_stradario_generale_id ON config.stradario USING btree (stradario_generale_id)` |
 | ix_stradario_codice_postale_id | `CREATE INDEX ix_stradario_codice_postale_id ON config.stradario USING btree (codice_postale_id)` |
-| ix_stradario_comune | `CREATE INDEX ix_stradario_comune ON config.stradario USING btree (comune_id)` |
+| ix_stradario_comune_id | `CREATE INDEX ix_stradario_comune_id ON config.stradario USING btree (comune_id)` |
 | ix_stradario_geoloc | `CREATE INDEX ix_stradario_geoloc ON config.stradario USING gist (geoloc)` |
 | ix_stradario_stradario_generale_id | `CREATE INDEX ix_stradario_stradario_generale_id ON config.stradario USING btree (stradario_generale_id)` |
 | pk_stradario | `CREATE UNIQUE INDEX pk_stradario ON config.stradario USING btree (id)` |

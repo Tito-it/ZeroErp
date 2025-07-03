@@ -22,7 +22,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_config_toponomastica_stato_id | `CREATE INDEX ix_config_toponomastica_stato_id ON config.toponomastica USING btree (stato_id)` |
+| ix_toponomastica_stato_id | `CREATE INDEX ix_toponomastica_stato_id ON config.toponomastica USING btree (stato_id)` |
 | pk_toponomastica | `CREATE UNIQUE INDEX pk_toponomastica ON config.toponomastica USING btree (id)` |
 | uq_toponomastica_descrizione | `CREATE UNIQUE INDEX uq_toponomastica_descrizione ON config.toponomastica USING btree (descrizione)` |
 

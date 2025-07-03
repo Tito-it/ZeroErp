@@ -22,4 +22,3 @@
 | Nome | Definizione |
 |------|-------------|
 | error_log_pkey | `CREATE UNIQUE INDEX error_log_pkey ON dbops.error_log USING btree (id)` |
-| ix_dbops_error_log_messaggio_errore_id | `CREATE INDEX ix_dbops_error_log_messaggio_errore_id ON dbops.error_log USING btree (messaggio_errore_id)` |

@@ -23,9 +23,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_config_comuni_provincia_id | `CREATE INDEX ix_config_comuni_provincia_id ON config.comuni USING btree (provincia_id)` |
+| ix_comuni_provincia_id | `CREATE INDEX ix_comuni_provincia_id ON config.comuni USING btree (provincia_id)` |
 | ix_descrizione_comune | `CREATE INDEX ix_descrizione_comune ON config.comuni USING btree (descrizione)` |
-| ix_provincia_id | `CREATE INDEX ix_provincia_id ON config.comuni USING btree (provincia_id)` |
 | pk_comuni | `CREATE UNIQUE INDEX pk_comuni ON config.comuni USING btree (id)` |
 
 ## 🚨 Trigger
