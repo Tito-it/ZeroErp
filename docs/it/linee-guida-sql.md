@@ -1,14 +1,26 @@
 **Best Practice e Convenzioni in Zero ERP**
 
-> 👀 **Vedi anche:**  
-> Per come applicare queste best practice nelle migrazioni, consulta il documento  
-> [Liquibase Setup & Workflow](liquibase-setup-workflow.md).
+> 👀 **Vedi anche:**   
+> Per come applicare queste best practice nelle migrazioni, consulta il documento   
+> [Liquibase Setup & Workflow](liquibase-setup-workflow.md).   
+>
+>
+> Approfondimento Tabelle:   
+> - [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
+>
+> Approfondimento funzioni:   
+> - [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_senza_indice)  
+> - [dbops.fn_populate_fk_index_policy](/dbzero/dbops/manual/fn_populate_fk_index_policy)   
+> - [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)   
+> - [dbops.fn_seed_fk_index_policy](/dbzero/dbops/manual/fn_seed_fk_index_policy)   
+> - [dbops.vw_duplicate_indexes](/dbzero/dbops/manual/vw_duplicate_indexes)  
+ 
 
 ---
 
 ### 1. Schemi Principali
-{% include-markdown "it/schemidb.md" %}
 
+{% include-markdown "it/schemidb.md" %}
 
 ---
 
@@ -32,7 +44,7 @@ Uniformità e chiarezza nel codice DDL:
 | **Constraint FK** | `fk_<base>_<ref>`                  | `fk_contatti_soggetti`                |
 | **Constraint UQ** | `uq_<table>_<columns>`             | `uq_contatti_default`                 |
 
-> ℹ️ Le convenzioni sono tratte dalla struttura condivisa in Zero ERP 
+> ℹ️ Le convenzioni sono tratte dalla struttura condivisa in Zero ERP
 
 ---
 
@@ -55,7 +67,7 @@ Uniformità e chiarezza nel codice DDL:
 
    * Creazione: `CREATE SEQUENCE schema.table_id_seq START 1;`
    * Colonna: `defaultValueComputed: "nextval('schema.table_id_seq'::regclass)"`
-   * Oppure `autoIncrement: true` per delegare a Liquibase/DB 
+   * Oppure `autoIncrement: true` per delegare a Liquibase/DB
 
 ---
 
@@ -64,6 +76,7 @@ Uniformità e chiarezza nel codice DDL:
 * **UUID vs SERIAL**: usare UUID quando serve unicità globale o sharding; SERIAL su tabelle di log e storicizzazione.
 * **Foreign Key con composti**: preferire surrogate key (`id`) e colonne FK (`<table>_id`) piuttosto che chiavi composte.
 * **Campi tecnici**: evitare prefissi in `dbops`; usare solo `vw_...` e `fn_...` per uniformità
+
 ---
 
 ### 5. Trigger e Funzioni
@@ -87,14 +100,14 @@ Uniformità e chiarezza nel codice DDL:
 * **Best practice**:
 
   * Mettere funzioni e trigger nello stesso schema della tabella (se dedicate), o in `script`/`dbops` per utilizzabilità multipla.
-  * Documentare sempre parametri e comportamento 
+  * Documentare sempre parametri e comportamento
 
 ---
 
 ### 6. Viste (Views)
 
-* **Applicative**: `vw_<descrittivo>` in schema `script`, es. `vw_clienti_attivi` 
-* **Tecniche**: in schema `dbops`, senza prefisso extra, es. `vw_function_list` 
+* **Applicative**: `vw_<descrittivo>` in schema `script`, es. `vw_clienti_attivi`
+* **Tecniche**: in schema `dbops`, senza prefisso extra, es. `vw_function_list`
 
 ---
 
@@ -106,7 +119,7 @@ Standardizzare i campi di auditing:
 date_insert    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE
 user_insert    TEXT      NOT NULL DEFAULT CURRENT_USER
 data_update    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE
-user_update    TEXT      NOT NULL DEFAULT CURRENT_USER 
+user_update    TEXT      NOT NULL DEFAULT CURRENT_USER
 ```
 
 I trigger o constraint di sistema possono aggiornare `date_update/user_update` su UPDATE manuale o con `trigger` dedicato.
@@ -117,7 +130,41 @@ I trigger o constraint di sistema possono aggiornare `date_update/user_update` s
 
 * **Naming**: `ix_<table>_<column>`
 * **Tipologia**: B-Tree per default; GIN/GIST per JSONB/Geometrie.
-* **Parziali**: `CREATE UNIQUE INDEX ix_contatti_default ON contatti(soggetto_id) WHERE is_default;` per default logic 
+* **Parziali**: `CREATE UNIQUE INDEX ix_contatti_default ON contatti(soggetto_id) WHERE is_default;` per default logic
+
+---
+
+### 9. Automazione Indici FK
+
+All’interno della cartella **`90_end/`** delle migrazioni Liquibase, inserire sempre per ultimi uno script YAML con `runAlways` o `runAlways: false` per richiamare la procedura che crea/rimuove indici sulle foreign key:
+
+```yaml
+- changeSet:
+    id: 90-end-apply-fk-policy
+    author: mctit
+    runAlways: true
+    sql:
+      splitStatements: false
+      sql: |
+        CALL dbops.apply_fk_index_policy();
+```
+
+* La tabella `dbops.fk_index_policy` deve essere mantenuta aggiornata:
+
+  * individuare nuove FK senza indice con `dbops.vw_fk_senza_indice`
+  * popolare policy con `SELECT dbops.fn_populate_fk_index_policy();`
+* La policy consente di generare o eliminare indici non necessari.
+
+---
+
+### 10. Gestione Indici Duplicati
+
+Utilizzare la view **`dbops.vw_duplicate_indexes`** per visualizzare gli indici che condividono lo stesso insieme di colonne e razionalizzare la struttura:
+
+```sql
+SELECT *
+  FROM dbops.vw_duplicate_indexes;
+```
 
 ---
 
