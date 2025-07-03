@@ -17,13 +17,11 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | PRIMARY KEY | parameters_pkey | id |
-| UNIQUE | parameters_code_key | code |
 | UNIQUE | uq_parameters_code | code |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| parameters_code_key | `CREATE UNIQUE INDEX parameters_code_key ON config.parameters USING btree (code)` |
 | parameters_pkey | `CREATE UNIQUE INDEX parameters_pkey ON config.parameters USING btree (id)` |
 | uq_parameters_code | `CREATE UNIQUE INDEX uq_parameters_code ON config.parameters USING btree (code)` |
 

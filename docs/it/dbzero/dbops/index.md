@@ -31,6 +31,7 @@
 - [fn_seed_fk_index_policy](manual/fn_seed_fk_index_policy.md)
 - [pr_apply_fk_index_policy](manual/pr_apply_fk_index_policy.md)
 - [vw_catalogo_oggetti](manual/vw_catalogo_oggetti.md)
+- [vw_duplicate_indexes](manual/vw_duplicate_indexes.md)
 - [vw_fk_con_indice_missing_policy](manual/vw_fk_con_indice_missing_policy.md)
 - [vw_fk_senza_indice](manual/vw_fk_senza_indice.md)
 - [vw_function_list](manual/vw_function_list.md)

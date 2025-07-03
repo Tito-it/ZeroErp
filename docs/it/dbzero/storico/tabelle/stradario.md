@@ -30,10 +30,9 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_storico_stradario_codice_postale_id | `CREATE INDEX ix_storico_stradario_codice_postale_id ON storico.stradario USING btree (codice_postale_id)` |
-| ix_storico_stradario_comune | `CREATE INDEX ix_storico_stradario_comune ON storico.stradario USING btree (comune_id)` |
-| ix_storico_stradario_comune_id | `CREATE INDEX ix_storico_stradario_comune_id ON storico.stradario USING btree (comune_id)` |
-| ix_storico_stradario_stradario_generale_id | `CREATE INDEX ix_storico_stradario_stradario_generale_id ON storico.stradario USING btree (stradario_generale_id)` |
-| ix_storico_stradario_stradario_id | `CREATE INDEX ix_storico_stradario_stradario_id ON storico.stradario USING btree (stradario_id)` |
 | ix_storico_stradario_valid_periodo | `CREATE INDEX ix_storico_stradario_valid_periodo ON storico.stradario USING btree (valid_from, valid_to)` |
+| ix_stradario_codice_postale_id | `CREATE INDEX ix_stradario_codice_postale_id ON storico.stradario USING btree (codice_postale_id)` |
+| ix_stradario_comune_id | `CREATE INDEX ix_stradario_comune_id ON storico.stradario USING btree (comune_id)` |
+| ix_stradario_stradario_generale_id | `CREATE INDEX ix_stradario_stradario_generale_id ON storico.stradario USING btree (stradario_generale_id)` |
+| ix_stradario_stradario_id | `CREATE INDEX ix_stradario_stradario_id ON storico.stradario USING btree (stradario_id)` |
 | pk_stradario | `CREATE UNIQUE INDEX pk_stradario ON storico.stradario USING btree (id)` |

@@ -43,14 +43,13 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_anagrafiche_clienti_istanza_id | `CREATE INDEX ix_anagrafiche_clienti_istanza_id ON anagrafiche.clienti USING btree (istanza_id)` |
-| ix_anagrafiche_clienti_iva_id | `CREATE INDEX ix_anagrafiche_clienti_iva_id ON anagrafiche.clienti USING btree (iva_id)` |
-| ix_anagrafiche_clienti_modalita_pagamento_id | `CREATE INDEX ix_anagrafiche_clienti_modalita_pagamento_id ON anagrafiche.clienti USING btree (modalita_pagamento_id)` |
-| ix_anagrafiche_clienti_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_clienti_soggetto_ruolo_id ON anagrafiche.clienti USING btree (soggetto_ruolo_id)` |
-| ix_anagrafiche_clienti_stato_cliente_id | `CREATE INDEX ix_anagrafiche_clienti_stato_cliente_id ON anagrafiche.clienti USING btree (stato_cliente_id)` |
-| ix_anagrafiche_clienti_utility_id | `CREATE INDEX ix_anagrafiche_clienti_utility_id ON anagrafiche.clienti USING btree (utility_id)` |
-| ix_cliente_utility | `CREATE INDEX ix_cliente_utility ON anagrafiche.clienti USING btree (utility_id)` |
 | ix_clienti_cd_importato | `CREATE INDEX ix_clienti_cd_importato ON anagrafiche.clienti USING btree (cd_cliente_importato)` |
+| ix_clienti_istanza_id | `CREATE INDEX ix_clienti_istanza_id ON anagrafiche.clienti USING btree (istanza_id)` |
+| ix_clienti_iva_id | `CREATE INDEX ix_clienti_iva_id ON anagrafiche.clienti USING btree (iva_id)` |
+| ix_clienti_modalita_pagamento_id | `CREATE INDEX ix_clienti_modalita_pagamento_id ON anagrafiche.clienti USING btree (modalita_pagamento_id)` |
+| ix_clienti_soggetto_ruolo_id | `CREATE INDEX ix_clienti_soggetto_ruolo_id ON anagrafiche.clienti USING btree (soggetto_ruolo_id)` |
+| ix_clienti_stato_cliente_id | `CREATE INDEX ix_clienti_stato_cliente_id ON anagrafiche.clienti USING btree (stato_cliente_id)` |
+| ix_clienti_utility_id | `CREATE INDEX ix_clienti_utility_id ON anagrafiche.clienti USING btree (utility_id)` |
 | pk_clienti | `CREATE UNIQUE INDEX pk_clienti ON anagrafiche.clienti USING btree (id)` |
 
 ## 🚨 Trigger
