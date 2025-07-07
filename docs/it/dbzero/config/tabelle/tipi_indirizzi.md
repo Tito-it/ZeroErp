@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/tipi_indirizzi.md" %}
 # 📚 Tabella `tipi_indirizzi`
 
 ## 🗂️ Campi principali

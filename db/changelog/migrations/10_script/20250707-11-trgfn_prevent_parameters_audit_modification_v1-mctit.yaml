@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250707-11-trgfn_prevent_modification_generic
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: "Crea la trigger function per segnalare errore su attività non consentite sulle tabelle"
+      changes:
+        - sql:
+            comment: "1) Creazione (o sostituzione) della trigger function script.trgfn_prevent_modification_generic"
+            splitStatements: false
+            sql: |
+                CREATE OR REPLACE FUNCTION script.trgfn_prevent_modification_generic()
+                  RETURNS trigger
+                  LANGUAGE plpgsql
+                AS $$
+                BEGIN
+                  
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'trgfn_prevent_parameters_audit_modification',
+                      'E_TABELLA_OP_NON_CONSENTITA',
+                      jsonb_build_object(
+                        'nome_tabella', TG_TABLE_NAME,
+                        'trigger_op',        TG_OP
+                      ),
+                      TG_TABLE_NAME::text,
+                      TG_OP::text
+                    );
+                END;
+                $$;
+
+
+        - sql:
+            comment: "2) Commento descrittivo sulla trigger function"
+            splitStatements: false
+            sql: |
+              COMMENT ON FUNCTION script.trgfn_prevent_modification_generic()
+              IS 'Segnala errore su attività non consentite sulle tabelle';
+
+        
+
+  - changeSet:
+      id: 20250707-90-trgfn_prevent_modification_generic
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250707-11-trgfn_prevent_modification_generic

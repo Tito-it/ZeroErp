@@ -12,6 +12,7 @@
 - [modalita_pagamento](tabelle/modalita_pagamento.md)
 - [parameter_overrides](tabelle/parameter_overrides.md)
 - [parameters](tabelle/parameters.md)
+- [parameters_audit](tabelle/parameters_audit.md)
 - [province](tabelle/province.md)
 - [regioni](tabelle/regioni.md)
 - [sistema_codici](tabelle/sistema_codici.md)
@@ -34,6 +35,7 @@
 - [fn_get_iva_override](funzioni/fn_get_iva_override.md)
 - [trgfn_comuni_upd_dlt_storico_comuni](funzioni/trgfn_comuni_upd_dlt_storico_comuni.md)
 - [trgfn_iva_ins_upd_check_conti_iva](funzioni/trgfn_iva_ins_upd_check_conti_iva.md)
+- [trgfn_parameters_audit](funzioni/trgfn_parameters_audit.md)
 - [trgfn_stradario_upd_dlt_storico_stradario](funzioni/trgfn_stradario_upd_dlt_storico_stradario.md)
 
 ## 📝 Documentazione Manuale
@@ -54,6 +56,7 @@
 - [stradario](manual/stradario.md)
 - [stradario_generale](manual/stradario_generale.md)
 - [tipi_contatti](manual/tipi_contatti.md)
+- [tipi_indirizzi](manual/tipi_indirizzi.md)
 - [tipi_ruoli](manual/tipi_ruoli.md)
 - [titoli_cortesia](manual/titoli_cortesia.md)
 - [toponomastica](manual/toponomastica.md)

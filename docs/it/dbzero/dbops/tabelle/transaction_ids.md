@@ -1,0 +1,27 @@
+# 📚 Tabella `transaction_ids`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | uuid | NO | gen_random_uuid() |
+| user_insert | text | NO | CURRENT_USER |
+| data_insert | timestamp with time zone | NO | now() |
+| user_update | text | YES |  |
+| data_update | timestamp with time zone | YES |  |
+| generating_function | text | YES |  |
+| session_info | jsonb | NO | '{}'::jsonb |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| PRIMARY KEY | transaction_ids_pkey | id |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| transaction_ids_pkey | `CREATE UNIQUE INDEX transaction_ids_pkey ON dbops.transaction_ids USING btree (id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_upd_overrides_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
