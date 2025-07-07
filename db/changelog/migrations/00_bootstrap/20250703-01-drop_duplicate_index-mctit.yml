@@ -117,12 +117,7 @@ databaseChangeLog:
             schemaName: anagrafiche
             tableName: contatti
             ifExists: true
-      changes:
-        - dropIndex:
-            indexName: ix_anagrafiche_soggetti_default_contatto
-            schemaName: anagrafiche
-            tableName: soggetti
-            ifExists: true
+     
 
  # Metto un  tag fine modifiche
 - changeSet:
