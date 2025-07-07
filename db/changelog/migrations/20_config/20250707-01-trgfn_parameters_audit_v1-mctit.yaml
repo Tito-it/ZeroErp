@@ -1,0 +1,130 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250707-01-trgfn_parameters_audit
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: "Crea la trigger function e il trigger per audit su config.parameters"
+      changes:
+        - sql:
+            comment: "1) Creazione (o sostituzione) della trigger function config.trgfn_parameters_audit"
+            splitStatements: false
+            sql: |
+                CREATE OR REPLACE FUNCTION config.trgfn_parameters_audit()
+                    RETURNS trigger
+                    LANGUAGE plpgsql
+                    COST 100
+                    VOLATILE NOT LEAKPROOF
+                AS $BODY$
+                DECLARE
+                  v_old   TEXT := OLD.default_value;
+                  v_new   TEXT;
+                BEGIN
+                  -- calcolo solo la parte che differisce
+                  IF TG_OP = 'UPDATE' THEN
+                    v_new := NEW.default_value;
+                  ELSE  -- DELETE
+                    v_new := NULL;
+                  END IF;
+
+                  -- unico INSERT con action = TG_OP (UPDATE o DELETE)
+                  INSERT INTO config.parameters_audit(
+                    parameter_code,
+                    action,
+                    old_value,
+                    new_value,
+                    reason,
+                    user_insert,
+                    data_insert
+                  ) VALUES (
+                    OLD.code,
+                    TG_OP,
+                    v_old,
+                    v_new,
+                    NULL,
+                    current_user,
+                    now()
+                  );
+
+                  RETURN NULL;
+                END;
+                $BODY$;
+
+
+        - sql:
+            comment: "2) Commento descrittivo sulla trigger function"
+            splitStatements: false
+            sql: |
+              COMMENT ON FUNCTION config.trgfn_parameters_audit()
+              IS 'Audita UPDATE e DELETE su config.parameters, copiando old/new default_value in config.parameters_audit con campi di audit';
+
+        - sql:
+            comment: "3) Rimozione del trigger esistente (se presente)"
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_parameters_audit ON config.parameters;
+
+        - sql:
+            comment: "4) Creazione del trigger trg_parameters_audit"
+            splitStatements: false
+            sql: |
+              CREATE TRIGGER trg_parameters_audit
+                AFTER UPDATE OR DELETE
+                ON config.parameters
+                FOR EACH ROW
+                EXECUTE FUNCTION config.trgfn_parameters_audit();
+
+        - sql:
+            comment: "5) Commento sul trigger"
+            splitStatements: false
+            sql: |
+              COMMENT ON TRIGGER trg_parameters_audit ON config.parameters
+              IS 'Trigger AFTER UPDATE e DELETE su config.parameters per registrare in config.parameters_audit le modifiche a default_value';
+
+  - changeSet:
+      id: 20250707-02-trgfn_parameters_audit
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            comment: "3) Rimozione del trigger esistente (se presente)"
+            splitStatements: false
+            sql: |
+             DROP TRIGGER IF EXISTS trg_prevent_mod_parameters_audit
+                ON config.parameters_audit;
+        - sql:
+            comment: "4) Creazione del trigger trg_parameters_audit"
+            splitStatements: false
+            sql: |
+              CREATE TRIGGER trg_prevent_mod_parameters_audit
+              BEFORE UPDATE OR DELETE
+              ON config.parameters_audit
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_prevent_modification_generic();
+        - sql:
+            comment: "5) Commento sul trigger"
+            splitStatements: false
+            sql: |
+              COMMENT ON TRIGGER trg_prevent_mod_parameters_audit
+                ON config.parameters_audit
+              IS 'La tabelle non può ne essere aggiornata ne cancellata, ma solo letta. Il trigger segnala errore su eventuali tentativi di modifica';
+
+  - changeSet:
+      id: 20250707-90-trgfn_parameters_audit
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250707-01-trgfn_parameters_audit

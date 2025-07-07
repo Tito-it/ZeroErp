@@ -1,0 +1,89 @@
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250706-10-createtable_parameter_audit
+      author: mctit
+      comments: "Crea la tabella config.parameters_audit per tracciare le modifiche ai parametri, con campi di insert"     
+      preConditions:
+        onFail: MARK_RAN
+        onError: MARK_RAN
+        preConditions:
+          - not:
+              tableExists:
+                schemaName: config
+                tableName: parameters_audit
+
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: parameters_audit
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: parameter_code
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: action
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: old_value
+                  type: TEXT
+                  constraints:
+                    nullable: true
+              - column:
+                  name: new_value
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: reason
+                  type: TEXT
+                  constraints:
+                    nullable: true
+              
+              - column:
+                  name: user_insert
+                  type: VARCHAR(80)
+                  defaultValueComputed: current_user
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: parameters_audit
+            baseColumnNames: parameter_code
+            referencedTableSchemaName: config
+            referencedTableName: parameters
+            referencedColumnNames: code
+            constraintName: fk_parameters_audit_parameter_code       
+
+  
+  - changeSet:
+      id: 20250706-90-createtable_parameter_audit
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250706-10-createtable_parameter_audit
