@@ -3,10 +3,10 @@
 > 👀 **Vedi anche** 
 >
 > Approfondimento Tabelle:   
-> - [dbops.fk_index_policy](\dbzero\dbops\tabelle\fk_index_policy.md)      
+> - [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
 >
 > Approfondimento funzioni:   
-> - [dbops.vw_fk_con_indice_missing_policy](\dbzero\dbops\manual\vw_fk_con_indice_missing_policy.md)  
+> - [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)  
 
 
 La funzione **`dbops.fn_seed_fk_index_policy()`** popola automaticamente la tabella `dbops.fk_index_policy` con le foreign key **già indicizzate** ma **non ancora presenti** in policy, marcandole come `consentito = true` e `generated_by_script = true`.
