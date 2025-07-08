@@ -3,11 +3,11 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento Tabelle:   
-> - [dbops.fk_index_policy](\dbzero\dbops\tabelle\fk_index_policy)      
+> - [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
 >
 > Approfondimento funzioni:   
-> - [dbops.vw_fk_senza_indice](\dbzero\dbops\manual\vw_fk_senza_indice)    
-> - [dbops.vw_duplicate_indexes](\dbzero\dbops\manual\vw_duplicate_indexes)    
+> - [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_senza_indice)    
+> - [dbops.vw_duplicate_indexes](/dbzero/dbops/manual/vw_duplicate_indexes)    
 
 La view **`dbops.vw_fk_con_indice_missing_policy`** elenca tutte le **foreign key** che **hanno un indice** (prefisso `ix_`) ma **non** sono ancora gestite dalla tabella di policy `dbops.fk_index_policy`. Per ciascuna FK, viene suggerito il comando SQL di creazione dell’indice.
 

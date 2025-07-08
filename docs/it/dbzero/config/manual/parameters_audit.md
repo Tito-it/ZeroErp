@@ -3,10 +3,10 @@
 > 👀 **Vedi anche**  
 >
 > Approfondimento Tabelle:   
-> - [config.parameter](\dbzero\config\tabelle\parameter)      
+> - [config.parameter](/dbzero/config/tabelle/parameter)      
 >
 > Approfondimento funzioni :    
-> - [script.trgfn_prevent_modification_generic](\dbzero\script\funzioni\trgfn_prevent_modification_generic)    
+> - [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)    
 
 La tabella **`config.parameters_audit`** mantiene la **storia** di tutte le modifiche (`UPDATE` e `DELETE`) effettuate sui parametri di sistema definiti in `config.parameters`. Ogni record di audit registra il valore precedente (`old_value`), il valore nuovo (`new_value`), l’azione eseguita e il contesto utente/data.
 
