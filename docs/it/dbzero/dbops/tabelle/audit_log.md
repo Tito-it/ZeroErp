@@ -12,7 +12,7 @@
 | status | text | NO |  |
 | message | text | YES |  |
 | duration_ms | integer | YES |  |
-| tx_id | uuid | NO | (md5((txid_current())::text))::uuid |
+| tx_id | uuid | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,3 +23,9 @@
 | Nome | Definizione |
 |------|-------------|
 | pk_audit_log | `CREATE UNIQUE INDEX pk_audit_log ON dbops.audit_log USING btree (id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_assign_tx_id_audit_log | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_assign_tx_id_audit_log | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

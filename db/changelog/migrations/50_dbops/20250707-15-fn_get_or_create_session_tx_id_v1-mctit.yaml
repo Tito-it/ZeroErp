@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250707-15-fn_get_or_create_session_tx_id
+      author: mctit
+      comments: "Crea la funzione helper dbops.fn_get_or_create_session_tx_id con gestione di session tx_id"
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      splitStatements: false
+      stripComments: false
+      changes:
+        - sql:
+            comment: "1) Funzione helper: get or create session tx_id"
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_get_or_create_session_tx_id()
+              RETURNS UUID
+              LANGUAGE plpgsql
+              SECURITY DEFINER 
+              AS $$
+              DECLARE
+                  v_tx_id UUID;
+              BEGIN
+                      -- 0) Assicurati connessione logconn
+                  PERFORM script.fn_ensure_logconn();
+                  -- RAISE NOTICE '[DBG] fn_ensure_logconn() invocata';
+
+                  -- 1) Provo a leggere dalla sessione
+                  BEGIN
+                      v_tx_id := current_setting('dbops.tx_id', TRUE)::UUID;
+                      -- RAISE NOTICE '[DBG] dbops.tx_id in sessione = %', v_tx_id;
+                  EXCEPTION WHEN OTHERS THEN
+                      -- RAISE NOTICE '[DBG] dbops.tx_id non settato: %', SQLERRM;
+                      v_tx_id := NULL;
+                  END;
+
+                  -- 2) Se non esiste, genero uno nuovo tramite dblink
+                  IF v_tx_id IS NULL THEN
+                      -- RAISE NOTICE '[DBG] Entrato ramo generazione nuovo tx_id';
+                      BEGIN
+                          SELECT tx_id INTO v_tx_id
+                            FROM dblink(
+                              current_setting('dblink.log_connection', TRUE),
+                              $gen$
+                                SELECT dbops.fn_generate_tx_id(
+                                  'dbops.fn_get_or_create_session_tx_id',
+                                  jsonb_build_object('source','fn_get_or_create')
+                                )
+                              $gen$
+                            ) AS t(tx_id UUID);
+
+                          -- RAISE NOTICE '[DBG] dblink ha restituito tx_id = %', v_tx_id;
+                          PERFORM set_config('dbops.tx_id', v_tx_id::text, TRUE);
+                          -- RAISE NOTICE '[DBG] set_config dbops.tx_id = %', v_tx_id;
+                      EXCEPTION WHEN OTHERS THEN
+                          -- RAISE WARNING '[DBG] Errore in dblink: %', SQLERRM;
+                          v_tx_id := script.uuid_nil();
+                      END;
+                  END IF;
+
+                  -- 3) Ritorna
+                  -- RAISE NOTICE '[DBG] fn_get_or_create_session_tx_id restituisce %', v_tx_id;
+                  RETURN v_tx_id;
+
+              END;
+              $$;
+
+        - sql:
+            comment: "2) Commento descrittivo sulla funzione fn_get_or_create_session_tx_id"
+            splitStatements: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_get_or_create_session_tx_id()
+              IS 'Funzione helper che restituisce un tx_id univoco per sessione: legge il setting di sessione dbops.tx_id o ne crea uno nuovo tramite dblink e lo memorizza nella GUC di sessione';
+
+  - changeSet:
+      id: 20250707-90-fn_get_or_create_session_tx_id
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250707-15-fn_get_or_create_session_tx_id

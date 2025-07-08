@@ -79,12 +79,6 @@ databaseChangeLog:
       runOnChange: true
       validCheckSums:
         - ANY     
-      changes:
-        - dropIndex:
-            indexName: ix_contatti_soggetto
-            schemaName: anagrafiche
-            tableName: contatti
-            ifExists: true
        
       changes:
         - dropIndex:
@@ -99,24 +93,8 @@ databaseChangeLog:
             tableName: soggetti
             ifExists: true
       
-      changes:
-        - dropIndex:
-            indexName: ix_anagrafiche_soggetti_contatto_ruolo_id
-            schemaName: anagrafiche
-            tableName: soggetti
-            ifExists: true
-      changes:
-        - dropIndex:
-            indexName: ix_contatti_tipo
-            schemaName: anagrafiche
-            tableName: contatti
-            ifExists: true
-      changes:
-        - dropIndex:
-            indexName: ix_contatti_soggetto
-            schemaName: anagrafiche
-            tableName: contatti
-            ifExists: true
+      
+      
      
 
  # Metto un  tag fine modifiche

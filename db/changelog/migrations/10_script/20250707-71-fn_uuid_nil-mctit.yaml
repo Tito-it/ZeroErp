@@ -1,0 +1,40 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 220250707-71-fn_uuid_nil
+      author: mctit
+      comments: "Crea la funzione helper uuid_nil() che restituisce l'UUID nil (all-zeros)"
+      changes:
+        - sql:
+            comment: "1) Definisce uuid_nil() come SELECT dell'UUID all-zeros"
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.uuid_nil()
+              RETURNS uuid
+              LANGUAGE sql
+              IMMUTABLE
+              AS $$
+                SELECT '00000000-0000-0000-0000-000000000000'::uuid;
+              $$;
+        - sql:
+            comment: "2) Commento descrittivo sulla funzione uuid_nil"
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.uuid_nil()
+                IS 'Restituisce l’UUID nil (all-zeros) come helper per usi in trigger e funzioni';
+
+  - changeSet:
+      id: 220250707-90-fn_uuid_nil
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250707-71-fn_uuid_nil
