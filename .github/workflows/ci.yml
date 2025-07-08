@@ -47,7 +47,6 @@ jobs:
           python-version: '3.13'
 
       - name: Install dependencies
-        working-directory: Software/ZeroErp
         run: |
           python -m venv .venv
           source .venv/bin/activate
