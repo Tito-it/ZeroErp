@@ -1,0 +1,42 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250707-21-drop-txid-default-error_log
+      author: mctit
+      comments: "Rimuove il DEFAULT basato su md5(txid_current()) dalla colonna tx_id in dbops.error_log"
+      changes:
+        - dropDefaultValue:
+            schemaName: dbops
+            tableName: error_log
+            columnName: tx_id
+
+  - changeSet:
+      id: 20250707-22-add-txid-trigger-error_log
+      author: mctit
+      runOnChange: true
+      comments: "Aggiunge il trigger che assegna il tx_id tramite dbops.trgfn_tx_id_managed()"
+      changes:
+        - sql:
+            comment: "Creazione trigger per popolare tx_id in dbops.error_log"
+            splitStatements: false
+            sql: |
+                CREATE TRIGGER trg_assign_tx_id_error_log
+                BEFORE INSERT OR UPDATE ON dbops.error_log
+                FOR EACH ROW
+                EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+
+  - changeSet:
+      id: 20250707-90-tag-txid-error_log
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250707-22-add-txid-trigger-error_log

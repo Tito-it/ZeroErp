@@ -14,12 +14,15 @@
 - [fn_find_file_usage](funzioni/fn_find_file_usage.md)
 - [fn_find_function_usage](funzioni/fn_find_function_usage.md)
 - [fn_foreign_keys_info](funzioni/fn_foreign_keys_info.md)
+- [fn_generate_tx_id](funzioni/fn_generate_tx_id.md)
+- [fn_get_or_create_session_tx_id](funzioni/fn_get_or_create_session_tx_id.md)
 - [fn_list_indices](funzioni/fn_list_indices.md)
 - [fn_migrate_add_indirizzo_normalizzato](funzioni/fn_migrate_add_indirizzo_normalizzato.md)
 - [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md)
 - [fn_populate_fk_index_policy](funzioni/fn_populate_fk_index_policy.md)
 - [fn_search_column_usage](funzioni/fn_search_column_usage.md)
 - [fn_seed_fk_index_policy](funzioni/fn_seed_fk_index_policy.md)
+- [trgfn_tx_id_managed](funzioni/trgfn_tx_id_managed.md)
 
 ## 📝 Documentazione Manuale
 - [audit_log](manual/audit_log.md)

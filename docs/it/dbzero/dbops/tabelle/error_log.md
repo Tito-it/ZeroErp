@@ -10,7 +10,7 @@
 | function_name | text | NO |  |
 | messaggio_errore_id | bigint | NO |  |
 | context | jsonb | NO | '{}'::jsonb |
-| tx_id | uuid | NO | (md5((txid_current())::text))::uuid |
+| tx_id | uuid | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -22,3 +22,9 @@
 | Nome | Definizione |
 |------|-------------|
 | error_log_pkey | `CREATE UNIQUE INDEX error_log_pkey ON dbops.error_log USING btree (id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_assign_tx_id_error_log | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_assign_tx_id_error_log | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

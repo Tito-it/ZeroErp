@@ -20,6 +20,7 @@
 - [trgfn_lock_columns](funzioni/trgfn_lock_columns.md)
 - [trgfn_prevent_modification_generic](funzioni/trgfn_prevent_modification_generic.md)
 - [trgfn_upd_audit_data_user_generic](funzioni/trgfn_upd_audit_data_user_generic.md)
+- [uuid_nil](funzioni/uuid_nil.md)
 
 ## 📝 Documentazione Manuale
 - [fn_check_ins_soggetto_ruolo](manual/fn_check_ins_soggetto_ruolo.md)
