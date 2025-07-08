@@ -47,12 +47,18 @@ jobs:
           python-version: '3.13'
 
       - name: Install dependencies
+        working-directory: Software/ZeroErp
         run: |
           python -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
-
+      
+      - name: Show MkDocs version
+        run: |
+          source .venv/bin/activate
+          mkdocs --version
+          pip list | grep mkdocs
 
       - name: Install Liquibase CLI
         run: |
