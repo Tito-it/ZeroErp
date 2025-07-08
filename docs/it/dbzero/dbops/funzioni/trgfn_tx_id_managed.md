@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/trgfn_tx_id_managed.md" %}
 # ⚙️ Funzione `trgfn_tx_id_managed`
 
 ```sql

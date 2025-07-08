@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/trgfn_prevent_modification_generic.md" %}
 # ⚙️ Funzione `trgfn_prevent_modification_generic`
 
 ```sql

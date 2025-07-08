@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/parameters_audit.md" %}
 # 📚 Tabella `parameters_audit`
 
 ## 🗂️ Campi principali

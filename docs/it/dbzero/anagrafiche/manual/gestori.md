@@ -3,13 +3,13 @@
 > 👀 **Vedi anche**  
 >
 > Approfondimento Tabelle:   
->  - [anagrafiche.soggetti](/dbzero/anagrafiche/soggetti)  
->  - [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/soggetti_ruoli)   
->  - [config.valute](/dbzero/config/tabelle/valute)   
+>  - [anagrafiche.soggetti](\dbzero\anagrafiche\soggetti)   
+>  - [anagrafiche.soggetti_ruoli](\dbzero\anagrafiche\soggetti_ruoli)    
+>  - [config.valute](\dbzero\config\tabelle\valute)   
 >
 > Approfondimenti funzioni:   
-> - [anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore](/dbzero/anagrafiche/funzioni/trgfn_gestori_ins_upd_check_ruolo_gestore)
-> - [script.fn_check_ins_soggetto_ruolo](/dbzero/script/funzioni/fn_check_ins_soggetto_ruolo)
+> - [anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore](\dbzero\anagrafiche\funzioni\trgfn_gestori_ins_upd_check_ruolo_gestore)   
+> - [script.fn_check_ins_soggetto_ruolo](\dbzero\script\funzioni\fn_check_ins_soggetto_ruolo)  
 
 La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza e amministra il sistema Zero ERP (“gestore”). Attualmente raccoglie le informazioni di base necessarie a identificare il gestore, ma è ancora in fase di definizione: in futuro potrà essere estesa per includere ulteriori parametri funzionali e di configurazione del software.
 

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_generate_tx_id.md" %}
 # ⚙️ Funzione `fn_generate_tx_id`
 
 ```sql

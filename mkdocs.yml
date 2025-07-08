@@ -78,3 +78,6 @@ nav:
       - Generatore Documentazione: dbzero/tools/gen_db_docs.md
   - Sviluppatori:
       - API: it/dev/api.md
+
+  - Guide tecniche:
+      - Implementazione Transaction ID: guide/tx_id_implementation_guide.md

@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  - changeSet:
+      id: 20250708-11-trg_prevent_mod_transaction_ids
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            comment: "3) Rimozione del trigger esistente (se presente)"
+            splitStatements: false
+            stripComments: false
+            sql: |
+             DROP TRIGGER IF EXISTS trg_prevent_mod_transaction_ids
+                ON dbops.transaction_ids;
+        - sql:
+            comment: "4) Creazione del trigger trg_prevent_mod_transaction_ids"
+            splitStatements: false
+            sql: |
+              CREATE TRIGGER trg_prevent_mod_transaction_ids
+              BEFORE UPDATE OR DELETE
+              ON dbops.transaction_ids
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_prevent_modification_generic();
+        - sql:
+            comment: "5) Commento sul trigger"
+            splitStatements: false
+            sql: |
+              COMMENT ON TRIGGER trg_prevent_mod_transaction_ids
+                ON dbops.transaction_ids
+              IS 'La tabella non può ne essere aggiornata ne cancellata, ma solo letta. Il trigger segnala errore su eventuali tentativi di modifica';
+  - changeSet:
+      id: 220250708-90-trg_prevent_mod_transaction_ids
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250708-11-trg_prevent_mod_transaction_ids

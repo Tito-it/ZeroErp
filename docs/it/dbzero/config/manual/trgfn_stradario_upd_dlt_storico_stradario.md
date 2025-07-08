@@ -3,9 +3,9 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento Tabelle:  
->  - [storico.stradario](/dbzero/storico/tabelle/stradario)
->  - [config.stradario](/dbzero/config/tabelle/stradario)  
->  - [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)
+>  - [storico.stradario](\dbzero\storico\tabelle\stradario)   
+>  - [config.stradario](\dbzero\config\tabelle\stradario)     
+>  - [config.stradario_generale](\dbzero\config\tabelle\stradario_generale)   
 >
 > Approfondimenti funzioni:   
 > - [config.trg_stradario_upd_dlt_storico_stradario](/dbzero/config/manual/trg_stradario_upd_dlt_storico_stradario)

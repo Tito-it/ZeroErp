@@ -23,11 +23,22 @@ databaseChangeLog:
       id: 20250707-22-add-txid-trigger-error_log
       author: mctit
       runOnChange: true
+      validCheckSums:
+        - ANY     
       comments: "Aggiunge il trigger che assegna il tx_id tramite dbops.trgfn_tx_id_managed()"
       changes:
         - sql:
+            comment: "3) Rimozione del trigger esistente (se presente)"
+            splitStatements: false
+            stripComments: false
+            sql: |
+             DROP TRIGGER IF EXISTS trg_assign_tx_id_error_log
+                ON dbops.error_log;
+      
+        - sql:
             comment: "Creazione trigger per popolare tx_id in dbops.error_log"
             splitStatements: false
+            stripComments: false
             sql: |
                 CREATE TRIGGER trg_assign_tx_id_error_log
                 BEFORE INSERT OR UPDATE ON dbops.error_log

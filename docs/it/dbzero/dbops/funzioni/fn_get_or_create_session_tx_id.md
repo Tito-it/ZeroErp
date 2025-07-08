@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_get_or_create_session_tx_id.md" %}
 # ⚙️ Funzione `fn_get_or_create_session_tx_id`
 
 ```sql

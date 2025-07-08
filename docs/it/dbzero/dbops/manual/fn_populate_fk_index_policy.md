@@ -3,10 +3,10 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento Tabelle:   
-> - [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
+> - [dbops.fk_index_policy](\dbzero\dbops\tabelle\fk_index_policy)      
 >
 > Approfondimento view:   
-> - [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_senza_indice) 
+> - [dbops.vw_fk_senza_indice](\dbzero\dbops\manual\vw_fk_senza_indice) 
 
 La funzione **`dbops.fn_populate_fk_index_policy()`** esegue il popolamento automatico di `dbops.fk_index_policy` aggiungendo tutte le foreign key presenti in `dbops.vw_fk_senza_indice` che non hanno ancora un record in policy, impostando per ciascuna `consentito = false`.
 
