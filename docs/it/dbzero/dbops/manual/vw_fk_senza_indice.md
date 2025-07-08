@@ -4,6 +4,7 @@
 >
 > Approfondimento Tabelle:   
 > - [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
+>
 > Approfondimento funzioni:   
 > - [dbops.fn_populate_fk_index_policy](/dbzero/dbops/manual/fn_populate_fk_index_policy)   
 > - [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)   

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/transaction_ids.md" %}
 # 📚 Tabella `transaction_ids`
 
 ## 🗂️ Campi principali
@@ -24,4 +25,6 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_prevent_mod_transaction_ids | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_prevent_modification_generic()` |
+| trg_prevent_mod_transaction_ids | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_prevent_modification_generic()` |
 | trg_upd_overrides_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

@@ -9,11 +9,11 @@
 > - [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
 >
 > Approfondimento funzioni:   
-> - [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_senza_indice)  
+> - [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_senza_indice)   
 > - [dbops.fn_populate_fk_index_policy](/dbzero/dbops/manual/fn_populate_fk_index_policy)   
 > - [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)   
 > - [dbops.fn_seed_fk_index_policy](/dbzero/dbops/manual/fn_seed_fk_index_policy)   
-> - [dbops.vw_duplicate_indexes](/dbzero/dbops/manual/vw_duplicate_indexes)  
+> - [dbops.vw_duplicate_indexes](/dbzero/dbops/manual/vw_duplicate_indexes)    
  
 
 ---
@@ -165,6 +165,19 @@ Utilizzare la view **`dbops.vw_duplicate_indexes`** per visualizzare gli indici 
 SELECT *
   FROM dbops.vw_duplicate_indexes;
 ```
+
+
+---
+
+### 11. Transaction ID Centralizzato
+
+Per garantire **coerenza transazionale** fra tutte le tabelle che registrano modifiche, ogni entità deve avere la colonna `tx_id UUID NOT NULL`:
+
+* **Trigger (opzione DB)**: applicare `trg_assign_tx_id` (su ogni tabella) che utilizza la function `dbops.trgfn_tx_id_managed()` per generare o recuperare il `tx_id` di sessione.
+* **Function (opzione backend)**: invocare `dbops.fn_get_or_create_session_tx_id()` prima delle operazioni e passare il `tx_id` in tutti gli `INSERT/UPDATE`.
+
+Per maggiori dettagli e implementazione, consulta la guida **(è fondamentale la consultazione)**:
+**[Guida Tecnica – Implementazione di un Unico Transaction ID](/guide/tx_id_implementation_guide.md)**
 
 ---
 

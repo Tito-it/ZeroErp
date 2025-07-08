@@ -32,4 +32,5 @@
 - [fn_get_stradario](manual/fn_get_stradario.md)
 - [fn_log_and_raise_error](manual/fn_log_and_raise_error.md)
 - [trgfn_lock_columns](manual/trgfn_lock_columns.md)
+- [trgfn_prevent_modification_generic](manual/trgfn_prevent_modification_generic.md)
 - [trgfn_upd_audit_data_user_generic](manual/trgfn_upd_audit_data_user_generic.md)
