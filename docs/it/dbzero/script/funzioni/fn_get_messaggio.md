@@ -1,6 +1,20 @@
 {% include-markdown "it/dbzero/script/manual/fn_get_messaggio.md" %}
 # ⚙️ Funzione `fn_get_messaggio`
 
+### 🎯 Scopo Principale
+* **Centralizzare i testi**
+  Conservare tutti i messaggi (errori, avvisi, info) in tabella, evitando hard‑coding in trigger, procedure o sorgenti SQL.
+* **Internazionalizzazione avanzata**
+  Selezionare dinamicamente la lingua di output in base a:
+
+  1. parametro `p_lingua`
+  2. impostazione configurazione `myapp.user_language`
+  3. default `'it'`
+* **Placeholder dinamici**
+  Utilizzare `format()` per sostituire i placeholder `%s` nel template con i valori runtime, abilitando messaggi parametrizzati.
+
+---
+
 ```sql
 CREATE FUNCTION fn_get_messaggio(p_codice text, p_valore text, p_lingua text)
 ```

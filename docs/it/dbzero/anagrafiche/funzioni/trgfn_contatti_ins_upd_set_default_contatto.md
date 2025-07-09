@@ -1,6 +1,18 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/trgfn_contatti_ins_upd_set_default_contatto.md" %}
 # ⚙️ Funzione `trgfn_contatti_ins_upd_set_default_contatto`
 
+### 🎯 Scopo Principale
+* **Impostare il contatto default**
+  Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
+
+* **Contesto dinamico**
+  Utilizzare il campo `default_context` (valori: `soggetto`, `ruolo`, `utility`) per isolare i default per diversi ambiti di utilizzo.
+
+* **Sincronizzazione con anagrafica soggetti**
+  Se il contesto è `soggetto`, aggiornare in automatico `anagrafiche.soggetti.default_contatto_id` per mantenere il collegamento principale.
+
+---
+
 ```sql
 CREATE FUNCTION trgfn_contatti_ins_upd_set_default_contatto()
 ```

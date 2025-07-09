@@ -1,6 +1,14 @@
 {% include-markdown "it/dbzero/script/manual/trgfn_prevent_modification_generic.md" %}
 # ⚙️ Funzione `trgfn_prevent_modification_generic`
 
+### 🎯 Scopo Principale
+* **Proteggere dati di audit**
+  Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`).
+* **Centralizzare la gestione degli errori**
+  Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
+
+---
+
 ```sql
 CREATE FUNCTION trgfn_prevent_modification_generic()
 ```

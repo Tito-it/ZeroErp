@@ -1,6 +1,12 @@
 {% include-markdown "it/dbzero/dbops/manual/fn_find_function_usage.md" %}
 # ⚙️ Funzione `fn_find_function_usage`
 
+### 🎯 Scopo Principale
+* **Discovery delle dipendenze**: individuare tutte le occorrenze di una funzione all’interno del codice PL/pgSQL, dei trigger e degli event trigger.
+* **Supporto al refactoring**: identificare facilmente i punti di utilizzo prima di rinominare o modificare una funzione.
+
+---
+
 ```sql
 CREATE FUNCTION fn_find_function_usage(p_function_name text)
 ```

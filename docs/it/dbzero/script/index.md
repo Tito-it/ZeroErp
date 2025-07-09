@@ -3,34 +3,21 @@
 ## 📚 Tabelle
 
 ## ⚙️ Funzioni
-- [fn_check_ins_soggetto_ruolo](funzioni/fn_check_ins_soggetto_ruolo.md)
-- [fn_ensure_logconn](funzioni/fn_ensure_logconn.md)
+- [fn_check_ins_soggetto_ruolo](funzioni/fn_check_ins_soggetto_ruolo.md) — - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
+- [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_and_raise_error` per eseguire INSERT in un contesto transazionale separato.
 - [fn_generate_codice](funzioni/fn_generate_codice.md)
-- [fn_get_contatti](funzioni/fn_get_contatti.md)
+- [fn_get_contatti](funzioni/fn_get_contatti.md) — * **Selezione univoca per tipo**   Ottenere il contatto più rilevante per ciascun `tipo_contatto_id` rispetto ai parametri forniti. * **Gerarchia di contesti**   Filtra e ordina i contatti in base alla priorità:
 - [fn_get_indirizzi_by_ruolo](funzioni/fn_get_indirizzi_by_ruolo.md)
 - [fn_get_indirizzo](funzioni/fn_get_indirizzo.md)
-- [fn_get_messaggio](funzioni/fn_get_messaggio.md)
-- [fn_get_parameter_full](funzioni/fn_get_parameter_full.md)
-- [fn_get_stradario](funzioni/fn_get_stradario.md)
+- [fn_get_messaggio](funzioni/fn_get_messaggio.md) — * **Centralizzare i testi**   Conservare tutti i messaggi (errori, avvisi, info) in tabella, evitando hard‑coding in trigger, procedure o sorgenti SQL. * **Internazionalizzazione avanzata**   Selezionare dinamicamente la lingua di output in base a:
+- [fn_get_parameter_full](funzioni/fn_get_parameter_full.md) — * **Ricerca safe del parametro**   Verificare l’esistenza del parametro in `config.parameters` e recuperare il suo `default_value`. * **Override gerarchico**   Cercare eventuali override in `config.parameter_overrides` secondo la priorità: function → session → user → tenant. * **Centralizzazione della logica**   Un’unica funzione per gestire la complessità degli override, evitando duplicazioni nell’applicazione. * **Gestione degli errori**   Se `p_code` non è presente in `config.parameters`, viene chiamato `script.fn_log_and_raise_error` con codice `ERRORE_PARAMETRI_TABELLA`.
+- [fn_get_stradario](funzioni/fn_get_stradario.md) — * **Ricerca locale per comune**   Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
 - [fn_get_tipo_contatto_id](funzioni/fn_get_tipo_contatto_id.md)
 - [fn_get_vie_discendenti](funzioni/fn_get_vie_discendenti.md)
-- [fn_log_and_raise_error](funzioni/fn_log_and_raise_error.md)
+- [fn_log_and_raise_error](funzioni/fn_log_and_raise_error.md) — * **Entrypoint unificato** per error handling: evita duplicazioni di log e raise in trigger, procedure e funzioni. * **Logging remoto sicuro**: usa `dblink_exec` su connessione permanente fornita da `script.fn_ensure_logconn()`, per isolare il log dall’eventuale rollback della sessione principale. * **Escalation immediata**: rialza l’eccezione con `DETAIL` e `HINT` recuperati dalla tabella dei messaggi.
 - [fn_valida_codice_fiscale](funzioni/fn_valida_codice_fiscale.md)
 - [fn_valida_partita_iva](funzioni/fn_valida_partita_iva.md)
 - [trgfn_lock_columns](funzioni/trgfn_lock_columns.md)
-- [trgfn_prevent_modification_generic](funzioni/trgfn_prevent_modification_generic.md)
-- [trgfn_upd_audit_data_user_generic](funzioni/trgfn_upd_audit_data_user_generic.md)
-- [uuid_nil](funzioni/uuid_nil.md)
-
-## 📝 Documentazione Manuale
-- [fn_check_ins_soggetto_ruolo](manual/fn_check_ins_soggetto_ruolo.md)
-- [fn_ensure_logconn](manual/fn_ensure_logconn.md)
-- [fn_generate_codice](manual/fn_generate_codice.md)
-- [fn_get_contatti](manual/fn_get_contatti.md)
-- [fn_get_messaggio](manual/fn_get_messaggio.md)
-- [fn_get_parameter_full](manual/fn_get_parameter_full.md)
-- [fn_get_stradario](manual/fn_get_stradario.md)
-- [fn_log_and_raise_error](manual/fn_log_and_raise_error.md)
-- [trgfn_lock_columns](manual/trgfn_lock_columns.md)
-- [trgfn_prevent_modification_generic](manual/trgfn_prevent_modification_generic.md)
-- [trgfn_upd_audit_data_user_generic](manual/trgfn_upd_audit_data_user_generic.md)
+- [trgfn_prevent_modification_generic](funzioni/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
+- [trgfn_upd_audit_data_user_generic](funzioni/trgfn_upd_audit_data_user_generic.md) — * **Audit automatico**   Assicurare che ogni modifica a una riga di tabella sia registrata con timestamp (`data_update`) e utente (`user_update`) correnti. * **Centralizzare la logica di update audit**   Evitare di replicare manualmente la medesima assegnazione in ogni trigger `BEFORE UPDATE` delle varie tabelle.
+- [uuid_nil](funzioni/uuid_nil.md) — * Fornire un valore UUID costante, composto interamente da zeri. * Usato come **fallback** o **default** quando non è possibile generare o recuperare un UUID valido.

@@ -1,6 +1,22 @@
 # Guida Tecnica – Implementazione di un Unico Transaction ID in Zero ERP
 
-> 📋 **Destinatari**: sviluppatori database, sviluppatori backend
+
+> 📋 ***Destinatari***: sviluppatori database, sviluppatori backend
+
+> 👀 **Vedi anche**
+>
+> Approfondimento Tabelle:   
+> - [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      
+> - [config.parameters](/dbzero/config/tabelle/parameters)      
+
+>
+> Approfondimento funzioni :    
+> - [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)    
+> - [dbops.fn_generate_tx_id](/dbzero/dbops/funzioni/fn_generate_tx_id)   
+> - [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+>     **Esempio di utilizzo :**      
+> - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
+
 
 ## 1. Introduzione
 

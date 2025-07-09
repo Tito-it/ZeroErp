@@ -1,6 +1,18 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/trgfn_gestori_ins_upd_check_ruolo_gestore.md" %}
 # ⚙️ Funzione `trgfn_gestori_ins_upd_check_ruolo_gestore`
 
+### 🎯 Scopo Principale
+- **Centralizzare l’assegnazione del ruolo “Gestore”**  
+  Delegare a `script.fn_check_ins_soggetto_ruolo` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
+
+- **Mantenere coerenza referenziale**  
+  Associare sempre correttamente il soggetto al ruolo di gestore, aggiornando `NEW.soggetto_ruolo_id` con l’ID valido, che sia preesistente o appena creato.
+
+- **Semplificare i trigger client**  
+  Qualunque operazione di INSERT o UPDATE su `anagrafiche.gestori` non deve preoccuparsi di controllare manualmente `soggetto_ruolo_id`; la trigger function ne gestisce la delega.
+
+---
+
 ```sql
 CREATE FUNCTION trgfn_gestori_ins_upd_check_ruolo_gestore()
 ```

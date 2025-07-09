@@ -3,36 +3,25 @@
 ## 📚 Tabelle
 - [billing_account](tabelle/billing_account.md)
 - [clienti](tabelle/clienti.md)
-- [contatti](tabelle/contatti.md)
-- [dati_societari](tabelle/dati_societari.md)
-- [gestori](tabelle/gestori.md)
+- [contatti](tabelle/contatti.md) — * **Centralizzare i contatti**     Un’unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.
+- [dati_societari](tabelle/dati_societari.md) — - **Estendere l’anagrafica generale**     I soggetti di tipo giuridico (aziende) hanno esigenze di memorizzazione di dati societari che non interessano le persone fisiche. Spostando queste informazioni in `dati_societari`, si mantiene la tabella `anagrafiche.soggetti` leggera e focalizzata sui campi anagrafici di base.
+- [gestori](tabelle/gestori.md) — - **Identificare il gestore del sistema**     Memorizzare la riga unica che corrisponde all’azienda proprietaria o amministratrice di Zero ERP, distinguendola da tutti gli altri soggetti (clienti, fornitori, partner, ecc.).
 - [gestori_utilities_ruoli](tabelle/gestori_utilities_ruoli.md)
 - [indirizzi](tabelle/indirizzi.md)
-- [indirizzi_dettaglio](tabelle/indirizzi_dettaglio.md)
+- [indirizzi_dettaglio](tabelle/indirizzi_dettaglio.md) — * **Dettagliare lo stradario**     Associare a ciascuna via (memorizzata in `config.stradario`) le singole unità civiche (numeri civici, estensioni, palazzine, interni, piani), ottenendo così l’indirizzo completo e navigabile.   * **Geolocalizzazione precisa**     Il campo `civic_geoloc` memorizza il punto geografico corrispondente al singolo civico, mentre `street_geoloc` rappresenta la posizione media della via. Questi dati consentono ricerche spaziali e visualizzazioni GIS a livello di civico.   * **Indirizzo normalizzato**     Il campo calcolato `indirizzo_normalizzato` combina via, civico, palazzina, scala, piano e interno in un’unica stringa formattata in modo coerente, facilitando confronti testuali e ricerche full-text.
 - [istanze_utilities](tabelle/istanze_utilities.md)
-- [soggetti](tabelle/soggetti.md)
-- [soggetti_ruoli](tabelle/soggetti_ruoli.md)
+- [soggetti](tabelle/soggetti.md) — - **Coerenza dei dati**     Garantire che ogni soggetto—persona fisica, giuridica o fisica forzata—sia identificato in modo univoco e validato secondo le regole aziendali.
+- [soggetti_ruoli](tabelle/soggetti_ruoli.md) — * **Associazione molti-a-molti**: stabilisce una relazione N\:N tra la tabella `anagrafiche.soggetti` e `config.tipi_ruoli`, consentendo a ogni soggetto di rivestire più ruoli (es. cliente, fornitore, gestore) e a ogni ruolo di essere assegnato a molti soggetti. * **Estensione semantica**: il campo `extra` (JSONB) offre la possibilità di collegare metadati aggiuntivi per la singola associazione soggetto-ruolo (ad esempio, parametri contrattuali specifici se il ruolo è “fornitore” o date di attivazione per il ruolo “cliente”). * **Tracciatura delle modifiche**: grazie ai campi di audit (`user_insert`, `data_insert`, `user_update`, `data_update`) aggiornati automaticamente, la tabella conserva la cronologia di creazione e aggiornamento di ciascuna associazione.
 
 ## ⚙️ Funzioni
 - [fn_generate_account_code](funzioni/fn_generate_account_code.md)
-- [trgfn_contatti_ins_upd_set_default_contatto](funzioni/trgfn_contatti_ins_upd_set_default_contatto.md)
-- [trgfn_gestori_ins_upd_check_ruolo_gestore](funzioni/trgfn_gestori_ins_upd_check_ruolo_gestore.md)
+- [trgfn_contatti_ins_upd_set_default_contatto](funzioni/trgfn_contatti_ins_upd_set_default_contatto.md) — * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
+- [trgfn_gestori_ins_upd_check_ruolo_gestore](funzioni/trgfn_gestori_ins_upd_check_ruolo_gestore.md) — - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_check_ins_soggetto_ruolo` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio](funzioni/trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio.md)
 - [trgfn_indirizzi_ins_upd_clean_fields](funzioni/trgfn_indirizzi_ins_upd_clean_fields.md)
 - [trgfn_indirizzi_upd_dlt_storico_indirizzi](funzioni/trgfn_indirizzi_upd_dlt_storico_indirizzi.md)
 - [trgfn_istanze_utilities_ins_set_istanza_codice](funzioni/trgfn_istanze_utilities_ins_set_istanza_codice.md)
 - [trgfn_soggetti_ins_genera_cdsoggetto](funzioni/trgfn_soggetti_ins_genera_cdsoggetto.md)
-- [trgfn_soggetti_ins_upd_check_soggetto_contatti](funzioni/trgfn_soggetti_ins_upd_check_soggetto_contatti.md)
+- [trgfn_soggetti_ins_upd_check_soggetto_contatti](funzioni/trgfn_soggetti_ins_upd_check_soggetto_contatti.md) — * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
 - [trgfn_soggetti_ins_upd_genera_cdsoggetto](funzioni/trgfn_soggetti_ins_upd_genera_cdsoggetto.md)
 - [trgfn_soggetti_ins_upd_valida_piva_cdfiscale](funzioni/trgfn_soggetti_ins_upd_valida_piva_cdfiscale.md)
-
-## 📝 Documentazione Manuale
-- [contatti](manual/contatti.md)
-- [dati_societari](manual/dati_societari.md)
-- [gestori](manual/gestori.md)
-- [indirizzi_dettaglio](manual/indirizzi_dettaglio.md)
-- [soggetti](manual/soggetti.md)
-- [soggetti_ruoli](manual/soggetti_ruoli.md)
-- [trgfn_contatti_ins_upd_set_default_contatto](manual/trgfn_contatti_ins_upd_set_default_contatto.md)
-- [trgfn_gestori_ins_upd_check_ruolo_gestore](manual/trgfn_gestori_ins_upd_check_ruolo_gestore.md)
-- [trgfn_soggetti_ins_upd_check_soggetto_contatti](manual/trgfn_soggetti_ins_upd_check_soggetto_contatti.md)
