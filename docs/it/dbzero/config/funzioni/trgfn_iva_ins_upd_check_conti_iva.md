@@ -1,12 +1,6 @@
 {% include-markdown "it/dbzero/config/manual/trgfn_iva_ins_upd_check_conti_iva.md" %}
 # ⚙️ Funzione `trgfn_iva_ins_upd_check_conti_iva`
 
-### 🎯 Scopo Principale
-* **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`.
-* **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
-
----
-
 ```sql
 CREATE FUNCTION trgfn_iva_ins_upd_check_conti_iva()
 ```

@@ -122,8 +122,26 @@ def gen_table_md(schema, table, cur):
 # Genera Markdown funzione
 # Assicurati che OUT_DIR sia definito (come nel tuo script)
 # OUT_DIR = os.path.join(BASE_DIR, "docs", "it", "dbzero")
-
+# Genera Markdown funzione
 def gen_function_md(schema, func, cur):
+    cur.execute(
+        """
+        SELECT p.proname,
+               pg_get_function_identity_arguments(p.oid) AS args,
+               pg_get_functiondef(p.oid) AS defn
+        FROM pg_proc p
+        JOIN pg_namespace n ON p.pronamespace = n.oid
+        WHERE n.nspname = %s AND p.proname = %s
+        """, (schema, func)
+    )
+    row = cur.fetchone()
+    if not row:
+        return ""
+    lines = [f"# ⚙️ Funzione `{row['proname']}`\n", "```sql", f"CREATE FUNCTION {row['proname']}({row['args']})", "```", "\n**Definizione completa:**\n", "```sql", row.get("defn", "").strip(), "```"]
+    return "\n".join(lines)
+
+
+def gen_function_md_v1(schema, func, cur):
     # 1) Prendo nome, args e definizione
     cur.execute("""
         SELECT p.proname,

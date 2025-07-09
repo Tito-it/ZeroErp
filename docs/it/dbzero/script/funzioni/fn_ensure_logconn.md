@@ -1,12 +1,6 @@
 {% include-markdown "it/dbzero/script/manual/fn_ensure_logconn.md" %}
 # ⚙️ Funzione `fn_ensure_logconn`
 
-### 🎯 Scopo Principale
-* **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple.
-* **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_and_raise_error` per eseguire INSERT in un contesto transazionale separato.
-
----
-
 ```sql
 CREATE FUNCTION fn_ensure_logconn()
 ```

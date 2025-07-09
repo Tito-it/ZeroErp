@@ -1,16 +1,6 @@
 {% include-markdown "it/dbzero/dbops/manual/fn_populate_fk_index_policy.md" %}
 # ⚙️ Funzione `fn_populate_fk_index_policy`
 
-### 🎯 Scopo Principale
-* **Coerenza iniziale**
-  Garantire che ogni FK rilevata nella view senza indice abbia la propria entry di policy, evitando omissioni.
-* **Popolamento “a freddo”**
-  Tutti i nuovi record vengono creati con `consentito = false`, lasciando in carico all’operatore la decisione di abilitare o meno l’indice.
-* **Automazione**
-  Riduce il lavoro manuale di inserimento di policy per nuove FKs.
-
----
-
 ```sql
 CREATE FUNCTION fn_populate_fk_index_policy()
 ```

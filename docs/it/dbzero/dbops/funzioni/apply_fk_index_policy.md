@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/apply_fk_index_policy.md" %}
 # ⚙️ Funzione `apply_fk_index_policy`
 
 ```sql

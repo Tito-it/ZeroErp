@@ -1,14 +1,6 @@
 {% include-markdown "it/dbzero/config/manual/trgfn_stradario_upd_dlt_storico_stradario.md" %}
 # ⚙️ Funzione `trgfn_stradario_upd_dlt_storico_stradario`
 
-### 🎯 Scopo Principale
-* **Storicizzazione automatica**
-  Creare snapshot storici dei dati di `stradario` su modifiche e cancellazioni, mantenendo traccia delle variazioni nel tempo.
-* **Centralizzare la logica di versioning**
-  Evitare duplicazione di codice e garantire coerenza nella gestione dello storico.
-
----
-
 ```sql
 CREATE FUNCTION trgfn_stradario_upd_dlt_storico_stradario()
 ```
