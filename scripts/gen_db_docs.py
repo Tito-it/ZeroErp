@@ -8,10 +8,8 @@
 # ------------------------------------------------------------
 
 
-
-
 #!/usr/bin/env python3
-import os
+import os, re
 from dotenv import load_dotenv
 import psycopg2
 from psycopg2.extras import DictCursor
@@ -122,25 +120,147 @@ def gen_table_md(schema, table, cur):
     return "\n".join(lines)
 
 # Genera Markdown funzione
+# Assicurati che OUT_DIR sia definito (come nel tuo script)
+# OUT_DIR = os.path.join(BASE_DIR, "docs", "it", "dbzero")
+
 def gen_function_md(schema, func, cur):
-    cur.execute(
-        """
+    # 1) Prendo nome, args e definizione
+    cur.execute("""
         SELECT p.proname,
                pg_get_function_identity_arguments(p.oid) AS args,
                pg_get_functiondef(p.oid) AS defn
         FROM pg_proc p
         JOIN pg_namespace n ON p.pronamespace = n.oid
         WHERE n.nspname = %s AND p.proname = %s
-        """, (schema, func)
-    )
+    """, (schema, func))
     row = cur.fetchone()
     if not row:
         return ""
-    lines = [f"# ⚙️ Funzione `{row['proname']}`\n", "```sql", f"CREATE FUNCTION {row['proname']}({row['args']})", "```", "\n**Definizione completa:**\n", "```sql", row.get("defn", "").strip(), "```"]
+
+    name = row['proname']
+    args = row['args']
+    defn = row['defn'].strip()
+
+    lines = [f"# ⚙️ Funzione `{name}`\n"]
+
+    # 2) Provo a leggere il manuale e a estrarre lo Scopo Principale
+    manual_md = os.path.join(OUT_DIR, schema, "manual", f"{name}.md")
+    if os.path.isfile(manual_md):
+        text = open(manual_md, encoding="utf-8").read()
+        # regex: trova la sezione 🎯 fino alla prossima ### o fine file
+        m = re.search(
+            r"### 🎯 Scopo Principale\s*(.+?)(?=\n###|$)",
+            text,
+            re.DOTALL
+        )
+        if m:
+            scopo = m.group(1).strip()
+            lines.append("### 🎯 Scopo Principale")
+            lines.append(scopo + "\n")
+        else:
+            # Se vuoi debug, puoi scommentare la riga qui sotto:
+            # lines.append("> ⚠️ Scopo Principale non trovato nel manuale\n")
+            pass
+    else:
+        # lines.append(f"> ⚠️ File manuale non trovato: {manual_md}\n")
+        pass
+
+    # 3) Firma SQL e definizione completa
+    lines += [
+        "```sql",
+        f"CREATE FUNCTION {name}({args})",
+        "```",
+        "\n**Definizione completa:**\n",
+        "```sql",
+        defn,
+        "```"
+    ]
+
     return "\n".join(lines)
+
 
 # Scrive index.md per schema
 def write_index(schema_dir, schema):
+    index_path  = os.path.join(schema_dir, 'index.md')
+    tables_dir  = os.path.join(schema_dir, 'tabelle')
+    funcs_dir   = os.path.join(schema_dir, 'funzioni')
+    manual_dir  = os.path.join(schema_dir, 'manual')
+
+    lines = [f"# Schema `{schema}`\n"]
+
+    # 1. Tabelle con Scopo Principale
+    if os.path.isdir(tables_dir):
+        lines.append('## 📚 Tabelle')
+        for fname in sorted(os.listdir(tables_dir)):
+            if not fname.endswith('.md'):
+                continue
+            name  = os.path.splitext(fname)[0]
+            entry = f"- [{name}](tabelle/{fname})"
+
+            # cerca manual/<schema>/manual/<name>.md
+            manual_file = os.path.join(manual_dir, f"{name}.md")
+            if os.path.isfile(manual_file):
+                text = open(manual_file, encoding='utf-8').read()
+                m = re.search(
+                    r"### 🎯 Scopo Principale\s*(.+?)(?=(?:\r?\n###|$))",
+                    text,
+                    flags=re.DOTALL
+                )
+                if m:
+                    full_scopo = m.group(1).strip()
+                    # prendi il primo paragrafo
+                    paragraph = full_scopo.split('\n\n', 1)[0]
+                    scopo = paragraph.replace('\n', ' ')
+                    entry += f" — {scopo}"
+            lines.append(entry)
+        lines.append('')
+
+    # 2. Funzioni con Scopo Principale
+    if os.path.isdir(funcs_dir):
+        lines.append('## ⚙️ Funzioni')
+        for fname in sorted(os.listdir(funcs_dir)):
+            if not fname.endswith('.md'):
+                continue
+            name  = os.path.splitext(fname)[0]
+            entry = f"- [{name}](funzioni/{fname})"
+
+            # Cerca il file manuale corrispondente
+            manual_file = os.path.join(manual_dir, f"{name}.md")
+            if os.path.isfile(manual_file):
+                text = open(manual_file, encoding='utf-8').read()
+                # Regex che cattura fino alla prossima intestazione o fine file,
+                # gestendo sia \n che \r\n
+                m = re.search(
+                    r"### 🎯 Scopo Principale\s*(.+?)(?=(?:\r?\n###|$))",
+                    text,
+                    flags=re.DOTALL
+                )
+                if m:
+                    # Prendi la prima riga (fino al primo newline) per il sommario
+                    #scopo = m.group(1).strip().splitlines()[0]
+                    full_scopo = m.group(1).strip()
+                    # estrai il primo paragrafo (fino alla riga vuota)
+                    paragraph = full_scopo.split('\n\n', 1)[0]
+                    # unisci le righe di quel paragrafo in un’unica stringa
+                    scopo = paragraph.replace('\n', ' ')
+                    entry += f" — {scopo}"
+            lines.append(entry)
+        lines.append('')
+
+    # 3. Documentazione Manuale
+    #if os.path.isdir(manual_dir):
+    #    lines.append('## 📝 Documentazione Manuale')
+    #    for fname in sorted(os.listdir(manual_dir)):
+    #        if fname.endswith('.md'):
+    #            name = os.path.splitext(fname)[0]
+    #            lines.append(f"- [{name}](manual/{fname})")
+    #    lines.append('')
+
+    with open(index_path, 'w', encoding='utf-8') as f:
+        f.write("\n".join(lines))
+
+
+def write_index_v1(schema_dir, schema):
     index_path = os.path.join(schema_dir, 'index.md')
     tables_dir = os.path.join(schema_dir, 'tabelle')
     funcs_dir = os.path.join(schema_dir, 'funzioni')

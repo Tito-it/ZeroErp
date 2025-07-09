@@ -2,67 +2,38 @@
 
 ## 📚 Tabelle
 - [ambiti](tabelle/ambiti.md)
-- [codici_postali](tabelle/codici_postali.md)
-- [comuni](tabelle/comuni.md)
+- [codici_postali](tabelle/codici_postali.md) — * **Elenco dei codici postali**   Per ogni comune (city/municipality), memorizza tutti i codici postali (Postal Code o ZIP Code) validi per quell’area geografica.
+- [comuni](tabelle/comuni.md) — * **Censimento dei comuni**   Elenco dei comuni presenti in ciascuno stato, identificati da nome e collegamento gerarchico a provincia e stato. * **Attributi specifici per stato**   La colonna `extra_country` (JSONB) permette di memorizzare dati aggiuntivi specifici per ogni paese (per l’Italia: codice catastale, codice ISTAT, fascia climatica, ecc.). * **Integrazione con lo stradario**   L’associazione tra `config.stradario_generale` (prefissi e nomi delle vie) e `config.comuni` genera la tabella `config.stradario`, che contiene l’indirizzo completo con la localizzazione geografica sul comune di appartenenza.   Utilizzata per associare i record di **`config.stradario`** al comune di appartenenza, completa il percorso di indirizzamento. * **Storicizzazione**   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.stradario`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
 - [conti_contabili](tabelle/conti_contabili.md)
 - [iva](tabelle/iva.md)
 - [iva_natura](tabelle/iva_natura.md)
 - [iva_stati](tabelle/iva_stati.md)
-- [messaggi_errore](tabelle/messaggi_errore.md)
+- [messaggi_errore](tabelle/messaggi_errore.md) — * **Centralizzare i messaggi**: evitare hard‑coding nei sorgenti SQL, trigger o procedure. * **Supporto multilingua**: gestire versioni localizzate tramite il campo `lingua` (es. `it`, `en`). * **Placeholder dinamici**: usare `%s` nel campo `messaggio`, sostituiti a runtime dalla funzione `script.fn_get_messaggio` con valori contestuali. * **Collegamento ai log**: tabelle come `dbops.error_log` e `dbops.audit_log` fanno riferimento a `config.messaggi_errore` per arricchire i record di log con testi coerenti.
 - [modalita_pagamento](tabelle/modalita_pagamento.md)
 - [parameter_overrides](tabelle/parameter_overrides.md)
 - [parameters](tabelle/parameters.md)
 - [parameters_audit](tabelle/parameters_audit.md)
-- [province](tabelle/province.md)
-- [regioni](tabelle/regioni.md)
-- [sistema_codici](tabelle/sistema_codici.md)
-- [stati](tabelle/stati.md)
+- [province](tabelle/province.md) — * **Elenco delle province**   Contiene tutte le province di uno stato (es. in Italia: RM, MI, FI), con sigla e nome descrittivo.
+- [regioni](tabelle/regioni.md) — * **Elenco delle regioni**   Comprende tutte le regioni appartenenti a uno stato (es. in Italia: `Lazio`, `Campania`, `Sicilia`), con collegamento al rispettivo `stato_id` in **`config.stati`**.
+- [sistema_codici](tabelle/sistema_codici.md) — * **Definizione del formato codice**   Consente di specificare per ogni tipo di codice (`codice_tipo`) un **prefisso**, un **separatore** e la **lunghezza numerica** totale, rendendo parametrica la struttura dei codici generati. * **Configurazione del meccanismo di sequenza**   Tramite il flag `usa_sequenza` e l’attributo `nome_sequenza`, si abilita o meno l’utilizzo di una progressione automatica basata su sequenza di database, a garanzia di unicità e ordinarietà. * **Attivazione o disattivazione**   Il campo `attivo` permette di abilitare o disabilitare temporaneamente il sistema di generazione per un tipo di codice, senza cancellare la configurazione.
+- [stati](tabelle/stati.md) — * **Elenco degli stati/paesi**   Contiene tutte le nazioni riconosciute, con sigle e codici ISO standard (ISO 3166-1 alpha-2 e alpha-3) e prefisso telefonico internazionale.
 - [stati_cliente](tabelle/stati_cliente.md)
 - [stati_pratiche](tabelle/stati_pratiche.md)
-- [stradario](tabelle/stradario.md)
-- [stradario_generale](tabelle/stradario_generale.md)
+- [stradario](tabelle/stradario.md) — * **Mappa comunale delle vie**   Contiene l’elenco delle strade e vie di ogni comune, con riferimento al prefisso e al nome forniti da `config.stradario_generale`. * **Geolocalizzazione**   Il campo `geoloc` (geometry Point, SRID 4326) consente di associare ogni via a coordinate geografiche per mappe e ricerche spaziali. * **Associazione CAP**   Collega ogni via a un codice postale obbligatorio (`codice_postale_id`), gestito nella tabella `config.codici_postali`. * **Informazioni estese**   Il campo `extra_info` (JSONB) permette di memorizzare dati aggiuntivi, come eventuali frazioni, indicazioni o note specifiche. * **Storicizzazione**   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.stradario`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.    ---
+- [stradario_generale](tabelle/stradario_generale.md) — * **Composizione del toponimo**   Unisce il prefisso toponomastico (es. `VIA`, `PIAZZA`) al nome specifico (es. `Garibaldi`, `Roma`) per formare la descrizione completa. * **Indipendenza geografica**   Mantiene un catalogo centralizzato dei nomi senza riferimenti a comuni o aree, favorendo il riuso e la coerenza. * **Integrazione con stradario locale**   Collegata a **`config.stradario`**, che associa ogni record di **`stradario_generale`** al comune di appartenenza, consentendo la geolocalizzazione e l’uso nei processi di indirizzamento.
 - [tipi_attivita](tabelle/tipi_attivita.md)
 - [tipi_contatti](tabelle/tipi_contatti.md)
 - [tipi_documenti](tabelle/tipi_documenti.md)
 - [tipi_indirizzi](tabelle/tipi_indirizzi.md)
-- [tipi_ruoli](tabelle/tipi_ruoli.md)
-- [titoli_cortesia](tabelle/titoli_cortesia.md)
-- [toponomastica](tabelle/toponomastica.md)
-- [utilities](tabelle/utilities.md)
-- [valute](tabelle/valute.md)
+- [tipi_ruoli](tabelle/tipi_ruoli.md) — * **Distinzione dei ruoli**: consente di assegnare a ogni record della tabella `soggetti` uno o più ruoli funzionali (es. cliente, fornitore, gestore). * **Flessibilità operativa**: un soggetto può assumere ruoli differenti in contesti diversi (ad esempio un fornitore che può diventare cliente in altre transazioni). * **Ruolo "gestore"**: l’azienda stessa che utilizza il software viene registrata in `soggetti` e associata al ruolo interno “gestore” per identificare i dati dell’utente principale o amministratore del sistema.
+- [titoli_cortesia](tabelle/titoli_cortesia.md) — * **Uniformare i titoli**     Gestire centralmente i titoli di cortesia per tutti i soggetti/contatti, evitando discrepanze tra form, report e stampe.
+- [toponomastica](tabelle/toponomastica.md) — * **Censimento dei toponimi**   Elenco delle tipologie di vie, strade, piazze, viali, ecc., utilizzate come prefisso negli indirizzi. * **Fondamentale per lo stradario**   Fornisce i prefissi standardizzati che, uniti al nome (es. "Garibaldi", "Roma"), generano i record di **`stradario_generale`**. * **Integrazione con lo stato geografico**   Collegato alla tabella `config.stati` per associare ogni tipo di toponimo all’area amministrativa di riferimento.
+- [utilities](tabelle/utilities.md) — * **Definizione del settore**   Tabella dove si definiscono i tipi di "utilities" a cui l’azienda è rivolta. Ogni record identifica un settore di business specifico: per esempio manifatturiero, gas o telecom. * **Componente standard e specifica**   Per ogni tipo di utility è prevista una parte core (funzionalità standard comuni a tutti i settori) e un modulo verticale specifico, progettato per risolvere le problematiche tipiche del settore.
+- [valute](tabelle/valute.md) — * **Definizione delle valute**   Elenco centralizzato di tutte le valute supportate, con codici interni e standard ISO 4217. * **Supporto ai moduli finanziari**   Garantisce alle aree di fatturazione, contabilità e reporting uniformità nella rappresentazione e conversione delle valute. * **Tracciabilità e auditing**   Memorizza informazioni di inserimento e aggiornamento per mantenere la storicità delle modifiche.
 
 ## ⚙️ Funzioni
-- [fn_get_iva_override](funzioni/fn_get_iva_override.md)
+- [fn_get_iva_override](funzioni/fn_get_iva_override.md) — * **Recupero unificato**   Ottenere in un’unica chiamata sia i valori base da `config.iva` sia gli override da `config.iva_stati` se presenti. * **Override per Stato**   Consentire di modificare aliquota e assoggettamento IVA a livello di Stato senza duplicare righe in `config.iva`. * **Centralizzazione**   Incapsulare la logica di join e COALESCE in una funzione riutilizzabile.
 - [trgfn_comuni_upd_dlt_storico_comuni](funzioni/trgfn_comuni_upd_dlt_storico_comuni.md)
-- [trgfn_iva_ins_upd_check_conti_iva](funzioni/trgfn_iva_ins_upd_check_conti_iva.md)
+- [trgfn_iva_ins_upd_check_conti_iva](funzioni/trgfn_iva_ins_upd_check_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_parameters_audit](funzioni/trgfn_parameters_audit.md)
-- [trgfn_stradario_upd_dlt_storico_stradario](funzioni/trgfn_stradario_upd_dlt_storico_stradario.md)
-
-## 📝 Documentazione Manuale
-- [codici_postali](manual/codici_postali.md)
-- [comuni](manual/comuni.md)
-- [conti_contabili](manual/conti_contabili.md)
-- [fn_get_iva_override](manual/fn_get_iva_override.md)
-- [iva](manual/iva.md)
-- [iva_natura](manual/iva_natura.md)
-- [iva_stati](manual/iva_stati.md)
-- [messaggi_errore](manual/messaggi_errore.md)
-- [parameter_overrides](manual/parameter_overrides.md)
-- [parameters](manual/parameters.md)
-- [parameters_audit](manual/parameters_audit.md)
-- [province](manual/province.md)
-- [regioni](manual/regioni.md)
-- [sistema_codici](manual/sistema_codici.md)
-- [stati](manual/stati.md)
-- [stradario](manual/stradario.md)
-- [stradario_generale](manual/stradario_generale.md)
-- [tipi_contatti](manual/tipi_contatti.md)
-- [tipi_indirizzi](manual/tipi_indirizzi.md)
-- [tipi_ruoli](manual/tipi_ruoli.md)
-- [titoli_cortesia](manual/titoli_cortesia.md)
-- [toponomastica](manual/toponomastica.md)
-- [trg_stradario_upd_dlt_storico_stradario](manual/trg_stradario_upd_dlt_storico_stradario.md)
-- [trgfn_iva_ins_upd_check_conti_iva](manual/trgfn_iva_ins_upd_check_conti_iva.md)
-- [trgfn_stradario_upd_dlt_storico_stradario](manual/trgfn_stradario_upd_dlt_storico_stradario.md)
-- [utilities](manual/utilities.md)
-- [valute](manual/valute.md)
+- [trgfn_stradario_upd_dlt_storico_stradario](funzioni/trgfn_stradario_upd_dlt_storico_stradario.md) — * **Storicizzazione automatica**   Creare snapshot storici dei dati di `stradario` su modifiche e cancellazioni, mantenendo traccia delle variazioni nel tempo. * **Centralizzare la logica di versioning**   Evitare duplicazione di codice e garantire coerenza nella gestione dello storico.

@@ -1,6 +1,15 @@
 {% include-markdown "it/dbzero/dbops/manual/fn_find_file_usage.md" %}
 # ⚙️ Funzione `fn_find_file_usage`
 
+### 🎯 Scopo Principale
+* **Analisi d’impatto**  
+  Identificare rapidamente tutte le relazioni di FK verso una tabella, utile per valutare dipendenze e conseguenze di modifiche, cancellazioni o refactoring di schema.
+
+* **Documentazione automatica**  
+  Fornire un’elenco puntuale di constraint FK anziché esplorare manualmente il catalogo di sistema.
+
+---
+
 ```sql
 CREATE FUNCTION fn_find_file_usage(p_target_table regclass)
 ```

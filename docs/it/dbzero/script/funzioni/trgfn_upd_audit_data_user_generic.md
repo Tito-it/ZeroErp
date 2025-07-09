@@ -1,6 +1,14 @@
 {% include-markdown "it/dbzero/script/manual/trgfn_upd_audit_data_user_generic.md" %}
 # ⚙️ Funzione `trgfn_upd_audit_data_user_generic`
 
+### 🎯 Scopo Principale
+* **Audit automatico**
+  Assicurare che ogni modifica a una riga di tabella sia registrata con timestamp (`data_update`) e utente (`user_update`) correnti.
+* **Centralizzare la logica di update audit**
+  Evitare di replicare manualmente la medesima assegnazione in ogni trigger `BEFORE UPDATE` delle varie tabelle.
+
+---
+
 ```sql
 CREATE FUNCTION trgfn_upd_audit_data_user_generic()
 ```

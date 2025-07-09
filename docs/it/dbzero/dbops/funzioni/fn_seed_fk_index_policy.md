@@ -1,6 +1,16 @@
 {% include-markdown "it/dbzero/dbops/manual/fn_seed_fk_index_policy.md" %}
 # ⚙️ Funzione `fn_seed_fk_index_policy`
 
+### 🎯 Scopo Principale
+* **Sincronizzazione iniziale**
+  Aggiunge in `fk_index_policy` tutte le FK con indice esistente rilevate in `vw_fk_con_indice_missing_policy`.
+* **Automazione**
+  Evita inserimenti manuali per policy già coperte da indice.
+* **Flag di origine**
+  Imposta `generated_by_script = true` per distinguere le righe create automaticamente.
+
+---
+
 ```sql
 CREATE FUNCTION fn_seed_fk_index_policy()
 ```

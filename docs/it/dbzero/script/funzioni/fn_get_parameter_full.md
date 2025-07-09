@@ -1,6 +1,18 @@
 {% include-markdown "it/dbzero/script/manual/fn_get_parameter_full.md" %}
 # ⚙️ Funzione `fn_get_parameter_full`
 
+### 🎯 Scopo Principale
+* **Ricerca safe del parametro**
+  Verificare l’esistenza del parametro in `config.parameters` e recuperare il suo `default_value`.
+* **Override gerarchico**
+  Cercare eventuali override in `config.parameter_overrides` secondo la priorità: function → session → user → tenant.
+* **Centralizzazione della logica**
+  Un’unica funzione per gestire la complessità degli override, evitando duplicazioni nell’applicazione.
+* **Gestione degli errori**
+  Se `p_code` non è presente in `config.parameters`, viene chiamato `script.fn_log_and_raise_error` con codice `ERRORE_PARAMETRI_TABELLA`.
+
+---
+
 ```sql
 CREATE FUNCTION fn_get_parameter_full(p_code text, p_tenant_id integer, p_user_id integer, p_session_key text, p_function_name text)
 ```

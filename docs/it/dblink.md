@@ -1,4 +1,10 @@
-## 📘 Estensione PostgreSQL: `dblink`
+# 📘 Estensione PostgreSQL: `dblink`
+
+> 👀 **Vedi anche**
+>
+> Approfondimento funzioni :    
+> - [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)    
+
 
 L’estensione **`dblink`** di PostgreSQL permette l'esecuzione di query tra database PostgreSQL diversi o all’interno dello stesso server su database separati. È particolarmente utile per logging remoto, integrazioni di dati distribuiti e operazioni di sincronizzazione asincrone.
 

@@ -1,6 +1,13 @@
 {% include-markdown "it/dbzero/script/manual/fn_log_and_raise_error.md" %}
 # ⚙️ Funzione `fn_log_and_raise_error`
 
+### 🎯 Scopo Principale
+* **Entrypoint unificato** per error handling: evita duplicazioni di log e raise in trigger, procedure e funzioni.
+* **Logging remoto sicuro**: usa `dblink_exec` su connessione permanente fornita da `script.fn_ensure_logconn()`, per isolare il log dall’eventuale rollback della sessione principale.
+* **Escalation immediata**: rialza l’eccezione con `DETAIL` e `HINT` recuperati dalla tabella dei messaggi.
+
+---
+
 ```sql
 CREATE FUNCTION fn_log_and_raise_error(p_area text, p_function_name text, p_error_code text, p_context jsonb, VARIADIC p_valori text[])
 ```

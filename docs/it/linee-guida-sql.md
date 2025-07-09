@@ -177,7 +177,7 @@ Per garantire **coerenza transazionale** fra tutte le tabelle che registrano mod
 * **Function (opzione backend)**: invocare `dbops.fn_get_or_create_session_tx_id()` prima delle operazioni e passare il `tx_id` in tutti gli `INSERT/UPDATE`.
 
 Per maggiori dettagli e implementazione, consulta la guida **(è fondamentale la consultazione)**:
-**[Guida Tecnica – Implementazione di un Unico Transaction ID](/guide/tx_id_implementation_guide.md)**
+**[Guida Tecnica – Implementazione di un Unico Transaction ID](/guide/tx_id_implementation_guide)**
 
 ---
 

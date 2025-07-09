@@ -1,6 +1,16 @@
 {% include-markdown "it/dbzero/config/manual/fn_get_iva_override.md" %}
 # ⚙️ Funzione `fn_get_iva_override`
 
+### 🎯 Scopo Principale
+* **Recupero unificato**
+  Ottenere in un’unica chiamata sia i valori base da `config.iva` sia gli override da `config.iva_stati` se presenti.
+* **Override per Stato**
+  Consentire di modificare aliquota e assoggettamento IVA a livello di Stato senza duplicare righe in `config.iva`.
+* **Centralizzazione**
+  Incapsulare la logica di join e COALESCE in una funzione riutilizzabile.
+
+---
+
 ```sql
 CREATE FUNCTION fn_get_iva_override(p_codice_iva text, p_stato_id integer)
 ```

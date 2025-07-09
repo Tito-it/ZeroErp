@@ -1,6 +1,21 @@
 {% include-markdown "it/dbzero/script/manual/fn_check_ins_soggetto_ruolo.md" %}
 # ⚙️ Funzione `fn_check_ins_soggetto_ruolo`
 
+### 🎯 Scopo Principale
+- **Verifica esistenza**  
+  Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
+
+- **Inserimento automatico**  
+  Quando `p_soggetto_ruolo_id` è `NULL` o `0`, crea un nuovo record in `anagrafiche.soggetti_ruoli` con `soggetto_id`, `ruolo_id` e `user_insert = current_user`.
+
+- **Ritorno dell’ID**  
+  Restituisce sempre l’ID valido della relazione soggetto–ruolo, sia esso appena creato o già esistente.
+
+- **Centralizzazione della logica**  
+  Evita duplicazioni di codice nei trigger o procedure: ogni assegnazione di ruolo utilizza questa funzione.
+
+---
+
 ```sql
 CREATE FUNCTION fn_check_ins_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id integer, p_cd_int_ruolo character varying)
 ```

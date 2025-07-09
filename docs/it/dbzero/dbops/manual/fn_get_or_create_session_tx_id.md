@@ -7,6 +7,7 @@
 >
 > Approfondimento funzioni :    
 > - [dbops.fn_generate_tx_id](/dbzero/dbops/funzioni/fn_generate_tx_id)    
+> - [script.uuid_nil](/dbzero/script/funzioni/uuid_nil)    
 > - [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)    
 
 La funzione **`dbops.fn_get_or_create_session_tx_id()`** fornisce un **UUID di transazione** persistente per l’intera sessione database, generandone uno nuovo solo se non già impostato. Questo meccanismo garantisce che tutte le operazioni eseguite nella medesima connessione possano condividere lo stesso **`tx_id`**, semplificando log, tracciabilità e rollback in scenari complessi.
