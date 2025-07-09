@@ -1,23 +1,6 @@
 {% include-markdown "it/dbzero/script/manual/fn_get_contatti.md" %}
 # ⚙️ Funzione `fn_get_contatti`
 
-### 🎯 Scopo Principale
-* **Selezione univoca per tipo**
-  Ottenere il contatto più rilevante per ciascun `tipo_contatto_id` rispetto ai parametri forniti.
-* **Gerarchia di contesti**
-  Filtra e ordina i contatti in base alla priorità:
-
-  1. **soggetto + ruolo + utility**
-  2. **soggetto + ruolo**
-  3. **soggetto + utility**
-  4. **solo soggetto** (fallback **soggetto** garantisce che, se non esistono contatti per proprietà o utility, si recuperino comunque i contatti generici del soggetto.)
-* **Validazione e logging**
-  Verifica che `p_soggetto_id` sia valorizzato; in caso contrario utilizza `script.fn_log_and_raise_error` per loggare e sollevare un’eccezione con codice `ERRORE_PARAMETRI`.
-* **Centralizzazione della logica**
-  La tabella risultante è pensata come unico punto di accesso per il reperimento contatti: consente di applicare filtri successivi (es. solo default, ordini personalizzati, ecc.) senza replicare la logica di fallback in ogni query.
-
----
-
 ```sql
 CREATE FUNCTION fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id integer, p_utility_id integer, p_tipo_contatto_id integer)
 ```

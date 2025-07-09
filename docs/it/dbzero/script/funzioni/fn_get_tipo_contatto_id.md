@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_get_tipo_contatto_id.md" %}
 # ⚙️ Funzione `fn_get_tipo_contatto_id`
 
 ```sql
@@ -13,17 +14,37 @@ CREATE OR REPLACE FUNCTION script.fn_get_tipo_contatto_id(p_cod_int_tipo_contatt
  STABLE
 AS $function$
 DECLARE
-  v_id INTEGER;
+    v_id  INTEGER;
+    v_tx  UUID;
 BEGIN
---  Funzione per recuperare l'ID del tipo contatto DEFAULT
---  Funzione generica per recuperare l'ID di un tipo di contatto dato il codice interno
-  SELECT id INTO v_id
-    FROM config.tipi_contatti
-   WHERE cod_int_tipo_contatto = p_cod_int_tipo_contatto;
-  IF v_id IS NULL THEN
-    RAISE EXCEPTION '%', config.fn_get_messaggio('E_DEFAULT_CONTATTO_MISSING');
-  END IF;
-  RETURN v_id;
+    -- 0) Recupero o genero il tx_id per il log
+    v_tx := dbops.fn_get_or_create_session_tx_id();
+
+    -- 1) Recupera l'ID del tipo di contatto
+    SELECT id
+      INTO v_id
+      FROM config.tipi_contatti
+    WHERE cod_int_tipo_contatto = p_cod_int_tipo_contatto;
+
+    -- 2) Se non trovato, loggo e sollevo eccezione
+    IF v_id IS NULL THEN
+    
+        PERFORM script.fn_log_and_raise_error(
+            'database',                                 -- p_area
+            'script.fn_get_tipo_contatto_id',           -- p_function_name
+            'E_DEFAULT_CONTATTO_MISSING',                -- p_error_code
+            jsonb_build_object(                         -- p_context
+              'cod_int_tipo_contatto', p_cod_int_tipo_contatto,
+              'tabella', 'config.tipi_contatti',
+              'campo', 'cod_int_tipo_contatto'
+            ),
+            v_tx ,                                        -- p_tx_id       
+            VARIADIC ARRAY[]::text[]
+        );
+        
+    END IF;
+
+    RETURN v_id;
 END;
 $function$
 ```

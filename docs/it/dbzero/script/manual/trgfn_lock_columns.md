@@ -9,8 +9,9 @@
 > Approfondimenti funzioni:   
 >  - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
+### 🎯 Scopo Principale
 
-**`script.trgfn_lock_columns()`** è una trigger function generica per **bloccare modifiche non autorizzate** su colonne specificate, integrando:
+-  Trigger function generica per **bloccare modifiche non autorizzate** su colonne specificate, integrando:
 
 * **Controllo dinamico** delle colonne PASSATE come argomenti al trigger
 * **Logging remoto** tramite dblink, per tracciare l’evento prima del rollback
@@ -18,7 +19,7 @@
 
 ---
 
-### 🎯 Scopo e Comportamento Chiave
+### 🎯  Comportamento Chiave
 
 1. **Validazione degli argomenti**
 

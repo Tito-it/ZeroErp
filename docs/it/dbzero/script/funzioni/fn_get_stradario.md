@@ -1,18 +1,6 @@
 {% include-markdown "it/dbzero/script/manual/fn_get_stradario.md" %}
 # ⚙️ Funzione `fn_get_stradario`
 
-### 🎯 Scopo Principale
-* **Ricerca locale per comune**
-  Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
-
-* **Ricerca globale**
-  Se `p_comune_id` è `NULL`, effettua una ricerca libera su tutto lo stradario generale, restituendo toponomastica e vie corrispondenti a `p_indirizzo`, senza vincoli geografici.
-
-* **Unificazione del risultato**
-  In entrambi i casi restituisce un insieme di colonne standard che descrivono in dettaglio la via, il comune, la provincia, lo stato, il codice postale e la descrizione completa.
-
----
-
 ```sql
 CREATE FUNCTION fn_get_stradario(p_comune_id integer, p_indirizzo text)
 ```

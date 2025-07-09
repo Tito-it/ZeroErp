@@ -1,18 +1,6 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_ins_upd_check_soggetto_contatti.md" %}
 # ⚙️ Funzione `trgfn_soggetti_ins_upd_check_soggetto_contatti`
 
-### 🎯 Scopo Principale
-* **Validazione di integrità**
-  Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
-
-* **Log e gestione errori centralizzata**
-  Utilizzare `script.fn_log_and_raise_error` per tracciare l’anomalia e segnalare l’errore con un codice specifico (`E_SOGGETTO_NO_CONTATTI`).
-
-* **Deferrable per transazioni**
-  Essendo un **constraint trigger** `DEFERRABLE INITIALLY DEFERRED`, l’esecuzione avviene al momento del `COMMIT`, consentendo di completare tutte le operazioni di contatto correlate prima della verifica finale.
-
----
-
 ```sql
 CREATE FUNCTION trgfn_soggetti_ins_upd_check_soggetto_contatti()
 ```

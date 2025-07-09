@@ -10,7 +10,7 @@ La funzione **`dbops.fn_search_column_usage`** consente di ricercare riferimenti
 
 ---
 
-### 🎯 Scopo
+### 🎯 Scopo Principale
 
 * Individuare rapidamente tutte le occorrenze di un campo in definizioni SQL presenti nel database.
 * Facilitare attività di refactoring, pulizia del codice, e verifica di dipendenze tra oggetti del database.
