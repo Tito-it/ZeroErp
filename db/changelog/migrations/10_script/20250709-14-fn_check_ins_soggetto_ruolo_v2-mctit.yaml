@@ -12,7 +12,7 @@ databaseChangeLog:
   # Versione 2 (quando modifichi la logica)
   
   - changeSet:
-      id: 20250709-14-function_messaggio_sogg_ruolo_v2
+      id: 20250709-14-fn_check_ins_soggetto_ruolo_v2
       author: mctit
       runOnChange: true
       validCheckSums:
@@ -121,9 +121,21 @@ databaseChangeLog:
                     
                   $BODY$;
 
+        - sql:
+            comment: "2) Commento descrittivo sulla  function"
+            splitStatements: false
+            sql: |
+                  COMMENT ON FUNCTION script.fn_check_ins_soggetto_ruolo(uuid, integer, character varying)
+                      IS 'Se p_soggetto_ruolo_id è NULL o 0, crea un nuovo legame in anagrafiche.soggetti_ruoli per il soggetto e il ruolo di codice p_cd_int_ruolo.
+                      Altrimenti verifica l''esistenza del record. Ritorna sempre l''ID del record in soggetti_ruoli.';
+
+        
   - changeSet:
-      id: 20250709-90-function_messaggio_sogg_ruolo_v2
+      id: 20250709-90-fn_check_ins_soggetto_ruolo_v2
+      validCheckSums:
+        - ANY
+      runOnChange: true
       author: mctit
       changes:
         - tagDatabase:
-            tag: 20250709-14-function_messaggio_sogg_ruolo_v2
+            tag: 20250709-14-fn_check_ins_soggetto_ruolo_v2

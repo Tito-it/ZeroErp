@@ -40,6 +40,7 @@ BEGIN
                     'nome_tabella',      'config.parameters',
                     'action', 'default bypass=false' 
                 ),
+                   NULL::uuid,
                   'tx_id_bypass_enabled',
                   'config.parameters'
               );
@@ -55,6 +56,7 @@ BEGIN
               'parameter', 'tx_id_bypass_enabled',
               'error', SQLERRM
             ),
+            NULL::uuid,
             TG_TABLE_NAME::text,
             SQLERRM::text
         );
@@ -105,9 +107,12 @@ BEGIN
                     'database',
                     'dbops.trgfn_tx_id_managed',
                     'W_TXID_NOT_REGISTERED',
-                    jsonb_build_object( 'tx_id', v_session_tx_id )
+                    jsonb_build_object( 'tx_id', v_session_tx_id ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[] 
                 );
                 v_new_tx_id := script.uuid_nil();
+
             END IF;
 
         ELSE
@@ -127,7 +132,9 @@ BEGIN
                     'E_TXID_GENERATION',
                     jsonb_build_object(
                       'error', SQLERRM
-                    )
+                    ) ,
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
                 );
                 v_new_tx_id := script.uuid_nil();
             END;
