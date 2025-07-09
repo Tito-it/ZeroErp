@@ -14,7 +14,9 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_con
 AS $function$
 DECLARE
   v_count INTEGER;
+  
 BEGIN
+  
   -- ====================================================================
   -- Verifica che il soggetto abbia almeno:
   --   • un contatto di default (is_default = TRUE), oppure
@@ -23,7 +25,6 @@ BEGIN
   SELECT COUNT(*) INTO v_count
     FROM anagrafiche.contatti c
   WHERE c.soggetto_id = NEW.id
-    AND c.default_context = 'soggetto'
     AND (
       c.is_default
       OR c.email      IS NOT NULL
@@ -38,8 +39,9 @@ BEGIN
       'database',
       TG_NAME,                               -- nome del trigger
       'E_SOGGETTO_NO_CONTATTI',              -- codice messaggio
-      jsonb_build_object('soggetto_id', NEW.id)  -- contesto JSON
-      -- nessun placeholder da sostituire, quindi VARIADIC p_valori omesso
+      jsonb_build_object('soggetto_id', NEW.id),  -- contesto JSON
+      NULL::uuid,                                    
+      VARIADIC ARRAY[]::text[]                -- argomenti variabili
     );
     -- fn_log_and_raise_error darà RAISE EXCEPTION internamente
   END IF;

@@ -16,7 +16,9 @@ AS $function$
       v_ruolo_id   INTEGER;
       v_new_id     INTEGER;
       v_count      INTEGER;
+     
   BEGIN
+      
 
       -- Se p_soggetto_ruolo_id IS NULL o = 0:
       --   - Recupera il ruolo_id corrispondente a cd_int_ruolo
@@ -32,6 +34,7 @@ AS $function$
       --   - Se non lo trova, RAISE EXCEPTION
       --   - Se lo trova, restituisce p_soggetto_ruolo_id
       -- 1) Trovo l'ID del ruolo corrispondente a cd_int_ruolo
+
       SELECT r.id
         INTO v_ruolo_id
       FROM config.tipi_ruoli r
@@ -44,7 +47,8 @@ AS $function$
             'fn_check_ins_soggetto_ruolo',
             'E_COD_INT_RUOLO',
             jsonb_build_object('cd_int_ruolo', p_cd_int_ruolo),
-            p_cd_int_ruolo::text
+            NULL::uuid,   
+            'cd_int_ruolo', p_cd_int_ruolo::text
           );
           -- wrapper farà RAISE EXCEPTION
       END IF;
@@ -83,6 +87,7 @@ AS $function$
               'soggetto_id',       p_soggetto_id,
               'ruolo_id',          v_ruolo_id
             ),
+            NULL::uuid,  
             p_soggetto_ruolo_id::text,
             p_soggetto_id::text,
             v_ruolo_id::text
@@ -93,5 +98,6 @@ AS $function$
       -- Se siamo qui, il record esiste: restituisco lo stesso ID passato
       RETURN p_soggetto_ruolo_id;
   END;
-  $function$
+  
+$function$
 ```

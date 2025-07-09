@@ -12,8 +12,9 @@ CREATE OR REPLACE FUNCTION script.trgfn_prevent_modification_generic()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+
 BEGIN
-  
+ 
   PERFORM script.fn_log_and_raise_error(
       'database',
       'trgfn_prevent_parameters_audit_modification',
@@ -22,6 +23,7 @@ BEGIN
         'nome_tabella', TG_TABLE_NAME,
         'trigger_op',        TG_OP
       ),
+      NULL::uuid,
       TG_TABLE_NAME::text,
       TG_OP::text
     );

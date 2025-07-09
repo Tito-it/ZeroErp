@@ -11,7 +11,7 @@ databaseChangeLog:
   
   # 
   - changeSet:
-      id: 20250619-01-trgfn_soggetti_ins_upd_check_soggetto_contatti
+      id: 220250709-13-trgfn_soggetti_ins_upd_check_soggetto_contatti_v2
       author: mctit
       runOnChange: true
       validCheckSums:
@@ -27,7 +27,9 @@ databaseChangeLog:
                 AS $function$
                 DECLARE
                   v_count INTEGER;
+                  
                 BEGIN
+                  
                   -- ====================================================================
                   -- Verifica che il soggetto abbia almeno:
                   --   • un contatto di default (is_default = TRUE), oppure
@@ -50,8 +52,9 @@ databaseChangeLog:
                       'database',
                       TG_NAME,                               -- nome del trigger
                       'E_SOGGETTO_NO_CONTATTI',              -- codice messaggio
-                      jsonb_build_object('soggetto_id', NEW.id)  -- contesto JSON
-                      -- nessun placeholder da sostituire, quindi VARIADIC p_valori omesso
+                      jsonb_build_object('soggetto_id', NEW.id),  -- contesto JSON
+                      NULL::uuid,                                    
+                      VARIADIC ARRAY[]::text[]                -- argomenti variabili
                     );
                     -- fn_log_and_raise_error darà RAISE EXCEPTION internamente
                   END IF;
@@ -65,8 +68,8 @@ databaseChangeLog:
 
   # Tag di fine modifica per fn_get_messaggio v2
   - changeSet:
-      id: 20250619-90-trgfn_soggetti_ins_upd_check_soggetto_contatti
+      id: 20250709-90-trgfn_soggetti_ins_upd_check_soggetto_contatti_v2
       author: mctit
       changes:
         - tagDatabase:
-            tag: 20250619-01-trgfn_soggetti_ins_upd_check_soggetto_contatti
+            tag: 20250709-13-trgfn_soggetti_ins_upd_check_soggetto_contatti_v2

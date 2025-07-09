@@ -16,7 +16,10 @@ DECLARE
     v_param_id    BIGINT;
     v_default     TEXT;
     v_override    TEXT;
+   
 BEGIN
+    
+
     -- 1. Recupera id e default_value del parametro
     SELECT id, default_value
       INTO v_param_id, v_default
@@ -33,6 +36,7 @@ BEGIN
               'codice_parametro', p_code,
               'nome_tabella',      'config.parameters'
             ),
+            NULL::uuid,                                        
             COALESCE(p_code::text, 'config.parameters')
           );
 
