@@ -25,8 +25,9 @@ databaseChangeLog:
                   RETURNS trigger
                   LANGUAGE plpgsql
                 AS $$
+                
                 BEGIN
-                  
+                 
                   PERFORM script.fn_log_and_raise_error(
                       'database',
                       'trgfn_prevent_parameters_audit_modification',
@@ -35,6 +36,7 @@ databaseChangeLog:
                         'nome_tabella', TG_TABLE_NAME,
                         'trigger_op',        TG_OP
                       ),
+                      NULL::uuid,
                       TG_TABLE_NAME::text,
                       TG_OP::text
                     );

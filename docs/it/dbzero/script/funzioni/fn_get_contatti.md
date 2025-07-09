@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION script.fn_get_contatti(p_soggetto_id uuid, p_soggetto
  RETURNS TABLE(id integer, tipo_contatto_id integer, soggetto_id uuid, soggetto_ruolo_id integer, utility_id integer, nominativo character varying, email character varying, telefono character varying, cellulare character varying, pec character varying, note text, is_default boolean, default_context character varying)
  LANGUAGE sql
 AS $function$
+
 /*
   1) Validate mandatory p_soggetto_id: if NULL, raises via fn_log_and_raise_error.
   2) Build `candidates` filtered by parameters and assign a `priority`:
@@ -32,6 +33,7 @@ WITH validate AS (
       'utility_id',       p_utility_id,
       'tipo_contatto_id', p_tipo_contatto_id
     ),
+    NULL::uuid,                                  -- p_tx_id (NULL → helper lo ricrea)
     COALESCE(p_soggetto_id::text, 'NULL')
   )
   WHERE p_soggetto_id IS NULL

@@ -19,10 +19,8 @@ DECLARE
   msgcode text;
   oldval  text;
   newval  text;
-  v_tx     UUID;
 BEGIN
-  -- 0) Recupero o genero un tx_id per il log
-  v_tx := dbops.fn_get_or_create_session_tx_id();
+ 
 
   -- 1) Se il numero di argomenti non è pari, errore
   IF n_args % 2 <> 0 THEN
@@ -31,7 +29,8 @@ BEGIN
       TG_NAME,
       'E_ARGOMENTI_A_COPPIE',
       jsonb_build_object('expected_pairs', n_args/2),
-      v_tx
+      NULL::uuid,
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
 
@@ -56,7 +55,7 @@ BEGIN
           'old_value', oldval,
           'new_value', newval
         ),
-        v_tx,
+        NULL::uuid,
         col
       );
     END IF;
