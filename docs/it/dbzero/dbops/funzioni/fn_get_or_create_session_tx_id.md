@@ -35,7 +35,7 @@ BEGIN
         BEGIN
             SELECT tx_id INTO v_tx_id
               FROM dblink(
-                current_setting('dblink.log_connection', TRUE),
+                current_setting('myapp.dblink_log_connection', TRUE),
                 $gen$
                   SELECT dbops.fn_generate_tx_id(
                     'dbops.fn_get_or_create_session_tx_id',
