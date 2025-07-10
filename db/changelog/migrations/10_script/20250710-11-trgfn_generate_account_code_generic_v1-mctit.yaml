@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  # Versione 2 (quando modifichi la logica)
+  
+  - changeSet:
+      id: 20250710-11-trgfn_generate_account_code_generic_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+  
+                  CREATE OR REPLACE FUNCTION script.trgfn_generate_account_code_generic()
+                      RETURNS TRIGGER
+                      LANGUAGE plpgsql
+                    AS $$
+                    DECLARE
+                      v_code_type TEXT := COALESCE(NULLIF(TG_ARGV[0], ''), TG_TABLE_NAME);
+                    BEGIN
+                      IF NEW.account_code IS NULL OR trim(NEW.account_code) = '' THEN
+                        NEW.account_code := script.fn_generate_codice(v_code_type);
+                      END IF;
+                      RETURN NEW;
+                    END;
+                    $$;
+
+
+        - sql:
+            comment: " 1a) Commento descrittivo sulla  trigger_function"
+            splitStatements: false
+            sql: |
+                  COMMENT ON FUNCTION script.trgfn_generate_account_code_generic()
+                       IS 'Trigger‐function parametrica: genera account_code chiamando fn_generate_codice(TG_ARGV[0] o TG_TABLE_NAME)';
+
+
+
+  # Metto un tag fine modifiche
+        
+  - changeSet:
+      id: 220250710-90-trgfn_generate_account_code_generic_v1
+      validCheckSums:
+        - ANY
+      runOnChange: true
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 220250710-11-trgfn_generate_account_code_generic_v1

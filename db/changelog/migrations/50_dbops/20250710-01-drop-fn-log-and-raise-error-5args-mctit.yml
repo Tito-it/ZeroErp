@@ -1,0 +1,39 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250710-01-drop-fn-log-and-raise-error-5args
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: "Rimuove l'overload a 5 parametri di script.fn_log_and_raise_error"
+      changes:
+      - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+               DROP FUNCTION IF EXISTS script.fn_log_and_raise_error(
+                  text,
+                  text,
+                  text,
+                  jsonb,
+                  text[]
+                );
+        
+  - changeSet:
+      id: 20250710-90-drop-fn-log-and-raise-error-5args
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - tagDatabase:
+            tag: 20250710-01-drop-fn-log-and-raise-error-5args
+            

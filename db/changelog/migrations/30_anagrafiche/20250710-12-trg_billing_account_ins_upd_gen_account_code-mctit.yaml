@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  # Versione 2 (quando modifichi la logica)
+  
+  - changeSet:
+      id: 20250710-12-trg_billing_account_ins_upd_gen_account_code
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            comment: "2) Rimuove eventuale trigger esistente su billing_account"
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_generate_account_code
+                ON anagrafiche.billing_account;
+        - sql:
+            comment: "3) Crea il trigger trg_generate_account_code per INSERT/UPDATE"
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_billing_account_ins_upd_gen_account_code ON anagrafiche.billing_account;
+              CREATE TRIGGER trg_billing_account_ins_upd_gen_account_code
+                BEFORE INSERT OR UPDATE
+                ON anagrafiche.billing_account
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_generate_account_code_generic('billing_account');
+
+        - sql:
+            comment: " 3a) Commento descrittivo sul  trigger"
+            splitStatements: false
+            sql: |
+                  COMMENT ON TRIGGER trg_billing_account_ins_upd_gen_account_code
+                    ON anagrafiche.billing_account
+                      IS 'Se account_code non specificato o vuoto, lo genera usando anagrafiche.trgfn_generate_account_code';
+        - sql:
+            comment: "4) Rimuove la vecchia funzione non-trigger fn_generate_account_code(integer, integer)"
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_generate_account_code(integer, integer);
+
+
+  # Metto un tag fine modifiche
+        
+  - changeSet:
+      id: 220250710-91-trg_billing_account_ins_upd_gen_account_code
+      validCheckSums:
+        - ANY
+      runOnChange: true
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 220250710-12-trg_billing_account_ins_upd_gen_account_code

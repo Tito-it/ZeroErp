@@ -81,7 +81,7 @@ databaseChangeLog:
                         -- --------------------------------------
                       IF NOT v_bypass_enabled THEN
                           BEGIN
-                              v_bypass_enabled := current_setting('app.bypass_tx_id_check', TRUE)::BOOLEAN;
+                              v_bypass_enabled := current_setting('myapp.bypass_tx_id_check', TRUE)::BOOLEAN;
                           EXCEPTION WHEN OTHERS THEN
                               -- Variabile sessione non impostata: procedi senza bypass
                               NULL;

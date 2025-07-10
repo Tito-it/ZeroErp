@@ -16,7 +16,7 @@ BEGIN
   -- prova ad aprire la connessione dblink 'logconn' usando la GUC
   PERFORM dblink_connect_u(
     'logconn',
-    current_setting('dblink.log_connection', true)
+    current_setting('myapp.dblink_log_connection', true)
   );
 EXCEPTION WHEN duplicate_object THEN
   -- se logconn esiste già, ignora

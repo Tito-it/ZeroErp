@@ -14,14 +14,12 @@
 - [soggetti_ruoli](tabelle/soggetti_ruoli.md) — * **Associazione molti-a-molti**: stabilisce una relazione N\:N tra la tabella `anagrafiche.soggetti` e `config.tipi_ruoli`, consentendo a ogni soggetto di rivestire più ruoli (es. cliente, fornitore, gestore) e a ogni ruolo di essere assegnato a molti soggetti. * **Estensione semantica**: il campo `extra` (JSONB) offre la possibilità di collegare metadati aggiuntivi per la singola associazione soggetto-ruolo (ad esempio, parametri contrattuali specifici se il ruolo è “fornitore” o date di attivazione per il ruolo “cliente”). * **Tracciatura delle modifiche**: grazie ai campi di audit (`user_insert`, `data_insert`, `user_update`, `data_update`) aggiornati automaticamente, la tabella conserva la cronologia di creazione e aggiornamento di ciascuna associazione.
 
 ## ⚙️ Funzioni
-- [fn_generate_account_code](funzioni/fn_generate_account_code.md)
 - [trgfn_contatti_ins_upd_set_default_contatto](funzioni/trgfn_contatti_ins_upd_set_default_contatto.md) — * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 - [trgfn_gestori_ins_upd_check_ruolo_gestore](funzioni/trgfn_gestori_ins_upd_check_ruolo_gestore.md) — - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_check_ins_soggetto_ruolo` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio](funzioni/trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio.md)
 - [trgfn_indirizzi_ins_upd_clean_fields](funzioni/trgfn_indirizzi_ins_upd_clean_fields.md)
 - [trgfn_indirizzi_upd_dlt_storico_indirizzi](funzioni/trgfn_indirizzi_upd_dlt_storico_indirizzi.md)
 - [trgfn_istanze_utilities_ins_set_istanza_codice](funzioni/trgfn_istanze_utilities_ins_set_istanza_codice.md)
-- [trgfn_soggetti_ins_genera_cdsoggetto](funzioni/trgfn_soggetti_ins_genera_cdsoggetto.md)
 - [trgfn_soggetti_ins_upd_check_soggetto_contatti](funzioni/trgfn_soggetti_ins_upd_check_soggetto_contatti.md) — * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
 - [trgfn_soggetti_ins_upd_genera_cdsoggetto](funzioni/trgfn_soggetti_ins_upd_genera_cdsoggetto.md)
 - [trgfn_soggetti_ins_upd_valida_piva_cdfiscale](funzioni/trgfn_soggetti_ins_upd_valida_piva_cdfiscale.md)
