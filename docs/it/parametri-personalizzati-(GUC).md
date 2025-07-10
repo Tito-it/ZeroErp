@@ -1,120 +1,128 @@
 ## 📘 Parametri Personalizzati (GUC) in PostgreSQL
 
-
-> 👀 **Vedi anche**  
-> 
-> Approfondimento Tabelle:   
-> - [config.parameters](/dbzero/config/tabelle/parameters)      
-> - [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
+> 👀 **Vedi anche**
 >
-> Approfondimento funzioni :    
-> - [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)     
-> 
-> All'interno del documento viene spiegata la differenza tra parametri GUC e parametri tabellari
+> Approfondimento Tabelle:
+> - [config.parameters](/dbzero/config/tabelle/parameters)
+> - [config.parameter\_overrides](/dbzero/config/tabelle/parameter_overrides)
+>
+> Approfondimento funzioni:
+> - [script.fn\_get\_parameter\_full](/dbzero/script/funzioni/fn_get_parameter_full)
+>
+> All’interno del documento viene spiegata la differenza tra parametri GUC e parametri tabellari.
 
-
-I **Parametri Personalizzati (GUC - Grand Unified Configuration)** di PostgreSQL consentono agli sviluppatori di definire e gestire variabili globali personalizzate per il proprio database o applicazione. Tali parametri permettono di configurare in modo flessibile il comportamento delle applicazioni, centralizzando impostazioni e facilitando manutenzione e configurazione.
+I **Parametri Personalizzati (GUC – Grand Unified Configuration)** di PostgreSQL consentono di definire variabili di configurazione custom, accessibili da funzioni, trigger e dalla sessione SQL. Sono ideali per configurazioni DB‑centriche, centralizzate e versionabili tramite `postgresql.conf` o comandi SQL.
 
 ---
 
 ### 🎯 Scopo Principale
 
-* Centralizzare configurazioni applicative specifiche direttamente nel database PostgreSQL.
-* Facilitare modifiche dinamiche a parametri senza intervenire sul codice applicativo.
-* Consentire l’accesso semplificato a configurazioni globali da procedure, funzioni e trigger del database.
+* Centralizzare configurazioni applicative specifiche direttamente nel database.
+* Modificare dinamicamente parametri senza toccare il codice applicativo.
+* Rendere disponibili “feature flags”, stringhe di connessione, lingua, ecc., in modo uniforme.
 
 ---
 
 ### 🛠️ Definizione e Utilizzo
 
-La definizione dei parametri avviene normalmente modificando il file `postgresql.conf` oppure utilizzando comandi SQL come:
+Si definiscono in `postgresql.conf` o con:
 
 ```sql
-ALTER DATABASE mydb SET parametro_personalizzato = 'valore';
+ALTER DATABASE zeroerp SET myapp.user_language = 'it';
+ALTER ROLE app_user   SET myapp.bypass_tx_id_check = 'on';
 ```
 
-L'accesso ai parametri definiti avviene tramite la funzione SQL:
+Si leggono in PL/pgSQL o SQL con:
 
 ```sql
-SELECT current_setting('parametro_personalizzato', true);
+SELECT current_setting('myapp.user_language', TRUE);
 ```
 
-Questi parametri possono inoltre essere sovrascritti a diversi livelli, ad esempio:
+e si possono modificare in sessione:
 
-* A livello di **utente**:
-
-  ```sql
-  ALTER USER username SET myapp.user_language = 'en';
-  ```
-
-* A livello di **ruolo**:
-
-  ```sql
-  ALTER ROLE rolename SET myapp.user_language = 'fr';
-  ```
-
-* Per la **sessione corrente**:
-
-  ```sql
-  SET myapp.user_language = 'de';
-  ```
-
-Questo meccanismo è particolarmente utile per impostazioni come la lingua, permettendo una gestione flessibile e personalizzata per singoli utenti o gruppi.
+```sql
+SET myapp.user_language = 'en';
+```
 
 ---
 
-### 📋 Esempi di Parametri in Zero ERP
+### ⚖️ Tipologie di GUC
 
-Di seguito i parametri personalizzati (GUC) definiti in `postgresql.conf` e utilizzati nel progetto Zero ERP:
+| Tipo di GUC           | Prefisso | Stabilità              | Scope                                   |
+| --------------------- | -------- | ---------------------- | --------------------------------------- |
+| **Di sistema**        | `myapp.` | Persistente (conf/db)  | Cluster, Database, Role, Session        |
+| **Di infrastruttura** | `dbops.` | Temporanee (GUC local) | Solo within-session (es. `dbops.tx_id`) |
 
-* **`dblink.log_connection`**
+* **GUC di sistema** (`myapp.*`):
+  Parametri applicativi centrali (es. lingua, dblink, feature-flag). Definiti in `postgresql.conf`, `ALTER SYSTEM`, `ALTER DATABASE` o `ALTER ROLE`.
+* **GUC temporanee/infrastrutturali** (`<schema>.<name>`):
+  Usate da trigger e funzioni per passare variabili di sessione (es. `dbops.tx_id`). Vengono settate con `set_config(…, is_local := TRUE)` e reset al commit/rollback.
 
-  Configura la stringa di connessione utilizzata dall'estensione `dblink` per effettuare connessioni cross-database, specialmente utile per operazioni di logging remoto.
+---
 
-  Esempio:
+### 📋 Esempi di GUC in Zero ERP
 
-  ```sql
-  dblink.log_connection = 'host=localhost port=5432 dbname=Zero user=user password=pwd'
+* **`myapp.dblink_log_connection`**
+  Stringa di connessione per `dblink`, usata per log remoti fuori dalla transazione corrente.
+
+  ```conf
+  myapp.dblink_log_connection = 'host=localhost port=5432 dbname=Zero user=xx password=xx'
   ```
-
 * **`myapp.user_language`**
+  Lingua di default per le funzioni applicative.
 
-  Definisce la lingua di default utilizzata dalle funzioni applicative per selezionare messaggi e configurazioni linguistiche appropriate. Tale valore viene usato tipicamente per localizzazione dei messaggi.
-
-  Esempio:
-
-  ```sql
+  ```conf
   myapp.user_language = 'it'
   ```
+* **`myapp.bypass_tx_id_check`**
+  Flag booleano per abilitare/disabilitare il controllo obbligatorio di `tx_id` nel trigger.
+
+  ```conf
+  myapp.bypass_tx_id_check = off
+  ```
+* **`dbops.tx_id`** *(temporanea)*
+  UUID di sessione che identifica le operazioni della stessa transazione. Viene settato da trigger PL/pgSQL e reset al commit/rollback.
 
 ---
 
-### ⚖️ Confronto: GUC vs Modello a Tabelle
+### 🤝 Differenza GUC vs Parametri Tabellari
 
-| Caratteristica              | GUC PostgreSQL                                      | Tabella Override (`config.parameters` + `config.parameter_overrides`)              |
-| --------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| **Livelli di applicazione** | `database`, `role`, `session`, **statici**          | `global → tenant → user → session → function` (dinamici)                           |
-| **Flessibilità**            | Rigido (solo livelli predefiniti)                   | Altamente estendibile a nuovi scope (es. ruolo, feature, modulo)                   |
-| **Versioning**              | No (config file o DDL)                              | Sì (versionato con Liquibase in script SQL)                                        |
-| **Audit**                   | Limitato (no audit built‑in)                        | Sì (campi `data_insert`, `user_insert`, trigger di audit)                          |
-| **Accesso runtime**         | Solo `SET` o `current_setting`                      | API/Query dirette a database, integrabili in endpoint REST                         |
-| **Use case ideale**         | Parametri **DB‑centrici** (work\_mem, search\_path) | Parametri **business‑centrici** (timeout, currency, workflow, feature flags, etc.) |
+| Caratteristica       | GUC (`myapp.*`, `dbops.*`)                        | Tabelle (`config.parameters` + overrides)                  |
+| -------------------- | ------------------------------------------------- | ---------------------------------------------------------- |
+| **Scope**            | Cluster/DB/Role/Session                           | Record-level (tenant, utente, funzione, sessione)          |
+| **Versioning/Audit** | No (solo DDL o conf file)                         | Sì (Liquibase, trigger di audit, date\_insert, ecc.)       |
+| **Dinamico**         | Sì (SET/ALTER in sessione)                        | Sì (modificabile in runtime con query)                     |
+| **Use case**         | Configurazioni DB-centriche (lingua, connessioni) | Configurazioni business-centriche (feature-flag, timeouts) |
 
-> **Quando scegliere...**
+---
+
+### 🗂️ Documentazione e Allegati
+
+* **Documento Principale** (questo): introduce GUC e best practice.
+* **Elenco GUC Definite**: crea un file separato (`guc_reference.md` o `.xlsx`) contenente tabella con:
+
+  * `nome parametro`
+  * `default`
+  * `scope` (cluster/db/role/session)
+  * `descrizione`
+  * `schema/funzione che lo usa`
+
+> **Suggerimento**: per estrarre le GUC già definite in conf usa:
 >
-> * **GUC PostgreSQL**: per configurazioni strettamente tecniche o performance‑oriented, con requisiti statici o legati al ruolo DB.
-> * **Tabella Override**: per impostazioni dinamiche, multi‑tenant e variabili in base a user/session/function, con tracciamento e versioning completo.
+> ```sql
+> SELECT name, setting
+>   FROM pg_settings
+>  WHERE name LIKE 'myapp.%' OR name LIKE 'dbops.%'
+>  ORDER BY name;
+> ```
 
 ---
 
 ### 🔒 Best Practices
 
-* Utilizzare nomi di parametri chiari e descrittivi, preferibilmente con prefissi applicativi (ad esempio, `myapp.`).
-* Evitare di esporre informazioni sensibili o credenziali direttamente nei parametri GUC, soprattutto in ambienti di produzione.
-* Documentare chiaramente ciascun parametro, includendo scopo, formato e uso previsto.
-* Cache lato applicazione: caricare in memoria i parametri all’avvio e rinnovarli periodicamente (es. TTL 5’).
-* Per i secrets, utilizzare un Vault dedicato anziché GUC o tabelle.
+1. Usare **prefissi chiari** (`myapp.` per sistema, `<schema>.` per variabili di sessione).
+2. Documentare ogni parametro in `postgresql.conf` e in `guc_reference.md`.
+3. Gestire valori sensibili con Vault, non in GUC.
+4. Caricare in cache in applicazione e rinfrescare periodicamente.
 
----
-
-> 🧠 **“I parametri GUC sono ideali per la configurazione DB‑centric; per logica applicativa e scenari multi‑tenant multi‑scope, il modello a tabelle offre flessibilità, versioning e audit.”**
+> 🧠 **“Standardizza i prefissi, separa configurazioni di sistema da quelle transazionali e mantieni sempre un elenco aggiornato da allegare ai tuoi rilasci.”**
