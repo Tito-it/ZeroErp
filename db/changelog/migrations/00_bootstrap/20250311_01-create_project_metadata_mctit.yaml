@@ -73,7 +73,9 @@ databaseChangeLog:
                   RAISE EXCEPTION 'Modifica non consentita sulla tabella internal.project_metadata';
                 END;
                 $BODY$
-
+      changes:
+        - sql:
+            sql: >
               CREATE TRIGGER trg_block_modification
               BEFORE INSERT OR UPDATE OR DELETE ON internal.project_metadata
               FOR EACH STATEMENT
