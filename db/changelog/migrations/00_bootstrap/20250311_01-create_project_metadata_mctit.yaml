@@ -64,7 +64,9 @@ databaseChangeLog:
         - ANY
       changes:
         - sql:
-            sql: >
+            comment: "1) Crea o sostituisce la trigger-function per bloccare modifiche"
+            splitStatements: false
+            sql: |
               CREATE OR REPLACE FUNCTION internal.trgfn_block_project_metadata()
                   RETURNS trigger
                   LANGUAGE plpgsql 
@@ -73,9 +75,10 @@ databaseChangeLog:
                   RAISE EXCEPTION 'Modifica non consentita sulla tabella internal.project_metadata';
                 END;
                 $BODY$;
-      changes:
         - sql:
-            sql: >
+            comment: "2) Crea il trigger su project_metadata"
+            splitStatements: false
+            sql: |
               CREATE TRIGGER trg_block_modification
               BEFORE INSERT OR UPDATE OR DELETE ON internal.project_metadata
               FOR EACH STATEMENT
