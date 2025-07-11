@@ -7,6 +7,14 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 databaseChangeLog:
+
+  - changeSet:
+      id: 20250711-0100-create-project-metadata
+      author: mctit
+      changes:
+        - sql:
+            sql: "CREATE SCHEMA IF NOT EXISTS internal;"
+            comment: "Crea lo schema 'internal' se non esiste"
   - changeSet:
       id: 20250711-0102-create-project-metadata
       author: mctit
