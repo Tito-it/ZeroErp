@@ -59,6 +59,9 @@ databaseChangeLog:
   - changeSet:
       id: 20250711-03-trigger-block-modification
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
       changes:
         - sql:
             sql: |
