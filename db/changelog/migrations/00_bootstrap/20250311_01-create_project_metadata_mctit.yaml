@@ -7,14 +7,42 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 databaseChangeLog:
-
+  # 1) Abilita l'estensione pgcrypto per la cifratura
   - changeSet:
-      id: 20250711-0100-create-project-metadata
+      id: 20250513-01
       author: mctit
       changes:
         - sql:
-            sql: "CREATE SCHEMA IF NOT EXISTS internal;"
-            comment: "Crea lo schema 'internal' se non esiste"
+            splitStatements: false
+            sql: |
+              CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+  
+  #2) Crea lo schema "internal" e ne revoca i privilegi al PUBLIC
+  - changeSet:
+      id: 20250311-02-set-internal
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- 1) Creazione del ruolo se non esiste
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_roles WHERE rolname = 'zeroerp_app'
+                ) THEN
+                  CREATE ROLE zeroerp_app LOGIN;
+                END IF;
+              END
+              $$;
+
+              -- 2) Creazione dello schema e gestione dei privilegi
+              CREATE SCHEMA IF NOT EXISTS internal;
+              REVOKE ALL ON SCHEMA internal FROM PUBLIC;
+              GRANT USAGE ON SCHEMA internal TO zeroerp_app;
+
+    
   - changeSet:
       id: 20250711-0102-create-project-metadata
       author: mctit
@@ -83,6 +111,61 @@ databaseChangeLog:
               BEFORE INSERT OR UPDATE OR DELETE ON internal.project_metadata
               FOR EACH STATEMENT
               EXECUTE FUNCTION internal.trgfn_block_project_metadata();
+
+
+  # 4) Tabella per il tracking della versione in uso
+  - changeSet:
+      id: 20250513-04
+      author: mctit
+      changes:
+        - createTable:
+            tableName: version_info
+            columns:
+              - column:
+                  name: id
+                  type: BIGSERIAL
+                  constraints:
+                    primaryKey: true
+              - column:
+                  name: app_name
+                  type: VARCHAR(100)
+                  defaultValue: "ZeroErp"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: last_updated_by
+                  type: VARCHAR(100)
+                  defaultValueComputed: CURRENT_USER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: last_updated_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - insert:
+            tableName: version_info
+            columns:
+              - column:
+                  name: app_name
+                  value: "ZeroErp"
+              - column:
+                  name: version
+                  value: "0.1.0"
+
+
 
   - changeSet:
       id: 20250711-04-restrict-permissions
