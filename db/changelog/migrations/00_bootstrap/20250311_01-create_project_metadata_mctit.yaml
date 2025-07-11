@@ -66,11 +66,13 @@ databaseChangeLog:
         - sql:
             sql: |
               CREATE OR REPLACE FUNCTION internal.trgfn_block_project_metadata()
-              RETURNS trigger AS $BODY$
-              BEGIN
-                RAISE EXCEPTION 'Modifica non consentita sulla tabella internal.project_metadata';
-              END;
-              $BODY$ LANGUAGE plpgsql;
+                  RETURNS trigger
+                  LANGUAGE plpgsql 
+                AS $BODY$
+                BEGIN
+                  RAISE EXCEPTION 'Modifica non consentita sulla tabella internal.project_metadata';
+                END;
+                $BODY$ ;
 
               CREATE TRIGGER trg_block_modification
               BEFORE INSERT OR UPDATE OR DELETE ON internal.project_metadata
