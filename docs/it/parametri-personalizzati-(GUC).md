@@ -118,6 +118,18 @@ SET myapp.user_language = 'en';
 
 ---
 
+### 🗂️ Comandi Utili
+> ```sql
+>
+> -- Mostra la path di postgresql.conf   
+>SHOW config_file;    
+>  -- Mostra i parametri GUC definiti in :    
+>SHOW myapp.user_language;     -- (Show nome Guc)
+>
+> ```
+
+---
+
 ### 🔒 Best Practices
 
 1. Usare **prefissi chiari** (`myapp.` per sistema, `<schema>.` per variabili di sessione).

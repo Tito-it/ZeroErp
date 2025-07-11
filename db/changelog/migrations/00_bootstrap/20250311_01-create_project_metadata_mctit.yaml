@@ -1,0 +1,76 @@
+﻿# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250711-0102-create-project-metadata
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: internal
+            tableName: project_metadata
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: info_encrypted
+                  type: bytea
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              
+  - changeSet:
+      id: 20250711-0202-insert-project-signature
+      author: mctit
+      changes:
+        - sql:
+            comment: Inserisce il testo cifrato del progetto
+            sql: |
+              TRUNCATE internal.project_metadata;
+              INSERT INTO internal.project_metadata(info_encrypted)
+              VALUES (
+              decode('c30d04070302ee8c7e34fb67a4586cd2c010019b48b764009aaf2376dbf9ad7f082985cbd261064b58186981cba6d1f6dc55f89af9023254e98e1452fbdf3116159d3e423b3daaf400a999bea76149e0e3e7cc85baa79faad0580e1f1bbf47cb9c6e6fbf3f84df4571682469e878138f4dbddde17ebb6273ec95023e4312a7135a5cd6efc3bd89431ee686d4bf317a288a5be5835986c6f9f57c6794dad3111e2d303c505d572273de9cad79b1a491efbac6682336f9269c730b8335ac7fef380337dd8bd1cdaf6f29a9aceb613039ed5c3c25e8ded7b83f81337a7a831656f4ac2d',
+              'hex')
+              );
+
+  - changeSet:
+      id: 20250711-03-trigger-block-modification
+      author: mctit
+      changes:
+        - sql:
+            sql: |
+              CREATE OR REPLACE FUNCTION internal.trgfn_block_project_metadata()
+              RETURNS trigger AS $$
+              BEGIN
+                RAISE EXCEPTION 'Modifica non consentita sulla tabella internal.project_metadata';
+              END;
+              $$ LANGUAGE plpgsql;
+
+              CREATE TRIGGER trg_block_modification
+              BEFORE INSERT OR UPDATE OR DELETE ON internal.project_metadata
+              FOR EACH STATEMENT
+              EXECUTE FUNCTION internal.trgfn_block_project_metadata();
+
+  - changeSet:
+      id: 20250711-04-restrict-permissions
+      author: mctit
+      changes:
+        - sql:
+            sql: |
+              REVOKE ALL ON TABLE internal.project_metadata FROM PUBLIC;
+              GRANT SELECT ON TABLE internal.project_metadata TO PUBLIC;
