@@ -72,7 +72,7 @@ databaseChangeLog:
                 BEGIN
                   RAISE EXCEPTION 'Modifica non consentita sulla tabella internal.project_metadata';
                 END;
-                $BODY$
+                $BODY$;
       changes:
         - sql:
             sql: >
