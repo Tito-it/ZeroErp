@@ -59,6 +59,17 @@
         </ul>
       </td>
     </tr>
+    <tr>
+      <td><strong>public</strong></td>
+      <td>
+        Mostra solo tabelle pubbliche (non pubbliche), ad esempio version_info   
+        <ul>
+          <li>Esempi: <code>version_info</code>, <code>ecc...</code></li>
+          <li>Solo tabelle o funzioni non pubbliche</li>
+        </ul>
+      </td>
+    </tr>
+
   </tbody>
 </table>
 

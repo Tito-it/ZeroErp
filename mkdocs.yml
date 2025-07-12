@@ -73,7 +73,7 @@ nav:
           - Dbops:      dbzero/dbops/index.md
           - Script:     dbzero/script/index.md
           - Storico:    dbzero/storico/index.md
-         
+          - Public:    dbzero/public/index.md
   - Strumenti:
       - Generatore Documentazione: dbzero/tools/gen_db_docs.md
   - Sviluppatori:

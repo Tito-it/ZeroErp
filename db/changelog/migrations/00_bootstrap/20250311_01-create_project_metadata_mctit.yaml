@@ -17,9 +17,10 @@ databaseChangeLog:
             sql: |
               CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-  # 2) Crea lo schema "internal" e ne revoca i privilegi al PUBLIC
+  
+  #2) Crea lo schema "internal" e ne revoca i privilegi al PUBLIC
   - changeSet:
-      id: 20250513-02
+      id: 20250311-02-set-internal
       author: mctit
       changes:
         - sql:
@@ -41,11 +42,9 @@ databaseChangeLog:
               REVOKE ALL ON SCHEMA internal FROM PUBLIC;
               GRANT USAGE ON SCHEMA internal TO zeroerp_app;
 
-
-
-  # 3) Tabella nascosta con metadati criptati
+    
   - changeSet:
-      id: 20250513-03
+      id: 20250711-0102-create-project-metadata
       author: mctit
       changes:
         - createTable:
@@ -54,28 +53,65 @@ databaseChangeLog:
             columns:
               - column:
                   name: id
-                  type: BIGSERIAL
+                  type: bigint
+                  autoIncrement: true
                   constraints:
                     primaryKey: true
+                    nullable: false
               - column:
                   name: info_encrypted
-                  type: BYTEA
+                  type: bytea
                   constraints:
                     nullable: false
               - column:
                   name: created_at
-                  type: TIMESTAMP WITH TIME ZONE
-                  defaultValueComputed: CURRENT_TIMESTAMP
+                  type: timestamp with time zone
+                  defaultValueComputed: now()
                   constraints:
                     nullable: false
+              
+  - changeSet:
+      id: 20250711-0202-insert-project-signature
+      author: mctit
+      changes:
         - sql:
+            comment: Inserisce il testo cifrato del progetto
+            sql: |
+              TRUNCATE internal.project_metadata;
+              INSERT INTO internal.project_metadata(info_encrypted)
+              VALUES (
+              decode('c30d04070302ee8c7e34fb67a4586cd2c010019b48b764009aaf2376dbf9ad7f082985cbd261064b58186981cba6d1f6dc55f89af9023254e98e1452fbdf3116159d3e423b3daaf400a999bea76149e0e3e7cc85baa79faad0580e1f1bbf47cb9c6e6fbf3f84df4571682469e878138f4dbddde17ebb6273ec95023e4312a7135a5cd6efc3bd89431ee686d4bf317a288a5be5835986c6f9f57c6794dad3111e2d303c505d572273de9cad79b1a491efbac6682336f9269c730b8335ac7fef380337dd8bd1cdaf6f29a9aceb613039ed5c3c25e8ded7b83f81337a7a831656f4ac2d',
+              'hex')
+              );
+
+  - changeSet:
+      id: 20250711-03-trigger-block-modification
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            comment: "1) Crea o sostituisce la trigger-function per bloccare modifiche"
             splitStatements: false
             sql: |
-              INSERT INTO internal.project_metadata (info_encrypted)
-              VALUES (
-                -- il literal BYTEA: \x + la tua stringa esadecimale
-                E'\\xc30d04070302249ff7258d8908d879d280014a68780b2865a5e2db1cdab9801c89cd05faadd631854ed78c29aec17d7df77c5d2b844f618b3678e3d220bf8b51391f5c274187d5a9105288933b9e81e100002ccecddb03c76ac97a62242f7ff6914aa940481ed168989bd76e5b31c9fcf6816fb5f1affb9dd55231d48ac8c1b47c6ec2f5558f9b1c126216f58fd366dfa8'::bytea
-              );
+              CREATE OR REPLACE FUNCTION internal.trgfn_block_project_metadata()
+                  RETURNS trigger
+                  LANGUAGE plpgsql 
+                AS $BODY$
+                BEGIN
+                  RAISE EXCEPTION 'Modifica non consentita sulla tabella internal.project_metadata';
+                END;
+                $BODY$;
+        - sql:
+            comment: "2) Crea il trigger su project_metadata"
+            splitStatements: false
+            sql: |
+              CREATE TRIGGER trg_block_modification
+              BEFORE INSERT OR UPDATE OR DELETE ON internal.project_metadata
+              FOR EACH STATEMENT
+              EXECUTE FUNCTION internal.trgfn_block_project_metadata();
+
 
   # 4) Tabella per il tracking della versione in uso
   - changeSet:
@@ -128,3 +164,14 @@ databaseChangeLog:
               - column:
                   name: version
                   value: "0.1.0"
+
+
+
+  - changeSet:
+      id: 20250711-04-restrict-permissions
+      author: mctit
+      changes:
+        - sql:
+            sql: |
+              REVOKE ALL ON TABLE internal.project_metadata FROM PUBLIC;
+              GRANT SELECT ON TABLE internal.project_metadata TO PUBLIC;
