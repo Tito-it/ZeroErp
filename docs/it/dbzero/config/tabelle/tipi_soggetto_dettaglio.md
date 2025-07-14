@@ -15,10 +15,12 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_update | text | YES |  |
 | data_update | timestamp with time zone | YES |  |
+| stato_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_tipi_soggetto_dettaglio_stato_id | stato_id |
 | FOREIGN KEY | fk_tipi_soggetto_dettaglio_tipi_soggetto_id | tipo_soggetto_id |
 | PRIMARY KEY | pk_tipi_soggetto_dettaglio | id |
 | UNIQUE | uq_tipi_soggetto_dettaglio_cod_int_tipo_soggetto | cod_int_tipo_soggetto |
