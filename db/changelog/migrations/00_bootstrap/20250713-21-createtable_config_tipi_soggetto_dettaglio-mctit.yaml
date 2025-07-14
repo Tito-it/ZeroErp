@@ -164,39 +164,7 @@ databaseChangeLog:
               - column: { name: formato_cf, value: "NUM_11" }
               - column: { name: formato_piva, value: "NUM_11" }
 
-  - changeSet:
-      id: 20250713-24-add-trigger-transaction-ids-audit
-      author: mctit
-      comments: "Aggiunge il trigger trg_upd_overrides_audit_data_user su config.tipi_soggetto_dettaglio"
-      changes:
-        - sql:
-            splitStatements: false
-            sql: |
-              -- Rimuove eventuale trigger esistente
-              DROP TRIGGER IF EXISTS trg_upd_overrides_audit_data_user ON config.tipi_soggetto_dettaglio;
-
-              -- Crea trigger per aggiornare i campi audit usando la funzione generica
-              CREATE TRIGGER trg_upd_overrides_audit_data_user
-                BEFORE UPDATE ON config.tipi_soggetto_dettaglio
-                FOR EACH ROW
-                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
   
-  - changeSet:
-      id: 20250713-25-add-trigger-trgfn_lock_columns
-      author: mctit
-      comments: "Aggiunge il trigger trgfn_lock_columns su config.tipi_soggetto_dettaglio"
-      changes:
-        - sql:
-            splitStatements: false
-            sql: |
-             
-             CREATE OR REPLACE TRIGGER trg_tipi_soggetto_dettaglio_upd_lock_codiceinterno
-              BEFORE UPDATE 
-              ON config.tipi_soggetto_dettaglio
-              FOR EACH ROW
-              WHEN (old.cod_int_tipo_soggetto::text IS DISTINCT FROM new.cod_int_tipo_soggetto::text)
-              EXECUTE FUNCTION script.trgfn_lock_columns('cod_int_tipo_soggetto', 'CODICE_NON_MODIFICABILE');
-
 
   
   - changeSet:
