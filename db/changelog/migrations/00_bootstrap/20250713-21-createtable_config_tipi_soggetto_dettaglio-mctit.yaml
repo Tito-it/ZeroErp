@@ -90,17 +90,7 @@ databaseChangeLog:
                     constraints:
                       nullable: true
         
-                # Foreign key tipi_soggetto_dettaglio → stati
-        - addForeignKeyConstraint:
-                    baseTableSchemaName: config
-                    baseTableName: tipi_soggetto_dettaglio
-                    baseColumnNames: stato_iso
-                    referencedTableSchemaName: config
-                    referencedTableName: stati
-                    referencedColumnNames: codice_iso2
-                    constraintName: fk_tipi_soggetto_dettaglio_stato_iso2 
-                    onUpdate: CASCADE
-                    onDelete: RESTRICT
+        
         - sql:
               sql: |
                 COMMENT ON TABLE config.tipi_soggetto_dettaglio IS 'Tipologia dettagliata soggetto con formato CF e P.IVA per paese';
