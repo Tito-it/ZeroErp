@@ -1,0 +1,59 @@
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250714-01-add_tipo_soggetto_dettaglio_to_soggetti
+      author: mctit
+      comments: "Aggiunge il campo tipo_soggetto_dettaglio_id e la FK su config.tipi_soggetto_dettaglio"
+      preConditions:
+        onFail: MARK_RAN
+        onError: HALT
+        not:
+          columnExists:
+            schemaName: anagrafiche
+            tableName: soggetti
+            columnName: tipo_soggetto_dettaglio_id
+      changes:
+        # 1) Aggiunge il nuovo campo in anagrafiche.soggetti
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: soggetti
+            columns:
+              - column:
+                  name: tipo_soggetto_dettaglio_id
+                  type: BIGINT
+                  remarks: "Riferimento a config.tipi_soggetto_dettaglio"
+                  
+        # 2) Crea vincolo FK su config.tipi_soggetto_dettaglio(id)
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti
+            baseColumnNames: tipo_soggetto_dettaglio_id
+            referencedTableSchemaName: config
+            referencedTableName: tipi_soggetto_dettaglio
+            referencedColumnNames: id
+            constraintName: fk_soggetti_tipo_soggetto_dettaglio
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+        # 3) Commento sulla colonna
+        - sql:
+            dbms: postgresql
+            sql: |
+              COMMENT ON COLUMN anagrafiche.soggetti.tipo_soggetto_dettaglio_id
+                IS 'Riferimento a config.tipi_soggetto_dettaglio per controlli CF/P.IVA';
+
+
+  - changeSet:
+      id: 20250714-90-add_tipo_soggetto_dettaglio_to_soggetti
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250714-01-add_tipo_soggetto_dettaglio_to_soggetti

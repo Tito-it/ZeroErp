@@ -1,0 +1,115 @@
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250713-11-createtable_config_tipi_soggetto-mctit
+      author: mctit
+      comments: "Crea la tabella config.tipi_soggetto "
+
+      preConditions:
+        onFail: MARK_RAN
+        onError: MARK_RAN
+        preConditions:
+          - not:
+              tableExists:
+                schemaName: config
+                tableName: tipi_soggetto
+      
+      changes:
+      - createTable:
+            schemaName: config
+            tableName: tipi_soggetto
+            columns:
+              - column:
+                  name: id_tipo_soggetto
+                  type: VARCHAR(10)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: descrizione
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: TEXT
+                  defaultValueComputed: current_user
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: TEXT
+                  constraints:
+                    nullable: true
+              - column:
+                  name: data_update
+                  type: TIMESTAMP WITH TIME ZONE
+                  constraints:
+                    nullable: true
+      - sql:
+            sql: |
+              COMMENT ON TABLE config.tipi_soggetto IS 'Macro-tipologia soggetto: Persona fisica, Persona giuridica, Ente, ecc.';
+  - changeSet:
+      id: 20250704-13-insert-tipi-soggetto
+      author: mctit
+      changes:
+        - insert:
+            schemaName: config
+            tableName: tipi_soggetto
+            columns:
+              - column: { name: id_tipo_soggetto, value: "PF" }
+              - column: { name: descrizione, value: "Persona Fisica" }
+
+        - insert:
+            schemaName: config
+            tableName: tipi_soggetto
+            columns:
+              - column: { name: id_tipo_soggetto, value: "PG" }
+              - column: { name: descrizione, value: "Persona Giuridica" }
+
+        - insert:
+            schemaName: config
+            tableName: tipi_soggetto
+            columns:
+              - column: { name: id_tipo_soggetto, value: "ENC" }
+              - column: { name: descrizione, value: "Ente Non Commerciale" }
+
+
+  - changeSet:
+      id: 20250713-14-add-trigger-transaction-ids-audit
+      author: mctit
+      comments: "Aggiunge il trigger trg_upd_overrides_audit_data_user su anagrafiche.tipi_soggetto"
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rimuove eventuale trigger esistente
+              DROP TRIGGER IF EXISTS trg_upd_overrides_audit_data_user ON config.tipi_soggetto;
+              
+              -- Crea trigger per aggiornare i campi audit usando la funzione generica
+              CREATE TRIGGER trg_upd_overrides_audit_data_user
+                BEFORE UPDATE ON config.tipi_soggetto
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+  
+  - changeSet:
+      id: 20250713-90-createtable_config_tipi_soggetto
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250713-11-createtable_config_tipi_soggetto

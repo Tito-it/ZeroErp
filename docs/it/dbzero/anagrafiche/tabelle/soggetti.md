@@ -9,7 +9,6 @@
 | ragione_sociale | text | YES |  |
 | cognome | text | YES |  |
 | nome | text | YES |  |
-| tipo_soggetto | character | NO | 'F'::bpchar |
 | sesso | character | YES | 'M'::bpchar |
 | stato_id | integer | NO |  |
 | partita_iva | text | YES |  |
@@ -26,17 +25,16 @@
 | id_fiscale_univoco_cf_piva | text | YES |  |
 | ragione_sociale_completa | text | YES |  |
 | default_contatto_id | integer | YES |  |
+| tipo_soggetto_dettaglio_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_cf_o_piva |  |
-| CHECK | chk_soggetti_tipo_coerenza |  |
 | CHECK | chk_soggetto_soggetto_sesso |  |
-| CHECK | chk_soggetto_soggetto_tipo |  |
-| CHECK | chk_tipo_soggetto |  |
 | FOREIGN KEY | fk_comuni_config | comune_id, comune_id |
 | FOREIGN KEY | fk_contatti_anagrafiche | default_contatto_id |
+| FOREIGN KEY | fk_soggetti_tipo_soggetto_dettaglio | tipo_soggetto_dettaglio_id |
 | FOREIGN KEY | fk_stati_config | stato_id, stato_id |
 | FOREIGN KEY | fk_titoli_cortesia_config | titolo_cortesia_id, titolo_cortesia_id |
 | PRIMARY KEY | pk_soggetto | id |
@@ -58,10 +56,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_soggetti_ins_upd_check_soggetto_contatti | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |
 | trg_soggetti_ins_upd_check_soggetto_contatti | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |
+| trg_soggetti_ins_upd_check_soggetto_contatti | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |
+| trg_soggetti_ins_upd_dispatch_valida_cf_piva | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()` |
+| trg_soggetti_ins_upd_dispatch_valida_cf_piva | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()` |
 | trg_soggetti_ins_upd_genera_cdsoggetto | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto()` |
 | trg_soggetti_ins_upd_genera_cdsoggetto | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto()` |
-| trg_soggetti_ins_upd_valida_piva_cdfiscale | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_valida_piva_cdfiscale()` |
-| trg_soggetti_ins_upd_valida_piva_cdfiscale | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_valida_piva_cdfiscale()` |
+| trg_soggetti_ins_upd_valida_cf_piva | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()` |
+| trg_soggetti_ins_upd_valida_cf_piva | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()` |
 | trg_upd_soggetti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
