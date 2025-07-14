@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id_tipo_soggetto | character varying | NO |  |
+| id | character varying | NO |  |
 | descrizione | character varying | NO |  |
 | user_insert | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
@@ -14,12 +14,12 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| PRIMARY KEY | tipi_soggetto_pkey | id_tipo_soggetto |
+| PRIMARY KEY | pk_tipi_soggetto | id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| tipi_soggetto_pkey | `CREATE UNIQUE INDEX tipi_soggetto_pkey ON config.tipi_soggetto USING btree (id_tipo_soggetto)` |
+| pk_tipi_soggetto | `CREATE UNIQUE INDEX pk_tipi_soggetto ON config.tipi_soggetto USING btree (id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

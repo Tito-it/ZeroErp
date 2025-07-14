@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO | nextval('config.tipi_soggetto_dettaglio_id_seq'::regclass) |
-| id_tipo_soggetto | character varying | NO |  |
+| tipo_soggetto_id | character varying | NO |  |
 | stato_iso | character varying | NO |  |
 | cod_int_tipo_soggetto | character varying | NO |  |
 | descrizione_locale | character varying | YES |  |
@@ -19,14 +19,15 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| PRIMARY KEY | tipi_soggetto_dettaglio_pkey | id |
-| UNIQUE | tipi_soggetto_dettaglio_cod_int_tipo_soggetto_key | cod_int_tipo_soggetto |
+| FOREIGN KEY | fk_tipi_soggetto_dettaglio_tipi_soggetto_id | tipo_soggetto_id |
+| PRIMARY KEY | pk_tipi_soggetto_dettaglio | id |
+| UNIQUE | uq_tipi_soggetto_dettaglio_cod_int_tipo_soggetto | cod_int_tipo_soggetto |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| tipi_soggetto_dettaglio_cod_int_tipo_soggetto_key | `CREATE UNIQUE INDEX tipi_soggetto_dettaglio_cod_int_tipo_soggetto_key ON config.tipi_soggetto_dettaglio USING btree (cod_int_tipo_soggetto)` |
-| tipi_soggetto_dettaglio_pkey | `CREATE UNIQUE INDEX tipi_soggetto_dettaglio_pkey ON config.tipi_soggetto_dettaglio USING btree (id)` |
+| pk_tipi_soggetto_dettaglio | `CREATE UNIQUE INDEX pk_tipi_soggetto_dettaglio ON config.tipi_soggetto_dettaglio USING btree (id)` |
+| uq_tipi_soggetto_dettaglio_cod_int_tipo_soggetto | `CREATE UNIQUE INDEX uq_tipi_soggetto_dettaglio_cod_int_tipo_soggetto ON config.tipi_soggetto_dettaglio USING btree (cod_int_tipo_soggetto)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

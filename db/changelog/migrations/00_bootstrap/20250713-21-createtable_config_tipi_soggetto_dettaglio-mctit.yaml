@@ -98,7 +98,7 @@ databaseChangeLog:
                     referencedTableSchemaName: config
                     referencedTableName: stati
                     referencedColumnNames: codice_iso2
-                    constraintName: fk_tipi_soggetto_dettaglio_stato_iso
+                    constraintName: fk_tipi_soggetto_dettaglio_stato_iso2 
                     onUpdate: CASCADE
                     onDelete: RESTRICT
         - sql:
