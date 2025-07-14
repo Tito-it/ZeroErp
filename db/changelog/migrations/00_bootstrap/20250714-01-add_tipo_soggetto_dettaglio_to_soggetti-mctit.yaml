@@ -51,6 +51,74 @@ databaseChangeLog:
                 IS 'Riferimento a config.tipi_soggetto_dettaglio per controlli CF/P.IVA';
 
 
+
+
+  - changeSet:
+      id: 20250713-26-createtable_config_tipi_soggetto_dettagli0
+      author: mctit
+      comments: "Rinomina id_tipo_soggetto in tipo_soggetto_id e vrea la foreign key"
+      
+      changes:
+        changes:
+        # 1) Rimuovo la FK che dipende dal PK
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti
+            constraintName: fk_soggetti_tipo_soggetto_dettaglio
+          # 2) Rimuovo il PK col nome vecchio   
+        - dropPrimaryKey:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            constraintName: tipi_soggetto_dettaglio_pkey
+          # 3) Aggiungo il PK con il nuovo nome  
+        - addPrimaryKey:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            columnNames: id
+            constraintName: pk_tipi_soggetto_dettaglio
+          # 4) Rimuovo il UQ col nome vecchio 
+        - dropUniqueConstraint:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            constraintName: tipi_soggetto_dettaglio_cod_int_tipo_soggetto_key
+          # 5) Aggiungo il UQ col nome nuovo 
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            columnNames: cod_int_tipo_soggetto
+            constraintName: uq_tipi_soggetto_dettaglio_cod_int_tipo_soggetto
+
+        - renameColumn:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            oldColumnName: id_tipo_soggetto
+            newColumnName: tipo_soggetto_id
+            columnDataType: VARCHAR(10)
+        # Foreign key tipi_soggetto_dettaglio → tipi_soggetto
+        - addForeignKeyConstraint:
+                    baseTableSchemaName: config
+                    baseTableName: tipi_soggetto_dettaglio
+                    baseColumnNames: tipo_soggetto_id
+                    referencedTableSchemaName: config
+                    referencedTableName: tipi_soggetto
+                    referencedColumnNames: id
+                    constraintName: fk_tipi_soggetto_dettaglio_tipi_soggetto_id
+                    onUpdate: CASCADE
+                    onDelete: RESTRICT
+
+        # 4) Ricreo la FK puntando al nuovo PK
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti
+            baseColumnNames: tipo_soggetto_dettaglio_id
+            referencedTableSchemaName: config
+            referencedTableName: tipi_soggetto_dettaglio
+            referencedColumnNames: id
+            constraintName: fk_soggetti_tipo_soggetto_dettaglio
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+
   - changeSet:
       id: 20250714-90-add_tipo_soggetto_dettaglio_to_soggetti
       author: mctit

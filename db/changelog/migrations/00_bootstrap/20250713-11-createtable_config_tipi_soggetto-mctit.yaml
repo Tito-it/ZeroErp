@@ -108,6 +108,28 @@ databaseChangeLog:
                 EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
   
   - changeSet:
+      id: 20250713-15-rename-id-tipi-soggetto
+      author: mctit
+      comments: "Rinomina la colonna id_tipo_soggetto in id e aggiorna il nome del vincolo PK"
+      changes:
+        - renameColumn:
+            schemaName: config
+            tableName: tipi_soggetto
+            oldColumnName: id_tipo_soggetto
+            newColumnName: id
+            columnDataType: VARCHAR(10)
+        - dropPrimaryKey:
+            schemaName: config
+            tableName: tipi_soggetto
+            constraintName: tipi_soggetto_pkey
+        - addPrimaryKey:
+            schemaName: config
+            tableName: tipi_soggetto
+            columnNames: id
+            constraintName: pk_tipi_soggetto
+
+
+  - changeSet:
       id: 20250713-90-createtable_config_tipi_soggetto
       author: mctit
       changes:

@@ -89,17 +89,7 @@ databaseChangeLog:
                     type: TIMESTAMP WITH TIME ZONE
                     constraints:
                       nullable: true
-                # Foreign key tipi_soggetto_dettaglio → tipi_soggetto
-        - addForeignKeyConstraint:
-                    baseTableSchemaName: config
-                    baseTableName: tipi_soggetto_dettaglio
-                    baseColumnNames: codice_tipo_soggetto
-                    referencedTableSchemaName: config
-                    referencedTableName: tipi_soggetto
-                    referencedColumnNames: codice
-                    constraintName: fk_tipi_soggetto_dettaglio_codice_tipo
-                    onUpdate: CASCADE
-                    onDelete: RESTRICT
+        
                 # Foreign key tipi_soggetto_dettaglio → stati
         - addForeignKeyConstraint:
                     baseTableSchemaName: config
@@ -218,6 +208,7 @@ databaseChangeLog:
               EXECUTE FUNCTION script.trgfn_lock_columns('cod_int_tipo_soggetto', 'CODICE_NON_MODIFICABILE');
 
 
+  
   - changeSet:
       id: 20250713-90-createtable_config_tipi_soggetto_dettaglio
       author: mctit
