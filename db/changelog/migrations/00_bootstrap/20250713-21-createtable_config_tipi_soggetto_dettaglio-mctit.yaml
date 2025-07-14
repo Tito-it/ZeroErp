@@ -1,0 +1,175 @@
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250713-21-createtable_config_tipi_soggetto_dettaglio
+      author: mctit
+      comments: "Crea la tabella config.tipi_soggetto_dettaglio"
+      runOnChange: true
+      validCheckSums:
+        - ANY
+
+      preConditions:
+        onFail: MARK_RAN
+        onError: MARK_RAN
+        preConditions:
+          - not:
+              tableExists:
+                schemaName: config
+                tableName: tipi_soggetto_dettaglio
+      
+      changes:
+       # Sequence per tipi_soggetto_dettaglio
+        - createSequence:
+              schemaName: config
+              sequenceName: tipi_soggetto_dettaglio_id_seq
+              startValue: 1
+        - createTable:
+              schemaName: config
+              tableName: tipi_soggetto_dettaglio
+              columns:
+                - column:
+                    name: id
+                    type: BIGINT
+                    constraints:
+                      primaryKey: true
+                      nullable: false
+                - column:
+                    name: id_tipo_soggetto
+                    type: VARCHAR(10)
+                    constraints:
+                      nullable: false
+                      
+                - column:
+                    name: stato_iso
+                    type: VARCHAR(2)
+                    constraints:
+                      nullable: false
+                - column:
+                    name: cod_int_tipo_soggetto
+                    type: VARCHAR(10)
+                    constraints:
+                      unique: true
+                      nullable: false
+                - column:
+                    name: descrizione_locale
+                    type: VARCHAR(100)
+                - column:
+                    name: formato_cf
+                    type: VARCHAR(20)
+                - column:
+                    name: formato_piva
+                    type: VARCHAR(20)
+                - column:
+                    name: user_insert
+                    type: TEXT
+                    defaultValueComputed: current_user
+                    constraints:
+                      nullable: false
+                - column:
+                    name: data_insert
+                    type: TIMESTAMP WITH TIME ZONE
+                    defaultValueComputed: now()
+                    constraints:
+                      nullable: false
+                - column:
+                    name: user_update
+                    type: TEXT
+                    constraints:
+                      nullable: true
+                - column:
+                    name: data_update
+                    type: TIMESTAMP WITH TIME ZONE
+                    constraints:
+                      nullable: true
+        
+        
+        - sql:
+              sql: |
+                COMMENT ON TABLE config.tipi_soggetto_dettaglio IS 'Tipologia dettagliata soggetto con formato CF e P.IVA per paese';
+                COMMENT ON COLUMN config.tipi_soggetto_dettaglio.cod_int_tipo_soggetto IS 'Codice interno non modificabile per controlli applicativi';
+
+  - changeSet:
+      id: 20250713-22-add-default-seq-tipi_soggetto_dettaglio
+      author: mctit
+      changes:
+        - addDefaultValue:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            columnName: id
+            defaultValueComputed: "nextval('config.tipi_soggetto_dettaglio_id_seq')"
+
+  - changeSet:
+      id: 20250713-23-insert-tipi-soggetto-dettaglio
+      author: mctit
+      changes:
+        - insert:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            columns:
+              - column: { name: id_tipo_soggetto, value: "PF" }
+              - column: { name: stato_iso, value: "IT" }
+              - column: { name: cod_int_tipo_soggetto, value: "PR" }
+              - column: { name: descrizione_locale, value: "Persona Fisica - Privato" }
+              - column: { name: formato_cf, value: "ALFANUM_16" }
+              - column: { name: formato_piva, value: "NON_APPLICABILE" }
+
+        - insert:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            columns:
+              - column: { name: id_tipo_soggetto, value: "PF" }
+              - column: { name: stato_iso, value: "IT" }
+              - column: { name: cod_int_tipo_soggetto, value: "DI" }
+              - column: { name: descrizione_locale, value: "Persona Fisica - Ditta Individuale" }
+              - column: { name: formato_cf, value: "ALFANUM_16" }
+              - column: { name: formato_piva, value: "NUM_11" }
+
+        - insert:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            columns:
+              - column: { name: id_tipo_soggetto, value: "PG" }
+              - column: { name: stato_iso, value: "IT" }
+              - column: { name: cod_int_tipo_soggetto, value: "SC" }
+              - column: { name: descrizione_locale, value: "Società di Capitali" }
+              - column: { name: formato_cf, value: "NUM_11" }
+              - column: { name: formato_piva, value: "NUM_11" }
+
+        - insert:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            columns:
+              - column: { name: id_tipo_soggetto, value: "PG" }
+              - column: { name: stato_iso, value: "IT" }
+              - column: { name: cod_int_tipo_soggetto, value: "SP" }
+              - column: { name: descrizione_locale, value: "Società di Persone" }
+              - column: { name: formato_cf, value: "NUM_11" }
+              - column: { name: formato_piva, value: "NUM_11" }
+        - insert:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            columns:
+              - column: { name: id_tipo_soggetto, value: "ENC" }
+              - column: { name: stato_iso, value: "IT" }
+              - column: { name: cod_int_tipo_soggetto, value: "ENC" }
+              - column: { name: descrizione_locale, value: "Ente non Commerciale" }
+              - column: { name: formato_cf, value: "NUM_11" }
+              - column: { name: formato_piva, value: "NUM_11" }
+
+  
+
+  
+  - changeSet:
+      id: 20250713-90-createtable_config_tipi_soggetto_dettaglio
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250713-21-createtable_config_tipi_soggetto_dettaglio

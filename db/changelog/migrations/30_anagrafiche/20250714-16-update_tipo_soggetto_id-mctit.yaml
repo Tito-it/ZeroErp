@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250714-13-01-update_tipo_soggetto_id
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN
+        onError: HALT
+        preConditions:
+          - columnExists:
+              schemaName: anagrafiche
+              tableName: soggetti
+              columnName: tipo_soggetto_id
+          - columnExists:
+              schemaName: anagrafiche
+              tableName: soggetti
+              columnName: tipo_soggetto
+         
+      changes:
+        - update:
+            schemaName: anagrafiche
+            tableName: soggetti
+            where: tipo_soggetto = 'F'
+            columns:
+              - column:
+                  name: tipo_soggetto_id
+                  valueNumeric: 1
+        - update:
+            schemaName: anagrafiche
+            tableName: soggetti
+            where: tipo_soggetto = 'G'
+            columns:
+              - column:
+                  name: tipo_soggetto_id
+                  valueNumeric: 3
+        - update:
+            schemaName: anagrafiche
+            tableName: soggetti
+            where: tipo_soggetto = 'X'
+            columns:
+              - column:
+                  name: tipo_soggetto_id
+                  valueNumeric: 5
+
+  - changeSet:
+      id: 20250714-14-01-drop_tipo_soggetto
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN
+        onError: HALT
+        preConditions:
+          - columnExists:
+              schemaName: anagrafiche
+              tableName: soggetti
+              columnName: tipo_soggetto
+      changes:
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: soggetti
+            columnName: tipo_soggetto
+              
+  
+ # Tag di fine modifica
+  - changeSet:
+      id: 20250714-90-drop_crt_trg_valida_cf_piva
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250714-12-drop_crt_trg_valida_cf_piva

@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  # 
+  - changeSet:
+      id: 20250714-12-drop_crt_trg_valida_cf_piva
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            comment: "1) Rimuove la trigger  'vecchia' function anagrafiche.trgfn_soggetti_ins_upd_valida_piva_cdfiscale"
+            splitStatements: false
+            sql: |
+                -- Rimuove la trigger associata
+                DROP TRIGGER IF EXISTS trg_soggetti_ins_upd_valida_piva_cdfiscale ON anagrafiche.soggetti;
+
+                -- Rimuove la trigger function anagrafiche.trgfn_soggetti_ins_upd_valida_piva_cdfiscale
+                DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_ins_upd_valida_piva_cdfiscale();
+                
+
+        - sql:
+            comment: "2) Genera la nuova  trigger function rgfn_soggetti_valida_cf_piva_dispatch"
+            splitStatements: false
+            sql: |
+                  CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()
+                      RETURNS trigger
+                      LANGUAGE plpgsql
+                    AS $$
+                    DECLARE
+                      country TEXT;
+                    BEGIN
+                      SELECT codice_iso2 INTO country
+                        FROM config.stati
+                      WHERE id = NEW.stato_id
+                      LIMIT 1;
+
+                      IF country = 'IT' THEN
+                        PERFORM script.fn_validate_cf_piva_it(
+                          NEW.tipo_soggetto_dettaglio_id,
+                          NEW.partita_iva,
+                          NEW.piva_gruppo_acquisto,
+                          NEW.codice_fiscale
+                        );
+                      END IF;
+
+                      RETURN NEW;
+                    END;
+                    $$;
+                   COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()
+                   IS 'Dispatcher per la validazione della partita IVA e del codice fiscale per i soggetti in base al paese.';
+
+
+        - sql:
+            comment: "3) Crea la trigger associata"
+            splitStatements: false
+            sql: |
+                    
+                    DROP TRIGGER IF EXISTS trg_soggetti_ins_upd_dispatch_valida_cf_piva ON anagrafiche.soggetti;
+                    CREATE TRIGGER trg_soggetti_ins_upd_dispatch_valida_cf_piva
+                      BEFORE INSERT OR UPDATE ON anagrafiche.soggetti
+                      FOR EACH ROW
+                      EXECUTE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch();
+
+              
+  
+ # Tag di fine modifica
+  - changeSet:
+      id: 20250714-90-drop_crt_trg_valida_cf_piva
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250714-12-drop_crt_trg_valida_cf_piva

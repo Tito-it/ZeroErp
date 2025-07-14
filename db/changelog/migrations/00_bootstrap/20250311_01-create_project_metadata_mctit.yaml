@@ -85,11 +85,21 @@ databaseChangeLog:
               );
 
   - changeSet:
-      id: 20250711-03-trigger-block-modification
+      id: 20250711-0301-trigger-block-modification
       author: mctit
       runOnChange: true
       validCheckSums:
         - ANY
+
+      changes:
+      # 0) Rimuove il trigger se già esiste
+      - sql:
+          comment: "0) Drop trigger se esiste"
+          splitStatements: false
+          sql: |
+            DROP TRIGGER IF EXISTS trg_block_modification
+              ON internal.project_metadata;
+
       changes:
         - sql:
             comment: "1) Crea o sostituisce la trigger-function per bloccare modifiche"
@@ -103,6 +113,7 @@ databaseChangeLog:
                   RAISE EXCEPTION 'Modifica non consentita sulla tabella internal.project_metadata';
                 END;
                 $BODY$;
+
         - sql:
             comment: "2) Crea il trigger su project_metadata"
             splitStatements: false
