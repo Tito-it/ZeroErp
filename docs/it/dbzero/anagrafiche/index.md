@@ -21,6 +21,5 @@
 - [trgfn_indirizzi_upd_dlt_storico_indirizzi](funzioni/trgfn_indirizzi_upd_dlt_storico_indirizzi.md)
 - [trgfn_istanze_utilities_ins_set_istanza_codice](funzioni/trgfn_istanze_utilities_ins_set_istanza_codice.md)
 - [trgfn_soggetti_ins_upd_check_soggetto_contatti](funzioni/trgfn_soggetti_ins_upd_check_soggetto_contatti.md) — * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
-- [trgfn_soggetti_ins_upd_genera_cdsoggetto](funzioni/trgfn_soggetti_ins_upd_genera_cdsoggetto.md)
-- [trgfn_soggetti_ins_upd_valida_piva_cdfiscale](funzioni/trgfn_soggetti_ins_upd_valida_piva_cdfiscale.md)
-- [trgfn_soggetti_valida_cf_piva_dispatch](funzioni/trgfn_soggetti_valida_cf_piva_dispatch.md)
+- [trgfn_soggetti_ins_upd_genera_cdsoggetto](funzioni/trgfn_soggetti_ins_upd_genera_cdsoggetto.md) — La trigger function **`anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto()`** viene eseguita **`BEFORE INSERT OR UPDATE`** su **`anagrafiche.soggetti`** e si occupa di:
+- [trgfn_soggetti_valida_cf_piva_dispatch](funzioni/trgfn_soggetti_valida_cf_piva_dispatch.md) — La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** viene eseguita **`BEFORE INSERT OR UPDATE`** sulla tabella **`anagrafiche.soggetti`** e instrada la validazione di codice fiscale e partita IVA in base allo Stato e al dettaglio di soggetto.

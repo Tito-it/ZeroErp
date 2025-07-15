@@ -7,6 +7,14 @@
 >  - [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)   
 >  - [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)    
 >  - [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia)    
+>  - [config.tipi_soggetto_dettaglio](/dbzero/config/tipi_soggetto_dettaglio)    
+>
+> Approfondimento Funzioni:   
+>  - [anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ins_upd_check_soggetto_contatti)   
+>  - [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)   
+>  - [anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ins_upd_genera_cdsoggetto)   
+>  - [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)   
+
 
 Questa documentazione descrive le regole di progettazione e implementazione della tabella anagrafica **`anagrafiche.soggetti`** in Zero ERP, senza ripetere la struttura SQL automatica. Contiene informazioni su vincoli, campi generati e relazioni con altre tabelle.
 
@@ -52,10 +60,8 @@ Questa documentazione descrive le regole di progettazione e implementazione dell
 ### 🚩 Regole di Validazione Condizionale
 
 1. **Campo `tipo_soggetto`**  
-   - Valori ammessi:  
-     - `F` = Persona fisica  
-     - `G` = Persona giuridica  
-     - `X` = Persona fisica forzata (per codici fiscali “speciali” o enti particolari)
+     Campo tipo_soggetto (DEPRECATA)
+     * Nota: la colonna tipo_soggetto è stata rimossa ed è ora sostituita da tipo_soggetto_dettaglio_id
 
 2. **Check su `sesso`**  
    - Valori ammessi:  
@@ -104,5 +110,48 @@ Questa documentazione descrive le regole di progettazione e implementazione dell
   Separando le informazioni “statiche” dall’anagrafica generica e sfruttando colonne generate, si evita di duplicare logiche di concatenamento o controlli sui dati, semplificando eventuali evoluzioni future.
 
 ---
+
+### ⚙️ Implementazioni Aggiuntive
+
+In questa sezione sono descritte le modifiche chiave apportate per allinearsi al nuovo modello dati, con dettaglio delle motivazioni e degli esempi di configurazione internazionale:
+
+1. **Esigenza di accuratezza per CF/P.IVA e internazionalizzazione**
+   Con la sola colonna `tipo_soggetto` non era possibile gestire formati e vincoli diversi per ogni paese. La nuova colonna `tipo_soggetto_dettaglio_id`, in relazione alla tabella di configurazione `config.tipi_soggetto_dettaglio`, permette di:
+
+   * Applicare regole di validazione specifiche per codice fiscale e partita IVA in base allo Stato (`stato_iso`).
+   * Definire formati diversi (alfanumerico, numerico, lunghezza fissa) a livello di dettaglio di soggetto (privato, ditta individuale, società di capitali, ecc.).
+   * Facilitare l’internazionalizzazione e futuri ampliamenti a nuovi paesi senza modificare lo schema principale.
+
+2. \*\*Rimozione della colonna \*\***`tipo_soggetto`**
+
+   ```sql
+   ALTER TABLE anagrafiche.soggetti
+     DROP COLUMN IF EXISTS tipo_soggetto;
+   ```
+
+3. \*\*Introduzione di \*\***`tipo_soggetto_dettaglio_id`**
+
+   ```sql
+   ALTER TABLE anagrafiche.soggetti
+     ADD COLUMN tipo_soggetto_dettaglio_id BIGINT NOT NULL
+       REFERENCES config.tipi_soggetto_dettaglio(id)
+       ON UPDATE CASCADE
+       ON DELETE RESTRICT;
+   ```
+
+4. **Vincoli e trigger aggiornati**
+
+   * Il trigger di validazione CF/P.IVA (`trg_soggetti_ins_upd_valida_cf_piva`) ora utilizza `tipo_soggetto_dettaglio_id`.
+   * È stato aggiunto il vincolo di FK:
+
+   ```sql
+   ALTER TABLE anagrafiche.soggetti
+     ADD CONSTRAINT fk_soggetti_tipo_soggetto_dettaglio
+       FOREIGN KEY (tipo_soggetto_dettaglio_id)
+       REFERENCES config.tipi_soggetto_dettaglio(id)
+       ON UPDATE CASCADE
+       ON DELETE RESTRICT;
+   ```
+
 
 > 🧠 **“Un’Anagrafica Soggetti solida e coerente: controlli condizionali e campi generati assicurano dati puliti, ricercabili e univoci, senza dover ripetere informazioni in fase applicativa.”**
