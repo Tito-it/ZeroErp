@@ -1,4 +1,4 @@
-📘 Documentazione Concettuale – Funzione `script.fn_valida_codice_fiscale(cf TEXT)`
+##  📘 Documentazione Concettuale – Funzione `script.fn_valida_codice_fiscale(cf TEXT)`
 
 > 👀 **Vedi anche**
 >
@@ -7,7 +7,7 @@
 >
 > Approfondimento funzioni :    
 > - [script.fn_valida_partita_iva](/dbzero/script/funzioni/fn_valida_partita_iva)    
-> - [anagrafiche.trgfn_soggetti_ins_upd_valida_piva_cdfiscale](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ins_upd_valida_piva_cdfiscale)    
+> - [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)    
 ---
 
 ### 🎯 Scopo Principale

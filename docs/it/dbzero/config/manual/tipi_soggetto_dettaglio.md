@@ -5,7 +5,7 @@
 > Approfondimento Tabelle:   
 > - [config.tipi_soggetto](/dbzero/config/tabelle/tipi_soggetto)      
 > - [config.stati](/dbzero/config/tabelle/stati)      
-> - Impatto su:  [ `anagrafiche.soggetti` (colonna `tipo_soggetto`)] (/dbzero/anagrafiche/tabelle/anagrafiche.soggetti)
+> - Impatto su:  [ `anagrafiche.soggetti` (colonna `tipo_soggetto_dettaglio_id`)](/dbzero/anagrafiche/tabelle/soggetti)  
 ---
 
 La tabella **`config.tipi_soggetto_dettaglio`** definisce le **tipologie dettagliate** di soggetto (persone fisiche, giuridiche, enti, ecc.) in base al **paese** di appartenenza, specificando i **formati** validi per Codice Fiscale e Partita IVA.
@@ -25,12 +25,12 @@ La tabella **`config.tipi_soggetto_dettaglio`** definisce le **tipologie dettagl
 
 ### 🔍 Collegamenti
 
-* **FK →** `config.tipi_soggetto(id_tipo_soggetto)`
+* **FK →** `config.tipi_soggetto(tipo_soggetto_id)`
   Definisce la macro-tipologia.
 * **FK →** `config.stati(codice_iso2)`
   Specifica il Paese di riferimento per il formato.
 * **Estensione su** `anagrafiche.soggetti.tipo_soggetto_dettaglio_id`
-  Associa ogni soggetto al dettaglio corretto, sostituendo il solo `tipo_soggetto`.
+  Associa ogni soggetto al dettaglio corretto, eliminata la colonna `tipo_soggetto`, è stato aggiunto in `anagrafiche.soggetti` la colonna `tipo_soggetto_dettaglio_id`.
 
 ---
 
@@ -43,7 +43,7 @@ Questi record sono stati inseriti tramite YAML in `migrations/…/20250713-23-in
     schemaName: config
     tableName: tipi_soggetto_dettaglio
     columns:
-      - column: { name: id_tipo_soggetto, value: "PF" }
+      - column: { name: tipo_soggetto_id, value: "PF" }
       - column: { name: stato_iso, value: "IT" }
       - column: { name: cod_int_tipo_soggetto, value: "PR" }
       - column: { name: descrizione_locale, value: "Persona Fisica - Privato" }
@@ -54,7 +54,7 @@ Questi record sono stati inseriti tramite YAML in `migrations/…/20250713-23-in
     schemaName: config
     tableName: tipi_soggetto_dettaglio
     columns:
-      - column: { name: id_tipo_soggetto, value: "PF" }
+      - column: { name: tipo_soggetto_id, value: "PF" }
       - column: { name: stato_iso, value: "IT" }
       - column: { name: cod_int_tipo_soggetto, value: "DI" }
       - column: { name: descrizione_locale, value: "Persona Fisica - Ditta Individuale" }
@@ -65,7 +65,7 @@ Questi record sono stati inseriti tramite YAML in `migrations/…/20250713-23-in
     schemaName: config
     tableName: tipi_soggetto_dettaglio
     columns:
-      - column: { name: id_tipo_soggetto, value: "PG" }
+      - column: { name: tipo_soggetto_id, value: "PG" }
       - column: { name: stato_iso, value: "IT" }
       - column: { name: cod_int_tipo_soggetto, value: "SC" }
       - column: { name: descrizione_locale, value: "Società di Capitali" }
@@ -76,7 +76,7 @@ Questi record sono stati inseriti tramite YAML in `migrations/…/20250713-23-in
     schemaName: config
     tableName: tipi_soggetto_dettaglio
     columns:
-      - column: { name: id_tipo_soggetto, value: "PG" }
+      - column: { name: tipo_soggetto_id, value: "PG" }
       - column: { name: stato_iso, value: "IT" }
       - column: { name: cod_int_tipo_soggetto, value: "SP" }
       - column: { name: descrizione_locale, value: "Società di Persone" }
@@ -87,7 +87,7 @@ Questi record sono stati inseriti tramite YAML in `migrations/…/20250713-23-in
     schemaName: config
     tableName: tipi_soggetto_dettaglio
     columns:
-      - column: { name: id_tipo_soggetto, value: "ENC" }
+      - column: { name: tipo_soggetto_id, value: "ENC" }
       - column: { name: stato_iso, value: "IT" }
       - column: { name: cod_int_tipo_soggetto, value: "ENC" }
       - column: { name: descrizione_locale, value: "Ente non Commerciale" }

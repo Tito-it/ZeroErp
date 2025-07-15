@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_valida_cf_piva_dispatch.md" %}
 # ⚙️ Funzione `trgfn_soggetti_valida_cf_piva_dispatch`
 
 ```sql
