@@ -8,6 +8,9 @@
 > Approfondimento funzioni :    
 > - [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
 
+---
+### 🎯 Scopo Principale
+
 La tabella **`config.parameter_overrides`** permette di creare **override dinamici** dei parametri definiti in `config.parameters` su diversi livelli di contesto (tenant, user, session, function), garantendo che ogni combinazione `(parameter_id, scope_type, scope_id)` sia unica e tracciata per audit.
 
 ---

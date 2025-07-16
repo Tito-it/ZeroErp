@@ -9,6 +9,9 @@
 > - [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)     
 > - [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
 
+---
+### 🎯 Scopo Principale
+
 La tabella **`config.tipi_contatti`** definisce le categorie di contatto utilizzabili nell’anagrafica dei soggetti, fornendo un codice interno non modificabile e una descrizione estesa.
 
 ---

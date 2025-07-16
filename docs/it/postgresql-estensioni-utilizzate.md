@@ -1,4 +1,4 @@
-## 📘 Estensioni PostgreSQL Utilizzate in Zero ERP
+##  📘 Estensioni PostgreSQL Utilizzate in Zero ERP
 
 Zero ERP utilizza diverse estensioni PostgreSQL per migliorare le funzionalità e soddisfare specifiche esigenze applicative. Di seguito è riportata una panoramica delle estensioni attualmente in uso:
 

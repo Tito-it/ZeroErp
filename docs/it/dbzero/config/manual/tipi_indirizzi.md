@@ -1,5 +1,8 @@
 ## 📚 Tabella `config.tipi_indirizzi`
 
+---
+### 🎯 Scopo Principale
+
 La tabella **`config.tipi_indirizzi`** centralizza i **tipi di indirizzo** utilizzabili in Zero ERP, come ad esempio Residenza, Domicilio Fiscale, Sede Legale, Sede Operativa, Corrispondenza Postale, Indirizzo di Fornitura, ecc. 
 
 ---

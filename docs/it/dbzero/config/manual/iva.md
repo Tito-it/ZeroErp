@@ -15,7 +15,7 @@ La tabella **`config.iva`** fornisce il catalogo dei codici IVA, includendo desc
 
 ---
 
-### 🎯 Scopo
+### 🎯 Scopo Principale
 
 * Centralizzare i **codici IVA** disponibili in un unico repository configurabile.
 * Gestire:

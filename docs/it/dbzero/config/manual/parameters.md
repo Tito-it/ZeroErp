@@ -12,6 +12,8 @@
 > - [parametri-personalizzati-(GUC)](/parametri-personalizzati-(GUC))   
 > All'interno del documento viene spiegata la differenza tra parametri GUC e parametri tabellari
 
+---
+### 🎯 Scopo Principale
 
 La tabella **`config.parameters`** implementa un’**architettura a due livelli** per la configurazione dinamica dell’applicazione:
 

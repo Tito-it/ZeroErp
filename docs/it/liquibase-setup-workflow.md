@@ -1,9 +1,14 @@
 **Documento di Avvio e Struttura di Liquibase**
 
-> 👀 **Vedi anche**
-> Approfondimento SQL:
-> Tutte le attività SQL generate tramite Liquibase devono rispettare le convenzioni definite nel documento:
+> 👀 **Vedi anche**    
+> Approfondimento SQL  
+> Tutte le attività SQL generate tramite Liquibase devono rispettare le convenzioni definite nel documento:  
 > [Linee Guida SQL](linee-guida-sql.md).
+
+---
+> ⚠️ **Importante (Visione Futura)**   
+> Data la scelta di utilizzare `includeAll` nel master changelog e la struttura a cartelle, **tutti gli sviluppi di oggetti che precedono altri (es. tabelle)** devono essere inseriti **nella cartella `00_bootstrap`**.
+> In questo modo le trigger e le trigger function verranno applicate **dopo** la creazione delle tabelle, garantendo coerenza e permettendo future evoluzioni senza conflitti.
 
 ---
 
@@ -64,7 +69,8 @@ ZeroErp/db/changelog/
   * richiamo di procedure/funzioni di popolamento o aggiornamento di tabelle (es. `CALL dbops.apply_fk_index_policy();`)
   * eventuali cleanup o sync finali delle policy
 
-> 🔔 *Consiglio*: Nomina il file con prefisso la data iniziale seguito da descrizione, es. `20250630-01-end-apply-fk-policy.yaml`. In questo modo l’ordine alfabetico di Liquibase garantisce la priorità d’esecuzione. Nel caso sia necessario far eseguire un changelog prima di uno esistente immettere la data precedente.
+> 🔔 *Consiglio*:   
+> Nomina il file con prefisso la data iniziale seguito da descrizione, es. `20250630-01-end-apply-fk-policy.yaml`. In questo modo l’ordine alfabetico di Liquibase garantisce la priorità d’esecuzione. Nel caso sia necessario far eseguire un changelog prima di uno esistente immettere la data precedente.
 
 ---
 
@@ -147,6 +153,7 @@ liquibaseSchemaName=config
 
 #### 10. Convenzioni e Best Practice
 
+* Utilizzo cartella `00_boostrab` (esempio generazione tabelle)
 * Numerazione progressiva
 * ID univoci con autore
 * Contexts/Labels
