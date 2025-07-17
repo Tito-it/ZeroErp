@@ -22,15 +22,15 @@
 | user_update | text | NO | CURRENT_USER |
 | titolo_cortesia_id | integer | YES |  |
 | identificativo_old | character varying | YES |  |
-| id_fiscale_univoco_cf_piva | text | YES |  |
 | ragione_sociale_completa | text | YES |  |
 | default_contatto_id | integer | YES |  |
 | tipo_soggetto_dettaglio_id | bigint | YES |  |
+| id_fiscale_univoco_cf_piva | text | YES |  |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_cf_o_piva |  |
 | CHECK | chk_soggetto_soggetto_sesso |  |
 | FOREIGN KEY | fk_comuni_config | comune_id, comune_id |
 | FOREIGN KEY | fk_contatti_anagrafiche | default_contatto_id |

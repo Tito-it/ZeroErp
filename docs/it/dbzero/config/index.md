@@ -39,3 +39,4 @@
 - [trgfn_iva_ins_upd_check_conti_iva](funzioni/trgfn_iva_ins_upd_check_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_parameters_audit](funzioni/trgfn_parameters_audit.md)
 - [trgfn_stradario_upd_dlt_storico_stradario](funzioni/trgfn_stradario_upd_dlt_storico_stradario.md) — * **Storicizzazione automatica**   Creare snapshot storici dei dati di `stradario` su modifiche e cancellazioni, mantenendo traccia delle variazioni nel tempo. * **Centralizzare la logica di versioning**   Evitare duplicazione di codice e garantire coerenza nella gestione dello storico.
+- [trgfn_sync_stato_iso2](funzioni/trgfn_sync_stato_iso2.md)
