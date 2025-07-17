@@ -3,8 +3,8 @@
 >  👀 **Vedi anche** 
 
 > Approfondimento Tabelle:  
-> - [config.stradario](../stradario)      
-> - [config.toponomastica](../toponomastica) 
+> - [config.stradario](/dbzero/config/tabelle/stradario)      
+> - [config.toponomastica](/dbzero/config/tabelle/toponomastica) 
 
 
 

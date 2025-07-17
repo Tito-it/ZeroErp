@@ -3,7 +3,7 @@
 >  👀 **Vedi anche** 
 
 > Approfondimento Tabelle:   
->  - [config.province](../province)        
+>  - [config.province](/dbzero/config/tabelle/province)        
 >  - [storico.comuni](/dbzero/storico/tabelle/comuni)  
 
 

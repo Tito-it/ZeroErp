@@ -106,67 +106,7 @@ databaseChangeLog:
             columnName: id
             defaultValueComputed: "nextval('config.tipi_soggetto_dettaglio_id_seq')"
 
-  - changeSet:
-      id: 20250713-23-insert-tipi-soggetto-dettaglio
-      author: mctit
-      changes:
-        - insert:
-            schemaName: config
-            tableName: tipi_soggetto_dettaglio
-            columns:
-              - column: { name: id_tipo_soggetto, value: "PF" }
-              - column: { name: stato_iso, value: "IT" }
-              - column: { name: cod_int_tipo_soggetto, value: "PR" }
-              - column: { name: descrizione_locale, value: "Persona Fisica - Privato" }
-              - column: { name: formato_cf, value: "ALFANUM_16" }
-              - column: { name: formato_piva, value: "NON_APPLICABILE" }
-
-        - insert:
-            schemaName: config
-            tableName: tipi_soggetto_dettaglio
-            columns:
-              - column: { name: id_tipo_soggetto, value: "PF" }
-              - column: { name: stato_iso, value: "IT" }
-              - column: { name: cod_int_tipo_soggetto, value: "DI" }
-              - column: { name: descrizione_locale, value: "Persona Fisica - Ditta Individuale" }
-              - column: { name: formato_cf, value: "ALFANUM_16" }
-              - column: { name: formato_piva, value: "NUM_11" }
-
-        - insert:
-            schemaName: config
-            tableName: tipi_soggetto_dettaglio
-            columns:
-              - column: { name: id_tipo_soggetto, value: "PG" }
-              - column: { name: stato_iso, value: "IT" }
-              - column: { name: cod_int_tipo_soggetto, value: "SC" }
-              - column: { name: descrizione_locale, value: "Società di Capitali" }
-              - column: { name: formato_cf, value: "NUM_11" }
-              - column: { name: formato_piva, value: "NUM_11" }
-
-        - insert:
-            schemaName: config
-            tableName: tipi_soggetto_dettaglio
-            columns:
-              - column: { name: id_tipo_soggetto, value: "PG" }
-              - column: { name: stato_iso, value: "IT" }
-              - column: { name: cod_int_tipo_soggetto, value: "SP" }
-              - column: { name: descrizione_locale, value: "Società di Persone" }
-              - column: { name: formato_cf, value: "NUM_11" }
-              - column: { name: formato_piva, value: "NUM_11" }
-        - insert:
-            schemaName: config
-            tableName: tipi_soggetto_dettaglio
-            columns:
-              - column: { name: id_tipo_soggetto, value: "ENC" }
-              - column: { name: stato_iso, value: "IT" }
-              - column: { name: cod_int_tipo_soggetto, value: "ENC" }
-              - column: { name: descrizione_locale, value: "Ente non Commerciale" }
-              - column: { name: formato_cf, value: "NUM_11" }
-              - column: { name: formato_piva, value: "NUM_11" }
-
-  
-
-  
+    
   - changeSet:
       id: 20250713-90-createtable_config_tipi_soggetto_dettaglio
       author: mctit

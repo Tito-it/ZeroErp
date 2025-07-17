@@ -14,7 +14,7 @@ La tabella **`config.iva_stati`** permette di definire **override locali** di al
 
 ---
 
-### 🎯 Scopo
+### 🎯 Scopo Principale
 
 * Sovrascrivere, per ogni coppia `(iva_id, stato_id)`, i valori di aliquota e assoggettamento di default definiti in `config.iva`.
 * Gestire scenari in cui normative locali richiedono aliquote differenti o modalità di assoggettamento speciali.

@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.comuni_id_seq'::regclass) |
+| id | integer | NO | nextval('comuni_id_seq'::regclass) |
 | descrizione | character varying | NO | ''::character varying |
 | provincia_id | integer | YES |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
@@ -30,6 +30,6 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_comuni_upd_dlt_storico_comuni | BEFORE | DELETE | `EXECUTE FUNCTION config.trgfn_comuni_upd_dlt_storico_comuni()` |
-| trg_comuni_upd_dlt_storico_comuni | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_comuni_upd_dlt_storico_comuni()` |
+| trg_comuni_upd_dlt_storico_comuni | BEFORE | DELETE | `EXECUTE FUNCTION trgfn_comuni_upd_dlt_storico_comuni()` |
+| trg_comuni_upd_dlt_storico_comuni | BEFORE | UPDATE | `EXECUTE FUNCTION trgfn_comuni_upd_dlt_storico_comuni()` |
 | trg_upd_comuni_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

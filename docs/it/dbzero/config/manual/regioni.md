@@ -3,7 +3,7 @@
 >  👀 **Vedi anche** 
 
 > Approfondimento Tabelle:  
-> - [config.stati](../stati) 
+> - [config.stati](/dbzero/config/tabelle/stati) 
 
 
 La tabella **`config.regioni`** censisce le regioni (italiane e di altri stati), fornendo informazioni amministrative e metadati utili per la gerarchia territoriale e la gestione delle accise.

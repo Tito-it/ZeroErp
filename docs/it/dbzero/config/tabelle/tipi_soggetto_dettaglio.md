@@ -4,9 +4,9 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | bigint | NO | nextval('config.tipi_soggetto_dettaglio_id_seq'::regclass) |
+| id | bigint | NO | nextval('tipi_soggetto_dettaglio_id_seq'::regclass) |
 | tipo_soggetto_id | character varying | NO |  |
-| stato_iso | character varying | NO |  |
+| stato_iso2 | character varying | NO |  |
 | cod_int_tipo_soggetto | character varying | NO |  |
 | descrizione_locale | character varying | YES |  |
 | formato_cf | character varying | YES |  |

@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.tipi_ruoli_id_seq'::regclass) |
+| id | integer | NO | nextval('tipi_ruoli_id_seq'::regclass) |
 | cod_ruolo | character varying | NO |  |
 | descrizione | character varying | NO |  |
 | cd_int_ruolo | character varying | NO |  |

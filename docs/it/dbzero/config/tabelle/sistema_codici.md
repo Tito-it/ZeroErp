@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.sistema_codici_id_seq'::regclass) |
+| id | integer | NO | nextval('sistema_codici_id_seq'::regclass) |
 | codice_tipo | text | NO |  |
 | descrizione | text | YES |  |
 | prefisso | text | NO | ''::text |

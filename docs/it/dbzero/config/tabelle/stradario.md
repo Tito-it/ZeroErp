@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.stradario_id_seq'::regclass) |
+| id | integer | NO | nextval('stradario_id_seq'::regclass) |
 | comune_id | integer | NO |  |
 | stradario_generale_id | integer | NO |  |
 | geoloc | USER-DEFINED | YES |  |
@@ -39,6 +39,6 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_stradario_upd_dlt_storico_stradario | BEFORE | DELETE | `EXECUTE FUNCTION config.trgfn_stradario_upd_dlt_storico_stradario()` |
-| trg_stradario_upd_dlt_storico_stradario | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_stradario_upd_dlt_storico_stradario()` |
+| trg_stradario_upd_dlt_storico_stradario | BEFORE | DELETE | `EXECUTE FUNCTION trgfn_stradario_upd_dlt_storico_stradario()` |
+| trg_stradario_upd_dlt_storico_stradario | BEFORE | UPDATE | `EXECUTE FUNCTION trgfn_stradario_upd_dlt_storico_stradario()` |
 | trg_upd_stradario_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
