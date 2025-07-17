@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+  
+databaseChangeLog:
+  - changeSet:
+      id: 20250717-27-upsert-titoli_cortesia
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: titoli_cortesia
+      changes:
+        # 1) Inserimento di tutte le colonne
+        # 2) Upsert di tutte le colonne, 
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/titoli_cortesia.csv
+            tableName: titoli_cortesia
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey:
+              - id
+            columns:
+              - column: { name: id,          type: STRING }
+              - column: { name: descrizione,  type: STRING }
+              - column: { name: descrizione_breve,  type: STRING }
+              - column: { name: stato_id,         type: STRING }
+              - column: { name: data_insert,      type: STRING }
+              - column: { name: user_insert,      type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update,      type: STRING }
+
+        
+  - changeSet:
+      id: 20250717-90-upsert-titoli_cortesia
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250717-27-upsert-titoli_cortesia

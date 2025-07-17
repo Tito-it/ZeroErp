@@ -1,21 +1,2 @@
 codice,lingua,messaggio,causa,soluzione,id
-E_DEFAULT_CONTATTO_MISSING,it,Tipo contatto DEFAULT non trovato in config.tipi_contatti. Impossibile creare contatto fallback.,,,1
-E_SOGGETTO_NO_CONTATTI,it,"Il soggetto non ha contatti validi: è necessario almeno un contatto con email, telefono, cellulare o PEC.",,,2
-E_IVA_CONTO_ACQ_ERR,it,Il conto IVA acquisti non è un conto di tipo Acquisto.,,,3
-E_IVA_CONTO_VEN_ERR,it,Il conto IVA vendita non è un conto di tipo Vendita.,,,4
-CF_NON_VALIDO,it,Codice Fiscale non valido: %s,,,5
-PIVA_NON_VALIDA,it,Partita IVA non valida: %s,,,7
-SEQUENZA_NON_CONFIGURATA,it,Nessuna sequenza configurata per codice_tipo: %s,,,8
-STATO_SCONOSCIUTO,it,Stato non riconosciuto: id = %s,,,9
-E_SOGGETTI_RUOLI,it,"Errore soggetti ruoli (id=%, soggetto_id=%, ruolo_id=%), Non è stata assegnata la relazione anagrafice.soggetti_ruoli ",,,10
-E_COD_INT_RUOLO,it,Ruolo con cd_int_ruolo = %s non trovato in config.tipi_ruoli,,,11
-E_COLONNA_NON_MODIFICABILE,it,Colonna non modificabile: %s,,,12
-E_ARGOMENTI_A_COPPIE,it,Passare gli argomenti a coppie,,,13
-CODICE_NON_MODIFICABILE,it,Impossibile modificare il valore interno della colonna %s,si sta cercando di aggiornare un valore definito per una colonna con utilizzo interno (di sistema) non modificabile,Il valore non può essere aggiornato. ,6
-MESSAGGIO_NON_DEFINITO,it,Definire il messaggio con codice :,Non è presente il messaggio nella tabella config.messaggi_errore.,Definire il messaggio nella tabella config.messaggi_errore,14
-ERRORE_PARAMETRI,it,Parametri obbligatori : %s,Non sono stati indicati tutti i parametri necessari,Inserire tutti i parametri obbligatori,15
-ERRORE_PARAMETRI_TABELLA,it,Parametro:%s  non trovato nella tabella: %s,Il parametro segnalato non è stato caricato nella tabella indicata.,Caricare il parametro nella rispettiva tabella,16
-E_TABELLA_OP_NON_CONSENTITA,it,Operazione non consentita sulla tabella %s: %s non permessa,Si sta cercando di effettuare una operazione che non è permessa su questa tabella. ,L'attività non è permessa,17
-E_TXID_GENERATION,it,Fallita generazione tx_id: %s,Non è stato possibile assegnare un id transaction,Andare nella tabella dei log per verificare il problema,18
-W_TXID_NOT_REGISTERED,it,Warning - tx_id %s non registrato nella tabella dbops.transaction_ids ,L'id transaction non corrisponde con quello assegnato nella tabella transactions_id ,Andare nella tabella dei log per verificare il problema,19
-E_SQL_READ_TABLE,it,Errore  in lettura tabella: %s.  Sqlerror: %s',Errore sql da verificare,Verificare la stringa sql in errore,20
+E_DEFAULT_CONTATTO_MISSING,it,Tipo contatto DEFAULT non trovato in config.tipi_contatti. Impossibile creare contatto fallback.,"","",1

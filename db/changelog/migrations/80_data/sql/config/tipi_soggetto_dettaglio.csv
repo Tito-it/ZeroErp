@@ -1,2 +1,1 @@
 id,tipo_soggetto_id,stato_iso2,cod_int_tipo_soggetto,descrizione_locale,formato_cf,formato_piva,user_insert,data_insert,user_update,data_update,stato_id
-5,ENC,IT,ENC,Ente non Commerciale,NUM_11,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2025-07-17 11:20:41.0385+02,1
