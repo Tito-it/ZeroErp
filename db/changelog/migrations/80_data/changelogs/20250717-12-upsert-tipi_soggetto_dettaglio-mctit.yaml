@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+  
+databaseChangeLog:
+  - changeSet:
+      id: 20250717-12-upsert-tipi_soggetto_dettaglio
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+      changes:
+        # 1) Disabilita tutti i trigger sulla tabella
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: >
+              ALTER TABLE config.tipi_soggetto_dettaglio DISABLE TRIGGER trg_tipi_soggetto_dettaglio_upd_lock_codiceinterno;
+
+        # 2) Upsert di tutte le colonne, 
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/tipi_soggetto_dettaglio.csv
+            tableName: tipi_soggetto_dettaglio
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey:
+              - id
+            
+            columns:
+              - column: { name: id,          type: STRING }
+              - column: { name: tipo_soggetto_id,  type: STRING }
+              - column: { name: stato_iso2,         type: STRING }
+              - column: { name: cod_int_tipo_soggetto, type: STRING }
+              - column: { name: descrizione_locale,    type: STRING }
+              - column: { name: formato_cf,   type: STRING }
+              - column: { name: formato_piva,     type: STRING }
+              - column: { name: data_insert,      type: STRING }
+              - column: { name: user_insert,      type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update,      type: STRING }
+              - column: { name: stato_id,   type: STRING }
+
+        # 3) Ri‐abilita tutti i trigger
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: >
+              ALTER TABLE config.tipi_soggetto_dettaglio ENABLE TRIGGER trg_tipi_soggetto_dettaglio_upd_lock_codiceinterno;
+
+  - changeSet:
+      id: 20250717-90-upsert-tipi_soggetto_dettaglio
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250717-12-upsert-tipi_soggetto_dettaglio

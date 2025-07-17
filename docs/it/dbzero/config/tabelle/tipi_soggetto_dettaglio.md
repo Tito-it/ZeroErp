@@ -34,5 +34,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_sync_stato_iso2 | BEFORE | INSERT | `EXECUTE FUNCTION trgfn_sync_stato_iso2()` |
+| trg_sync_stato_iso2 | BEFORE | UPDATE | `EXECUTE FUNCTION trgfn_sync_stato_iso2()` |
 | trg_tipi_soggetto_dettaglio_upd_lock_codiceinterno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('cod_int_tipo_soggetto', 'CODICE_NON_MODIFICABILE')` |
 | trg_upd_overrides_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
