@@ -9,7 +9,7 @@
 | messaggio | text | NO |  |
 | causa | text | YES |  |
 | soluzione | text | YES |  |
-| id | bigint | NO | nextval('config.messaggi_errore_id_seq'::regclass) |
+| id | bigint | NO | nextval('messaggi_errore_id_seq'::regclass) |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

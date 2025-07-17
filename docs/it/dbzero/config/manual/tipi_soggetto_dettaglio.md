@@ -15,7 +15,7 @@ La tabella **`config.tipi_soggetto_dettaglio`** definisce le **tipologie dettagl
 ### 🎯 Scopo Principale
 
 * **Gestione Internazionale**
-  Permette di adattare la validazione di CF/P.IVA alle regole di ciascuno Stato (`stato_iso`).
+  Permette di adattare la validazione di CF/P.IVA alle regole di ciascuno Stato (`stato_iso2`).
 * **Estendibilità**
   Il collegamento a `config.tipi_soggetto` garantisce macro-categorie estensibili (Fisico, Giuridico, Ente, …).
 * **Controllo Applicativo**
@@ -44,7 +44,7 @@ Questi record sono stati inseriti tramite YAML in `migrations/…/20250713-23-in
     tableName: tipi_soggetto_dettaglio
     columns:
       - column: { name: tipo_soggetto_id, value: "PF" }
-      - column: { name: stato_iso, value: "IT" }
+      - column: { name: stato_iso2, value: "IT" }
       - column: { name: cod_int_tipo_soggetto, value: "PR" }
       - column: { name: descrizione_locale, value: "Persona Fisica - Privato" }
       - column: { name: formato_cf, value: "ALFANUM_16" }
@@ -55,7 +55,7 @@ Questi record sono stati inseriti tramite YAML in `migrations/…/20250713-23-in
     tableName: tipi_soggetto_dettaglio
     columns:
       - column: { name: tipo_soggetto_id, value: "PF" }
-      - column: { name: stato_iso, value: "IT" }
+      - column: { name: stato_iso2, value: "IT" }
       - column: { name: cod_int_tipo_soggetto, value: "DI" }
       - column: { name: descrizione_locale, value: "Persona Fisica - Ditta Individuale" }
       - column: { name: formato_cf, value: "ALFANUM_16" }
@@ -66,7 +66,7 @@ Questi record sono stati inseriti tramite YAML in `migrations/…/20250713-23-in
     tableName: tipi_soggetto_dettaglio
     columns:
       - column: { name: tipo_soggetto_id, value: "PG" }
-      - column: { name: stato_iso, value: "IT" }
+      - column: { name: stato_iso2, value: "IT" }
       - column: { name: cod_int_tipo_soggetto, value: "SC" }
       - column: { name: descrizione_locale, value: "Società di Capitali" }
       - column: { name: formato_cf, value: "NUM_11" }
@@ -77,7 +77,7 @@ Questi record sono stati inseriti tramite YAML in `migrations/…/20250713-23-in
     tableName: tipi_soggetto_dettaglio
     columns:
       - column: { name: tipo_soggetto_id, value: "PG" }
-      - column: { name: stato_iso, value: "IT" }
+      - column: { name: stato_iso2, value: "IT" }
       - column: { name: cod_int_tipo_soggetto, value: "SP" }
       - column: { name: descrizione_locale, value: "Società di Persone" }
       - column: { name: formato_cf, value: "NUM_11" }
@@ -88,7 +88,7 @@ Questi record sono stati inseriti tramite YAML in `migrations/…/20250713-23-in
     tableName: tipi_soggetto_dettaglio
     columns:
       - column: { name: tipo_soggetto_id, value: "ENC" }
-      - column: { name: stato_iso, value: "IT" }
+      - column: { name: stato_iso2, value: "IT" }
       - column: { name: cod_int_tipo_soggetto, value: "ENC" }
       - column: { name: descrizione_locale, value: "Ente non Commerciale" }
       - column: { name: formato_cf, value: "NUM_11" }

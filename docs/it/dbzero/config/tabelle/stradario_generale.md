@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.stradario_generale_id_seq'::regclass) |
+| id | integer | NO | nextval('stradario_generale_id_seq'::regclass) |
 | toponomastica_id | integer | NO |  |
 | descrizione | character varying | NO |  |
 | descrizione_breve | character varying | NO |  |

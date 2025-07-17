@@ -64,31 +64,7 @@ databaseChangeLog:
       - sql:
             sql: |
               COMMENT ON TABLE config.tipi_soggetto IS 'Macro-tipologia soggetto: Persona fisica, Persona giuridica, Ente, ecc.';
-  - changeSet:
-      id: 20250704-13-insert-tipi-soggetto
-      author: mctit
-      changes:
-        - insert:
-            schemaName: config
-            tableName: tipi_soggetto
-            columns:
-              - column: { name: id_tipo_soggetto, value: "PF" }
-              - column: { name: descrizione, value: "Persona Fisica" }
-
-        - insert:
-            schemaName: config
-            tableName: tipi_soggetto
-            columns:
-              - column: { name: id_tipo_soggetto, value: "PG" }
-              - column: { name: descrizione, value: "Persona Giuridica" }
-
-        - insert:
-            schemaName: config
-            tableName: tipi_soggetto
-            columns:
-              - column: { name: id_tipo_soggetto, value: "ENC" }
-              - column: { name: descrizione, value: "Ente Non Commerciale" }
-
+  
 
   - changeSet:
       id: 20250713-14-add-trigger-transaction-ids-audit

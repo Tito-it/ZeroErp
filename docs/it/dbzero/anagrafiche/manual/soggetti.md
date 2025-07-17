@@ -118,7 +118,7 @@ In questa sezione sono descritte le modifiche chiave apportate per allinearsi al
 1. **Esigenza di accuratezza per CF/P.IVA e internazionalizzazione**
    Con la sola colonna `tipo_soggetto` non era possibile gestire formati e vincoli diversi per ogni paese. La nuova colonna `tipo_soggetto_dettaglio_id`, in relazione alla tabella di configurazione `config.tipi_soggetto_dettaglio`, permette di:
 
-   * Applicare regole di validazione specifiche per codice fiscale e partita IVA in base allo Stato (`stato_iso`).
+   * Applicare regole di validazione specifiche per codice fiscale e partita IVA in base allo Stato (`stato_iso2`).
    * Definire formati diversi (alfanumerico, numerico, lunghezza fissa) a livello di dettaglio di soggetto (privato, ditta individuale, società di capitali, ecc.).
    * Facilitare l’internazionalizzazione e futuri ampliamenti a nuovi paesi senza modificare lo schema principale.
 

@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  ############################################################
+  # 1) Creo la trigger‐function per sincronizzare stato_iso2
+  ############################################################
+  - changeSet:
+      id: 20250717-02-trgfn_iva_ins_upd_tipi_soggetto_dettaglio_sync_stato_iso2
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            comment: "Function per sovrascrivere stato_iso2 da stato_id"
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_sync_stato_iso2()
+              RETURNS trigger
+              LANGUAGE plpgsql AS $$
+              BEGIN
+                SELECT s.codice_iso2
+                  INTO NEW.stato_iso2
+                  FROM config.stati s
+                 WHERE s.id = NEW.stato_id;
+                RETURN NEW;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION config.trgfn_sync_stato_iso2()
+              IS $$
+                Sincronizza il campo stato_iso2 di config.tipi_soggetto_dettaglio
+                basandosi sul valore di stato_id: prima di ogni INSERT o UPDATE,
+                recupera da config.stati il codice_iso2 corrispondente e lo assegna
+                a NEW.stato_iso2, garantendo che i due campi rimangano sempre
+                coerenti.
+              $$;
+
+  ############################################################
+  # 2) Creo il trigger che chiama la function ad ogni DML
+  ############################################################
+  - changeSet:
+      id: 20250717-03-add-trigger-sync-stato-iso2
+      author: mctit
+      preConditions:
+        onFail: MARK_RAN
+        onError: HALT
+      changes:
+        - sql:
+            comment: "Drop trigger esistente e ricrea trigger sync"
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_sync_stato_iso2 
+                ON config.tipi_soggetto_dettaglio;
+              CREATE TRIGGER trg_sync_stato_iso2
+                BEFORE INSERT OR UPDATE ON config.tipi_soggetto_dettaglio
+                FOR EACH ROW
+                EXECUTE FUNCTION config.trgfn_sync_stato_iso2();
+
+  - changeSet:
+      id: 20250717-90-trgfn_iva_ins_upd_tipi_soggetto_dettaglio_sync_stato_iso2
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250717-02-trgfn_iva_ins_upd_tipi_soggetto_dettaglio_sync_stato_iso2

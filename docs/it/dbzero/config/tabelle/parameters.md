@@ -28,6 +28,6 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_parameters_audit | AFTER | DELETE | `EXECUTE FUNCTION config.trgfn_parameters_audit()` |
-| trg_parameters_audit | AFTER | UPDATE | `EXECUTE FUNCTION config.trgfn_parameters_audit()` |
+| trg_parameters_audit | AFTER | DELETE | `EXECUTE FUNCTION trgfn_parameters_audit()` |
+| trg_parameters_audit | AFTER | UPDATE | `EXECUTE FUNCTION trgfn_parameters_audit()` |
 | trg_upd_parameters_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  ############################################################
+  # 1) Rename column stato_iso → stato_iso2
+  ############################################################
+  - changeSet:
+      id: 20250717-01-rename-stato-iso-to-stato-iso2
+      author: mctit
+      preConditions:
+        onFail: MARK_RAN
+        onError: HALT
+        columnExists:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            columnName: stato_iso
+      changes:
+        - renameColumn:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            oldColumnName: stato_iso
+            newColumnName: stato_iso2
+            columnDataType: VARCHAR(2)
+
+  ############################################################
+  # 2) Backfill: popolo stato_iso2 da stati.codice_iso2
+  ############################################################
+  - changeSet:
+      id: 20250717-02-backfill-stato-iso2
+      author: mctit
+      preConditions:
+        onFail: MARK_RAN
+        onError: HALT
+        sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT COUNT(*) 
+              FROM config.tipi_soggetto_dettaglio t
+              WHERE t.stato_iso2 IS NULL
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              UPDATE config.tipi_soggetto_dettaglio t
+              SET stato_iso2 = s.codice_iso2
+              FROM config.stati s
+              WHERE t.stato_id = s.id;
+
+  - changeSet:
+      id: 20250717-90-rename-stato-iso-to-stato-iso2
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250717-01-rename-stato-iso-to-stato-iso2

@@ -3,7 +3,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.modalita_pagamento_id_seq'::regclass) |
+| id | integer | NO | nextval('modalita_pagamento_id_seq'::regclass) |
 | cod_modalita | character | NO |  |
 | descrizione | character varying | NO |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
