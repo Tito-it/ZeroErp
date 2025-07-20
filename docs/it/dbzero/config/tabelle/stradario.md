@@ -15,6 +15,7 @@
 | user_update | character varying | YES | CURRENT_USER |
 | codice_postale_id | integer | NO |  |
 | storicizza | boolean | NO | false |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -39,6 +40,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_stradario_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_stradario_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_stradario_upd_dlt_storico_stradario | BEFORE | DELETE | `EXECUTE FUNCTION trgfn_stradario_upd_dlt_storico_stradario()` |
 | trg_stradario_upd_dlt_storico_stradario | BEFORE | UPDATE | `EXECUTE FUNCTION trgfn_stradario_upd_dlt_storico_stradario()` |
 | trg_upd_stradario_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

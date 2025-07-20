@@ -25,8 +25,8 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_codici_postali_config | codice_postale_id, codice_postale_id |
-| FOREIGN KEY | fk_comuni_config | comune_id, comune_id, comune_id |
+| FOREIGN KEY | fk_codici_postali_config | codice_postale_id |
+| FOREIGN KEY | fk_comuni_config | comune_id, comune_id |
 | FOREIGN KEY | fk_indirizzi_anagrafiche | indirizzi_id |
 | FOREIGN KEY | fk_indirizzi_dettaglio_anagrafiche | indirizzi_dettaglio_id |
 | FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id |

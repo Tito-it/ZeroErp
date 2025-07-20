@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250720-11-storico-stradario-add-jsonb
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+        not:
+            columnExists:
+              schemaName: storico
+              tableName: stradario
+              columnName: snapshot
+      changes:
+        - addColumn:
+            schemaName: storico
+            tableName: stradario
+            columns:
+              - column:
+                  name: snapshot
+                  type: jsonb
+                  remarks: "Snapshot JSON dei valori - storicizzazione dati"   
+              - column:
+                  name: tipo_operazione
+                  type: smallint
+                  remarks: "Tipo operazione (1=insert, 2=update, 3=delete)" 
+            
+              - column:
+                  name: tx_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+                  remarks: "Id della transazione" 
+        - dropColumn:
+            schemaName: storico
+            tableName: stradario
+            columns:
+              # column:
+              #    name: stradario_generale_id
+              - column:
+                  name: comune_id
+              - column:
+                  name: codice_postale_id
+              - column:
+                  name: descrizione_via
+              #- column:
+              #     name: geoloc
+              #- column:
+              #    name: extra_info    
+        - renameColumn:
+             schemaName: storico
+             tableName: stradario
+             oldColumnName: stato
+             newColumnName: change_type
+             columnDataType: char          
+  - changeSet:
+      id: 20250720-12-storico-stradario-add-jsonb
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+               COMMENT ON COLUMN storico.stradario.change_type
+                IS  'Tipo di cambiamento: A=Active, S=Suppressed, F=Fused, D=Divided';
+            
+               COMMENT ON COLUMN storico.stradario.tx_id
+                IS  'Id della transazione';                      
+            
+               COMMENT ON COLUMN storico.stradario.tipo_operazione
+                IS  'Tipo operazione (1=insert, 2=update, 3=delete)';         
+            
+               COMMENT ON COLUMN storico.stradario.snapshot
+                IS  'Snapshot JSON dei valori - storicizzazione dati';    
+
+  - changeSet:
+      id: 20250720-90-storico-stradario-add-jsonb
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250720-11-storico-stradario-add-jsonb
