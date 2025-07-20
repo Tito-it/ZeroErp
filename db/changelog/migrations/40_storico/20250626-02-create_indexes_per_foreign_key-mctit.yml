@@ -12,16 +12,19 @@ databaseChangeLog:
   - changeSet:
       id: 20250626-02-create_indexes_per_foreign_key
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
       comments: "Crea indici per le colonne frequentemente filtrate nelle tabelle dello schema storico. 
                  Sono indici per le foreign key che non sono stati creati automaticamente da Liquibase."
       changes:
-        - createIndex:
-            indexName: ix_storico_comuni_comune_id
-            schemaName: storico
-            tableName: comuni
-            columns:
-              - column:
-                  name: comune_id
+       # - createIndex:
+       #     indexName: ix_storico_comuni_comune_id
+       #     schemaName: storico
+       #     tableName: comuni
+       #     columns:
+       #       - column:
+       #           name: comune_id
         - createIndex:
             indexName: ix_storico_indirizzi_codice_postale_id
             schemaName: storico
@@ -57,13 +60,13 @@ databaseChangeLog:
             columns:
               - column:
                   name: stato_id
-        - createIndex:
-            indexName: ix_storico_stradario_codice_postale_id
-            schemaName: storico
-            tableName: stradario
-            columns:
-              - column:
-                  name: codice_postale_id
+       # - createIndex:
+       #     indexName: ix_storico_stradario_codice_postale_id
+       #     schemaName: storico
+       #     tableName: stradario
+       #     columns:
+       #       - column:
+       #           name: codice_postale_id
         - createIndex:
             indexName: ix_storico_stradario_stradario_id
             schemaName: storico
