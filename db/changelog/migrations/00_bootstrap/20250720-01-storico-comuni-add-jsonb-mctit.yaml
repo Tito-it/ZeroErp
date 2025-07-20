@@ -33,9 +33,9 @@ databaseChangeLog:
               - column:
                   name: extra_country
               - column:
-                  name: provincia_id
-              - column:
                   name: stato
+             # - column:
+             #     name: provincia_id    
   - changeSet:
       id: 20250720-90-storico-comuni-add-jsonb
       author: mctit
