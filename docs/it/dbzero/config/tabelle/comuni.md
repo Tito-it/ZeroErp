@@ -13,6 +13,7 @@
 | user_update | character varying | NO | CURRENT_USER |
 | extra_country | jsonb | YES |  |
 | storicizza | boolean | NO | false |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -30,6 +31,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_comuni_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_comuni_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_comuni_upd_dlt_storico_comuni | BEFORE | DELETE | `EXECUTE FUNCTION trgfn_comuni_upd_dlt_storico_comuni()` |
 | trg_comuni_upd_dlt_storico_comuni | BEFORE | UPDATE | `EXECUTE FUNCTION trgfn_comuni_upd_dlt_storico_comuni()` |
 | trg_upd_comuni_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

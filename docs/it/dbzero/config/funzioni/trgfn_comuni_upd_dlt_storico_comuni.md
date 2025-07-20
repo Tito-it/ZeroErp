@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/trgfn_comuni_upd_dlt_storico_comuni.md" %}
 # ⚙️ Funzione `trgfn_comuni_upd_dlt_storico_comuni`
 
 ```sql
@@ -11,107 +12,179 @@ CREATE OR REPLACE FUNCTION config.trgfn_comuni_upd_dlt_storico_comuni()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+DECLARE
+  v_snapshot_aperto BOOLEAN := FALSE;  -- Flag per verificare presenza snapshot aperti
+  v_current_date DATE := CURRENT_DATE; -- Data corrente (cached per consistenza)
+  v_rowcount INTEGER := 0;
 BEGIN
-  IF TG_OP = 'UPDATE' AND NEW.storicizza THEN
-
-    -- 1) Se esiste uno snapshot aperto, lo chiudo; altrimenti lo creo da OLD
-    IF EXISTS (
-      SELECT 1
-        FROM storico.comuni
-       WHERE comune_id = OLD.id
-         AND valid_to IS NULL
-    ) THEN
+  /*
+   * LOGICA PRINCIPALE:
+   * 1) Per UPDATE con flag storicizza=TRUE: 
+   *    - Chiudi snapshot precedente (se esistente e non già chiuso oggi)
+   *    - Crea snapshot storico iniziale (se non esisteva)
+   *    - Aggiungi nuovo snapshot con valori aggiornati
+   *    - Resetta flag storicizza
+   *    
+   * 2) Per DELETE con flag storicizza=TRUE:
+   *    - Chiudi snapshot aperto (se esistente)
+   *    - Crea snapshot finale (se non esisteva)
+   *    - Registra operazione di delete
+   *    
+   * 3) Altri casi: passa semplicemente il record senza storicizzazione
+   */
+  -- CASO UPDATE: storicizza solo se esplicitamente richiesto (NEW.storicizza = TRUE)
+  IF TG_OP = 'UPDATE' AND NEW.storicizza IS TRUE THEN
+    BEGIN
+      /*
+       * FASE 1: CHIUSURA SNAPSHOT APERTO
+       * Chiudi eventuale record storico precedente ancora aperto (valid_to IS NULL)
+       * Solo se non è già stato chiuso oggi (ottimizzazione prestazioni)
+       */
       UPDATE storico.comuni
-         SET valid_to = CURRENT_DATE
-       WHERE comune_id = OLD.id
-         AND valid_to   IS NULL;
-    ELSE
+        SET valid_to = v_current_date
+      WHERE comune_id = OLD.id 
+        AND valid_to IS NULL;
+      -- NOn è corretto perchè possono esistere più storici nello stesso giorno 
+      -- AND valid_to <> v_current_date;
+
+      -- Verifica se è stato chiuso uno snapshot
+      GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+      v_snapshot_aperto := v_rowcount > 0;
+      /*
+       * FASE 2: CREAZIONE SNAPSHOT INIZIALE (solo se non esisteva)
+       * Crea un record storico con i valori ORIGINALI (OLD) 
+       * marcato come operazione di INSERT (tipo=1)
+       */
+      IF NOT v_snapshot_aperto THEN
+        INSERT INTO storico.comuni (
+          comune_id, valid_from, valid_to,
+          data_insert, user_insert, snapshot, tipo_operazione_id
+        ) VALUES (
+          OLD.id, 
+          OLD.data_insert::DATE,
+          v_current_date,
+          NOW(),
+          session_user,
+          to_jsonb(OLD),
+          1
+        );
+      END IF;
+      /*
+       * FASE 3: CREAZIONE SNAPSHOT AGGIORNATO
+       * Crea un nuovo record storico con i valori NUOVI (NEW)
+       * marcato come operazione di UPDATE (tipo=2)
+       * Questo rimane aperto (valid_to IS NULL) fino a prossima modifica
+       */
       INSERT INTO storico.comuni (
-        comune_id,
-        descrizione,
-        extra_country,
-        
-        valid_to,
-        data_insert,
-        user_insert
-      )
-      VALUES (
-        OLD.id,
-        OLD.descrizione,
-        OLD.extra_country,
-        
-        CURRENT_DATE,
+        comune_id, valid_from, data_insert,
+        user_insert, snapshot, tipo_operazione_id
+      ) VALUES (
+        NEW.id, 
+        v_current_date,
         NOW(),
-        CURRENT_USER
+        session_user,
+        to_jsonb(NEW),
+        2
       );
-    END IF;
-
-    -- 2) Inserisco sempre lo snapshot NEW
-    INSERT INTO storico.comuni (
-      comune_id,
-      descrizione,
-      extra_country,
-      valid_from,
-      data_insert,
-      user_insert
-    )
-    VALUES (
-      NEW.id,
-      NEW.descrizione,
-      NEW.extra_country,
-      CURRENT_DATE,
-      NOW(),
-      CURRENT_USER
-    );
-
-    -- 3) Reset del flag prima dell’UPDATE
-    NEW.storicizza := false;
-
-    RETURN NEW;
-
-  ELSIF TG_OP = 'DELETE'  THEN
-
-    -- 1) Se esiste uno snapshot aperto, lo chiudo; altrimenti creo uno “finale”
-    IF EXISTS (
-      SELECT 1
-        FROM storico.comuni
-       WHERE comune_id = OLD.id
-         AND valid_to IS NULL
-    ) THEN
+      -- Resetta flag per evitare storicizzazioni multiple nella stessa transazione
+      NEW.storicizza := FALSE;
+      RETURN NEW;
+    EXCEPTION WHEN OTHERS THEN
+      -- Log dell'errore ma permette all'operazione di continuare
+      
+      PERFORM script.fn_log_and_raise_error(
+        'database',
+        TG_NAME,
+        'E_STORICIZZAZIONE',
+        to_jsonb(OLD),
+         NULL::uuid,
+        -- 6+ variadic p_valori: uno per ciascun %s
+        'anagrafiche.comuni',  -- primo %s → nome tabella
+         TG_OP,                  -- secondo %s → operazione (UPDATE/DELETE)
+        ' comune_id: ',               -- terzo %s → codice
+        OLD.id::text,  -- quarto %s → valore
+        SQLERRM                 -- quinto %s → messaggio SQL error                   
+      );
+      RETURN NEW;
+    END;
+  -- CASO DELETE: storicizza solo se esplicitamente richiesto (OLD.storicizza = TRUE)
+  ELSIF TG_OP = 'DELETE' AND OLD.storicizza IS TRUE THEN
+    BEGIN
+      /*
+       * FASE 1: CHIUSURA SNAPSHOT APERTO
+       * Chiudi eventuale record storico precedente ancora aperto
+       */
       UPDATE storico.comuni
-         SET valid_to = CURRENT_DATE
-       WHERE comune_id = OLD.id
-         AND valid_to   IS NULL;
-    ELSE
+        SET valid_to = v_current_date
+      WHERE comune_id = OLD.id AND valid_to IS NULL;
+
+      -- Verifica se è stato chiuso uno snapshot
+      GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+      v_snapshot_aperto := v_rowcount > 0;
+      /*
+       * FASE 2: CREAZIONE SNAPSHOT FINALE (solo se non esisteva)
+       * Crea un record storico con i valori ORIGINALI (OLD)
+       * marcato come operazione di INSERT (tipo=1)
+       * Questo serve per avere traccia dello stato prima della cancellazione
+       */
+      IF NOT v_snapshot_aperto THEN
+        INSERT INTO storico.comuni (
+          comune_id, valid_from, valid_to,
+          data_insert, user_insert, snapshot, tipo_operazione_id
+        ) VALUES (
+          OLD.id, 
+          v_current_date,
+          v_current_date,
+          NOW(),
+          session_user,
+          to_jsonb(OLD),
+          1
+        );
+      END IF;
+      /*
+       * FASE 3: REGISTRAZIONE CANCELLAZIONE
+       * Crea un record storico che documenta la cancellazione
+       * marcato come operazione di DELETE (tipo=3)
+       */
       INSERT INTO storico.comuni (
-        comune_id,
-        descrizione,
-        extra_country,
-        valid_from,
-        valid_to,
-        data_insert,
-        user_insert
-      )
-      VALUES (
-        OLD.id,
-        OLD.descrizione,
-        OLD.extra_country,
-        CURRENT_DATE,
-        CURRENT_DATE,
+        comune_id, valid_from, valid_to,
+        data_insert, user_insert, snapshot, tipo_operazione_id
+      ) VALUES (
+        OLD.id, 
+        v_current_date,
+        v_current_date,
         NOW(),
-        CURRENT_USER
+        session_user,
+        to_jsonb(OLD),
+        3
       );
-    END IF;
+      RETURN OLD;
+    EXCEPTION WHEN OTHERS THEN
+      -- Log dell'errore ma permette all'operazione di continuare
+      
+      PERFORM script.fn_log_and_raise_error(
+        'database',
+        TG_NAME,
+        'E_STORICIZZAZIONE',
+        to_jsonb(OLD),
+         NULL::uuid,
+        -- 6+ variadic p_valori: uno per ciascun %s
+        'anagrafiche.comuni',  -- primo %s → nome tabella
+         TG_OP,                  -- secondo %s → operazione (UPDATE/DELETE)
+        ' comune_id: ',               -- terzo %s → codice
+        OLD.id::text,  -- quarto %s → valore
+        SQLERRM                 -- quinto %s → messaggio SQL error                   
+      );
 
-    RETURN OLD;
+      RETURN OLD;
+    END;
   END IF;
-
-  -- Per tutti gli altri casi (UPDATE senza flag, INSERT, ecc.)
-  IF TG_OP = 'UPDATE' THEN
-    RETURN NEW;
-  ELSE
-    RETURN OLD;
-  END IF;
+  /*
+   * CASO DEFAULT: 
+   * Per INSERT semplici o UPDATE senza flag storicizza
+   * Restituisce il record senza effettuare storicizzazione
+   */
+  RETURN COALESCE(NEW, OLD);
 END;
 $function$
 ```

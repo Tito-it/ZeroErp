@@ -1,2 +1,2 @@
 codice,lingua,messaggio,causa,soluzione,id
-E_DEFAULT_CONTATTO_MISSING,it,Tipo contatto DEFAULT non trovato in config.tipi_contatti. Impossibile creare contatto fallback.,"","",1
+E_STORICIZZAZIONE,it,Errore storicizzazione per la tabella: %s in fase di: %s per il codice: %s valore: %s .  SQL ERROR: %s  ,Operazione non prevista in fase di storicizzazione ,,21
