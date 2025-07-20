@@ -46,8 +46,8 @@ databaseChangeLog:
             schemaName: storico
             tableName: stradario
             columns:
-              - column:
-                  name: stradario_generale_id
+              # column:
+              #    name: stradario_generale_id
               - column:
                   name: comune_id
               - column:
