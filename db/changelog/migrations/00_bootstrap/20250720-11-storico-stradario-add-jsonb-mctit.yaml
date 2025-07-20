@@ -54,8 +54,8 @@ databaseChangeLog:
                   name: codice_postale_id
               - column:
                   name: descrizione_via
-              - column:
-                  name: geoloc
+              #- column:
+              #     name: geoloc
               - column:
                   name: extra_info    
         - renameColumn:
