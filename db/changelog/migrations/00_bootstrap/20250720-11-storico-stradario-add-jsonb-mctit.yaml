@@ -56,8 +56,8 @@ databaseChangeLog:
                   name: descrizione_via
               #- column:
               #     name: geoloc
-              - column:
-                  name: extra_info    
+              #- column:
+              #    name: extra_info    
         - renameColumn:
              schemaName: storico
              tableName: stradario
