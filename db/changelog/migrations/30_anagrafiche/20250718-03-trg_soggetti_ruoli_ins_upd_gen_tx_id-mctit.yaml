@@ -6,10 +6,13 @@
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
-databaseChangeLog:  
+databaseChangeLog:   
   - changeSet:
       id: 20250718-03-trg_soggetti_ruoli_ins_upd_gen_tx_id
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
       comment: >
         Crea trigger su anagrafiche.soggetti_ruoli per assegnare tx_id tramite
         funzione dbops.trgfn_tx_id_managed solo se il campo NEW.tx_id è NULL.
@@ -29,7 +32,6 @@ databaseChangeLog:
               CREATE TRIGGER trg_soggetti_ruoli_ins_upd_gen_tx_id
               BEFORE INSERT OR UPDATE ON anagrafiche.soggetti_ruoli
               FOR EACH ROW
-              WHEN (NEW.tx_id IS NULL)
               EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
 
         - sql:

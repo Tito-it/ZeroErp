@@ -35,7 +35,7 @@
 
 ## ⚙️ Funzioni
 - [fn_get_iva_override](funzioni/fn_get_iva_override.md) — * **Recupero unificato**   Ottenere in un’unica chiamata sia i valori base da `config.iva` sia gli override da `config.iva_stati` se presenti. * **Override per Stato**   Consentire di modificare aliquota e assoggettamento IVA a livello di Stato senza duplicare righe in `config.iva`. * **Centralizzazione**   Incapsulare la logica di join e COALESCE in una funzione riutilizzabile.
-- [trgfn_comuni_upd_dlt_storico_comuni](funzioni/trgfn_comuni_upd_dlt_storico_comuni.md)
+- [trgfn_comuni_upd_dlt_storico_comuni](funzioni/trgfn_comuni_upd_dlt_storico_comuni.md) — La trigger function **`config.trgfn_comuni_upd_dlt_storico_comuni()`** gestisce la **storicizzazione** delle modifiche e cancellazioni sui record della tabella **`anagrafiche.comuni`**, garantendo:
 - [trgfn_iva_ins_upd_check_conti_iva](funzioni/trgfn_iva_ins_upd_check_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_parameters_audit](funzioni/trgfn_parameters_audit.md)
 - [trgfn_stradario_upd_dlt_storico_stradario](funzioni/trgfn_stradario_upd_dlt_storico_stradario.md) — * **Storicizzazione automatica**   Creare snapshot storici dei dati di `stradario` su modifiche e cancellazioni, mantenendo traccia delle variazioni nel tempo. * **Centralizzare la logica di versioning**   Evitare duplicazione di codice e garantire coerenza nella gestione dello storico.
