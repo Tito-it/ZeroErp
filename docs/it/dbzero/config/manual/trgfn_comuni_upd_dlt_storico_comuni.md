@@ -3,11 +3,12 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento Tabelle:   
-> * [anagrafiche.comuni](/dbzero/anagrafiche/tabelle/comuni)    
-> * [storico.comuni](/dbzero/anagrafiche/tabelle/comuni)   
+> - [config.comuni](/dbzero/config/tabelle/comuni)    
+> - [storico.comuni](/dbzero/storico/tabelle/comuni)   
 >
 > Approfondimento funzioni:   
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+> - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)  
+
 
 ### 🎯 Scopo Principale
 
