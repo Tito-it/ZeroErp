@@ -13,6 +13,7 @@
 | tx_id | uuid | YES |  |
 | snapshot | jsonb | YES |  |
 | tipo_operazione_id | smallint | YES |  |
+| change_type | character | NO | 'A'::bpchar |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

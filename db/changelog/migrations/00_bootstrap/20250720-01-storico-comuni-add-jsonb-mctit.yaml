@@ -11,6 +11,17 @@ databaseChangeLog:
   - changeSet:
       id: 20250720-01-storico-comuni-add-jsonb
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+        not:
+            columnExists:
+              schemaName: storico
+              tableName: comuni
+              columnName: snapshot
       changes:
         - addColumn:
             schemaName: storico
