@@ -4,6 +4,8 @@
 
 > Approfondimento Tabelle:   
 >  - [config.province](/dbzero/config/tabelle/province)        
+>  - [config.stradario](/dbzero/config/tabelle/stradario)        
+>  - [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)        
 >  - [storico.comuni](/dbzero/storico/tabelle/comuni)  
 
 
@@ -21,7 +23,7 @@ La tabella **`config.comuni`** censisce i comuni (italiani ed esteri) all’inte
   L’associazione tra `config.stradario_generale` (prefissi e nomi delle vie) e `config.comuni` genera la tabella `config.stradario`, che contiene l’indirizzo completo con la localizzazione geografica sul comune di appartenenza.
   Utilizzata per associare i record di **`config.stradario`** al comune di appartenenza, completa il percorso di indirizzamento.
 * **Storicizzazione**
-  Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.stradario`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
+  Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.comuni`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
 
 ---
 
@@ -29,7 +31,7 @@ La tabella **`config.comuni`** censisce i comuni (italiani ed esteri) all’inte
 
 * **`config.province`**
   Il campo `provincia_id` identifica al provincia di appartenenza..
-* **`storico.comune`**
+* **`storico.comuni`**
   `storico` True attiva il trigger per il salvataggio delle informazioni.
 ---
 

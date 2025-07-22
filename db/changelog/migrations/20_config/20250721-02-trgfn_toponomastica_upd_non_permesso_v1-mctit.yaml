@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+  
+  ############################################################
+  # 1) Function per bloccare la modifica di toponomastica  se presente un record in stradario_generale
+  ############################################################
+databaseChangeLog:
+  - changeSet:
+      id: 20250721-02-trgfn_toponomastica_upd_non_permesso_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+        Trigger‐function che blocca UPDATE su config.toponomastica 
+        (descrizione) solo se esiste un record 
+        in config.stradario_generale, segnalando esattamente quale colonna è stata modificata.
+      changes:
+        - sql:
+            comment: "1) Rimuove trigger e funzione precedente"
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_toponomastica_upd_non_permesso
+                ON config.toponomastica;
+              DROP FUNCTION IF EXISTS config.trgfn_toponomastica_upd_non_permesso();
+
+        - sql:
+            comment: "2) Crea la nuova trigger‐function con controllo dipendenza + colonna specifica"
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_toponomastica_upd_non_permesso()
+                RETURNS trigger
+                LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                -- Se il record non è usato in config.stradario_generale, lascio passare
+                IF NOT EXISTS (
+                  SELECT 1
+                    FROM config.stradario_generale
+                   WHERE  toponomastica_id = OLD.id
+                ) THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se siamo qui, il record è in uso: controllo ciascuna colonna
+                IF OLD.descrizione IS DISTINCT FROM NEW.descrizione THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_COLONNA_NON_MODIFICABILE',
+                    jsonb_build_object('column','descrizione','id',OLD.id),
+                     NULL::uuid,
+                    'descrizione'
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $$;
+
+        - sql:
+            comment: "3) Commento sulla trigger‐function"
+            splitStatements: false
+            sql: |
+              COMMENT ON FUNCTION config.trgfn_toponomastica_upd_non_permesso()
+                IS 'Blocca UPDATE di descrizione se esistono righe in config.stradario_generale, indicando la colonna modificata';
+
+        - sql:
+            comment: "4) Ricrea il trigger"
+            splitStatements: false
+            sql: |
+              CREATE TRIGGER trg_toponomastica_upd_non_permesso
+                BEFORE UPDATE OF descrizione
+                ON config.toponomastica
+                FOR EACH ROW
+                EXECUTE FUNCTION config.trgfn_toponomastica_upd_non_permesso();
+
+        - sql:
+            comment: "5) Commento sul trigger"
+            splitStatements: false
+            sql: |
+              COMMENT ON TRIGGER trg_toponomastica_upd_non_permesso
+                ON config. toponomastica
+                IS 'Quando il record è in uso in config.stradario_generale, blocca UPDATE delle colonne specificate e segnala quale';
+
+            
+  - changeSet:
+      id: 20250721-90-trgfn_toponomastica_upd_non_permesso_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250721-02-trgfn_toponomastica_upd_non_permesso_v1
