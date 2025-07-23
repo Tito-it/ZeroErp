@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:  
+  - changeSet:
+      id: 20250723-15-create-vw_indirizzo_completo_v2
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: "CREATE OR REPLACE VIEW via Liquibase"
+      changes:
+        - createView:
+            schemaName: script
+            viewName: vw_indirizzo_completo
+            replaceIfExists: true     # qui facciamo OR REPLACE
+            selectQuery: |
+              SELECT 
+                s.id                AS id_stradario,
+                c.id                AS id_comune,
+                c.descrizione       AS comune,
+                p.sigla             AS provincia,
+                cp.codice_postale,
+                ve.indirizzo_generale,
+                s.geoloc,
+                s.extra_info,
+                ve.id_via           AS id_via,
+                ve.tipo_toponimo,
+                ve.nome_strada
+              FROM config.stradario s
+                JOIN config.comuni c 
+                  ON s.comune_id = c.id
+                JOIN config.province p 
+                  ON c.provincia_id = p.id
+                JOIN config.codici_postali cp 
+                  ON s.codice_postale_id = cp.id
+                JOIN script.vw_stradario_esteso ve 
+                  ON s.stradario_generale_id = ve.id_via;
+        - sql:
+            comment: "Mantiene il commento sulla view"
+            splitStatements: false
+            sql: |
+              COMMENT ON VIEW script.vw_indirizzo_completo
+                IS 'View che estende config.stradario con dati di comune, provincia,
+                codice postale e dettaglio via dalla view script.vw_stradario_esteso';
+
+  # Metto un tag fine modifiche
+  - changeSet:
+      id: 20250723-90-create-vw_indirizzo_completo_v2
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250723-15-create-vw_indirizzo_completo_v2

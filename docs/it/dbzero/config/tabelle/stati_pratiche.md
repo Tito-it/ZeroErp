@@ -3,7 +3,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('stati_pratiche_id_seq'::regclass) |
+| id | integer | NO | nextval('config.stati_pratiche_id_seq'::regclass) |
 | cod_stato | character varying | NO |  |
 | descrizione | character varying | NO |  |
 | cd_int_stato | character varying | NO |  |

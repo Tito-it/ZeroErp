@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('stradario_generale_id_seq'::regclass) |
+| id | integer | NO | nextval('config.stradario_generale_id_seq'::regclass) |
 | toponomastica_id | integer | NO |  |
 | descrizione | character varying | NO |  |
 | descrizione_breve | character varying | NO |  |
@@ -30,5 +30,5 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_stradario_generale_upd_non_permesso | BEFORE | UPDATE | `EXECUTE FUNCTION trgfn_stradario_generale_upd_non_permesso()` |
+| trg_stradario_generale_upd_non_permesso | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_stradario_generale_upd_non_permesso()` |
 | trg_upd_stradario_generale_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('stati_id_seq'::regclass) |
+| id | integer | NO | nextval('config.stati_id_seq'::regclass) |
 | sigla_stato | character varying | YES |  |
 | descrizione | character varying | NO |  |
 | codice_iso2 | character | YES |  |

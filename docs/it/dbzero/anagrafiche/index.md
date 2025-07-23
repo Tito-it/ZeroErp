@@ -16,7 +16,7 @@
 ## ⚙️ Funzioni
 - [trgfn_contatti_ins_upd_set_default_contatto](funzioni/trgfn_contatti_ins_upd_set_default_contatto.md) — * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 - [trgfn_gestori_ins_upd_check_ruolo_gestore](funzioni/trgfn_gestori_ins_upd_check_ruolo_gestore.md) — - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_check_ins_soggetto_ruolo` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
-- [trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio](funzioni/trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio.md)
+- [trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio](funzioni/trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio.md) — * **Uniformità dei dati**: garantire che i campi relativi all’indirizzo (`via_norm`, `civico_norm`, `indirizzo_normalizzato`) rispettino regole di maiuscole, spaziatura e formattazione. * **Preparazione per ricerche e comparazioni**: offrire valori normalizzati che migliorano le performance di query basate su stringhe (es. ricerche full-text, join su via). * **Affidabilità**: centralizzare la logica di normalizzazione nel database, evitando differenze tra applicazioni diverse.
 - [trgfn_indirizzi_ins_upd_clean_fields](funzioni/trgfn_indirizzi_ins_upd_clean_fields.md)
 - [trgfn_indirizzi_upd_dlt_storico_indirizzi](funzioni/trgfn_indirizzi_upd_dlt_storico_indirizzi.md)
 - [trgfn_istanze_utilities_ins_set_istanza_codice](funzioni/trgfn_istanze_utilities_ins_set_istanza_codice.md)

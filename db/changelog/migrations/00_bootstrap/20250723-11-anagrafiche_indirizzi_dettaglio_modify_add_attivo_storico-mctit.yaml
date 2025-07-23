@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250723-11-anagrafiche_indirizzi_dettaglio_modify_add_attivo_storico
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista ancora tx_id
+        not:
+          columnExists:
+            schemaName: anagrafiche
+            tableName: indirizzi_dettaglio
+            columnName: storico
+
+      changes:
+        # 1) Aggiunta della colonna tx_id se non esiste
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: indirizzi_dettaglio
+            columns:
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true     
+                  constraints:
+                    nullable: false
+                  remarks: "Attivo/Disattivo"
+              - column:
+                  name: storicizza
+                  type: BOOLEAN
+                  defaultValueBoolean: false     
+                  constraints:
+                    nullable: false
+                  remarks: "Storicizza Default=True"  
+  - changeSet:
+      id: 20250724-06-drop-generated-from-indirizzo_normalizzato
+      author: mctit
+      comments: >
+        Rimuove la definizione GENERATED ALWAYS AS (…) STORED dalla colonna
+        indirizzo_normalizzato e la trasforma in semplice TEXT.
+      changes:
+        - sql:
+            comment: "1) Rimuove l’espressione GENERATED dalla colonna"
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.indirizzi_dettaglio
+                ALTER COLUMN indirizzo_normalizzato DROP EXPRESSION;
+         
+  - changeSet:
+      id: 20250723-90-anagrafiche_indirizzi_dettaglio_modify_add_attivo_storico
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250723-11-anagrafiche_indirizzi_dettaglio_modify_add_attivo_storico

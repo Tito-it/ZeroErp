@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250722-01-anagrafiche_indirizzi_dettaglio_modify_add_tx_id
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista ancora tx_id
+        not:
+          columnExists:
+            schemaName: anagrafiche
+            tableName: indirizzi_dettaglio
+            columnName: tx_id
+
+      changes:
+        # 1) Aggiunta della colonna tx_id se non esiste
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: indirizzi_dettaglio
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+                  remarks: "Id transazione"  
+         # 2) Modifica dei tipi GIS
+        - sql:
+            comment: "1) Modifica dei tipi GIS su civic_geoloc e street_geoloc"
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.indirizzi_dettaglio
+                ALTER COLUMN civic_geoloc TYPE geometry(Point,4326) USING civic_geoloc::geometry,
+                ALTER COLUMN street_geoloc TYPE geometry(Point,4326) USING street_geoloc::geometry;
+
+        # 3) Rimuove il UNIQUE errato su anagrafiche.indirizzi
+        # 4) Rimuove l’indice esistente su indirizzi_dettaglio (senza errori se non esiste)
+        
+        
+        - dropUniqueConstraint:
+              schemaName: anagrafiche
+              tableName: indirizzi_dettaglio
+              constraintName: uq_indirizzi_dettaglio_norm
+              ifExists: true
+
+        # 5) Ricrea l’indice UNIQUE corretto su indirizzi_dettaglio
+        - createIndex:
+            unique: true
+            schemaName: anagrafiche
+            tableName: indirizzi_dettaglio
+            indexName: ix_uq_indirizzi_dettaglio_norm
+            columns:
+              - column:
+                  name: via_norm
+              - column:
+                  name: civico_norm
+              - column:
+                  name: interno
+              - column:
+                  name: piano
+              - column:
+                  name: palazzina
+
+        # 6) Ricrea il vincolo UNIQUE su indirizzi_dettaglio (se ti serve)
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: indirizzi_dettaglio
+            columnNames: via_norm, civico_norm, interno, piano, palazzina
+            constraintName: uq_indirizzi_dettaglio_norm
+  
+  - changeSet:
+      id: 20250722-90-anagrafiche_indirizzi_dettaglio_modify_add_tx_id
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250722-01-anagrafiche_indirizzi_dettaglio_modify_add_tx_id
