@@ -3,7 +3,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('stati_cliente_id_seq'::regclass) |
+| id | integer | NO | nextval('config.stati_cliente_id_seq'::regclass) |
 | cod_int_stato_cliente | character | NO |  |
 | desc_stato_cliente | character varying | NO | ''::character varying |
 | desc_breve_stato | character | NO |  |

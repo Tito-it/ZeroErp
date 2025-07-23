@@ -8,7 +8,7 @@ CREATE FUNCTION fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id integer)
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id integer)
- RETURNS TABLE(tipo_indirizzo character varying, indirizzo_completo text, geoloc public.geometry)
+ RETURNS TABLE(tipo_indirizzo character varying, indirizzo_completo text, geoloc geometry)
  LANGUAGE sql
  STABLE
 AS $function$

@@ -20,24 +20,27 @@ databaseChangeLog:
             comment: "2) Rimuove eventuale trigger esistente"
             splitStatements: false
             sql: |
-              DROP TRIGGER IF EXISTS trg_indirizzi_dettaglio_ins_upd_genera_storico
+              DROP TRIGGER IF EXISTS trg_Z90_indirizzi_dettaglio_ins_upd_storico
                 ON anagrafiche.indirizzi_dettaglio;
             
         - sql:
-            comment: "1) Crea trigger " 
+            comment: "2) Ricrea il trigger come BEFORE che FOLLOWS il trigger di normalizzazione " 
             splitStatements: false
             stripComments: true
             sql: |
-              CREATE TRIGGER trg_indirizzi_dettaglio_ins_upd_genera_storico
-              AFTER INSERT OR UPDATE ON anagrafiche.indirizzi_dettaglio
-              FOR EACH ROW
-              EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('indirizzo_dettaglio_id')
+                  CREATE TRIGGER trg_Z90_indirizzi_dettaglio_ins_upd_storico
+                    BEFORE UPDATE OR DELETE
+                    ON anagrafiche.indirizzi_dettaglio
+                    FOR EACH ROW
+                    EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic(
+                      'indirizzo_dettaglio_id'
+                    );
 
         - sql:
             comment: "Commento descrittivo sul  trigger"
             splitStatements: false      
             sql: |
-                  COMMENT ON TRIGGER trg_indirizzi_dettaglio_ins_upd_genera_storico
+                  COMMENT ON TRIGGER trg_Z90_indirizzi_dettaglio_ins_upd_storico
                     ON anagrafiche.indirizzi_dettaglio
                       IS ' Crea trigger su anagrafiche.indirizzi_dettaglio 
                       per generare storico.indirizzi_dettaglio(snapshot)';
