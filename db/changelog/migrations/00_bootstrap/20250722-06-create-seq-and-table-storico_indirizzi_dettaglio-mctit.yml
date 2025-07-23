@@ -101,33 +101,7 @@ databaseChangeLog:
                   name: tx_id
                   type: UUID
                   remarks: "UUID di transazione per correlare più operazioni"
-  - changeSet:
-      id: 20250722-07-create-seq-and-table-storico_indirizzi_dettaglio
-      author: mctit
-      runOnChange: true
-      validCheckSums:
-        - ANY
-      preConditions:
-        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
-        onError: CONTINUE
-         #  Assicuro che NON esista ancora indirizzo_dettaglio_id
-        not:
-          columnExists:
-            schemaName: storico
-            tableName: indirizzi_dettaglio
-            columnName: indirizzo_dettaglio_id
-      changes: 
-        # 3) Aggiunge la FK indirizzo_id → anagrafiche.indirizzi(id)
-        - addForeignKeyConstraint:
-            baseTableSchemaName: storico
-            baseTableName: indirizzi_dettaglio
-            baseColumnNames: indirizzo_id
-            referencedTableSchemaName: anagrafiche
-            referencedTableName: indirizzi_dettaglio
-            referencedColumnNames: id
-            constraintName: fk_storico_indirizzi_dettaglio_anagrafiche_indirizzi_dettaglio
-            onUpdate: CASCADE
-            onDelete: SET NULL
+  
 
                                     
  # Metto un  tag fine modifiche
