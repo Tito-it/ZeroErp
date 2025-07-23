@@ -16,15 +16,15 @@ databaseChangeLog:
       runOnChange: true
       validCheckSums:
         - ANY
-    #  preConditions:
-    #    onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
-    #    onError: CONTINUE
-    #     #  Assicuro che NON esista ancora indirizzo_dettaglio_id
-    #    not:
-    #      columnExists:
-    #        schemaName: storico
-    #        tableName: indirizzi_dettaglio
-    #        columnName: indirizzo_dettaglio_id
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista ancora indirizzo_dettaglio_id
+        not:
+          columnExists:
+            schemaName: storico
+            tableName: indirizzi_dettaglio
+            columnName: indirizzo_dettaglio_id
       changes:
         
      #   - dropForeignKeyConstraint:

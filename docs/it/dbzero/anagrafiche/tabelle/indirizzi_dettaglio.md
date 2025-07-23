@@ -23,6 +23,8 @@
 | scala | character varying | YES |  |
 | indirizzo_normalizzato | text | YES |  |
 | tx_id | uuid | YES |  |
+| attivo | boolean | NO | true |
+| storicizza | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

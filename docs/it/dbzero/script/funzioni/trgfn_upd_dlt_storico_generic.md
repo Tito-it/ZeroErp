@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/trgfn_upd_dlt_storico_generic.md" %}
 # ⚙️ Funzione `trgfn_upd_dlt_storico_generic`
 
 ```sql
@@ -26,6 +27,14 @@ AS $function$
       op_type         SMALLINT;     -- 1=creazione, 2=modifica, 3=eliminazione
       v_id_value      BIGINT;       -- Valore ID del record originale
     BEGIN
+
+      --0) Se la colonna storicizza esiste e vale FALSE, non storicizzo
+      IF TG_OP = 'UPDATE' AND NOT NEW.storicizza THEN
+        RETURN NEW;
+      ELSIF TG_OP = 'DELETE' AND NOT OLD.storicizza THEN
+        RETURN OLD;
+      END IF;
+      
       -- [Sezione 1] Recupero ID record originale ---------------------------------
       -- Ottiene l'ID del record dalla tabella sorgente (OLD per DELETE, NEW per UPDATE)
       -- Gestisce eventuali errori di colonna mancante
@@ -117,7 +126,7 @@ AS $function$
           );
         END;
       END;
-
+      NEW.storicizza := FALSE;
       -- Restituisce il record appropriato (OLD per DELETE, NEW per UPDATE)
       RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
     END;

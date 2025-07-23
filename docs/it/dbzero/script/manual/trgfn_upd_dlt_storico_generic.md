@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> * [script.fn\_log\_and\_raise\_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 > * [Linee Guida SQL](linee-guida-sql.md) per convenzioni di changeSet e commenti SQL
 
 La trigger function **`script.trgfn_upd_dlt_storico_generic()`** centralizza la logica di storicizzazione in qualunque tabella del layer `storico`, gestendo:
@@ -11,6 +11,7 @@ La trigger function **`script.trgfn_upd_dlt_storico_generic()`** centralizza la 
 * Creazione di uno snapshot iniziale con `valid_from` fisso (`1950-01-01`) se non esistevano record storici.
 * Inserimento di snapshot finale con `valid_from = CURRENT_DATE` e `valid_to = NULL` per l’operazione corrente.
 * Gestione di errori tramite `script.fn_log_and_raise_error`, mantenendo commenti interni e usando `TG_ARGV[0]` per il nome della colonna FK della tabella storica.
+* Importante tutte le tabelle devono avere una colonna `storicizza` che è utilizzatta all'interno della funzion.
 
 ---
 
@@ -38,7 +39,7 @@ La trigger function **`script.trgfn_upd_dlt_storico_generic()`** centralizza la 
 * **Dipendenze**:
 
   * Schema `storico` deve contenere la tabella con stesso nome della sorgente.
-  * Colonne `valid_from`, `valid_to`, `data_insert`, `user_insert`, `snapshot`, `tipo_operazione` con struttura standard.
+  * Colonne `storicizza`, `valid_from`, `valid_to`, `data_insert`, `user_insert`, `snapshot`, `tipo_operazione` con struttura standard.
   * Funzione `script.fn_log_and_raise_error` per log degli errori.
 
 ---

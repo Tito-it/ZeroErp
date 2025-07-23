@@ -44,6 +44,14 @@ databaseChangeLog:
                         op_type         SMALLINT;     -- 1=creazione, 2=modifica, 3=eliminazione
                         v_id_value      BIGINT;       -- Valore ID del record originale
                       BEGIN
+
+                        --0) Se la colonna storicizza esiste e vale FALSE, non storicizzo
+                        IF TG_OP = 'UPDATE' AND NOT NEW.storicizza THEN
+                          RETURN NEW;
+                        ELSIF TG_OP = 'DELETE' AND NOT OLD.storicizza THEN
+                          RETURN OLD;
+                        END IF;
+                        
                         -- [Sezione 1] Recupero ID record originale ---------------------------------
                         -- Ottiene l'ID del record dalla tabella sorgente (OLD per DELETE, NEW per UPDATE)
                         -- Gestisce eventuali errori di colonna mancante
@@ -135,7 +143,7 @@ databaseChangeLog:
                             );
                           END;
                         END;
-
+                        NEW.storicizza := FALSE;
                         -- Restituisce il record appropriato (OLD per DELETE, NEW per UPDATE)
                         RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
                       END;
@@ -153,6 +161,9 @@ databaseChangeLog:
                     2. Creazione snapshot iniziale (se necessario) con valid_from fisso a 1950-01-01
                     3. Creazione snapshot finale con valid_from = CURRENT_DATE e valid_to NULL
                     4. Logging degli errori tramite script.fn_log_and_raise_error
+                    5. Importante deve essere sempre definita la colonna "storicizza"
+                    per la PK originale (in questo modo la funzione può identificare
+                    il record originale e gestire la chiusura del snapshot corretto).
                     Parametri:
                     - TG_ARGV[0]: Nome della colonna FK nella tabella storica che riferisce alla PK originale
                     Utilizzo tipico:
