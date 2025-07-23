@@ -44,6 +44,20 @@ databaseChangeLog:
                   constraints:
                     nullable: false
                   remarks: "Storicizza Default=True"  
+  - changeSet:
+      id: 20250724-06-drop-generated-from-indirizzo_normalizzato
+      author: mctit
+      comments: >
+        Rimuove la definizione GENERATED ALWAYS AS (…) STORED dalla colonna
+        indirizzo_normalizzato e la trasforma in semplice TEXT.
+      changes:
+        - sql:
+            comment: "1) Rimuove l’espressione GENERATED dalla colonna"
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.indirizzi_dettaglio
+                ALTER COLUMN indirizzo_normalizzato DROP EXPRESSION;
          
   - changeSet:
       id: 20250723-90-anagrafiche_indirizzi_dettaglio_modify_add_attivo_storico
