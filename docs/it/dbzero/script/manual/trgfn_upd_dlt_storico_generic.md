@@ -6,7 +6,7 @@
 > - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 >
 > Guide:   
-> - [Linee Guida SQL](linee-guida-sql.md) per convenzioni di changeSet e commenti SQL  
+> - [Linee Guida SQL](/linee-guida-sql) per convenzioni di changeSet e commenti SQL  
 
 La trigger function **`script.trgfn_upd_dlt_storico_generic()`** centralizza la logica di storicizzazione in qualunque tabella del layer `storico`, gestendo:
 
