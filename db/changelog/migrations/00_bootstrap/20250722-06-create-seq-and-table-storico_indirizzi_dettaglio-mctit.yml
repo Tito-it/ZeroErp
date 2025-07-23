@@ -1,0 +1,130 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250722-06-create-seq-and-table-storico_indirizzi_dettaglio
+      author: mctit
+      runOnChange: true
+      validCheckSums: 
+        - ANY
+      comments: >
+        Definisce la sequence e crea la tabella storico.indirizzi_dettaglio, 
+        quindi aggiunge la FK verso anagrafiche.indirizzi con onUpdate CASCADE e onDelete SET NULL.
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista ancora tx_id
+        not:
+          tableExists:
+            schemaName: storico
+            tableName: indirizzi_dettaglio
+            
+      changes:
+        # 1) Creazione della sequence per id
+        - createSequence:
+            schemaName: storico
+            sequenceName: indirizzi_dettaglio_id_seq
+            startValue: 1
+            incrementBy: 1
+            dataType: BIGINT
+            remarks: "Sequence per la colonna id di storico.indirizzi_dettaglio"
+
+        # 2) Creazione della tabella con id BIGINT default nextval(...)
+        - createTable:
+            schemaName: storico
+            tableName: indirizzi_dettaglio
+            remarks: "Tabella storica degli indirizzi con snapshot JSONB e campi di audit"
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  defaultValueComputed: "nextval('storico.indirizzi_dettaglio_id_seq'::regclass)"
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+                  remarks: "Chiave primaria di tipo BIGINT basata su sequence"
+              - column:
+                  name: valid_from
+                  type: DATE
+                  defaultValueComputed: "CURRENT_DATE"
+                  constraints:
+                    nullable: false
+                  remarks: "Data di inizio validità del record"
+              - column:
+                  name: valid_to
+                  type: DATE
+                  remarks: "Data di fine validità del record (se conosciuta)"
+              - column:
+                  name: change_type
+                  type: CHAR(1)
+                  defaultValue: "A"
+                  remarks: "'A'=Add, 'U'=Update, 'D'=Delete"
+              - column:
+                  name: data_insert
+                  type: TIMESTAMP
+                  defaultValueComputed: "CURRENT_TIMESTAMP"
+                  constraints:
+                    nullable: false
+                  remarks: "Timestamp di inserimento nella tabella storica"
+              - column:
+                  name: user_insert
+                  type: VARCHAR(255)
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+                  remarks: "Utente che ha creato questo record storico"
+              - column:
+                  name: indirizzo_id
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+                  remarks: "Riferimento alla tabella anagrafiche.indirizzi"
+              - column:
+                  name: snapshot
+                  type: JSONB
+                  constraints:
+                    nullable: false
+                  remarks: "Snapshot JSONB dei dati di indirizzo al momento dell'operazione"
+              - column:
+                  name: tipo_operazione
+                  type: SMALLINT
+                  remarks: "Codice del tipo di operazione applicata"
+              - column:
+                  name: tx_id
+                  type: UUID
+                  remarks: "UUID di transazione per correlare più operazioni"
+  - changeSet:
+      id: 20250722-07-create-seq-and-table-storico_indirizzi_dettaglio
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes: 
+        # 3) Aggiunge la FK indirizzo_id → anagrafiche.indirizzi(id)
+        - addForeignKeyConstraint:
+            baseTableSchemaName: storico
+            baseTableName: indirizzi_dettaglio
+            baseColumnNames: indirizzo_dettaglio_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: indirizzi_dettaglio
+            referencedColumnNames: id
+            constraintName: fk_storico_indirizzi_dettaglio_anagrafiche_indirizzi_dettaglio
+            onUpdate: CASCADE
+            onDelete: SET NULL
+
+                                    
+ # Metto un  tag fine modifiche
+  - changeSet:
+        id: 20250722-90-create-seq-and-table-storico_indirizzi_dettaglio
+        author: mctit
+        changes:
+          - tagDatabase:
+              tag: 20250722-06-create-seq-and-table-storico_indirizzi_dettaglio
