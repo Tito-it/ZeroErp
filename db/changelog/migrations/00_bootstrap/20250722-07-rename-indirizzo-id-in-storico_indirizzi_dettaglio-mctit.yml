@@ -13,6 +13,18 @@ databaseChangeLog:
       id: 220250722-07-rename-indirizzo-id-in-storico_indirizzi_dettaglio
       author: mctit
       comments: "Rinomina la colonna indirizzo_id in indirizzo_dettaglio_id nella tabella storico.indirizzi_dettaglio e aggiorna il commento"
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista ancora indirizzo_dettaglio_id
+        not:
+          columnExists:
+            schemaName: storico
+            tableName: indirizzi_dettaglio
+            columnName: indirizzo_dettaglio_id
       changes:
         
         - dropForeignKeyConstraint:
@@ -32,7 +44,7 @@ databaseChangeLog:
             baseTableName: indirizzi_dettaglio
             baseColumnNames: indirizzo_dettaglio_id
             referencedTableSchemaName: anagrafiche
-            referencedTableName: indirizzi
+            referencedTableName: indirizzi_dettaglio
             referencedColumnNames: id
             constraintName: fk_storico_indirizzi_dettaglio_indirizzo
             onUpdate: CASCADE

@@ -107,12 +107,21 @@ databaseChangeLog:
       runOnChange: true
       validCheckSums:
         - ANY
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista ancora indirizzo_dettaglio_id
+        not:
+          columnExists:
+            schemaName: storico
+            tableName: indirizzi_dettaglio
+            columnName: indirizzo_dettaglio_id
       changes: 
         # 3) Aggiunge la FK indirizzo_id → anagrafiche.indirizzi(id)
         - addForeignKeyConstraint:
             baseTableSchemaName: storico
             baseTableName: indirizzi_dettaglio
-            baseColumnNames: indirizzo_dettaglio_id
+            baseColumnNames: indirizzo_id
             referencedTableSchemaName: anagrafiche
             referencedTableName: indirizzi_dettaglio
             referencedColumnNames: id
