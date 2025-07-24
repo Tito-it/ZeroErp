@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.toponomastica_id_seq'::regclass) |
+| id | integer | NO | nextval('toponomastica_id_seq'::regclass) |
 | descrizione | character varying | NO |  |
 | stato_id | integer | YES |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
@@ -29,5 +29,5 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_toponomastica_upd_non_permesso | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_toponomastica_upd_non_permesso()` |
+| trg_toponomastica_upd_non_permesso | BEFORE | UPDATE | `EXECUTE FUNCTION trgfn_toponomastica_upd_non_permesso()` |
 | trg_upd_toponomastica_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

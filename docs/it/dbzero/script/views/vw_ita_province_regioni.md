@@ -18,8 +18,8 @@ SELECT p.id AS id_provincia,
     s.descrizione AS ita_nome_stato,
     (s.extra_country ->> 'codice_istat'::text) AS ita_codice_istat_stato,
     (s.extra_country ->> 'codice_catastale'::text) AS ita_codice_catastale_stato
-   FROM (((config.province p
-     LEFT JOIN config.province acc ON ((acc.id = ((p.extra_country ->> 'provincia_accisa_id'::text))::integer)))
-     JOIN config.regioni r ON ((p.regione_id = r.id)))
-     JOIN config.stati s ON ((r.stato_id = s.id)));
+   FROM (((province p
+     LEFT JOIN province acc ON ((acc.id = ((p.extra_country ->> 'provincia_accisa_id'::text))::integer)))
+     JOIN regioni r ON ((p.regione_id = r.id)))
+     JOIN stati s ON ((r.stato_id = s.id)));
 ```

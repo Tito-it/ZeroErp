@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.regioni_id_seq'::regclass) |
+| id | integer | NO | nextval('regioni_id_seq'::regclass) |
 | descrizione | character | NO |  |
 | stato_id | integer | NO |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
