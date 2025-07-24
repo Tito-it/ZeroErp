@@ -35,11 +35,9 @@
 
 ## ⚙️ Funzioni
 - [fn_get_iva_override](funzioni/fn_get_iva_override.md) — * **Recupero unificato**   Ottenere in un’unica chiamata sia i valori base da `config.iva` sia gli override da `config.iva_stati` se presenti. * **Override per Stato**   Consentire di modificare aliquota e assoggettamento IVA a livello di Stato senza duplicare righe in `config.iva`. * **Centralizzazione**   Incapsulare la logica di join e COALESCE in una funzione riutilizzabile.
-- [trgfn_comuni_upd_dlt_storico_comuni](funzioni/trgfn_comuni_upd_dlt_storico_comuni.md)
 - [trgfn_iva_ins_upd_check_conti_iva](funzioni/trgfn_iva_ins_upd_check_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_parameters_audit](funzioni/trgfn_parameters_audit.md)
 - [trgfn_stradario_generale_upd_non_permesso](funzioni/trgfn_stradario_generale_upd_non_permesso.md) — * **Blocco modifiche non consentite**: evitare update di descrizione, descrizione_breve o toponomastica_id in `config.stradario_generale` se il record è già in uso in `config.stradario`. * **Identificazione precisa**: indicare tramite JSON il nome della colonna modificata e l’ID del record per diagnosticare efficacemente l’errore. * **Centralizzazione logica**: mantenere il controllo integrità nel database, riducendo complessità lato applicazione.
-- [trgfn_stradario_upd_dlt_storico_stradario](funzioni/trgfn_stradario_upd_dlt_storico_stradario.md)
 - [trgfn_sync_stato_iso2](funzioni/trgfn_sync_stato_iso2.md)
 - [trgfn_toponomastica_upd_non_permesso](funzioni/trgfn_toponomastica_upd_non_permesso.md) — * **Protezione semantica**: garantire coerenza tra topografia e stradario evitando rinominazioni dirette di toponomastiche già in uso. * **Decisione di design**: anziché storicizzare o consentire modifiche parziali, obbligare alla creazione di nuove topografìe per cambiare descrizione. * **Centralizzazione**: concentrare la logica di blocco in una sola funzione trigger per ridurre complessità applicativa.
 
