@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:  
+  - changeSet:
+      id: 20250724-06-trg_Z90_stradario_upd_dlt_storico
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea trigger su config.stradario per generare storico.stradario.
+      changes:
+        - sql:
+            comment: "0) Rimuove eventuale vecchi trigger storicizzaziobe"
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_stradario_upd_dlt_storico_stradario
+                ON config.stradario;
+        - sql:
+            comment: "1) Rimuove eventuale trigger esistente"
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_Z90_stradario_upd_dlt_storico
+                ON config.stradario;
+        - sql:
+            comment: "2) Ricrea il trigger con progressivo _Z90  " 
+            splitStatements: false
+            stripComments: true
+            sql: |
+                  CREATE TRIGGER trg_Z90_stradario_upd_dlt_storico
+                    BEFORE UPDATE OR DELETE
+                    ON config.stradario
+                    FOR EACH ROW
+                    EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic(
+                      'stradario_id'
+                    );
+        - sql:
+            comment: "Commento descrittivo sul  trigger"
+            splitStatements: false      
+            sql: |
+                  COMMENT ON TRIGGER trg_Z90_stradario_upd_dlt_storico
+                    ON config.stradario
+                      IS ' Crea trigger su config.stradario 
+                      per generare storico.stradario(snapshot)';
+
+  - changeSet:
+      id: 20250724-07-trg_Z90_stradario_upd_dlt_storico
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Cancella Funzione precedente storicizzazioni.
+      changes:
+        - sql:
+            comment: "0) Rimuove eventuale vecchi funzione trigger storicizzazione"
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS config.trgfn_stradario_upd_dlt_storico_stradario();
+
+
+  # Metto un tag fine modifiche
+  - changeSet:
+      id: 20250724-90-trg_Z90_stradario_upd_dlt_storico
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250724-06-trg_Z90_stradario_upd_dlt_storico

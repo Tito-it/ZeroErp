@@ -29,4 +29,4 @@
 - [vw_indirizzo_completo](views/vw_indirizzo_completo.md) — * **Denormalizzazione per letture rapide**: aggregare in un’unica view i dati di stradario, comune, provincia, codice postale e via, semplificando le query di selezione degli indirizzi. * **Pulizia e consistenza**: fornire campi già formattati e pronti per essere utilizzati nelle normalizzazioni e nelle funzionalità GIS. * **Riutilizzabilità**: rendere disponibile un’unica sorgente per join di indirizzi completi, evitando duplicazione di codice SQL.
 - [vw_ita_province_regioni](views/vw_ita_province_regioni.md)
 - [vw_stati_estesi](views/vw_stati_estesi.md)
-- [vw_stradario_esteso](views/vw_stradario_esteso.md)
+- [vw_stradario_esteso](views/vw_stradario_esteso.md) — * **Aggregazione logica**: unire in un’unica sorgente i dati di via, toponomastica e stato, evitando join ripetuti nei client e nelle applicazioni. * **Pulizia dati**: fornire alias chiari (`id_via`, `id_toponomastica`, `tipo_toponimo`, `sigla_stato`, `nome_strada`) per facilitare l’interpretazione dei risultati. * **Performance**: ridurre il carico di join runtime raggruppando più tabelle in un’unica view materializzata (se necessario).

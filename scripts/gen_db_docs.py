@@ -159,9 +159,10 @@ def gen_view_md(schema, view, cur):
     lines.append(definition.strip())
     lines.append("```\n")
     # include manual se esiste
-    manual = include_manual(schema, 'views', view)
-    return manual + "\n".join(lines)
-
+    #manual = include_manual(schema, 'views', view)
+    #return manual + "\n".join(lines)
+    return "\n".join(lines)
+ 
 def write_docs_for_schema(schema, cur):
     schema_dir = os.path.join(OUT_DIR, schema)
     os.makedirs(os.path.join(schema_dir, "tabelle"), exist_ok=True)

@@ -1,5 +1,4 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_fk_con_indice_missing_policy.md" %}
-{% include-markdown "it/dbzero/dbops/manual/vw_fk_con_indice_missing_policy.md" %}
 # 🔍 View `vw_fk_con_indice_missing_policy`
 
 ```sql

@@ -1,5 +1,4 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_catalogo_oggetti.md" %}
-{% include-markdown "it/dbzero/dbops/manual/vw_catalogo_oggetti.md" %}
 # 🔍 View `vw_catalogo_oggetti`
 
 ```sql

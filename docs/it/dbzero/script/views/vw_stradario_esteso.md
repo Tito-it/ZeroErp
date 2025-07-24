@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/vw_stradario_esteso.md" %}
 # 🔍 View `vw_stradario_esteso`
 
 ```sql

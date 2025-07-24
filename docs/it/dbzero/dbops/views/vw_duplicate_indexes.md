@@ -1,5 +1,4 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_duplicate_indexes.md" %}
-{% include-markdown "it/dbzero/dbops/manual/vw_duplicate_indexes.md" %}
 # 🔍 View `vw_duplicate_indexes`
 
 ```sql

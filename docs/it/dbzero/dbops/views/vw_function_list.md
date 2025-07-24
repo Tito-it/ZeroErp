@@ -1,5 +1,4 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_function_list.md" %}
-{% include-markdown "it/dbzero/dbops/manual/vw_function_list.md" %}
 # 🔍 View `vw_function_list`
 
 ```sql

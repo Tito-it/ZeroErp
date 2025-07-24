@@ -6,7 +6,7 @@
 > - [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
 >
 > Approfondimento view:    
-> - [script.vw_indirizzo_completo](/dbzero/script/view/vw_indirizzo_completo)    
+> - [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo)    
 
 La trigger function **`anagrafiche.trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio()`** normalizza i dati di indirizzo al momento di **INSERT** o **UPDATE** su **`anagrafiche.indirizzi_dettaglio`**, costruendo campi coerenti e uniformi per via, civico e indirizzo completo.
 

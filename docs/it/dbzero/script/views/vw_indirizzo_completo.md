@@ -1,5 +1,4 @@
 {% include-markdown "it/dbzero/script/manual/vw_indirizzo_completo.md" %}
-{% include-markdown "it/dbzero/script/manual/vw_indirizzo_completo.md" %}
 # 🔍 View `vw_indirizzo_completo`
 
 ```sql

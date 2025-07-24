@@ -1,5 +1,4 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_trigger_functions.md" %}
-{% include-markdown "it/dbzero/dbops/manual/vw_trigger_functions.md" %}
 # 🔍 View `vw_trigger_functions`
 
 ```sql

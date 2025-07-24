@@ -1,5 +1,4 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_fk_senza_indice.md" %}
-{% include-markdown "it/dbzero/dbops/manual/vw_fk_senza_indice.md" %}
 # 🔍 View `vw_fk_senza_indice`
 
 ```sql

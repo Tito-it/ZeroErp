@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:  
+  - changeSet:
+      id: 20250724-01-trg_Z90_comuni_upd_dlt_storico
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea trigger su config.comuni per generare storico.comuni.
+      changes:
+         
+        - sql:
+            comment: "0) Rimuove eventuale vecchi trigger storicizzaziobe"
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_comuni_upd_dlt_storico_comuni
+                ON config.comuni;
+        - sql:
+            comment: "1) Rimuove eventuale trigger esistente"
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_Z90_comuni_upd_dlt_storico
+                ON config.comuni;
+            
+        - sql:
+            comment: "2) Ricrea il trigger con progressivo _Z90  " 
+            splitStatements: false
+            stripComments: true
+            sql: |
+                  CREATE TRIGGER trg_Z90_comuni_upd_dlt_storico
+                    BEFORE UPDATE OR DELETE
+                    ON config.comuni
+                    FOR EACH ROW
+                    EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic(
+                      'comune_id'
+                    );
+
+        - sql:
+            comment: "Commento descrittivo sul  trigger"
+            splitStatements: false      
+            sql: |
+                  COMMENT ON TRIGGER trg_Z90_comuni_upd_dlt_storico
+                    ON config.comuni
+                      IS ' Crea trigger su config.comuni 
+                      per generare storico.comuni(snapshot)';
+
+  
+  - changeSet:
+      id: 20250724-02-trg_Z90_comuni_upd_dlt_storico
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Cancella Funzione precedente storicizzazioni.
+      changes:
+        - sql:
+            comment: "0) Rimuove eventuale vecchi funzione trigger storicizzazione"
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS config.trgfn_comuni_upd_dlt_storico_comuni();
+
+
+  # Metto un tag fine modifiche
+  - changeSet:
+      id: 20250724-90-trg_Z90_comuni_upd_dlt_storico
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250724-01-trg_Z90_comuni_upd_dlt_storico

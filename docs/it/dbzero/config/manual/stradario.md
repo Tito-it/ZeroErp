@@ -4,12 +4,12 @@
 >
 > Approfondimento Tabelle:  
 > - [config.comuni](../comuni)      
-> - [config.stradario_generale](../stradario_generale)   
-> - [config.codici_postali](../codici_postali)  
-> - [storico.stradario](../storico/stradario)
+> - [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
+> - [config.codici_postali](/dbzero/config/tabelle/codici_postali)  
+> - [storico.stradario](/dbzero/storico/tabelle/stradario)
 > 
 > Approfondimento funzioni:    
-> - [config.trgfn_stradario_upd_dlt_storico_stradario](/dbzero/config/funzioni/trgfn_stradario_upd_dlt_storico_stradario)
+> - [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
 
 La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciascun comune, completando il processo di indirizzamento con informazioni di localizzazione e dettagli aggiuntivi.
 
