@@ -24,3 +24,9 @@
 - [trgfn_upd_audit_data_user_generic](funzioni/trgfn_upd_audit_data_user_generic.md) — * **Audit automatico**   Assicurare che ogni modifica a una riga di tabella sia registrata con timestamp (`data_update`) e utente (`user_update`) correnti. * **Centralizzare la logica di update audit**   Evitare di replicare manualmente la medesima assegnazione in ogni trigger `BEFORE UPDATE` delle varie tabelle.
 - [trgfn_upd_dlt_storico_generic](funzioni/trgfn_upd_dlt_storico_generic.md) — * **Unificazione logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 - [uuid_nil](funzioni/uuid_nil.md) — * Fornire un valore UUID costante, composto interamente da zeri. * Usato come **fallback** o **default** quando non è possibile generare o recuperare un UUID valido.
+
+## 🔍 Views
+- [vw_indirizzo_completo](views/vw_indirizzo_completo.md) — * **Denormalizzazione per letture rapide**: aggregare in un’unica view i dati di stradario, comune, provincia, codice postale e via, semplificando le query di selezione degli indirizzi. * **Pulizia e consistenza**: fornire campi già formattati e pronti per essere utilizzati nelle normalizzazioni e nelle funzionalità GIS. * **Riutilizzabilità**: rendere disponibile un’unica sorgente per join di indirizzi completi, evitando duplicazione di codice SQL.
+- [vw_ita_province_regioni](views/vw_ita_province_regioni.md)
+- [vw_stati_estesi](views/vw_stati_estesi.md)
+- [vw_stradario_esteso](views/vw_stradario_esteso.md)
