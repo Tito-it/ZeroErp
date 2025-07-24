@@ -9,3 +9,5 @@
 - [stradario_trasformazioni](tabelle/stradario_trasformazioni.md)
 
 ## ⚙️ Funzioni
+
+## 🔍 Views

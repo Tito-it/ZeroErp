@@ -42,3 +42,5 @@
 - [trgfn_stradario_upd_dlt_storico_stradario](funzioni/trgfn_stradario_upd_dlt_storico_stradario.md) — * **Audit Trail**: Conservare la cronologia completa di ogni update o delete applicato a `config.stradario`. * **Versioning coerente**: Ricostruire lo stato di una via in qualsiasi momento grazie ai campi `valid_from` e `valid_to`. * **Centralizzazione logica**: Evitare duplicazioni di codice di storicizzazione e garantire un comportamento uniforme.
 - [trgfn_sync_stato_iso2](funzioni/trgfn_sync_stato_iso2.md)
 - [trgfn_toponomastica_upd_non_permesso](funzioni/trgfn_toponomastica_upd_non_permesso.md) — * **Protezione semantica**: garantire coerenza tra topografia e stradario evitando rinominazioni dirette di toponomastiche già in uso. * **Decisione di design**: anziché storicizzare o consentire modifiche parziali, obbligare alla creazione di nuove topografìe per cambiare descrizione. * **Centralizzazione**: concentrare la logica di blocco in una sola funzione trigger per ridurre complessità applicativa.
+
+## 🔍 Views
