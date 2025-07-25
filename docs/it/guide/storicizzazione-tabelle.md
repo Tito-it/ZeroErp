@@ -1,5 +1,7 @@
-## Storicizzazione delle Tabelle in Zero ERP
+# Guida Tecnica – Storicizzazione delle Tabelle in Zero ERP
 
+>📋 **Destinatari:** sviluppatori database, sviluppatori backend  
+>
 > 👀 **Vedi anche:**    
 >
 > Per come applicare queste best practice nelle migrazioni, consulta il documento:  
@@ -13,7 +15,7 @@ Ogni entità che richiede **versioning** e **audit trail** in Zero ERP utilizza 
 
 ---
 
-### 🎯 Scopo Principale
+## 🎯 Scopo Principale
 
 * **Tracciabilità completa** delle operazioni di **INSERT**, **UPDATE** e **DELETE** su tabelle chiave.
 * **Flessibilità di schema**: supportare evoluzioni future senza dover modificare la struttura dello storico.
@@ -21,7 +23,7 @@ Ogni entità che richiede **versioning** e **audit trail** in Zero ERP utilizza 
 
 ---
 
-### 🛠️ Colonne Standard per le Tabelle di Storico
+## 🛠️ Colonne Standard per le Tabelle di Storico
 
 Tutte le tabelle di storico in Zero ERP devono avere:
 
@@ -36,7 +38,7 @@ Tutte le tabelle di storico in Zero ERP devono avere:
 
 ---
 
-### 🔍 Perché JSONB per il campo `snapshot`
+## 🔍 Perché JSONB per il campo `snapshot`
 
 1. **Evoluzione dello schema**: aggiunta o rimozione di colonne nella tabella sorgente non richiede modifiche alle colonne di storico.
 2. **Integrità dei dati**: garantisce che ogni snapshot rifletta esattamente lo stato dell’intero record, senza omissioni.
@@ -49,7 +51,7 @@ Tutte le tabelle di storico in Zero ERP devono avere:
 
 ---
 
-### 🔄 Trigger Generic di Storico
+## 🔄 Trigger Generic di Storico
 
 La funzione **`script.trgfn_upd_dlt_storico_generic(fk_column)`** gestisce:
 
@@ -69,7 +71,7 @@ CREATE TRIGGER trg_storico_<entita>
 
 ---
 
-### 💡 Vantaggi per lo Sviluppatore
+## 💡 Vantaggi per lo Sviluppatore
 
 * **Rapidità di adozione**: per attivare lo storico su una nuova tabella basta definire la tabella di storico con lo schema standard e creare il trigger generic.
 * **Manutenibilità**: la logica di storicizzazione evolve in un solo punto (la funzione generic), senza dover modificare ogni trigger function.
@@ -79,9 +81,6 @@ CREATE TRIGGER trg_storico_<entita>
 ---
 
 > 🧠 **“Adottando il modello di storico unificato, Zero ERP semplifica la gestione della storia dei dati, riduce la duplicazione di logica e garantisce uno sviluppo rapido e sicuro.”**
-
-
----
 
 
 ---
