@@ -187,3 +187,6 @@ Per maggiori dettagli e implementazione, consulta la guida **(è fondamentale la
 
 ---
 
+
+---
+{% include-markdown "signature-core.md" %}
