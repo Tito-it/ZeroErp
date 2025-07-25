@@ -96,3 +96,9 @@ Tutti i contributori sono tenuti a rispettare principi di **collaborazione**, **
 - Referente tecnico: [Michele Carlo Titini]
 - Email: [mc.titini@gmail.com]
 - Community in fase di attivazione
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

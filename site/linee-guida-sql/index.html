@@ -1,0 +1,2035 @@
+
+<!doctype html>
+<html lang="it" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../liquibase-setup-workflow/">
+      
+      
+        <link rel="next" href="../storicizzazione-tabelle/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.15">
+    
+    
+      
+        <title>Linee Guida SQL - Zero ERP Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.342714a4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#1-schemi-principali" class="md-skip">
+          Vai al contenuto
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Intestazione">
+    <a href=".." title="Zero ERP Documentation" class="md-header__button md-logo" aria-label="Zero ERP Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Zero ERP Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Linee Guida SQL
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Seleziona la lingua">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="it" class="md-select__link">
+              Italiano
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../en/linee-guida-sql/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Cerca" placeholder="Cerca" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Cerca">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Cancella" aria-label="Cancella" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Inizializza la ricerca
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Tito-it/ZeroErp" title="Apri repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Tito-it/ZeroErp
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigazione" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Zero ERP Documentation" class="md-nav__button md-logo" aria-label="Zero ERP Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Zero ERP Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Tito-it/ZeroErp" title="Apri repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Tito-it/ZeroErp
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Introduzione
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Introduzione
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../introduzione/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Cos’è Zero ERP
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../manifesto/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Manifesto
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../LICENSE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Licenza
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Installazione
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Installazione
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installazione/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Prerequisiti
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Architettura
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Architettura
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architettura/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Panoramica
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Database
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            Database
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../liquibase-setup-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Liquibase Setup & Workflow
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Linee Guida SQL
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Linee Guida SQL
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Indice">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Indice
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-schemi-principali" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Schemi Principali
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#organizzati-per-funzionalita-e-responsabilita" class="md-nav__link">
+    <span class="md-ellipsis">
+      Organizzati per funzionalità e responsabilità:
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#navigazione-per-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      Navigazione per schema
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#in-ciascuna-pagina-di-schema-troverai-un-unico-indice-con-le-tabelle-le-funzioni-e-le-view-corrispondenti" class="md-nav__link">
+    <span class="md-ellipsis">
+      &gt; In ciascuna pagina di schema troverai un unico indice con le tabelle, le funzioni e le view corrispondenti.
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="&gt; In ciascuna pagina di schema troverai un unico indice con le tabelle, le funzioni e le view corrispondenti.">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2-convenzioni-di-naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Convenzioni di Naming
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-gestione-delle-chiavi-primarie" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Gestione delle Chiavi Primarie
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-eccezioni-e-alternative" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Eccezioni e Alternative
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-trigger-e-funzioni" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Trigger e Funzioni
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-viste-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Viste (Views)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-colonne-di-audit-e-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Colonne di Audit e Log
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-indici" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Indici
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-automazione-indici-fk" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Automazione Indici FK
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-gestione-indici-duplicati" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Gestione Indici Duplicati
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#11-transaction-id-centralizzato" class="md-nav__link">
+    <span class="md-ellipsis">
+      11. Transaction ID Centralizzato
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storicizzazione-tabelle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Storicizzazione Tabelle
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_4" id="__nav_4_2_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Db PostgresSQL
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_4_2_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_4">
+            <span class="md-nav__icon md-icon"></span>
+            Db PostgresSQL
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../postgresql-intro/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Panoramica
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../parametri-personalizzati-%28GUC%29/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Parmetri personalizzati (GUC)
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2_4_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2_4_3" id="__nav_4_2_4_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Estensioni
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_4_2_4_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2_4_3">
+            <span class="md-nav__icon md-icon"></span>
+            Estensioni
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../postgresql-estensioni-utilizzate/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Utilizzate
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dblink/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    dblink
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    DB Zero
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            DB Zero
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dbzero/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Panoramica
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Schemi
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            Schemi
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dbzero/anagrafiche/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Anagrafiche
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dbzero/config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Config
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dbzero/dbops/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Dbops
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dbzero/script/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Script
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dbzero/storico/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Storico
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dbzero/public/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Public
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Strumenti
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Strumenti
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dbzero/tools/gen_db_docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Generatore Documentazione
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Sviluppatori
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            Sviluppatori
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dev/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    API
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Guide tecniche
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            Guide tecniche
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/tx_id_implementation_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Implementazione Transaction ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Indice">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Indice
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-schemi-principali" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Schemi Principali
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#organizzati-per-funzionalita-e-responsabilita" class="md-nav__link">
+    <span class="md-ellipsis">
+      Organizzati per funzionalità e responsabilità:
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#navigazione-per-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      Navigazione per schema
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#in-ciascuna-pagina-di-schema-troverai-un-unico-indice-con-le-tabelle-le-funzioni-e-le-view-corrispondenti" class="md-nav__link">
+    <span class="md-ellipsis">
+      &gt; In ciascuna pagina di schema troverai un unico indice con le tabelle, le funzioni e le view corrispondenti.
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="&gt; In ciascuna pagina di schema troverai un unico indice con le tabelle, le funzioni e le view corrispondenti.">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2-convenzioni-di-naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Convenzioni di Naming
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-gestione-delle-chiavi-primarie" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Gestione delle Chiavi Primarie
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-eccezioni-e-alternative" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Eccezioni e Alternative
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-trigger-e-funzioni" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Trigger e Funzioni
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-viste-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Viste (Views)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-colonne-di-audit-e-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Colonne di Audit e Log
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-indici" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Indici
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-automazione-indici-fk" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Automazione Indici FK
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-gestione-indici-duplicati" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Gestione Indici Duplicati
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#11-transaction-id-centralizzato" class="md-nav__link">
+    <span class="md-ellipsis">
+      11. Transaction ID Centralizzato
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+  <h1>Linee Guida SQL</h1>
+
+<p><strong>Best Practice e Convenzioni in Zero ERP</strong></p>
+<blockquote>
+<p>👀 <strong>Vedi anche:</strong> <br />
+Per come applicare queste best practice nelle migrazioni, consulta il documento <br />
+- <a href="../liquibase-setup-workflow/">Liquibase Setup &amp; Workflow</a> <br />
+- <a href="../storicizzazione-tabelle/">Storicizzazione Tabelle</a>   </p>
+<p>Approfondimento Tabelle: <br />
+- <a href="/dbzero/dbops/tabelle/fk_index_policy">dbops.fk_index_policy</a>      </p>
+<p>Approfondimento funzioni: <br />
+- <a href="/dbzero/dbops/manual/vw_fk_senza_indice">dbops.vw_fk_senza_indice</a> <br />
+- <a href="/dbzero/dbops/manual/fn_populate_fk_index_policy">dbops.fn_populate_fk_index_policy</a> <br />
+- <a href="/dbzero/dbops/manual/vw_fk_con_indice_missing_policy">dbops.vw_fk_con_indice_missing_policy</a> <br />
+- <a href="/dbzero/dbops/manual/fn_seed_fk_index_policy">dbops.fn_seed_fk_index_policy</a> <br />
+- <a href="/dbzero/dbops/manual/vw_duplicate_indexes">dbops.vw_duplicate_indexes</a>    </p>
+</blockquote>
+<hr />
+<h3 id="1-schemi-principali">1. Schemi Principali<a class="headerlink" href="#1-schemi-principali" title="Permanent link">&para;</a></h3>
+<h2 id="organizzati-per-funzionalita-e-responsabilita">Organizzati per funzionalità e responsabilità:<a class="headerlink" href="#organizzati-per-funzionalita-e-responsabilita" title="Permanent link">&para;</a></h2>
+<table>
+  <thead>
+    <tr>
+      <th>Schema</th>
+      <th>Descrizione</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>anagrafiche</strong></td>
+      <td>
+        Contiene tutte le tabelle legate all'anagrafica soggetti (persone fisiche e giuridiche).
+        <ul>
+          <li>Esempi: <code>soggetti</code>, <code>indirizzi</code>, <code>contatti</code></li>
+          <li>Usa identificatori UUID e naming coerente</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td><strong>config</strong></td>
+      <td>
+        Contiene tabelle di configurazione parametrica e lookup.
+        <ul>
+          <li>Esempi: <code>stati</code>, <code>nazioni</code>, <code>contatti_ruoli</code></li>
+          <li>Normalizzazione forte, spesso referenziate da altri schemi</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td><strong>script</strong></td>
+      <td>
+        Logica applicativa (viste e funzioni) legate ai processi ERP.
+        Favorisce riuso, mantenibilità e isolamento della logica.
+        <ul>
+          <li>Esempi: <code>vw_clienti_attivi</code>, <code>fn_calcolo_fattura()</code></li>
+          <li>Include anche: <code>fn_get_stradario_by_indirizzo()</code>, etc.</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td><strong>dbops</strong></td>
+      <td>
+        Strumenti DB per DBA (vista/funzioni tecniche, metadata, monitoring).
+        <ul>
+          <li>Esempi: <code>vw_function_list</code>, <code>fn_foreign_keys_info(text)</code></li>
+          <li>Nessuna logica applicativa, solo strumenti per DBA e manutentori</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td><strong>storico</strong></td>
+      <td>
+        Tabelle di audit/storico con versioning temporale dei dati. 
+        Tutte le tabelle che richiedono "storicizzazione" saranno replicate qui
+        <ul>
+          <li>Esempi: <code>soggetti_storico</code>, <code>contratti_storico</code></li>
+          <li>Usato per audit, confronto tra versioni, report du dati storici</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td><strong>public</strong></td>
+      <td>
+        Mostra solo tabelle pubbliche (non pubbliche), ad esempio version_info   
+        <ul>
+          <li>Esempi: <code>version_info</code>, <code>ecc...</code></li>
+          <li>Solo tabelle o funzioni non pubbliche</li>
+        </ul>
+      </td>
+    </tr>
+
+  </tbody>
+</table>
+
+<blockquote></blockquote>
+<h2 id="navigazione-per-schema">Navigazione per schema<a class="headerlink" href="#navigazione-per-schema" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../dbzero/anagrafiche/">anagrafiche</a>  </li>
+<li><a href="../dbzero/config/">config</a>  </li>
+<li><a href="../dbzero/script/">script</a>  </li>
+<li><a href="../dbzero/dbops/">dbops</a>  </li>
+<li><a href="../dbzero/storico/">storico</a>  </li>
+</ul>
+<h2 id="in-ciascuna-pagina-di-schema-troverai-un-unico-indice-con-le-tabelle-le-funzioni-e-le-view-corrispondenti">&gt; In ciascuna pagina di schema troverai un unico indice con le tabelle, le funzioni e le view corrispondenti.<a class="headerlink" href="#in-ciascuna-pagina-di-schema-troverai-un-unico-indice-con-le-tabelle-le-funzioni-e-le-view-corrispondenti" title="Permanent link">&para;</a></h2>
+<hr />
+<h3 id="2-convenzioni-di-naming">2. Convenzioni di Naming<a class="headerlink" href="#2-convenzioni-di-naming" title="Permanent link">&para;</a></h3>
+<p>Uniformità e chiarezza nel codice DDL:</p>
+<table>
+<thead>
+<tr>
+<th>Oggetto</th>
+<th>Convenzione</th>
+<th>Esempio</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Schema</strong></td>
+<td>minuscolo, plurale</td>
+<td><code>anagrafiche</code>, <code>config</code>, <code>dbops</code></td>
+</tr>
+<tr>
+<td><strong>Tabella</strong></td>
+<td>nome plurale, snake_case</td>
+<td><code>soggetti</code>, <code>gestori_utilities_ruoli</code></td>
+</tr>
+<tr>
+<td><strong>Colonna PK</strong></td>
+<td><code>id</code></td>
+<td><code>id UUID</code>, <code>id SERIAL</code></td>
+</tr>
+<tr>
+<td><strong>Sequenza</strong></td>
+<td><code>&lt;table&gt;_id_seq</code></td>
+<td><code>storico.comuni_id_seq</code></td>
+</tr>
+<tr>
+<td><strong>FK</strong></td>
+<td><code>&lt;referenced_table&gt;_id</code></td>
+<td><code>soggetto_id</code>, <code>utility_id</code></td>
+</tr>
+<tr>
+<td><strong>Indice</strong></td>
+<td><code>ix_&lt;table&gt;_&lt;column&gt;</code></td>
+<td><code>ix_contatti_soggetto</code></td>
+</tr>
+<tr>
+<td><strong>Vista</strong></td>
+<td>prefisso <code>vw_</code></td>
+<td><code>vw_clienti_attivi</code></td>
+</tr>
+<tr>
+<td><strong>Funzione</strong></td>
+<td>prefisso <code>fn_</code></td>
+<td><code>fn_calcolo_fattura()</code></td>
+</tr>
+<tr>
+<td><strong>Trigger Func.</strong></td>
+<td>prefisso <code>trgfn_</code></td>
+<td><code>trgfn_contatti_set_default()</code></td>
+</tr>
+<tr>
+<td><strong>Trigger</strong></td>
+<td>prefisso <code>trg_</code>, <code>&lt;table&gt;_&lt;event&gt;</code></td>
+<td><code>trg_contatti_insert_update</code></td>
+</tr>
+<tr>
+<td><strong>Constraint PK</strong></td>
+<td><code>pk_&lt;table&gt;</code></td>
+<td><code>pk_soggetti_ruoli</code></td>
+</tr>
+<tr>
+<td><strong>Constraint FK</strong></td>
+<td><code>fk_&lt;base&gt;_&lt;ref&gt;</code></td>
+<td><code>fk_contatti_soggetti</code></td>
+</tr>
+<tr>
+<td><strong>Constraint UQ</strong></td>
+<td><code>uq_&lt;table&gt;_&lt;columns&gt;</code></td>
+<td><code>uq_contatti_default</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>ℹ️ Le convenzioni sono tratte dalla struttura condivisa in Zero ERP</p>
+</blockquote>
+<hr />
+<h3 id="3-gestione-delle-chiavi-primarie">3. Gestione delle Chiavi Primarie<a class="headerlink" href="#3-gestione-delle-chiavi-primarie" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>UUID</strong> per entità master (anagrafiche.soggetti):</li>
+</ol>
+<p><div class="highlight"><pre><span></span><code><span class="n">id</span><span class="w"> </span><span class="n">UUID</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span>
+<span class="w">  </span><span class="k">DEFAULT</span><span class="w"> </span><span class="n">gen_random_uuid</span><span class="p">()</span>
+</code></pre></div>
+2. <strong>Serial/Identity</strong> per tabelle tecniche e di relazione:</p>
+<p><div class="highlight"><pre><span></span><code><span class="n">id</span><span class="w"> </span><span class="nb">SERIAL</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span>
+<span class="c1">-- o</span>
+<span class="n">id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">GENERATED</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="k">IDENTITY</span>
+</code></pre></div>
+3. <strong>Sequenze</strong> esplicite quando serve:</p>
+<ul>
+<li>Creazione: <code>CREATE SEQUENCE schema.table_id_seq START 1;</code></li>
+<li>Colonna: <code>defaultValueComputed: "nextval('schema.table_id_seq'::regclass)"</code></li>
+<li>Oppure <code>autoIncrement: true</code> per delegare a Liquibase/DB</li>
+</ul>
+<hr />
+<h3 id="4-eccezioni-e-alternative">4. Eccezioni e Alternative<a class="headerlink" href="#4-eccezioni-e-alternative" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>UUID vs SERIAL</strong>: usare UUID quando serve unicità globale o sharding; SERIAL su tabelle di log e storicizzazione.</li>
+<li><strong>Foreign Key con composti</strong>: preferire surrogate key (<code>id</code>) e colonne FK (<code>&lt;table&gt;_id</code>) piuttosto che chiavi composte.</li>
+<li><strong>Campi tecnici</strong>: evitare prefissi in <code>dbops</code>; usare solo <code>vw_...</code> e <code>fn_...</code> per uniformità</li>
+</ul>
+<hr />
+<h3 id="5-trigger-e-funzioni">5. Trigger e Funzioni<a class="headerlink" href="#5-trigger-e-funzioni" title="Permanent link">&para;</a></h3>
+<ul>
+<li>
+<p><strong>Trigger Functions</strong> (PL/pgSQL, <code>schema.trgfn_&lt;table&gt;_&lt;descr&gt;</code>):</p>
+</li>
+<li>
+<p>Esempio: <code>CREATE OR REPLACE FUNCTION anagrafiche.trgfn_contatti_set_default()</code></p>
+</li>
+<li><strong>Trigger</strong> (DDL):</li>
+</ul>
+<p><div class="highlight"><pre><span></span><code><span class="k">CREATE</span><span class="w"> </span><span class="k">TRIGGER</span><span class="w"> </span><span class="n">trg_contatti_set_default</span>
+<span class="w">  </span><span class="k">BEFORE</span><span class="w"> </span><span class="k">INSERT</span><span class="w"> </span><span class="k">OR</span><span class="w"> </span><span class="k">UPDATE</span>
+<span class="w">  </span><span class="k">ON</span><span class="w"> </span><span class="n">anagrafiche</span><span class="p">.</span><span class="n">contatti</span>
+<span class="w">  </span><span class="k">FOR</span><span class="w"> </span><span class="k">EACH</span><span class="w"> </span><span class="k">ROW</span>
+<span class="w">  </span><span class="k">EXECUTE</span><span class="w"> </span><span class="k">FUNCTION</span><span class="w"> </span><span class="n">anagrafiche</span><span class="p">.</span><span class="n">trgfn_contatti_set_default</span><span class="p">();</span>
+</code></pre></div>
+* <strong>Nomi</strong>:</p>
+<ul>
+<li>Funzioni: <code>trgfn_&lt;table&gt;_&lt;action&gt;</code></li>
+<li>Trigger: <code>trg_&lt;table&gt;_&lt;action&gt;</code></li>
+<li>
+<p><strong>Best practice</strong>:</p>
+</li>
+<li>
+<p>Mettere funzioni e trigger nello stesso schema della tabella (se dedicate), o in <code>script</code>/<code>dbops</code> per utilizzabilità multipla.</p>
+</li>
+<li>Documentare sempre parametri e comportamento</li>
+</ul>
+<hr />
+<h3 id="6-viste-views">6. Viste (Views)<a class="headerlink" href="#6-viste-views" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Applicative</strong>: <code>vw_&lt;descrittivo&gt;</code> in schema <code>script</code>, es. <code>vw_clienti_attivi</code></li>
+<li><strong>Tecniche</strong>: in schema <code>dbops</code>, senza prefisso extra, es. <code>vw_function_list</code></li>
+</ul>
+<hr />
+<h3 id="7-colonne-di-audit-e-log">7. Colonne di Audit e Log<a class="headerlink" href="#7-colonne-di-audit-e-log" title="Permanent link">&para;</a></h3>
+<p>Standardizzare i campi di auditing:</p>
+<div class="highlight"><pre><span></span><code><span class="n">date_insert</span><span class="w">    </span><span class="k">TIMESTAMP</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">CURRENT_TIMESTAMP</span><span class="w"> </span><span class="k">WITH</span><span class="w"> </span><span class="k">TIME</span><span class="w"> </span><span class="k">ZONE</span>
+<span class="n">user_insert</span><span class="w">    </span><span class="nb">TEXT</span><span class="w">      </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">CURRENT_USER</span>
+<span class="n">data_update</span><span class="w">    </span><span class="k">TIMESTAMP</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">CURRENT_TIMESTAMP</span><span class="w"> </span><span class="k">WITH</span><span class="w"> </span><span class="k">TIME</span><span class="w"> </span><span class="k">ZONE</span>
+<span class="n">user_update</span><span class="w">    </span><span class="nb">TEXT</span><span class="w">      </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">CURRENT_USER</span>
+</code></pre></div>
+<p>I trigger o constraint di sistema possono aggiornare <code>date_update/user_update</code> su UPDATE manuale o con <code>trigger</code> dedicato.</p>
+<hr />
+<h3 id="8-indici">8. Indici<a class="headerlink" href="#8-indici" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Naming</strong>: <code>ix_&lt;table&gt;_&lt;column&gt;</code></li>
+<li><strong>Tipologia</strong>: B-Tree per default; GIN/GIST per JSONB/Geometrie.</li>
+<li><strong>Parziali</strong>: <code>CREATE UNIQUE INDEX ix_contatti_default ON contatti(soggetto_id) WHERE is_default;</code> per default logic</li>
+</ul>
+<hr />
+<h3 id="9-automazione-indici-fk">9. Automazione Indici FK<a class="headerlink" href="#9-automazione-indici-fk" title="Permanent link">&para;</a></h3>
+<p>All’interno della cartella <strong><code>90_end/</code></strong> delle migrazioni Liquibase, inserire sempre per ultimi uno script YAML con <code>runAlways</code> o <code>runAlways: false</code> per richiamare la procedura che crea/rimuove indici sulle foreign key:</p>
+<div class="highlight"><pre><span></span><code><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">changeSet</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">90-end-apply-fk-policy</span>
+<span class="w">    </span><span class="nt">author</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mctit</span>
+<span class="w">    </span><span class="nt">runAlways</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">sql</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">splitStatements</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="w">      </span><span class="nt">sql</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">        </span><span class="no">CALL dbops.apply_fk_index_policy();</span>
+</code></pre></div>
+<ul>
+<li>
+<p>La tabella <code>dbops.fk_index_policy</code> deve essere mantenuta aggiornata:</p>
+</li>
+<li>
+<p>individuare nuove FK senza indice con <code>dbops.vw_fk_senza_indice</code></p>
+</li>
+<li>popolare policy con <code>SELECT dbops.fn_populate_fk_index_policy();</code></li>
+<li>La policy consente di generare o eliminare indici non necessari.</li>
+</ul>
+<hr />
+<h3 id="10-gestione-indici-duplicati">10. Gestione Indici Duplicati<a class="headerlink" href="#10-gestione-indici-duplicati" title="Permanent link">&para;</a></h3>
+<p>Utilizzare la view <strong><code>dbops.vw_duplicate_indexes</code></strong> per visualizzare gli indici che condividono lo stesso insieme di colonne e razionalizzare la struttura:</p>
+<div class="highlight"><pre><span></span><code><span class="k">SELECT</span><span class="w"> </span><span class="o">*</span>
+<span class="w">  </span><span class="k">FROM</span><span class="w"> </span><span class="n">dbops</span><span class="p">.</span><span class="n">vw_duplicate_indexes</span><span class="p">;</span>
+</code></pre></div>
+<hr />
+<h3 id="11-transaction-id-centralizzato">11. Transaction ID Centralizzato<a class="headerlink" href="#11-transaction-id-centralizzato" title="Permanent link">&para;</a></h3>
+<p>Per garantire <strong>coerenza transazionale</strong> fra tutte le tabelle che registrano modifiche, ogni entità deve avere la colonna <code>tx_id UUID NOT NULL</code>:</p>
+<ul>
+<li><strong>Trigger (opzione DB)</strong>: applicare <code>trg_assign_tx_id</code> (su ogni tabella) che utilizza la function <code>dbops.trgfn_tx_id_managed()</code> per generare o recuperare il <code>tx_id</code> di sessione.</li>
+<li><strong>Function (opzione backend)</strong>: invocare <code>dbops.fn_get_or_create_session_tx_id()</code> prima delle operazioni e passare il <code>tx_id</code> in tutti gli <code>INSERT/UPDATE</code>.</li>
+</ul>
+<p>Per maggiori dettagli e implementazione, consulta la guida <strong>(è fondamentale la consultazione)</strong>:
+<strong><a href="/guide/tx_id_implementation_guide">Guida Tecnica – Implementazione di un Unico Transaction ID</a></strong></p>
+<hr />
+<p><em>Documento riassuntivo delle best practice SQL per lo sviluppo e la manutenzione di Zero ERP.</em></p>
+<hr />
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["navigation.sections", "navigation.expand"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copiato", "clipboard.copy": "Copia", "search.result.more.one": "1 altro in questa pagina", "search.result.more.other": "# altri in questa pagina", "search.result.none": "Nessun documento trovato", "search.result.one": "1 documento trovato", "search.result.other": "# documenti trovati", "search.result.placeholder": "Scrivi per iniziare a cercare", "search.result.term.missing": "Non presente", "select.version": "Seleziona la versione"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.56ea9cef.min.js"></script>
+      
+    
+  </body>
+</html>

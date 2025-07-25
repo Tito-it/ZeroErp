@@ -30,3 +30,9 @@ Tutti i componenti sono testati con le versioni indicate in:
 - Le transazioni DB vengono gestite da Liquibase per le modifiche di schema
 
 - Le query e gli aggiornamenti vengono eseguiti in PostgreSQL
+ 
+---
+{% include-markdown "signature-core.md" %}
+
+---
+

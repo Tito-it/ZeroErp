@@ -75,3 +75,8 @@ Utilizzata per:
 
 ---
 
+
+---
+{% include-markdown "/signature-core.md" %}
+
+{% include-markdown "./signature.md" ignore missing %}

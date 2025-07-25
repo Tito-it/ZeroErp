@@ -67,3 +67,5 @@ CREATE TRIGGER trg_stradario_upd_dlt_storico_stradario
 ---
 
 > 🧠 **“Con `storico.stradario`, Zero ERP offre un audit trail completo per le vie comunali, con flessibilità JSONB e controllo granulare tramite flag di storicizzazione.”**
+
+

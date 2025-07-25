@@ -9,3 +9,9 @@
 | Vue 3        | 3.x             |
 |              |                 |
 | …            | …               |
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

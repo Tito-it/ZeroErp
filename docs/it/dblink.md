@@ -70,3 +70,8 @@ Questo approccio permette al log dell'errore di essere salvato immediatamente e 
 ---
 
 > 🧠 **“Utilizzare `dblink` consente una gestione robusta del logging distribuito e dell'integrazione di dati, garantendo operazioni isolate e indipendenti dalla transazione principale.”**
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

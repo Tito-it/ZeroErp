@@ -171,3 +171,9 @@ A seguito delle attività svolte oggi, il modello ha ricevuto i seguenti arricch
 
 *Relazione aggiornata il 25/04/2025*
 
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

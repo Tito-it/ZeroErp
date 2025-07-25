@@ -21,8 +21,9 @@ theme:
     - navigation.sections
     - navigation.expand
 plugins:
-  - include-markdown
-      #base_path: docs
+  - include-markdown:
+      #base_path: docs       # ← questa riga deve essere attiva
+      #fail_on_missing: false
   - search
   
   - i18n:
@@ -58,6 +59,7 @@ nav:
       - Database:
           - Liquibase Setup & Workflow: it/liquibase-setup-workflow.md
           - Linee Guida SQL: it/linee-guida-sql.md
+          - Storicizzazione Tabelle: it/storicizzazione-tabelle.md
           - Db PostgresSQL: 
               - Panoramica: it/postgresql-intro.md
               - Parmetri personalizzati (GUC): it/parametri-personalizzati-(GUC).md

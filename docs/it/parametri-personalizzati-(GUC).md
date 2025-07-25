@@ -138,3 +138,9 @@ SET myapp.user_language = 'en';
 4. Caricare in cache in applicazione e rinfrescare periodicamente.
 
 > 🧠 **“Standardizza i prefissi, separa configurazioni di sistema da quelle transazionali e mantieni sempre un elenco aggiornato da allegare ai tuoi rilasci.”**
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

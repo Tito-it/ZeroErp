@@ -38,3 +38,9 @@ description: Sviluppo idee
 ### ✅ Conclusioni Importanti
 
 Questo promemoria raccoglie tutte le decisioni e i ragionamenti effettuati per il progetto Zero ERP e costituisce una sintesi utile per eventuali revisioni o ampliamenti futuri.
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

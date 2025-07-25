@@ -25,3 +25,9 @@ Zero ERP utilizza diverse estensioni PostgreSQL per migliorare le funzionalità 
 ---
 
 Queste estensioni sono parte integrante della struttura tecnologica di Zero ERP, ognuna scelta per specifiche funzionalità e necessità progettuali, contribuendo alla sicurezza, efficienza e versatilità del sistema.
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

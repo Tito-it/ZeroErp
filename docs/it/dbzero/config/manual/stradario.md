@@ -56,3 +56,5 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
 ---
 
 > 🧠 **"Una vista dettagliata e georeferenziata delle strade comunali, con CAP obbligatorio e informazioni flessibili per ogni via."**
+
+
