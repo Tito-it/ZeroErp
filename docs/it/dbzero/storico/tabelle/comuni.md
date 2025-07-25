@@ -18,7 +18,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_comuni_config | comune_id, comune_id |
+| FOREIGN KEY | fk_comuni_config | comune_id |
 
 ## 📑 Indici
 | Nome | Definizione |

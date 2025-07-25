@@ -42,11 +42,11 @@ databaseChangeLog:
               ON DELETE RESTRICT;
 
         # 5. SQL: Rinomina trigger (opzionale)
-        - sql:
-            sql: |
-              ALTER TRIGGER trg_upd_contatti_ruoli_audit_data_user
-              ON config.titoli_cortesia
-              RENAME TO trg_upd_titoli_cortesia_audit_data_user;
+        #- sql:
+        #    sql: |
+         #     ALTER TRIGGER trg_upd_contatti_ruoli_audit_data_user
+         #     ON config.titoli_cortesia
+          #    RENAME TO trg_upd_titoli_cortesia_audit_data_user;
 
         # 6. (opzionale) Aggiorna commento tabella
         - sql:

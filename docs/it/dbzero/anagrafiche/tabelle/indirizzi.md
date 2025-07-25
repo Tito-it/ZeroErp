@@ -20,7 +20,8 @@
 | user_update | character varying | NO | CURRENT_USER |
 | comune_id | integer | YES |  |
 | codice_postale_id | integer | YES |  |
-| modifica_storica | boolean | NO | false |
+| storicizza | boolean | NO | false |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -33,9 +34,9 @@
 | FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
 | FOREIGN KEY | fk_stati_config | stato_id, stato_id |
 | FOREIGN KEY | fk_tipi_indirizzo_config | tipo_indirizzo_id |
-| PRIMARY KEY | pr_indirizzi_pk | id |
+| PRIMARY KEY | pk_indirizzi | id |
 | UNIQUE | uq_indirizzi_dettaglio_unique | indirizzo_dettaglio_id, tipo_indirizzo_id, soggetto_ruolo_id |
-| UNIQUE | uq_indirizzi_libero_unique | tipo_indirizzo_id, soggetto_ruolo_id, indirizzo_libero |
+| UNIQUE | uq_indirizzi_libero_unique | indirizzo_libero, tipo_indirizzo_id, soggetto_ruolo_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -47,7 +48,7 @@
 | ix_indirizzi_soggetto_ruolo_id | `CREATE INDEX ix_indirizzi_soggetto_ruolo_id ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id)` |
 | ix_indirizzi_stato_id | `CREATE INDEX ix_indirizzi_stato_id ON anagrafiche.indirizzi USING btree (stato_id)` |
 | ix_indirizzi_tipo_indirizzo_id | `CREATE INDEX ix_indirizzi_tipo_indirizzo_id ON anagrafiche.indirizzi USING btree (tipo_indirizzo_id)` |
-| pr_indirizzi_pk | `CREATE UNIQUE INDEX pr_indirizzi_pk ON anagrafiche.indirizzi USING btree (id)` |
+| pk_indirizzi | `CREATE UNIQUE INDEX pk_indirizzi ON anagrafiche.indirizzi USING btree (id)` |
 | uq_indirizzi_dettaglio_unique | `CREATE UNIQUE INDEX uq_indirizzi_dettaglio_unique ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_dettaglio_id)` |
 | uq_indirizzi_libero_unique | `CREATE UNIQUE INDEX uq_indirizzi_libero_unique ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_libero)` |
 
@@ -56,6 +57,10 @@
 |------|--------|--------|--------|
 | trg_indirizzi_ins_upd_clean_fields | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_clean_fields()` |
 | trg_indirizzi_ins_upd_clean_fields | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_clean_fields()` |
+| trg_indirizzi_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_indirizzi_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_indirizzi_ins_upd_sync_geoloc | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_sync_geoloc()` |
+| trg_indirizzi_ins_upd_sync_geoloc | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_sync_geoloc()` |
 | trg_indirizzi_upd_dlt_storico_indirizzi | BEFORE | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_upd_dlt_storico_indirizzi()` |
 | trg_indirizzi_upd_dlt_storico_indirizzi | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_upd_dlt_storico_indirizzi()` |
 | trg_upd_indirizzi_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
