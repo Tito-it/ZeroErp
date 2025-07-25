@@ -38,6 +38,6 @@ for dirpath, dirnames, filenames in os.walk(DOCS_ROOT):
 
         # Se il file NON ha già l’include, appendilo
         if INCLUDE_CORE not in content:
-            print(f"✔ Firmo: {fullpath}")
+            #print(f"✔ Firmo: {fullpath}")
             with open(fullpath, 'a', encoding='utf-8') as f:
                 f.write(FOOTER)
