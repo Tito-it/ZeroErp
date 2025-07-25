@@ -186,4 +186,4 @@ Per maggiori dettagli e implementazione, consulta la guida **(è fondamentale la
 *Documento riassuntivo delle best practice SQL per lo sviluppo e la manutenzione di Zero ERP.*
 
 ---
-{% include-markdown "signature-core.md" %}
+
