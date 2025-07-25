@@ -1,0 +1,216 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250725-06B-storico_indirizzi_modify_table-mctit
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista ancora tx_id
+        not:
+          columnExists:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: tx_id
+      changes:
+
+        # 1) Rimuovi vincoli FK non più necessari
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: storico
+            baseTableName: indirizzi
+            constraintName: fk_codici_postali_config
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: storico
+            baseTableName: indirizzi
+            constraintName: fk_comuni_config
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: storico
+            baseTableName: indirizzi
+            constraintName: fk_indirizzi_anagrafiche
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: storico
+            baseTableName: indirizzi
+            constraintName: fk_indirizzi_dettaglio_anagrafiche
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: storico
+            baseTableName: indirizzi
+            constraintName: fk_soggetti_ruoli_anagrafiche
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: storico
+            baseTableName: indirizzi
+            constraintName: fk_stati_config
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: storico
+            baseTableName: indirizzi
+            constraintName: fk_tipi_indirizzi_config
+
+        # 2) Rimuovi indici superflui
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_indirizzi_codice_postale_id
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_indirizzi_comune_id
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_indirizzi_indirizzi_dettaglio_id
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_indirizzi_indirizzi_id
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_indirizzi_soggetto_ruolo_id
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_indirizzi_stato_id
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_indirizzi_tipo_indirizzo_id
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_storico_indirizzi_codice_postale_id
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_storico_indirizzi_comune_id
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_storico_indirizzi_indirizzi_dettaglio_id
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_storico_indirizzi_indirizzi_id
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_storico_indirizzi_periodo
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_storico_indirizzi_stato_id
+
+        # 3) Rimuovi colonne dati (sostitute dallo snapshot JSONB)
+        - dropColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: soggetto_ruolo_id
+        - dropColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: tipo_indirizzo_id
+        - dropColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: indirizzi_dettaglio_id
+        - dropColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: indirizzo_libero
+        - dropColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: stato_id
+        - dropColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: comune_id
+        - dropColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: codice_postale_id
+        - dropColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: administrative_area
+        - dropColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: locality
+        - dropColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: sublocality
+        - dropColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: postal_box
+        - dropColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: geoloc
+
+        # 4) Aggiungi colonne per lo standard di storico
+        - addColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columns:
+              - column:
+                  name: snapshot
+                  type: jsonb
+                  constraints:
+                    nullable: false
+                  remarks: "Snapshot JSONB dei dati storici"
+              - column:
+                  name: tipo_operazione
+                  type: smallint
+                  constraints:
+                    nullable: false
+                  remarks: "1=iniziale, 2=update, 3=delete"
+              - column:
+                  name: tx_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+                  remarks: "UUID di transazione generato da trgfn_tx_id_managed"
+  - changeSet:
+      id: 20250725-06C-storico_indirizzi_modify_table-mctit
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista ancora change_type
+        not:
+          columnExists:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: change_type
+      changes:
+        - addColumn:
+            schemaName: storico
+            tableName: indirizzi
+            columns:
+              - column:
+                  name: change_type
+                  type: char(1)
+                  constraints:
+                    nullable: false
+                  remarks: "Tipo di cambiamento: A=Active, S=Suppressed, F=Fused, D=Divided"
+  - changeSet:
+      id: 20250725-90-storico_indirizzi_modify_table-mctit
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250725-06-storico_indirizzi_modify_table-mctit
