@@ -1,5 +1,4 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_duplicate_indexes.md" %}
-{% include-markdown "it/dbzero/dbops/manual/vw_duplicate_indexes.md" %}
 # 🔍 View `vw_duplicate_indexes`
 
 ```sql
@@ -31,3 +30,6 @@ WITH index_cols AS (
  HAVING (count(*) > 1)
   ORDER BY schema_name, table_name, (count(*)) DESC;
 ```
+
+---
+{% include-markdown "signature-core.md" %}

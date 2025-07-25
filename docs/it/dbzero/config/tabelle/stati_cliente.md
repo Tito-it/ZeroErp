@@ -3,7 +3,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.stati_cliente_id_seq'::regclass) |
+| id | integer | NO | nextval('stati_cliente_id_seq'::regclass) |
 | cod_int_stato_cliente | character | NO |  |
 | desc_stato_cliente | character varying | NO | ''::character varying |
 | desc_breve_stato | character | NO |  |
@@ -38,3 +38,5 @@
 |------|--------|--------|--------|
 | trg_stati_cliente_upd_lock_codiceinterno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('cod_int_stato_cliente', 'CODICE_NON_MODIFICABILE')` |
 | trg_upd_stati_cliente_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

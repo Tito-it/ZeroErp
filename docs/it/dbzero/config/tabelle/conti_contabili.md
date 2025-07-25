@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.conti_contabili_id_seq'::regclass) |
+| id | integer | NO | nextval('conti_contabili_id_seq'::regclass) |
 | codice_conto | character varying | NO |  |
 | descrizione | character varying | NO |  |
 | tipo_conto | character | NO |  |
@@ -32,3 +32,5 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_conti_contabili_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

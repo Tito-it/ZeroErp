@@ -133,3 +133,9 @@ await withTxId(dbClient, async (txId) => {
 * **Manutenzione**: tenere aggiornate le trigger functions e le funzioni helper in caso di nuovi requisiti.
 
 > 🧠 **“Scegliere il giusto compromesso tra automazione DB e controllo applicativo è fondamentale: questa guida aiuta a definire policy chiare e processi replicabili in Zero ERP.”**
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

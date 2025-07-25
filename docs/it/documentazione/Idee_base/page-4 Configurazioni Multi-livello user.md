@@ -146,3 +146,9 @@ parametri_globali ----< Modulo
     • I parametri:
         ◦ Possono essere globali o legati al singolo cliente (parametri_clienti)
 
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

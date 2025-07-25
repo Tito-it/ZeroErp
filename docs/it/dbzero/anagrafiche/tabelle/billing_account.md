@@ -44,3 +44,5 @@
 | trg_billing_account_ins_upd_gen_account_code | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_generate_account_code_generic('billing_account')` |
 | trg_billing_account_ins_upd_gen_account_code | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_generate_account_code_generic('billing_account')` |
 | trg_upd_billing_account_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

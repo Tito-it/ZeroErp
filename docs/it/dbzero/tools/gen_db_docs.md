@@ -110,3 +110,8 @@ Permette inoltre di includere documentazione manuale preesistente, mantenendo un
 ---
 
 > 🧠 **“Un unico script per trasformare il vostro schema PostgreSQL in una completa documentazione Markdown, integrabile con note manuali e sempre aggiornabile.”**
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

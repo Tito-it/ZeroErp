@@ -111,7 +111,12 @@ jobs:
           # Ora chiamiamo lo script: legge DB_HOST, DB_PORT, ecc. dall'env
           source .venv/bin/activate
           python scripts/gen_db_docs.py
-       
+
+      # Inserisce la firma nei documenti Markdown 
+      - name: Applica signature ai documenti
+        run: |
+          source .venv/bin/activate
+          python scripts/apply_signatures.py 
       
       - name: Build MkDocs site
         run: |

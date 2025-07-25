@@ -245,3 +245,9 @@ Le letture_acconti possono contenere:
     • Il conguaglio viene calcolato solo se esiste una lettura definitiva per la stessa data
 
 
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

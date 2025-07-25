@@ -1,5 +1,4 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_trigger_functions.md" %}
-{% include-markdown "it/dbzero/dbops/manual/vw_trigger_functions.md" %}
 # 🔍 View `vw_trigger_functions`
 
 ```sql
@@ -16,3 +15,6 @@ SELECT n.nspname AS schema,
   WHERE (NOT trg.tgisinternal)
   ORDER BY n.nspname, cls.relname, trg.tgname;
 ```
+
+---
+{% include-markdown "signature-core.md" %}

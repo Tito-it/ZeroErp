@@ -65,3 +65,5 @@
 | trg_soggetti_ins_upd_genera_cdsoggetto | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto()` |
 | trg_soggetti_ins_upd_genera_cdsoggetto | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto()` |
 | trg_upd_soggetti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

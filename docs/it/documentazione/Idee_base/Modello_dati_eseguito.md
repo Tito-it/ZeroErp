@@ -204,3 +204,9 @@ Questo modello garantisce robustezza, estendibilità e chiarezza nei flussi di b
 ---
 
 
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

@@ -24,3 +24,5 @@ EXCEPTION WHEN duplicate_object THEN
 END;
 $function$
 ```
+---
+{% include-markdown "signature-core.md" %}

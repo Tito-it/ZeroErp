@@ -51,3 +51,5 @@
 | ix_storico_indirizzi_periodo | `CREATE INDEX ix_storico_indirizzi_periodo ON storico.indirizzi USING btree (valid_from, valid_to)` |
 | ix_storico_indirizzi_stato_id | `CREATE INDEX ix_storico_indirizzi_stato_id ON storico.indirizzi USING btree (stato_id)` |
 | pk_indirizzi | `CREATE UNIQUE INDEX pk_indirizzi ON storico.indirizzi USING btree (id)` |
+---
+{% include-markdown "signature-core.md" %}

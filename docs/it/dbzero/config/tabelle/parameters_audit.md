@@ -29,3 +29,5 @@
 |------|--------|--------|--------|
 | trg_prevent_mod_parameters_audit | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_prevent_modification_generic()` |
 | trg_prevent_mod_parameters_audit | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_prevent_modification_generic()` |
+---
+{% include-markdown "signature-core.md" %}

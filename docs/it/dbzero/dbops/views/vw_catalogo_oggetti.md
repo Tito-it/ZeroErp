@@ -1,5 +1,4 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_catalogo_oggetti.md" %}
-{% include-markdown "it/dbzero/dbops/manual/vw_catalogo_oggetti.md" %}
 # 🔍 View `vw_catalogo_oggetti`
 
 ```sql
@@ -23,3 +22,6 @@ SELECT n.nspname AS schema,
      LEFT JOIN pg_roles ON ((pg_roles.oid = c.relowner)))
   WHERE (n.nspname = ANY (ARRAY['dbops'::name, 'script'::name]));
 ```
+
+---
+{% include-markdown "signature-core.md" %}

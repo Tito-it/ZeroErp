@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.iva_natura_id_seq'::regclass) |
+| id | integer | NO | nextval('iva_natura_id_seq'::regclass) |
 | codice_natura | character | NO |  |
 | descrizione_natura | character varying | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
@@ -26,3 +26,5 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_iva_natura_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

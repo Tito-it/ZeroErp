@@ -8,7 +8,7 @@ CREATE FUNCTION fn_get_indirizzo(p_soggetto_ruolo_id integer, p_tipo_codice char
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(p_soggetto_ruolo_id integer, p_tipo_codice character varying)
- RETURNS TABLE(indirizzo_completo text, geoloc geometry)
+ RETURNS TABLE(indirizzo_completo text, geoloc public.geometry)
  LANGUAGE sql
  STABLE
 AS $function$
@@ -18,3 +18,5 @@ WHERE tipo_indirizzo = p_tipo_codice
 LIMIT 1;
 $function$
 ```
+---
+{% include-markdown "signature-core.md" %}

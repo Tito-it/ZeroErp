@@ -1,12 +1,12 @@
 
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.indirizzi_dettaglio`
 
-> 👀 **Vedi anche**  
+> 👀 **Vedi anche**    
 >
 > Approfondimento Tabelle:      
->  - [config.stradario](/dbzero/config/tabelle/stradario)  
->  - [config.comuni](/dbzero/config/tabelle/comuni)    
->  - [config.province](/dbzero/config/tabelle/province)   
+> - [config.stradario](/dbzero/config/tabelle/stradario)  
+> - [config.comuni](/dbzero/config/tabelle/comuni)    
+> - [config.province](/dbzero/config/tabelle/province)   
 > - [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
 >
 > Approfondimento funzioni:   

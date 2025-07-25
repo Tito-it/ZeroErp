@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.codici_postali_id_seq'::regclass) |
+| id | integer | NO | nextval('codici_postali_id_seq'::regclass) |
 | codice_postale | character | NO |  |
 | comune_id | integer | NO |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
@@ -29,3 +29,5 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_codici_postali_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

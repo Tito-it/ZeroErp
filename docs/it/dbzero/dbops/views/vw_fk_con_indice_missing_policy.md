@@ -1,5 +1,4 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_fk_con_indice_missing_policy.md" %}
-{% include-markdown "it/dbzero/dbops/manual/vw_fk_con_indice_missing_policy.md" %}
 # 🔍 View `vw_fk_con_indice_missing_policy`
 
 ```sql
@@ -56,3 +55,6 @@ WITH fk_columns AS (
   WHERE ((pol.constraint_name IS NULL) AND (COALESCE(pol.consentito, true) = true))
   ORDER BY fk.schema_name, fk.table_name;
 ```
+
+---
+{% include-markdown "signature-core.md" %}

@@ -8,7 +8,7 @@ CREATE FUNCTION fn_normalize_indirizzo(p_comune_id integer, p_indirizzo_libero t
 
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_normalize_indirizzo(p_comune_id integer, p_indirizzo_libero text)
- RETURNS TABLE(indirizzo_dettaglio_id integer, via_norm text, civico_norm text, codice_postale_id integer, geoloc geometry)
+ RETURNS TABLE(indirizzo_dettaglio_id integer, via_norm text, civico_norm text, codice_postale_id integer, geoloc public.geometry)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
@@ -48,3 +48,5 @@ BEGIN
 END;
 $function$
 ```
+---
+{% include-markdown "signature-core.md" %}

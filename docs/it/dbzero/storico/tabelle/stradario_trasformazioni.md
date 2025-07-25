@@ -25,3 +25,5 @@
 | ix_stradario_trasformazioni_via_id_nuovo | `CREATE INDEX ix_stradario_trasformazioni_via_id_nuovo ON storico.stradario_trasformazioni USING btree (via_id_nuovo)` |
 | ix_stradario_trasformazioni_via_id_orig | `CREATE INDEX ix_stradario_trasformazioni_via_id_orig ON storico.stradario_trasformazioni USING btree (via_id_orig)` |
 | pk_stradario_trasformazioni | `CREATE UNIQUE INDEX pk_stradario_trasformazioni ON storico.stradario_trasformazioni USING btree (id)` |
+---
+{% include-markdown "signature-core.md" %}

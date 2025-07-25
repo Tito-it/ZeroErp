@@ -18,3 +18,9 @@ Questa sezione della documentazione include:
 * **Parametri personalizzati (GUC)**: guida alla definizione, utilizzo e gestione dei parametri applicativi personalizzati per adattare il database alle specifiche esigenze di Zero ERP.
 
 Seguendo questa documentazione sarà possibile gestire al meglio PostgreSQL all’interno di Zero ERP, sfruttandone pienamente le potenzialità e garantendo stabilità e affidabilità al sistema.
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

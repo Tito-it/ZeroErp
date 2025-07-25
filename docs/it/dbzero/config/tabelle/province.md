@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.province_id_seq'::regclass) |
+| id | integer | NO | nextval('province_id_seq'::regclass) |
 | descrizione | character | NO |  |
 | sigla | character | NO |  |
 | regione_id | integer | YES |  |
@@ -34,3 +34,5 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_province_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

@@ -45,10 +45,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_indirizzi_dettaglio_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_indirizzi_dettaglio_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio()` |
+| trg_indirizzi_dettaglio_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio()` |
+| trg_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio()` |
 | trg_upd_indirizzi_dettaglio_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-| trg_z90_indirizzi_dettaglio_ins_upd_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('indirizzo_dettaglio_id')` |
-| trg_z90_indirizzi_dettaglio_ins_upd_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('indirizzo_dettaglio_id')` |
+| trg_z90_indirizzi_dettaglio_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('indirizzo_dettaglio_id')` |
+| trg_z90_indirizzi_dettaglio_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('indirizzo_dettaglio_id')` |
+---
+{% include-markdown "signature-core.md" %}

@@ -9,7 +9,7 @@ CREATE FUNCTION fn_get_stradario(p_comune_id integer, p_indirizzo text)
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_stradario(p_comune_id integer DEFAULT NULL::integer, p_indirizzo text DEFAULT ''::text)
- RETURNS TABLE(stradario_id integer, via_id integer, toponomastica_id integer, descrizione_toponomastica character varying, sigla_stato character varying, descrizione_via character varying, descrizione_breve character varying, cod_postale character, comune character varying, provincia character, geoloc geometry, descrizione_completa text)
+ RETURNS TABLE(stradario_id integer, via_id integer, toponomastica_id integer, descrizione_toponomastica character varying, sigla_stato character varying, descrizione_via character varying, descrizione_breve character varying, cod_postale character, comune character varying, provincia character, geoloc public.geometry, descrizione_completa text)
  LANGUAGE plpgsql
 AS $function$
   BEGIN
@@ -78,3 +78,5 @@ AS $function$
   END;
   $function$
 ```
+---
+{% include-markdown "signature-core.md" %}

@@ -86,3 +86,9 @@ id	attivita_pratica_id	nome_file	percorso_file	documento_blob	classificazione	ve
 
 Nota
 Questa struttura permette di estendere Zero ERP verso un Business Process Engine senza perdere la semplicità nella gestione dei processi standard.
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

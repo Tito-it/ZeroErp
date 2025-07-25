@@ -59,3 +59,5 @@
 | trg_indirizzi_upd_dlt_storico_indirizzi | BEFORE | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_upd_dlt_storico_indirizzi()` |
 | trg_indirizzi_upd_dlt_storico_indirizzi | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_upd_dlt_storico_indirizzi()` |
 | trg_upd_indirizzi_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

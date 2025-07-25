@@ -26,3 +26,9 @@ Benvenuto a casa. 
 
 Questo non è solo software, è un’idea che vi regalerà tempo per le persone e le cose  che amate.  
 È un’idea che si può toccare.
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

@@ -320,3 +320,9 @@ Lo schema `config` ospita tabelle di configurazione, sia di setup che di utilizz
 ---
 
 *Documento redatto e condiviso con il team ZeroErp.*
+
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

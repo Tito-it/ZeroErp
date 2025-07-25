@@ -3,7 +3,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.tipi_attivita_id_seq'::regclass) |
+| id | integer | NO | nextval('tipi_attivita_id_seq'::regclass) |
 | cod_tipo_attivita | character varying | NO |  |
 | descrizione | character varying | NO |  |
 | cd_int_tipo_attivita | character varying | NO |  |
@@ -31,3 +31,5 @@
 |------|--------|--------|--------|
 | trg_tipi_attivita_upd_lock_codiceinterno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('cd_int_tipo_attivita', 'CODICE_NON_MODIFICABILE')` |
 | trg_upd_tipi_attivita_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

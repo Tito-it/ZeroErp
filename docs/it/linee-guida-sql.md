@@ -2,8 +2,10 @@
 
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento   
-> [Liquibase Setup & Workflow](liquibase-setup-workflow.md).   
->
+> - [Liquibase Setup & Workflow](liquibase-setup-workflow.md)   
+> - [Storicizzazione Tabelle](/guide/storicizzazione-tabelle)   
+> - [Transaction ID](/guide/tx_id_implementation_guide) 
+ 
 >
 > Approfondimento Tabelle:   
 > - [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
@@ -182,3 +184,6 @@ Per maggiori dettagli e implementazione, consulta la guida **(è fondamentale la
 ---
 
 *Documento riassuntivo delle best practice SQL per lo sviluppo e la manutenzione di Zero ERP.*
+
+---
+{% include-markdown "signature-core.md" %}

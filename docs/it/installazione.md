@@ -35,3 +35,8 @@ npm run dev
 ## Avvia la doc locale
 cd ..
 mkdocs serve
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

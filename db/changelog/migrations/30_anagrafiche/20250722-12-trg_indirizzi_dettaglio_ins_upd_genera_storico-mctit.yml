@@ -20,7 +20,7 @@ databaseChangeLog:
             comment: "2) Rimuove eventuale trigger esistente"
             splitStatements: false
             sql: |
-              DROP TRIGGER IF EXISTS trg_Z90_indirizzi_dettaglio_ins_upd_storico
+              DROP TRIGGER IF EXISTS trg_Z90_indirizzi_dettaglio_upd_dlt_storico
                 ON anagrafiche.indirizzi_dettaglio;
             
         - sql:
@@ -28,7 +28,7 @@ databaseChangeLog:
             splitStatements: false
             stripComments: true
             sql: |
-                  CREATE TRIGGER trg_Z90_indirizzi_dettaglio_ins_upd_storico
+                  CREATE TRIGGER trg_Z90_indirizzi_dettaglio_upd_dlt_storico
                     BEFORE UPDATE OR DELETE
                     ON anagrafiche.indirizzi_dettaglio
                     FOR EACH ROW
@@ -40,7 +40,7 @@ databaseChangeLog:
             comment: "Commento descrittivo sul  trigger"
             splitStatements: false      
             sql: |
-                  COMMENT ON TRIGGER trg_Z90_indirizzi_dettaglio_ins_upd_storico
+                  COMMENT ON TRIGGER trg_Z90_indirizzi_dettaglio_upd_dlt_storico
                     ON anagrafiche.indirizzi_dettaglio
                       IS ' Crea trigger su anagrafiche.indirizzi_dettaglio 
                       per generare storico.indirizzi_dettaglio(snapshot)';

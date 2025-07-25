@@ -3,7 +3,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.ambiti_id_seq'::regclass) |
+| id | integer | NO | nextval('ambiti_id_seq'::regclass) |
 | codice | character | NO |  |
 | descrizione | character | NO |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
@@ -30,3 +30,5 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_ambiti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

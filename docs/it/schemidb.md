@@ -84,3 +84,8 @@
 - [storico](dbzero/storico/index.md)  
 
 > In ciascuna pagina di schema troverai un unico indice con le tabelle, le funzioni e le view corrispondenti.
+---
+
+
+---
+{% include-markdown "signature-core.md" %}

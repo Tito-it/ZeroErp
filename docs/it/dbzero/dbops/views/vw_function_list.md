@@ -1,5 +1,4 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_function_list.md" %}
-{% include-markdown "it/dbzero/dbops/manual/vw_function_list.md" %}
 # 🔍 View `vw_function_list`
 
 ```sql
@@ -16,3 +15,6 @@ SELECT n.nspname AS schema,
      LEFT JOIN pg_description d ON ((p.oid = d.objoid)))
   WHERE (n.nspname = ANY (ARRAY['dbops'::name, 'script'::name]));
 ```
+
+---
+{% include-markdown "signature-core.md" %}

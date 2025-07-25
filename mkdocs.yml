@@ -21,8 +21,9 @@ theme:
     - navigation.sections
     - navigation.expand
 plugins:
-  - include-markdown
-      #base_path: docs
+  - include-markdown:
+      #base_path: docs       # ← questa riga deve essere attiva
+      #fail_on_missing: false
   - search
   
   - i18n:
@@ -81,3 +82,4 @@ nav:
 
   - Guide tecniche:
       - Implementazione Transaction ID: guide/tx_id_implementation_guide.md
+      - Storicizzazione Tabelle: guide/storicizzazione-tabelle.md

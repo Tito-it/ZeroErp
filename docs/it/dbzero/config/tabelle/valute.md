@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.valute_id_seq'::regclass) |
+| id | integer | NO | nextval('valute_id_seq'::regclass) |
 | cd_valuta | character | NO |  |
 | iso_code | character | NO |  |
 | iso_num_code | smallint | YES |  |
@@ -34,3 +34,5 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_upd_valute_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}
