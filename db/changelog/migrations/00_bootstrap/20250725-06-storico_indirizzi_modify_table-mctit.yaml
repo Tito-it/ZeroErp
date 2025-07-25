@@ -56,34 +56,34 @@ databaseChangeLog:
             constraintName: fk_tipi_indirizzi_config
 
         # 2) Rimuovi indici superflui
-        - dropIndex:
-            schemaName: storico
-            tableName: indirizzi
-            indexName: ix_indirizzi_codice_postale_id
-        - dropIndex:
-            schemaName: storico
-            tableName: indirizzi
-            indexName: ix_indirizzi_comune_id
-        - dropIndex:
-            schemaName: storico
-            tableName: indirizzi
-            indexName: ix_indirizzi_indirizzi_dettaglio_id
-        - dropIndex:
-            schemaName: storico
-            tableName: indirizzi
-            indexName: ix_indirizzi_indirizzi_id
-        - dropIndex:
-            schemaName: storico
-            tableName: indirizzi
-            indexName: ix_indirizzi_soggetto_ruolo_id
-        - dropIndex:
-            schemaName: storico
-            tableName: indirizzi
-            indexName: ix_indirizzi_stato_id
-        - dropIndex:
-            schemaName: storico
-            tableName: indirizzi
-            indexName: ix_indirizzi_tipo_indirizzo_id
+        #- dropIndex:
+        #    schemaName: storico
+         #   tableName: indirizzi
+        #    indexName: ix_indirizzi_codice_postale_id
+        #- dropIndex:
+        #    schemaName: storico
+        #    tableName: indirizzi
+         #   indexName: ix_indirizzi_comune_id
+        #- dropIndex:
+         #   schemaName: storico
+         #   tableName: indirizzi
+         #   indexName: ix_indirizzi_indirizzi_dettaglio_id
+       # - dropIndex:
+        #    schemaName: storico
+        #    tableName: indirizzi
+        #    indexName: ix_indirizzi_indirizzi_id
+        #- dropIndex:
+        #    schemaName: storico
+        #    tableName: indirizzi
+        #    indexName: ix_indirizzi_soggetto_ruolo_id
+        #- dropIndex:
+        #    schemaName: storico
+        #    tableName: indirizzi
+        #    indexName: ix_indirizzi_stato_id
+       # - dropIndex:
+        #    schemaName: storico
+         #   tableName: indirizzi
+        #    indexName: ix_indirizzi_tipo_indirizzo_id
         - dropIndex:
             schemaName: storico
             tableName: indirizzi
