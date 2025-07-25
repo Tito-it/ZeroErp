@@ -1,1 +1,3 @@
-*© 2025 Zero ERP • by Tid • (Michele Carlo Titini)*
+
+
+**© 2025 Zero ERP** ***• powered by Tid •***
