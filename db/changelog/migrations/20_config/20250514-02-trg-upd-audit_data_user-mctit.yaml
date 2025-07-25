@@ -74,7 +74,16 @@ databaseChangeLog:
   - changeSet:
       id: 20250514-14  
       author: mctit
-      runOnChange: true   
+      runOnChange: true
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: HALT
+         #  Assicuro che NON esista ancora tx_id
+        
+        tableExists:
+            schemaName: config
+            tableName: contatti_ruoli
+  
       changes:
         - sql:
             splitStatements: false
