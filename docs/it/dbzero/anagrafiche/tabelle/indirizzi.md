@@ -57,6 +57,10 @@
 |------|--------|--------|--------|
 | trg_indirizzi_ins_upd_clean_fields | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_clean_fields()` |
 | trg_indirizzi_ins_upd_clean_fields | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_clean_fields()` |
+| trg_indirizzi_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_indirizzi_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_indirizzi_ins_upd_sync_geoloc | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_sync_geoloc()` |
+| trg_indirizzi_ins_upd_sync_geoloc | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_sync_geoloc()` |
 | trg_indirizzi_upd_dlt_storico_indirizzi | BEFORE | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_upd_dlt_storico_indirizzi()` |
 | trg_indirizzi_upd_dlt_storico_indirizzi | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_upd_dlt_storico_indirizzi()` |
 | trg_upd_indirizzi_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
