@@ -34,5 +34,4 @@ Tutti i componenti sono testati con le versioni indicate in:
 ---
 {% include-markdown "signature-core.md" %}
 
----
 

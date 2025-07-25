@@ -169,6 +169,10 @@ def write_docs_for_schema(schema, cur):
     os.makedirs(os.path.join(schema_dir, "funzioni"), exist_ok=True)
     os.makedirs(os.path.join(schema_dir, "views"), exist_ok=True)
     os.makedirs(os.path.join(schema_dir, "manual"), exist_ok=True)
+    
+    SIGNATURE_INCLUDE = '{% include-markdown "signature-core.md" %}'
+    FOOTER = f"\n---\n{SIGNATURE_INCLUDE}\n"
+
 
     # Tabelle
     cur.execute(
@@ -179,6 +183,8 @@ def write_docs_for_schema(schema, cur):
         tbl = r['table_name']
         path = os.path.join(schema_dir, "tabelle", f"{tbl}.md")
         content = include_manual(schema, 'tabelle', tbl) + gen_table_md(schema, tbl, cur)
+        # Aggiungi firma core in fondo
+        content += FOOTER
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
     # Funzioni
@@ -190,6 +196,8 @@ def write_docs_for_schema(schema, cur):
         fn = r['routine_name']
         path = os.path.join(schema_dir, "funzioni", f"{fn}.md")
         content = include_manual(schema, 'funzioni', fn) + gen_function_md(schema, fn, cur)
+        # Aggiungi firma core in fondo
+        content += FOOTER
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
     # Views
@@ -201,6 +209,8 @@ def write_docs_for_schema(schema, cur):
         vw = r['view_name']
         path = os.path.join(schema_dir, "views", f"{vw}.md")
         content = include_manual(schema, 'views', vw) + gen_view_md(schema, vw, cur)
+        # Aggiungi firma core in fondo
+        content += FOOTER
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
     # Genera indice includendo tabelle, funzioni e view
