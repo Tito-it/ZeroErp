@@ -49,3 +49,5 @@ WHERE ai.soggetto_ruolo_id = p_soggetto_ruolo_id
 ORDER BY ti.cod_int_tipo_indirizzo;
 $function$
 ```
+---
+{% include-markdown "signature-core.md" %}

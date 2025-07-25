@@ -31,3 +31,5 @@
 |------|--------|--------|--------|
 | trg_tipi_attivita_upd_lock_codiceinterno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('cd_int_tipo_attivita', 'CODICE_NON_MODIFICABILE')` |
 | trg_upd_tipi_attivita_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

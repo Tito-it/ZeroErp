@@ -76,3 +76,5 @@ AS $function$DECLARE
 
   $function$
 ```
+---
+{% include-markdown "signature-core.md" %}

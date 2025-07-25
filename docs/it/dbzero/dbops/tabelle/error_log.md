@@ -28,3 +28,5 @@
 |------|--------|--------|--------|
 | trg_assign_tx_id_error_log | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_assign_tx_id_error_log | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+---
+{% include-markdown "signature-core.md" %}

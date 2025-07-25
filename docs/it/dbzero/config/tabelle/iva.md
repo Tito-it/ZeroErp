@@ -44,3 +44,5 @@
 | trg_iva_ins_upd_check_conti_iva | BEFORE | INSERT | `EXECUTE FUNCTION trgfn_iva_ins_upd_check_conti_iva()` |
 | trg_iva_ins_upd_check_conti_iva | BEFORE | UPDATE | `EXECUTE FUNCTION trgfn_iva_ins_upd_check_conti_iva()` |
 | trg_upd_iva_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

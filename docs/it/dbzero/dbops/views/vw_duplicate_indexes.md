@@ -30,3 +30,6 @@ WITH index_cols AS (
  HAVING (count(*) > 1)
   ORDER BY schema_name, table_name, (count(*)) DESC;
 ```
+
+---
+{% include-markdown "signature-core.md" %}

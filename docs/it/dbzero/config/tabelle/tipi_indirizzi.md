@@ -30,3 +30,5 @@
 |------|--------|--------|--------|
 | trg_tipi_indirizzi_upd_lock_cod_interno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('cod_int_tipo_indirizzo', 'CODICE_NON_MODIFICABILE')` |
 | trg_upd_tipi_indirizzi_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

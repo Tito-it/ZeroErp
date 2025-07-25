@@ -54,3 +54,5 @@
 | trg_contatti_ins_upd_set_default_contatto | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contatto()` |
 | trg_contatti_ins_upd_set_default_contatto | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contatto()` |
 | trg_upd_contatti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

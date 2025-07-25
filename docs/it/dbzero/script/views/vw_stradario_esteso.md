@@ -14,3 +14,6 @@ SELECT v.id AS id_via,
      JOIN toponomastica t ON ((v.toponomastica_id = t.id)))
      LEFT JOIN stati s ON ((t.stato_id = s.id)));
 ```
+
+---
+{% include-markdown "signature-core.md" %}

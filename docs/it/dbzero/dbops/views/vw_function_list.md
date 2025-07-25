@@ -15,3 +15,6 @@ SELECT n.nspname AS schema,
      LEFT JOIN pg_description d ON ((p.oid = d.objoid)))
   WHERE (n.nspname = ANY (ARRAY['dbops'::name, 'script'::name]));
 ```
+
+---
+{% include-markdown "signature-core.md" %}

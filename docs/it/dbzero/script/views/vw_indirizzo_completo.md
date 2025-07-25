@@ -20,3 +20,6 @@ SELECT s.id AS id_stradario,
      JOIN codici_postali cp ON ((s.codice_postale_id = cp.id)))
      JOIN script.vw_stradario_esteso ve ON ((s.stradario_generale_id = ve.id_via)));
 ```
+
+---
+{% include-markdown "signature-core.md" %}

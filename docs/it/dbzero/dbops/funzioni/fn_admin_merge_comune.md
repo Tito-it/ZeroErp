@@ -79,3 +79,5 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $function$
 ```
+---
+{% include-markdown "signature-core.md" %}

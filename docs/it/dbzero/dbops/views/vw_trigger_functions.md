@@ -15,3 +15,6 @@ SELECT n.nspname AS schema,
   WHERE (NOT trg.tgisinternal)
   ORDER BY n.nspname, cls.relname, trg.tgname;
 ```
+
+---
+{% include-markdown "signature-core.md" %}

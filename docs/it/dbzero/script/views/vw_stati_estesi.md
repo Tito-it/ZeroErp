@@ -14,3 +14,6 @@ SELECT id,
     (extra_country ->> 'stato_utilizzo'::text) AS stato_utilizzo
    FROM stati s;
 ```
+
+---
+{% include-markdown "signature-core.md" %}

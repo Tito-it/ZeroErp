@@ -23,3 +23,6 @@ SELECT p.id AS id_provincia,
      JOIN regioni r ON ((p.regione_id = r.id)))
      JOIN stati s ON ((r.stato_id = s.id)));
 ```
+
+---
+{% include-markdown "signature-core.md" %}

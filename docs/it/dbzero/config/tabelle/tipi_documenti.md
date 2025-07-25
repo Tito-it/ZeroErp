@@ -31,3 +31,5 @@
 |------|--------|--------|--------|
 | trg_tipi_contatti_upd_lock_cod_interno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('cd_int_tipo_documento', 'CODICE_NON_MODIFICABILE')` |
 | trg_upd_tipi_documenti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

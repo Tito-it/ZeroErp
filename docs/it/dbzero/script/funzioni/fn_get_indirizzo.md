@@ -18,3 +18,5 @@ WHERE tipo_indirizzo = p_tipo_codice
 LIMIT 1;
 $function$
 ```
+---
+{% include-markdown "signature-core.md" %}

@@ -55,3 +55,6 @@ WITH fk_columns AS (
   WHERE ((pol.constraint_name IS NULL) AND (COALESCE(pol.consentito, true) = true))
   ORDER BY fk.schema_name, fk.table_name;
 ```
+
+---
+{% include-markdown "signature-core.md" %}

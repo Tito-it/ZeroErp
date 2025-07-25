@@ -53,3 +53,5 @@
 |------|--------|--------|--------|
 | trg_istanze_utilities_ins_set_istanza_codice | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_ins_set_istanza_codice()` |
 | trg_upd_istanze_utilities_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+---
+{% include-markdown "signature-core.md" %}

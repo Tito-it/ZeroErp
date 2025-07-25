@@ -16,3 +16,5 @@ AS $function$
   SELECT '00000000-0000-0000-0000-000000000000'::uuid;
 $function$
 ```
+---
+{% include-markdown "signature-core.md" %}

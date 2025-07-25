@@ -40,3 +40,5 @@ AS $function$
   WHERE i.codice_iva = p_codice_iva;
 $function$
 ```
+---
+{% include-markdown "signature-core.md" %}
