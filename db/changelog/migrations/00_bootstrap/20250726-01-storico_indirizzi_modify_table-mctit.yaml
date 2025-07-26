@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250726-01-storico_indirizzi_modify_table
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      
+      changes:
+            
+        # Rinomina constraint PK
+         #1) Drop della PK esistente
+        - dropPrimaryKey:
+            schemaName: storico
+            tableName: indirizzi_dettaglio
+            constraintName: indirizzi_dettaglio_pkey
+
+        # 2) Aggiunta della PK con il nuovo nome
+        - addPrimaryKey:
+            schemaName: storico
+            tableName: indirizzi_dettaglio
+            columnNames: id
+            constraintName: pk_indirizzi_dettaglio
+
+
+        # 3) Ricreazione del FK su storico.indirizzi verso la nuova PK
+        - addForeignKeyConstraint:
+            constraintName: fk_storico_indirizzi_anagrafiche_indirizzi
+            baseTableSchemaName: storico
+            baseTableName: indirizzi
+            baseColumnNames: indirizzi_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: indirizzi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            
+       
+  - changeSet:
+      id: 20250726-90-storico_indirizzi_modify_table
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 220250726-01-storico_indirizzi_modify_table

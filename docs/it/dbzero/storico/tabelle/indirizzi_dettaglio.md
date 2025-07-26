@@ -19,12 +19,12 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_storico_indirizzi_dettaglio_anagrafiche_indirizzi_dettaglio | indirizzo_dettaglio_id |
-| PRIMARY KEY | indirizzi_dettaglio_pkey | id |
+| PRIMARY KEY | pk_indirizzi_dettaglio | id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| indirizzi_dettaglio_pkey | `CREATE UNIQUE INDEX indirizzi_dettaglio_pkey ON storico.indirizzi_dettaglio USING btree (id)` |
+| pk_indirizzi_dettaglio | `CREATE UNIQUE INDEX pk_indirizzi_dettaglio ON storico.indirizzi_dettaglio USING btree (id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

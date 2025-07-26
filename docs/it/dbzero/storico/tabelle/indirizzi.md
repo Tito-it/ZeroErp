@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/indirizzi.md" %}
 # 📚 Tabella `indirizzi`
 
 ## 🗂️ Campi principali
@@ -17,6 +18,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_storico_indirizzi_anagrafiche_indirizzi | indirizzi_id |
 | PRIMARY KEY | pk_indirizzi | id |
 
 ## 📑 Indici
