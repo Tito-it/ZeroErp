@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_indirizzi_ins_upd_sync_geoloc.md" %}
 # ⚙️ Funzione `trgfn_indirizzi_ins_upd_sync_geoloc`
 
 ```sql
