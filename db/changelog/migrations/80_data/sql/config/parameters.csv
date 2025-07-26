@@ -1,0 +1,2 @@
+id,code,default_value,description,data_insert,user_insert,data_update,user_update
+1,tx_id_bypass_enabled,false,Abilita/disabilita il controllo del transaction id da applicare sulle tabelle. Il transaction id viene reperito nella tabella transaction_ids e deve essere unico.,2025-07-07 10:19:37.811461,CURRENT_USER,2025-07-08 11:32:54.131289,postgres

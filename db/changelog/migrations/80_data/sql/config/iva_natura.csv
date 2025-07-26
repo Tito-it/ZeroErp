@@ -1,0 +1,22 @@
+id,codice_natura,descrizione_natura,data_insert,data_update
+1,N1        ,escluse ex art. 15 del DPR 633/72,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+2,N2.1      ,non soggette ad IVA ai sensi degli artt. da 7 a 7-septies del DPR 633/72,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+3,N2.2      ,non soggette - altri casi,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+4,N3.1      ,non imponibili - esportazioni,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+5,N3.2      ,non imponibili - cessioni intracomunitarie,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+6,N3.3      ,non imponibili - cessioni verso San Marino,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+7,N3.4      ,non imponibili - operazioni assimilate alle cessioni all'esportazione,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+8,N3.5      ,non imponibili - a seguito di dichiarazioni d'intento,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+9,N3.6      ,non imponibili - altre operazioni che non concorrono alla formazione del plafond,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+10,N4        ,esenti,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+11,N5        ,regime del margine / IVA non esposta in fattura,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+12,N6.1      ,inversione contabile - cessione di rottami e altri materiali di recupero,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+13,N6.2      ,inversione contabile - cessione di oro e argento ai sensi della legge 7/2000 nonché di oreficeria usata ad OPO,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+14,N6.3      ,inversione contabile - subappalto nel settore edile,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+15,N6.4      ,inversione contabile - cessione di fabbricati,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+16,N6.5      ,inversione contabile - cessione di telefoni cellulari,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+17,N6.6      ,inversione contabile - cessione di prodotti elettronici,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+18,N6.7      ,inversione contabile - prestazioni comparto edile e settori connessi,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+19,N6.8      ,inversione contabile - operazioni settore energetico,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+20,N6.9      ,inversione contabile - altri casi,2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
+30,N7        ,"IVA assolta in altro stato UE (prestazione di servizi di telecomunicazioni, tele-radiodiffusione ed elettronici ex art. 7-sexies lett. f, g, art. 74-sexies DPR 633/72)",2025-05-12 18:03:23.871257+02,2025-05-12 18:03:23.871257+02
