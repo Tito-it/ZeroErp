@@ -31,10 +31,10 @@ databaseChangeLog:
             baseTableName: indirizzi
             constraintName: fk_storico_indirizzi_anagrafiche_indirizzi
         
-        - dropIndex:
-            schemaName: storico
-            tableName: indirizzi
-            indexName: ix_indirizzi_indirizzi_id
+        #- dropIndex:
+        #    schemaName: storico
+        #    tableName: indirizzi
+        #    indexName: ix_indirizzi_indirizzi_id
         
         
 
