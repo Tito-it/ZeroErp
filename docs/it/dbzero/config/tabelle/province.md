@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('province_id_seq'::regclass) |
+| id | integer | NO | nextval('config.province_id_seq'::regclass) |
 | descrizione | character | NO |  |
 | sigla | character | NO |  |
 | regione_id | integer | YES |  |

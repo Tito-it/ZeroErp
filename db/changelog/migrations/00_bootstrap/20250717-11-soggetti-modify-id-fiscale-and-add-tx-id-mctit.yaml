@@ -76,6 +76,35 @@ databaseChangeLog:
                   type: uuid
                   constraints:
                     nullable: true
+  
+  - changeSet:
+      id: 20250717-11A-soggetti-add-storicizza
+      author: mctit
+
+      preConditions:
+        onFail: HALT
+        onError: CONTINUE
+        
+        # ) Assicuro che NON esista ancora storicizza
+        not:
+          columnExists:
+            schemaName: anagrafiche
+            tableName: soggetti
+            columnName: storicizza
+            
+      changes:
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: soggetti
+            columns:
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+                  remarks: "Se true, il soggetto viene storicizzato in storico.soggetti"
+
 
   - changeSet:
       id: 20250717-90-soggetti-modify-id-fiscale-and-add-tx-id

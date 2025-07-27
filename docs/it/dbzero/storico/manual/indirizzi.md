@@ -37,7 +37,7 @@ Il suo utilizzo è cruciale per:
 ### 🔗 Collegamenti con Altre Tabelle
 
 * **`anagrafiche.indirizzi`**  
-  - Il campo `indirizzi_id` riferisce direttamente alla chiave primaria di `anagrafiche.indirizzi`.  
+  - Il campo `indirizzo_id` riferisce direttamente alla chiave primaria di `anagrafiche.indirizzi`.  
   - Vincolo referenziale:  
     - **ON UPDATE CASCADE** (propaga eventuali modifiche alla PK di `anagrafiche.indirizzi`)  
     - **ON DELETE NO ACTION** (non permette la cancellazione se esistono record storici collegati).  

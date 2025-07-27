@@ -24,7 +24,7 @@ databaseChangeLog:
                 ON anagrafiche.indirizzi;
             
         - sql:
-            comment: "2) Ricrea il trigger come BEFORE che FOLLOWS il trigger di normalizzazione " 
+            comment: "2) Ricrea il trigger come BEFORE  il trigger di normalizzazione " 
             splitStatements: false
             stripComments: true
             sql: |
@@ -33,7 +33,7 @@ databaseChangeLog:
                     ON anagrafiche.indirizzi
                     FOR EACH ROW
                     EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic(
-                      'indirizzo_dettaglio_id'
+                      'indirizzo_id'
                     );
 
         - sql:

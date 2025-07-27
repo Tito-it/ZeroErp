@@ -26,7 +26,6 @@
 |------|-------------|
 | ix_storico_stradario_stradario_id | `CREATE INDEX ix_storico_stradario_stradario_id ON storico.stradario USING btree (stradario_id)` |
 | ix_storico_stradario_valid_periodo | `CREATE INDEX ix_storico_stradario_valid_periodo ON storico.stradario USING btree (valid_from, valid_to)` |
-| ix_stradario_stradario_id | `CREATE INDEX ix_stradario_stradario_id ON storico.stradario USING btree (stradario_id)` |
 | pk_stradario | `CREATE UNIQUE INDEX pk_stradario ON storico.stradario USING btree (id)` |
 
 ## 🚨 Trigger

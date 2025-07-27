@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('comuni_id_seq'::regclass) |
+| id | integer | NO | nextval('config.comuni_id_seq'::regclass) |
 | descrizione | character varying | NO | ''::character varying |
 | provincia_id | integer | YES |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |

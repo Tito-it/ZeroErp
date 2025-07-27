@@ -24,6 +24,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_indirizzi_dettaglio_indirizzo_dettaglio_id | `CREATE INDEX ix_indirizzi_dettaglio_indirizzo_dettaglio_id ON storico.indirizzi_dettaglio USING btree (indirizzo_dettaglio_id)` |
 | pk_indirizzi_dettaglio | `CREATE UNIQUE INDEX pk_indirizzi_dettaglio ON storico.indirizzi_dettaglio USING btree (id)` |
 
 ## 🚨 Trigger

@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250727-02A-storico_indirizzi_rename_indirizzi_id_to_indirizzo_id
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista indirizzo_id
+        not:
+          columnExists:
+            schemaName: storico
+            tableName: indirizzi
+            columnName: indirizzo_id
+      changes:
+
+        # 1) Rimuovi vincoli FK non più necessari
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: storico
+            baseTableName: indirizzi
+            constraintName: fk_storico_indirizzi_anagrafiche_indirizzi
+        
+        - dropIndex:
+            schemaName: storico
+            tableName: indirizzi
+            indexName: ix_indirizzi_indirizzi_id
+        
+        
+
+        # 2) Rinomina la colonna indirizzi_id in indirizzo_id
+        - renameColumn:
+            schemaName: storico
+            tableName: indirizzi
+            oldColumnName: indirizzi_id
+            newColumnName: indirizzo_id
+               
+        # 3) Ricreazione del FK su storico.soggetti verso la nuova PK
+        - addForeignKeyConstraint:
+            constraintName: fk_storico_indirizzi_anagrafiche_indirizzi
+            baseTableSchemaName: storico
+            baseTableName:  indirizzi
+            baseColumnNames: indirizzo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: indirizzi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: SET NULL
+                                    
+  - changeSet:
+      id: 20250727-90-storico_indirizzi_rename_indirizzi_id_to_indirizzo_id
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250727-02-storico_indirizzi_rename_indirizzi_id_to_indirizzo_id
