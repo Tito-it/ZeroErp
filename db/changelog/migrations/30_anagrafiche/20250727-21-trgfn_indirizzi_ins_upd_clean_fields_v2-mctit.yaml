@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+   
+  - changeSet:
+      id: 20250727-21-trgfn_indirizzi_ins_upd_clean_fields_v2
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |              
+                CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_clean_fields()
+                  RETURNS trigger
+                  LANGUAGE plpgsql
+                  AS $function$
+                  BEGIN
+                    IF NEW.indirizzo_dettaglio_id IS NOT NULL THEN
+                      -- pulisco i fallback
+                      NEW.stato_id             := NULL;
+                      NEW.indirizzo_libero     := NULL;
+                      NEW.comune_id            := NULL;
+                      NEW.codice_postale_id    := NULL;
+                      NEW.administrative_area  := NULL;
+                      NEW.locality             := NULL;
+                      NEW.sublocality          := NULL;
+                      NEW.postal_box           := NULL;
+                      -- geoloc puoi lasciarlo, oppure pulirlo se preferisci:
+                      NEW.geoloc := NULL;
+                    END IF;
+
+                    RETURN NEW;
+                  END;
+                  $function$;
+
+                COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_clean_fields()
+                  IS 'La funzione di trigger per pulire i campi degli indirizzi da anagrafiche.indirizzi 
+                        quando esiste un indirizzo dettaglio.';
+
+        
+  # Tag di fine modifica 
+  - changeSet:
+      id: 20250727-90-trgfn_indirizzi_ins_upd_clean_fields_v2
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250727-21-trgfn_indirizzi_ins_upd_clean_fields_v2

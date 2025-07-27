@@ -44,7 +44,27 @@ databaseChangeLog:
                     ON anagrafiche.indirizzi
                       IS ' Crea trigger su anagrafiche.indirizzi 
                       per generare storico.indirizzi(snapshot)';
-
+  - changeSet:
+      id: 20250726-07-trg_indirizzi_ins_upd_genera_storico
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Cancella eventuali trigger e Funzione precedente storicizzazioni.
+      changes:
+        - sql:
+            comment: "0) Rimuove eventuale vecchi trigger storicizzaziobe"
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_indirizzi_upd_dlt_storico_indirizzi
+                ON anagrafiche.indirizzi;
+        - sql:
+            comment: ") Rimuove eventuale vecchi funzione trigger storicizzazione"
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_indirizzi_upd_dlt_storico_indirizzi();
+        
   # Metto un tag fine modifiche
   - changeSet:
       id: 20250726-90-trg_indirizzi_ins_upd_genera_storico
