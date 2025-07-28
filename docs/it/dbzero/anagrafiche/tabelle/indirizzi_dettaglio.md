@@ -31,7 +31,6 @@
 |------|------|---------|
 | FOREIGN KEY | fk_stradario_config | stradario_id |
 | PRIMARY KEY | pk_indirizzi_dettaglio | id |
-| UNIQUE | uq_indirizzi_dettaglio_norm | civico_norm, piano, palazzina, interno, via_norm |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -40,7 +39,6 @@
 | ix_indirizzi_dettaglio_stradario_id | `CREATE INDEX ix_indirizzi_dettaglio_stradario_id ON anagrafiche.indirizzi_dettaglio USING btree (stradario_id)` |
 | ix_uq_indirizzi_dettaglio_norm | `CREATE UNIQUE INDEX ix_uq_indirizzi_dettaglio_norm ON anagrafiche.indirizzi_dettaglio USING btree (via_norm, civico_norm, interno, piano, palazzina)` |
 | pk_indirizzi_dettaglio | `CREATE UNIQUE INDEX pk_indirizzi_dettaglio ON anagrafiche.indirizzi_dettaglio USING btree (id)` |
-| uq_indirizzi_dettaglio_norm | `CREATE UNIQUE INDEX uq_indirizzi_dettaglio_norm ON anagrafiche.indirizzi_dettaglio USING btree (via_norm, civico_norm, interno, piano, palazzina)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

@@ -1,0 +1,10 @@
+id,descrizione,cod_int_tipo_contatto,data_insert,user_insert,data_update,user_update
+1,Amministrazione,AMM,2025-04-20 11:19:51.92703+02,postgres,2025-04-20 11:19:51.92703+02,postgres
+2,Tecnico,TEC,2025-04-20 11:19:51.92703+02,postgres,2025-04-20 11:19:51.92703+02,postgres
+3,Assistenza,AST,2025-04-20 11:19:51.92703+02,postgres,2025-04-20 11:19:51.92703+02,postgres
+5,Info,INF,2025-04-20 11:19:51.92703+02,postgres,2025-04-20 11:19:51.92703+02,postgres
+6,Commerciale,COM,2025-04-20 11:19:51.92703+02,postgres,2025-04-20 11:19:51.92703+02,postgres
+7,Legale,LEG,2025-04-20 11:19:51.92703+02,postgres,2025-04-20 11:19:51.92703+02,postgres
+8,Supporto,SUP,2025-04-20 11:19:51.92703+02,postgres,2025-04-20 11:19:51.92703+02,postgres
+9,Marketing,MKT,2025-04-20 11:19:51.92703+02,postgres,2025-04-20 11:19:51.92703+02,postgres
+11,Default (fallback soggetti),DEFAULT,2025-04-20 17:51:52.718182+02,postgres,2025-04-20 17:51:52.718182+02,postgres

@@ -3,19 +3,21 @@
 > 👀 **Vedi anche**    
 >
 > Approfondimento Tabelle:   
-> - [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
-> - [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
-> - [storico.indirizzi](/dbzero/storico/tabelle/indirizzi)     
-> - [config.comuni](/dbzero/config/tabelle/comuni)    
-> - [config.codici_postali](/dbzero/config/tabelle/codici_postali)    
-> - [config.stati](/dbzero/config/tabelle/stati)   
-> - [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)   
+>
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)       
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
+> * [storico.indirizzi](/dbzero/storico/tabelle/indirizzi)     
+> * [config.comuni](/dbzero/config/tabelle/comuni)    
+> * [config.codici_postali](/dbzero/config/tabelle/codici_postali)    
+> * [config.stati](/dbzero/config/tabelle/stati)   
+> * [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)   
 >
 > Approfondimento funzioni e trigger:  
-> - [anagrafiche.trgfn_indirizzi_ins_upd_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_ins_upd_clean_fields)  
-> - [anagrafiche.trgfn_indirizzi_upd_dlt_storico_indirizzi](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_upd_dlt_storico_indirizzi)   
-> - [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
-> - [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+>
+> * [anagrafiche.trgfn_indirizzi_ins_upd_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_ins_upd_clean_fields)  
+> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
+> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
 

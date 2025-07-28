@@ -10,9 +10,9 @@ SELECT v.id AS id_via,
     v.descrizione AS nome_strada,
     v.descrizione_breve,
     concat(t.descrizione, ' ', v.descrizione) AS indirizzo_generale
-   FROM ((stradario_generale v
-     JOIN toponomastica t ON ((v.toponomastica_id = t.id)))
-     LEFT JOIN stati s ON ((t.stato_id = s.id)));
+   FROM ((config.stradario_generale v
+     JOIN config.toponomastica t ON ((v.toponomastica_id = t.id)))
+     LEFT JOIN config.stati s ON ((t.stato_id = s.id)));
 ```
 
 ---

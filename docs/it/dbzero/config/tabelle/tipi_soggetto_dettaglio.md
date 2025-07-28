@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | bigint | NO | nextval('tipi_soggetto_dettaglio_id_seq'::regclass) |
+| id | bigint | NO | nextval('config.tipi_soggetto_dettaglio_id_seq'::regclass) |
 | tipo_soggetto_id | character varying | NO |  |
 | stato_iso2 | character varying | NO |  |
 | cod_int_tipo_soggetto | character varying | NO |  |
@@ -28,14 +28,16 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_tipi_soggetto_dettaglio_stato_id | `CREATE INDEX ix_tipi_soggetto_dettaglio_stato_id ON config.tipi_soggetto_dettaglio USING btree (stato_id)` |
+| ix_tipi_soggetto_dettaglio_tipo_soggetto_id | `CREATE INDEX ix_tipi_soggetto_dettaglio_tipo_soggetto_id ON config.tipi_soggetto_dettaglio USING btree (tipo_soggetto_id)` |
 | pk_tipi_soggetto_dettaglio | `CREATE UNIQUE INDEX pk_tipi_soggetto_dettaglio ON config.tipi_soggetto_dettaglio USING btree (id)` |
 | uq_tipi_soggetto_dettaglio_cod_int_tipo_soggetto | `CREATE UNIQUE INDEX uq_tipi_soggetto_dettaglio_cod_int_tipo_soggetto ON config.tipi_soggetto_dettaglio USING btree (cod_int_tipo_soggetto)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_sync_stato_iso2 | BEFORE | INSERT | `EXECUTE FUNCTION trgfn_sync_stato_iso2()` |
-| trg_sync_stato_iso2 | BEFORE | UPDATE | `EXECUTE FUNCTION trgfn_sync_stato_iso2()` |
+| trg_sync_stato_iso2 | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_sync_stato_iso2()` |
+| trg_sync_stato_iso2 | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_sync_stato_iso2()` |
 | trg_tipi_soggetto_dettaglio_upd_lock_codiceinterno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('cod_int_tipo_soggetto', 'CODICE_NON_MODIFICABILE')` |
 | trg_upd_overrides_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 ---

@@ -12,7 +12,7 @@ SELECT id,
     (extra_country ->> 'codice_istat'::text) AS codice_istat,
     (extra_country ->> 'codice_catastale'::text) AS codice_catastale,
     (extra_country ->> 'stato_utilizzo'::text) AS stato_utilizzo
-   FROM stati s;
+   FROM config.stati s;
 ```
 
 ---

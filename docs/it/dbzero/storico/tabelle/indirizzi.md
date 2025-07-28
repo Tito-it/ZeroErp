@@ -9,7 +9,7 @@
 | valid_to | timestamp with time zone | YES |  |
 | data_insert | timestamp with time zone | YES | CURRENT_TIMESTAMP |
 | user_insert | character varying | YES | CURRENT_USER |
-| indirizzi_id | integer | YES |  |
+| indirizzo_id | integer | YES |  |
 | snapshot | jsonb | NO |  |
 | tipo_operazione | smallint | NO |  |
 | tx_id | uuid | YES |  |
@@ -18,13 +18,13 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_storico_indirizzi_anagrafiche_indirizzi | indirizzi_id |
+| FOREIGN KEY | fk_storico_indirizzi_anagrafiche_indirizzi | indirizzo_id |
 | PRIMARY KEY | pk_indirizzi | id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_indirizzi_indirizzi_id | `CREATE INDEX ix_indirizzi_indirizzi_id ON storico.indirizzi USING btree (indirizzi_id)` |
+| ix_indirizzi_indirizzo_id | `CREATE INDEX ix_indirizzi_indirizzo_id ON storico.indirizzi USING btree (indirizzo_id)` |
 | pk_indirizzi | `CREATE UNIQUE INDEX pk_indirizzi ON storico.indirizzi USING btree (id)` |
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,12 +1,12 @@
 babel==2.17.0
 backrefs==5.9
 bracex==2.6
-certifi==2025.6.15
+certifi==2025.7.14
 cfgv==3.4.0
 charset-normalizer==3.4.2
 click==8.2.1
 colorama==0.4.6
-distlib==0.3.9
+distlib==0.4.0
 filelock==3.18.0
 ghp-import==2.1.0
 gunicorn==23.0.0
@@ -39,6 +39,6 @@ pyyaml_env_tag==1.1
 requests==2.32.4
 six==1.17.0
 urllib3==2.5.0
-virtualenv==20.31.2
+virtualenv==20.32.0
 watchdog==6.0.0
 wcmatch==10.1

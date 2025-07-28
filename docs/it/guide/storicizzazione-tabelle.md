@@ -1,15 +1,18 @@
 # Guida Tecnica – Storicizzazione delle Tabelle in Zero ERP
 
->📋 **Destinatari:** sviluppatori database, sviluppatori backend  
+> 📋 **Destinatari:** sviluppatori database, sviluppatori backend
 >
-> 👀 **Vedi anche:**    
+> 👀 **Vedi anche:**
 >
-> Per come applicare queste best practice nelle migrazioni, consulta il documento:  
-> - [Linee Guida SQL](/linee-guida-sql)   
+> Per come applicare queste best practice nelle migrazioni, consulta il documento:
 >
-> Approfondimento funzioni:   
-> - [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> * [Linee Guida SQL](/linee-guida-sql)
+>
+> Approfondimento funzioni:
+>
+> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
 
+---
 
 Ogni entità che richiede **versioning** e **audit trail** in Zero ERP utilizza un modello di storico **unificato**. Questo approccio facilita la gestione delle modifiche e garantisce consistenza tra le tabelle operative e quelle di storico.
 
@@ -69,11 +72,16 @@ CREATE TRIGGER trg_storico_<entita>
   EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('<entita>_id');
 ```
 
+> **Importante Naming Convention**: il trigger di storico deve chiamarsi con prefisso `trg_Z90<schema>_upd_dlt_storico` (es. `trg_Z90_stradario_upd_dlt_storico`). Questo garantisce:
+>
+> * Esecuzione per ultima, grazie all’ordinamento alfabetico.
+> * Compatibilità con gli altri trigger precedenti nell’ordine di firing.
+
 ---
 
 ## 💡 Vantaggi per lo Sviluppatore
 
-* **Rapidità di adozione**: per attivare lo storico su una nuova tabella basta definire la tabella di storico con lo schema standard e creare il trigger generic.
+* **Rapidità di adozione**: per attivare lo storico su una nuova tabella basta definire la tabella di storico con lo schema standard e creare il trigger generic rispettando la convenzione di naming.
 * **Manutenibilità**: la logica di storicizzazione evolve in un solo punto (la funzione generic), senza dover modificare ogni trigger function.
 * **Controllo degli errori**: la funzione generic cattura e logga le eccezioni, rendendo più semplice il debug.
 * **Reporting**: il campo `snapshot` e i date range consentono costruire report storici avanzati senza join complessi.
@@ -82,6 +90,6 @@ CREATE TRIGGER trg_storico_<entita>
 
 > 🧠 **“Adottando il modello di storico unificato, Zero ERP semplifica la gestione della storia dei dati, riduce la duplicazione di logica e garantisce uno sviluppo rapido e sicuro.”**
 
-
 ---
+
 {% include-markdown "signature-core.md" %}

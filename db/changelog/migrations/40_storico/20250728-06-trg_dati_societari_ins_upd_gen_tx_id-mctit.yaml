@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:  
+  - changeSet:
+      id: 20250728-06-trg_dati_societari_ins_upd_gen_tx_id
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea trigger su storico.dati_societari per assegnare tx_id tramite
+        funzione dbops.trgfn_tx_id_managed solo se il campo NEW.tx_id è NULL.
+      changes:
+        - sql:
+            comment: "2) Rimuove eventuale trigger esistente"
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_dati_societari_ins_upd_gen_tx_id
+                ON storico.dati_societari;
+            
+        - sql:
+            comment: "1) Crea trigger " 
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE TRIGGER trg_dati_societari_ins_upd_gen_tx_id
+              BEFORE INSERT OR UPDATE ON storico.dati_societari
+              FOR EACH ROW
+              EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+
+        - sql:
+            comment: "Commento descrittivo sul  trigger"
+            splitStatements: false      
+            sql: |
+                  COMMENT ON TRIGGER trg_dati_societari_ins_upd_gen_tx_id
+                    ON storico.dati_societari
+                      IS 'Crea trigger su storico.dati_societari per assegnare tx_id tramite
+                          funzione dbops.trgfn_tx_id_managed solo se il campo NEW.tx_id è NULL';
+
+  # Metto un tag fine modifiche
+  - changeSet:
+      id: 20250728-90-trg_dati_societari_ins_upd_gen_tx_id
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250728-06-trg_dati_societari_ins_upd_gen_tx_id

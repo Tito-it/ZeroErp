@@ -1,0 +1,4 @@
+id,cod_tipo_documento,descrizione,cd_int_tipo_documento,data_insert,user_insert,data_update,user_update
+1,PDF,Documento PDF,PDF,2025-04-02 22:59:55.15616+02,postgres,2025-04-02 22:59:55.15616+02,postgres
+2,XML,Flusso XML,XML,2025-04-02 22:59:55.15616+02,postgres,2025-04-02 22:59:55.15616+02,postgres
+3,IMG,Immagine Allegata,IMG,2025-04-02 22:59:55.15616+02,postgres,2025-04-02 22:59:55.15616+02,postgres

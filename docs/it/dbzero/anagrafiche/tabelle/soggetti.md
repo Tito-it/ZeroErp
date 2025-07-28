@@ -27,6 +27,7 @@
 | tipo_soggetto_dettaglio_id | bigint | YES |  |
 | id_fiscale_univoco_cf_piva | text | YES |  |
 | tx_id | uuid | YES |  |
+| storicizza | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -48,6 +49,7 @@
 | ix_soggetti_comune_id | `CREATE INDEX ix_soggetti_comune_id ON anagrafiche.soggetti USING btree (comune_id)` |
 | ix_soggetti_default_contatto_id | `CREATE INDEX ix_soggetti_default_contatto_id ON anagrafiche.soggetti USING btree (default_contatto_id)` |
 | ix_soggetti_stato_id | `CREATE INDEX ix_soggetti_stato_id ON anagrafiche.soggetti USING btree (stato_id)` |
+| ix_soggetti_tipo_soggetto_dettaglio_id | `CREATE INDEX ix_soggetti_tipo_soggetto_dettaglio_id ON anagrafiche.soggetti USING btree (tipo_soggetto_dettaglio_id)` |
 | ix_soggetti_titolo_cortesia_id | `CREATE INDEX ix_soggetti_titolo_cortesia_id ON anagrafiche.soggetti USING btree (titolo_cortesia_id)` |
 | key_soggetto_idstato_id_fiscale_univoco | `CREATE UNIQUE INDEX key_soggetto_idstato_id_fiscale_univoco ON anagrafiche.soggetti USING btree (stato_id, id_fiscale_univoco_cf_piva)` |
 | key_soggetto_soggetto_codice | `CREATE UNIQUE INDEX key_soggetto_soggetto_codice ON anagrafiche.soggetti USING btree (codice_soggetto)` |
@@ -56,14 +58,16 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_soggetti_ins_upd_check_soggetto_contatti | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |
 | trg_soggetti_ins_upd_check_soggetto_contatti | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |
+| trg_soggetti_ins_upd_check_soggetto_contatti | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |
 | trg_soggetti_ins_upd_dispatch_valida_cf_piva | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()` |
 | trg_soggetti_ins_upd_dispatch_valida_cf_piva | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()` |
-| trg_soggetti_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_soggetti_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_soggetti_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_soggetti_ins_upd_genera_cdsoggetto | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto()` |
 | trg_soggetti_ins_upd_genera_cdsoggetto | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto()` |
 | trg_upd_soggetti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_z90_soggetti_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('soggetto_id')` |
+| trg_z90_soggetti_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('soggetto_id')` |
 ---
 {% include-markdown "signature-core.md" %}
