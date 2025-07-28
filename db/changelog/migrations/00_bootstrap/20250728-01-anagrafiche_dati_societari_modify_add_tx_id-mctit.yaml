@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250728-01-anagrafiche_dati_societari_modify_add_tx_id
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista ancora tx_id
+        not:
+          columnExists:
+            schemaName: anagrafiche
+            tableName: dati_societari
+            columnName: tx_id
+
+      changes:
+        # 1) Aggiunta della colonna tx_id se non esiste
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: dati_societari
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+                  remarks: "Id transazione"  
+        # 1) Aggiunta della colonna tx_id se non esiste
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: dati_societari
+            columns:
+              - column:
+                  name: storicizza
+                  type: BOOLEAN
+                  defaultValue: false
+                  remarks: "Storicizza se true, non storicizza se false"
+
+      # Rinomina constraint PK
+         #2) Drop della PK esistente
+        - dropPrimaryKey:
+            schemaName: anagrafiche
+            tableName: dati_societari
+            constraintName: pk_dati_societari
+        # 3) Rinomina della PK con il nuovo nome
+        
+        - renameColumn:
+            schemaName: anagrafiche
+            tableName: dati_societari
+            oldColumnName: id_dati_societari
+            newColumnName: id
+            columnDataType: BIGINT
+            remarks: "Id dati societari"
+
+        # 4) Aggiunta della PK con il nuovo nome
+        - addPrimaryKey:
+            schemaName: anagrafiche
+            tableName: dati_societari
+            columnNames: id
+            constraintName: pk_dati_societari    
+  - changeSet:
+      id: 20250728-90-anagrafiche_dati_societari_modify_add_tx_id
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250728-01-anagrafiche_dati_societari_modify_add_tx_id
