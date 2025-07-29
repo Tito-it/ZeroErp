@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250729-01-fix-fk-parameters_audit
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN
+        onError: CONTINUE
+        not:
+          columnExists:
+            schemaName: config
+            tableName: parameters_audit
+            columnName: code_orig
+
+      changes:
+        # 1) Aggiungo la colonna code_orig
+        - addColumn:
+            schemaName: config
+            tableName: parameters_audit
+            columns:
+              - column:
+                  name: code_orig
+                  type: varchar(100)
+                  remarks: "Memorizza il valore originario di parameter_code prima di eventuale delete"
+                  constraints:
+                    nullable: true
+
+        
+        # 2) Popolo code_orig tramite UPDATE SQL
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              SET session_replication_role = replica;
+              UPDATE config.parameters_audit
+                 SET code_orig = parameter_code
+               WHERE parameter_code IS NOT NULL;
+               SET session_replication_role = origin;
+
+        # 3) Rendo parameter_code nullable
+        - modifyDataType:
+            schemaName: config
+            tableName: parameters_audit
+            columnName: parameter_code
+            newDataType: varchar(100)
+        - dropNotNullConstraint:
+            schemaName: config
+            tableName: parameters_audit
+            columnName: parameter_code
+
+        # 4) Rifaccio il FK con ON DELETE SET NULL
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: parameters_audit
+            constraintName: fk_parameters_audit_parameter_code
+        - addForeignKeyConstraint:
+            constraintName: fk_parameters_audit_parameter_code
+            baseTableSchemaName: config
+            baseTableName: parameters_audit
+            baseColumnNames: parameter_code
+            referencedTableSchemaName: config
+            referencedTableName: parameters
+            referencedColumnNames: code
+            onUpdate: NO ACTION
+            onDelete: SET NULL
+
+  - changeSet:
+      id: 20250729-02-fix-fk-parameters_audit
+      author: mctit
+      changes:
+        - dropNotNullConstraint:
+            schemaName: config
+            tableName: parameters_audit
+            columnName: new_value
+
+  - changeSet:
+      id: 20250729-05-fix-fk-parameters_audit
+      author: mctit
+      preConditions:
+        onFail: MARK_RAN
+        onError: CONTINUE
+        tableExists:
+          schemaName: config
+          tableName: parameters_audit
+      changes:
+        # 3.1) Rimuovo il trigger di storicizzazione custom (se esiste)
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DROP TRIGGER IF EXISTS trg_parameters_audit ON config.parameters;
+        # 3.2) Rimuovo la funzione di audit custom
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DROP FUNCTION IF EXISTS config.trgfn_parameters_audit();
+              
+
+        # 3.3) Rimuovo la tabella parameters_audit
+        - dropTable:
+            schemaName: config
+            tableName: parameters_audit
+            cascadeConstraints: true
+        
+      
+ # Metto un  tag fine modifiche
+  - changeSet:
+        id: 20250729-90-fix-fk-parameters_audit
+        author: mctit
+        changes:
+          - tagDatabase:
+              tag: 20250729-01-fix-fk-parameters_audit

@@ -26,8 +26,18 @@ AS $function$
         snapshot_data   JSONB;        -- Dati serializzati del record
         op_type         SMALLINT;     -- 1=creazione, 2=modifica, 3=eliminazione
         v_id_value      TEXT;       -- Valore ID del record originale
-        v_id_col_type  TEXT;
+        v_id_col_type  TEXT; -- Tipo della colonna ID nella tabella originale
+        v_skip_reset    BOOLEAN := TG_TABLE_NAME = ANY (
+                            ARRAY[
+                              'parameters',
+                              'parameter_overrides'
+                            ]
+                          ); -- Definire le tabelle che non devono essere resettate
+        v_should_reset  BOOLEAN;  -- = NOT v_skip_reset, valorizzata in BEGIN
       BEGIN
+        -- Inizializziamo il flag una sola volta
+         v_should_reset := NOT v_skip_reset;
+
       -- 0.1) Trova il tipo della colonna PK (id) nella tabella origine
         SELECT format_type(a.atttypid, a.atttypmod)
           INTO v_id_col_type
@@ -150,7 +160,12 @@ AS $function$
             );
           END;
         END;
-        NEW.storicizza := FALSE;
+
+        -- [Sezione 5] Gestione reset storico per tabelle specifiche vedi elenco in Array
+        IF TG_OP = 'UPDATE' AND v_should_reset THEN
+          NEW.storicizza := FALSE;
+        END IF;
+        
         -- Restituisce il record appropriato (OLD per DELETE, NEW per UPDATE)
         RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
       END;

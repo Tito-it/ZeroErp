@@ -83,3 +83,4 @@ nav:
   - Guide tecniche:
       - Implementazione Transaction ID: guide/tx_id_implementation_guide.md
       - Storicizzazione Tabelle: guide/storicizzazione-tabelle.md
+      - Configurazione e gestione parametri: guide/configurazione-e-gestione-parametri.md

@@ -1,0 +1,36 @@
+{% include-markdown "it/dbzero/storico/manual/parameters.md" %}
+# 📚 Tabella `parameters`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO | nextval('storico.parameters_id_seq'::regclass) |
+| valid_from | timestamp with time zone | NO | now() |
+| valid_to | timestamp with time zone | YES |  |
+| change_type | character | YES | 'A'::bpchar |
+| data_insert | timestamp without time zone | NO | now() |
+| user_insert | character varying | NO | CURRENT_USER |
+| parameter_id | bigint | NO |  |
+| snapshot | jsonb | NO |  |
+| tipo_operazione | smallint | YES |  |
+| tx_id | uuid | YES |  |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| FOREIGN KEY | fk_storico_parameters_config_parameters | parameter_id |
+| PRIMARY KEY | pk_storico_parameters | id |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_storico_parameters_param_id | `CREATE INDEX ix_storico_parameters_param_id ON storico.parameters USING btree (parameter_id)` |
+| pk_storico_parameters | `CREATE UNIQUE INDEX pk_storico_parameters ON storico.parameters USING btree (id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_parameters_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_parameters_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+---
+{% include-markdown "signature-core.md" %}
