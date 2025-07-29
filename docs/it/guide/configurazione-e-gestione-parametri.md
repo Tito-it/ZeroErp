@@ -139,3 +139,6 @@ END;
 ---
 
 > 🧠 **“Configurare i parametri con simboli stabili e risolvere dinamicamente in runtime garantisce massima portabilità e flessibilità, semplificando la manutenzione e migliorando l’affidabilità del sistema.”**
+
+---
+{% include-markdown "signature-core.md" %}
