@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/parameters.md" %}
 # 📚 Tabella `parameters`
 
 ## 🗂️ Campi principali

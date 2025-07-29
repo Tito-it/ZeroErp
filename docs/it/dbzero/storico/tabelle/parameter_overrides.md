@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/parameter_overrides.md" %}
 # 📚 Tabella `parameter_overrides`
 
 ## 🗂️ Campi principali
