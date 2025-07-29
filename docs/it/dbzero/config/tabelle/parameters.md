@@ -12,6 +12,8 @@
 | user_insert | character varying | NO | 'CURRENT_USER'::character varying |
 | data_update | timestamp without time zone | NO | now() |
 | user_update | character varying | NO | 'CURRENT_USER'::character varying |
+| tx_id | uuid | YES |  |
+| storicizza | boolean | YES | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -28,8 +30,10 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_parameters_audit | AFTER | DELETE | `EXECUTE FUNCTION config.trgfn_parameters_audit()` |
-| trg_parameters_audit | AFTER | UPDATE | `EXECUTE FUNCTION config.trgfn_parameters_audit()` |
+| trg_parameters_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_parameters_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_upd_parameters_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_z90_parameters_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('parameter_id')` |
+| trg_z90_parameters_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('parameter_id')` |
 ---
 {% include-markdown "signature-core.md" %}

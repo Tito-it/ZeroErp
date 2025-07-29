@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250729-07-config_parameters_modify_add_tx_id
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista ancora tx_id
+        not:
+          columnExists:
+            schemaName: config
+            tableName: parameters
+            columnName: tx_id
+
+      changes:
+        # 1) Aggiunta della colonna tx_id se non esiste
+        - addColumn:
+            schemaName: config
+            tableName: parameters
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+                  remarks: "Id transazione"  
+        # 1) Aggiunta della colonna tx_id se non esiste
+        - addColumn:
+            schemaName: config
+            tableName: parameters
+            columns:
+              - column:
+                  name: storicizza
+                  type: BOOLEAN
+                  defaultValue: false
+                  remarks: "Storicizza se true, non storicizza se false"
+  - changeSet:
+      id: 20250729-08-config_parameters_modify_add_tx_id
+      author: mctit
+      changes:
+        changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.parameters
+                ALTER COLUMN storicizza
+                SET DEFAULT TRUE;
+      
+  - changeSet:
+      id: 20250729-90-config_parameters_modify_add_tx_id
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250729-07-config_parameters_modify_add_tx_id

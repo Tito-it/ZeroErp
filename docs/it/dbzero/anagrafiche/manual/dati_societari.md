@@ -2,8 +2,16 @@
 
 > 👀 **Vedi anche**  
 > Approfondimento Tabelle:  
->  - [anagrafiche.soggetti](../soggetti)  
->  - [config.province](/dbzero/config/tabelle/province)
+>
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
+> * [config.province](/dbzero/config/tabelle/province)
+
+> Approfondimento funzioni e trigger:
+>   
+> * [anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_ins_upd_check_tipo_soggetto)
+> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+
 
 La tabella **`anagrafiche.dati_societari`** contiene i dati societari estesi per ciascun soggetto di tipo aziendale presente in **`anagrafiche.soggetti`**. Ogni riga rappresenta un insieme di informazioni obbligatorie e opzionali relative alla forma giuridica, capitale sociale, iscrizione REA, stato di liquidazione e modalità di fatturazione elettronica.
 
@@ -12,7 +20,7 @@ La tabella **`anagrafiche.dati_societari`** contiene i dati societari estesi per
 ### 🎯 Scopo Principale
 
 - **Estendere l’anagrafica generale**  
-  I soggetti di tipo giuridico (aziende) hanno esigenze di memorizzazione di dati societari che non interessano le persone fisiche. Spostando queste informazioni in `dati_societari`, si mantiene la tabella `anagrafiche.soggetti` leggera e focalizzata sui campi anagrafici di base.
+  I soggetti di tipo giuridico (aziende) hanno esigenze di memorizzazione di dati societari che non interessano le persone fisiche. Spostando queste informazioni in `dati_societari`, si mantiene la tabella `anagrafiche.soggetti` leggera e focalizzata sui campi anagrafici di base. Solo per i tipi soggetti appropriati controllati dalla trigger function `anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto`
 
 - **Gestione iscrizione REA e capitale sociale**  
   Memorizzare la provincia di iscrizione REA (`id_prov_iscri_rea` + `iscrizione_rea`) e il capitale sociale in Euro (`capitale_sociale`), dato fondamentale per valutazioni finanziarie e di business.

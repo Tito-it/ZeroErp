@@ -4,7 +4,7 @@
 - [billing_account](tabelle/billing_account.md)
 - [clienti](tabelle/clienti.md)
 - [contatti](tabelle/contatti.md) — * **Centralizzare i contatti**     Un’unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.
-- [dati_societari](tabelle/dati_societari.md) — - **Estendere l’anagrafica generale**     I soggetti di tipo giuridico (aziende) hanno esigenze di memorizzazione di dati societari che non interessano le persone fisiche. Spostando queste informazioni in `dati_societari`, si mantiene la tabella `anagrafiche.soggetti` leggera e focalizzata sui campi anagrafici di base.
+- [dati_societari](tabelle/dati_societari.md) — - **Estendere l’anagrafica generale**     I soggetti di tipo giuridico (aziende) hanno esigenze di memorizzazione di dati societari che non interessano le persone fisiche. Spostando queste informazioni in `dati_societari`, si mantiene la tabella `anagrafiche.soggetti` leggera e focalizzata sui campi anagrafici di base. Solo per i tipi soggetti appropriati controllati dalla trigger function `anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto`
 - [gestori](tabelle/gestori.md) — - **Identificare il gestore del sistema**     Memorizzare la riga unica che corrisponde all’azienda proprietaria o amministratrice di Zero ERP, distinguendola da tutti gli altri soggetti (clienti, fornitori, partner, ecc.).
 - [gestori_utilities_ruoli](tabelle/gestori_utilities_ruoli.md)
 - [indirizzi](tabelle/indirizzi.md) — * **Associazione soggetto/ruolo → indirizzo**     Ogni soggetto può avere più indirizzi distinti in base al ruolo (es. cliente, fornitore) e al tipo di indirizzo (es. sede legale, spedizione, residenza).
