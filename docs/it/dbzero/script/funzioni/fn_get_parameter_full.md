@@ -37,7 +37,7 @@ BEGIN
               'nome_tabella',      'config.parameters'
             ),
             NULL::uuid,                                        
-            COALESCE(p_code::text, 'config.parameters')
+            'config.parameters', p_code::text 
           );
 
     END IF;

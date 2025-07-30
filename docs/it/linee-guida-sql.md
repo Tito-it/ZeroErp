@@ -1,21 +1,28 @@
 **Best Practice e Convenzioni in Zero ERP**
 
 > 👀 **Vedi anche:**   
-> Per come applicare queste best practice nelle migrazioni, consulta il documento   
-> - [Liquibase Setup & Workflow](liquibase-setup-workflow.md)   
-> - [Storicizzazione Tabelle](/guide/storicizzazione-tabelle)   
-> - [Transaction ID](/guide/tx_id_implementation_guide) 
+> Per come applicare queste best practice nelle migrazioni, consulta il documento  
+> 
+> * [Liquibase Setup & Workflow](liquibase-setup-workflow.md)   
+> * [Storicizzazione Tabelle](/guide/storicizzazione-tabelle)   
+> * [Transaction ID](/guide/tx_id_implementation_guide) 
+> * [Configurazione e Gestione Parametri](/guide/configurazione-e-gestione-parametri) 
+> * [Messaggi di errore e Gestione Log](/guide/Messaggi-di-Errore-e-Generazione-Log) 
+
+
  
 >
 > Approfondimento Tabelle:   
-> - [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
+>
+> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
 >
 > Approfondimento funzioni:   
-> - [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_senza_indice)   
-> - [dbops.fn_populate_fk_index_policy](/dbzero/dbops/manual/fn_populate_fk_index_policy)   
-> - [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)   
-> - [dbops.fn_seed_fk_index_policy](/dbzero/dbops/manual/fn_seed_fk_index_policy)   
-> - [dbops.vw_duplicate_indexes](/dbzero/dbops/manual/vw_duplicate_indexes)    
+>
+> * [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_senza_indice)   
+> * [dbops.fn_populate_fk_index_policy](/dbzero/dbops/manual/fn_populate_fk_index_policy)   
+> * [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)   
+> * [dbops.fn_seed_fk_index_policy](/dbzero/dbops/manual/fn_seed_fk_index_policy)   
+> * [dbops.vw_duplicate_indexes](/dbzero/dbops/manual/vw_duplicate_indexes)    
  
 
 ---
@@ -104,6 +111,32 @@ Uniformità e chiarezza nel codice DDL:
   * Mettere funzioni e trigger nello stesso schema della tabella (se dedicate), o in `script`/`dbops` per utilizzabilità multipla.
   * Documentare sempre parametri e comportamento
 
+* **Funzioni di Cleanup** (PL/pgSQL, `schema.trgfn_<table>_ins_upd_clean_fields`):
+  * Usate per pulire, normalizzare o impostare valori di default sui campi mancanti prima di `INSERT` o `UPDATE`.
+  * Convenzione di naming:
+    - Funzione: `trgfn_<table>_ins_upd_clean_fields`
+    - Trigger:   `trg_<table>_ins_upd_clean_fields`
+  * Esempio:
+    ```sql
+    CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_clean_fields()
+      RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.stato_id IS NULL THEN
+        NEW.stato_id := script.fn_get_default_by_param(
+          'config', 'stati', 'codice_iso3', 'state_code_iso3', TG_NAME
+        )::integer;
+      END IF;
+      RETURN NEW;
+    END;
+    $$;
+
+    CREATE TRIGGER trg_soggetti_ins_upd_clean_fields
+      BEFORE INSERT OR UPDATE ON anagrafiche.soggetti
+      FOR EACH ROW
+      EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_clean_fields();
+    ```
+
+
 ---
 
 ### 6. Viste (Views)
@@ -173,7 +206,7 @@ SELECT *
 
 ### 11. Transaction ID Centralizzato
 
-Per garantire **coerenza transazionale** fra tutte le tabelle che registrano modifiche, ogni entità deve avere la colonna `tx_id UUID NOT NULL`:
+Per garantire **coerenza transazionale** fra tutte le tabelle che registrano modifiche, ogni entità deve avere la colonna `tx_id UUID` che accetta anche valori nulli:
 
 * **Trigger (opzione DB)**: applicare `trg_assign_tx_id` (su ogni tabella) che utilizza la function `dbops.trgfn_tx_id_managed()` per generare o recuperare il `tx_id` di sessione.
 * **Function (opzione backend)**: invocare `dbops.fn_get_or_create_session_tx_id()` prima delle operazioni e passare il `tx_id` in tutti gli `INSERT/UPDATE`.

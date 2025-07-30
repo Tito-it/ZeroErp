@@ -1,4 +1,4 @@
-# Guida Tecnica – Implementazione di un Unico Transaction ID in Zero ERP
+# 📗 Guida Tecnica – Implementazione di un Unico Transaction ID in Zero ERP
 
 
 > 📋 ***Destinatari***: sviluppatori database, sviluppatori backend

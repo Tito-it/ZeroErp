@@ -7,6 +7,7 @@
 - [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_and_raise_error` per eseguire INSERT in un contesto transazionale separato.
 - [fn_generate_codice](funzioni/fn_generate_codice.md) — * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_tipo` passato in input.
 - [fn_get_contatti](funzioni/fn_get_contatti.md) — * **Selezione univoca per tipo**   Ottenere il contatto più rilevante per ciascun `tipo_contatto_id` rispetto ai parametri forniti. * **Gerarchia di contesti**   Filtra e ordina i contatti in base alla priorità:
+- [fn_get_default_by_param](funzioni/fn_get_default_by_param.md) — Recuperare in modo dinamico un valore di **PK** (o altro identificativo) da qualsiasi tabella, basandosi su un **codice parametro**. La funzione:
 - [fn_get_indirizzi_by_ruolo](funzioni/fn_get_indirizzi_by_ruolo.md)
 - [fn_get_indirizzo](funzioni/fn_get_indirizzo.md)
 - [fn_get_messaggio](funzioni/fn_get_messaggio.md) — * **Centralizzare i testi**   Conservare tutti i messaggi (errori, avvisi, info) in tabella, evitando hard‑coding in trigger, procedure o sorgenti SQL. * **Internazionalizzazione avanzata**   Selezionare dinamicamente la lingua di output in base a:
