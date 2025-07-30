@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+   
+  - changeSet:
+      id: 20250730-07-trgfn_regioni_ins_upd_clean_fields_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+          Function che pulisce i campi di regioni in config.regioni e imposta i valori di default
+          per le colonne che non hanno un valore specificato. (esempio: stato_id)
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |              
+                 CREATE OR REPLACE FUNCTION config.trgfn_regioni_ins_upd_clean_fields()
+                    RETURNS trigger
+                    LANGUAGE plpgsql
+                  AS $$
+                  BEGIN
+                    ------------------------------------------------------------------
+                    -- 1) Imposta stato_id di default da config.stati se è NULL
+                    IF NEW.stato_id IS NULL THEN
+                      NEW.stato_id := script.fn_get_default_by_param(
+                        'config',           -- schema della tabella lookup
+                        'stati',            -- tabella di lookup
+                        'codice_iso3',        -- colonna di filtro in config.stati
+                        'state_code_iso3',  -- codice parametro in config.parameters
+                        TG_NAME             -- nome del trigger chiamante
+                      )::integer;           -- cast al tipo integer di stato_id
+                    END IF;
+                    ------------------------------------------------------------------
+                    -- 2) Altri cleanup (esempi)
+                    --IF NEW.nome IS NOT NULL THEN
+                    --  NEW.nome := UPPER(TRIM(NEW.nome));
+                    --END IF;
+                    --IF NEW.cognome IS NOT NULL THEN
+                      --NEW.cognome := UPPER(TRIM(NEW.cognome));
+                   -- END IF;
+                    ------------------------------------------------------------------
+                    RETURN NEW;
+                  END;
+                  $$;
+
+                 COMMENT ON FUNCTION config.trgfn_regioni_ins_upd_clean_fields()
+                  IS $comment$
+                  'Function che pulisce i campi di regioni in config.regioni e imposta i valori di default
+                       per le colonne che non hanno un valore specificato. (esempio: stato_id)';
+                     $comment$
+
+  - changeSet:
+      id: 20250730-08-trgfn_regioni_ins_upd_clean_fields_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+          Trigger che pulisce i campi di regioni in config.regioni e imposta i valori di default
+          per le colonne che non hanno un valore specificato. (esempio: stato_id)
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |              
+                -- Trigger collegato
+                  DROP TRIGGER IF EXISTS trg_regioni_ins_upd_clean_fields ON config.regioni;
+
+                  CREATE TRIGGER trg_regioni_ins_upd_clean_fields
+                    BEFORE INSERT OR UPDATE ON config.regioni
+                    FOR EACH ROW
+                    EXECUTE FUNCTION config.trgfn_regioni_ins_upd_clean_fields();
+
+                  -- Commento sul trigger
+                  COMMENT ON TRIGGER trg_regioni_ins_upd_clean_fields ON config.regioni
+                    IS $comment$ 
+                    'Trigger che pulisce i campi di regioni in config.regioni e imposta i valori di default
+                        per le colonne che non hanno un valore specificato. (esempio: stato_id)';
+                    $comment$
+
+  # Tag di fine modifica 
+  - changeSet:
+      id: 20250730-90-trgfn_regioni_ins_upd_clean_fields_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250730-07-trgfn_regioni_ins_upd_clean_fields_v1

@@ -8,9 +8,6 @@
 > * [Transaction ID](/guide/tx_id_implementation_guide) 
 > * [Configurazione e Gestione Parametri](/guide/configurazione-e-gestione-parametri) 
 > * [Messaggi di errore e Gestione Log](/guide/Messaggi-di-Errore-e-Generazione-Log) 
-
-
- 
 >
 > Approfondimento Tabelle:   
 >
