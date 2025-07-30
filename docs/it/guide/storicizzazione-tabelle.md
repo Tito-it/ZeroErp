@@ -1,4 +1,4 @@
-# Guida Tecnica – Storicizzazione delle Tabelle in Zero ERP
+# 📗 Guida Tecnica – Storicizzazione delle Tabelle in Zero ERP
 
 > 📋 **Destinatari:** sviluppatori database, sviluppatori backend
 >

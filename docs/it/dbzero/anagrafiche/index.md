@@ -22,6 +22,7 @@
 - [trgfn_indirizzi_ins_upd_sync_geoloc](funzioni/trgfn_indirizzi_ins_upd_sync_geoloc.md) — Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`. In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.
 - [trgfn_istanze_utilities_ins_set_istanza_codice](funzioni/trgfn_istanze_utilities_ins_set_istanza_codice.md)
 - [trgfn_soggetti_ins_upd_check_soggetto_contatti](funzioni/trgfn_soggetti_ins_upd_check_soggetto_contatti.md) — * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
+- [trgfn_soggetti_ins_upd_clean_fields](funzioni/trgfn_soggetti_ins_upd_clean_fields.md)
 - [trgfn_soggetti_ins_upd_genera_cdsoggetto](funzioni/trgfn_soggetti_ins_upd_genera_cdsoggetto.md) — La trigger function **`anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto()`** viene eseguita **`BEFORE INSERT OR UPDATE`** su **`anagrafiche.soggetti`** e si occupa di:
 - [trgfn_soggetti_valida_cf_piva_dispatch](funzioni/trgfn_soggetti_valida_cf_piva_dispatch.md) — La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** viene eseguita **`BEFORE INSERT OR UPDATE`** sulla tabella **`anagrafiche.soggetti`** e instrada la validazione di codice fiscale e partita IVA in base allo Stato e al dettaglio di soggetto.
 

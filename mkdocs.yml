@@ -76,11 +76,16 @@ nav:
           - Storico:    dbzero/storico/index.md
           - Public:    dbzero/public/index.md
   - Strumenti:
-      - Generatore Documentazione: dbzero/tools/gen_db_docs.md
+      - “”:
+          - Generatore Documentazione: dbzero/tools/gen_db_docs.md
   - Sviluppatori:
-      - API: dev/api.md
+      - “”:
+          - API: dev/api.md
 
   - Guide tecniche:
-      - Implementazione Transaction ID: guide/tx_id_implementation_guide.md
-      - Storicizzazione Tabelle: guide/storicizzazione-tabelle.md
-      - Configurazione e gestione parametri: guide/configurazione-e-gestione-parametri.md
+      - Elenco guide: 
+          - Implementazione Transaction ID: guide/tx_id_implementation_guide.md
+          - Storicizzazione Tabelle: guide/storicizzazione-tabelle.md
+          - Configurazione e gestione parametri: guide/configurazione-e-gestione-parametri.md
+          - Gestione dei Messaggi di Errore e Generazione Log : guide/Messaggi-di-Errore-e-Generazione-Log.md
+        
