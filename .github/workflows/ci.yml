@@ -168,7 +168,7 @@ jobs:
           docker tag zeroerp:${{ github.sha }} your-dockerhub-user/zeroerp:latest
           docker push your-dockerhub-user/zeroerp:latest
         
-      publish-docs:
+  publish-docs:
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'   # opzionale: pubblica solo dal ramo main
