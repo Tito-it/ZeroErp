@@ -3,7 +3,13 @@
 >  👀 **Vedi anche** 
 
 > Approfondimento Tabelle:  
-> - [config.stati](/dbzero/config/tabelle/stati) 
+>
+> * [config.stati](/dbzero/config/tabelle/stati) 
+>
+> Approfondimento Funzioni:   
+> 
+>  * [config.trgfn_regioni_ins_upd_clean_fields](/dbzero/config/funzioni/trgfn_regioni_ins_upd_clean_fields) 
+
 
 
 La tabella **`config.regioni`** censisce le regioni (italiane e di altri stati), fornendo informazioni amministrative e metadati utili per la gerarchia territoriale e la gestione delle accise.
