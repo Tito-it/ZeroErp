@@ -167,3 +167,34 @@ jobs:
           echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
           docker tag zeroerp:${{ github.sha }} your-dockerhub-user/zeroerp:latest
           docker push your-dockerhub-user/zeroerp:latest
+        
+      publish-docs:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'   # opzionale: pubblica solo dal ramo main
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install MkDocs e tema Material
+        run: |
+          pip install mkdocs mkdocs-material
+
+      - name: Ricostruisci sito MkDocs
+        run: mkdocs build --strict
+
+      - name: Configura credenziali AWS
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Sincronizza su S3
+        run: aws s3 sync site/ s3://zeroerp-docs-tid/ --delete
+
