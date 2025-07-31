@@ -171,7 +171,7 @@ jobs:
   publish-docs:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'   # opzionale: pubblica solo dal ramo main
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -183,7 +183,11 @@ jobs:
 
       - name: Install MkDocs e tema Material
         run: |
-          pip install mkdocs mkdocs-material
+          python -m pip install --upgrade pip
+          pip install mkdocs mkdocs-material \
+                      mkdocs-include-markdown-plugin \
+                      mkdocs-static-i18n 
+          
 
       - name: Ricostruisci sito MkDocs
         run: mkdocs build --strict
@@ -197,4 +201,3 @@ jobs:
 
       - name: Sincronizza su S3
         run: aws s3 sync site/ s3://zeroerp-docs-tid/ --delete
-
