@@ -183,9 +183,10 @@ jobs:
 
       - name: Install MkDocs e tema Material
         run: |
+          python -m pip install --upgrade pip
           pip install mkdocs mkdocs-material \
                       mkdocs-include-markdown-plugin \
-                      mkdocs-i18n-plugin  
+                      mkdocs-static-i18n 
           
 
       - name: Ricostruisci sito MkDocs
@@ -200,4 +201,3 @@ jobs:
 
       - name: Sincronizza su S3
         run: aws s3 sync site/ s3://zeroerp-docs-tid/ --delete
-        
