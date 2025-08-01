@@ -20,6 +20,18 @@ DECLARE
   v_hist_table   TEXT := p_table;
   v_full_table   TEXT := format('%I.%I', v_hist_schema, v_hist_table);
 BEGIN
+------------------------------------------------------
+-- Input
+-- p_schema: schema della tabella originaria
+-- p_table: nome della tabella originaria (e storica)
+-- p_id: PK del record originario, passato come TEXT
+-- p_fk_col: nome della colonna FK in storico (es. 'soggetto_id')
+-- p_as_of: data/ora di validità desiderata
+-- Output
+-- v_id: ID TEXT del record valido a p_as_of, cercato solo nello storico
+-- Se non esiste snapshot valido, restituisce NULL
+-- --------------------------------------------------
+
   -- 0) Verifica esistenza e tipo della colonna FK in storico
   SELECT format_type(a.atttypid, a.atttypmod)
     INTO v_pk_type
@@ -31,6 +43,7 @@ BEGIN
     AND a.attname = p_fk_col
     AND a.attnum > 0 AND NOT a.attisdropped;
 
+  -- se la tabella non esiste o non trovo colonne → sollevo errore
   IF v_pk_type IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
@@ -56,6 +69,9 @@ BEGIN
     )
     INTO v_id
     USING p_id, p_as_of::timestamptz;
+    
+  -- Se non trovato, v_id rimane NULL
+  -- Se errore, loggo e rilancio
   EXCEPTION WHEN OTHERS THEN
     PERFORM script.fn_log_and_raise_error(
       'database',

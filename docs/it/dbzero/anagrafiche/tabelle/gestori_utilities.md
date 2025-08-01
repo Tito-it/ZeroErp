@@ -1,4 +1,5 @@
-# 📚 Tabella `gestori_utilities_ruoli`
+{% include-markdown "it/dbzero/anagrafiche/manual/gestori_utilities.md" %}
+# 📚 Tabella `gestori_utilities`
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -6,7 +7,6 @@
 | id | integer | NO | nextval('anagrafiche.gestori_utilities_ruoli_id_seq'::regclass) |
 | gestore_id | integer | NO |  |
 | utility_id | integer | NO |  |
-| ruolo_id | integer | NO |  |
 | extra | jsonb | YES | '{}'::jsonb |
 | user_insert | character varying | NO | CURRENT_USER |
 | user_update | character varying | NO | CURRENT_USER |
@@ -17,19 +17,15 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_gestori_anagrafiche | gestore_id |
-| FOREIGN KEY | fk_tipi_ruoli_config | ruolo_id, ruolo_id |
 | FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
 | PRIMARY KEY | pk_gestori_utilities_ruoli | id |
-| UNIQUE | uq_gest_util_ruolo | ruolo_id, utility_id, gestore_id |
+| UNIQUE | uq_gestore_utility | utility_id, gestore_id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_gestori_utilities_ruoli_gestore_id | `CREATE INDEX ix_gestori_utilities_ruoli_gestore_id ON anagrafiche.gestori_utilities_ruoli USING btree (gestore_id)` |
-| ix_gestori_utilities_ruoli_ruolo_id | `CREATE INDEX ix_gestori_utilities_ruoli_ruolo_id ON anagrafiche.gestori_utilities_ruoli USING btree (ruolo_id)` |
-| ix_gestori_utilities_ruoli_utility_id | `CREATE INDEX ix_gestori_utilities_ruoli_utility_id ON anagrafiche.gestori_utilities_ruoli USING btree (utility_id)` |
-| pk_gestori_utilities_ruoli | `CREATE UNIQUE INDEX pk_gestori_utilities_ruoli ON anagrafiche.gestori_utilities_ruoli USING btree (id)` |
-| uq_gest_util_ruolo | `CREATE UNIQUE INDEX uq_gest_util_ruolo ON anagrafiche.gestori_utilities_ruoli USING btree (gestore_id, utility_id, ruolo_id)` |
+| pk_gestori_utilities_ruoli | `CREATE UNIQUE INDEX pk_gestori_utilities_ruoli ON anagrafiche.gestori_utilities USING btree (id)` |
+| uq_gestore_utility | `CREATE UNIQUE INDEX uq_gestore_utility ON anagrafiche.gestori_utilities USING btree (gestore_id, utility_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
