@@ -11,6 +11,9 @@
 > Approfondimento funzioni:
 >
 > * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> * [script.fn_get_snapshot_as_of](/dbzero/script/funzioni/fn_get_snapshot_as_of) *(restituisce lo snapshot JSONB a un dato istante)*
+> * [script.fn_get_record_id_as_of ](/dbzero/script/funzioni/fn_get_record_id_as_of ) *(restituisce solo l’ID del record storico a un dato istante)*
+
 
 ---
 

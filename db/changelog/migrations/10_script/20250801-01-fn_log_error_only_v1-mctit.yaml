@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250801-01-fn_log_error_only_v1
+      author: mctit
+      runOnChange: true
+      comments: "Funzione di solo log di errore, senza rilancio eccezione"
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            comment: "Funzione di solo log di errore, senza rilancio eccezione"
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_log_error_only(
+                    p_area           TEXT,
+                    p_function_name  TEXT,
+                    p_error_code     TEXT,
+                    p_context        JSONB,
+                    p_tx_id          UUID,
+                    VARIADIC p_valori TEXT[]
+                ) RETURNS void
+                LANGUAGE plpgsql AS $$
+                DECLARE
+                    v_id     BIGINT;
+                    v_msg    TEXT;
+                    v_detail TEXT;
+                    v_hint   TEXT;
+                    v_lang   TEXT := coalesce(current_setting('myapp.user_language', TRUE), 'it');
+                    v_ctx    JSONB := p_context;
+                    v_sql    TEXT;
+                BEGIN
+                    -- -------------------------------------------------
+                    -- Input
+                    -- p_area: area di applicazione (esempio: 'database')
+                    -- p_function_name: nome della funzione chiamante
+                    -- p_error_code: codice dell'errore da loggare
+                    -- p_context: contesto dell'errore (JSONB)
+                    -- p_tx_id: ID della transazione corrente (se NULL, viene generato automaticamente)
+                    -- p_valori: valori variabili da inserire nel messaggio di errore
+                    -- Output
+                    -- Logga l'errore nel database senza sollevare eccezione
+                    -- -------------------------------------------------
+                                        
+                    IF p_tx_id IS NULL THEN
+                        p_tx_id := dbops.fn_get_or_create_session_tx_id();
+                    END IF;
+
+                    SELECT id, messaggio, causa, soluzione
+                      INTO v_id, v_msg, v_detail, v_hint
+                      FROM config.messaggi_errore
+                    WHERE codice = p_error_code AND lingua = v_lang;
+
+                    IF NOT FOUND THEN
+                      SELECT messaggio||' '||p_error_code, causa, soluzione
+                        INTO v_msg, v_detail, v_hint
+                        FROM config.messaggi_errore
+                        WHERE codice='MESSAGGIO_NON_DEFINITO' AND lingua=v_lang;
+                      IF v_msg IS NULL THEN
+                          v_msg := '[MESSAGGIO NON DEFINITO: '||p_error_code||']';
+                          v_detail := 'Catalogo mancante='||quote_literal(p_error_code);
+                          v_hint   := 'Aggiungere record in config.messaggi_errore';
+                          v_id     := NULL;
+                      END IF;
+                    END IF;
+
+                    IF array_length(p_valori,1) IS NOT NULL THEN
+                        v_msg := format(v_msg, VARIADIC p_valori);
+                    END IF;
+
+                    v_sql := format(
+                      'INSERT INTO dbops.error_log(occurred_at, area, function_name, messaggio_errore_id, context, tx_id)
+                      VALUES (now(), %L, %L, %s, %L::jsonb, %L::uuid)',
+                      p_area, p_function_name, coalesce(v_id::text,'NULL'), v_ctx::text, p_tx_id::text
+                    );
+                    PERFORM dblink_exec('logconn', v_sql);
+                END;
+                $$;
+
+        - sql:
+            comment: "Logga un messaggio su dbops.error_log senza sollevare eccezione"
+            splitStatements: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_log_error_only(text,text,text,jsonb,uuid,text[])
+                 IS 'Logga un messaggio su dbops.error_log senza sollevare eccezione';  
+
+  - changeSet:
+      id: 20250801-90-fn_log_error_only_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250801-01-fn_log_error_only_v1

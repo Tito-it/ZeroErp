@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250801-11-drop-ruolo-and-rename-gestori_utilities
+      author: mctit
+      comments: >
+        Rimuove la colonna ruolo_id (con tutte le dipendenze) 
+        e rinomina la tabella anagrafiche.gestori_utilities_ruoli in anagrafiche.gestori_utilities
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN
+        onError: CONTINUE
+        tableExists:
+            schemaName: anagrafiche
+            tableName: gestori_utilities_ruoli
+  
+      changes:
+        # 1) Rimuove la FK su ruolo_id
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: gestori_utilities_ruoli
+            constraintName: fk_tipi_ruoli_config
+
+        # 2) Rimuove il vincolo UNIQUE che include ruolo_id
+        - dropUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: gestori_utilities_ruoli
+            constraintName: uq_gest_util_ruolo
+
+        # 3) Rimuove l’indice su ruolo_id
+       # - dropIndex:
+       #     schemaName: anagrafiche
+        #    tableName: gestori_utilities_ruoli
+        #    indexName: ix_gestori_utilities_ruoli_ruolo_id
+         #   ifExists: true
+
+        # 4) Elimina la colonna ruolo_id
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: gestori_utilities_ruoli
+            columnName: ruolo_id
+
+        # 5) Rinomina la tabella senza il suffisso _ruoli
+        # 5) Rinomina la tabella usando SQL nativo per forzare lo schema
+        - sql:
+            sql: ALTER TABLE anagrafiche.gestori_utilities_ruoli RENAME TO gestori_utilities
+
+
+        # 6) Ricrea Unique Constraint su gestore_id e utility_id
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: gestori_utilities
+            columnNames: gestore_id, utility_id
+            constraintName: uq_gestore_utility
+            
+ # Metto un  tag fine modifiche
+  - changeSet:
+        id: 20250801-90-drop-ruolo-and-rename-gestori_utilities
+        author: mctit
+        changes:
+          - tagDatabase:
+              tag: 20250801-11-drop-ruolo-and-rename-gestori_utilities
