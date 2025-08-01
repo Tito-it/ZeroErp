@@ -39,11 +39,11 @@ databaseChangeLog:
             constraintName: uq_gest_util_ruolo
 
         # 3) Rimuove l’indice su ruolo_id
-        - dropIndex:
-            schemaName: anagrafiche
-            tableName: gestori_utilities_ruoli
-            indexName: ix_gestori_utilities_ruoli_ruolo_id
-            ifExists: true
+       # - dropIndex:
+       #     schemaName: anagrafiche
+        #    tableName: gestori_utilities_ruoli
+        #    indexName: ix_gestori_utilities_ruoli_ruolo_id
+         #   ifExists: true
 
         # 4) Elimina la colonna ruolo_id
         - dropColumn:
