@@ -1,0 +1,84 @@
+{% include-markdown "it/dbzero/script/manual/fn_get_record_id_as_of.md" %}
+# ⚙️ Funzione `fn_get_record_id_as_of`
+
+```sql
+CREATE FUNCTION fn_get_record_id_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp without time zone)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_get_record_id_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp without time zone)
+ RETURNS text
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_id           TEXT;
+  v_pk_type      TEXT;
+  v_id_hist      TEXT := 'id';                  -- colonna PK storico
+  v_hist_schema  TEXT := 'storico';
+  v_hist_table   TEXT := p_table;
+  v_full_table   TEXT := format('%I.%I', v_hist_schema, v_hist_table);
+BEGIN
+  -- 0) Verifica esistenza e tipo della colonna FK in storico
+  SELECT format_type(a.atttypid, a.atttypmod)
+    INTO v_pk_type
+  FROM pg_attribute a
+  JOIN pg_class c        ON a.attrelid   = c.oid
+  JOIN pg_namespace n    ON c.relnamespace = n.oid
+  WHERE n.nspname = v_hist_schema
+    AND c.relname = v_hist_table
+    AND a.attname = p_fk_col
+    AND a.attnum > 0 AND NOT a.attisdropped;
+
+  IF v_pk_type IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'fn_get_record_id_as_of',
+      'E_QUERY_FAILED_SCHEMA_TABLE',
+      jsonb_build_object('table', v_full_table, 'fk_column', p_fk_col),
+      NULL::uuid,
+       v_full_table, p_fk_col
+    );
+  END IF;
+
+  -- 1) Cerca l'id nello storico valido per la data
+  BEGIN
+    EXECUTE format(
+      'SELECT %I::text
+        FROM %I.%I
+        WHERE %I = $1::%s
+          AND valid_from <= $2
+          AND (valid_to > $2 OR valid_to IS NULL)
+        ORDER BY valid_from DESC
+        LIMIT 1',
+      v_id_hist, v_hist_schema, v_hist_table, p_fk_col, v_pk_type
+    )
+    INTO v_id
+    USING p_id, p_as_of::timestamptz;
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'fn_get_record_id_as_of',
+      'E_QUERY_FAILED',
+      jsonb_build_object(
+        'table',     v_full_table,
+        'id_column', v_id_hist,
+        'fk_column', p_fk_col,
+        'id',        p_id,
+        'as_of',     p_as_of,
+        'error',     SQLERRM,
+        'state',     SQLSTATE
+      ),
+      NULL::uuid,
+      p_schema, p_table, SQLSTATE  
+    );
+  END;
+
+  -- 2) Se non trovato, restituisci NULL (no fallback)
+  RETURN v_id;
+END;
+$function$
+```
+---
+{% include-markdown "signature-core.md" %}

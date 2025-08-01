@@ -76,6 +76,14 @@ Questa guida illustra come utilizzare e estendere la struttura di errore, garant
 * **Scopo**: unificare logging via `dblink_exec` e `RAISE EXCEPTION` con `DETAIL` e `HINT`.
 * **Link**: [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
+### 📘 `script.fn_log_error_only`
+
+> Esegue il logging remoto ma non solleva l’eccezione
+
+* **Path**: `script/fn_log_error_only.md`
+* **Scopo**: unificare logging via `dblink_exec` .
+* **Link**: [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only)
+
 ---
 
 ## 🔄 Flusso di Gestione degli Errori

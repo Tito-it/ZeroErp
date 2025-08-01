@@ -7,6 +7,7 @@
 > - [dbops.error_log](/dbzero/dbops/tabelle/error_log)    
 >
 > Approfondimenti funzioni:   
+> - [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only) *(solo log non solleva eccezioni)*  
 > - [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)     
 > - [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)     
 

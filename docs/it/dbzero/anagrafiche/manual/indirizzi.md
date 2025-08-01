@@ -16,7 +16,8 @@
 > Approfondimento funzioni e trigger:  
 >
 > * [anagrafiche.trgfn_indirizzi_ins_upd_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_ins_upd_clean_fields)  
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
+> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic) 
+> * [script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)   
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
