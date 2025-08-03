@@ -12,14 +12,14 @@
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 * **Sincronizzazione automatica** del campo `stato_iso2` all’interno delle tabelle che lo richiedono.
 * **Garantire coerenza** tra il campo `stato_id` e il relativo `codice_iso2`, estraendolo dinamicamente da `config.stati`.
 
 ---
 
-## 🔗 Collegamenti
+### 🔗 Collegamenti
 
 * **`config.stati`** – tabella sorgente contenente la relazione tra `id` (PK) e `codice_iso2`.
 * La funzione può essere collegata a qualunque tabella che:
@@ -28,7 +28,7 @@
 
 ---
 
-## ⚙️ Dettagli Tecnici
+### ⚙️ Dettagli Tecnici
 
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_sync_stato_iso2()

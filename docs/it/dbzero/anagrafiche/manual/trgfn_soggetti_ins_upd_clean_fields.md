@@ -13,14 +13,14 @@
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 * **Impostare valori di default** per campi mancanti in `anagrafiche.soggetti` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`).
 * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 
 ---
 
-## 🔗 Collegamenti
+### 🔗 Collegamenti
 
 * **`anagrafiche.soggetti`** – tabella su cui si applica il trigger `BEFORE INSERT OR UPDATE`.
 * **`config.stati`** – usata come lookup per recuperare il PK di default tramite `codice_iso3`.
@@ -29,7 +29,7 @@
 
 ---
 
-## 💡 Note Operative
+### 💡 Note Operative
 
 * Il trigger viene invocato **BEFORE INSERT OR UPDATE** su `anagrafiche.soggetti` e agisce su **`NEW`**.
 * **Assegnazione default**: utilizza `fn_get_default_by_param('config','stati','codice_iso3','state_code_iso3', TG_NAME)::integer` per ottenere il `stato_id`.
