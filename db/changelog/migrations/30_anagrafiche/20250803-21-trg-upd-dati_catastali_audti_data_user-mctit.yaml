@@ -1,0 +1,40 @@
+﻿# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+ 
+databaseChangeLog:
+
+  - changeSet:
+        id: 20250803-21-trg-upd-dati_catastali_audit_data_user
+        author: mctit
+        runOnChange: true   
+        changes:
+          - sql:
+              splitStatements: false
+              stripComments: false
+              sql: |
+                  -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                  CREATE OR REPLACE TRIGGER  trg_upd_dati_catastali_audit_data_user
+                    BEFORE UPDATE 
+                    ON anagrafiche.dati_catastali
+                    FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+                  
+                  -- 2) Aggiungo un commento al trigger di lock
+                  COMMENT ON TRIGGER trg_upd_dati_catastali_audit_data_user 
+                  ON anagrafiche.dati_catastali
+                  IS 'Aggiorna(audit) i valori di data e user ';
+
+    
+   # changeSet finale per marcare il punto con un tag univoco
+  - changeSet:
+      id: 20250803-90-trg-upd-dati_catastali_audit_data_user
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250803-21-trg-upd-dati_catastali_audit_data_user

@@ -1,9 +1,10 @@
 # Schema `anagrafiche`
 
 ## 📚 Tabelle
-- [billing_account](tabelle/billing_account.md)
-- [clienti](tabelle/clienti.md)
+- [billing_account](tabelle/billing_account.md) — La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici cliente** per ciascuna `utility`, consentendo:
+- [clienti](tabelle/clienti.md) — La tabella `anagrafiche.clienti` memorizza le informazioni contrattuali e di fatturazione di un soggetto per una specifica *istanza* di servizio. Rappresenta la fase in cui un'attivazione (istanza) diventa un cliente ufficiale, includendo dettagli di scadenze, pagamento e classificazioni speciali (PA, split payment).
 - [contatti](tabelle/contatti.md) — * **Centralizzare i contatti**     Un’unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.
+- [dati_catastali](tabelle/dati_catastali.md)
 - [dati_societari](tabelle/dati_societari.md) — - **Estendere l’anagrafica generale**     I soggetti di tipo giuridico (aziende) hanno esigenze di memorizzazione di dati societari che non interessano le persone fisiche. Spostando queste informazioni in `dati_societari`, si mantiene la tabella `anagrafiche.soggetti` leggera e focalizzata sui campi anagrafici di base. Solo per i tipi soggetti appropriati controllati dalla trigger function `anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto`
 - [gestori](tabelle/gestori.md) — - **Identificare il gestore del sistema**     Memorizzare la riga unica che corrisponde all’azienda proprietaria o amministratrice di Zero ERP, distinguendola da tutti gli altri soggetti (clienti, fornitori, partner, ecc.).
 - [gestori_utilities](tabelle/gestori_utilities.md) — La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori e le utilities disponibili nel sistema Zero ERP. Ogni gestore, identificato dal suo ruolo, può gestire una o più utilities specifiche.
@@ -14,6 +15,7 @@
 - [soggetti_ruoli](tabelle/soggetti_ruoli.md) — * **Associazione molti-a-molti**: stabilisce una relazione N\:N tra la tabella `anagrafiche.soggetti` e `config.tipi_ruoli`, consentendo a ogni soggetto di rivestire più ruoli (es. cliente, fornitore, gestore) e a ogni ruolo di essere assegnato a molti soggetti. * **Estensione semantica**: il campo `extra` (JSONB) offre la possibilità di collegare metadati aggiuntivi per la singola associazione soggetto-ruolo (ad esempio, parametri contrattuali specifici se il ruolo è “fornitore” o date di attivazione per il ruolo “cliente”). * **Tracciatura delle modifiche**: grazie ai campi di audit (`user_insert`, `data_insert`, `user_update`, `data_update`) aggiornati automaticamente, la tabella conserva la cronologia di creazione e aggiornamento di ciascuna associazione.
 
 ## ⚙️ Funzioni
+- [fn_get_dati_catastali_by_istanza](funzioni/fn_get_dati_catastali_by_istanza.md)
 - [trgfn_contatti_ins_upd_set_default_contatto](funzioni/trgfn_contatti_ins_upd_set_default_contatto.md) — * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 - [trgfn_dati_societari_ins_upd_check_tipo_soggetto](funzioni/trgfn_dati_societari_ins_upd_check_tipo_soggetto.md) — Verificare che il soggetto associato ai dati societari ( `new.soggetto_id` in `anagrafiche.dati_societari` ) abbia un `cod_int_tipo_soggetto` ammesso (solo **`SC`** o **`SP`**). In caso contrario, viene lanciato un errore tramite `script.fn_log_and_raise_error`.
 - [trgfn_gestori_ins_upd_check_ruolo_gestore](funzioni/trgfn_gestori_ins_upd_check_ruolo_gestore.md) — - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_check_ins_soggetto_ruolo` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.

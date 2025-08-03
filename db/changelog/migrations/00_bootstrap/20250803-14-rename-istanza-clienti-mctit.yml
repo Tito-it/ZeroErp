@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  # -------------------------------------------------------------------
+  # 1) Rinomina istanza_id → istanza_utility_id su anagrafiche.clienti
+  #    e aggiorna il vincolo FK
+  # -------------------------------------------------------------------
+  - changeSet:
+      id: 20250803-16-rename-istanza-clienti
+      author: mctit
+      comments: "Rinomina colonna istanza_id → istanza_utility_id su anagrafiche.clienti e aggiorna la FK"
+      preConditions:
+        onFail: HALT
+        onError: CONTINUE
+        columnExists:
+            schemaName: anagrafiche
+            tableName: clienti
+            columnName: istanza_id
+      changes:
+        # 1.1) Rimuove FK esistente
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: clienti
+            constraintName: fk_istanze_utilities_anagrafiche
+
+        
+        # 1.3) Rinomina la colonna
+        - renameColumn:
+            schemaName: anagrafiche
+            tableName: clienti
+            oldColumnName: istanza_id
+            newColumnName: istanza_utility_id
+            columnDataType: INTEGER
+
+        # 1.4) Ricrea FK sulla nuova colonna
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: clienti
+            baseColumnNames: istanza_utility_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            constraintName: fk_clienti_istanze_utilities
+            onUpdate: CASCADE
+            onDelete: SET NULL
+
+ 
+  # -------------------------------------------------------------------
+  # 2) Rinomina istanza_id → istanza_utility_id su anagrafiche.billing_account
+  #    e aggiorna il vincolo FK
+  # -------------------------------------------------------------------
+  - changeSet:
+      id: 20250803-17-rename-istanza-billing-account
+      author: mctit
+      comments: "Rinomina colonna istanza_id → istanza_utility_id su anagrafiche.billing_account e aggiorna la FK"
+      preConditions:
+        onFail: HALT
+        onError: CONTINUE
+        columnExists:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: istanza_id
+      changes:
+        # 2.1) Rimuove FK esistente
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: billing_account
+            constraintName: fk_istanze_utilities_anagrafiche
+
+        # 2.2) Rimuove NOT NULL su istanza_id
+        - dropNotNullConstraint:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: istanza_id
+
+        # 2.3) Rinomina la colonna
+        - renameColumn:
+            schemaName: anagrafiche
+            tableName: billing_account
+            oldColumnName: istanza_id
+            newColumnName: istanza_utility_id
+            columnDataType: INTEGER
+
+        # 2.4) Ricrea FK sulla nuova colonna
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: billing_account
+            baseColumnNames: istanza_utility_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            constraintName: fk_billing_account_istanze_utilities
+            onUpdate: CASCADE
+            onDelete: SET NULL
+
+
+  # -------------------------------------------------------------------
+  # 3) Impone NOT NULL su istanza_utility_id in anagrafiche.clienti
+  # -------------------------------------------------------------------
+  - changeSet:
+      id: 20250803-18-set-notnull-istanza-utility-clienti
+      author: mctit
+      comments: "Rende obbligatoria (NOT NULL) la colonna istanza_utility_id in clienti"
+      preConditions:
+        onFail: MARK_RAN
+        onError: CONTINUE
+        columnExists:
+            schemaName: anagrafiche
+            tableName: clienti
+            columnName: istanza_utility_id
+      changes:
+        - addNotNullConstraint:
+            schemaName: anagrafiche
+            tableName: clienti
+            columnName: istanza_utility_id
+            columnDataType: INTEGER
+
+  
+  # -------------------------------------------------------------------
+  # 4) Impone NOT NULL su istanza_utility_id in anagrafiche.billing_account
+  # -------------------------------------------------------------------
+  - changeSet:
+      id: 20250803-19-set-notnull-istanza-utility-billing
+      author: mctit
+      comments: "Rende obbligatoria (NOT NULL) la colonna istanza_utility_id in billing_account"
+      preConditions:
+        onFail: MARK_RAN
+        onError: CONTINUE
+        columnExists:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: istanza_utility_id
+      changes:
+        - addNotNullConstraint:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: istanza_utility_id
+            columnDataType: INTEGER
+
+
+  - changeSet:
+      id: 20250803-90-rename-istanza-clienti
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250803-16-rename-istanza-clienti

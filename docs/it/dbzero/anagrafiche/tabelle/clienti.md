@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/clienti.md" %}
 # 📚 Tabella `clienti`
 
 ## 🗂️ Campi principali
@@ -5,7 +6,7 @@
 |---------|------|----------|---------|
 | id | integer | NO | nextval('anagrafiche.clienti_id_seq'::regclass) |
 | soggetto_ruolo_id | integer | NO |  |
-| istanza_id | integer | YES |  |
+| istanza_utility_id | integer | NO |  |
 | tipo_gg_scadenza_ft | character | NO | 'N'::bpchar |
 | nr_giorni_scadenza | integer | NO | 0 |
 | modalita_pagamento_id | integer | YES |  |
@@ -32,10 +33,10 @@
 | CHECK | chk_clienti_servizio_da_fatturare |  |
 | CHECK | chk_clienti_split_payment |  |
 | CHECK | chk_clienti_tipo_scadenza |  |
-| FOREIGN KEY | fk_istanze_utilities_anagrafiche | istanza_id, istanza_id |
+| FOREIGN KEY | fk_clienti_istanze_utilities | istanza_utility_id |
 | FOREIGN KEY | fk_iva_config | iva_id |
 | FOREIGN KEY | fk_modalita_pagamento_config | modalita_pagamento_id |
-| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
+| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
 | FOREIGN KEY | fk_stati_cliente_config | stato_cliente_id |
 | FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
 | PRIMARY KEY | pk_clienti | id |
@@ -44,7 +45,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_clienti_cd_importato | `CREATE INDEX ix_clienti_cd_importato ON anagrafiche.clienti USING btree (cd_cliente_importato)` |
-| ix_clienti_istanza_id | `CREATE INDEX ix_clienti_istanza_id ON anagrafiche.clienti USING btree (istanza_id)` |
 | ix_clienti_iva_id | `CREATE INDEX ix_clienti_iva_id ON anagrafiche.clienti USING btree (iva_id)` |
 | ix_clienti_modalita_pagamento_id | `CREATE INDEX ix_clienti_modalita_pagamento_id ON anagrafiche.clienti USING btree (modalita_pagamento_id)` |
 | ix_clienti_soggetto_ruolo_id | `CREATE INDEX ix_clienti_soggetto_ruolo_id ON anagrafiche.clienti USING btree (soggetto_ruolo_id)` |
