@@ -21,7 +21,7 @@ databaseChangeLog:
             comment: "restituisce i dati catastali di un'istanza"
             splitStatements: false
             sql: |
-                  CREATE OR REPLACE FUNCTION anagrafiche.fn_get_dati_catastali_by_istanza(
+                  CREATE OR REPLACE FUNCTION script.fn_get_dati_catastali_by_istanza(
                         p_istanza_utilities_id INTEGER
                     )
                     RETURNS anagrafiche.dati_catastali

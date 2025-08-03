@@ -1,0 +1,83 @@
+## 📘 Documentazione Concettuale – Tabella `anagrafiche.dati_catastali`
+
+> 👀 **Vedi anche**
+>
+> * Tabelle correlate:
+>
+>   * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+>   * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
+
+---
+
+### 🎯 Scopo Principale
+
+La tabella `anagrafiche.dati_catastali` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
+
+* **Evita ridondanza** delle informazioni catastali su più istanze nello stesso indirizzo.
+* Permette di **storico** e versioning dei dati per singola istanza.
+* Supporta sia dati generici (fallback su indirizzo) sia specifici per istanza.
+
+---
+
+### 🔗 Collegamenti con Altre Tabelle
+
+| Campo                    | Tabella di riferimento                | Azione                                |
+| ------------------------ | ------------------------------------- | ------------------------------------- |
+| `indirizzo_dettaglio_id` | `anagrafiche.indirizzi_dettaglio(id)` | ON UPDATE CASCADE, ON DELETE CASCADE  |
+| `istanza_utility_id`     | `anagrafiche.istanze_utilities(id)`   | ON UPDATE CASCADE, ON DELETE SET NULL |
+
+---
+
+### 🚩 Regole di Validazione Condizionale
+
+1. **Unicità**
+
+   * È garantita dal vincolo `uq_dati_catastali_indirizzo_istanza` su (`indirizzo_dettaglio_id`, `istanza_utility_id`).
+2. **Campi obbligatori**
+
+   * `indirizzo_dettaglio_id` NOT NULL
+   * `istanza_utility_id` NOT NULL
+3. **Boolean Flag**
+
+   * `immobile_rurale` deve essere `true` o `false`.
+   * `storicizza` deve essere `true` o `false`.
+
+---
+
+### 🔍 Indicizzazione
+
+* **Nessun indice addizionale** oltre al PK e al vincolo univoco. Le FK su indirizzo e istanza possono essere usate nelle query.
+
+---
+
+### 💡 Vantaggi Operativi
+
+* **Normalizzazione**: un solo set di dati catastali per combinazione indirizzo+istanza.
+* **Storico**: ogni modifica viene snapshot con `trg_z90_dati_catastali_upd_dlt_storico`.
+* **Audit**: i trigger di audit mantengono traccia delle modifiche in `data_update`/`user_update`.
+
+---
+
+### ⚙️ Trigger e Funzioni Coinvolte
+
+| Trigger                                  | Tabella          | Scopo                                                                                  |
+| ---------------------------------------- | ---------------- | -------------------------------------------------------------------------------------- |
+| `trg_dati_catastali_ins_upd_gen_tx_id`   | `dati_catastali` | Genera `tx_id` se assente (dbops.trgfn_tx_id_managed)                               |
+| `trg_upd_dati_catastali_audit_data_user` | `dati_catastali` | Aggiorna `data_update` e `user_update` (script.trgfn_upd_audit_data_user_generic) |
+| `trg_z90_dati_catastali_upd_dlt_storico` | `dati_catastali` | Crea snapshot in storico (script.trgfn_upd_dlt_storico_generic)                    |
+
+---
+
+### ✅ Controlli di Coerenza
+
+* **Unicità** su indirizzo + istanza impedisce righe duplicate.
+* **FK** assicurano che non esistano dati orfani.
+* **Boolean** correttamente tipizzati.
+
+---
+
+### 🧾 Note Finali
+
+Questa tabella è fondamentale per gestire in modo **flessibile** e **storicizzato** i dati catastali, garantendo integrità e riducendo duplicazioni tra più attivazioni sullo stesso indirizzo.
+
+{% include-markdown "signature-core.md" %}
