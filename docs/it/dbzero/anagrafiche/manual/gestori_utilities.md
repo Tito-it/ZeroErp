@@ -15,7 +15,7 @@
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori e le utilities disponibili nel sistema Zero ERP. Ogni gestore, identificato dal suo ruolo, può gestire una o più utilities specifiche.
 
@@ -25,7 +25,7 @@ La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori
 
 ---
 
-## ⚙️ Vincoli e Relazioni
+### ⚙️ Vincoli e Relazioni
 
 * **`gestore_id`**: Foreign key verso la tabella `anagrafiche.gestori` (cancellazione a cascata).
 * **`utility_id`**: Foreign key verso la tabella `config.utilities` (cancellazione ristretta).
@@ -33,7 +33,7 @@ La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori
 
 ---
 
-## 🔍 Considerazioni di Progettazione
+### 🔍 Considerazioni di Progettazione
 
 * Ogni gestore può essere associato a molteplici utilities.
 * L'associazione non contempla ulteriori ruoli interni, in quanto il gestore stesso è già un ruolo specifico.
@@ -41,7 +41,7 @@ La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori
 
 ---
 
-## 🚨 Gestione Errori e Audit
+### 🚨 Gestione Errori e Audit
 
 * Eventuali errori nel gestire la tabella sono loggati tramite la funzione `script.fn_log_and_raise_error`.
 * Gli audit sono assicurati tramite i campi standard (date\_insert, user\_insert, date\_update, user\_update).

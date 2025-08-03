@@ -32,7 +32,7 @@
 | FOREIGN KEY | fk_codici_postali_config | codice_postale_id |
 | FOREIGN KEY | fk_comuni_config | comune_id, comune_id |
 | FOREIGN KEY | fk_indirizzi_dettaglio_anagrafiche | indirizzo_dettaglio_id |
-| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
+| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
 | FOREIGN KEY | fk_stati_config | stato_id, stato_id |
 | FOREIGN KEY | fk_tipi_indirizzo_config | tipo_indirizzo_id |
 | PRIMARY KEY | pk_indirizzi | id |

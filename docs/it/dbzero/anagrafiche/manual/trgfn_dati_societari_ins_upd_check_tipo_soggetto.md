@@ -15,7 +15,7 @@
 
 ---
 
-## 🎯 Scopo Principale
+### 🎯 Scopo Principale
 
 Verificare che il soggetto associato ai dati societari (
 `new.soggetto_id` in `anagrafiche.dati_societari`
@@ -23,7 +23,7 @@ Verificare che il soggetto associato ai dati societari (
 
 ---
 
-## 🔗 Collegamenti
+### 🔗 Collegamenti
 
 * **`anagrafiche.dati_societari`** – tabella su cui viene applicato il trigger `BEFORE INSERT OR UPDATE` che richiama questa funzione.
 * **`anagrafiche.soggetti`** – da cui si legge il campo `tipo_soggetto_dettaglio_id`.
@@ -31,7 +31,7 @@ Verificare che il soggetto associato ai dati societari (
 
 ---
 
-## 💡 Note Operative
+### 💡 Note Operative
 
 * Utilizza `script.fn_log_and_raise_error` per loggare dettagli e abortire la DML in caso di tipo non ammesso (codice errore `E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO`).
 * Facile da estendere aggiungendo codici consentiti alla condizione.

@@ -1,0 +1,224 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet: 
+      id: 20250803-11-create-seq-and-table-anagrafiche_dati_catastali
+      author: mctit
+      runOnChange: true
+      validCheckSums: 
+        - ANY
+      comments: >
+        Crea la tabella anagrafiche.dati_catastali con sequence per PK,
+        FK su indirizzi_dettaglio, check su immobile_rurale e campi aggiuntivi.
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista già la tabella parameter_overrides
+        not:
+          tableExists:
+            schemaName: anagrafiche
+            tableName: dati_catastali
+      changes:
+        # 1) Sequence per la PK
+        - createSequence:
+            schemaName: anagrafiche
+            sequenceName: dati_catastali_id_seq
+            startValue: 1
+            incrementBy: 1
+            dataType: BIGINT
+            remarks: "Sequence per la colonna id di dati_catastali"
+
+        # 2) Creazione della tabella
+        - createTable:
+            schemaName: anagrafiche
+            tableName: dati_catastali
+            remarks: "Dati catastali associati a un indirizzo fisico"
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  defaultValueComputed: "nextval('anagrafiche.dati_catastali_id_seq'::regclass)"
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+                  remarks: "PK autonumerica"
+              - column:
+                  name: indirizzo_dettaglio_id
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+                  remarks: "FK a anagrafiche.indirizzi_dettaglio(id)"
+              - column:
+                  name: sezione_catastale
+                  type: CHAR(5)
+              - column:
+                  name: foglio_catastale
+                  type: CHAR(5)
+              - column:
+                  name: particella
+                  type: CHAR(5)
+              - column:
+                  name: subalterno
+                  type: CHAR(5)
+              - column:
+                  name: categoria_catastale
+                  type: VARCHAR(10)
+              - column:
+                  name: classe_catastale
+                  type: VARCHAR(10)
+              - column:
+                  name: rendita_catastale
+                  type: NUMERIC(12,2)
+              - column:
+                  name: consistenza
+                  type: INTEGER
+              - column:
+                  name: tipo_accatastamento
+                  type: CHAR(1)
+                  remarks: "Tipo di accatastamento"
+              - column:
+                  name: immobile_rurale
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+                  remarks: "Flag immobile rurale"
+              - column:
+                  name: destinazione_immobile
+                  type: CHAR(2)
+                  remarks: "Destinazione dell’immobile"
+              - column:
+                  name: anno_protocollo
+                  type: INTEGER
+                  remarks: "Anno di protocollo"
+              - column:
+                  name: superficie
+                  type: INTEGER
+                  remarks: "Superficie catastale"
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: "CURRENT_TIMESTAMP"
+                  constraints:
+                    nullable: false
+                  remarks: "Timestamp di inserimento"
+              - column:
+                  name: user_insert
+                  type: VARCHAR(80)
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+                  remarks: "Utente di inserimento"
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: "CURRENT_TIMESTAMP"
+                  constraints:
+                    nullable: false
+                  remarks: "Timestamp di ultima modifica"
+              - column:
+                  name: user_update
+                  type: VARCHAR(80)
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+                  remarks: "Utente di ultima modifica"
+              - column:
+                  name: tx_id
+                  type: UUID
+                  remarks: "UUID di transazione"
+              - column:
+                  name: storicizza
+                  type: BOOLEAN
+                  defaultValueBoolean: True     
+                  constraints:
+                    nullable: false
+                  remarks: "Storicizza Default=True"  
+
+        # 3) FK su indirizzo_dettaglio_id
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: dati_catastali
+            baseColumnNames: indirizzo_dettaglio_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: indirizzi_dettaglio
+            referencedColumnNames: id
+            constraintName: fk_dettaglio_catastali_indirizzi_dettaglio
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        
+
+        # 5) Commento sulla tabella
+        - sql:
+            splitStatements: false
+            stripComments: false
+            comment: "Commento descrittivo sulla tabella"
+            sql: |
+              COMMENT ON TABLE anagrafiche.dati_catastali
+                IS 'Dati catastali associati a un indirizzo fisico. Evita ridondanza tra istanze diverse.';
+           
+  
+  - changeSet: 
+      id: 20250803-12-create-seq-and-table-anagrafiche_dati_catastali
+      author: mctit
+      runOnChange: true
+      validCheckSums: 
+        - ANY
+      comments: >
+        Genero la colonna istanza_utilites_id nella tabella anagrafiche.dati_catastali.
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista già la tabella parameter_overrides
+        not:
+          columnExists:
+            schemaName: anagrafiche
+            tableName: dati_catastali
+            columnName: istanza_utility_id
+      changes:
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: dati_catastali
+            columns:
+              - column:
+                  name: istanza_utility_id
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+                  remarks: "FK a anagrafiche.istanze_utilities(id)"
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: dati_catastali
+            baseColumnNames: istanza_utility_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            constraintName: fk_dati_catastali_istanze_utilities
+            onUpdate: CASCADE
+            onDelete: SET NULL
+        # 5) Commento sulla tabella
+        - sql:
+            splitStatements: false
+            stripComments: false
+            comment: "Unique constraint per la colonna istanza_utility_id"
+            sql: |
+              ALTER TABLE anagrafiche.dati_catastali
+                ADD CONSTRAINT uq_dati_catastali_indirizzo_istanza
+                UNIQUE (indirizzo_dettaglio_id, istanza_utility_id);
+
+      
+ # Metto un  tag fine modifiche
+  - changeSet:
+        id: 20250803-90-create-seq-and-table-anagrafiche_dati_catastali
+        author: mctit
+        changes:
+          - tagDatabase:
+              tag: 20250803-11-create-seq-and-table-anagrafiche_dati_catastali

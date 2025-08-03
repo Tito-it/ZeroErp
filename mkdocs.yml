@@ -88,4 +88,4 @@ nav:
           - Storicizzazione Tabelle: guide/storicizzazione-tabelle.md
           - Configurazione e gestione parametri: guide/configurazione-e-gestione-parametri.md
           - Gestione dei Messaggi di Errore e Generazione Log : guide/Messaggi-di-Errore-e-Generazione-Log.md
-        
+          - Generazione di un cliente : guide/generazione-cliente.md
