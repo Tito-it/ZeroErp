@@ -15,7 +15,7 @@
 
 ---
 
-## 🎯 Scopo Principale
+## 🎯 Scopo principale
 
 La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori e le utilities disponibili nel sistema Zero ERP. Ogni gestore, identificato dal suo ruolo, può gestire una o più utilities specifiche.
 
