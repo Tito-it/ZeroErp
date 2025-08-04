@@ -14,6 +14,7 @@
 | soggetto_id | uuid | NO |  |
 | indirizzo_dettaglio_id | integer | YES |  |
 | tx_id | uuid | YES |  |
+| parent_istanza_id | integer | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -21,6 +22,7 @@
 | CHECK | chk_istanza_fittizia_indirizzo |  |
 | CHECK | chk_istanze_utilities_prop_inquilino |  |
 | FOREIGN KEY | fk_istanze_utilities_indirizzo_dettaglio | indirizzo_dettaglio_id |
+| FOREIGN KEY | fk_istanze_utilities_parent_istanza | parent_istanza_id |
 | FOREIGN KEY | fk_istanze_utilities_soggetto | soggetto_id |
 | PRIMARY KEY | pk_istanze_utilities | id |
 | UNIQUE | uq_istanze_utilities_codice_istanza | codice_istanza |
@@ -28,6 +30,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_istanze_utilities_indirizzo_dettaglio_id | `CREATE INDEX ix_istanze_utilities_indirizzo_dettaglio_id ON anagrafiche.istanze_utilities USING btree (indirizzo_dettaglio_id)` |
 | ix_istanze_utilities_soggetto_id | `CREATE INDEX ix_istanze_utilities_soggetto_id ON anagrafiche.istanze_utilities USING btree (soggetto_id)` |
 | pk_istanze_utilities | `CREATE UNIQUE INDEX pk_istanze_utilities ON anagrafiche.istanze_utilities USING btree (id)` |
 | uq_istanze_utilities_codice_istanza | `CREATE UNIQUE INDEX uq_istanze_utilities_codice_istanza ON anagrafiche.istanze_utilities USING btree (codice_istanza)` |

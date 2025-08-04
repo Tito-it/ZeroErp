@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250804-03-vw_clienti_istanza_states_v1
+      author: mctit
+      runOnChange: true
+      comments: "View che espone, per ogni istanza, tutti i campi di config.stati_cliente"
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            comment: "View che espone, per ogni istanza, tutti i campi di config.stati_cliente"
+            splitStatements: false
+            sql: |
+                      CREATE OR REPLACE VIEW script.view_clienti_istanza_states AS
+                      -- 2. View che espone, per ogni istanza, tutti i campi di config.stati_cliente
+                      SELECT
+                        i.id                        AS istanza_id,
+                        sc.id                       AS stato_id,
+                        sc.cod_int_stato_cliente    AS cod_int_stato_cliente,
+                        sc.desc_stato_cliente       AS desc_stato_cliente,
+                        sc.desc_breve_stato         AS desc_breve_stato,
+                        sc.check_lettura            AS check_lettura,
+                        sc.abilita_fattura          AS abilita_fattura,
+                        sc.stato_cliente            AS stato_cliente,
+                        sc.stato_cliente_ia         AS stato_cliente_ia,
+                        sc.data_insert              AS stato_data_insert,
+                        sc.user_insert              AS stato_user_insert,
+                        sc.data_update              AS stato_data_update,
+                        sc.user_update              AS stato_user_update
+                      FROM
+                        anagrafiche.istanze_utilities i
+                        JOIN config.stati_cliente sc
+                          ON sc.id = script.fn_get_stato_cliente_by_istanza(i.id);
+              
+  - changeSet:
+      id: 20250804-90-vw_clienti_istanza_states_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250804-03-vw_clienti_istanza_states_v1

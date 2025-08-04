@@ -24,6 +24,8 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | NO | CURRENT_USER |
 | utility_id | integer | YES |  |
+| tx_id | uuid | YES |  |
+| storicizza | boolean | YES | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -45,6 +47,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_clienti_cd_importato | `CREATE INDEX ix_clienti_cd_importato ON anagrafiche.clienti USING btree (cd_cliente_importato)` |
+| ix_clienti_istanza_utility_id | `CREATE INDEX ix_clienti_istanza_utility_id ON anagrafiche.clienti USING btree (istanza_utility_id)` |
 | ix_clienti_iva_id | `CREATE INDEX ix_clienti_iva_id ON anagrafiche.clienti USING btree (iva_id)` |
 | ix_clienti_modalita_pagamento_id | `CREATE INDEX ix_clienti_modalita_pagamento_id ON anagrafiche.clienti USING btree (modalita_pagamento_id)` |
 | ix_clienti_soggetto_ruolo_id | `CREATE INDEX ix_clienti_soggetto_ruolo_id ON anagrafiche.clienti USING btree (soggetto_ruolo_id)` |
@@ -55,6 +58,10 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_clienti_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_clienti_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_upd_clienti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_z90_clienti_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('cliente_id')` |
+| trg_z90_clienti_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('cliente_id')` |
 ---
 {% include-markdown "signature-core.md" %}

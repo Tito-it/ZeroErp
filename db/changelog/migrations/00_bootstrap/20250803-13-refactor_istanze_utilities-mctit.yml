@@ -273,6 +273,44 @@ databaseChangeLog:
                 CHECK (
                   fittizia = true OR indirizzo_dettaglio_id IS NOT NULL
                 );
+  - changeSet:
+      id: 20250803-13E-refactor-istanze_utilities
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: "Aggiunge colonna parent_istanza_id per gestire istanze figlie"
+      preConditions:
+        onFail: MARK_RAN
+        onError: CONTINUE
+        not:
+          # Controlla se la colonna parent_istanza_id esiste già
+          columnExists:
+            schemaName: anagrafiche
+            tableName: istanze_utilities
+            columnName: parent_istanza_id
+      changes:      
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: istanze_utilities
+            columns:
+              - column:
+                  name: parent_istanza_id
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+                  remarks: "FK a anagrafiche.istanze_utilities(id)"
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: istanze_utilities
+            baseColumnNames: parent_istanza_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            constraintName: fk_istanze_utilities_parent_istanza
+            onUpdate: CASCADE
+            onDelete: SET NULL
+
 
   - changeSet:
       id: 20250803-90-refactor-istanze_utilities

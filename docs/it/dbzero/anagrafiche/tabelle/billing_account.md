@@ -16,6 +16,8 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | NO | CURRENT_USER |
+| tx_id | uuid | YES |  |
+| storicizza | boolean | YES | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -31,6 +33,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_billing_account_istanza_utility_id | `CREATE INDEX ix_billing_account_istanza_utility_id ON anagrafiche.billing_account USING btree (istanza_utility_id)` |
 | ix_billing_account_parent_account_id | `CREATE INDEX ix_billing_account_parent_account_id ON anagrafiche.billing_account USING btree (parent_account_id)` |
 | ix_billing_account_soggetto_ruolo_id | `CREATE INDEX ix_billing_account_soggetto_ruolo_id ON anagrafiche.billing_account USING btree (soggetto_ruolo_id)` |
 | ix_billing_account_utility_id | `CREATE INDEX ix_billing_account_utility_id ON anagrafiche.billing_account USING btree (utility_id)` |
@@ -43,6 +46,8 @@
 |------|--------|--------|--------|
 | trg_billing_account_ins_upd_gen_account_code | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_generate_account_code_generic('billing_account')` |
 | trg_billing_account_ins_upd_gen_account_code | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_generate_account_code_generic('billing_account')` |
+| trg_billing_account_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_billing_account_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_upd_billing_account_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 ---
 {% include-markdown "signature-core.md" %}

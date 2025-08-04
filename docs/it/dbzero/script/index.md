@@ -15,6 +15,7 @@
 - [fn_get_parameter_full](funzioni/fn_get_parameter_full.md) — * **Ricerca safe del parametro**   Verificare l’esistenza del parametro in `config.parameters` e recuperare il suo `default_value`. * **Override gerarchico**   Cercare eventuali override in `config.parameter_overrides` secondo la priorità: function → session → user → tenant. * **Centralizzazione della logica**   Un’unica funzione per gestire la complessità degli override, evitando duplicazioni nell’applicazione. * **Gestione degli errori**   Se `p_code` non è presente in `config.parameters`, viene chiamato `script.fn_log_and_raise_error` con codice `ERRORE_PARAMETRI_TABELLA`.
 - [fn_get_record_id_as_of](funzioni/fn_get_record_id_as_of.md) — * **Recupero rapido dell’ID in uno snapshot**: ottenere solo l’identificativo del record (`id`) valido alla data/ora specificata, senza dover deserializzare tutto il JSON. * **Ottimizzazione delle query**: operazione leggera nel caso serva solo l’ID, utile per controlli o join condizionali su storico.
 - [fn_get_snapshot_as_of](funzioni/fn_get_snapshot_as_of.md) — * **Recupero storico/flessibile**: ottenere lo stato di un record in un preciso istante, combinando storicizzazione e serializzazione diretta. * **Robustezza**: ogni errore di query viene tracciato con contesto completo, e l'esecuzione viene interrotta per evitare inconsistenze.
+- [fn_get_stato_cliente_by_istanza](funzioni/fn_get_stato_cliente_by_istanza.md)
 - [fn_get_stradario](funzioni/fn_get_stradario.md) — * **Ricerca locale per comune**   Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
 - [fn_get_tipo_contatto_id](funzioni/fn_get_tipo_contatto_id.md) — Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`cod_int_tipo_contatto`), garantendo al contempo il logging e la tracciabilità tramite un `tx_id` di sessione.
 - [fn_get_vie_discendenti](funzioni/fn_get_vie_discendenti.md)
@@ -32,6 +33,7 @@
 - [uuid_nil](funzioni/uuid_nil.md) — * Fornire un valore UUID costante, composto interamente da zeri. * Usato come **fallback** o **default** quando non è possibile generare o recuperare un UUID valido.
 
 ## 🔍 Views
+- [view_clienti_istanza_states](views/view_clienti_istanza_states.md)
 - [vw_indirizzo_completo](views/vw_indirizzo_completo.md) — * **Denormalizzazione per letture rapide**: aggregare in un’unica view i dati di stradario, comune, provincia, codice postale e via, semplificando le query di selezione degli indirizzi. * **Pulizia e consistenza**: fornire campi già formattati e pronti per essere utilizzati nelle normalizzazioni e nelle funzionalità GIS. * **Riutilizzabilità**: rendere disponibile un’unica sorgente per join di indirizzi completi, evitando duplicazione di codice SQL.
 - [vw_ita_province_regioni](views/vw_ita_province_regioni.md)
 - [vw_stati_estesi](views/vw_stati_estesi.md)
