@@ -4,7 +4,7 @@
 > 
 > Guide generali: 
 >  * [Generazione di un cliente](/guide/generazione-cliente)
->
+> 
 > * Approfondimento tabelle :
 >
 >   * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)

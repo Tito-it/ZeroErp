@@ -13,12 +13,7 @@ repo_name: Tito-it/ZeroErp
 
 docs_dir: docs
 site_dir: site
-# ✏️ Attiva la conversione degli absolute links
-validation:
-  nav:
-    absolute_links: ignore
-  links:
-    absolute_links: relative_to_docs
+
 
 theme:
   name: material
@@ -27,9 +22,10 @@ theme:
     - navigation.sections
     - navigation.expand
 plugins:
-  - include-markdown:
+  - include-markdown
       #base_path: docs       # ← questa riga deve essere attiva
       #fail_on_missing: false
+  - abs-to-rel          # ← qui
   - search
   
   - i18n:
