@@ -1,15 +1,15 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.billing_account`
 
 > 👀 **Vedi anche**
->
+> 
 > Guide generali: 
 >  * [Generazione di un cliente](/guide/generazione-cliente)
 >
 > * Approfondimento tabelle :
 >
->   * [anagrafiche.istanze\_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+>   * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 >   * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
->   * [anagrafiche.soggetti\_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+>   * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 >   * [config.utilities](/dbzero/config/tabelle/utilities)
 >
 > Approfondimeto funzioni:

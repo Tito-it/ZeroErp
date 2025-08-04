@@ -13,6 +13,12 @@ repo_name: Tito-it/ZeroErp
 
 docs_dir: docs
 site_dir: site
+# ✏️ Attiva la conversione degli absolute links
+validation:
+  nav:
+    absolute_links: ignore
+  links:
+    absolute_links: relative_to_docs
 
 theme:
   name: material
