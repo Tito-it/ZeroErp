@@ -2,13 +2,21 @@
 
 > 👀 **Vedi anche**
 >
-> * Tabelle correlate:
+> Guide generali: 
+>  * [Generazione di un cliente](/guide/generazione-cliente)
+>
+> * Approfondimento tabelle :
 >
 >   * [anagrafiche.istanze\_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 >   * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
 >   * [anagrafiche.soggetti\_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 >   * [config.utilities](/dbzero/config/tabelle/utilities)
-
+>
+> Approfondimeto funzioni:
+>
+> * [anagrafiche.trgfn_billing_account_ins_upd_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_billing_account_ins_upd_clean_fields)
+> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 ---
 
 ### 🎯 Scopo Principale

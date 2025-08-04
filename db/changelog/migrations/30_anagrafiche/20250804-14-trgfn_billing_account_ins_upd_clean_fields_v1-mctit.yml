@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+   
+  - changeSet:
+      id: 20250804-13-trgfn_billing_account_ins_upd_clean_fields_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+          Function che pulisce i campi di billing_account in anagrafiche.billing_account e imposta i valori di default
+          per le colonne che non hanno un valore specificato. 
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |              
+                 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_clean_fields()
+                    RETURNS trigger
+                    LANGUAGE plpgsql
+                  AS $$
+                  BEGIN
+                    
+
+                    ----------------------------------------------------------------
+                    -- 1) Generazione codice automatico
+                    IF NEW.account_code IS NULL THEN
+                      NEW.account_code := script.fn_generate_codice('billing_account');
+                    END IF;
+  
+                    
+                    ------------------------------------------------------------------
+                    RETURN NEW;
+                  END;
+                  $$;
+
+                 COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_ins_upd_clean_fields()
+                  IS $comment$
+                  'Function che pulisce i campi di billing_account in anagrafiche.billing_account e imposta i valori di default
+                       per le colonne che non hanno un valore specificato. (esempio: stato_id)';
+                     $comment$
+
+  - changeSet:
+      id: 20250804-13A-trgfn_billing_account_ins_upd_clean_fields_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+          Trigger che pulisce i campi di billing_account in anagrafiche.billing_account e imposta i valori di default
+          per le colonne che non hanno un valore specificato.
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |              
+                -- Trigger collegato
+                  DROP TRIGGER IF EXISTS trg_billing_account_ins_upd_clean_fields ON anagrafiche.billing_account;
+
+                  CREATE TRIGGER trg_billing_account_ins_upd_clean_fields
+                    BEFORE INSERT OR UPDATE ON anagrafiche.billing_account
+                    FOR EACH ROW
+                    EXECUTE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_clean_fields();
+
+                  -- Commento sul trigger
+                  COMMENT ON TRIGGER trg_billing_account_ins_upd_clean_fields ON anagrafiche.billing_account
+                    IS $comment$ 
+                    'Trigger che pulisce i campi di billing_account in anagrafiche.billing_account e imposta i valori di default
+                        per le colonne che non hanno un valore specificato.';
+                    $comment$
+
+  # Tag di fine modifica 
+  - changeSet:
+      id: 20250804-90-trgfn_billing_account_ins_upd_clean_fields_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250804-13-trgfn_billing_account_ins_upd_clean_fields_v1

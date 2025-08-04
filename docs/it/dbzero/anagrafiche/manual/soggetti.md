@@ -2,6 +2,9 @@
 
 >  👀 **Vedi anche** 
 >
+> Guide generali: 
+>  * [Generazione di un cliente](/guide/generazione-cliente)
+>
 > Approfondimento Tabelle:   
 >
 >  * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
@@ -15,7 +18,6 @@
 > 
 >  * [anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ins_upd_check_soggetto_contatti)   
 >  * [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)   
->  * [anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ins_upd_genera_cdsoggetto)   
 >  * [anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_ins_upd_check_tipo_soggetto) 
 >  * [anagrafiche.trgfn_soggetti_ins_upd_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ins_upd_clean_fields) 
 >  * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)   

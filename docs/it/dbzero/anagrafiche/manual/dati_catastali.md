@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> * Tabelle correlate:
+> * Approfodnimento tabelle:
 >
 >   * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 >   * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)

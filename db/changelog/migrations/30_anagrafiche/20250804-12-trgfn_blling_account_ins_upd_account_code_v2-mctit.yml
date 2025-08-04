@@ -1,0 +1,37 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+
+  
+  - changeSet:
+      id: 20250804-12-trgfn_billing_account_ins_upd_cdsoggetto_v2
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+        Elimino la funzione trigger anagrafiche.trgfn_billing_account_ins_upd_genera_cdsoggetto e relativo trigger
+        che generava il campo cdsoggetto in anagrafiche.billing_account.
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_billing_account_ins_upd_gen_account_code
+                ON anagrafiche.billing_account;
+               
+              DROP FUNCTION IF EXISTS script.trgfn_generate_account_code_generic; 
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250804-90-trgfn_billing_account_ins_upd_cdsoggetto_v2
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250804-12-trgfn_billing_account_ins_upd_cdsoggetto_v2

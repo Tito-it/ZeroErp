@@ -44,10 +44,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_billing_account_ins_upd_gen_account_code | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_generate_account_code_generic('billing_account')` |
-| trg_billing_account_ins_upd_gen_account_code | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_generate_account_code_generic('billing_account')` |
+| trg_billing_account_ins_upd_clean_fields | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_clean_fields()` |
+| trg_billing_account_ins_upd_clean_fields | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_clean_fields()` |
 | trg_billing_account_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_billing_account_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_upd_billing_account_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_upd_billing_account_protect_account_code | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_upd_billing_account_protect_account_code()` |
 ---
 {% include-markdown "signature-core.md" %}

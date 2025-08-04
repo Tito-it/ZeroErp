@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/istanze_utilities.md" %}
 # 📚 Tabella `istanze_utilities`
 
 ## 🗂️ Campi principali
@@ -38,9 +39,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_istanze_utilities_ins_set_istanza_codice | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_ins_set_istanza_codice()` |
+| trg_istanze_utilities_ins_upd_clean_fields | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields()` |
+| trg_istanze_utilities_ins_upd_clean_fields | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields()` |
 | trg_istanze_utilities_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_istanze_utilities_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_upd_istanze_utilities_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_upd_istanze_utilities_protect_codice_istanza | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_upd_istanze_utilities_protect_codice_istanza()` |
 ---
 {% include-markdown "signature-core.md" %}
