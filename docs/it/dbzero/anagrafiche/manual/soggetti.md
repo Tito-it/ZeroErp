@@ -1,7 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.soggetti`
 
 >  👀 **Vedi anche** 
->
+> 
 > Guide generali: 
 >  * [Generazione di un cliente](/guide/generazione-cliente)
 >
