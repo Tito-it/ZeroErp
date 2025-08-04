@@ -24,6 +24,13 @@ AS $function$
        TG_NAME             -- nome del trigger chiamante
      )::integer;           -- cast al tipo integer di stato_id
    END IF;
+
+   ----------------------------------------------------------------
+   -- 2) Generazione codice automatico
+   IF NEW.codice_soggetto IS NULL THEN
+     NEW.codice_soggetto := script.fn_generate_codice('soggetto');
+   END IF;
+
    ------------------------------------------------------------------
    -- 2) Altri cleanup (esempi)
    --IF NEW.nome IS NOT NULL THEN

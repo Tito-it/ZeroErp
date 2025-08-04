@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250804-12-create-seq-and-table-storico_clienti
+      author: mctit
+      runOnChange: true
+      validCheckSums: 
+        - ANY
+      comments: >
+        Definisce la sequence e crea la tabella storico.clienti, 
+        quindi aggiunge la FK verso anagrafiche.clienti con onUpdate CASCADE e onDelete SET NULL.
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista già la tabella clienti
+        not:
+          tableExists:
+            schemaName: storico
+            tableName: clienti
+            
+      changes:
+        # 1) Creazione della sequence per id
+        - createSequence:
+            schemaName: storico
+            sequenceName: clienti_id_seq
+            startValue: 1
+            incrementBy: 1
+            dataType: BIGINT
+            remarks: "Sequence per la colonna id di storico.clienti"
+
+        # 2) Creazione della tabella con id BIGINT default nextval(...)
+        - createTable:
+            schemaName: storico
+            tableName: clienti
+            remarks: "Tabella storica per i clienti con snapshot JSONB e campi di audit"
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  defaultValueComputed: "nextval('storico.clienti_id_seq'::regclass)"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_storico_clienti
+                    nullable: false
+                  remarks: "Chiave primaria di tipo BIGINT basata su sequence"
+              - column:
+                  name: valid_from
+                  type: Timestamp with time zone
+                  defaultValueComputed: "CURRENT_TIMESTAMP"
+                  constraints:
+                    nullable: false
+                  remarks: "Data di inizio validità del record"
+              - column:
+                  name: valid_to
+                  type: Timestamp with time zone 
+                  remarks: "Data di fine validità del record (se conosciuta)"
+              - column:
+                  name: change_type
+                  type: CHAR(1)
+                  defaultValue: "A"
+                  remarks: "'Tipo di cambiamento: A=Active, S=Suppressed, F=Fused, D=Divided"
+              - column:
+                  name: data_insert
+                  type: TIMESTAMP
+                  defaultValueComputed: "CURRENT_TIMESTAMP"
+                  constraints:
+                    nullable: false
+                  remarks: "Timestamp di inserimento nella tabella storica"
+              - column:
+                  name: user_insert
+                  type: VARCHAR(255)
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+                  remarks: "Utente che ha creato questo record storico"
+              - column:
+                  name: cliente_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                  remarks: "Riferimento alla tabella anagrafiche.clienti"
+              - column:
+                  name: snapshot
+                  type: JSONB
+                  constraints:
+                    nullable: false
+                  remarks: "Snapshot JSONB dei dati clienti al momento dell'operazione"
+              - column:
+                  name: tipo_operazione
+                  type: SMALLINT
+                  remarks: "Codice del tipo di operazione applicata"
+              - column:
+                  name: tx_id
+                  type: UUID
+                  remarks: "UUID di transazione per correlare più operazioni"
+  
+        # 3) Ricreazione del FK su storico.clienti verso la nuova PK
+        - addForeignKeyConstraint:
+            constraintName: fk_storico_clienti_anagrafiche_clienti
+            baseTableSchemaName: storico
+            baseTableName: clienti
+            baseColumnNames: cliente_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: clienti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: SET NULL
+
+        
+
+ # Metto un  tag fine modifiche
+  - changeSet:
+        id: 20250804-90-create-seq-and-table-storico_clienti
+        author: mctit
+        changes:
+          - tagDatabase:
+              tag: 20250804-12-create-seq-and-table-storico_clienti

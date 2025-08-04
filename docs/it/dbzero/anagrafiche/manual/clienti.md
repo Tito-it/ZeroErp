@@ -1,8 +1,12 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.clienti`
 
+
 > 👀 **Vedi anche**
 >
-> * Tabelle correlate:
+> Guide generali
+>  * [Generazione di un cliente](/guide/generazione-cliente)
+>
+> * Approfondimento tabelle:
 >
 >   * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 >   * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
@@ -11,6 +15,13 @@
 >   * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)
 >   * [config.iva](/dbzero/config/tabelle/iva)
 >   * [config.utilities](/dbzero/config/tabelle/utilities)
+>
+> Approfondimeto funzioni:
+>
+> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+
 
 ---
 

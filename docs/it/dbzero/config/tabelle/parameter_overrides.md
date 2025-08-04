@@ -28,6 +28,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_parameter_overrides_parameter_id | `CREATE INDEX ix_parameter_overrides_parameter_id ON config.parameter_overrides USING btree (parameter_id)` |
 | parameter_overrides_pkey | `CREATE UNIQUE INDEX parameter_overrides_pkey ON config.parameter_overrides USING btree (id)` |
 | uq_overrides_full_scope | `CREATE UNIQUE INDEX uq_overrides_full_scope ON config.parameter_overrides USING btree (parameter_id, tenant_id, user_id, session_key, function_name)` |
 

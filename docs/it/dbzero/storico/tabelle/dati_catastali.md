@@ -23,6 +23,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_dati_catastali_dato_catastale_id | `CREATE INDEX ix_dati_catastali_dato_catastale_id ON storico.dati_catastali USING btree (dato_catastale_id)` |
 | pk_storico_dati_catastali | `CREATE UNIQUE INDEX pk_storico_dati_catastali ON storico.dati_catastali USING btree (id)` |
 
 ## 🚨 Trigger

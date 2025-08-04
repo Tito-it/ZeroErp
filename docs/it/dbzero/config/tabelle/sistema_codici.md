@@ -23,12 +23,14 @@
 |------|------|---------|
 | PRIMARY KEY | pk_sistema_codici | id |
 | UNIQUE | uq_sistema_codici_codice_tipo | codice_tipo |
+| UNIQUE | uq_sistema_codici_prefisso | prefisso |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_sistema_codici | `CREATE UNIQUE INDEX pk_sistema_codici ON config.sistema_codici USING btree (id)` |
 | uq_sistema_codici_codice_tipo | `CREATE UNIQUE INDEX uq_sistema_codici_codice_tipo ON config.sistema_codici USING btree (codice_tipo)` |
+| uq_sistema_codici_prefisso | `CREATE UNIQUE INDEX uq_sistema_codici_prefisso ON config.sistema_codici USING btree (prefisso)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

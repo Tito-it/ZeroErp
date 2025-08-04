@@ -1,4 +1,3 @@
-{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_ins_upd_genera_cdsoggetto.md" %}
 # ⚙️ Funzione `trgfn_soggetti_ins_upd_genera_cdsoggetto`
 
 ```sql

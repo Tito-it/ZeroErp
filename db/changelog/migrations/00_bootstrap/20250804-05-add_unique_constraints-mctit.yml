@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20250804-05-add_unique_constraints
+      author: mctit
+      comments: "Aggiunge vincolo UNIQUE su codice_istanza in anagrafiche.istanze_utilities"
+      preConditions:
+        onFail: MARK_RAN
+        onError: CONTINUE
+        not:
+            uniqueConstraintExists:
+              schemaName: anagrafiche
+              tableName: istanze_utilities
+              constraintName: uq_istanze_utilities_codice_istanza
+      changes:
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: istanze_utilities
+            columnNames: codice_istanza
+            constraintName: uq_istanze_utilities_codice_istanza
+
+  - changeSet:
+      id: 20250804-05A-add_unique_constraints
+      author: mctit
+      comments: "Aggiunge vincolo UNIQUE su prefisso in config.sistema_codici"
+      preConditions:
+        onFail: MARK_RAN
+        onError: CONTINUE
+        not:
+            uniqueConstraintExists:
+              schemaName: config
+              tableName: sistema_codici
+              constraintName: uq_sistema_codici_prefisso
+      changes:
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: sistema_codici
+            columnNames: prefisso
+            constraintName: uq_sistema_codici_prefisso
+
+  - changeSet:
+      id: 20250804-90-add_unique_constraints
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250804-05-add_unique_constraints

@@ -191,7 +191,23 @@ jobs:
 
       - name: Ricostruisci sito MkDocs
         run: mkdocs build --strict
+      # ----------------------------
+      # Pubblica su GitHub Pages
+      # ----------------------------
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          # il repo di destinazione (case-sensitive)
+          external_repository: Tito-it/ZeroERP-Docs
+          publish_branch: gh-pages
+          publish_dir: ./site   
+          # opzionali:
+           # user_name: GitHub Actions
+          # user_name: GitHub Actions
+          # user_email: actions@github.com
 
+      # eventualmente mantieni anche l’S3 sync se ti serve   
       - name: Configura credenziali AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
