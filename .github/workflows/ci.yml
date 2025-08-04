@@ -197,10 +197,13 @@ jobs:
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages          # la branch dove GitHub Pages legge i file
-          publish_dir: ./site               # directory generata da mkdocs build
+          deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          # il repo di destinazione (case-sensitive)
+          external_repository: Tito-it/ZeroERP-Docs
+          publish_branch: gh-pages
+          publish_dir: ./site   
           # opzionali:
+           # user_name: GitHub Actions
           # user_name: GitHub Actions
           # user_email: actions@github.com
 
