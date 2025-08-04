@@ -191,7 +191,20 @@ jobs:
 
       - name: Ricostruisci sito MkDocs
         run: mkdocs build --strict
+      # ----------------------------
+      # Pubblica su GitHub Pages
+      # ----------------------------
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages          # la branch dove GitHub Pages legge i file
+          publish_dir: ./site               # directory generata da mkdocs build
+          # opzionali:
+          # user_name: GitHub Actions
+          # user_email: actions@github.com
 
+      # eventualmente mantieni anche l’S3 sync se ti serve   
       - name: Configura credenziali AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
