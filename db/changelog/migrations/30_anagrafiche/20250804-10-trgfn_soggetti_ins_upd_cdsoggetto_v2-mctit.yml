@@ -25,7 +25,7 @@ databaseChangeLog:
             sql: |
               DROP TRIGGER IF EXISTS trg_soggetti_generate_codice
                 ON anagrafiche.soggetti;
-              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_ins_upd_cdsoggetto;  
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto;  
               DROP FUNCTION IF EXISTS script.trgfn_generate_codice_generic; 
 
 # Metto un  tag fine modifiche

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_billing_account_ins_upd_clean_fields.md" %}
 # ⚙️ Funzione `trgfn_billing_account_ins_upd_clean_fields`
 
 ```sql
