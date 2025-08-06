@@ -1,13 +1,14 @@
-# ⚙️ Funzione `trgfn_upd_istanze_utilities_protect_codice_istanza`
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_istanze_utilities_upd_protect_codice_istanza.md" %}
+# ⚙️ Funzione `trgfn_istanze_utilities_upd_protect_codice_istanza`
 
 ```sql
-CREATE FUNCTION trgfn_upd_istanze_utilities_protect_codice_istanza()
+CREATE FUNCTION trgfn_istanze_utilities_upd_protect_codice_istanza()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_upd_istanze_utilities_protect_codice_istanza()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_istanze_utilities_upd_protect_codice_istanza()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
