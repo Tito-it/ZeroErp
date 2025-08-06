@@ -63,7 +63,6 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 
 | **Oggetto**                                                                | **Tipo**         | **Descrizione**                                                  |
 | -------------------------------------------------------------------------- | ---------------- | ---------------------------------------------------------------- |
-| [script.state_iso_code3()](/dbzero/script/funzioni/state_iso_code3)                    | helper           | Default `stato_id` da parametro `state_iso_code3`                |
 | [script.fn_get_parameter_full(...)](/dbzero/script/funzioni/fn_get_parameter_full)     | helper           | Parametri e override (tenant, user, session, funzione)           |
 | [script.fn_get_default_by_param(...)](/dbzero/script/funzioni/fn_get_default_by_param) | helper           | Default generico da lookup table + parametro                     |
 | [script.fn_get_snapshot_as_of(...)](/dbzero/script/funzioni/fn_get_snapshot_as_of)     | helper           | JSONB snapshot “as of” data                                      |
@@ -95,3 +94,6 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 ---
 
 *Questa guida copre l’intero ciclo di vita e le componenti software per la gestione degli indirizzi in Zero ERP: dalla tabella geografica di base, al dettaglio civico, fino alle funzioni di audit e storicizzazione.*
+
+---
+{% include-markdown "signature-core.md" %}

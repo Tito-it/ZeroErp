@@ -3,14 +3,22 @@
 
 > 👀 **Vedi anche**    
 >
+> Guide:   
+>
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)       
+>
 > Approfondimento Tabelle:      
-> - [config.stradario](/dbzero/config/tabelle/stradario)  
-> - [config.comuni](/dbzero/config/tabelle/comuni)    
-> - [config.province](/dbzero/config/tabelle/province)   
-> - [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
+>
+> * [config.stradario](/dbzero/config/tabelle/stradario)  
+> * [config.comuni](/dbzero/config/tabelle/comuni)    
+> * [config.province](/dbzero/config/tabelle/province)   
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
 >
 > Approfondimento funzioni:   
-> - [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)    
+>
+> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)    
+> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+
 
 
 La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli indirizzi civici, collegati a una specifica via (tramite `stradario_id`) e al relativo contesto geografico (comune, provincia, regione, stato). In essa sono memorizzati numeri civici, estensioni, palazzine, interni, piani, dati di geolocalizzazione e un campo di indirizzo normalizzato generato automaticamente.

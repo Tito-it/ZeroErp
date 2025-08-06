@@ -12,6 +12,8 @@
 > Approfondimento funzioni:    
 >
 > * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
+ * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+
 
 La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciascun comune, completando il processo di indirizzamento con informazioni di localizzazione e dettagli aggiuntivi.
 
@@ -58,5 +60,3 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
 ---
 
 > 🧠 **"Una vista dettagliata e georeferenziata delle strade comunali, con CAP obbligatorio e informazioni flessibili per ogni via."**
-
-
