@@ -143,10 +143,38 @@ databaseChangeLog:
             tableName: billing_account
             columnName: istanza_utility_id
             columnDataType: INTEGER
-
-
   - changeSet:
       id: 20250803-90-rename-istanza-clienti
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250803-16-rename-istanza-clienti
+  # -------------------------------------------------------------------
+  # 4) Impone NOT NULL su istanza_utility_id in anagrafiche.billing_account
+  # -------------------------------------------------------------------
+  - changeSet:
+      id: 20250803-20-set-notnull-valid_from-billing_account
+      author: mctit
+      comments: "Rende obbligatoria (NOT NULL) la colonna valid_from in billing_account"
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        onFail: MARK_RAN
+        onError: CONTINUE
+        columnExists:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: valid_from
+      changes:
+       - dropNotNullConstraint:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: valid_from
+            columnDataType: INTEGER
+
+  - changeSet:
+      id: 20250803-91-rename-istanza-clienti
       author: mctit
       changes:
         - tagDatabase:

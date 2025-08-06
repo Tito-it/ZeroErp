@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_get_dati_catastali_by_istanza.md" %}
 # ⚙️ Funzione `fn_get_dati_catastali_by_istanza`
 
 ```sql

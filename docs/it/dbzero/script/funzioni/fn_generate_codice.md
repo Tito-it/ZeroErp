@@ -36,8 +36,15 @@ BEGIN
     risultato := prefix || sep || lpad(seq_val::TEXT, len, '0');
     RETURN risultato;
   ELSE
-    RAISE EXCEPTION '%',
-      script.fn_get_messaggio('SEQUENZA_NON_CONFIGURATA', tipo);
+    -- Se non esiste una sequenza per questo tipo, lancia un errore
+       PERFORM script.fn_log_and_raise_error(
+          'database',
+          TG_NAME,
+          'SEQUENZA_NON_CONFIGURATA',
+          jsonb_build_object('codice_tipo',tipo),
+          NULL::uuid,
+          tipo::TEXT
+        );
   END IF;
 END;
 $function$

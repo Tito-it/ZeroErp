@@ -4,7 +4,7 @@
 >
 > Approfondimento Tabelle:   
 > - [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)      
-> - [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/anagrafiche.soggetti)    
+> - [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
 >
 > Approfondimento funzioni:   
 > - [script.fn_valida_partita_iva](/dbzero/script/funzioni/fn_valida_partita_iva)   

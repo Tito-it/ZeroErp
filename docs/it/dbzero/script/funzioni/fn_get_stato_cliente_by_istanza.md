@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_get_stato_cliente_by_istanza.md" %}
 # ⚙️ Funzione `fn_get_stato_cliente_by_istanza`
 
 ```sql

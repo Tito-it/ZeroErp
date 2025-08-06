@@ -1,21 +1,22 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.billing_account`
 
 > 👀 **Vedi anche**
->
+> 
 > Guide generali: 
 >  * [Generazione di un cliente](/guide/generazione-cliente)
->
+> 
 > * Approfondimento tabelle :
 >
->   * [anagrafiche.istanze\_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+>   * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 >   * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
->   * [anagrafiche.soggetti\_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+>   * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 >   * [config.utilities](/dbzero/config/tabelle/utilities)
 >
 > Approfondimeto funzioni:
 >
 > * [anagrafiche.trgfn_billing_account_ins_upd_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_billing_account_ins_upd_clean_fields)
 > * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 ---
 
@@ -28,9 +29,6 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 * **Unicità per istanza+utility**: non possono esistere due record con la stessa coppia (`istanza_utility_id`, `utility_id`).
 * **Strutture gerarchiche** dei codici tramite `parent_account_id`, utile per Modellare:
 
-  * Holding e consociate (stesso soggetto con codici distinti).
-  * Suddivisioni interne (dipartimenti, filiali).
-  * Codici sostitutivi o di aggiornamento, mantenendo la tracciabilità storica.
 
 ---
 
@@ -63,7 +61,7 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
    * Non possono esistere due billing account per la stessa coppia (`istanza_utility_id`, `utility_id`).
 3. **Range di validità**
 
-   * `valid_from` obbligatorio, `valid_to` opzionale, permette definire periodi di validità distinti.
+   * Periodi di validità: valid_from è obbligatorio se parent_account_id non è NULL; valid_to, se presente, deve essere ≥    valid_from
 
 ---
 
@@ -77,29 +75,52 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 
 ### 💡 Vantaggi Operativi
 
-* **Fatturazione precontrattuale**: abilita la generazione di codici cliente anche prima della definizione formale del cliente.
-* **Storico codici**: gestisce cambi di codifica via `parent_account_id`, mantenendo tracciamento.
-* **Integrità**: vincoli e indici garantiscono univocità e coerenza referenziale.
+* **Fatturazione precontrattuale**: codice disponibile anche prima del customer finale.
+* **Storico completo**: tracciamento di versioni e sub-account.
+* **Integrità fiscale**: raggruppamento sullo stesso `id_fiscale_univoco_cf_piva` del soggetto.
 
 ---
 
-### ⚙️ Implementazioni Aggiuntive
+### 🔑 Gerarchia e Periodo di Validità
 
-* `trg_billing_account_ins_upd_gen_account_code` genera automaticamente `account_code` se non specificato.
-* `trg_upd_billing_account_audit_data_user` tiene traccia delle modifiche audit.
+1. **`parent_account_id`**
+
+   * Definisce relazioni padre-figlio tra account.
+   * Se `parent_account_id IS NULL`, la fattura è emessa per l’account stesso.
+   * Se non NULL, la fattura somma i consumi di tutti i figli e li addebita al padre.
+
+2. **`valid_from` / `valid_to`**
+
+   * `valid_from`: data inizio validità dell’associazione al parent (obbligatoria se `parent_account_id` è presente).
+   * `valid_to`: data fine validità, se NULL l’associazione è ancora in corso.
+
+3. **Coerenza fiscale**
+
+   * L’`account_code` del padre e dei figli deve condividere lo stesso `id_fiscale_univoco_cf_piva` del soggetto.
+
+
+---
+
+### ⚙️ Trigger e Funzioni Coinvolte
+
+| Trigger                                        | Evento                  | Funzione                                                   |
+| ---------------------------------------------- | ----------------------- | ---------------------------------------------------------- |
+| `trg_billing_account_ins_upd_clean_fields`     | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_billing_account_ins_upd_clean_fields()` |
+| `trg_billing_account_ins_upd_gen_account_code` | BEFORE INSERT OR UPDATE | `script.fn_generate_codice('billing_account')`             |
+| `trg_upd_billing_account_audit_data_user`      | BEFORE UPDATE           | `script.trgfn_upd_audit_data_user_generic()`               |
 
 ---
 
 ### ✅ Controlli di Coerenza
 
-* `istanza_utility_id` e `utility_id` non possono essere duplicati per lo stesso billing account.
-* `account_code` generato via trigger evita collisioni manuali.
-* `parent_account_id` consente strutture di sub-account, ma evita loop grazie al vincolo di PK.
+* FK e vincoli CHECK assicurano la validità dei periodi (`valid_from`, `valid_to`) e delle gerarchie.
+* Il trigger `clean_fields` genera `account_code` se mancante.
 
 ---
 
 ### 🧾 Note Finali
 
-La tabella `billing_account` è cruciale per separare il **codice di fatturazione** dal cliente contrattuale, offrendo flessibilità e storicità nei rapporti con le diverse utilities.
+Questa tabella è la base per la gestione avanzata dei codici di fatturazione, con meccanismi di storicizzazione e aggregazione utili in scenari di multi-utenza e subentri tipici del settore utilities.
 
 {% include-markdown "signature-core.md" %}
+

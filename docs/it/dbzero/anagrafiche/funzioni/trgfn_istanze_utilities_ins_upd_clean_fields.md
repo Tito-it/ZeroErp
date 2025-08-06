@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_istanze_utilities_ins_upd_clean_fields.md" %}
 # ⚙️ Funzione `trgfn_istanze_utilities_ins_upd_clean_fields`
 
 ```sql

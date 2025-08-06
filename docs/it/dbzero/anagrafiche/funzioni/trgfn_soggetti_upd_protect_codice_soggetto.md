@@ -1,13 +1,14 @@
-# ⚙️ Funzione `trgfn_upd_soggetti_protect_codice_soggetto`
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_upd_protect_codice_soggetto.md" %}
+# ⚙️ Funzione `trgfn_soggetti_upd_protect_codice_soggetto`
 
 ```sql
-CREATE FUNCTION trgfn_upd_soggetti_protect_codice_soggetto()
+CREATE FUNCTION trgfn_soggetti_upd_protect_codice_soggetto()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_upd_soggetti_protect_codice_soggetto()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_upd_protect_codice_soggetto()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

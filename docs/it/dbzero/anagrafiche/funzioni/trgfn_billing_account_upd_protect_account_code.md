@@ -1,13 +1,14 @@
-# ⚙️ Funzione `trgfn_upd_billing_account_protect_account_code`
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_billing_account_upd_protect_account_code.md" %}
+# ⚙️ Funzione `trgfn_billing_account_upd_protect_account_code`
 
 ```sql
-CREATE FUNCTION trgfn_upd_billing_account_protect_account_code()
+CREATE FUNCTION trgfn_billing_account_upd_protect_account_code()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_upd_billing_account_protect_account_code()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_upd_protect_account_code()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

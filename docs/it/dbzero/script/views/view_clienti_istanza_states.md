@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/view_clienti_istanza_states.md" %}
 # 🔍 View `view_clienti_istanza_states`
 
 ```sql

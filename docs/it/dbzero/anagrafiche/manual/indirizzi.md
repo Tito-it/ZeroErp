@@ -2,6 +2,9 @@
 
 > 👀 **Vedi anche**    
 >
+> Guide:   
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)       
+>
 > Approfondimento Tabelle:   
 >
 > * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)       

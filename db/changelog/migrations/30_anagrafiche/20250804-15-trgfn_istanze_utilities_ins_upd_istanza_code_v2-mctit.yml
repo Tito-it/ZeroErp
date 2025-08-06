@@ -27,7 +27,7 @@ databaseChangeLog:
                 ON anagrafiche.istanze_utilities;
                
               DROP FUNCTION IF EXISTS script.trgfn_istanze_utilities_ins_set_istanza_codice; 
-
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_istanze_utilities_ins_set_istanza_codice; 
 # Metto un  tag fine modifiche
   - changeSet:
       id: 20250804-90-trgfn_istanze_utilities_ins_upd_istanza_code_v2

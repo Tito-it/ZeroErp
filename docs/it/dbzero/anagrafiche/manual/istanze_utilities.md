@@ -14,6 +14,7 @@
 >
 > * [anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_ins_upd_clean_fields)
 > * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 ---
 

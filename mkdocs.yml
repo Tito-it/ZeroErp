@@ -14,6 +14,7 @@ repo_name: Tito-it/ZeroErp
 docs_dir: docs
 site_dir: site
 
+
 theme:
   name: material
   language: it            # lingua di default: Italiano
@@ -21,10 +22,12 @@ theme:
     - navigation.sections
     - navigation.expand
 plugins:
-  - include-markdown:
+  - include-markdown
       #base_path: docs       # ← questa riga deve essere attiva
       #fail_on_missing: false
+  - abs-to-rel          # per i link relativi
   - search
+  
   
   - i18n:
       docs_structure: folder
@@ -43,7 +46,15 @@ markdown_extensions:
       permalink: true
   - admonition
   - codehilite
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+extra_javascript:
+  - https://unpkg.com/mermaid@10.6.1/dist/mermaid.min.js
+  #- assets/javascripts/mermaid-init.js
+  - assets/javascripts/custom-mermaid.js
 
 nav:
   - Home: index.md
@@ -89,3 +100,4 @@ nav:
           - Configurazione e gestione parametri: guide/configurazione-e-gestione-parametri.md
           - Gestione dei Messaggi di Errore e Generazione Log : guide/Messaggi-di-Errore-e-Generazione-Log.md
           - Generazione di un cliente : guide/generazione-cliente.md
+          - Gestione degli indirizzi : guide/gestione-degli-indirizzi.md
