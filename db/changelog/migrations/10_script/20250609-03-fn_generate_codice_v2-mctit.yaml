@@ -12,6 +12,9 @@ databaseChangeLog:
   - changeSet:
       id: 20250609-03-fn_generate_codice_v2
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
       comments: >
         Crea la funzione generica script.fn_generate_codice(tipo TEXT) che:
         - legge da config.sistema_codici i parametri per quel tipo
@@ -50,8 +53,15 @@ databaseChangeLog:
                   risultato := prefix || sep || lpad(seq_val::TEXT, len, '0');
                   RETURN risultato;
                 ELSE
-                  RAISE EXCEPTION '%',
-                    script.fn_get_messaggio('SEQUENZA_NON_CONFIGURATA', tipo);
+                  -- Se non esiste una sequenza per questo tipo, lancia un errore
+                     PERFORM script.fn_log_and_raise_error(
+                        'database',
+                        TG_NAME,
+                        'SEQUENZA_NON_CONFIGURATA',
+                        jsonb_build_object('codice_tipo',tipo),
+                        NULL::uuid,
+                        tipo::TEXT
+                      );
                 END IF;
               END;
               $$;

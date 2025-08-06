@@ -96,4 +96,28 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 *Questa guida copre l’intero ciclo di vita e le componenti software per la gestione degli indirizzi in Zero ERP: dalla tabella geografica di base, al dettaglio civico, fino alle funzioni di audit e storicizzazione.*
 
 ---
-{% include-markdown "signature-core.md" %}
+
+## 6. Diagramma ER
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%  
+erDiagram
+    stati              ||--o{ regioni             : has
+    regioni            ||--o{ province            : has
+    province           ||--o{ comuni              : has
+    comuni             ||--o{ codici_postali      : has
+
+    toponomastica      ||--o{ stradario_generale  : has
+    stradario_generale ||--o{ stradario           : has
+
+    stradario          ||--o{ indirizzi_dettaglio : uses
+    indirizzi_dettaglio||--o{ indirizzi           : assigned_to
+
+    comuni             ||--o{ indirizzi           : uses
+    codici_postali     ||--o{ indirizzi           : uses
+    stati              ||--o{ indirizzi           : uses
+
+    indirizzi          ||--o{ storico_indirizzi   : history
+    stradario          ||--o{ storico_stradario    : history
+
+```
