@@ -113,4 +113,48 @@ Questa guida descrive in dettaglio il processo di **generazione di un cliente** 
 > * Il cliente viene creato in un secondo momento, tipicamente al momento della firma del contratto.
 > * Il cliente **assume lo stesso account** dell’istanza, mantenendo **continuità nei legami** tra fase pre e post contrattuale.
 
+---
+
+## 📊 Diagramma ER
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+
+%% Relazioni principali per la generazione di un cliente
+    
+    soggetti               ||--o{ istanze_utilities         : has
+    utilities              ||--o{ clienti                   : has
+    istanze_utilities      ||--o{ clienti                   : assigned_to
+    istanze_utilities      ||--o{ billing_account           : generates
+    istanze_utilities      ||--o{ dati_catastali            : may_have
+
+    billing_account        }o--o{ clienti                   : inherited_by
+    billing_account        ||--o{ billing_account           : parent_of
+
+    indirizzi              ||--o{ comuni                    : located_in
+    indirizzi              ||--o{ stati                     : located_in
+    indirizzi              ||--o{ codici_postali            : uses
+    indirizzi_dettaglio    ||--o{ istanze_utilities         : optional_for
+    indirizzi_dettaglio    ||--o{ indirizzi                 : normalized_by
+
+    
+
+```
+---
+
+## 📊 Diagramma ER tabelle storicizzate
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+
+%% Tabelle storicizzate
+
+    soggetti               ||--o{ sto_soggetti                        : history
+    clienti                ||--o{ sto_clienti                         : history
+    indirizzi              ||--o{ sto_indirizzi                       : history
+    indirizzi_dettaglio    ||--o{ sto_indirizzi_dettaglio             : history
+```
+---
 {% include-markdown "signature-core.md" %}
