@@ -6,7 +6,7 @@
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
-
+  
 databaseChangeLog:
   - changeSet:
       id: 000-01-create-extensions
