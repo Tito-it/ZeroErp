@@ -45,3 +45,28 @@ databaseChangeLog:
         changes:
           - tagDatabase:
               tag: 20250804-13-rename_index_soggetti_from_key_to_uq
+
+
+  - changeSet:
+      id: 20250804-03-set-storicizza-default-true
+      author: mctit
+      comments: "Imposta il valore di default di storicizza su TRUE in anagrafiche.soggetti"
+      preConditions:
+        onFail: HALT
+        onError: CONTINUE
+        columnExists:
+            schemaName: anagrafiche
+            tableName: soggetti
+            columnName: storicizza
+      changes:
+        sql:
+          splitStatements: false  
+          sql: |
+                  ALTER TABLE anagrafiche.soggetti
+                    ALTER COLUMN storicizza SET DEFAULT true;
+  - changeSet:
+      id: 20250804-90-set-storicizza-default-true
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250804-03-set-storicizza-default-true

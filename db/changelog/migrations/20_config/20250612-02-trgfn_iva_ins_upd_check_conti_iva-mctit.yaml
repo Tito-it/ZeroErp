@@ -48,7 +48,15 @@ databaseChangeLog:
                     FROM config.conti_contabili
                    WHERE id = NEW.conto_iva_acquisti_id;
                   IF v_tipo_acq IS DISTINCT FROM 'A' THEN
-                    RAISE EXCEPTION '%', config.fn_get_messaggio('E_IVA_CONTO_ACQ_ERR');
+                    
+                      PERFORM script.fn_log_and_raise_error(
+                        'database',
+                        TG_NAME,
+                        'E_IVA_CONTO_ACQ_ERR',
+                        jsonb_build_object('column','conto_iva_acquisti_id','id',NEW.conto_iva_acquisti_id),
+                        NULL::uuid,
+                        NEW.conto_iva_acquisti_id::text
+                      );
                   END IF;
                 END IF;
 
@@ -58,7 +66,14 @@ databaseChangeLog:
                     FROM config.conti_contabili
                    WHERE id = NEW.conto_iva_vendita_id;
                   IF v_tipo_ven IS DISTINCT FROM 'V' THEN
-                    RAISE EXCEPTION '%', config.fn_get_messaggio('E_IVA_CONTO_VEN_ERR');
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      TG_NAME,
+                      'E_IVA_CONTO_VEN_ERR',
+                      jsonb_build_object('column','conto_iva_vendita_id','id',NEW.conto_iva_vendita_id),
+                      NULL::uuid,
+                      NEW.conto_iva_vendita_id::text
+                    );
                   END IF;
                 END IF;
 

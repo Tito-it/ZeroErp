@@ -124,10 +124,12 @@ erDiagram
 %% Relazioni principali per la generazione di un cliente
     
     soggetti               ||--o{ istanze_utilities         : has
-    utilities              ||--o{ clienti                   : has
+    
     istanze_utilities      ||--o{ clienti                   : assigned_to
     istanze_utilities      ||--o{ billing_account           : generates
     istanze_utilities      ||--o{ dati_catastali            : may_have
+
+    utilities              ||--o{ clienti                   : has
 
     billing_account        }o--o{ clienti                   : inherited_by
     billing_account        ||--o{ billing_account           : parent_of

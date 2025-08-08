@@ -27,7 +27,7 @@
 | tipo_soggetto_dettaglio_id | bigint | YES |  |
 | id_fiscale_univoco_cf_piva | text | YES |  |
 | tx_id | uuid | YES |  |
-| storicizza | boolean | NO | false |
+| storicizza | boolean | NO | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

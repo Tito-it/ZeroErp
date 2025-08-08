@@ -9,3 +9,4 @@ id,cod_int_stato_cliente,desc_stato_cliente,desc_breve_stato,check_lettura,abili
 20,RS   ,Richiesta sospensione,RIC.SOSP.           ,S,S,AT,A,2025-04-22 19:00:59.665141+02,postgres,2025-04-22 19:00:59.665141+02,postgres
 14,AN   ,annulla servizio,ANNULLA SERV.       ,N,N,AN,A,2025-04-22 19:00:59.665141+02,postgres,2025-04-22 19:00:59.665141+02,postgres
 1,AT   ,Attivo,ATTIVO              ,S,S,AT,A,2025-04-22 19:00:59.665141+02,postgres,2025-04-22 19:00:59.665141+02,postgres
+21,PR   ,Pre-contrattuale,PRE-CONTRATTO       ,N,S,IS,A,2025-08-04 10:11:44.305119+02,postgres,2025-08-04 10:11:44.305119+02,postgres

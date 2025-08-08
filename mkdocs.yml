@@ -23,7 +23,7 @@ theme:
     - navigation.expand
 plugins:
   - include-markdown
-      #base_path: docs       # ← questa riga deve essere attiva
+      #base_path: docs     
       #fail_on_missing: false
   - abs-to-rel          # per i link relativi
   - search
@@ -87,11 +87,9 @@ nav:
           - Storico:    dbzero/storico/index.md
           - Public:    dbzero/public/index.md
   - Strumenti:
-      - “”:
-          - Generatore Documentazione: dbzero/tools/gen_db_docs.md
+        - Generatore Documentazione: dbzero/tools/gen_db_docs.md
   - Sviluppatori:
-      - “”:
-          - API: dev/api.md
+        - API: dev/api.md
 
   - Guide tecniche:
       - Elenco guide: 
