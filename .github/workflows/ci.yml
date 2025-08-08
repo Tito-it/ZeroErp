@@ -117,9 +117,13 @@ jobs:
         run: sleep 15
  
       - name: Verify pgAgent test log
+        env:
+          PGPASSWORD: secret
         run: |
-           psql -h localhost -p 5432 -U zeroerp -d zeroerp -c \
-             "SELECT * FROM maintenance.test_pgagent_log ORDER BY id DESC LIMIT 1;"            
+            psql -h localhost -p 5432 \
+              -U zeroerp \
+              -d zeroerp \
+              -c "SELECT * FROM maintenance.test_pgagent_log ORDER BY id DESC LIMIT 1;"    
 
       - name: Genera doc DB
         # Qui sopra non serve più caricare i tuoi secrets, ma usiamo quelli del servizio
