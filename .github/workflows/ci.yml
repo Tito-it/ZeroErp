@@ -35,7 +35,17 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-  
+      pgagent:
+        image: bitnami/pgagent:4
+
+        env:
+          PGAGENT_HOST: postgres
+          PGAGENT_PORT: 5432
+          PGAGENT_DATABASE: zeroerp
+          PGAGENT_USER: zeroerp
+          PGAGENT_PASSWORD: secret
+
+       
 
     steps:
       - name: Checkout repository
@@ -101,7 +111,16 @@ jobs:
             --password=secret \
             --changeLogFile=db/changelog/changelog-master.yaml \
             update 
-          
+
+       # attendiamo che pgAgent legga le nuove definizioni e lanci il job di test
+      - name: Wait for pgAgent to schedule jobs
+        run: sleep 15
+ 
+      - name: Verify pgAgent test log
+        run: |
+           psql -h localhost -p 5432 -U zeroerp -d zeroerp -c \
+             "SELECT * FROM maintenance.test_pgagent_log ORDER BY id DESC LIMIT 1;"            
+
       - name: Genera doc DB
         # Qui sopra non serve più caricare i tuoi secrets, ma usiamo quelli del servizio
         env:

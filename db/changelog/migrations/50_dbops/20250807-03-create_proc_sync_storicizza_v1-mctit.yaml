@@ -17,8 +17,7 @@ databaseChangeLog:
       comments: >
         Crea la procedura dbops.sync_storico_set_storicizza()
         che popola config.storico_set_storicizza con tutte le tabelle
-        il cui default di storicizza è TRUE.
-      runAlways: true
+        il cui default di storicizza è TRUE.  
       changes:
         - sql:
             splitStatements: false

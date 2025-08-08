@@ -10,6 +10,9 @@ databaseChangeLog:
   - changeSet:
       id: 100-create-schemas
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
       comment: Crea tutti gli schemi necessari (se non esistono già)
       changes:
         - sql:
@@ -22,3 +25,4 @@ databaseChangeLog:
               CREATE SCHEMA IF NOT EXISTS script;
               CREATE SCHEMA IF NOT EXISTS storico;
               CREATE SCHEMA IF NOT EXISTS data_conversion;
+              CREATE SCHEMA IF NOT EXISTS maintenance;
