@@ -1,0 +1,43 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250808-01-table_maintenance_test_pgagent_log
+      author: mctit
+      runOnChange: true
+      validCheckSums: 
+        - ANY
+      comments: >
+        Tabella log di test per pgagent 
+      preConditions:
+        onFail: MARK_RAN
+        onError: CONTINUE
+        not:
+            tableExists:
+              schemaName: maintenance
+              tableName: test_pgagent_log
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE IF NOT EXISTS maintenance.test_pgagent_log (
+                id         SERIAL PRIMARY KEY,
+                fired_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                jobname    TEXT        NOT NULL,
+                status     INT         NOT NULL,
+                message    TEXT
+              );
+              
+  - changeSet:
+      id: 20250808-90-table_maintenance_test_pgagent_log
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250808-01-table_maintenance_test_pgagent_log

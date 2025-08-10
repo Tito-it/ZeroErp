@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250809-01-table_maintenance_job_run_log
+      author: mctit
+      runOnChange: true
+      validCheckSums: 
+        - ANY
+      comments: >
+        Tabella log di esecuzione dei job per pgagent
+      preConditions:
+        onFail: MARK_RAN
+        onError: CONTINUE
+        not:
+            tableExists:
+              schemaName: maintenance
+              tableName: job_run_log
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE IF NOT EXISTS maintenance.job_run_log (
+                id              bigserial PRIMARY KEY,
+                jobname         text NOT NULL,
+                stepname        text,
+                started_at      timestamptz NOT NULL DEFAULT clock_timestamp(),
+                ended_at        timestamptz,
+                ok              boolean,
+                rows_affected   bigint,
+                message         text,
+                error_code      text,
+                error_detail    text,
+                agent_host      text DEFAULT inet_client_addr()::text,
+                run_uuid        uuid NOT NULL DEFAULT gen_random_uuid()
+              );
+              
+  - changeSet:
+      id: 20250809-90-table_maintenance_job_run_log
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250809-01-table_maintenance_job_run_log

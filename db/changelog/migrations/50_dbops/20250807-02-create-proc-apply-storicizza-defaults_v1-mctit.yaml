@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+      
+databaseChangeLog:
+  - changeSet:
+      id: 20250807-02-create-proc-apply-storicizza-defaults
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+        Crea la procedura dbops.proc_apply_storicizza_defaults() che
+        imposta il default TRUE sulla colonna storicizza in tutte
+        le tabelle elencate in config.storico_set_storicizza.
+      
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE dbops.proc_apply_storicizza_defaults()
+                LANGUAGE plpgsql
+                AS $$
+                DECLARE
+                  rec RECORD;
+                  sch TEXT;
+                  tbl TEXT;
+                BEGIN
+                  FOR rec IN
+                    SELECT table_name
+                      FROM config.storico_set_storicizza
+                  LOOP
+                    -- separa "schema.tabella" in due parti
+                    sch := split_part(rec.table_name, '.', 1);
+                    tbl := split_part(rec.table_name, '.', 2);
+
+                    -- esegue: ALTER TABLE schema.tabella ALTER COLUMN storicizza SET DEFAULT true
+                    EXECUTE format(
+                      'ALTER TABLE %I.%I ALTER COLUMN storicizza SET DEFAULT true',
+                      sch,
+                      tbl
+                    );
+                  END LOOP;
+                END;
+                $$;
+
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON PROCEDURE dbops.proc_apply_storicizza_defaults() IS
+                'Imposta il default TRUE su storicizza per tutte le tabelle configurate in config.storico_set_storicizza';
+
+  - changeSet:
+      id: 20250807-90-create-proc-apply-storicizza-defaults
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250807-02-create-proc-apply-storicizza-defaults

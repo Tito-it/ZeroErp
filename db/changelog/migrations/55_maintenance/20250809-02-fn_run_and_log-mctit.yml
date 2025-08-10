@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250809-02-fn_run_and_log
+      author: mctit
+      runOnChange: true
+      validCheckSums: 
+        - ANY
+      comments: >
+       Creazione funzione di logging per i job di pgagent
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION maintenance.fn_run_and_log(
+                  p_jobname   text,
+                  p_stepname  text,
+                  p_sql       text,
+                  p_lock_key  bigint DEFAULT NULL   -- es. hashtext(p_jobname) per singleton
+                ) RETURNS void
+                LANGUAGE plpgsql
+                AS $$
+                DECLARE
+                  v_id         bigint;
+                  v_rows       bigint := 0;
+                  v_locked     boolean := false;
+
+                  -- diagnosi errori
+                  v_errmsg     text;
+                  v_errdetail  text;
+                  v_errhint    text;
+                  v_errcontext text;
+                  v_sqlstate   text;
+                BEGIN
+                  -- lock opzionale per evitare overlap
+                  IF p_lock_key IS NOT NULL THEN
+                    v_locked := pg_try_advisory_lock(p_lock_key);
+                    IF NOT v_locked THEN
+                      INSERT INTO maintenance.job_run_log(jobname, stepname, ok, message)
+                      VALUES (p_jobname, p_stepname, TRUE, 'skip: another run in progress');
+                      RETURN;
+                    END IF;
+                  END IF;
+
+                  INSERT INTO maintenance.job_run_log(jobname, stepname)
+                  VALUES (p_jobname, p_stepname)
+                  RETURNING id INTO v_id;
+
+                  BEGIN
+                    EXECUTE p_sql;
+                    GET DIAGNOSTICS v_rows = ROW_COUNT;
+
+                    UPDATE maintenance.job_run_log
+                      SET ended_at      = clock_timestamp(),
+                          ok            = TRUE,
+                          rows_affected = v_rows,
+                          message       = 'done'
+                    WHERE id = v_id;
+
+                    IF v_locked THEN
+                      PERFORM pg_advisory_unlock(p_lock_key);
+                    END IF;
+
+                  EXCEPTION WHEN OTHERS THEN
+                    -- cattura dettagli dal frame eccezione
+                    GET STACKED DIAGNOSTICS
+                      v_errmsg     = MESSAGE_TEXT,
+                      v_errdetail  = PG_EXCEPTION_DETAIL,
+                      v_errhint    = PG_EXCEPTION_HINT,
+                      v_errcontext = PG_EXCEPTION_CONTEXT,
+                      v_sqlstate   = RETURNED_SQLSTATE;
+
+                    UPDATE maintenance.job_run_log
+                      SET ended_at     = clock_timestamp(),
+                          ok           = FALSE,
+                          message      = v_errmsg,
+                          error_code   = v_sqlstate,
+                          error_detail = coalesce(v_errdetail,'') ||
+                                          CASE WHEN v_errhint IS NOT NULL THEN E'\nHINT: '||v_errhint ELSE '' END ||
+                                          CASE WHEN v_errcontext IS NOT NULL THEN E'\nCONTEXT: '||v_errcontext ELSE '' END
+                    WHERE id = v_id;
+
+                    IF v_locked THEN
+                      PERFORM pg_advisory_unlock(p_lock_key);
+                    END IF;
+
+                    RAISE;  -- lascio propagare (togli se vuoi "ingoiare")
+                  END;
+                END;
+                $$;
+
+  - changeSet:
+      id: 20250809-90-fn_run_and_log
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250809-02-fn_run_and_log

@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+      
+databaseChangeLog:
+  - changeSet:
+      id: 20250808-03-create-proc-sync-storicizza
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+        Crea la procedura dbops.proc_sync_storico_set_storicizza()
+        che popola config.storico_set_storicizza con tutte le tabelle
+        il cui default di storicizza è TRUE.  
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE dbops.proc_sync_storico_set_storicizza()
+                  LANGUAGE plpgsql
+                  AS $$
+                  DECLARE
+                    rec RECORD;
+                  BEGIN
+                    FOR rec IN
+                      SELECT a.attrelid::regclass::text AS table_name
+                        FROM pg_attribute a
+                        JOIN pg_class c ON a.attrelid = c.oid AND c.relkind = 'r'
+                        JOIN pg_namespace n ON c.relnamespace = n.oid
+                        JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+                      WHERE a.attname = 'storicizza'
+                        -- confronta la stringa dell’espressione, non fai cast
+                        AND pg_get_expr(ad.adbin, ad.adrelid) = 'true'
+                    LOOP
+                      INSERT INTO config.storico_set_storicizza(table_name, insert_manuale)
+                      VALUES (rec.table_name, false)
+                      ON CONFLICT (table_name) DO NOTHING;
+                    END LOOP;
+                  END;
+                  $$;
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON PROCEDURE dbops.proc_sync_storico_set_storicizza()
+                IS 'Sincronizza config.storico_set_storico_set_storicizza con tutte le 
+                    tabelle che hanno default storicizza = TRUE';
+  - changeSet:
+      id: 20250808-90-create-proc-sync-storicizza
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250808-03-create-proc-sync-storicizza

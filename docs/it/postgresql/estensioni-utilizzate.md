@@ -13,14 +13,18 @@ Zero ERP utilizza diverse estensioni PostgreSQL per migliorare le funzionalità 
 * **`postgis_topology`**
   Estensione complementare a PostGIS che fornisce strumenti per gestire e analizzare topologie spaziali, essenziali per la modellazione di reti o aree contigue.
 
-* **`pgcrypto`**
+* **[`pgcrypto`](/postgresql/pgcrypto)**
   Fornisce funzionalità crittografiche per la gestione sicura di dati sensibili, come crittografia simmetrica e asimmetrica, hashing sicuro e generazione di UUID.
 
 * **`btree_gist`**
   Permette l’uso di indici GiST con tipi di dati standard, abilitando implementazioni avanzate e flessibili di indici multicolonna e personalizzati.
 
-* **`dblink`**
+* **[`dblink`](/postgresql/dblink)**
   Consente connessioni e query cross-database tra diverse istanze PostgreSQL, utilizzata principalmente per attività di logging remoto e integrazioni di dati distribuiti.
+
+* **[`pgagent`](/postgresql/pgagent)**
+  Agente di schedulazione per PostgreSQL che esegue job programmati lato DB. Archivia job, schedule, step e log nello schema pgagent ed è utilizzato in Zero ERP per orchestrare tutte le attività periodiche di manutenzione del database.
+
 
 ---
 

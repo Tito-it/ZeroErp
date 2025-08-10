@@ -1,18 +1,3 @@
 codice,lingua,messaggio,causa,soluzione,id
-PIVA_NON_VALIDA,it,Partita IVA non valida: %s,"","",7
-SEQUENZA_NON_CONFIGURATA,it,Nessuna sequenza configurata per codice_tipo: %s,"","",8
-STATO_SCONOSCIUTO,it,Stato non riconosciuto: id = %s,"","",9
-E_COD_INT_RUOLO,it,Ruolo con cd_int_ruolo = %s non trovato in config.tipi_ruoli,"","",11
-E_COLONNA_NON_MODIFICABILE,it,Colonna non modificabile: %s,"","",12
-E_ARGOMENTI_A_COPPIE,it,Passare gli argomenti a coppie,"","",13
-ERRORE_PARAMETRI,it,Parametri obbligatori : %s,Non sono stati indicati tutti i parametri necessari,Inserire tutti i parametri obbligatori,15
-W_TXID_NOT_REGISTERED,it,Warning - tx_id %s non registrato nella tabella dbops.transaction_ids ,L'id transaction non corrisponde con quello assegnato nella tabella transactions_id ,Andare nella tabella dei log per verificare il problema,19
-E_SQL_READ_TABLE,it,Errore  in lettura tabella: %s.  Sqlerror: %s',Errore sql da verificare,Verificare la stringa sql in errore,20
 E_DEFAULT_CONTATTO_MISSING,it,Tipo contatto DEFAULT non trovato in config.tipi_contatti. Impossibile creare contatto fallback.,"","",1
 E_STORICIZZAZIONE,it,Errore storicizzazione per la tabella: %s in fase di: %s per il codice: %s valore: %s .  SQL ERROR: %s  ,Operazione non prevista in fase di storicizzazione ,"",21
-CODICE_NON_MODIFICABILE,it,Impossibile modificare il valore interno della colonna %s,si sta cercando di aggiornare un valore definito per una colonna con utilizzo interno (di sistema) non modificabile,Il valore non può essere aggiornato. ,6
-E_SOGGETTO_NO_CONTATTI,it,"Il soggetto non ha contatti validi: è necessario almeno un contatto con email, telefono, cellulare o PEC.","","",2
-E_IVA_CONTO_ACQ_ERR,it,Il conto IVA acquisti non è un conto di tipo Acquisto.,"","",3
-E_IVA_CONTO_VEN_ERR,it,Il conto IVA vendita non è un conto di tipo Vendita.,"","",4
-E_INVALID_SNAPSHOT,it,Dati snapshot non validi per la tabella %s.%s,I valori che si stanno storicizzando sono nulli. ,"",22
-CF_NON_VALIDO,it,Codice Fiscale non valido: %s,"","",5

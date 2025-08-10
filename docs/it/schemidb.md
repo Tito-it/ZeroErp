@@ -60,6 +60,17 @@
       </td>
     </tr>
     <tr>
+      <td><strong>maintenance</strong></td>
+      <td>
+        Centralizza i processi periodici e le attività di manutenzione del DB (schedulati tramite <code>pgAgent</code>).
+        <ul>
+          <li>Esempi: <code>job_run_log</code>, <code>apply_storicizza_defaults_job()</code>, <code>run_and_log(...)</code></li>
+          <li>Best practice: tutte le procedure di manutenzione e i relativi log vivono qui</li>
+          <li>Pattern standard: logging esecuzioni, advisory lock per evitare overlap, wrapper dei job</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
       <td><strong>public</strong></td>
       <td>
         Mostra solo tabelle pubbliche (non pubbliche), ad esempio version_info   
@@ -81,7 +92,8 @@
 - [config](dbzero/config/index.md)  
 - [script](dbzero/script/index.md)  
 - [dbops](dbzero/dbops/index.md)  
-- [storico](dbzero/storico/index.md)  
+- [storico](dbzero/storico/index.md) 
+- [maintenance](dbzero/maintenance/index.md)   
 
 > In ciascuna pagina di schema troverai un unico indice con le tabelle, le funzioni e le view corrispondenti.
 ---

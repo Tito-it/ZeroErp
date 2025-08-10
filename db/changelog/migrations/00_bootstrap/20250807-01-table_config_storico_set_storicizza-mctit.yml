@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250807-01-table_config_storico_set_storicizza
+      author: mctit
+      runOnChange: true
+      validCheckSums: 
+        - ANY
+      comments: >
+        Definisce il comportamento di storicizzazione per ciascuna tabella definita
+        le righe vengono storicizzate
+        per UPDATE/DELETE, ed il trigger non resetta il flag a FALSE.
+      preConditions:
+        onFail: MARK_RAN
+        onError: CONTINUE
+        not:
+            tableExists:
+              schemaName: config
+              tableName: storico_set_storicizza
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: storico_set_storicizza
+            remarks: "Configurazione default di storicizzazione per tabella. Le tabelle inserite hanno il flag storicizza a TRUE,
+                       le righe vengono storicizzate per UPDATE/DELETE, ed il trigger non resetta il flag a FALSE."
+            columns:
+              - column:
+                  name: table_name
+                  type: TEXT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+                  remarks: "Nome della tabella da storicizzare"
+              - column:
+                  name: insert_manuale
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+                  remarks: "TRUE riga inserita manualmente, FALSE inserita da trigger/procedura"
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: "CURRENT_TIMESTAMP"
+                  constraints:
+                    nullable: false
+                  remarks: "Data e ora di inserimento della configurazione"
+              - column:
+                  name: user_insert
+                  type: TEXT
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+                  remarks: "Utente che ha inserito la configurazione"
+  - changeSet:
+      id: 20250807-90-table_config_storico_set_storicizza
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250807-01-table_config_storico_set_storicizza
