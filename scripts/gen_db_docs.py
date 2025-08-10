@@ -125,6 +125,36 @@ def gen_table_md(schema, table, cur):
 # OUT_DIR = os.path.join(BASE_DIR, "docs", "it", "dbzero")
 # Genera Markdown funzione
 def gen_function_md(schema, func, cur):
+    cur.execute("""
+        SELECT p.proname,
+               p.prokind,  -- 'f' function, 'p' procedure
+               pg_get_function_identity_arguments(p.oid) AS args,
+               pg_get_functiondef(p.oid) AS defn
+        FROM pg_proc p
+        JOIN pg_namespace n ON p.pronamespace = n.oid
+        WHERE n.nspname = %s AND p.proname = %s
+        LIMIT 1
+    """, (schema, func))
+    row = cur.fetchone()
+    if not row:
+        return ""
+    kind = row["prokind"]
+    kind_label = "Procedura" if kind == "p" else "Funzione"
+    kind_verb  = "PROCEDURE" if kind == "p" else "FUNCTION"
+
+    lines = [
+        f"# ⚙️ {kind_label} `{row['proname']}`\n",
+        "```sql",
+        f"CREATE {kind_verb} {row['proname']}({row['args']})",
+        "```",
+        "\n**Definizione completa:**\n",
+        "```sql",
+        (row.get("defn") or "").strip(),
+        "```",
+    ]
+    return "\n".join(lines)
+
+def gen_function_md_V1(schema, func, cur):
     cur.execute(
         """
         SELECT p.proname,
@@ -187,19 +217,48 @@ def write_docs_for_schema(schema, cur):
         content += FOOTER
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
-    # Funzioni
+    
+    # Funzioni (SOLO function, niente procedure qui)
     cur.execute(
-        "SELECT routine_name FROM information_schema.routines WHERE specific_schema=%s",
+        """
+        SELECT routine_name
+        FROM information_schema.routines
+        WHERE specific_schema = %s
+        AND routine_type = 'FUNCTION'
+        ORDER BY routine_name;
+        """,
         (schema,)
     )
     for r in cur.fetchall():
         fn = r['routine_name']
         path = os.path.join(schema_dir, "funzioni", f"{fn}.md")
         content = include_manual(schema, 'funzioni', fn) + gen_function_md(schema, fn, cur)
-        # Aggiungi firma core in fondo
         content += FOOTER
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
+        
+    # 👇 AGGIUNGI SUBITO QUI IL BLOCCO PER LE PROCEDURE
+    # (le salviamo comunque in funzioni/, manual flat in /<schema>/manual)
+    cur.execute("""
+        SELECT DISTINCT p.proname AS procedure_name
+        FROM pg_catalog.pg_proc p
+        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = %s
+        AND p.prokind = 'p'          -- 'p' = procedure (PG >= 11)
+        ORDER BY 1;
+    """, (schema,))
+
+    for r in cur.fetchall():
+        proc = r["procedure_name"]
+        path = os.path.join(schema_dir, "funzioni", f"{proc}.md")
+
+        # Manuale: rimane flat in /<schema>/manual, come per le funzioni
+        content = include_manual(schema, 'funzioni', proc) + gen_function_md(schema, proc, cur)
+        content += FOOTER
+
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+    # ☝️ FINE BLOCCO PROCEDURE
     # Views
     cur.execute(
         "SELECT table_name as view_name FROM information_schema.views WHERE table_schema=%s",
@@ -215,6 +274,35 @@ def write_docs_for_schema(schema, cur):
             f.write(content)
     # Genera indice includendo tabelle, funzioni e view
     write_index(schema_dir, schema)
+
+def add_entries_from_dir(dir_path, title, link_prefix, manual_dir, lines):
+    if not os.path.isdir(dir_path):
+        return
+    lines.append(title)
+    for fname in sorted(os.listdir(dir_path)):
+        if not fname.endswith('.md'):
+            continue
+        name = os.path.splitext(fname)[0]
+        entry = f"- [{name}]({link_prefix}/{fname})"
+
+        # Cerca il file manuale corrispondente
+        manual_file = os.path.join(manual_dir, f"{name}.md")
+        if os.path.isfile(manual_file):
+            with open(manual_file, encoding='utf-8') as fh:
+                text = fh.read()
+            # Regex che cattura Scopo o Scopo Principale
+            m = re.search(
+                r"###\s*🎯\s*(?:Scopo Principale|Scopo)\s*(.+?)(?=(?:\r?\n###|$))",
+                text,
+                flags=re.DOTALL
+            )
+            if m:
+                full_scopo = m.group(1).strip()
+                paragraph = full_scopo.split('\n\n', 1)[0]
+                scopo = paragraph.replace('\n', ' ')
+                entry += f" — {scopo}"
+        lines.append(entry)
+    lines.append('')
 
 # Scrive index.md per schema
 def write_index(schema_dir, schema):
@@ -249,41 +337,45 @@ def write_index(schema_dir, schema):
                     # prendi il primo paragrafo
                     paragraph = full_scopo.split('\n\n', 1)[0]
                     scopo = paragraph.replace('\n', ' ')
-                    entry += f" — {scopo}"
+                    entry += f" — {scopo}" 
             lines.append(entry)
         lines.append('')
+    # Uso per funzioni
+    add_entries_from_dir(funcs_dir, "## ⚙️ Funzioni", "funzioni", manual_dir, lines)
 
+    # Uso per procedure (se stessa cartella, puoi filtrare per nome se serve)
+    #add_entries_from_dir(funcs_dir, "## ⚙️ Procedura", "funzioni", manual_dir, lines)
     # 2. Funzioni con Scopo Principale
-    if os.path.isdir(funcs_dir):
-        lines.append('## ⚙️ Funzioni')
-        for fname in sorted(os.listdir(funcs_dir)):
-            if not fname.endswith('.md'):
-                continue
-            name  = os.path.splitext(fname)[0]
-            entry = f"- [{name}](funzioni/{fname})"
+    #if os.path.isdir(funcs_dir):
+    #    lines.append('## ⚙️ Funzioni')
+    #    for fname in sorted(os.listdir(funcs_dir)):
+    #        if not fname.endswith('.md'):
+    #            continue
+    #        name  = os.path.splitext(fname)[0]
+    #        entry = f"- [{name}](funzioni/{fname})"
 
             # Cerca il file manuale corrispondente
-            manual_file = os.path.join(manual_dir, f"{name}.md")
-            if os.path.isfile(manual_file):
-                text = open(manual_file, encoding='utf-8').read()
+    #        manual_file = os.path.join(manual_dir, f"{name}.md")
+    #        if os.path.isfile(manual_file):
+    #            text = open(manual_file, encoding='utf-8').read()
                 # Regex che cattura fino alla prossima intestazione o fine file,
                 # gestendo sia \n che \r\n
-                m = re.search(
-                    r"### 🎯 Scopo Principale\s*(.+?)(?=(?:\r?\n###|$))",
-                    text,
-                    flags=re.DOTALL
-                )
-                if m:
+    #            m = re.search(
+    #                r"### 🎯 Scopo Principale\s*(.+?)(?=(?:\r?\n###|$))",
+    #                text,
+    #                flags=re.DOTALL
+    #            )
+    #            if m:
                     # Prendi la prima riga (fino al primo newline) per il sommario
                     #scopo = m.group(1).strip().splitlines()[0]
-                    full_scopo = m.group(1).strip()
+    #                full_scopo = m.group(1).strip()
                     # estrai il primo paragrafo (fino alla riga vuota)
-                    paragraph = full_scopo.split('\n\n', 1)[0]
+    #                paragraph = full_scopo.split('\n\n', 1)[0]
                     # unisci le righe di quel paragrafo in un’unica stringa
-                    scopo = paragraph.replace('\n', ' ')
-                    entry += f" — {scopo}"
-            lines.append(entry)
-        lines.append('')
+    #                scopo = paragraph.replace('\n', ' ')
+    #                entry += f" — {scopo}"
+    #        lines.append(entry)
+    #    lines.append('')
 
     # 3. Views con Scopo Principale
     if os.path.isdir(views_dir):

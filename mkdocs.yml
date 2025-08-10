@@ -71,12 +71,15 @@ nav:
           - Liquibase Setup & Workflow: it/liquibase-setup-workflow.md
           - Linee Guida SQL: it/linee-guida-sql.md
           - Db PostgresSQL: 
-              - Panoramica: it/postgresql-intro.md
-              - Parmetri personalizzati (GUC): it/parametri-personalizzati-(GUC).md
+              - Panoramica: it/postgresql/intro.md
+              - Parmetri personalizzati (GUC): it/postgresql/parametri-personalizzati-(GUC).md
               - Estensioni:
-                      - Utilizzate: it/postgresql-estensioni-utilizzate.md
-                      - dblink: it/dblink.md
-              
+                      - Utilizzate: it/postgresql/estensioni-utilizzate.md
+                      - dblink: it/postgresql/dblink.md
+                      - pgAgent: it/postgresql/pgAgent.md
+                      - pgcrypto: it/postgresql/pgcrypto.md
+
+
   - DB Zero:
       - Panoramica: dbzero/index.md
       - Schemi:
@@ -85,6 +88,7 @@ nav:
           - Dbops:      dbzero/dbops/index.md
           - Script:     dbzero/script/index.md
           - Storico:    dbzero/storico/index.md
+          - Maintenance: dbzero/maintenance/index.md
           - Public:    dbzero/public/index.md
   - Strumenti:
         - Generatore Documentazione: dbzero/tools/gen_db_docs.md

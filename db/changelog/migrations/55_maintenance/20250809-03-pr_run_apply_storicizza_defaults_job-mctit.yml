@@ -26,11 +26,11 @@ databaseChangeLog:
                 BEGIN
                   PERFORM maintenance.fn_run_and_log(
                     p_jobname  := 'apply_storicizza_weekly',
-                    p_stepname := 'run_apply_storicizza',
-                    p_sql      := 'call dbops.apply_storicizza_defaults();',
-                    p_lock_key := hashtext('apply_storicizza_defaults')  -- evita overlap
+                    p_stepname := 'run_proc_apply_storicizza',
+                    p_sql      := 'call dbops.proc_apply_storicizza_defaults();',
+                    p_lock_key := hashtext('proc_apply_storicizza_defaults')  -- evita overlap
                   );
-                END
+                END;
                 $$;
 
               

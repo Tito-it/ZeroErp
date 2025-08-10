@@ -1,4 +1,4 @@
-## 🛠 Documentazione Procedura – `dbops.apply_storicizza_defaults()`
+## 📘 Documentazione Concettuale – Procedura `dbops.apply_storicizza_defaults()`
 
 > 🔁 **Collegamenti utili**
 >
@@ -7,7 +7,7 @@
 > * [`config.storico_set_storicizza`](/dbzero/config/tabelle/storico_set_storicizza)
 >
 > Scheduler:
-> [Processi pgAgent](/dbzero/sistema/pgagent/)
+> [Processi pgAgent](/postgresql/pgAgent)
 
 ---
 

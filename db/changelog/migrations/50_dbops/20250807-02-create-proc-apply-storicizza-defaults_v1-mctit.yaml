@@ -15,7 +15,7 @@ databaseChangeLog:
       validCheckSums:
         - ANY
       comments: >
-        Crea la procedura dbops.apply_storicizza_defaults() che
+        Crea la procedura dbops.proc_apply_storicizza_defaults() che
         imposta il default TRUE sulla colonna storicizza in tutte
         le tabelle elencate in config.storico_set_storicizza.
       
@@ -24,7 +24,7 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
             sql: |
-              CREATE OR REPLACE PROCEDURE dbops.apply_storicizza_defaults()
+              CREATE OR REPLACE PROCEDURE dbops.proc_apply_storicizza_defaults()
                 LANGUAGE plpgsql
                 AS $$
                 DECLARE
@@ -55,7 +55,7 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
             sql: |
-              COMMENT ON PROCEDURE dbops.apply_storicizza_defaults() IS
+              COMMENT ON PROCEDURE dbops.proc_apply_storicizza_defaults() IS
                 'Imposta il default TRUE su storicizza per tutte le tabelle configurate in config.storico_set_storicizza';
 
   - changeSet:

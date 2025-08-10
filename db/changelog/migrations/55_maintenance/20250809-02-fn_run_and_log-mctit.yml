@@ -94,7 +94,7 @@ databaseChangeLog:
 
                     RAISE;  -- lascio propagare (togli se vuoi "ingoiare")
                   END;
-                END
+                END;
                 $$;
 
   - changeSet:

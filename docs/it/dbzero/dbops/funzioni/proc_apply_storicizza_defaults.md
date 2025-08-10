@@ -1,13 +1,14 @@
-# ⚙️ Funzione `apply_storicizza_defaults`
+{% include-markdown "it/dbzero/dbops/manual/proc_apply_storicizza_defaults.md" %}
+# ⚙️ Procedura `proc_apply_storicizza_defaults`
 
 ```sql
-CREATE FUNCTION apply_storicizza_defaults()
+CREATE PROCEDURE proc_apply_storicizza_defaults()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE PROCEDURE dbops.apply_storicizza_defaults()
+CREATE OR REPLACE PROCEDURE dbops.proc_apply_storicizza_defaults()
  LANGUAGE plpgsql
 AS $procedure$
   DECLARE

@@ -1,13 +1,14 @@
-# ⚙️ Funzione `sync_storico_set_storicizza`
+{% include-markdown "it/dbzero/dbops/manual/proc_sync_storico_set_storicizza.md" %}
+# ⚙️ Procedura `proc_sync_storico_set_storicizza`
 
 ```sql
-CREATE FUNCTION sync_storico_set_storicizza()
+CREATE PROCEDURE proc_sync_storico_set_storicizza()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE PROCEDURE dbops.sync_storico_set_storicizza()
+CREATE OR REPLACE PROCEDURE dbops.proc_sync_storico_set_storicizza()
  LANGUAGE plpgsql
 AS $procedure$
     DECLARE

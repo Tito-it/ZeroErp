@@ -1,8 +1,8 @@
 {% include-markdown "it/dbzero/dbops/manual/apply_fk_index_policy.md" %}
-# ⚙️ Funzione `apply_fk_index_policy`
+# ⚙️ Procedura `apply_fk_index_policy`
 
 ```sql
-CREATE FUNCTION apply_fk_index_policy()
+CREATE PROCEDURE apply_fk_index_policy()
 ```
 
 **Definizione completa:**

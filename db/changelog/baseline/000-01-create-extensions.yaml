@@ -17,7 +17,7 @@ databaseChangeLog:
       comments: >
         Crea le extension necessarie per il progetto (btree_gist, dblink, pgcrypto, PostGIS).
       preConditions:
-        onFail: CONTINUE
+        onFail: MARK_RAN
         onError: CONTINUE
         dbms:
             type: postgres
@@ -31,6 +31,7 @@ databaseChangeLog:
               CREATE EXTENSION IF NOT EXISTS pgcrypto;
               CREATE EXTENSION IF NOT EXISTS postgis;
               CREATE EXTENSION IF NOT EXISTS postgis_topology;
+              CREATE EXTENSION IF NOT EXISTS pg_agent;
   - changeSet:
       id: 000-01-90-create-extensions
       author: mctit

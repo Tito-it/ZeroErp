@@ -15,7 +15,7 @@ databaseChangeLog:
       validCheckSums:
         - ANY
       comments: >
-        Crea la procedura dbops.sync_storico_set_storicizza()
+        Crea la procedura dbops.proc_sync_storico_set_storicizza()
         che popola config.storico_set_storicizza con tutte le tabelle
         il cui default di storicizza è TRUE.  
       changes:
@@ -23,7 +23,7 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
             sql: |
-              CREATE OR REPLACE PROCEDURE dbops.sync_storico_set_storicizza()
+              CREATE OR REPLACE PROCEDURE dbops.proc_sync_storico_set_storicizza()
                   LANGUAGE plpgsql
                   AS $$
                   DECLARE
@@ -50,8 +50,8 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
             sql: |
-              COMMENT ON PROCEDURE dbops.sync_storico_set_storicizza()
-                IS 'Sincronizza config.storico_set_storicizza con tutte le 
+              COMMENT ON PROCEDURE dbops.proc_sync_storico_set_storicizza()
+                IS 'Sincronizza config.storico_set_storico_set_storicizza con tutte le 
                     tabelle che hanno default storicizza = TRUE';
   - changeSet:
       id: 20250808-90-create-proc-sync-storicizza
