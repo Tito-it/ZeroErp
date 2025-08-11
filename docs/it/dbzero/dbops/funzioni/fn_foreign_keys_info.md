@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_foreign_keys_info.md" %}
 # ⚙️ Funzione `fn_foreign_keys_info`
 
 ```sql

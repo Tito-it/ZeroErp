@@ -200,3 +200,6 @@ Esegui il changeset **prima** delle migrazioni che richiedono `pgcrypto`:
 ---
 
 > 🧠 **Regola d’oro**: usa `pgcrypto` per *primitive* (hash/HMAC/UUID/random) e **PGP** per cifratura applicativa; gestisci segreti fuori dal codice SQL e versiona solo la struttura (non le chiavi).
+
+---
+{% include-markdown "signature-core.md" %}

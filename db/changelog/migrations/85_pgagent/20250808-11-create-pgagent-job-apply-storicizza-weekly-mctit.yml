@@ -15,8 +15,8 @@ databaseChangeLog:
       validCheckSums:
         - ANY
       comments: >
-        Crea o aggiorna un job in pgAgent per invocare settimanalmente
-        dbops.apply_storicizza_defaults() ogni sabato alle 07:00.
+        Crea/aggiorna un job pgAgent che esegue ogni sabato alle 07:00
+        il wrapper maintenance.proc_apply_storicizza_defaults_job().
       
       preConditions:
         onFail: CONTINUE
@@ -44,7 +44,7 @@ databaseChangeLog:
                     IF v_classid IS NULL THEN
                       RAISE EXCEPTION 'Job class "Routine Maintenance" non trovata';
                     END IF;
-
+ 
                     -- 2) Elimina eventuale job omonimo
                     DELETE FROM pgagent.pga_job
                     WHERE jobname = 'apply_storicizza_weekly';
@@ -85,16 +85,11 @@ databaseChangeLog:
                       'run_apply_storicizza',
                       's',  -- SQL
                       $step$
-                        SELECT maintenance.run_and_log(
-                          p_jobname  := 'apply_storicizza_weekly',
-                          p_stepname := 'run_apply_storicizza',
-                          p_sql      := 'CALL dbops.apply_storicizza_defaults();',
-                          p_lock_key := hashtextextended('apply_storicizza_defaults', 0)
-                        );
+                         call maintenance.proc_apply_storicizza_defaults_job();
                       $step$,
                       current_database()
                     );
-                  END
+                  END;
                   $$;
 
 
