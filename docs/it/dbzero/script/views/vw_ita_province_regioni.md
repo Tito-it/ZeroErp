@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/vw_ita_province_regioni.md" %}
 # 🔍 View `vw_ita_province_regioni`
 
 ```sql

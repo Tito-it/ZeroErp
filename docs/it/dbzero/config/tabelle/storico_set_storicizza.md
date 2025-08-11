@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/storico_set_storicizza.md" %}
 # 📚 Tabella `storico_set_storicizza`
 
 ## 🗂️ Campi principali

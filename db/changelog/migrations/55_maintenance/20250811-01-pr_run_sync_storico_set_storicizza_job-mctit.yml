@@ -1,0 +1,42 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250811-01-pr_run_sync_storico_set_storicizza_job
+      author: mctit
+      runOnChange: true
+      validCheckSums: 
+        - ANY
+      comments: >
+        Wrapper per l'esecuzione del job pr_run_sync_storico_set_storicizza_job
+
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_sync_storico_set_storicizza_job()
+                LANGUAGE plpgsql AS $$
+                BEGIN
+                  PERFORM maintenance.fn_run_and_log(
+                    p_jobname  := 'sync_storico_set_storicizza',
+                    p_stepname := 'run_sync_storico_set_storicizza',
+                    p_sql      := 'call dbops.proc_sync_storico_set_storicizza();',
+                    p_lock_key := hashtext('proc_sync_storico_set_storicizza')  -- evita overlap
+                  );
+                END;
+                $$;
+
+              
+  - changeSet:
+      id: 20250811-90-pr_run_sync_storico_set_storicizza_job
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 220250811-01-pr_run_sync_storico_set_storicizza_job

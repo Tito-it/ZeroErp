@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250811-02-create-pgagent-job-sync_storico_set_storicizza-weekly
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+        Crea o aggiorna un job in pgAgent per invocare settimanalmente
+        dbops.sync_storico_set_storicizza() ogni sabato alle 07:05.
+      
+      preConditions:
+        onFail: CONTINUE
+        onError: CONTINUE
+        tableExists:
+            schemaName: pgagent
+            tableName: pga_job
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+               DO $$
+                  DECLARE
+                    v_jobid   INTEGER;
+                    v_classid INTEGER;
+                  BEGIN
+                    -- 1) Classe 'Routine Maintenance'
+                    SELECT jclid
+                      INTO v_classid
+                      FROM pgagent.pga_jobclass
+                    WHERE jclname = 'Routine Maintenance'
+                    LIMIT 1;
+
+                    IF v_classid IS NULL THEN
+                      RAISE EXCEPTION 'Job class "Routine Maintenance" non trovata';
+                    END IF;
+
+                    -- 2) Elimina eventuale job omonimo
+                    DELETE FROM pgagent.pga_job
+                    WHERE jobname = 'sync_storico_set_storicizza';
+                     -- 3) Crea il job
+                      INSERT INTO pgagent.pga_job(
+                        jobjclid, jobname, jobdesc, jobenabled
+                      ) VALUES (
+                        v_classid,
+                        'sync_storico_set_storicizza',
+                        'Setta DEFAULT=true su colonne "storicizza" ogni sabato ore 07:05',
+                        true
+                      )
+                      RETURNING jobid INTO v_jobid;
+
+                    -- 4) Schedule: sabato alle 07:05 precise
+                    INSERT INTO pgagent.pga_schedule(
+                      jscjobid, jscname, jscenabled,
+                      jscminutes, jschours, jscweekdays,
+                      jscmonthdays, jscmonths, jscstart
+                    ) VALUES (
+                      v_jobid,
+                      'sat_07',
+                      true,
+                      (SELECT array_agg((i = 05)::boolean)  FROM generate_series(0,59) AS g(i)),  -- 60 elem, solo minuto 0 = TRUE
+                      (SELECT array_agg((i = 07)::boolean)  FROM generate_series(0,23) AS g(i)),  -- 24 elem, solo ora 7 = TRUE
+                      ARRAY[FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE]::boolean[],                -- sabato
+                      array_fill(TRUE, ARRAY[32])::boolean[],                                    -- giorni del mese tutti TRUE
+                      array_fill(TRUE, ARRAY[12])::boolean[],                                    -- mesi tutti TRUE
+                      now()
+                    );
+
+                    -- 5) Step: usa il wrapper maintenance.run_and_log con CALL (non SELECT)
+                    INSERT INTO pgagent.pga_jobstep(
+                      jstjobid, jstname, jstkind, jstcode, jstdbname
+                    ) VALUES (
+                      v_jobid,
+                      'run_apply_storicizza',
+                      's',  -- SQL
+                      $step$
+                        call maintenance.proc_sync_storico_set_storicizza_job();
+                      $step$,
+                      current_database()
+                    );
+                  END;
+                  $$;
+
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250810-90-create-pgagent-job-sync_storico_set_storicizza-weekly
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250810-02-create-pgagent-job-sync_storico_set_storicizza-weekly

@@ -344,4 +344,14 @@ pg_dump -h <host> -U <user> -d <db> \
 
 ---
 
+> 📌 Nota sul recupero dei job non eseguiti
+> pgAgent non recupera automaticamente le esecuzioni perse se il database/server era spento all’orario pianificato.
+> In ambiente Linux è possibile affiancare o sostituire pgAgent con un systemd timer configurato con OnCalendar= e    Persistent=true, che riesegue il job alla prima occasione utile dopo un’interruzione.
+>In ambiente Windows l’Utilità di pianificazione (Task Scheduler) offre l’opzione “Esegui il più presto possibile dopo un avvio pianificato mancato”, che permette di avviare un’attività pianificata al riavvio se l’orario previsto è stato perso.
+
+---
+
 > 🧠 **Regola d’oro**: tutto ciò che è manutenzione periodica del DB vive in `maintenance` ed è schedulato da pgAgent. Log, lock ed error handling sono standardizzati nel wrapper `run_and_log`.
+
+---
+{% include-markdown "signature-core.md" %}

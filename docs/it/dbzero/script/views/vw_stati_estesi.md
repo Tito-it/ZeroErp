@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/vw_stati_estesi.md" %}
 # 🔍 View `vw_stati_estesi`
 
 ```sql
