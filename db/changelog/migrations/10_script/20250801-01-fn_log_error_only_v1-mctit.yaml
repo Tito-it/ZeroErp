@@ -50,7 +50,11 @@ databaseChangeLog:
                     -- Output
                     -- Logga l'errore nel database senza sollevare eccezione
                     -- -------------------------------------------------
-                                        
+                    -- opzionale: spegni logging via dblink in certe sessioni (es. CI)
+                    IF coalesce(current_setting('myapp.log_with_dblink', true), 'on') <> 'on' THEN
+                      RETURN;
+                    END IF;
+
                     IF p_tx_id IS NULL THEN
                         p_tx_id := dbops.fn_get_or_create_session_tx_id();
                     END IF;
@@ -82,7 +86,7 @@ databaseChangeLog:
                       VALUES (now(), %L, %L, %s, %L::jsonb, %L::uuid)',
                       p_area, p_function_name, coalesce(v_id::text,'NULL'), v_ctx::text, p_tx_id::text
                     );
-                    PERFORM dblink_exec('logconn'::text, v_sql);
+                    PERFORM dblink_exec('logconn'::text, v_sql, true);
                 END;
                 $$;
 
