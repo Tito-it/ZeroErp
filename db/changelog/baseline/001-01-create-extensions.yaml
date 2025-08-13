@@ -17,8 +17,8 @@ databaseChangeLog:
       comments: >
         Crea le extension necessarie per il progetto (btree_gist, dblink, pgcrypto, PostGIS).
       preConditions:
-        onFail: MARK_RAN
-        onError: CONTINUE
+        onFail: HALT
+        onError: HALT
         dbms:
             type: postgres
       changes:
