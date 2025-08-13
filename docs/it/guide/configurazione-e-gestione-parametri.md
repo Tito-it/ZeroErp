@@ -9,7 +9,7 @@
 Questa guida fornisce indicazioni dettagliate e best practices sulla gestione e configurazione dei parametri all’interno di Zero ERP, utilizzando due principali metodi:
 
 * **Parametri Tabellari** ([`config.parameters`](/dbzero/config/tabelle/parameters) e [`config.parameter_overrides`](/dbzero/config/tabelle/parameter_overrides))
-* **Parametri Personalizzati (GUC)** ([Parametri Personalizzati (GUC)](/parametri-personalizzati-(GUC)))
+* **Parametri Personalizzati (GUC)** ([Parametri Personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC)))
 
 ---
 

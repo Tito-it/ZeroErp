@@ -68,6 +68,17 @@ jobs:
           source .venv/bin/activate
           mkdocs --version
           pip list | grep mkdocs
+          
+      - name: Set custom GUCs for CI role
+        env:
+          PGPASSWORD: ${{ secrets.DB_PASSWORD || 'secret' }}
+        run: |
+          psql --no-psqlrc -h localhost -p 5432 -U zeroerp -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "ALTER ROLE zeroerp SET myapp.user_language = 'it';"
+          psql --no-psqlrc -h localhost -p 5432 -U zeroerp -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "ALTER ROLE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp password=${PGPASSWORD}';"
+           psql --no-psqlrc -h localhost -p 5432 -U zeroerp -d zeroerp -v ON_ERROR_STOP=1 -c \
+             "SELECT name, setting FROM pg_settings WHERE name LIKE 'myapp.%' ORDER BY name;"
 
       - name: Install Liquibase CLI
         run: |

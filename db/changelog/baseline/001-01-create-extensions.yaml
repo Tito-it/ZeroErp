@@ -9,7 +9,7 @@
   
 databaseChangeLog:
   - changeSet:
-      id: 000-01-create-extensions
+      id: 001-01-create-extensions
       author: mctit
       runOnChange: true
       validCheckSums:
@@ -33,9 +33,9 @@ databaseChangeLog:
               CREATE EXTENSION IF NOT EXISTS postgis_topology;
               CREATE EXTENSION IF NOT EXISTS pg_agent;
   - changeSet:
-      id: 000-01-90-create-extensions
+      id: 001-01-90-create-extensions
       author: mctit
       comments: "Tag di fine modifica per il file extensions"
       changes:
         - tagDatabase:
-            tag: 000-01-create-extensions
+            tag: 001-01-create-extensions
