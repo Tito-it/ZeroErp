@@ -115,9 +115,9 @@ jobs:
           # Se liquibase è installato in /opt/liquibase, aggiungilo al PATH
           export PATH=/opt/liquibase:$PATH
 
-          # Ora liquibase sarà trovato
+          # Ora liquibase sarà trovato. Attenzione imposto la disattivazione del dblink
           liquibase \
-            --url=jdbc:postgresql://localhost:5432/zeroerp \
+            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff" \
             --username=zeroerp \
             --password=secret \
             --changeLogFile=db/changelog/changelog-master.yaml \

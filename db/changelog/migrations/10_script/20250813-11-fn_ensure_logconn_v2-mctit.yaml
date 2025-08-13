@@ -27,6 +27,10 @@ databaseChangeLog:
                  AS $$
                 DECLARE v_conn text := current_setting('myapp.dblink_log_connection', true);
                 BEGIN
+                  IF coalesce(current_setting('myapp.log_with_dblink', true), 'on') <> 'on' THEN
+                    RETURN;
+                  END IF;
+                  --  
                   IF v_conn IS NULL OR length(trim(v_conn))=0 THEN RETURN; END IF;
                   -- se esiste già 'logconn', non riconnettere
                   IF 'logconn' = ANY (public.dblink_get_connections()) THEN
