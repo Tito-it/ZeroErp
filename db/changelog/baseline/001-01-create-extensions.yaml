@@ -20,7 +20,7 @@ databaseChangeLog:
         onFail: HALT
         onError: HALT
         dbms:
-            type: postgres
+            type: postgresql
       changes:
         - sql:
             splitStatements: false
@@ -31,7 +31,7 @@ databaseChangeLog:
               CREATE EXTENSION IF NOT EXISTS pgcrypto;
               CREATE EXTENSION IF NOT EXISTS postgis;
               CREATE EXTENSION IF NOT EXISTS postgis_topology;
-              CREATE EXTENSION IF NOT EXISTS pg_agent;
+              CREATE EXTENSION IF NOT EXISTS pgagent;
   - changeSet:
       id: 001-01-90-create-extensions
       author: mctit
