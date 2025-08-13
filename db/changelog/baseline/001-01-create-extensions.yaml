@@ -32,6 +32,23 @@ databaseChangeLog:
               CREATE EXTENSION IF NOT EXISTS postgis;
               CREATE EXTENSION IF NOT EXISTS postgis_topology;
             #  CREATE EXTENSION IF NOT EXISTS pgagent;
+  # pgAgent: prova a creare solo se esiste l'estensione nel server; altrimenti non bloccare la pipeline
+  - changeSet:
+      id: 001-01-02-create-pgagent-extension
+      author: mctit
+      preConditions:
+        onFail: CONTINUE
+        onError: CONTINUE
+        dbms:  postgresql 
+        sqlCheck:
+          expectedResult: true
+          sql: "SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name='pgagent');"
+
+      changes:
+        - sql:
+            sql: |
+              CREATE EXTENSION IF NOT EXISTS pgagent WITH SCHEMA pgagent;
+  
   - changeSet:
       id: 001-01-90-create-extensions
       author: mctit

@@ -28,8 +28,16 @@ databaseChangeLog:
                 DECLARE v_conn text := current_setting('myapp.dblink_log_connection', true);
                 BEGIN
                   IF v_conn IS NULL OR length(trim(v_conn))=0 THEN RETURN; END IF;
-                  PERFORM public.dblink_connect('logconn'::text, v_conn);  -- o dblink_connect_u se usi superuser
-                EXCEPTION WHEN duplicate_object THEN NULL;
+                  -- se esiste già 'logconn', non riconnettere
+                  IF 'logconn' = ANY (public.dblink_get_connections()) THEN
+                    RETURN;
+                  END IF; 
+
+                  PERFORM public.dblink_connect('logconn'::text, v_conn); 
+                  EXCEPTION WHEN duplicate_object THEN NULL;
+                  WHEN SQLSTATE '53300' THEN
+                  -- too_many_connections: non bloccare l'operazione chiamante
+                  RETURN;
                 END; 
                 $$;
 
