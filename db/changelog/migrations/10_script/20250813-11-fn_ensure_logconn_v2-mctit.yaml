@@ -35,10 +35,7 @@ databaseChangeLog:
                   IF v_conn IS NULL OR length(trim(v_conn))=0 THEN RETURN; END IF;
                   
                   -- se 'logconn' è già aperta, non riconnettere
-                  PERFORM 1
-                  FROM public.dblink_get_connections() AS c(conn)
-                  WHERE c.conn = 'logconn';
-                  IF FOUND THEN
+                  IF 'logconn' = ANY (coalesce(public.dblink_get_connections(), ARRAY[]::text[])) THEN
                     RETURN;
                   END IF;
 

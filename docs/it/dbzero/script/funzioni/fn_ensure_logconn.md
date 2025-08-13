@@ -15,9 +15,27 @@ CREATE OR REPLACE FUNCTION script.fn_ensure_logconn()
 AS $function$
 DECLARE v_conn text := current_setting('myapp.dblink_log_connection', true);
 BEGIN
+  -- spegni via GUC di sessione
+  IF coalesce(current_setting('myapp.log_with_dblink', true), 'on') <> 'on' THEN
+    RETURN;
+  END IF;
+  -- -- niente connstring -> esci 
   IF v_conn IS NULL OR length(trim(v_conn))=0 THEN RETURN; END IF;
-  PERFORM public.dblink_connect('logconn', v_conn);  -- o dblink_connect_u se usi superuser
-EXCEPTION WHEN duplicate_object THEN NULL;
+  
+  -- se 'logconn' è già aperta, non riconnettere
+  IF 'logconn' = ANY (coalesce(public.dblink_get_connections(), ARRAY[]::text[])) THEN
+    RETURN;
+  END IF;
+
+  -- tenta la connessione e gestisci eccezioni locali
+  BEGIN
+    PERFORM public.dblink_connect('logconn'::text, v_conn::text);
+  EXCEPTION
+    WHEN duplicate_object THEN
+      NULL;             -- già aperta (race)
+    WHEN SQLSTATE '53300' THEN
+      RETURN;           -- too_many_connections: non bloccare il chiamante
+  END;
 END; 
 $function$
 ```
