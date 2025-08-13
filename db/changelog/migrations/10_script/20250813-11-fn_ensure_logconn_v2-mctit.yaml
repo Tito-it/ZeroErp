@@ -27,21 +27,30 @@ databaseChangeLog:
                  AS $$
                 DECLARE v_conn text := current_setting('myapp.dblink_log_connection', true);
                 BEGIN
+                  -- spegni via GUC di sessione
                   IF coalesce(current_setting('myapp.log_with_dblink', true), 'on') <> 'on' THEN
                     RETURN;
                   END IF;
-                  --  
+                  -- -- niente connstring -> esci 
                   IF v_conn IS NULL OR length(trim(v_conn))=0 THEN RETURN; END IF;
-                  -- se esiste già 'logconn', non riconnettere
-                  IF 'logconn' = ANY (public.dblink_get_connections()) THEN
+                  
+                  -- se 'logconn' è già aperta, non riconnettere
+                  PERFORM 1
+                  FROM public.dblink_get_connections() AS c(conn)
+                  WHERE c.conn = 'logconn';
+                  IF FOUND THEN
                     RETURN;
-                  END IF; 
+                  END IF;
 
-                  PERFORM public.dblink_connect('logconn'::text, v_conn); 
-                  EXCEPTION WHEN duplicate_object THEN NULL;
-                  WHEN SQLSTATE '53300' THEN
-                  -- too_many_connections: non bloccare l'operazione chiamante
-                  RETURN;
+                  -- tenta la connessione e gestisci eccezioni locali
+                  BEGIN
+                    PERFORM public.dblink_connect('logconn'::text, v_conn::text);
+                  EXCEPTION
+                    WHEN duplicate_object THEN
+                      NULL;             -- già aperta (race)
+                    WHEN SQLSTATE '53300' THEN
+                      RETURN;           -- too_many_connections: non bloccare il chiamante
+                  END;
                 END; 
                 $$;
 
