@@ -28,7 +28,7 @@ databaseChangeLog:
                 DECLARE v_conn text := current_setting('myapp.dblink_log_connection', true);
                 BEGIN
                   IF v_conn IS NULL OR length(trim(v_conn))=0 THEN RETURN; END IF;
-                  PERFORM public.dblink_connect('logconn', v_conn);  -- o dblink_connect_u se usi superuser
+                  PERFORM public.dblink_connect('logconn'::text, v_conn);  -- o dblink_connect_u se usi superuser
                 EXCEPTION WHEN duplicate_object THEN NULL;
                 END; 
                 $$;
