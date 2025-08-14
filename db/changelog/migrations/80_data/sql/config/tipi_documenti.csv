@@ -1,4 +1,4 @@
 id,cod_tipo_documento,descrizione,cd_int_tipo_documento,data_insert,user_insert,data_update,user_update
-1,PDF,Documento PDF,PDF,2025-04-02 22:59:55.15616+02,postgres,2025-08-13 16:52:02.572378+02,titodb
-2,XML,Flusso XML,XML,2025-04-02 22:59:55.15616+02,postgres,2025-08-13 16:52:02.572378+02,titodb
-3,IMG,Immagine Allegata,IMG,2025-04-02 22:59:55.15616+02,postgres,2025-08-13 16:52:02.572378+02,titodb
+1,PDF,Documento PDF,PDF,2025-04-02 22:59:55.15616+02,postgres,2025-08-14 15:57:36.270259+02,titodb
+2,XML,Flusso XML,XML,2025-04-02 22:59:55.15616+02,postgres,2025-08-14 15:57:36.270259+02,titodb
+3,IMG,Immagine Allegata,IMG,2025-04-02 22:59:55.15616+02,postgres,2025-08-14 15:57:36.270259+02,titodb

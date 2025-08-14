@@ -14,7 +14,7 @@ CREATE OR REPLACE FUNCTION dbops.trgfn_tx_id_managed()
  SECURITY DEFINER
 AS $function$
 DECLARE
-    v_bypass_enabled BOOLEAN := FALSE;
+    v_bypass_enabled BOOLEAN := FALSE;   -- Il bypass è abilitato di default
     v_session_tx_id     UUID;
     v_new_tx_id      UUID;
 BEGIN
@@ -31,7 +31,7 @@ BEGIN
         IF NOT FOUND THEN
             -- Parametro mancante: log e prosegui con bypass disabilitato
             
-            PERFORM script.fn_log_and_raise_error(
+            PERFORM script.fn_log_error_only(
                 'database',
                 'dbops.trgfn_tx_id_managed',
                 'ERRORE_PARAMETRI_TABELLA',

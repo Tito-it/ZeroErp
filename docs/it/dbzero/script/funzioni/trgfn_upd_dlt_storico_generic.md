@@ -41,7 +41,7 @@ AS $function$
         -- 0) Controllo da tabella di configurazione
           SELECT EXISTS (
             SELECT 1 
-              FROM script.storico_set_storicizza s
+              FROM config.storico_set_storicizza s
             WHERE s.table_name = TG_TABLE_NAME
           ) INTO v_skip_reset;
 

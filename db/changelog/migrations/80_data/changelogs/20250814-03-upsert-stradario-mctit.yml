@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250814-03-upsert-stradario
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            tableName: stradario
+            schemaName: config
+      changes:
+      # 1) Colonna testuale d’appoggio per l’import (se non esiste)
+      - addColumn:
+          schemaName: config
+          tableName: stradario
+          columns:
+            - column:
+                name: geoloc_txt
+                type: TEXT
+                remarks: "EWKT: SRID=4326;POINT(lon lat)"     
+
+      # 2) Carico CSV: mappa geoloc -> geoloc_txt come STRING          
+      - loadUpdateData:
+          relativeToChangelogFile: true
+          file: ../sql/config/stradario.csv
+          tableName: stradario
+          schemaName: config
+          separator: ","
+          encoding: UTF-8
+          # nullValue: ""
+          nullValue: "NULL"
+          primaryKey:
+            - id
+          columns:
+            - column: { name: id,            type: STRING }
+            - column: { name: comune_id,   type: STRING }
+            - column: { name: stradario_generale_id,   type: STRING }
+            - column:
+                  header: geoloc
+                  name: geoloc_txt
+                  type: STRING
+            - column:
+                name: extra_info
+                type: JSON
+                # se il CSV ha valore vuoto, usa {} come JSON valido
+                defaultValue: "{}"
+            - column: { name: data_insert,   type: STRING }
+            - column: { name: user_insert,   type: STRING }
+            - column:
+                    name: data_update
+                    type: STRING
+                    defaultValue: "NOW()"
+            - column: { name: user_update,      type: STRING }
+            - column: { name: tx_id,    type: uuid  }
+            - column: { name: storicizza,      type: STRING } 
+    # 3) Conversione in geometry(Point,4326) da EWKT
+      - sql:
+          sql: |
+            -- Richiede: CREATE EXTENSION postgis;
+             -- Pulisci subito valori non validi
+            UPDATE config.stradario
+               SET geoloc = NULL
+             WHERE geoloc_txt IS NULL
+                  OR btrim(geoloc_txt) = ''
+                  OR upper(btrim(geoloc_txt)) = 'NULL';
+
+            -- Converte solo EWKT ben formati: SRID=4326;POINT(lon lat)
+              UPDATE config.stradario
+                 SET geoloc = ST_GeomFromEWKT(geoloc_txt)
+               WHERE geoloc_txt ~* '^SRID=4326;POINT\([+-]?\d+(\.\d+)?\s+[+-]?\d+(\.\d+)?\)$';
+
+
+      # 4) (Opzionale) rimuovi la colonna testuale
+      - dropColumn:
+          schemaName: config
+          tableName: stradario
+          columnName: geoloc_txt 
+
+  - changeSet:
+      id: 20250814-90-upsert-stradario
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250814-03-upsert-stradario
