@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250718-02-upsert-province
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            tableName: province
+            schemaName: config
+      changes:
+      
+
+      # 2) Carico CSV: mappa geoloc -> geoloc_txt come STRING          
+      - loadUpdateData:
+          relativeToChangelogFile: true
+          file: ../sql/config/province.csv
+          tableName: province
+          schemaName: config
+          separator: ","
+          encoding: UTF-8
+          # nullValue: ""
+          nullValue: "NULL"
+          primaryKey:
+            - id
+          columns:
+            - column: { name: id,            type: STRING }
+            - column: { name: descrizione,   type: STRING }
+            - column: { name: sigla,   type: STRING }
+            - column: { name: regione_id,   type: STRING }
+            - column: { name: data_insert,   type: STRING }
+            - column: { name: user_insert,   type: STRING }
+            - column:
+                    name: data_update
+                    type: STRING
+                    defaultValue: "NOW()"
+            - column: { name: user_update,      type: STRING }
+            - column:
+                name: extra_country
+                type: JSON
+                # se il CSV ha valore vuoto, usa {} come JSON valido
+                defaultValue: "{}" 
+    
+  - changeSet:
+      id: 20250718-90-upsert-province
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250718-02-upsert-province
