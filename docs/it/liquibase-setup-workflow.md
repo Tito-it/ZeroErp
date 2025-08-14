@@ -1,9 +1,11 @@
 **Documento di Avvio e Struttura di Liquibase**
 
 > 👀 **Vedi anche**    
-> Approfondimento SQL  
-> Tutte le attività SQL generate tramite Liquibase devono rispettare le convenzioni definite nel documento:  
-> [Linee Guida SQL](linee-guida-sql.md).
+> Approfondimento SQL     
+>
+> Tutte le attività SQL generate tramite Liquibase devono rispettare le convenzioni definite nel documento:     
+> * [Linee Guida SQL](linee-guida-sql.md).
+
 
 ---
 > ⚠️ **Importante (Visione Futura)**   
@@ -56,7 +58,8 @@ ZeroErp/db/changelog/
     │   └─ sql/<schema>/…        
     ├─ 50_dbops/                # evoluzioni DBOps
     │   └─ sql/<schema>/…        
-    └─ …
+    ├─ 55_maintenance/          # evoluzioni per schedule job
+    │   
     ├─ 80_data/                 # import dati schema config
     │   ├─ sql/
     │   │  └─ config/
@@ -65,21 +68,23 @@ ZeroErp/db/changelog/
     │   └─ changelogs/
     │       ├─ YYYYMMDD-01-upsert-stati.yaml
     │       └─ YYYYMMDD-02-upsert-utilities.yaml
+    ├─ 85_pgagent/              # evoluzioni pgagent (job schedule)
     └─ 90_end/                  # script finali da eseguire sempre per ultimi
         └─ apply-fk-index-policy.yaml
 ```
 
 * **Baseline**: snapshot iniziale; `changelogSync` li marca eseguiti e non saranno riapplicati automaticamente.
-* **Migrations**: file numerati definiscono le modifiche incrementalmente. Ogni folder numerato (00–50…) contiene YAML e script SQL.
+* **Migrations**: file numerati definiscono le modifiche incrementalmente. Ogni folder numerato "10–55…" contiene YAML e script SQL. I nomi fanno riferimento ad uno schema specifico.
 * **80_data**: dedicata all’importazione dei dati di configurazione (test e funzionali). Contiene CSV prodotti dal CI e changelog YAML con `loadUpdateData`.
-* **Cartella *90_end***: dedicata ai changeSet che devono **sempre** essere eseguiti **per ultimi**, indipendentemente dalle date. Qui si collocano:
+* **85_pgagent**: dedicata ai changeSet che definiscono Job per pgAgent.
+* **90_end***: dedicata ai changeSet che devono **sempre** essere eseguiti **per ultimi**, indipendentemente dalle date. Qui si collocano:
 
   * changeSet con `runAlways: true` o `runAlways: false` per operazioni di chiusura
   * richiamo di procedure/funzioni di popolamento o aggiornamento di tabelle (es. `CALL dbops.apply_fk_index_policy();`)
   * eventuali cleanup o sync finali delle policy
 
 > 🔔 *Consiglio*:   
-> Nomina il file con prefisso la data iniziale seguito da descrizione, es. `20250630-01-end-apply-fk-policy.yaml`. In questo modo l’ordine alfabetico di Liquibase garantisce la priorità d’esecuzione. Nel caso sia necessario far eseguire un changelog prima di uno esistente immettere la data precedente.
+> Nomina il file con prefisso la data iniziale seguito da descrizione, es. `20250630-01-end-apply-fk-policy.yaml`. In questo modo l’ordine alfabetico di Liquibase garantisce la priorità d’esecuzione. Nel caso sia necessario far eseguire un changelog prima di uno esistente immettere la data precedente. Possibilmente far coincidere la parte descrittiva con il nome della funzione, tabella ecc.. (utilizzando gli stessi prefissi  fn, table, etc.)
 
 ---
 
@@ -258,7 +263,7 @@ Lo schema `config` ospita tabelle di configurazione, sia di setup che di utilizz
 
 #### 11. Convenzioni e Best Practice
 
-* Utilizzo cartella `00_boostrab` (esempio generazione tabelle)
+* Utilizzo cartella `00_bootstrap` (esempio generazione tabelle)
 * Numerazione progressiva
 * ID univoci con autore
 * Contexts/Labels
@@ -266,14 +271,6 @@ Lo schema `config` ospita tabelle di configurazione, sia di setup che di utilizz
 * Versioning: excl. credenziali
 
 ---
-
-*Documento redatto e condiviso con il team ZeroErp.*
-
-
-
-
-
-
 
 #### 7. Workflow Iniziale
 
@@ -320,9 +317,6 @@ Lo schema `config` ospita tabelle di configurazione, sia di setup che di utilizz
 ---
 
 *Documento redatto e condiviso con il team ZeroErp.*
-
----
-
 
 ---
 {% include-markdown "signature-core.md" %}

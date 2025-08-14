@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250813-02-modify_table_tipi_contatti
+      author: mctit
+      runOnChange: true
+      validCheckSums: 
+        - ANY
+      comments: >
+        Tabella config.tipi_contatti aggiunta colonna cod_tipo_contatto
+      preConditions:
+        onFail: MARK_RAN
+        onError: CONTINUE
+        not:
+            columnExists:
+              schemaName: config
+              tableName: tipi_contatti
+              columnName: cod_tipo_contatto
+      changes:
+        # 1) Aggiunta della colonna cod_tipo_contatto se non esiste
+        - addColumn:
+            schemaName: config
+            tableName: tipi_contatti
+            columns:
+              - column:
+                  name: cod_tipo_contatto
+                  type: varchar(15)
+                  constraints:
+                    nullable: true
+                  remarks: "Codice tipo contatto"
+        # 2) Popolamento colonna da cod_int_tipo_ruolo
+        - sql:
+            sql: |
+              UPDATE config.tipi_contatti
+              SET cod_tipo_contatto = cod_int_tipo_contatto
+              WHERE cod_tipo_contatto IS NULL;
+        
+        # 3) Imposta NOT NULL
+        - addNotNullConstraint:
+            schemaName: config
+            tableName: tipi_contatti
+            columnName: cod_tipo_contatto
+            columnDataType: varchar(15)
+
+  - changeSet:
+      id: 20250813-90-modify_table_tipi_contatti
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250813-02-modify_table_tipi_contatti

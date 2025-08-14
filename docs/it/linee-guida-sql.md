@@ -9,19 +9,11 @@
 > * [Configurazione e Gestione Parametri](/guide/configurazione-e-gestione-parametri) 
 > * [Messaggi di errore e Gestione Log](/guide/Messaggi-di-Errore-e-Generazione-Log) 
 >
-> Approfondimento Tabelle:   
+> Approfondimento estensioni:   
 >
-> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
->
-> Approfondimento funzioni:   
->
-> * [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_senza_indice)   
-> * [dbops.fn_populate_fk_index_policy](/dbzero/dbops/manual/fn_populate_fk_index_policy)   
-> * [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)   
-> * [dbops.fn_seed_fk_index_policy](/dbzero/dbops/manual/fn_seed_fk_index_policy)   
-> * [dbops.vw_duplicate_indexes](/dbzero/dbops/manual/vw_duplicate_indexes)    
- 
-
+> * [pgAgent](/postgresql/pgAgent)
+> * [dblink](/postgresql/dblink)
+> * [pgcrypto](/postgresql/pgcrypto)
 ---
 
 ### 1. Schemi Principali

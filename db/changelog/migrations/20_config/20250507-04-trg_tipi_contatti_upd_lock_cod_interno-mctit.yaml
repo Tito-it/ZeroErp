@@ -26,7 +26,7 @@ databaseChangeLog:
                 WHEN (old.cod_int_tipo_contatto::text IS DISTINCT FROM 
                       new.cod_int_tipo_contatto::text)
                 EXECUTE FUNCTION script.trgfn_lock_columns(
-                  'cd_int_tipo_attivita', 
+                  'cod_int_tipo_contatto', 
                   'CODICE_NON_MODIFICABILE'
                 );
 

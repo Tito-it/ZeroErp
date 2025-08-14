@@ -8,7 +8,7 @@
 
 ---
 
-### 🎯 Scopo
+### 🎯 Scopo Principale
 
 La vista `script.vw_stati_estesi` fornisce un accesso **arricchito** ai dati della tabella `config.stati`, estraendo e presentando in colonne dedicate alcune informazioni aggiuntive memorizzate nel campo JSON `extra_country`.
 

@@ -9,7 +9,7 @@
   
 databaseChangeLog:
   - changeSet:
-      id: 000-01-create-extensions
+      id: 001-01-create-extensions
       author: mctit
       runOnChange: true
       validCheckSums:
@@ -17,25 +17,42 @@ databaseChangeLog:
       comments: >
         Crea le extension necessarie per il progetto (btree_gist, dblink, pgcrypto, PostGIS).
       preConditions:
-        onFail: MARK_RAN
-        onError: CONTINUE
+        onFail: HALT
+        onError: HALT
         dbms:
-            type: postgres
+            type: postgresql
       changes:
         - sql:
             splitStatements: false
             stripComments: true
             sql: |
               CREATE EXTENSION IF NOT EXISTS btree_gist;
-              CREATE EXTENSION IF NOT EXISTS dblink;
+              CREATE EXTENSION IF NOT EXISTS dblink WITH SCHEMA public;
               CREATE EXTENSION IF NOT EXISTS pgcrypto;
               CREATE EXTENSION IF NOT EXISTS postgis;
               CREATE EXTENSION IF NOT EXISTS postgis_topology;
-              CREATE EXTENSION IF NOT EXISTS pg_agent;
+            #  CREATE EXTENSION IF NOT EXISTS pgagent;
+  # pgAgent: prova a creare solo se esiste l'estensione nel server; altrimenti non bloccare la pipeline
   - changeSet:
-      id: 000-01-90-create-extensions
+      id: 001-01-02-create-pgagent-extension
+      author: mctit
+      preConditions:
+        onFail: CONTINUE
+        onError: CONTINUE
+        dbms:  postgresql 
+        sqlCheck:
+          expectedResult: true
+          sql: "SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name='pgagent');"
+
+      changes:
+        - sql:
+            sql: |
+              CREATE EXTENSION IF NOT EXISTS pgagent WITH SCHEMA pgagent;
+  
+  - changeSet:
+      id: 001-01-90-create-extensions
       author: mctit
       comments: "Tag di fine modifica per il file extensions"
       changes:
         - tagDatabase:
-            tag: 000-01-create-extensions
+            tag: 001-01-create-extensions

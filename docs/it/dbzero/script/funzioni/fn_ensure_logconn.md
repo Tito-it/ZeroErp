@@ -11,17 +11,32 @@ CREATE FUNCTION fn_ensure_logconn()
 CREATE OR REPLACE FUNCTION script.fn_ensure_logconn()
  RETURNS void
  LANGUAGE plpgsql
+ SET search_path TO 'public', 'pg_temp'
 AS $function$
+DECLARE v_conn text := current_setting('myapp.dblink_log_connection', true);
 BEGIN
-  -- prova ad aprire la connessione dblink 'logconn' usando la GUC
-  PERFORM dblink_connect_u(
-    'logconn',
-    current_setting('myapp.dblink_log_connection', true)
-  );
-EXCEPTION WHEN duplicate_object THEN
-  -- se logconn esiste già, ignora
-  NULL;
-END;
+  -- spegni via GUC di sessione
+  IF coalesce(current_setting('myapp.log_with_dblink', true), 'on') <> 'on' THEN
+    RETURN;
+  END IF;
+  -- -- niente connstring -> esci 
+  IF v_conn IS NULL OR length(trim(v_conn))=0 THEN RETURN; END IF;
+  
+  -- se 'logconn' è già aperta, non riconnettere
+  IF 'logconn' = ANY (coalesce(public.dblink_get_connections(), ARRAY[]::text[])) THEN
+    RETURN;
+  END IF;
+
+  -- tenta la connessione e gestisci eccezioni locali
+  BEGIN
+    PERFORM public.dblink_connect('logconn'::text, v_conn::text);
+  EXCEPTION
+    WHEN duplicate_object THEN
+      NULL;             -- già aperta (race)
+    WHEN SQLSTATE '53300' THEN
+      RETURN;           -- too_many_connections: non bloccare il chiamante
+  END;
+END; 
 $function$
 ```
 ---

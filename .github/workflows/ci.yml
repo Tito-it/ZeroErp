@@ -68,6 +68,17 @@ jobs:
           source .venv/bin/activate
           mkdocs --version
           pip list | grep mkdocs
+          
+      - name: Set custom GUCs for CI role
+        env:
+          PGPASSWORD: ${{ secrets.DB_PASSWORD || 'secret' }}
+        run: |
+          psql --no-psqlrc -h localhost -p 5432 -U zeroerp -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "ALTER ROLE zeroerp SET myapp.user_language = 'it';"
+          psql --no-psqlrc -h localhost -p 5432 -U zeroerp -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "ALTER ROLE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp password=${PGPASSWORD}';"
+           psql --no-psqlrc -h localhost -p 5432 -U zeroerp -d zeroerp -v ON_ERROR_STOP=1 -c \
+             "SELECT name, setting FROM pg_settings WHERE name LIKE 'myapp.%' ORDER BY name;"
 
       - name: Install Liquibase CLI
         run: |
@@ -104,9 +115,9 @@ jobs:
           # Se liquibase è installato in /opt/liquibase, aggiungilo al PATH
           export PATH=/opt/liquibase:$PATH
 
-          # Ora liquibase sarà trovato
+          # Ora liquibase sarà trovato. Attenzione imposto la disattivazione del dblink
           liquibase \
-            --url=jdbc:postgresql://localhost:5432/zeroerp \
+            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff" \
             --username=zeroerp \
             --password=secret \
             --changeLogFile=db/changelog/changelog-master.yaml \

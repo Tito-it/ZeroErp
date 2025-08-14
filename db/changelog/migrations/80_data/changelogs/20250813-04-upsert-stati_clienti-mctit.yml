@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250813-04-upsert-stati_clienti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_cliente
+      changes:
+        # Upsert dei dati nella tabella stati_cliente
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/stati_cliente.csv
+            tableName: stati_cliente
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey:
+              - id
+            columns:
+              - column: { name: id,           type: STRING }
+              - column: { name: cod_int_stato_cliente,    type: STRING }
+              - column: { name: descrizione_stato_cliente,  type: STRING }
+              - column: { name: desc_breve_stato_cliente,  type: STRING }
+              - column: { name: check_lettura,    type: STRING }
+              - column: { name: abilita_fattura,    type: STRING }
+              - column: { name: cod_int_stato_cliente,    type: STRING }
+              - column: { name: stato_cliente_ia,    type: STRING }
+              - column: { name: data_insert,  type: STRING }
+              - column: { name: user_insert,  type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update,  type: STRING }
+              
+
+  - changeSet:
+      id: 20250813-90-upsert-stati_clienti
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250813-04-upsert-stati_clienti

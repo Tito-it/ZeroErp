@@ -13,12 +13,12 @@ id,cod_modalita,descrizione,data_insert,user_insert,data_update,user_update
 12,MP12      ,RIBA,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
 13,MP13      ,MAV,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
 14,MP14      ,quietanza erario,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
-15,MP15      ,giroconto su conti di contabilit‡ speciale,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
+15,MP15      ,giroconto su conti di contabilit√† speciale,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
 16,MP16      ,domiciliazione bancaria,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
 17,MP17      ,domiciliazione postale,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
 18,MP18      ,bollettino di c/c postale,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
 19,MP19      ,SEPA Direct Debit,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
 20,MP20      ,SEPA Direct Debit CORE,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
 21,MP21      ,SEPA Direct Debit B2B,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
-22,MP22      ,Trattenuta su somme gi‡ riscosse,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
+22,MP22      ,Trattenuta su somme gi√† riscosse,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
 23,MP23      ,PagoPA,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
