@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**   
 >
 > Approfondimento tabelle:     
-> - [config.stradario](/dbzero/config/tabelle/stradario)   
-> - [config.comuni](/dbzero/config/tabelle/comuni)   
+>
+> * [config.stradario](/dbzero/config/tabelle/stradario)   
+> * [config.comuni](/dbzero/config/tabelle/comuni)   
 >
 > Approfondimento view:     
-> - [script.vw_stradario_esteso](/dbzero/script/views/vw_stradario_esteso)   
+>
+> * [script.vw_stradario_esteso](/dbzero/script/views/vw_stradario_esteso)   
 
 La view **`script.vw_indirizzo_completo`** estende la tabella `config.stradario` con dati anagrafici del comune, provincia, codice postale e dettaglio della via, fornendo un record unico per ogni via con tutte le informazioni utili.
 

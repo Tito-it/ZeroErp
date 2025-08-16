@@ -3,10 +3,11 @@
 >  👀 **Vedi anche** 
 
 > Approfondimento Tabelle:  
-> - [config.stati](/dbzero/config/tabelle/stati)   
-> - [config.comuni](/dbzero/config/tabelle/comuni)   
-> - [config.stradario](/dbzero/config/tabelle/stradario)        
-> - [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)  
+>
+> * [config.stati](/dbzero/config/tabelle/stati)   
+> * [config.comuni](/dbzero/config/tabelle/comuni)   
+> * [config.stradario](/dbzero/config/tabelle/stradario)        
+> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)  
 
 
 La tabella **`config.toponomastica`** raccoglie i tipi di toponimi utilizzati per la composizione degli indirizzi: è la base per lo **`stradario_generale`**, dove ogni record di toponimo si combina con un nome specifico per generare l’indirizzo completo.

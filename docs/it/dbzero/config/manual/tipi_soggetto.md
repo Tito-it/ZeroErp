@@ -3,8 +3,9 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento Tabelle:   
-> - [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)      
-> - Impatto su:  [`anagrafiche.soggetti` (colonna `tipo_soggetto`)](/dbzero/anagrafiche/tabelle/soggetti)
+>
+> * [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)      
+> * Impatto su:  [`anagrafiche.soggetti` (colonna `tipo_soggetto`)](/dbzero/anagrafiche/tabelle/soggetti)
 ---
 
 ### 🎯 Scopo Principale

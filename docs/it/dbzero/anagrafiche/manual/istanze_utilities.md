@@ -1,7 +1,8 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.istanze_utilities`
 
 > 👀 **Vedi anche**
-> Guide generali
+> Guide generali:
+>
 >  * [Generazione di un cliente](/guide/generazione-cliente)
 > 
 > Approfondimeto tabelle:

@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**
 >
 > Approfondimenti funzioni:   
-> - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
 >
-> Altro
-> - GUC `dblink.log_connection`
-> - Extension PostgreSQL `dblink`
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
+>
+> Estensioni PostgreSQL:   
+>
+> * GUC `dblink.log_connection`
+> * Extension PostgreSQL `dblink`
 
 La funzione **`script.fn_ensure_logconn()`** garantisce l’apertura di una connessione **dblink** permanente denominata **`logconn`**, utilizzando la stringa di connessione definita nella GUC `dblink.log_connection`. Se la connessione esiste già, l’eccezione `duplicate_object` viene catturata e ignorata.
 

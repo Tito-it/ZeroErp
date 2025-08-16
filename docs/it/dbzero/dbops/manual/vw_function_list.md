@@ -3,8 +3,10 @@
 > 👀 **Vedi anche**
 >
 > * Catalogo funzioni PostgreSQL (`pg_proc`, `pg_namespace`, `pg_description`)   
-> Altre view di catalogazione:  
-> - [dbops.vw_catalogo_oggetti](/dbzero/dbops/manual/vw_catalogo_oggetti)  
+>
+> Altre view di catalogazione:
+>  
+> * [dbops.vw_catalogo_oggetti](/dbzero/dbops/manual/vw_catalogo_oggetti)  
 
 La view **`dbops.vw_function_list`** fornisce un inventario completo delle funzioni definite negli schemi **`dbops`** e **`script`**, mostrando firma, tipo di ritorno, numero di parametri e commenti associati.
 

@@ -2,11 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:    
-> - [dbops.error_log](/dbzero/dbops/tabelle/error_log)    
+> Approfondimento tabelle:   
+> 
+> * [dbops.error_log](/dbzero/dbops/tabelle/error_log)    
 >
 > Approfondimento funzioni:    
-> - [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
+>
+> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
 
 La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e job, consentendo di tracciare chi ha eseguito cosa, quando e con quali parametri, nonché l’esito e la durata. Il campo **`tx_id`** non possiede più un valore di default: viene assegnato **automaticamente** dal **trigger** `trg_assign_tx_id_audit_log` utilizzando la trigger function `dbops.trgfn_tx_id_managed()`, garantendo coerenza con il modello di `error_log`.
 

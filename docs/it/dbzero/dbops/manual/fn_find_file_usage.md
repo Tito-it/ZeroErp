@@ -3,8 +3,9 @@
 > 👀 **Vedi anche**
 >
 > Approfondimenti funzioni:   
-> - [dbops.fn_search_column_usage](/dbzero/dbops/funzioni/fn_search_column_usage)     
-> - [dbops.fn_find_function_usage](/dbzero/dbops/funzioni/fn_find_function_usage)     
+>
+> * [dbops.fn_search_column_usage](/dbzero/dbops/funzioni/fn_search_column_usage)     
+> * [dbops.fn_find_function_usage](/dbzero/dbops/funzioni/fn_find_function_usage)     
 
 
 La funzione **`dbops.fn_find_file_usage(p_target_table regclass)`** individua tutte le constraint di tipo foreign key che puntano alla tabella specificata in input, restituendo per ciascuna:

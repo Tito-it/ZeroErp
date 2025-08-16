@@ -7,7 +7,7 @@
 > * [`config.storico_set_storicizza`](/dbzero/config/tabelle/storico_set_storicizza)
 >
 > Scheduler:
-> [Processi pgAgent](/postgresql/pgAgent)
+> * [Processi pgAgent](/postgresql/pgAgent)
 
 ---
 

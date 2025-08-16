@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:      
-> - [config.comuni](/dbzero/config/tabelle/comuni)     
+>
+> * [config.comuni](/dbzero/config/tabelle/comuni)     
 >
 > Approfondimento funzioni:    
-> - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
-> - [config.trgfn_comuni_upd_dlt_storico_comuni](/dbzero/config/funzioni/trgfn_comuni_upd_dlt_storico_comuni)    
+>
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
+> * [config.trgfn_comuni_upd_dlt_storico_comuni](/dbzero/config/funzioni/trgfn_comuni_upd_dlt_storico_comuni)    
 
 La tabella **`storico.comuni`** mantiene la cronologia completa dei record di **`config.comuni`**, archiviando snapshot JSON dei dati ad ogni operazione di modifica o cancellazione (quando il flag `storicizza` è impostato a `TRUE`).
 

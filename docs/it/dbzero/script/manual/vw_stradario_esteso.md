@@ -3,12 +3,14 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:   
-> - [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
-> - [config.toponomastica](/dbzero/config/tabelle/toponomastica)   
-> - [config.stati](/dbzero/config/tabelle/stati)   
+>
+> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
+> * [config.toponomastica](/dbzero/config/tabelle/toponomastica)   
+> * [config.stati](/dbzero/config/tabelle/stati)   
 >
 > Approfondimento view:   
-> - [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo)    
+>
+> * [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo)    
 
 
 La view **`script.vw_stradario_esteso`** offre una rappresentazione denormalizzata delle vie, combinando i dati base di **`stradario_generale`** con le relative informazioni di tipologia toponomastica e stato, per semplificare le query di indirizzo.

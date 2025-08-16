@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**
 >
 > Approfondimeto Tabelle:   
-> - [config.stradario](/dbzero/config/tabelle/stradario)    
+>
+> * [config.stradario](/dbzero/config/tabelle/stradario)    
 >
 > Approfondimeto Funzioni:   
-> - [config.trgfn_stradario_upd_dlt_storico_stradario](/dbzero/config/funzioni/trgfn_stradario_upd_dlt_storico_stradario)   
-> - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
+>
+> * [config.trgfn_stradario_upd_dlt_storico_stradario](/dbzero/config/funzioni/trgfn_stradario_upd_dlt_storico_stradario)   
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
 
 La tabella **`storico.stradario`** archivia la cronologia delle modifiche alle vie registrate in `config.stradario`, garantendo la tracciabilità di tutte le operazioni di update e delete.
 

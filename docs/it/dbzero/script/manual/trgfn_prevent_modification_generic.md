@@ -3,7 +3,8 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento funzioni :    
-> - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
+>
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
 
 
 La trigger function **`script.trgfn_prevent_modification_generic()`** impedisce modifiche o cancellazioni sui record di tabelle di audit (o altre tabelle protette), sollevando un’eccezione centralizzata tramite `fn_log_and_raise_error`.

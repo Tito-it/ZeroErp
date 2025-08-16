@@ -3,10 +3,12 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:    
-> - [config.iva](/dbzero/config/tabelle/iva)    
+>
+> * [config.iva](/dbzero/config/tabelle/iva)    
 >
 > Approfondimenti funzioni:   
-> - [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
+>
+> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
 
 
 La tabella **`config.conti_contabili`** definisce il piano dei conti utilizzabile per la contabilizzazione delle operazioni, distinguendo tra conti di **acquisto** e **vendita**, e supportando l’audit delle modifiche.

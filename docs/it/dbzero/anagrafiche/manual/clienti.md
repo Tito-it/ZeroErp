@@ -3,10 +3,11 @@
 
 > 👀 **Vedi anche**
 >
-> Guide generali
+> Guide generali:
+>
 >  * [Generazione di un cliente](/guide/generazione-cliente)
 >
-> * Approfondimento tabelle:
+> Approfondimento tabelle:
 >
 >   * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 >   * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)

@@ -3,9 +3,10 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento Tabelle:   
-> - [config.tipi_soggetto](/dbzero/config/tabelle/tipi_soggetto)      
-> - [config.stati](/dbzero/config/tabelle/stati)      
-> - Impatto su:  [ `anagrafiche.soggetti` (colonna `tipo_soggetto_dettaglio_id`)](/dbzero/anagrafiche/tabelle/soggetti)  
+>
+> * [config.tipi_soggetto](/dbzero/config/tabelle/tipi_soggetto)      
+> * [config.stati](/dbzero/config/tabelle/stati)      
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
 ---
 
 La tabella **`config.tipi_soggetto_dettaglio`** definisce le **tipologie dettagliate** di soggetto (persone fisiche, giuridiche, enti, ecc.) in base al **paese** di appartenenza, specificando i **formati** validi per Codice Fiscale e Partita IVA.

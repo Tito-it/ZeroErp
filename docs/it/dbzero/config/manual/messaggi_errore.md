@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:    
-> - [dbops.error_log](/dbzero/dbops/tabelle/error_log)    
-> - [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)    
+>
+> * [dbops.error_log](/dbzero/dbops/tabelle/error_log)    
+> * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)    
 >
 > Approfondimenti funzioni:   
-> - [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)  
+>
+> * [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)  
 
 La tabella **`config.messaggi_errore`** è il **catalogo centralizzato** dei testi applicativi (errori, avvisi, messaggi informativi) con supporto per internazionalizzazione (i18n). Ogni record definisce un messaggio univoco, differenziato per codice e lingua, corredato di causa e suggerimenti di soluzione.
 

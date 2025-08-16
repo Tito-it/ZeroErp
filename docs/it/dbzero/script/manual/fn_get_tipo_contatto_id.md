@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**
 >
 > Approfondimenti tabelle:   
->  - [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)   
+>
+>  * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)   
 >
 > Approfondimenti funzioni:   
->  - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
->  - [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)   
+>
+>  * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+>  * [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)   
 
 ---
 

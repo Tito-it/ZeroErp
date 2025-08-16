@@ -3,12 +3,13 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:    
-> - [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)    
-> - [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)    
+>
+> * [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)    
+> * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)    
 >
 > Approfondimento funzioni:    
-> - [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
-> - [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)    
+> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)    
 
 La tabella **`dbops.error_log`** serve a **centralizzare la registrazione degli errori** che si verificano nelle diverse aree dell’applicazione (database, backend, frontend, job, ecc.), fornendo un quadro completo del contesto, della fonte e della transazione coinvolta.
 

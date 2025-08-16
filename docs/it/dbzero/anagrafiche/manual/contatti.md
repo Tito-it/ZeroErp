@@ -1,15 +1,17 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.contatti`
 
 > 👀 **Vedi anche**
-> Approfondimento tabelle:    
-> - [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
-> - [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
-> - [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)    
-> - [config.utilities](/dbzero/config/tabelle/utilities)    
+> Approfondimento tabelle:
+>    
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
+> * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)    
+> * [config.utilities](/dbzero/config/tabelle/utilities)    
 >
 > Approfondimenti funzioni:   
-> - [anagrafiche.trgfn_contatti_ins_upd_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_ins_upd_set_default_contatto)     
-> - [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
+>
+> * [anagrafiche.trgfn_contatti_ins_upd_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_ins_upd_set_default_contatto)     
+> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
 
 
 La tabella **`anagrafiche.contatti`** è il **punto di raccolta centralizzato** per tutte le informazioni di contatto nell’applicazione, a diversi livelli di granularità:

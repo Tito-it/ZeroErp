@@ -4,7 +4,8 @@
 > 👀 **Vedi anche**  
 >
 > Approfondimento Tabelle:   
-> - [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
+>
+> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
 
 La procedura **`dbops.apply_fk_index_policy()`** incapsula la logica di creazione o rimozione dinamica degli indici sulle foreign key, in base alle policy definite in `dbops.fk_index_policy`.
 

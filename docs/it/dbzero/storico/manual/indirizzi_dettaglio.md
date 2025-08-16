@@ -3,10 +3,12 @@
 > 👀 **Vedi anche**  
 >
 > Approfondimento tabelle:   
-> - [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
+>
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
 >
 > Approfondimento funzioni:   
-> - [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)    
+>
+> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)    
 
 ### 🎯 Scopo Principale
 

@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**
 >
 > Approfondimenti tabelle:   
-> - [config.stradario](/dbzero/config/tabelle/stradario)   
-> - [storico.stradario](/dbzero/storico/tabelle/stradario)  
+>
+> * [config.stradario](/dbzero/config/tabelle/stradario)   
+> * [storico.stradario](/dbzero/storico/tabelle/stradario)  
 > 
-> Approfondimenti funzioni:   
-> - [config.trgfn_stradario_upd_dlt_storico_stradario](/dbzero/config/funzioni/trgfn_stradario_upd_dlt_storico_stradario)   
+> Approfondimenti funzioni: 
+>  
+> * [config.trgfn_stradario_upd_dlt_storico_stradario](/dbzero/config/funzioni/trgfn_stradario_upd_dlt_storico_stradario)   
 
 
 Il trigger **`trg_stradario_upd_dlt_storico_stradario`** collega la logica di storicizzazione definita in `config.trgfn_stradario_upd_dlt_storico_stradario()` agli eventi di modifica e cancellazione dei record nella tabella `config.stradario`.

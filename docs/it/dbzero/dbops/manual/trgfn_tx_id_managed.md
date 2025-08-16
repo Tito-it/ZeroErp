@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento Tabelle:   
-> - [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      
+>
+> * [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      
 >
 > Approfondimento funzioni :    
-> - [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)    
-> - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
+>
+> * [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)    
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
 
 
 ### 🎯 Scopo Principale

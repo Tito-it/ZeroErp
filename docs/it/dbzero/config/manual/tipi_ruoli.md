@@ -3,7 +3,8 @@
 >  👀 **Vedi anche** 
 
 > Approfondimento Tabelle:  
-> - [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
+>
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
 
 
 La tabella **`config.tipi_ruoli`** serve a definire i ruoli che un soggetto (individuo o società) può assumere all'interno del software Zero ERP. In questo modo la tabella `soggetti` rimane generica e memorizza solo i dati anagrafici di base, mentre `tipi_ruoli` specifica in quali ruoli (cliente, fornitore, gestore, ecc.) ciascun soggetto si trova, a seconda delle esigenze aziendali.
