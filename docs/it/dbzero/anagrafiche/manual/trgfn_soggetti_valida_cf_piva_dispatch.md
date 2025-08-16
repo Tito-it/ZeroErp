@@ -4,10 +4,12 @@
 > 👀 **Vedi anche**
 >
 > Approfondimenti tabelle:   
->  - [config.stati](/dbzero/config/tabelle/stati)   
+>
+> * [config.stati](/dbzero/config/tabelle/stati)   
 >
 > Approfondimenti funzioni:   
->  - [script.validate_cf_piva_it](/dbzero/script/funzioni/fn_validate_cf_piva_it)   
+>
+> * [script.validate_cf_piva_it](/dbzero/script/funzioni/fn_validate_cf_piva_it)   
 
 
 ### 🎯 Scopo Principale

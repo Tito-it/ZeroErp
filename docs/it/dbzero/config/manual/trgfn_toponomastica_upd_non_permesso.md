@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:   
-> - [config.toponomastica](/dbzero/config/tabelle/toponomastica)    
-> - [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)    
+>
+> * [config.toponomastica](/dbzero/config/tabelle/toponomastica)    
+> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)    
 >
 > Approfondimento funzioni:   
-> - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+>
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 La trigger function **`config.trgfn_toponomastica_upd_non_permesso()`** impedisce modifiche non consentite sul catalogo delle toponomastiche, bloccando l’**UPDATE** di `descrizione` quando la voce è già in uso in **`config.stradario_generale`**.
 

@@ -3,10 +3,11 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento Tabelle:   
-> - [config.sistema_codici](/dbzero/config/tabelle/sistema_codici)      
+>
+> * [config.sistema_codici](/dbzero/config/tabelle/sistema_codici)      
 >
 > Approfondimento funzioni :    
-> - [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)    
+> * [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)    
 
 
 La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametrico un nuovo codice alfanumerico per uno specifico “tipo” (es. `ORDINE`, `CLIENTE`, `FATTURA`), basandosi sui parametri definiti nella tabella **`config.sistema_codici`**. Se la configurazione per quel tipo non esiste o è disattivata, viene sollevata un’eccezione.

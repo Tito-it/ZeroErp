@@ -2,9 +2,10 @@
 
 > 👀 **Vedi anche**      
 >   
-> Approfondimento Tabelle:   
-> - [config.iva](/dbzero/config/tabelle/iva)      
-> - [config.iva_stati](/dbzero/config/tabelle/iva_stati)      
+> Approfondimento Tabelle:  
+> 
+> * [config.iva](/dbzero/config/tabelle/iva)      
+> * [config.iva_stati](/dbzero/config/tabelle/iva_stati)      
 
 La funzione **`config.fn_get_iva_override(p_codice_iva TEXT, p_stato_id INTEGER)`** restituisce i dati completi della aliquota IVA (codice, descrizioni, natura, conti) per un determinato codice IVA e Stato, applicando eventuali override specifici per Stato definiti in `config.iva_stati`.
 

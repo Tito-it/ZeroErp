@@ -4,8 +4,9 @@
 👀 **Vedi anche**
 > 
 > Approfondimento Tabelle:   
-> - [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
-> - [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)     
+>
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
+> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)     
 
 
 > Sincronizza il campo `geoloc` di `anagrafiche.indirizzi` con la geolocalizzazione memorizzata in `anagrafiche.indirizzi_dettaglio`.

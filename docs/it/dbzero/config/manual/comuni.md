@@ -3,13 +3,14 @@
 >  👀 **Vedi anche**   
 >
 > Approfondimento tabelle:   
->  - [config.province](/dbzero/config/tabelle/province)        
->  - [config.stradario](/dbzero/config/tabelle/stradario)        
->  - [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)        
->  - [storico.comuni](/dbzero/storico/tabelle/comuni)  
+>
+>  * [config.province](/dbzero/config/tabelle/province)        
+>  * [config.stradario](/dbzero/config/tabelle/stradario)        
+>  * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)        
+>  * [storico.comuni](/dbzero/storico/tabelle/comuni)  
 >
 > Approfondimento funzione:   
-> - [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
+> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
 
 La tabella **`config.comuni`** censisce i comuni (italiani ed esteri) all’interno di uno stato, fornendo la base per la geolocalizzazione degli indirizzi e per l’associazione con lo stradario.
 

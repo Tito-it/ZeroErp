@@ -3,10 +3,11 @@
 >  👀 **Vedi anche** 
 
 > Approfondimento Tabelle:  
-> - [config.comuni](/dbzero/config/tabelle/comuni)  
-> - [config.stradario](/dbzero/config/tabelle/stradario)       
-> - [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)  
-> - [config.toponomastica](/dbzero/config/tabelle/toponomastica)  
+>
+> * [config.comuni](/dbzero/config/tabelle/comuni)  
+> * [config.stradario](/dbzero/config/tabelle/stradario)       
+> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)  
+> * [config.toponomastica](/dbzero/config/tabelle/toponomastica)  
 
 
 La tabella **`config.stati`** censisce gli stati (o paesi), fornendo codici ufficiali e metadata utili per la gestione geografica e fiscale all’interno di Zero ERP.

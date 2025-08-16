@@ -3,8 +3,9 @@
 > 👀 **Vedi anche**
 >
 > Altre view di catalogazione:  
-> - [dbops.vw_function_list](/dbzero/dbops/manual/vw_function_list)  
-> - [dbops.vw_trigger_functions](/dbzero/dbops/manual/vw_trigger_functions)  
+>
+> * [dbops.vw_function_list](/dbzero/dbops/manual/vw_function_list)  
+> * [dbops.vw_trigger_functions](/dbzero/dbops/manual/vw_trigger_functions)  
 
 
 La funzione **`dbops.fn_find_function_usage`** restituisce l’elenco delle entità del database (funzioni, trigger, event trigger) che fanno riferimento a una specifica funzione indicata dal nome, facilitando l’analisi delle dipendenze e degli impatti di modifiche o refactoring.

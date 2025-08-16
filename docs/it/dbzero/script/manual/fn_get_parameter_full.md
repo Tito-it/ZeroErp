@@ -4,11 +4,12 @@
 > 👀 **Vedi anche**  
 >
 > Approfondimento Tabelle:   
-> - [config.parameters](/dbzero/config/tabelle/parameters)      
-> - [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
+>
+> * [config.parameters](/dbzero/config/tabelle/parameters)      
+> * [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
 >
 > Approfondimento funzioni :    
-> - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
 
 
 

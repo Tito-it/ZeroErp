@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**
 >
 > Approfondimenti tabelle:    
-> - [config.iva](/dbzero/config/tabelle/iva)    
+>
+> * [config.iva](/dbzero/config/tabelle/iva)    
 >
 > Approfondimenti funzioni:   
-> - [config.trgfn_iva_ins_upd_check_conti_iva](/dbzero/config/funzioni/   trgfn_iva_ins_upd_check_conti_iva)    
-> - [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
+>
+> * [config.trgfn_iva_ins_upd_check_conti_iva](/dbzero/config/funzioni/trgfn_iva_ins_upd_check_conti_iva)    
+> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
 
 
 

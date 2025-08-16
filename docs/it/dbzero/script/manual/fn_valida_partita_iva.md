@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento Tabelle:   
-> - [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)      
+>
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)      
 >
 > Approfondimento funzioni :    
-> - [script.fn_valida_codice_fiscale](/dbzero/script/funzioni/fn_valida_codice_fiscale)    
-> - [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)    
+>
+> * [script.fn_valida_codice_fiscale](/dbzero/script/funzioni/fn_valida_codice_fiscale)    
+> * [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)    
 ---
 ### 🎯 Scopo Principale
 

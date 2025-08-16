@@ -3,8 +3,9 @@
 > 👀 **Vedi anche**
 >
 > Approfondimenti tabelle:    
-> - [config.iva](/dbzero/config/tabelle/iva)    
-> - [config.conti_contabili](/dbzero/config/tabelle/conti_contabili)    
+>
+> * [config.iva](/dbzero/config/tabelle/iva)    
+> * [config.conti_contabili](/dbzero/config/tabelle/conti_contabili)    
 
 La trigger function `trgfn_iva_ins_upd_check_conti_iva` assicura che i conti contabili associati ai codici IVA rispettino le regole aziendali: il conto di acquisto (`conto_iva_acquisti_id`) deve essere di tipo acquisto, mentre il conto di vendita (`conto_iva_vendita_id`) deve essere di tipo vendita.
 

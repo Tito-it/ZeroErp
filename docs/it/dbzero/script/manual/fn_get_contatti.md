@@ -3,15 +3,17 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:    
-> - [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
-> - [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
-> - [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
-> - [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)    
-> - [config.utilities](/dbzero/config/tabelle/utilities)    
+>
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
+> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
+> * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)    
+> * [config.utilities](/dbzero/config/tabelle/utilities)    
 >
 > Approfondimento funzioni :    
-> - [anagrafiche.trgfn_contatti_ins_upd_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_ins_upd_set_default_contatto)     
-> - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
+>
+> * [anagrafiche.trgfn_contatti_ins_upd_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_ins_upd_set_default_contatto)     
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
 
 
 La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id INTEGER DEFAULT NULL, p_utility_id INTEGER DEFAULT NULL, p_tipo_contatto_id INTEGER DEFAULT NULL)`** restituisce un singolo contatto per ogni `tipo_contatto_id`, applicando una logica di priorità basata sul **contesto** e validando i parametri con logging centralizzato.

@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:    
-> - [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
-> - [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
+>
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
+> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
 >
 > Approfondimento funzioni :    
-> - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
+>
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
 
 
 La trigger function **`anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()`** verifica, al termine dell’inserimento o aggiornamento di un record in `anagrafiche.soggetti`, che il soggetto associato abbia almeno un contatto valido. Se non trova contatti con `is_default = TRUE` o almeno un canale valorizzato (email, telefono, cellulare, PEC), registra l’evento e solleva un’eccezione centralizzata.

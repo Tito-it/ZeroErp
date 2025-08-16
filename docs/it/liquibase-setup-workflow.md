@@ -3,14 +3,15 @@
 > 👀 **Vedi anche**    
 > Approfondimento SQL     
 >
-> Tutte le attività SQL generate tramite Liquibase devono rispettare le convenzioni definite nel documento:     
+> Tutte le attività SQL generate tramite Liquibase devono rispettare le convenzioni definite nel documento: 
+>    
 > * [Linee Guida SQL](linee-guida-sql.md).
 
 
 ---
-⚠️ **Importante**  
-Tutti i file di changelog devono avere estensione **`.yaml`** (non `.yml`).  
-Entrambe le estensioni sono valide per Liquibase, ma si adotta `.yaml` come standard unico per Zero ERP per garantire consistenza e compatibilità con gli strumenti di CI/CD e la documentazione.
+> ⚠️ **Importante**  
+>Tutti i file di changelog devono avere estensione **`.yaml`** (non `.yml`).  
+>Entrambe le estensioni sono valide per Liquibase, ma si adotta `.yaml` come standard unico per Zero ERP per garantire consistenza e compatibilità con gli strumenti di CI/CD e la documentazione.
 
 > ⚠️ **Importante (Visione Futura)**   
 > Data la scelta di utilizzare `includeAll` nel master changelog e la struttura a cartelle, **tutti gli sviluppi di oggetti che precedono altri (es. tabelle)** devono essere inseriti **nella cartella `00_bootstrap`**.

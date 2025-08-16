@@ -3,13 +3,16 @@
 > 👀 **Vedi anche**  
 >
 > Approfondimento Tabelle:   
-> - [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
+>
+> * [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
 >
 > Approfondimento funzioni :    
-> - [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
+>
+> * [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
 >
 > Approfondimento parametri tabellari Vs GUC   
-> - [parametri-personalizzati-(GUC)](/parametri-personalizzati-(GUC))   
+>
+> * [parametri-personalizzati-(GUC)](/parametri-personalizzati-(GUC))   
 > All'interno del documento viene spiegata la differenza tra parametri GUC e parametri tabellari
 
 ---

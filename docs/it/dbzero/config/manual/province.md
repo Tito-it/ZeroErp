@@ -3,8 +3,9 @@
 >  👀 **Vedi anche** 
 
 > Approfondimento Tabelle:  
-> - [config.stati](/dbzero/config/tabelle/stati)      
-> - [config.regioni](/dbzero/config/tabelle/regioni) 
+>
+> * [config.stati](/dbzero/config/tabelle/stati)      
+> * [config.regioni](/dbzero/config/tabelle/regioni) 
 
 
 La tabella **`config.province`** censisce le province all’interno di uno stato, fornendo informazioni amministrative, codici ISTAT e dati specifici per il calcolo di accise.

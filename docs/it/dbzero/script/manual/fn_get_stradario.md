@@ -4,13 +4,14 @@
 > 👀 **Vedi anche**
 
 > Approfondimenti tabelle:  
->  - [config.stradario](/dbzero/config/tabelle/stradario)   
->  - [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
->  - [config.toponomastica](/dbzero/config/tabelle/toponomastica)   
->  - [config.comuni](/dbzero/config/tabelle/comuni)   
->  - [config.province](/dbzero/config/tabelle/province)    
->  - [config.codici_postali](/dbzero/config/tabelle/codici_postali)    
->  - [config.stati](/dbzero/config/tabelle/stati)   
+>
+>  * [config.stradario](/dbzero/config/tabelle/stradario)   
+>  * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
+>  * [config.toponomastica](/dbzero/config/tabelle/toponomastica)   
+>  * [config.comuni](/dbzero/config/tabelle/comuni)   
+>  * [config.province](/dbzero/config/tabelle/province)    
+>  * [config.codici_postali](/dbzero/config/tabelle/codici_postali)    
+>  * [config.stati](/dbzero/config/tabelle/stati)   
 
 
 

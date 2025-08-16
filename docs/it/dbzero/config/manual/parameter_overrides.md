@@ -3,10 +3,12 @@
 > 👀 **Vedi anche** 
 >
 > Approfondimento Tabelle:    
-> - [config.parameters](/dbzero/config/tabelle/parameters)      
+>
+> * [config.parameters](/dbzero/config/tabelle/parameters)      
 >
 > Approfondimento funzioni :    
-> - [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
+>
+> * [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
 
 ---
 ### 🎯 Scopo Principale

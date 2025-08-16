@@ -3,10 +3,12 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento Tabelle:   
-> - [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      
+>
+> * [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      
 >
 > Approfondimento funzioni :    
-> - [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)    
+>
+> * [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)    
 
 
 La funzione **`dbops.fn_generate_tx_id(p_generating_function TEXT, p_session_info JSONB DEFAULT '{}'::jsonb)`** centralizza la **generazione** e la **memorizzazione** di un nuovo identificativo di transazione (UUID) in `dbops.transaction_ids`, associando il contesto di chiamata e le informazioni di sessione.

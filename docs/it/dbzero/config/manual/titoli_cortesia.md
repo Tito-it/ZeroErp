@@ -3,9 +3,10 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento Tabelle:   
->  - [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
->  - [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)   
->  - [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)    
+>
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
+> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)   
+> * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)    
 
 
 La tabella **`config.titoli_cortesia`** raccoglie i titoli di cortesia (es. “Signore”, “Dottore”, “Ingegnere”) utilizzabili nei contatti e nelle anagrafiche, separando la forma estesa dalla sua abbreviazione.

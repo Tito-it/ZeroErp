@@ -2,10 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> - Catalogo trigger PostgreSQL (`pg_trigger`, `pg_class`, `pg_proc`, `pg_namespace`)
+> * Catalogo trigger PostgreSQL (`pg_trigger`, `pg_class`, `pg_proc`, `pg_namespace`)
+>
 > Altre view di catalogazione:  
-> - [dbops.vw_catalogo_oggetti](/dbzero/dbops/manual/vw_catalogo_oggetti)  
-> - [dbops.vw_function_list](/dbzero/dbops/manual/vw_function_list)  
+>
+> * [dbops.vw_catalogo_oggetti](/dbzero/dbops/manual/vw_catalogo_oggetti)  
+> * [dbops.vw_function_list](/dbzero/dbops/manual/vw_function_list)  
 
 La view **`dbops.vw_trigger_functions`** elenca tutti i trigger definiti negli schemi del database, indicando la tabella di appartenenza, il nome del trigger, la funzione associata e la definizione completa della funzione. Filtra i trigger interni di sistema lasciando solo quelli utente.
 

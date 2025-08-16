@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**  
 >
 > Approfondimento Tabelle:   
-> - [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
+>
+> * [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
 >
 > Approfondimento funzioni :    
-> - [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
-> - [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)    
+>
+> * [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)    
 
 ### 🎯 Scopo Principale
 La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti gli identificativi di transazione (UUID) utilizzati in Zero ERP: ogni volta che viene avviata un’operazione di modifica dati (inserimento, aggiornamento o cancellazione) che coinvolge più tabelle, si genera un nuovo **`tx_id`** in questa tabella e lo si propaga a tutte le righe interessate, garantendo la **tracciabilità** e il **raggruppamento** coerente delle modifiche.

@@ -3,11 +3,13 @@
 > 👀 **Vedi anche**
 >
 > Approfondimenti tabelle:   
->  - [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)   
->  - [dbops.error_log](/dbzero/dbops/tabelle/error_log)   
+>
+>  * [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)   
+>  * [dbops.error_log](/dbzero/dbops/tabelle/error_log)   
 >
 > Approfondimenti funzioni:   
->  - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+>
+>  * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 ### 🎯 Scopo Principale
 

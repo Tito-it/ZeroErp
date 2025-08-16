@@ -85,7 +85,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y default-jre unzip wget
 
-          LIQUIBASE_VERSION=4.31.0
+          LIQUIBASE_VERSION=4.33.0
           wget https://github.com/liquibase/liquibase/releases/download/v${LIQUIBASE_VERSION}/liquibase-${LIQUIBASE_VERSION}.zip -O liquibase.zip
           unzip -q liquibase.zip -d liquibase-temp
 

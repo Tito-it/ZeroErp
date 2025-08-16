@@ -7,7 +7,7 @@
 > * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)      
 
 
-> Pulisce i campi di fallback di `anagrafiche.indirizzi` quando è presente un `indirizzo_dettaglio_id`.
+> * Pulisce i campi di fallback di `anagrafiche.indirizzi` quando è presente un `indirizzo_dettaglio_id`.
 
 ---
 
