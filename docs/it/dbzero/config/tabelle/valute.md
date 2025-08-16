@@ -8,7 +8,7 @@
 | cd_valuta | character | NO |  |
 | iso_code | character | NO |  |
 | iso_num_code | smallint | YES |  |
-| descrizione_valuta | character varying | NO |  |
+| descrizione | character varying | NO |  |
 | simbolo | character varying | NO |  |
 | user_insert | character varying | NO | CURRENT_USER |
 | user_update | character varying | YES | CURRENT_USER |
@@ -25,7 +25,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_config_valute_desc_valuta | `CREATE INDEX ix_config_valute_desc_valuta ON config.valute USING btree (descrizione_valuta)` |
+| ix_config_valute_desc_valuta | `CREATE INDEX ix_config_valute_desc_valuta ON config.valute USING btree (descrizione)` |
 | pk_valute | `CREATE UNIQUE INDEX pk_valute ON config.valute USING btree (id)` |
 | uq_cd_valuta | `CREATE UNIQUE INDEX uq_cd_valuta ON config.valute USING btree (cd_valuta)` |
 | uq_iso_code | `CREATE UNIQUE INDEX uq_iso_code ON config.valute USING btree (iso_code)` |

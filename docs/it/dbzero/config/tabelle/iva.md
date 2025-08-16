@@ -6,8 +6,8 @@
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.iva_id_seq'::regclass) |
 | codice_iva | character | NO |  |
-| desc_iva | character varying | NO |  |
-| desc_breve_iva | character varying | NO |  |
+| descrizione | character varying | NO |  |
+| descrizione_breve | character varying | NO |  |
 | aliquota_iva | numeric | NO | 0 |
 | assoggettamento_iva | character | NO | ''::bpchar |
 | natura_iva_id | integer | YES |  |
@@ -34,7 +34,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_iva_desc | `CREATE INDEX ix_iva_desc ON config.iva USING btree (desc_iva)` |
+| ix_iva_desc | `CREATE INDEX ix_iva_desc ON config.iva USING btree (descrizione)` |
 | pk_iva | `CREATE UNIQUE INDEX pk_iva ON config.iva USING btree (id)` |
 | uq_iva_codice | `CREATE UNIQUE INDEX uq_iva_codice ON config.iva USING btree (codice_iva)` |
 

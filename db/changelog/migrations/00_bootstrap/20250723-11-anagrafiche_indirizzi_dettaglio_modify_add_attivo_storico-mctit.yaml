@@ -22,7 +22,7 @@ databaseChangeLog:
           columnExists:
             schemaName: anagrafiche
             tableName: indirizzi_dettaglio
-            columnName: storico
+            columnName: storicizza
 
       changes:
         # 1) Aggiunta della colonna tx_id se non esiste
@@ -47,9 +47,21 @@ databaseChangeLog:
   - changeSet:
       id: 20250724-06-drop-generated-from-indirizzo_normalizzato
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
       comments: >
         Rimuove la definizione GENERATED ALWAYS AS (…) STORED dalla colonna
         indirizzo_normalizzato e la trasforma in semplice TEXT.
+      preConditions:
+        onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        onError: CONTINUE
+         #  Assicuro che NON esista ancora tx_id
+        not:
+          columnExists:
+            schemaName: anagrafiche
+            tableName: indirizzi_dettaglio
+            columnName: indirizzo_normalizzato
       changes:
         - sql:
             comment: "1) Rimuove l’espressione GENERATED dalla colonna"

@@ -35,8 +35,8 @@ databaseChangeLog:
             columns:
               - column: { name: id,           type: STRING }
               - column: { name: cod_int_stato_cliente,    type: STRING }
-              - column: { name: descrizione_stato_cliente,  type: STRING }
-              - column: { name: desc_breve_stato_cliente,  type: STRING }
+              - column: { name: descrizione,  type: STRING }
+              - column: { name: descrizione_breve,  type: STRING }
               - column: { name: check_lettura,    type: STRING }
               - column: { name: abilita_fattura,    type: STRING }
               - column: { name: cod_int_stato_cliente,    type: STRING }
