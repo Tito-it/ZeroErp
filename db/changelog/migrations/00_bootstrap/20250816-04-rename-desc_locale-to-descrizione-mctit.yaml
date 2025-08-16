@@ -1,0 +1,28 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250816-04-rename-desc_locale-to-descrizione
+      author: mctit
+      changes:
+        - renameColumn:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            oldColumnName: descrizione_locale
+            newColumnName: descrizione
+            columnDataType: varchar(255)
+
+  
+
+  - changeSet:
+      id: 20250816-90-rename-desc_locale-to-descrizione
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250816-04-rename-desc_locale-to-descrizione

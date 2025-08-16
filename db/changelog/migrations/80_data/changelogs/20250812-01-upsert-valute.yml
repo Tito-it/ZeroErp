@@ -34,7 +34,7 @@ databaseChangeLog:
           - column: { name: iso_code,            type: STRING }
           - column: { name: cd_valuta,          type: STRING }
           - column: { name: iso_num_code,       type: NUMERIC }
-          - column: { name: descrizione_valuta, type: STRING }
+          - column: { name: descrizione, type: STRING }
           - column: { name: simbolo,            type: STRING }
 
           - column: { name: data_insert,   type: STRING }

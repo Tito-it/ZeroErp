@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250816-03-upsert-iva
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            tableName: iva
+            schemaName: config
+      changes:
+      
+
+      # 1 Carico CSV:        
+      - loadUpdateData:
+          relativeToChangelogFile: true
+          file: ../sql/config/iva.csv
+          tableName: iva
+          schemaName: config
+          separator: ","
+          encoding: UTF-8
+          quotchar: '"'
+          nullIf: ""           # <<< TRATTA "" COME NULL
+          primaryKey:
+            - id
+          columns:
+            - column: { name: id,            type: STRING }
+            - column: { name: codice_iva,   type: STRING }
+            - column: { name: descrizione,   type: STRING }
+            - column: { name: descrizione_breve,   type: STRING }
+            - column: { name: aliquota_iva,   type: STRING }
+            - column: { name: assoggettamento_iva,   type: STRING }
+            - column: { name: conto_iva_acquisti_id,   type: numeric }
+            - column: { name: conto_iva_vendita_id,   type: numeric }
+            - column: { name: id_iva_split,   type: numeric }
+            - column: { name: data_insert,   type: STRING }
+            - column: { name: user_insert,   type: STRING }
+            - column:
+                    name: data_update
+                    type: STRING
+                    defaultValue: "NOW()"
+            - column: { name: user_update,      type: STRING }
+           
+
+  - changeSet:
+      id: 20250816-90-upsert-iva
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250816-01-upsert-iva

@@ -6,9 +6,11 @@
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.iva_natura_id_seq'::regclass) |
 | codice_natura | character | NO |  |
-| descrizione_natura | character varying | NO |  |
+| descrizione | character varying | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
+| user_insert | character varying | YES |  |
+| user_update | character varying | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

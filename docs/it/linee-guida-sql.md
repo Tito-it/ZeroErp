@@ -42,6 +42,21 @@ Uniformità e chiarezza nel codice DDL:
 | **Constraint FK** | `fk_<base>_<ref>`                  | `fk_contatti_soggetti`                |
 | **Constraint UQ** | `uq_<table>_<columns>`             | `uq_contatti_default`                 |
 
+💡 **Nota**  
+Quando una colonna ha un significato comune e ricorrente (ad esempio `descrizione`, `nome`, `codice`), **non deve essere nominata con il suffisso del nome tabella** (`descrizione_cliente`, `nome_articolo`, ecc.), ma mantenere solo il nome semplice.  
+
+👉 Questo garantisce coerenza nello schema e semplifica query, join e documentazione.  
+
+Esempi:
+
+- ✅ `descrizione`  
+- ❌ `descrizione_iva`, `descrizione_cliente`
+
+In caso di più varianti sullo stesso concetto, usare un suffisso chiaro e funzionale:
+
+- `descrizione` / `descrizione_breve`  
+- `nome` / `nome_esteso`
+
 > ℹ️ Le convenzioni sono tratte dalla struttura condivisa in Zero ERP
 
 ---

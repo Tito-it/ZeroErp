@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successconti_contabili.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250816-01-upsert-conti_contabili
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            tableName: conti_contabili
+            schemaName: config
+      changes:
+     
+
+      # 2) Carico CSV:         
+      - loadUpdateData:
+          relativeToChangelogFile: true
+          file: ../sql/config/conti_contabili.csv
+          tableName: conti_contabili
+          schemaName: config
+          separator: ","
+          encoding: UTF-8
+          # nullValue: ""
+          nullValue: "NULL"
+          primaryKey:
+            - id
+          columns:
+            - column: { name: id,            type: STRING }
+            - column: { name: codice_conto,   type: STRING }
+            - column: { name: descrizione,   type: STRING }
+            - column: { name: tipo_conto,   type: STRING }
+            - column: { name: data_insert,   type: STRING }
+            - column: { name: user_insert,   type: STRING }
+            - column:
+                    name: data_update
+                    type: STRING
+                    defaultValue: "NOW()"
+            - column: { name: user_update,      type: STRING }
+           
+  - changeSet:
+      id: 20250816-90-upsert-conti_contabili
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250816-01-upsert-conti_contabili

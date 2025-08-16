@@ -6,8 +6,8 @@
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.stati_cliente_id_seq'::regclass) |
 | cod_int_stato_cliente | character | NO |  |
-| desc_stato_cliente | character varying | NO | ''::character varying |
-| desc_breve_stato | character | NO |  |
+| descrizione | character varying | NO | ''::character varying |
+| descrizione_breve | character | NO |  |
 | check_lettura | character | NO | 'S'::bpchar |
 | abilita_fattura | character | NO | 'S'::bpchar |
 | stato_cliente | character | NO | 'IS'::bpchar |
@@ -30,7 +30,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_config_stati_cli_desc | `CREATE INDEX ix_config_stati_cli_desc ON config.stati_cliente USING btree (desc_stato_cliente)` |
+| ix_config_stati_cli_desc | `CREATE INDEX ix_config_stati_cli_desc ON config.stati_cliente USING btree (descrizione)` |
 | pk_stati_cliente | `CREATE UNIQUE INDEX pk_stati_cliente ON config.stati_cliente USING btree (id)` |
 | uq_stati_cli_cod_unq | `CREATE UNIQUE INDEX uq_stati_cli_cod_unq ON config.stati_cliente USING btree (cod_int_stato_cliente)` |
 

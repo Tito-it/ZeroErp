@@ -8,7 +8,7 @@
 | tipo_soggetto_id | character varying | NO |  |
 | stato_iso2 | character varying | NO |  |
 | cod_int_tipo_soggetto | character varying | NO |  |
-| descrizione_locale | character varying | YES |  |
+| descrizione | character varying | YES |  |
 | formato_cf | character varying | YES |  |
 | formato_piva | character varying | YES |  |
 | user_insert | text | NO | CURRENT_USER |
