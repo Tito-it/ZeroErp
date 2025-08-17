@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP – Tipi Ruoli: rename cd_int_ruolo -> codice_interno (+ trigger opz.)
+# Tabella: config.tipi_ruoli
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250817-07-tipi_ruoli-rename-cd_int_ruolo-to-codice_interno
+      author: mctit
+      context: ddl
+      runOnChange: true
+      failOnError: true
+
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: tipi_ruoli
+            - columnExists:
+                schemaName: config
+                tableName: tipi_ruoli
+                columnName: cd_int_ruolo
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: tipi_ruoli
+                    columnName: codice_interno
+
+      changes:
+        # 1) Rinomina colonna
+        - renameColumn:
+            schemaName: config
+            tableName: tipi_ruoli
+            oldColumnName: cd_int_ruolo
+            newColumnName: codice_interno
+
+        # 2) Rinomina vincolo UNIQUE se presente come constraint
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'config'
+                    AND t.relname = 'tipi_ruoli'
+                    AND c.conname = 'uq_tipi_ruoli_cd_int_ruolo'
+                ) THEN
+                  EXECUTE 'ALTER TABLE config.tipi_ruoli RENAME CONSTRAINT uq_tipi_ruoli_cd_int_ruolo TO uq_tipi_ruoli_codice_interno';
+                END IF;
+              END$$;
+
+        # 3) Rinomina indice se presente come indice unico "standalone"
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'config'
+                    AND i.relname = 'uq_tipi_ruoli_cd_int_ruolo'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS config.uq_tipi_ruoli_cd_int_ruolo RENAME TO uq_tipi_ruoli_codice_interno';
+                END IF;
+              END$$;
+
+        # 4) (Opz.) rinomina trigger storico se presente col vecchio nome
+        #    Nelle tue doc compare già 'trg_tipi_ruoli_upd_lock_codiceinterno'.
+        #    Manteniamo un rename "best effort" solo se esiste ancora il vecchio nome.
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_trigger tg
+                  JOIN pg_class t ON t.oid = tg.tgrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE n.nspname = 'config'
+                    AND t.relname = 'tipi_ruoli'
+                    AND tg.tgname = 'trg_tipi_ruoli_upd_lock_cd_int_ruolo'
+                ) THEN
+                  EXECUTE 'ALTER TRIGGER trg_tipi_ruoli_upd_lock_cd_int_ruolo ON config.tipi_ruoli RENAME TO trg_tipi_ruoli_upd_lock_codiceinterno';
+                END IF;
+              END$$;
+
+      rollback:
+        - renameColumn:
+            schemaName: config
+            tableName: tipi_ruoli
+            oldColumnName: codice_interno
+            newColumnName: cd_int_ruolo
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'config'
+                    AND t.relname = 'tipi_ruoli'
+                    AND c.conname = 'uq_tipi_ruoli_codice_interno'
+                ) THEN
+                  EXECUTE 'ALTER TABLE config.tipi_ruoli RENAME CONSTRAINT uq_tipi_ruoli_codice_interno TO uq_tipi_ruoli_cd_int_ruolo';
+                END IF;
+              END$$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'config'
+                    AND i.relname = 'uq_tipi_ruoli_codice_interno'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS config.uq_tipi_ruoli_codice_interno RENAME TO uq_tipi_ruoli_cd_int_ruolo';
+                END IF;
+              END$$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_trigger tg
+                  JOIN pg_class t ON t.oid = tg.tgrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE n.nspname = 'config'
+                    AND t.relname = 'tipi_ruoli'
+                    AND tg.tgname = 'trg_tipi_ruoli_upd_lock_codiceinterno'
+                ) THEN
+                  EXECUTE 'ALTER TRIGGER trg_tipi_ruoli_upd_lock_codiceinterno ON config.tipi_ruoli RENAME TO trg_tipi_ruoli_upd_lock_cd_int_ruolo';
+                END IF;
+              END$$;
+
+  - changeSet:
+      id: 20250817-90-tipi_ruoli-rename-cd_int_ruolo-to-codice_interno
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250817-07-tipi_ruoli-rename-cd_int_ruolo-to-codice_interno

@@ -29,15 +29,15 @@ La tabella **`config.tipi_ruoli`** serve a definire i ruoli che un soggetto (ind
     * `soggetto_id = 5`, `cd_int_ruolo = "FORNITORE"`
 * **Constraint di unicità**
 
-  * Il campo `cd_int_ruolo` è un codice interno univoco (`UNIQUE`) per ogni riga di `tipi_ruoli`, utilizzato come riferimento stabile nelle logiche applicative.
-  * Il campo `cod_ruolo` identifica il ruolo in modo testuale/abanndonabile (es. "CLIE" per cliente, "FORN" per fornitore), anch’esso unico.
+  * Il campo `codice_interno` è un codice interno univoco (`UNIQUE`) per ogni riga di `tipi_ruoli`, utilizzato come riferimento stabile nelle logiche applicative.
+  * Il campo `codice` identifica il ruolo in modo testuale/abanndonabile (es. "CLIE" per cliente, "FORN" per fornitore), anch’esso unico.
 
 ---
 
 ### 💡 Vantaggi Operativi
 
 * **Invarianza del codice interno**
-  Grazie al trigger di lock, il `cd_int_ruolo` rimane stabile, semplificando tutte le logiche applicative che fanno riferimento al codice ruolo (es. permessi, reportistica, workflow).
+  Grazie al trigger di lock, il `codice_interno` rimane stabile, semplificando tutte le logiche applicative che fanno riferimento al codice ruolo (es. permessi, reportistica, workflow).
 
 * **Audit automatico**
   Il trigger di audit garantisce la tracciabilità delle modifiche, facilitando la diagnostica storica e la sicurezza: ogni aggiornamento registra data e utente di modifica.

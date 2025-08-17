@@ -1,0 +1,150 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250817-01-rename-cd_valuta-to-codice
+      author: mctit
+      context: ddl
+      runOnChange: true
+      comments: >
+        Rinomina colonna cd_valuta in codice nella tabella config.valute
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: valute
+            - columnExists:
+                schemaName: config
+                tableName: valute
+                columnName: cd_valuta
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: valute
+                    columnName: codice
+
+      changes:
+        # 1) Rinomina colonna
+        - renameColumn:
+            schemaName: config
+            tableName: valute
+            oldColumnName: cd_valuta
+            newColumnName: codice
+            columnDataType: varchar(16)  # <-- imposta la lunghezza reale se diversa
+
+        # 2) Rinomina vincolo UNIQUE, se esiste
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                -- Se esiste un vincolo UNIQUE con questo nome, lo rinomino
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'config'
+                    AND t.relname = 'valute'
+                    AND c.conname = 'uq_cd_valuta'
+                ) THEN
+                  EXECUTE 'ALTER TABLE config.valute RENAME CONSTRAINT uq_cd_valuta TO uq_valute_codice';
+                END IF;
+              END$$;
+
+        # 3) Rinomina indice, se esiste (caso create unique index senza constraint)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'config'
+                    AND i.relname = 'uq_cd_valuta'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS config.uq_cd_valuta RENAME TO uq_valute_codice';
+                END IF;
+              END$$;
+
+      rollback:
+        # Rollback colonna
+        #preConditions:
+        #    onFail: CONTINUE
+        #    columnExists:
+        #        schemaName: config
+        #        tableName: valute
+        #        columnName: codice
+        
+        - renameColumn:
+            schemaName: config
+            tableName: valute
+            oldColumnName: codice
+            newColumnName: cd_valuta
+            columnDataType: varchar(16)  # <-- coerente col tipo reale
+
+        # Rollback vincolo UNIQUE (se esiste col nuovo nome)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'config'
+                    AND t.relname = 'valute'
+                    AND c.conname = 'uq_valute_codice'
+                ) THEN
+                  EXECUTE 'ALTER TABLE config.valute RENAME CONSTRAINT uq_valute_codice TO uq_cd_valuta';
+                END IF;
+              END$$;
+
+        # Rollback indice (se esiste col nuovo nome)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'config'
+                    AND i.relname = 'uq_valute_codice'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS config.uq_valute_codice RENAME TO uq_cd_valuta';
+                END IF;
+              END$$;
+
+  - changeSet:
+      id: 20250817-90-rename-cd_valuta-to-codice
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250817-01-rename-cd_valuta-to-codice

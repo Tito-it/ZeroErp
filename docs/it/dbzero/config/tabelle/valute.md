@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.valute_id_seq'::regclass) |
-| cd_valuta | character | NO |  |
+| codice | character | NO |  |
 | iso_code | character | NO |  |
 | iso_num_code | smallint | YES |  |
 | descrizione | character varying | NO |  |
@@ -19,16 +19,16 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | PRIMARY KEY | pk_valute | id |
-| UNIQUE | uq_cd_valuta | cd_valuta |
 | UNIQUE | uq_iso_code | iso_code |
+| UNIQUE | uq_valute_codice | codice |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_config_valute_desc_valuta | `CREATE INDEX ix_config_valute_desc_valuta ON config.valute USING btree (descrizione)` |
 | pk_valute | `CREATE UNIQUE INDEX pk_valute ON config.valute USING btree (id)` |
-| uq_cd_valuta | `CREATE UNIQUE INDEX uq_cd_valuta ON config.valute USING btree (cd_valuta)` |
 | uq_iso_code | `CREATE UNIQUE INDEX uq_iso_code ON config.valute USING btree (iso_code)` |
+| uq_valute_codice | `CREATE UNIQUE INDEX uq_valute_codice ON config.valute USING btree (codice)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

@@ -10,14 +10,14 @@ La tabella **`config.tipi_indirizzi`** centralizza i **tipi di indirizzo** utili
 ### 🔒 Vincoli
 
 * **PRIMARY KEY**: `pk_tipi_indirizzi` su `id`
-* **UNIQUE**: `uq_tipi_indirizzi_cod_int_tipo_indirizzo` su `cod_int_tipo_indirizzo`
+* **UNIQUE**: `uq_tipi_indirizzi_codice_interno` su `codice_interno`
 * **CHECK**: `chk_cod_int_tipo_indirizzo` per garantire che il codice interno non sia vuoto
 
 ---
 
 ### 🚨 Trigger
 
-* **`trg_tipi_indirizzi_upd_lock_cod_interno`** (BEFORE UPDATE): blocca la modifica di `cod_int_tipo_indirizzo` tramite `script.trgfn_lock_columns`.
+* **`trg_tipi_indirizzi_upd_lock_cod_interno`** (BEFORE UPDATE): blocca la modifica di `codice_interno` tramite `script.trgfn_lock_columns`.
 * **`trg_upd_tipi_indirizzi_audit_data_user`** (BEFORE UPDATE): aggiorna `data_update` e `user_update` con `script.trgfn_upd_audit_data_user_generic()`.
 
 ---
@@ -35,7 +35,7 @@ I codici interni attualmente definiti in `config.tipi_indirizzi` sono:
 | `POSTA`        | Corrispondenza Postale |
 | `FORNITURA`    | Indirizzo Fornitura    |
 
-> ℹ️ Il codice interno (`cod_int_tipo_indirizzo`) è utilizzato in logica applicativa e non può essere modificato una volta inserito.
+> ℹ️ Il codice interno (`codice_interno`) è utilizzato in logica applicativa e non può essere modificato una volta inserito.
 
 ---
 
