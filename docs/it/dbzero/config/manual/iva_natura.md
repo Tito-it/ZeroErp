@@ -26,8 +26,8 @@ La tabella **`config.iva_natura`** contiene i codici natura IVA utilizzati per l
 
 ### 🔒 Vincoli e Regole Aziendali
 
-* **Unicità**: `codice_natura` deve essere univoco nel catalogo.
-* **Validità**: ogni codice (`codice_natura`) corrisponde a uno specifico significato fiscale, es. `N1` (Esportazioni), `N2` (Operazioni non imponibili), etc.
+* **Unicità**: `codice` deve essere univoco nel catalogo.
+* **Validità**: ogni codice  corrisponde a uno specifico significato fiscale, es. `N1` (Esportazioni), `N2` (Operazioni non imponibili), etc.
 * **Audit**: ogni modifica al catalogo aggiorna automaticamente `data_update` e `user_update` tramite trigger.
 
 ---

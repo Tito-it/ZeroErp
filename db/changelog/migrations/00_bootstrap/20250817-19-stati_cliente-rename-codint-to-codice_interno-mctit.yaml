@@ -7,12 +7,6 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 
-# ------------------------------------------------------------
-# Zero ERP – Stati Cliente: rename cod_int_stato_cliente -> codice_interno
-# + rename vincolo/indice uq_stati_cli_cod_unq
-# + riallineo trigger lock_columns con nuovo nome colonna
-# Tabella: config.stati_cliente
-# ------------------------------------------------------------
 databaseChangeLog:
   - changeSet:
       id: 20250817-19-stati_cliente-rename-codint-to-codice_interno

@@ -36,7 +36,7 @@ databaseChangeLog:
             - id
           columns:
             - column: { name: id,            type: STRING }
-            - column: { name: codice_conto,   type: STRING }
+            - column: { name: codice,   type: STRING }
             - column: { name: descrizione,   type: STRING }
             - column: { name: tipo_conto,   type: STRING }
             - column: { name: data_insert,   type: STRING }

@@ -1,6 +1,6 @@
 id,tipo_soggetto_id,stato_iso2,codice_interno,descrizione,formato_cf,formato_piva,user_insert,data_insert,user_update,data_update,stato_id
-2,PF,IT,DI,Persona Fisica - Ditta Individuale,ALFANUM_16,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2025-08-17 12:45:25.002467+02,1
-1,PF,IT,PR,Persona Fisica - Privato,ALFANUM_16,NON_APPLICABILE,titodb,2025-07-13 23:53:47.944615+02,titodb,2025-08-17 12:45:25.002467+02,1
-5,ENC,IT,ENC,Ente non Commerciale,NUM_11,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2025-08-17 12:45:25.002467+02,1
-3,PG,IT,SC,Società di Capitali,NUM_11,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2025-08-17 12:45:25.002467+02,1
-4,PG,IT,SP,Società di Persone,NUM_11,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2025-08-17 12:45:25.002467+02,1
+2,PF,IT,DI,Persona Fisica - Ditta Individuale,ALFANUM_16,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2025-08-17 23:12:36.413161+02,1
+1,PF,IT,PR,Persona Fisica - Privato,ALFANUM_16,NON_APPLICABILE,titodb,2025-07-13 23:53:47.944615+02,titodb,2025-08-17 23:12:36.413161+02,1
+5,ENC,IT,ENC,Ente non Commerciale,NUM_11,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2025-08-17 23:12:36.413161+02,1
+3,PG,IT,SC,Società di Capitali,NUM_11,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2025-08-17 23:12:36.413161+02,1
+4,PG,IT,SP,Società di Persone,NUM_11,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2025-08-17 23:12:36.413161+02,1

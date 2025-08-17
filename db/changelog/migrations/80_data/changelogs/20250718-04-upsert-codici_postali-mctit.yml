@@ -36,7 +36,7 @@ databaseChangeLog:
             - id
           columns:
             - column: { name: id,            type: STRING }
-            - column: { name: codice_postale,   type: STRING }
+            - column: { name: codice,   type: STRING }
             - column: { name: comune_id,   type: STRING }
             - column: { name: regione_id,   type: STRING }
             - column: { name: data_insert,   type: STRING }

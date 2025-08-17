@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.codici_postali_id_seq'::regclass) |
-| codice_postale | character | NO |  |
+| codice | character | NO |  |
 | comune_id | integer | NO |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
 | user_insert | character varying | NO | CURRENT_USER |
@@ -21,7 +21,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_codici_postali_codice | `CREATE INDEX ix_codici_postali_codice ON config.codici_postali USING btree (codice_postale)` |
+| ix_codici_postali_codice | `CREATE INDEX ix_codici_postali_codice ON config.codici_postali USING btree (codice)` |
 | ix_codici_postali_comune_id | `CREATE INDEX ix_codici_postali_comune_id ON config.codici_postali USING btree (comune_id)` |
 | pk_codici_postali | `CREATE UNIQUE INDEX pk_codici_postali ON config.codici_postali USING btree (id)` |
 

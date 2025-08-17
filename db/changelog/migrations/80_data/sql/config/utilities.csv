@@ -1,6 +1,6 @@
 id,codice,descrizione,codice_interno,data_insert,user_insert,data_update,user_update
-1,ENE,Energia Elettrica,ENERGIA,2025-04-02 22:38:19.957861+02,postgres,2025-08-17 12:45:24.946328+02,titodb
-5,STD,Servizio Base,BASE,2025-04-02 22:38:19.957861+02,postgres,2025-08-17 12:45:24.946328+02,titodb
-3,ACQ,Acqua Potabile,IDRICO,2025-04-02 22:38:19.957861+02,postgres,2025-08-17 12:45:24.946328+02,titodb
-2,GAS,Gas Naturale,GAS,2025-04-02 22:38:19.957861+02,postgres,2025-08-17 12:45:24.946328+02,titodb
-4,TEL,Telefonia,FONIA,2025-04-02 22:38:19.957861+02,postgres,2025-08-17 12:45:24.946328+02,titodb
+1,ENE,Energia Elettrica,ENERGIA,2025-04-02 22:38:19.957861+02,postgres,2025-08-17 23:12:36.353601+02,titodb
+5,STD,Servizio Base,BASE,2025-04-02 22:38:19.957861+02,postgres,2025-08-17 23:12:36.353601+02,titodb
+3,ACQ,Acqua Potabile,IDRICO,2025-04-02 22:38:19.957861+02,postgres,2025-08-17 23:12:36.353601+02,titodb
+2,GAS,Gas Naturale,GAS,2025-04-02 22:38:19.957861+02,postgres,2025-08-17 23:12:36.353601+02,titodb
+4,TEL,Telefonia,FONIA,2025-04-02 22:38:19.957861+02,postgres,2025-08-17 23:12:36.353601+02,titodb

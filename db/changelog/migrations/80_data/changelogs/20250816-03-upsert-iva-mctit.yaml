@@ -36,7 +36,7 @@ databaseChangeLog:
             - id
           columns:
             - column: { name: id,            type: STRING }
-            - column: { name: codice_iva,   type: STRING }
+            - column: { name: codice,   type: STRING }
             - column: { name: descrizione,   type: STRING }
             - column: { name: descrizione_breve,   type: STRING }
             - column: { name: aliquota_iva,   type: STRING }

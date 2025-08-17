@@ -24,7 +24,7 @@ La tabella **`config.conti_contabili`** definisce il piano dei conti utilizzabil
 
 ### 🔒 Vincoli e Regole Aziendali
 
-* **Unicità**: `codice_conto` deve essere univoco.
+* **Unicità**: `codice` deve essere univoco.
 * **Tipologia**: `tipo_conto` può essere:
 
   * `A` (Acquisto)
