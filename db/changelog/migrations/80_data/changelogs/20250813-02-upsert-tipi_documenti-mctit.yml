@@ -34,9 +34,9 @@ databaseChangeLog:
               - id
             columns:
               - column: { name: id,           type: STRING }
-              - column: { name: cod_tipo_documento,    type: STRING }
+              - column: { name: codice,    type: STRING }
               - column: { name: descrizione,  type: STRING }
-              - column: { name: cd_int_tipo_documento, type: STRING }
+              - column: { name: codice_interno, type: STRING }
               - column: { name: data_insert,  type: STRING }
               - column: { name: user_insert,  type: STRING }
               - column:

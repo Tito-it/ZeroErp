@@ -1,6 +1,6 @@
-id,cod_ruolo,descrizione,cd_int_ruolo,data_insert,user_insert,data_update,user_update
-1,CL,Cliente,CL,2025-04-02 22:59:55.15616+02,postgres,2025-08-16 18:30:10.827791+02,titodb
-2,FO,Fornitore,FO,2025-04-02 22:59:55.15616+02,postgres,2025-08-16 18:30:10.827791+02,titodb
-3,GE,Gestore,GE,2025-04-02 22:59:55.15616+02,postgres,2025-08-16 18:30:10.827791+02,titodb
-4,VE,Venditore,VE,2025-04-05 21:01:33.884337+02,postgres,2025-08-16 18:30:10.827791+02,titodb
-5,DI,Distributore,DI,2025-04-05 21:02:13.92874+02,postgres,2025-08-16 18:30:10.827791+02,titodb
+id,codice,descrizione,codice_interno,data_insert,user_insert,data_update,user_update
+1,CL,Cliente,CL,2025-04-02 22:59:55.15616+02,postgres,2025-08-17 23:12:50.597982+02,titodb
+2,FO,Fornitore,FO,2025-04-02 22:59:55.15616+02,postgres,2025-08-17 23:12:50.597982+02,titodb
+3,GE,Gestore,GE,2025-04-02 22:59:55.15616+02,postgres,2025-08-17 23:12:50.597982+02,titodb
+4,VE,Venditore,VE,2025-04-05 21:01:33.884337+02,postgres,2025-08-17 23:12:50.597982+02,titodb
+5,DI,Distributore,DI,2025-04-05 21:02:13.92874+02,postgres,2025-08-17 23:12:50.597982+02,titodb

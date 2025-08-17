@@ -20,7 +20,7 @@ AS $function$
       LIMIT 1),
     (SELECT id
       FROM config.stati_cliente
-      WHERE cod_int_stato_cliente = 'IS'
+      WHERE codice_interno = 'IS'
       LIMIT 1)
   );
 $function$

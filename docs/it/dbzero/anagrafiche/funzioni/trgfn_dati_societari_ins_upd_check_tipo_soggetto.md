@@ -18,7 +18,7 @@ AS $function$
    -- Controlla che il soggetto associato abbia un tipo valido
    -- solo SC e SP. In futuro si potrà estendere per altri tipi
 
-     SELECT tsd.cod_int_tipo_soggetto
+     SELECT tsd.codice_interno
        INTO v_cod_int_tipo
        FROM anagrafiche.soggetti s
          JOIN config.tipi_soggetto_dettaglio tsd 
@@ -32,7 +32,7 @@ AS $function$
          'E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO',
          jsonb_build_object(
            'soggetto_id', NEW.soggetto_id,
-           'cod_int_tipo_soggetto', v_cod_int_tipo
+           'codice_interno', v_cod_int_tipo
          ),
          NULL::uuid,
          NEW.soggetto_id::text, v_cod_int_tipo

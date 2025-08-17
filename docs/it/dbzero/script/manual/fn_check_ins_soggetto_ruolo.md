@@ -34,7 +34,7 @@ La funzione **`script.fn_check_ins_soggetto_ruolo(p_soggetto_id, p_soggetto_ruol
 | `p_soggetto_id`       | `UUID`    | ID del soggetto in `anagrafiche.oggetti`.                                                  |
 | `p_soggetto_ruolo_id` | `INTEGER` | ID esistente della relazione in `anagrafiche.soggetti_ruoli`; se `NULL` o 0`,
                                       verrà      creato un nuovo record. 
-| `p_cd_int_ruolo`      | `VARCHAR` | Codice interno del ruolo (`cd_int_ruolo` in `config.tipi_ruoli`) da associare al 
+| `p_cd_int_ruolo`      | `VARCHAR` | Codice interno del ruolo (`codice_interno` in `config.tipi_ruoli`) da associare al 
                                       soggetto.  
 
 ---
@@ -42,7 +42,7 @@ La funzione **`script.fn_check_ins_soggetto_ruolo(p_soggetto_id, p_soggetto_ruol
 ### ⚙️ Flusso Logico
 
 1. **Recupero ID ruolo**  
-   Cerca in `config.tipi_ruoli` il record con `cd_int_ruolo = p_cd_int_ruolo`. Se non trovato, solleva eccezione `E_COD_INT_RUOLO`.
+   Cerca in `config.tipi_ruoli` il record con `codice_interno = p_cd_int_ruolo`. Se non trovato, solleva eccezione `E_COD_INT_RUOLO`.
 
 2. **Inserimento condizionale**  
    Se `p_soggetto_ruolo_id` è `NULL` o `0`:

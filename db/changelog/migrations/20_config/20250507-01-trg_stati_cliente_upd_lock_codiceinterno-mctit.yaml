@@ -11,6 +11,8 @@ databaseChangeLog:
       id: 20250507-01-trg_stati_cliente_upd_lock_codiceinterno  
       author: mctit
       runOnChange: true   
+      validCheckSums:
+        - ANY
       changes:
         - sql:
             splitStatements: false
@@ -21,10 +23,10 @@ databaseChangeLog:
                   BEFORE UPDATE 
                   ON config.stati_cliente
                   FOR EACH ROW
-                  WHEN (old.cod_int_stato_cliente::text IS DISTINCT FROM 
-                        new.cod_int_stato_cliente::text)
+                  WHEN (old.codice_interno::text IS DISTINCT FROM 
+                        new.codice_interno::text)
                 EXECUTE FUNCTION script.trgfn_lock_columns(
-                  'cod_int_stato_cliente', 
+                  'codice_interno', 
                   'CODICE_NON_MODIFICABILE'
                 );
 

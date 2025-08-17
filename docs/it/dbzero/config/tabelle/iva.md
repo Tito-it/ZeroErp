@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.iva_id_seq'::regclass) |
-| codice_iva | character | NO |  |
+| codice | character | NO |  |
 | descrizione | character varying | NO |  |
 | descrizione_breve | character varying | NO |  |
 | aliquota_iva | numeric | NO | 0 |
@@ -29,14 +29,14 @@
 | FOREIGN KEY | fk_iva_natura | natura_iva_id |
 | FOREIGN KEY | fk_iva_split | id_iva_split |
 | PRIMARY KEY | pk_iva | id |
-| UNIQUE | uq_iva_codice | codice_iva |
+| UNIQUE | uq_iva_codice | codice |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_iva_desc | `CREATE INDEX ix_iva_desc ON config.iva USING btree (descrizione)` |
 | pk_iva | `CREATE UNIQUE INDEX pk_iva ON config.iva USING btree (id)` |
-| uq_iva_codice | `CREATE UNIQUE INDEX uq_iva_codice ON config.iva USING btree (codice_iva)` |
+| uq_iva_codice | `CREATE UNIQUE INDEX uq_iva_codice ON config.iva USING btree (codice)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

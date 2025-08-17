@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.iva_natura_id_seq'::regclass) |
-| codice_natura | character | NO |  |
+| codice | character | NO |  |
 | descrizione | character varying | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
@@ -16,13 +16,13 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | PRIMARY KEY | pk_iva_natura | id |
-| UNIQUE | uq_iva_natura_codice | codice_natura |
+| UNIQUE | uq_iva_natura_codice | codice |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_iva_natura | `CREATE UNIQUE INDEX pk_iva_natura ON config.iva_natura USING btree (id)` |
-| uq_iva_natura_codice | `CREATE UNIQUE INDEX uq_iva_natura_codice ON config.iva_natura USING btree (codice_natura)` |
+| uq_iva_natura_codice | `CREATE UNIQUE INDEX uq_iva_natura_codice ON config.iva_natura USING btree (codice)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

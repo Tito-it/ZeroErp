@@ -44,7 +44,7 @@ databaseChangeLog:
               - column: { name: id,          type: STRING }
               - column: { name: tipo_soggetto_id,  type: STRING }
               - column: { name: stato_iso2,         type: STRING }
-              - column: { name: cod_int_tipo_soggetto, type: STRING }
+              - column: { name: codice_interno, type: STRING }
               - column: { name: descrizione,    type: STRING }
               - column: { name: formato_cf,   type: STRING }
               - column: { name: formato_piva,     type: STRING }

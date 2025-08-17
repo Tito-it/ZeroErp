@@ -19,7 +19,7 @@
 
 Verificare che il soggetto associato ai dati societari (
 `new.soggetto_id` in `anagrafiche.dati_societari`
-) abbia un `cod_int_tipo_soggetto` ammesso (solo **`SC`** o **`SP`**). In caso contrario, viene lanciato un errore tramite `script.fn_log_and_raise_error`.
+) abbia un `codice_interno` ammesso (solo **`SC`** o **`SP`**). In caso contrario, viene lanciato un errore tramite `script.fn_log_and_raise_error`.
 
 ---
 
@@ -27,7 +27,7 @@ Verificare che il soggetto associato ai dati societari (
 
 * **`anagrafiche.dati_societari`** – tabella su cui viene applicato il trigger `BEFORE INSERT OR UPDATE` che richiama questa funzione.
 * **`anagrafiche.soggetti`** – da cui si legge il campo `tipo_soggetto_dettaglio_id`.
-* **`config.tipi_soggetto_dettaglio`** – contiene `cod_int_tipo_soggetto` per validazione.
+* **`config.tipi_soggetto_dettaglio`** – contiene `codice_interno` per validazione.
 
 ---
 

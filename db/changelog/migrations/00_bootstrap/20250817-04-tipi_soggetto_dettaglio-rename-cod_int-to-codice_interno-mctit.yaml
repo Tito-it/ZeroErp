@@ -1,0 +1,181 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250817-04-tipi_soggetto_dettaglio-rename-cod_int-to-codice_interno
+      author: mctit
+      context: ddl
+      runOnChange: true
+      failOnError: true
+
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: tipi_soggetto_dettaglio
+            - columnExists:
+                schemaName: config
+                tableName: tipi_soggetto_dettaglio
+                columnName: cod_int_tipo_soggetto
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: tipi_soggetto_dettaglio
+                    columnName: codice_interno
+
+      changes:
+        # 1) Rinomina colonna
+        - renameColumn:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            oldColumnName: cod_int_tipo_soggetto
+            newColumnName: codice_interno
+            columnDataType: varchar(8)
+
+        # 2) Rinomina vincolo UNIQUE legato alla vecchia colonna (se esiste)
+        #    - se il nome storico fosse diverso, prova anche a rinominare quello rilevato dinamicamente
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              DECLARE
+                v_old_conname text;
+                v_exists_new  boolean;
+              BEGIN
+                -- Caso noto: vincolo chiamato "uq_tipi_soggetto_dett_cod_int_tipo_soggetto"
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'config'
+                    AND t.relname = 'tipi_soggetto_dettaglio'
+                    AND c.conname = 'uq_tipi_soggetto_dett_cod_int_tipo_soggetto'
+                ) THEN
+                  EXECUTE 'ALTER TABLE config.tipi_soggetto_dettaglio RENAME CONSTRAINT uq_tipi_soggetto_dett_cod_int_tipo_soggetto TO uq_tipi_soggetto_dett_codice_interno';
+                ELSE
+                  -- Caso generico: trova un UNIQUE su una sola colonna = cod_int_tipo_soggetto
+                  SELECT c.conname
+                    INTO v_old_conname
+                    FROM pg_constraint c
+                    JOIN pg_class t       ON t.oid = c.conrelid
+                    JOIN pg_namespace n   ON n.oid = t.relnamespace
+                    JOIN pg_attribute a   ON a.attrelid = t.oid
+                    WHERE c.contype = 'u'
+                      AND n.nspname = 'config'
+                      AND t.relname = 'tipi_soggetto_dettaglio'
+                      AND a.attnum = ANY (c.conkey)
+                      AND a.attname = 'cod_int_tipo_soggetto'
+                    LIMIT 1;
+
+                  SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint c2
+                    JOIN pg_class t2     ON t2.oid = c2.conrelid
+                    JOIN pg_namespace n2 ON n2.oid = t2.relnamespace
+                    WHERE c2.contype = 'u'
+                      AND n2.nspname = 'config'
+                      AND t2.relname = 'tipi_soggetto_dettaglio'
+                      AND c2.conname = 'uq_tipi_soggetto_dett_codice_interno'
+                  ) INTO v_exists_new;
+
+                  IF v_old_conname IS NOT NULL AND NOT v_exists_new THEN
+                    EXECUTE format(
+                      'ALTER TABLE config.tipi_soggetto_dettaglio RENAME CONSTRAINT %I TO uq_tipi_soggetto_dett_codice_interno',
+                      v_old_conname
+                    );
+                  END IF;
+                END IF;
+              END$$;
+
+        # 3) Rinomina indice unico "standalone" se presente con nome storico
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                -- indice noto
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'config'
+                    AND i.relname = 'uq_tipi_soggetto_dett_cod_int_tipo_soggetto'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS config.uq_tipi_soggetto_dett_cod_int_tipo_soggetto RENAME TO uq_tipi_soggetto_dett_codice_interno';
+                END IF;
+              END$$;
+
+      rollback:
+        # Ripristino colonna
+        - renameColumn:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            oldColumnName: codice_interno
+            newColumnName: cod_int_tipo_soggetto
+            columnDataType: varchar(10)
+
+        # Ripristino vincolo UNIQUE se rinominato
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'config'
+                    AND t.relname = 'tipi_soggetto_dettaglio'
+                    AND c.conname = 'uq_tipi_soggetto_dett_codice_interno'
+                ) THEN
+                  EXECUTE 'ALTER TABLE config.tipi_soggetto_dettaglio RENAME CONSTRAINT uq_tipi_soggetto_dett_codice_interno TO uq_tipi_soggetto_dett_cod_int_tipo_soggetto';
+                END IF;
+              END$$;
+
+        # Ripristino indice se rinominato
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'config'
+                    AND i.relname = 'uq_tipi_soggetto_dett_codice_interno'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS config.uq_tipi_soggetto_dett_codice_interno RENAME TO uq_tipi_soggetto_dett_cod_int_tipo_soggetto';
+                END IF;
+              END$$;
+
+
+  - changeSet:
+      id: 20250817-90-tipi_soggetto_dettaglio-rename-cod_int-to-codice_interno
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250817-04-tipi_soggetto_dettaglio-rename-cod_int-to-codice_interno

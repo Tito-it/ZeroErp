@@ -32,7 +32,7 @@ databaseChangeLog:
         columns:
           - column: { name: id,            type: STRING }
           - column: { name: iso_code,            type: STRING }
-          - column: { name: cd_valuta,          type: STRING }
+          - column: { name: codice,          type: STRING }
           - column: { name: iso_num_code,       type: NUMERIC }
           - column: { name: descrizione, type: STRING }
           - column: { name: simbolo,            type: STRING }

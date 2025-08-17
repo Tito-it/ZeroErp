@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP – Rename cod_utility -> codice (config.utilities)
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250817-02-utilities-rename-cod_utility-to-codice
+      author: mctit
+      context: ddl
+      runOnChange: true
+      failOnError: true
+
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: utilities
+            - columnExists:
+                schemaName: config
+                tableName: utilities
+                columnName: cod_utility
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: utilities
+                    columnName: codice
+
+      changes:
+        # 1) Rinomina colonna
+        - renameColumn:
+            schemaName: config
+            tableName: utilities
+            oldColumnName: cod_utility
+            newColumnName: codice
+            columnDataType: varchar(10)
+
+        # 2) Rinomina vincolo UNIQUE se presente come constraint
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'config'
+                    AND t.relname = 'utilities'
+                    AND c.conname = 'uq_utilities_cod_utility'
+                ) THEN
+                  EXECUTE 'ALTER TABLE config.utilities RENAME CONSTRAINT uq_utilities_cod_utility TO uq_utilities_codice';
+                END IF;
+              END$$;
+
+        # 3) Rinomina indice se presente come indice unico "standalone"
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'config'
+                    AND i.relname = 'uq_utilities_cod_utility'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS config.uq_utilities_cod_utility RENAME TO uq_utilities_codice';
+                END IF;
+              END$$;
+
+      rollback:
+        - renameColumn:
+            schemaName: config
+            tableName: utilities
+            oldColumnName: codice
+            newColumnName: cod_utility
+            columnDataType: varchar(10)
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'config'
+                    AND t.relname = 'utilities'
+                    AND c.conname = 'uq_utilities_codice'
+                ) THEN
+                  EXECUTE 'ALTER TABLE config.utilities RENAME CONSTRAINT uq_utilities_codice TO uq_utilities_cod_utility';
+                END IF;
+              END$$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'config'
+                    AND i.relname = 'uq_utilities_codice'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS config.uq_utilities_codice RENAME TO uq_utilities_cod_utility';
+                END IF;
+              END$$;
+
+  - changeSet:
+      id: 20250817-90-utilities-rename-cod_utility-to-codice
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250817-02-utilities-rename-cod_utility-to-codice

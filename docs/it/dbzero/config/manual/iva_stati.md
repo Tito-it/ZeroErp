@@ -9,7 +9,7 @@
 >
 > Approfondimenti funzioni:   
 >
-> * [config.fn_get_iva_override](/dbzero/config/funzioni/fn_get_iva_override)  
+> * [script.fn_get_iva_override](/dbzero/script/funzioni/fn_get_iva_override)  
 > * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
 
 La tabella **`config.iva_stati`** permette di definire **override locali** di aliquota e assoggettamento IVA per specifici Stati o Paesi, personalizzando il comportamento dei codici IVA principali in base al contesto geografico.

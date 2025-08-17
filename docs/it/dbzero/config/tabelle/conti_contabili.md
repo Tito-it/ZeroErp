@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO | nextval('config.conti_contabili_id_seq'::regclass) |
-| codice_conto | character varying | NO |  |
+| codice | character varying | NO |  |
 | descrizione | character varying | NO |  |
 | tipo_conto | character | NO |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
@@ -18,7 +18,7 @@
 |------|------|---------|
 | CHECK | chk_ftcc_tipo_conto |  |
 | PRIMARY KEY | pk_conti_contabili | id |
-| UNIQUE | uq_conti_contabili_codice_conto | codice_conto |
+| UNIQUE | uq_conti_contabili_codice | codice |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -26,7 +26,7 @@
 | ix_conti_contabili_descrizione | `CREATE INDEX ix_conti_contabili_descrizione ON config.conti_contabili USING btree (descrizione)` |
 | ix_conti_contabili_tipo_conto | `CREATE INDEX ix_conti_contabili_tipo_conto ON config.conti_contabili USING btree (tipo_conto)` |
 | pk_conti_contabili | `CREATE UNIQUE INDEX pk_conti_contabili ON config.conti_contabili USING btree (id)` |
-| uq_conti_contabili_codice_conto | `CREATE UNIQUE INDEX uq_conti_contabili_codice_conto ON config.conti_contabili USING btree (codice_conto)` |
+| uq_conti_contabili_codice | `CREATE UNIQUE INDEX uq_conti_contabili_codice ON config.conti_contabili USING btree (codice)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

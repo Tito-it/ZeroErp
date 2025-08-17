@@ -25,7 +25,7 @@ databaseChangeLog:
                 c.id                AS id_comune,
                 c.descrizione       AS comune,
                 p.sigla             AS provincia,
-                cp.codice_postale,
+                cp.codice           as codice_postale,
                 ve.indirizzo_generale,
                 s.geoloc,
                 s.extra_info,

@@ -21,7 +21,7 @@ AS $function$
       
 
       -- Se p_soggetto_ruolo_id IS NULL o = 0:
-      --   - Recupera il ruolo_id corrispondente a cd_int_ruolo
+      --   - Recupera il ruolo_id corrispondente acodice_interno
       --   - Inserisce in anagrafiche.soggetti_ruoli un nuovo record:
       --       (soggetto_id = p_soggetto_id, ruolo_id = <quello trovato>, user_insert = current_user)
       --   - Restituisce l'id del record appena creato.
@@ -30,15 +30,15 @@ AS $function$
       --   - Controlla che esista un record in anagrafiche.soggetti_ruoli con
       --       id = p_soggetto_ruolo_id
       --       soggetto_id = p_soggetto_id
-      --       ruolo_id = <id trovato da cd_int_ruolo>
+      --       ruolo_id = <id trovato da codice_interno>
       --   - Se non lo trova, RAISE EXCEPTION
       --   - Se lo trova, restituisce p_soggetto_ruolo_id
-      -- 1) Trovo l'ID del ruolo corrispondente a cd_int_ruolo
+      -- 1) Trovo l'ID del ruolo corrispondente a codice_interno
 
       SELECT r.id
         INTO v_ruolo_id
       FROM config.tipi_ruoli r
-      WHERE r.cd_int_ruolo = p_cd_int_ruolo
+      WHERE r.codice_interno = p_cd_int_ruolo
       LIMIT 1;
 
       IF v_ruolo_id IS NULL THEN
@@ -46,9 +46,9 @@ AS $function$
             'database',
             'fn_check_ins_soggetto_ruolo',
             'E_COD_INT_RUOLO',
-            jsonb_build_object('cd_int_ruolo', p_cd_int_ruolo),
-            NULL::uuid,   
-            'cd_int_ruolo', p_cd_int_ruolo::text
+            jsonb_build_object('codice_interno', p_cd_int_ruolo),
+            NULL::uuid,
+            'codice_interno', p_cd_int_ruolo::text
           );
           -- wrapper farà RAISE EXCEPTION
       END IF;

@@ -10,7 +10,7 @@
 > Approfondimenti funzioni:   
 >
 > * [config.trgfn_iva_ins_upd_check_conti_iva](/dbzero/config/funzioni/trgfn_iva_ins_upd_check_conti_iva)   
-> * [config.fn_get_iva_override](/dbzero/config/funzioni/fn_get_iva_override)    
+> * [script.fn_get_iva_override](/dbzero/script/funzioni/fn_get_iva_override)    
 > * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
 
 La tabella **`config.iva`** fornisce il catalogo dei codici IVA, includendo descrizioni, regole di assoggettamento, split payment e mapping necessari per l’invio delle fatture al Sistema di Interscambio (SDI).
@@ -33,7 +33,7 @@ La tabella **`config.iva`** fornisce il catalogo dei codici IVA, includendo desc
 
 ### 🔒 Vincoli e Logiche Aziendali
 
-* **Unicità**: `codice_iva` deve essere univoco.
+* **Unicità**: `codice` deve essere univoco.
 * **Assoggettamento**: il campo `assoggettamento_iva` può assumere solo i valori {`NS`, `NI`, `ND`, `ES`, `RC`, `ED`, `NP`, `T`, `IM`, \`\`}.
   **Esempi**:
 
@@ -83,7 +83,7 @@ La tabella **`config.iva`** fornisce il catalogo dei codici IVA, includendo desc
 * **Conformità normativa**: split payment e natura IVA per SDI gestiti automaticamente.
 * **Integrità referenziale**: FK e trigger garantiscono correttezza dei conti e dei codici natura.
 * **Riduzione degli errori**: constraint e trigger prevengono valori non validi per assoggettamento e aliquota.
-* **Velocità di ricerca**: indice su `desc_iva` per filtrare rapidamente le descrizioni.
+* **Velocità di ricerca**: indice su `descrizione` per filtrare rapidamente le descrizioni.
 
 ---
 
