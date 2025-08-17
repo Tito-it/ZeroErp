@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250817-12-tipi_contatti-rename-cod_int-to-codice_interno
+      author: mctit
+      context: ddl
+      runOnChange: true
+      failOnError: true
+
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: tipi_contatti
+            - columnExists:
+                schemaName: config
+                tableName: tipi_contatti
+                columnName: cod_int_tipo_contatto
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: tipi_contatti
+                    columnName: codice_interno
+
+      changes:
+        # 1) Rinomina colonna
+        - renameColumn:
+            schemaName: config
+            tableName: tipi_contatti
+            oldColumnName: cod_int_tipo_contatto
+            newColumnName: codice_interno
+
+        # 2) Rinomina vincolo UNIQUE se presente (storico: uq_tipi_contatti_cod_int_contatto)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'config'
+                    AND t.relname = 'tipi_contatti'
+                    AND c.conname = 'uq_tipi_contatti_cod_int_contatto'
+                ) THEN
+                  EXECUTE 'ALTER TABLE config.tipi_contatti RENAME CONSTRAINT uq_tipi_contatti_cod_int_contatto TO uq_tipi_contatti_codice_interno';
+                END IF;
+              END$$;
+
+        # 3) Rinomina indice standalone se presente (storico: uq_tipi_contatti_cod_int_contatto)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'config'
+                    AND i.relname = 'uq_tipi_contatti_cod_int_contatto'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS config.uq_tipi_contatti_cod_int_contatto RENAME TO uq_tipi_contatti_codice_interno';
+                END IF;
+              END$$;
+
+        # 4) (Opzionale) Rinomina trigger storico per coerenza
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_trigger tg
+                  JOIN pg_class t ON t.oid = tg.tgrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE n.nspname = 'config'
+                    AND t.relname = 'tipi_contatti'
+                    AND tg.tgname = 'trg_tipi_contatti_upd_lock_cod_interno'
+                ) THEN
+                  EXECUTE 'ALTER TRIGGER trg_tipi_contatti_upd_lock_cod_interno ON config.tipi_contatti RENAME TO trg_tipi_contatti_upd_lock_codice_interno';
+                END IF;
+              END$$;
+
+      rollback:
+        - renameColumn:
+            schemaName: config
+            tableName: tipi_contatti
+            oldColumnName: codice_interno
+            newColumnName: cod_int_tipo_contatto
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'config'
+                    AND t.relname = 'tipi_contatti'
+                    AND c.conname = 'uq_tipi_contatti_codice_interno'
+                ) THEN
+                  EXECUTE 'ALTER TABLE config.tipi_contatti RENAME CONSTRAINT uq_tipi_contatti_codice_interno TO uq_tipi_contatti_cod_int_contatto';
+                END IF;
+              END$$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'config'
+                    AND i.relname = 'uq_tipi_contatti_codice_interno'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS config.uq_tipi_contatti_codice_interno RENAME TO uq_tipi_contatti_cod_int_contatto';
+                END IF;
+              END$$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_trigger tg
+                  JOIN pg_class t ON t.oid = tg.tgrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE n.nspname = 'config'
+                    AND t.relname = 'tipi_contatti'
+                    AND tg.tgname = 'trg_tipi_contatti_upd_lock_codice_interno'
+                ) THEN
+                  EXECUTE 'ALTER TRIGGER trg_tipi_contatti_upd_lock_codice_interno ON config.tipi_contatti RENAME TO trg_tipi_contatti_upd_lock_cod_interno';
+                END IF;
+              END$$;
+
+  - changeSet:
+      id: 20250817-90-tipi_contatti-rename-cod_int-to-codice_interno
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250817-12-tipi_contatti-rename-cod_int-to-codice_interno

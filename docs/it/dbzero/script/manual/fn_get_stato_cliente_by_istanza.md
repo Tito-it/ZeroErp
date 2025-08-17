@@ -14,7 +14,7 @@
 Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, restituendo:
 
 1. Il valore `stato_cliente_id` del record `clienti` collegato all’istanza, se presente.
-2. In assenza di un record `clienti`, il valore di default corrispondente a **cod_int_stato_cliente = 'IS'** (stato "Istanza").
+2. In assenza di un record `clienti`, il valore di default corrispondente a **codice_interno = 'IS'** (stato "Istanza").
 
 ---
 
@@ -51,7 +51,7 @@ Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, 
    ```sql
    (SELECT id
       FROM config.stati_cliente
-     WHERE cod_int_stato_cliente = 'IS'
+     WHERE codice_interno = 'IS'
      LIMIT 1)
    ```
 
@@ -83,7 +83,7 @@ Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, 
 ### 📌 Best Practice
 
 * Assicurarsi che esista un indice su `clienti.istanza_utility_id` per ottimizzare la prima subquery.
-* Evitare di modificare `cod_int_stato_cliente = 'IS'` senza aggiornare le eventuali query/funzioni che ne fanno riferimento.
+* Evitare di modificare `codice_interno = 'IS'` senza aggiornare le eventuali query/funzioni che ne fanno riferimento.
 * Documentare eventuali nuovi codici stati aggiunti in `config.stati_cliente`.
 
 ---

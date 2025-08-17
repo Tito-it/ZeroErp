@@ -12,7 +12,9 @@ databaseChangeLog:
   - changeSet:
       id: 20250507-03-trg_tipi_attivita_upd_lock_codiceinterno  
       author: mctit
-      runOnChange: true 
+      runOnChange: true   
+      validCheckSums:
+        - ANY
       changes:
         - sql:
             splitStatements: false
@@ -23,9 +25,9 @@ databaseChangeLog:
                 BEFORE UPDATE 
                 ON config.tipi_attivita
                 FOR EACH ROW
-                WHEN (old.cd_int_tipo_attivita::text IS DISTINCT FROM new.cd_int_tipo_attivita::text)
+                WHEN (old.codice_interno::text IS DISTINCT FROM new.codice_interno::text)
                 EXECUTE FUNCTION script.trgfn_lock_columns(
-                  'cd_int_tipo_attivita', 
+                  'codice_interno', 
                   'CODICE_NON_MODIFICABILE'
                 );
 

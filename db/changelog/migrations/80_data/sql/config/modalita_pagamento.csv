@@ -1,4 +1,4 @@
-id,cod_modalita,descrizione,data_insert,user_insert,data_update,user_update
+id,codice,descrizione,data_insert,user_insert,data_update,user_update
 1,MP01      ,contanti,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
 2,MP02      ,assegno,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres
 3,MP03      ,assegno circolare,2025-04-22 17:09:56.611008+02,postgres,2025-04-22 17:09:56.611008+02,postgres

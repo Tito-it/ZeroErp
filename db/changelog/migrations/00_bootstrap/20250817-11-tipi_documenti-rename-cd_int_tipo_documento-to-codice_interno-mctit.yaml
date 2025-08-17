@@ -1,0 +1,191 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250817-11-tipi_documenti-rename-cd_int_tipo_documento-to-codice_interno
+      author: mctit
+      context: ddl
+      runOnChange: true
+      failOnError: true
+
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: tipi_documenti
+            - columnExists:
+                schemaName: config
+                tableName: tipi_documenti
+                columnName: cd_int_tipo_documento
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: tipi_documenti
+                    columnName: codice_interno
+
+      changes:
+        # 1) Rinomina colonna
+        - renameColumn:
+            schemaName: config
+            tableName: tipi_documenti
+            oldColumnName: cd_int_tipo_documento
+            newColumnName: codice_interno
+
+        # 2) Rinomina vincolo UNIQUE se presente come constraint
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'config'
+                    AND t.relname = 'tipi_documenti'
+                    AND c.conname = 'uq_tipi_documenti_cd_int_tipo_documento'
+                ) THEN
+                  EXECUTE 'ALTER TABLE config.tipi_documenti RENAME CONSTRAINT uq_tipi_documenti_cd_int_tipo_documento TO uq_tipi_documenti_codice_interno';
+                END IF;
+              END$$;
+
+        # 3) Rinomina indice se presente come indice unico "standalone"
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'config'
+                    AND i.relname = 'uq_tipi_documenti_cd_int_tipo_documento'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS config.uq_tipi_documenti_cd_int_tipo_documento RENAME TO uq_tipi_documenti_codice_interno';
+                END IF;
+              END$$;
+
+        # 4) (Opz.) rinomina trigger “storici” se presenti su tipi_documenti
+        #     In doc compare 'trg_tipi_contatti_upd_lock_cod_interno' (probabile refuso).
+        #     Qui rinominiamo eventuali vecchi nomi trovati sulla TABELLA 'tipi_documenti'
+        #     verso il nome coerente 'trg_tipi_documenti_upd_lock_codice_interno'.
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_trigger tg
+                  JOIN pg_class t ON t.oid = tg.tgrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE n.nspname = 'config'
+                    AND t.relname = 'tipi_documenti'
+                    AND tg.tgname = 'trg_tipi_documenti_upd_lock_cod_interno'
+                ) THEN
+                  EXECUTE 'ALTER TRIGGER trg_tipi_documenti_upd_lock_cod_interno ON config.tipi_documenti RENAME TO trg_tipi_documenti_upd_lock_codice_interno';
+                ELSIF EXISTS (
+                  SELECT 1
+                  FROM pg_trigger tg
+                  JOIN pg_class t ON t.oid = tg.tgrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE n.nspname = 'config'
+                    AND t.relname = 'tipi_documenti'
+                    AND tg.tgname = 'trg_tipi_contatti_upd_lock_cod_interno'
+                ) THEN
+                  EXECUTE 'ALTER TRIGGER trg_tipi_contatti_upd_lock_cod_interno ON config.tipi_documenti RENAME TO trg_tipi_documenti_upd_lock_codice_interno';
+                END IF;
+              END$$;
+
+      rollback:
+        - renameColumn:
+            schemaName: config
+            tableName: tipi_documenti
+            oldColumnName: codice_interno
+            newColumnName: cd_int_tipo_documento
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'config'
+                    AND t.relname = 'tipi_documenti'
+                    AND c.conname = 'uq_tipi_documenti_codice_interno'
+                ) THEN
+                  EXECUTE 'ALTER TABLE config.tipi_documenti RENAME CONSTRAINT uq_tipi_documenti_codice_interno TO uq_tipi_documenti_cd_int_tipo_documento';
+                END IF;
+              END$$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'config'
+                    AND i.relname = 'uq_tipi_documenti_codice_interno'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS config.uq_tipi_documenti_codice_interno RENAME TO uq_tipi_documenti_cd_int_tipo_documento';
+                END IF;
+              END$$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_trigger tg
+                  JOIN pg_class t ON t.oid = tg.tgrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE n.nspname = 'config'
+                    AND t.relname = 'tipi_documenti'
+                    AND tg.tgname = 'trg_tipi_documenti_upd_lock_codice_interno'
+                ) THEN
+                  EXECUTE 'ALTER TRIGGER trg_tipi_documenti_upd_lock_codice_interno ON config.tipi_documenti RENAME TO trg_tipi_documenti_upd_lock_cod_interno';
+                END IF;
+              END$$;
+
+
+  - changeSet:
+      id: 20250817-90-tipi_documenti-rename-cd_int_tipo_documento-to-codice_interno
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250817-11-tipi_documenti-rename-cd_int_tipo_documento-to-codice_interno

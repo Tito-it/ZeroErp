@@ -1,6 +1,6 @@
 id,codice_interno,descrizione,data_insert,user_insert,data_update,user_update,cod_tipo_indirizzo
-1,RES,Residenza,2025-04-20 23:09:37.417494+02,postgres,2025-08-17 11:16:12.203753+02,titodb,RES
-2,DOMFISC,Domicilio Fiscale,2025-04-20 23:09:37.417494+02,postgres,2025-08-17 11:16:12.203753+02,titodb,DOMFISC
-3,SEDELEG,Sede Legale,2025-04-20 23:09:37.417494+02,postgres,2025-08-17 11:16:12.203753+02,titodb,SEDELEG
-4,SEDEOP,Sede Operativa,2025-04-20 23:09:37.417494+02,postgres,2025-08-17 11:16:12.203753+02,titodb,SEDEOP
-5,POSTA,Corrispondenza postale,2025-04-20 23:09:37.417494+02,postgres,2025-08-17 11:16:12.203753+02,titodb,POSTA
+1,RES,Residenza,2025-04-20 23:09:37.417494+02,postgres,2025-08-17 12:45:42.140596+02,titodb,RES
+2,DOMFISC,Domicilio Fiscale,2025-04-20 23:09:37.417494+02,postgres,2025-08-17 12:45:42.140596+02,titodb,DOMFISC
+3,SEDELEG,Sede Legale,2025-04-20 23:09:37.417494+02,postgres,2025-08-17 12:45:42.140596+02,titodb,SEDELEG
+4,SEDEOP,Sede Operativa,2025-04-20 23:09:37.417494+02,postgres,2025-08-17 12:45:42.140596+02,titodb,SEDEOP
+5,POSTA,Corrispondenza postale,2025-04-20 23:09:37.417494+02,postgres,2025-08-17 12:45:42.140596+02,titodb,POSTA

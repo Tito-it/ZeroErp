@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250817-18-stati_cliente-rename-stato-to-codice
+      author: mctit
+      context: ddl
+      runOnChange: true
+      failOnError: true
+
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: stati_cliente
+            - columnExists:
+                schemaName: config
+                tableName: stati_cliente
+                columnName: stato_cliente
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: stati_cliente
+                    columnName: codice
+
+      changes:
+        - renameColumn:
+            schemaName: config
+            tableName: stati_cliente
+            oldColumnName: stato_cliente
+            newColumnName: codice
+
+      rollback:
+        - renameColumn:
+            schemaName: config
+            tableName: stati_cliente
+            oldColumnName: codice
+            newColumnName: stato_cliente
+
+
+
+
+  - changeSet:
+      id: 20250817-90-stati_cliente-rename-stato-to-codice
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250817-18-stati_cliente-rename-stato-to-codice

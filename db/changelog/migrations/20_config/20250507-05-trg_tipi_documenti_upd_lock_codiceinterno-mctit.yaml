@@ -13,24 +13,26 @@ databaseChangeLog:
       id: 20250507-05-trg_tipi_documenti_upd_lock_codiceinterno
       author: mctit
       runOnChange: true 
+      validCheckSums:
+        - ANY
       changes:
         - sql:
             splitStatements: false
             stripComments: false
             sql: |
                 -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
-                CREATE OR REPLACE TRIGGER trg_tipi_contatti_upd_lock_cod_interno
+                CREATE OR REPLACE TRIGGER trg_tipi_documenti_upd_lock_codice_interno
                 BEFORE UPDATE 
                 ON config.tipi_documenti
                 FOR EACH ROW
-                WHEN (old.cd_int_tipo_documento::text IS DISTINCT FROM 
-                      new.cd_int_tipo_documento::text)
+                WHEN (old.codice_interno::text IS DISTINCT FROM 
+                      new.codice_interno::text)
                 EXECUTE FUNCTION script.trgfn_lock_columns(
-                  'cd_int_tipo_documento', 
+                  'codice_interno', 
                   'CODICE_NON_MODIFICABILE'
                 );
 
                 -- 2) Aggiungo un commento al trigger di lock
-                COMMENT ON TRIGGER trg_tipi_documenti_upd_lock_codiceinterno 
+                COMMENT ON TRIGGER trg_tipi_documenti_upd_lock_codice_interno
                   ON config.tipi_documenti
                 IS 'Blocca la modifica del codice interno tipo documento';

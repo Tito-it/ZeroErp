@@ -23,12 +23,12 @@ CREATE OR REPLACE VIEW script.view_clienti_istanza_states AS
 SELECT
   i.id                        AS istanza_id,
   sc.id                       AS stato_id,
-  sc.cod_int_stato_cliente    AS cod_int_stato_cliente,
-  sc.desc_stato_cliente       AS desc_stato_cliente,
-  sc.desc_breve_stato         AS desc_breve_stato,
+  sc.codice_interno          AS cod_int_stato_cliente,
+  sc.descrizione             AS desc_stato_cliente,
+  sc.descrizione_breve         AS desc_breve_stato,
   sc.check_lettura            AS check_lettura,
   sc.abilita_fattura          AS abilita_fattura,
-  sc.stato_cliente            AS stato_cliente,
+  sc.codice            AS stato_cliente,
   sc.stato_cliente_ia         AS stato_cliente_ia,
   sc.data_insert              AS stato_data_insert,
   sc.user_insert              AS stato_user_insert,
@@ -48,12 +48,12 @@ FROM
 | ----------------------- | ----------- | --------------------------------------------------- |
 | `istanza_id`            | INTEGER     | Identificativo dell’istanza di servizio.            |
 | `stato_id`              | INTEGER     | ID dello stato cliente dal catalogo.                |
-| `cod_int_stato_cliente` | CHAR(5)     | Codice interno dello stato (`AT`, `IS`, `CH`, ...). |
-| `desc_stato_cliente`    | VARCHAR(80) | Descrizione estesa dello stato.                     |
-| `desc_breve_stato`      | VARCHAR(20) | Descrizione breve (20 caratteri).                   |
+| `codice_interno`        | CHAR(5)     | Codice interno dello stato (`AT`, `IS`, `CH`, ...). |
+| `descrizione            | VARCHAR(80) | Descrizione estesa dello stato.                     |
+| `descrizione_breve`     | VARCHAR(20) | Descrizione breve (20 caratteri).                   |
 | `check_lettura`         | CHAR(1)     | Flag abilitazione lettura consumi (`S`/`N`).        |
 | `abilita_fattura`       | CHAR(1)     | Flag abilitazione fattura (`S`/`N`).                |
-| `stato_cliente`         | CHAR(2)     | Valore interno non modificabile del tipo stato.     |
+| `codice`                | CHAR(2)     | Valore interno non modificabile del tipo stato.     |
 | `stato_cliente_ia`      | CHAR(1)     | Stato cliente primario: `I`=Istanza, `A`=Altro.     |
 | `stato_data_insert`     | TIMESTAMPTZ | Data di inserimento del record di stato.            |
 | `stato_user_insert`     | TEXT        | Utente di inserimento del record di stato.          |
@@ -64,14 +64,14 @@ FROM
 
 ### 🔍 Funzionamento Interno
 
-* **Calcolo dello stato**: utilizza `script.fn_get_stato_cliente_by_istanza(i.id)` per gestire il fallback tra stato cliente effettivo e stato "Istanza".
+* **Calcolo dello stato**: utilizza `script.fn_get_codice_by_istanza(i.id)` per gestire il fallback tra stato cliente effettivo e stato "Istanza".
 * **Join diretto** con `config.stati_cliente` per recuperare tutti i metadata (descrizioni e flag).
 
 ---
 
 ### ⚙️ Considerazioni e Best Practice
 
-* **Performance**: è fondamentale avere indici su `anagrafiche.clienti.istanza_utility_id` e su `config.stati_cliente.cod_int_stato_cliente` per ottimizzare sia la funzione che il join.
+* **Performance**: è fondamentale avere indici su `anagrafiche.clienti.istanza_utility_id` e su `config.stati_cliente.codice_interno` per ottimizzare sia la funzione che il join.
 * **Consistenza**: la logica di fallback è centralizzata nella funzione, quindi qualsiasi modifica al codice interno dello stato "Istanza" avrà effetto anche sulla view.
 * **Uso in reportistica**: la view è pronta per essere utilizzata in strumenti BI o dashboard, evitando logica condizionale nel front-end.
 
