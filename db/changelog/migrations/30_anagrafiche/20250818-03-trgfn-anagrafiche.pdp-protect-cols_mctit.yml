@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250818-03-trgfn-anagrafiche.pdp-protect
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ "ANY" ]
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_pdp_protect_cols()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                IF TG_OP = 'UPDATE' THEN
+                  IF OLD.pdp IS NOT NULL
+                     AND NEW.pdp IS DISTINCT FROM OLD.pdp THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_COLONNA_NON_MODIFICABILE',
+                      jsonb_build_object('column','pdp','id',OLD.id),
+                      NULL::uuid, 'pdp'
+                    );
+                  END IF;
+
+                  IF OLD.indirizzo_dettaglio_id IS NOT NULL
+                     AND NEW.indirizzo_dettaglio_id IS DISTINCT FROM OLD.indirizzo_dettaglio_id THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_COLONNA_NON_MODIFICABILE',
+                      jsonb_build_object('column','indirizzo_dettaglio_id','id',OLD.id),
+                      NULL::uuid, 'indirizzo_dettaglio_id'
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_pdp_protect_cols() IS
+                'Blocca modifiche a pdp e indirizzo_dettaglio_id (immutabili dopo prima valorizzazione).';
+
+              DROP TRIGGER IF EXISTS trg_pdp_upd_protect_cols ON anagrafiche.pdp;
+              CREATE TRIGGER trg_pdp_upd_protect_cols
+              BEFORE UPDATE OF pdp, indirizzo_dettaglio_id
+              ON anagrafiche.pdp
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_pdp_protect_cols();
+  
+  
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250818-90-trgfn-anagrafiche.pdp-protect-cols
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250818-03-trgfn-anagrafiche.pdp-protect-cols
