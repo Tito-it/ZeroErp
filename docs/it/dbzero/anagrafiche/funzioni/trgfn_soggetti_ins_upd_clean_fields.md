@@ -27,8 +27,8 @@ AS $function$
 
    ----------------------------------------------------------------
    -- 2) Generazione codice automatico
-   IF NEW.codice_soggetto IS NULL THEN
-     NEW.codice_soggetto := script.fn_generate_codice('soggetto');
+   IF NEW.codice IS NULL THEN
+     NEW.codice := script.fn_generate_codice('soggetto');
    END IF;
 
    ------------------------------------------------------------------

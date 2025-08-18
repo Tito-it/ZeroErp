@@ -8,7 +8,7 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 
 1. **Unicità e non duplicazione**
 
-   * Il dettaglio civico (`anagrafiche.indirizzi_dettaglio`) è unico: vincolo `UNIQUE(via_norm, civico_norm, interno, piano, palazzina)` impedisce duplicati.
+   * Il dettaglio civico [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) è unico: vincolo `UNIQUE(via_norm, civico_norm, interno, piano, palazzina)` impedisce duplicati.
 
 2. **Centralizzazione dei dati geografici**
 
@@ -16,23 +16,23 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 
 3. **Storicizzazione trasparente**
 
-   * Tutte le modifiche a `config.stradario` e `anagrafiche.indirizzi` sono salvate in **`storico.*`** con snapshot JSONB, tipi operazione (A/U/D) e transazione **tx\_id**, tramite la trigger-function generica `script.trgfn_upd_dlt_storico_generic()`.
+   * Tutte le modifiche a `config.stradario` e `anagrafiche.indirizzi` sono salvate in **`storico.*`** con snapshot JSONB, tipi operazione (A/U/D) e transazione **tx_id**, tramite la trigger-function generica [`script.trgfn_upd_dlt_storico_generic()`](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic).
 
 4. **Clean & Default centralizzati**
 
    * Ogni tabella con normalizzazioni o default ha un trigger `trg_<tabella>_ins_upd_clean_fields` che richiama `trgfn_<tabella>_clean_fields()`. Esempio per `soggetti`:
 
      * Imposta `stato_id` di default (`script.state_iso_code3()`).
-     * Genera `codice_soggetto` se mancante (`script.fn_generate_codice('soggetto')`).
+     * Genera `codice(soggetto)` se mancante [`script.fn_generate_codice('soggetto')`](/dbzero/script/funzioni/fn_generate_codice).
      * Pulisce campi testo (`TRIM`/`UPPER`).
 
 5. **Fallback storico/originario**
 
-   * Le helper `script.fn_get_snapshot_as_of()` e `script.fn_get_record_id_as_of()` permettono di leggere il JSONB di un record “as of” una data, utile per audit e rendicontazione.
+   * Le helper [`script.fn_get_snapshot_as_of()`](/dbzero/script/funzioni/fn_get_snapshot_as_of) e [`script.fn_get_record_id_as_of()`](/dbzero/script/funzioni/fn_get_record_id_as_of) permettono di leggere il JSONB di un record “as of” una data, utile per audit e rendicontazione.
 
 6. **Supporto indirizzi “liberi”**
 
-   * In importazioni o migrazioni, `anagrafiche.indirizzi` accetta `indirizzo_libero` senza FK, con check constraint che evita mix errati di campi.
+   * In importazioni o migrazioni, [`anagrafiche.indirizzi`](/dbzero/anagrafiche/tabelle/indirizzi) accetta `indirizzo_libero` senza FK, con check constraint che evita mix errati di campi.
 
 ---
 
@@ -72,7 +72,7 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 | [script.trgfn_sync_stato_iso2()](/dbzero/script/funzioni/trgfn_sync_stato_iso2)        | trigger function | Sincronizza `stato_iso2` da `config.stati`                       |
 | [script.trgfn_generate_codice_generic()](/dbzero/script/funzioni/trgfn_generate_codice_generic)| trigger function | Generica per `codice_<entità>`, usa `fn_generate_codice`         |
 | [anagrafiche.trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio()](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio) | trigger function | Normalizza `via_norm`, `civico_norm`                             |
-| [anagrafiche.trgfn_soggetti_ins_upd_clean_fields()](/dbzero/script/funzioni/fn_get_snapshot_as_of)        | trigger function | Default `stato_id`, generazione `codice_soggetto`, pulizia testo |
+| [anagrafiche.trgfn_soggetti_ins_upd_clean_fields()](/dbzero/script/funzioni/fn_get_snapshot_as_of)        | trigger function | Default `stato_id`, generazione `codice(soggetto)`, pulizia testo |
 ---
 
 ## 4. Flusso di Vita di un Indirizzo

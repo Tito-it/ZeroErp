@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  
+
+  - changeSet:
+      id: 20250818-02-fn_get_indirizzi_v2
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            comment: "Restituisce un singolo indirizzo per soggetto_ruolo e tipo"
+            splitStatements: false
+            sql: |     
+                    CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(
+                      p_soggetto_ruolo_id integer,
+                      p_tipo_codice character varying)
+                        RETURNS TABLE(indirizzo_completo text, geoloc geometry) 
+                        LANGUAGE 'sql'
+                        COST 100
+                        STABLE PARALLEL UNSAFE
+                        ROWS 1000
+
+                    AS $BODY$
+                      /*
+                        Funzione: script.fn_get_indirizzo(p_soggetto_ruolo_id int, p_tipo_codice varchar)
+                        Scopo:
+                          Restituisce UN solo indirizzo (testo + geoloc) per un dato soggetto_ruolo e
+                          per un tipo di indirizzo identificato da config.tipi_indirizzi.codice_interno.
+
+                        Come funziona:
+                          - Richiama script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id)
+                          - Filtra per tipo_indirizzo = p_tipo_codice
+                          - Limita il risultato a 1 riga (LIMIT 1)
+
+                        Output:
+                          - indirizzo_completo (text): stringa human-readable costruita secondo le priorità
+                            della funzione sottostante (dettaglio normalizzato → libero → estero).
+                          - geoloc (geometry, tipicamente POINT SRID 4326): privilegia la geoloc puntuale del civico,
+                            altrimenti usa la geoloc dell’indirizzo (logica ereditata dalla funzione sottostante).
+
+                        Note:
+                          - Se esistono più indirizzi dello stesso tipo, senza ORDER BY la scelta non è garantita
+                            in modo deterministico: viene restituita “una” riga conforme al filtro.
+                            Se serve una regola di scelta (es. preferire quelli con geoloc non NULL),
+                            aggiungere un ORDER BY coerente prima del LIMIT.
+                          - STABLE, senza effetti collaterali. Dipendenze indirette:
+                            anagrafiche.indirizzi, anagrafiche.indirizzi_dettaglio,
+                            config.tipi_indirizzi, config.comuni, config.codici_postali.
+                      */
+
+
+                    SELECT indirizzo_completo, geoloc
+                    FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id)
+                    WHERE tipo_indirizzo = p_tipo_codice
+                    LIMIT 1;
+                    $BODY$;
+
+        - sql:
+            splitStatements: false
+            sql: |
+                  COMMENT ON FUNCTION script.fn_get_indirizzo(integer, character varying) IS
+                    'Restituisce un singolo indirizzo per soggetto_ruolo e tipo (config.tipi_indirizzi.codice_interno) come (indirizzo_completo, geoloc). 
+                    Internamente richiama script.fn_get_indirizzi_by_ruolo(...) e filtra per tipo_indirizzo = p_tipo_codice; 
+                    in presenza di più indirizzi dello stesso tipo ne restituisce uno solo (LIMIT 1), senza ordinamento deterministico.';
+
+
+  - changeSet:
+      id: 20250818-90-fn_get_indirizzi_v2
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250818-02-fn_get_indirizzi_v2

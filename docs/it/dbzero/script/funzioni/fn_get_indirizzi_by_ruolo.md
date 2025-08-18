@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_get_indirizzi_by_ruolo.md" %}
 # ⚙️ Funzione `fn_get_indirizzi_by_ruolo`
 
 ```sql
@@ -12,27 +13,50 @@ CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id 
  LANGUAGE sql
  STABLE
 AS $function$
+/*
+  Scopo:
+    Raccoglie gli indirizzi di un soggetto_ruolo restituendo:
+      - tipo_indirizzo: config.tipi_indirizzi.codice_interno
+      - indirizzo_completo: stringa human-readable
+      - geoloc: priorità civic_geoloc (dettaglio) -> ai.geoloc
+
+  Regole di formattazione (in ordine di priorità):
+    1) Indirizzo normalizzato (se ai.indirizzo_dettaglio_id non NULL):
+      ad.indirizzo_normalizzato + ", " + co.descrizione + " " + cp.codice (se presenti)
+    2) Indirizzo libero nazionale (se ai.indirizzo_libero non NULL):
+      ai.indirizzo_libero + ", " + co.descrizione + " " + cp.codice (se presenti)
+    3) Internazionale/estero (fallback):
+      ai.indirizzo_libero + locality + ", " + administrative_area + ", " + postal_box (se presenti)
+
+  Dipendenze:
+    - anagrafiche.indirizzi, anagrafiche.indirizzi_dettaglio
+    - config.tipi_indirizzi, config.comuni, config.codici_postali
+*/
+
+
+
 SELECT
-  ti.cod_int_tipo_indirizzo  AS tipo_indirizzo,
+   
+  ti.codice_interno  AS tipo_indirizzo,
   -- 1) dettaglio normalizzato: via/civico + Comune/CAP da config.stradario
   CASE
     WHEN ai.indirizzo_dettaglio_id IS NOT NULL THEN
       trim(
         ad.indirizzo_normalizzato || 
         ', ' || co.descrizione ||
-        COALESCE(' ' || cp.codice_postale, '')
+        COALESCE(' ' || cp.codice, '')
       )
-	   -- 2) indirizzo libero (nazionale)
+    -- 2) indirizzo libero (nazionale)
     WHEN ai.indirizzo_libero IS NOT NULL THEN
       trim(
         ai.indirizzo_libero ||
         COALESCE(', ' || co.descrizione, '') ||
-        COALESCE(' ' || cp.codice_postale, '')
+        COALESCE(' ' || cp.codice, '')
       )
-	  -- 3) estero / internazionale
+    -- 3) estero / internazionale
     ELSE
       trim(
-	  	ai.indirizzo_libero ||
+      ai.indirizzo_libero ||
         COALESCE(ai.locality, '') ||
         COALESCE(', ' || ai.administrative_area, '') ||
         COALESCE(', ' || ai.postal_box, '')
@@ -46,7 +70,7 @@ LEFT JOIN anagrafiche.indirizzi_dettaglio ad ON ad.id = ai.indirizzo_dettaglio_i
 LEFT JOIN config.comuni co ON co.id = ai.comune_id
 LEFT JOIN config.codici_postali cp ON cp.id = ai.codice_postale_id
 WHERE ai.soggetto_ruolo_id = p_soggetto_ruolo_id
-ORDER BY ti.cod_int_tipo_indirizzo;
+ORDER BY ti.codice_interno;
 $function$
 ```
 ---

@@ -11,7 +11,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
 | user_update | text | NO | CURRENT_USER |
-| cod_tipo_indirizzo | character varying | NO |  |
+| codice | character varying | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

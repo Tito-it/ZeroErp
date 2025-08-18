@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
+# Zero ERP – Soggetti: rename codice_soggetto -> codice
+# Tabella: anagrafiche.soggetti
+# Vincolo storico: uq_soggetto_soggetto_codice  -> uq_soggetto_codice
+# Trigger-fn da aggiornare: anagrafiche.trgfn_soggetti_upd_protect_codice_soggetto()
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250817-26-soggetti-rename-codice_soggetto-to-codice
+      author: mctit
+      context: ddl
+      runOnChange: true
+      failOnError: true
+
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: soggetti
+                columnName: codice_soggetto
+            - not:
+                - columnExists:
+                    schemaName: anagrafiche
+                    tableName: soggetti
+                    columnName: codice
+
+      changes:
+        # 1) Rinomina colonna
+        - renameColumn:
+            schemaName: anagrafiche
+            tableName: soggetti
+            oldColumnName: codice_soggetto
+            newColumnName: codice
+
+        # 2) Rinomina vincolo UNIQUE se presente (storico)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'anagrafiche'
+                    AND t.relname = 'soggetti'
+                    AND c.conname = 'uq_soggetto_soggetto_codice'
+                ) THEN
+                  EXECUTE 'ALTER TABLE anagrafiche.soggetti RENAME CONSTRAINT uq_soggetto_soggetto_codice TO uq_soggetto_codice';
+                END IF;
+              END$$;
+
+        # 3) Rinomina indice standalone, se esiste col nome storico
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'anagrafiche'
+                    AND i.relname = 'uq_soggetto_soggetto_codice'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS anagrafiche.uq_soggetto_soggetto_codice RENAME TO uq_soggetto_codice';
+                END IF;
+              END$$;
+
+        
+      rollback:
+        # Ripristina colonna
+        - renameColumn:
+            schemaName: anagrafiche
+            tableName: soggetti
+            oldColumnName: codice
+            newColumnName: codice_soggetto
+
+        # Ripristina vincolo UNIQUE se rinominato
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.contype = 'u'
+                    AND n.nspname = 'anagrafiche'
+                    AND t.relname = 'soggetti'
+                    AND c.conname = 'uq_soggetto_codice'
+                ) THEN
+                  EXECUTE 'ALTER TABLE anagrafiche.soggetti RENAME CONSTRAINT uq_soggetto_codice TO uq_soggetto_soggetto_codice';
+                END IF;
+              END$$;
+
+        # Ripristina indice standalone se rinominato
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_class i
+                  JOIN pg_namespace n ON n.oid = i.relnamespace
+                  WHERE i.relkind IN ('i','I')
+                    AND n.nspname = 'anagrafiche'
+                    AND i.relname = 'uq_soggetto_codice'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS anagrafiche.uq_soggetto_codice RENAME TO uq_soggetto_soggetto_codice';
+                END IF;
+              END$$;
+
+        
+  - changeSet:
+      id: 20250817-90-soggetti-rename-codice_soggetto-to-codice
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250817-26-soggetti-rename-codice_soggetto-to-codice

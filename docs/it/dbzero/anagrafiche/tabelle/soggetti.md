@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | uuid | NO | gen_random_uuid() |
-| codice_soggetto | text | YES |  |
+| codice | text | YES |  |
 | ragione_sociale | text | YES |  |
 | cognome | text | YES |  |
 | nome | text | YES |  |
@@ -39,8 +39,8 @@
 | FOREIGN KEY | fk_stati_config | stato_id, stato_id |
 | FOREIGN KEY | fk_titoli_cortesia_config | titolo_cortesia_id, titolo_cortesia_id |
 | PRIMARY KEY | pk_soggetto | id |
+| UNIQUE | uq_soggetto_codice | codice |
 | UNIQUE | uq_soggetto_idstato_id_fiscale_univoco | stato_id, id_fiscale_univoco_cf_piva |
-| UNIQUE | uq_soggetto_soggetto_codice | codice_soggetto |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -52,8 +52,8 @@
 | ix_soggetti_tipo_soggetto_dettaglio_id | `CREATE INDEX ix_soggetti_tipo_soggetto_dettaglio_id ON anagrafiche.soggetti USING btree (tipo_soggetto_dettaglio_id)` |
 | ix_soggetti_titolo_cortesia_id | `CREATE INDEX ix_soggetti_titolo_cortesia_id ON anagrafiche.soggetti USING btree (titolo_cortesia_id)` |
 | pk_soggetto | `CREATE UNIQUE INDEX pk_soggetto ON anagrafiche.soggetti USING btree (id)` |
+| uq_soggetto_codice | `CREATE UNIQUE INDEX uq_soggetto_codice ON anagrafiche.soggetti USING btree (codice)` |
 | uq_soggetto_idstato_id_fiscale_univoco | `CREATE UNIQUE INDEX uq_soggetto_idstato_id_fiscale_univoco ON anagrafiche.soggetti USING btree (stato_id, id_fiscale_univoco_cf_piva)` |
-| uq_soggetto_soggetto_codice | `CREATE UNIQUE INDEX uq_soggetto_soggetto_codice ON anagrafiche.soggetti USING btree (codice_soggetto)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

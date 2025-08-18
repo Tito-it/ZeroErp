@@ -28,17 +28,17 @@ databaseChangeLog:
                   AS $$
                   BEGIN
                     IF TG_OP = 'UPDATE'
-                      AND OLD.codice_soggetto IS NOT NULL
-                      AND NEW.codice_soggetto IS DISTINCT FROM OLD.codice_soggetto
+                      AND OLD.codice IS NOT NULL
+                      AND NEW.codice IS DISTINCT FROM OLD.codice
                     THEN
                       
                       PERFORM script.fn_log_and_raise_error(
                         'database',
                         TG_NAME,
                         'E_COLONNA_NON_MODIFICABILE',
-                        jsonb_build_object('column','codice_soggetto','id',OLD.id),
+                        jsonb_build_object('column','codice','id',OLD.id),
                         NULL::uuid,
-                        'codice_soggetto'
+                        'codice soggetto'
                       );
                     END IF;
                     RETURN NEW;
@@ -47,7 +47,7 @@ databaseChangeLog:
 
               COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_upd_protect_codice_soggetto()
                 IS $comment$
-                  Triggere per proteggere il campo codice_soggetto da modifiche dopo la prima valorizzazione.
+                  Triggere per proteggere il campo codice soggetto da modifiche dopo la prima valorizzazione.
                 $comment$;
         - sql:
             splitStatements: false  
@@ -68,7 +68,7 @@ databaseChangeLog:
               COMMENT ON TRIGGER trg_soggetti_upd_protect_codice_soggetto
                 ON anagrafiche.soggetti
                 IS $comment$
-                  Trigger per proteggere il campo codice_soggetto da modifiche dopo la prima valorizzazione.
+                  Trigger per proteggere il campo codice soggetto da modifiche dopo la prima valorizzazione.
                 $comment$;
 
 # Metto un  tag fine modifiche
