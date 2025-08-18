@@ -14,17 +14,17 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_upd_protect_account
 AS $function$
     BEGIN
       IF TG_OP = 'UPDATE'
-        AND OLD.account_code IS NOT NULL
-        AND NEW.account_code IS DISTINCT FROM OLD.account_code
+        AND OLD.codice IS NOT NULL
+        AND NEW.codice IS DISTINCT FROM OLD.codice
       THEN
         
         PERFORM script.fn_log_and_raise_error(
           'database',
           TG_NAME,
           'E_COLONNA_NON_MODIFICABILE',
-          jsonb_build_object('column','account_code','id',OLD.id),
+          jsonb_build_object('column','codice (account)','id',OLD.id),
           NULL::uuid,
-          'account_code'
+          'codice (account)'
         );
       END IF;
       RETURN NEW;

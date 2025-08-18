@@ -14,7 +14,7 @@
 
 ### 🎯 Scopo Principale
 
-Il trigger `anagrafiche.trgfn_billing_account_ins_upd_clean_fields` assicura che ogni record di **`billing_account`** abbia un **`account_code`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
+Il trigger `anagrafiche.trgfn_billing_account_ins_upd_clean_fields` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
 
 ---
 
@@ -28,9 +28,9 @@ Il trigger `anagrafiche.trgfn_billing_account_ins_upd_clean_fields` assicura che
 
 ### 📋 Logica Operativa
 
-1. **Verifica `account_code`**
+1. **Verifica `codice (account)`**
 
-   * Se `NEW.account_code` è `NULL`, si invoca la funzione `script.fn_generate_codice('billing_account')` per ottenere un nuovo codice.
+   * Se `NEW.codice` è `NULL`, si invoca la funzione `script.fn_generate_codice('billing_account')` per ottenere un nuovo codice.
 
 2. **Restituzione record**
 
