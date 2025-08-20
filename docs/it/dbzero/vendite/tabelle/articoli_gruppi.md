@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/articoli_gruppi.md" %}
 # 📚 Tabella `articoli_gruppi`
 
 ## 🗂️ Campi principali

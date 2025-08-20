@@ -1,0 +1,192 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP - Tabelle di automazione
+# Copyright (C) 2025 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+
+  - changeSet:
+      id: 20250820-01-create-automation-rules-tbl
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: automation_rules_tbl
+            remarks: "Regole di automazione per tabella/ambito"
+            columns:
+              - column:
+                  name: id
+                  type: bigserial
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: enabled
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: rule_type
+                  type: text
+                  remarks: "'TX_ID' | 'AUDIT_UPDATE' | 'STORICO' | 'ATTIVO'"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: target_schema
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: target_table
+                  type: text
+                  remarks: "Se NULL vale per tutte le tabelle dello schema"
+              - column:
+                  name: exec_mode
+                  type: text
+                  defaultValue: "AUTO"
+                  remarks: "'CI' | 'SCHEDULED' | 'AUTO'"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name_template
+                  type: text
+                  remarks: "Template nome trigger (opzionale)"
+              - column:
+                  name: existence_strategy
+                  type: text
+                  defaultValue: "BY_NAME"
+                  remarks: "'BY_NAME' | 'BY_FUNCTION' | 'BOTH'"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: params
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: priority
+                  type: int
+                  defaultValueNumeric: 100
+                  constraints:
+                    nullable: false
+              - column:
+                  name: note
+                  type: text
+
+  - changeSet:
+      id: 20250820-02-create-automation-fk-exclusions
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: automation_fk_exclusions
+            remarks: "Esclusioni FK dall’automazione"
+            columns:
+              - column:
+                  name: parent_schema
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: parent_table
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: child_schema
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: child_table
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: reason
+                  type: text
+        - addPrimaryKey:
+            schemaName: dbops
+            tableName: automation_fk_exclusions
+            columnNames: parent_schema, parent_table, child_schema, child_table
+            constraintName: pk_automation_fk_exclusions
+
+  - changeSet:
+      id: 20250820-03-create-automation-overrides-cols
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: automation_overrides_cols
+            remarks: "Override colonne per tabella"
+            columns:
+              - column:
+                  name: schema_name
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: table_name
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: col_role
+                  type: text
+                  remarks: "'AUDIT_TS'|'AUDIT_USER'|'ATTIVO_COL'|'STORICO_FK'"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: col_name
+                  type: text
+                  constraints:
+                    nullable: false
+        - addPrimaryKey:
+            schemaName: dbops
+            tableName: automation_overrides_cols
+            columnNames: schema_name, table_name, col_role
+            constraintName: pk_automation_overrides_cols
+
+  - changeSet:
+      id: 20250820-04-create-automation-scope
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: automation_scope
+            remarks: "Scope opzionale per rollout filtrato"
+            columns:
+              - column:
+                  name: schema_name
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: table_like
+                  type: text
+                  remarks: "Es. 'cli%' → LIKE"
+        - addPrimaryKey:
+            schemaName: dbops
+            tableName: automation_scope
+            columnNames: schema_name, table_like
+            constraintName: pk_automation_scope
+
+  - changeSet:
+      id: 20250820-90-create-table-generic-for-automation
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250820-03-create-table-generic-for-automation
