@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250819-60-create-vendite-regole-fatturazione
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - createSequence:
+            schemaName: vendite
+            sequenceName: regole_fatturazione_articolo_id_seq
+            startValue: 1
+            incrementBy: 1
+            minValue: 1
+
+        # 1) Tabella
+        - createTable:
+            schemaName: vendite
+            tableName: regole_fatturazione_articolo
+            remarks: "Policy di visibilità/calcolo/arrotondamenti per articolo"
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  defaultValueComputed: "nextval('vendite.regole_fatturazione_articolo_id_seq'::regclass)"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_regole_fatturazione_articolo
+                    nullable: false
+              - column: { name: prodotto_id, type: UUID, remarks: "Articolo di riferimento (catalogo.articoli.id)", constraints: { nullable: false } }
+              - column: { name: visibilita_componenti, type: VARCHAR(24), defaultValue: "solo_padre", remarks: "solo_padre | padre_componenti | solo_componenti", constraints: { nullable: false } }
+              - column: { name: calcolo_qta_padre, type: VARCHAR(28), defaultValue: "fissa", remarks: "fissa | somma_componenti_flaggate", constraints: { nullable: false } }
+              - column: { name: arrotondamento_importi_dec, type: SMALLINT, defaultValueNumeric: 2, remarks: "Decimali per importi (0..6)", constraints: { nullable: false } }
+              - column: { name: arrotondamento_quantita_dec, type: SMALLINT, defaultValueNumeric: 3, remarks: "Decimali per quantità (0..6)", constraints: { nullable: false } }
+              - column: { name: metodo_arrotondamento_importi, type: VARCHAR(12), defaultValue: "HALF_UP", remarks: "HALF_UP | HALF_EVEN | FLOOR | CEIL", constraints: { nullable: false } }
+              - column: { name: metodo_arrotondamento_quantita, type: VARCHAR(12), defaultValue: "HALF_UP", remarks: "HALF_UP | HALF_EVEN | FLOOR | CEIL", constraints: { nullable: false } }
+              - column: { name: meta, type: JSONB, defaultValue: "{}", remarks: "Metadati estensibili JSONB" }
+
+              # Audit standard
+              - column: { name: user_insert, type: VARCHAR(30), defaultValueComputed: CURRENT_USER, remarks: "Utente inserimento", constraints: { nullable: false } }
+              - column: { name: user_update, type: VARCHAR(30), defaultValueComputed: CURRENT_USER, remarks: "Utente ultima modifica" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), remarks: "Data inserimento", constraints: { nullable: false } }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), remarks: "Data ultima modifica", constraints: { nullable: false } }
+
+        # 2) FK e Unique
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: regole_fatturazione_articolo
+            baseColumnNames: prodotto_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            constraintName: fk_regole_fatturazione_articolo_articoli
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: regole_fatturazione_articolo
+            columnNames: prodotto_id
+            constraintName: uq_regole_fatturazione_articolo_prodotto
+
+        # 3) Check constraints, indice, trigger, commenti
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check enumerazioni
+              ALTER TABLE vendite.regole_fatturazione_articolo
+                ADD CONSTRAINT chk_regole_visibilita_componenti
+                CHECK (visibilita_componenti IN ('solo_padre','padre_componenti','solo_componenti'));
+
+              ALTER TABLE vendite.regole_fatturazione_articolo
+                ADD CONSTRAINT chk_regole_calcolo_qta_padre
+                CHECK (calcolo_qta_padre IN ('fissa','somma_componenti_flaggate'));
+
+              ALTER TABLE vendite.regole_fatturazione_articolo
+                ADD CONSTRAINT chk_regole_decimali_importi
+                CHECK (arrotondamento_importi_dec BETWEEN 0 AND 6);
+
+              ALTER TABLE vendite.regole_fatturazione_articolo
+                ADD CONSTRAINT chk_regole_decimali_quantita
+                CHECK (arrotondamento_quantita_dec BETWEEN 0 AND 6);
+
+              ALTER TABLE vendite.regole_fatturazione_articolo
+                ADD CONSTRAINT chk_regole_metodo_arrotondamento_importi
+                CHECK (metodo_arrotondamento_importi IN ('HALF_UP','HALF_EVEN','FLOOR','CEIL'));
+
+              ALTER TABLE vendite.regole_fatturazione_articolo
+                ADD CONSTRAINT chk_regole_metodo_arrotondamento_quantita
+                CHECK (metodo_arrotondamento_quantita IN ('HALF_UP','HALF_EVEN','FLOOR','CEIL'));
+
+              -- Indice per join/lookup su prodotto
+              CREATE INDEX IF NOT EXISTS ix_regole_fatturazione_articolo_prodotto
+                ON vendite.regole_fatturazione_articolo (prodotto_id);
+
+              -- Trigger audit
+              CREATE OR REPLACE TRIGGER trg_upd_regole_fatturazione_articolo_audit_data_user
+                BEFORE UPDATE ON vendite.regole_fatturazione_articolo
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+
+              -- Commenti tabella/colonne
+              COMMENT ON TABLE vendite.regole_fatturazione_articolo
+                IS 'Policy di visibilità/calcolo/arrotondamenti per articolo';
+              COMMENT ON COLUMN vendite.regole_fatturazione_articolo.id IS 'PK (sequence vendite.regole_fatturazione_articolo_id_seq)';
+              COMMENT ON COLUMN vendite.regole_fatturazione_articolo.prodotto_id IS 'FK → catalogo.articoli.id';
+              COMMENT ON COLUMN vendite.regole_fatturazione_articolo.visibilita_componenti IS 'solo_padre | padre_componenti | solo_componenti';
+              COMMENT ON COLUMN vendite.regole_fatturazione_articolo.calcolo_qta_padre IS 'fissa | somma_componenti_flaggate';
+              COMMENT ON COLUMN vendite.regole_fatturazione_articolo.arrotondamento_importi_dec IS 'Decimali importi (0..6)';
+              COMMENT ON COLUMN vendite.regole_fatturazione_articolo.arrotondamento_quantita_dec IS 'Decimali quantità (0..6)';
+              COMMENT ON COLUMN vendite.regole_fatturazione_articolo.metodo_arrotondamento_importi IS 'HALF_UP | HALF_EVEN | FLOOR | CEIL';
+              COMMENT ON COLUMN vendite.regole_fatturazione_articolo.metodo_arrotondamento_quantita IS 'HALF_UP | HALF_EVEN | FLOOR | CEIL';
+              COMMENT ON COLUMN vendite.regole_fatturazione_articolo.meta IS 'Metadati estensibili JSONB';
+              COMMENT ON COLUMN vendite.regole_fatturazione_articolo.user_insert IS 'Utente inserimento';
+              COMMENT ON COLUMN vendite.regole_fatturazione_articolo.user_update IS 'Utente ultima modifica';
+              COMMENT ON COLUMN vendite.regole_fatturazione_articolo.data_insert IS 'Data inserimento';
+              COMMENT ON COLUMN vendite.regole_fatturazione_articolo.data_update IS 'Data ultima modifica';
+
+              -- Commenti vincoli/indice/trigger
+              COMMENT ON CONSTRAINT fk_regole_fatturazione_articolo_articoli ON vendite.regole_fatturazione_articolo IS 'FK: vendite.regole_fatturazione_articolo → catalogo.articoli';
+              COMMENT ON CONSTRAINT uq_regole_fatturazione_articolo_prodotto ON vendite.regole_fatturazione_articolo IS 'Unicità regole per articolo';
+              COMMENT ON CONSTRAINT pk_regole_fatturazione_articolo ON vendite.regole_fatturazione_articolo IS 'PK regole fatturazione articolo';
+              COMMENT ON CONSTRAINT chk_regole_visibilita_componenti ON vendite.regole_fatturazione_articolo IS 'Valori ammessi per visibilità componenti';
+              COMMENT ON CONSTRAINT chk_regole_calcolo_qta_padre ON vendite.regole_fatturazione_articolo IS 'Valori ammessi per calcolo_qta_padre';
+              COMMENT ON CONSTRAINT chk_regole_decimali_importi ON vendite.regole_fatturazione_articolo IS '0..6 decimali per importi';
+              COMMENT ON CONSTRAINT chk_regole_decimali_quantita ON vendite.regole_fatturazione_articolo IS '0..6 decimali per quantità';
+              COMMENT ON CONSTRAINT chk_regole_metodo_arrotondamento_importi ON vendite.regole_fatturazione_articolo IS 'Metodi ammessi importi';
+              COMMENT ON CONSTRAINT chk_regole_metodo_arrotondamento_quantita ON vendite.regole_fatturazione_articolo IS 'Metodi ammessi quantità';
+              COMMENT ON INDEX vendite.ix_regole_fatturazione_articolo_prodotto IS 'Lookup per articolo';
+              COMMENT ON TRIGGER trg_upd_regole_fatturazione_articolo_audit_data_user ON vendite.regole_fatturazione_articolo IS 'Aggiorna (audit) data_update e user_update';
+
+  - changeSet:
+      id: 20250819-90-create-vendite-regole-fatturazione
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250819-60-create-vendite-regole-fatturazione

@@ -1,10 +1,16 @@
-## 📘 Documentazione – `storico.pdp`
+## 📘 Documentazione concettuale - Tabella  `storico.pdp`
 
 > 👀 **Vedi anche**
 >
 > **Approfondimento tabelle:**
 >
-> • [`anagrafiche.pdp`](/dbzero/anagrafiche/tabelle//anagrafiche_pdp)   
+> • [`anagrafiche.pdp`](/dbzero/anagrafiche/tabelle/pdp)   
+>
+> **Approfondimento funzioni:**
+>
+> • [`script.trgfn_upd_dlt_storico_generic`](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
+> • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+
 
 ---
 
@@ -80,7 +86,7 @@ LIMIT 1;
 
 ### 5. Best practice
 
-* **Allineare tx\_id** tra base e storico (usa `dbops.trgfn_tx_id_managed()` in base).
+* **Allineare tx_id** tra base e storico (usa `dbops.trgfn_tx_id_managed()` in base).
 * Mantenere **un solo record “aperto”** per PDP (`valid_to IS NULL`).
 * Aggiungere il trigger **AFTER INSERT** per completezza della timeline.
 * Verificare periodicamente che non esistano **sovrapposizioni** di periodi per lo stesso `pdp_id`.

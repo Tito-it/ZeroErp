@@ -29,17 +29,16 @@ Uniformità e chiarezza nel codice DDL:
 | Oggetto           | Convenzione                        | Esempio                               |
 | ----------------- | ---------------------------------- | ------------------------------------- |
 | **Schema**        | minuscolo, plurale                 | `anagrafiche`, `config`, `dbops`      |
-| **Tabella**       | nome plurale, snake\_case          | `soggetti`, `gestori_utilities_ruoli` |
+| **Tabella**       | nome plurale, snake_case           | `soggetti`, `gestori_utilities_ruoli` |
 | **Colonna PK**    | `id`                               | `id UUID`, `id SERIAL`                |
 | **Sequenza**      | `<table>_id_seq`                   | `storico.comuni_id_seq`               |
-| **FK**            | `<referenced_table>_id`            | `soggetto_id`, `utility_id`           |
 | **Indice**        | `ix_<table>_<column>`              | `ix_contatti_soggetto`                |
 | **Vista**         | prefisso `vw_`                     | `vw_clienti_attivi`                   |
 | **Funzione**      | prefisso `fn_`                     | `fn_calcolo_fattura()`                |
 | **Trigger Func.** | prefisso `trgfn_`                  | `trgfn_contatti_set_default()`        |
 | **Trigger**       | prefisso `trg_`, `<table>_<event>` | `trg_contatti_insert_update`          |
 | **Constraint PK** | `pk_<table>`                       | `pk_soggetti_ruoli`                   |
-| **Constraint FK** | `fk_<base>_<ref>`                  | `fk_contatti_soggetti`                |
+| **Constraint FK** | `fk_<base_table>_<ref_table>`      | `fk_contatti_soggetti`                |
 | **Constraint UQ** | `uq_<table>_<columns>`             | `uq_contatti_default`                 |
 
 💡 **Nota**  

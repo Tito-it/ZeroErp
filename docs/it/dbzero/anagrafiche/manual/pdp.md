@@ -1,13 +1,21 @@
-# 📘 Documentazione concettaule – `anagrafiche.pdp` 
+## 📘 Documentazione concettuale – Tabella `anagrafiche.pdp` 
 
 > 👀 **Vedi anche**
 >
 > **Approfondimento tabelle:**
 >
 > • [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
-> • [`config.utilities`](/dbzero/config/tabelle/utilities)   
 > • [`anagrafiche.clienti`](/dbzero/anagrafiche/tabelle/clienti)   
-> • [`anagrafiche.istanze_utilities`](/dbzero/anagrafiche/tabelle/istanze_utilities)   
+> • [`anagrafiche.istanze_utilities`](/dbzero/anagrafiche/tabelle/istanze_utilities)  
+> • [`config.utilities`](/dbzero/config/tabelle/utilities)   
+> • [`storico.pdp`](/dbzero/storico/tabelle/pdp)   
+>
+> **Approfondimento funzioni:**
+>
+> • [`anagrafiche.trgfn_pdp_protect_cols`](/dbzero/anagrafiche/funzioni/trgfn_pdp_protect_cols)   
+> • [`script.trgfn_upd_dlt_storico_generic`](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
+> • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+
 
 ---
 
@@ -24,7 +32,7 @@ Questa modellazione consente di:
 
 ---
 
-## 2. Schema e colonne principali
+### 2. Schema e colonne principali
 
 ### 2.1 `anagrafiche.pdp` (stato corrente)
 
@@ -90,7 +98,7 @@ Questa modellazione consente di:
 
 ---
 
-## 4. Comportamento dei trigger e storico
+### 4. Comportamento dei trigger e storico
 
 ### 4.1 `dbops.trgfn_tx_id_managed()`
 
@@ -105,7 +113,7 @@ Blocca UPDATE su `pdp` e `indirizzo_dettaglio_id` **dopo la prima valorizzazione
 
 ---
 
-## 5. Integrazione con `anagrafiche.istanze_utilities`
+### 5. Integrazione con `anagrafiche.istanze_utilities`
 
 * L’istanza ha un **indirizzo** e può collegarsi **opzionalmente** a un **PDP** dello **stesso indirizzo**.
 * Per garantire la coerenza, si usa una **FK composita** su `(pdp_id, indirizzo_dettaglio_id)` → `pdp(id, indirizzo_dettaglio_id)` (serve la UNIQUE `uq_pdp_id_addr` in base).
@@ -115,7 +123,7 @@ Effetti: per un dato indirizzo, **max un PDP per utility** → per N utility sul
 
 ---
 
-## 6. Operatività (query tipiche)
+### 6. Operatività (query tipiche)
 
 * **PDP correnti per indirizzo**
 
@@ -152,7 +160,7 @@ WHERE p.id = :id;
 
 ---
 
-## 7. Best practice
+### 7. Best practice
 
 * **Proteggi** sempre `pdp` e `indirizzo_dettaglio_id` (immutabili) – già coperto dal trigger.
 * **Validazioni per utility** (futuro): applica regex/pattern differenti su `pdp` in base a `utilities_id`.
@@ -162,7 +170,7 @@ WHERE p.id = :id;
 
 ---
 
-## 8. Errori frequenti & diagnosi
+### 8. Errori frequenti & diagnosi
 
 * **Violazione `uq_pdp_codice`**: codice duplicato → verificare migrazioni/import.
 * **Violazione `uq_pdp_addr_utility`**: esiste già un PDP della stessa utility su quell’indirizzo.
@@ -171,7 +179,7 @@ WHERE p.id = :id;
 
 ---
 
-## 9. Evoluzioni possibili
+### 9. Evoluzioni possibili
 
 * **Pattern/format per utility**: `CHECK` condizionali o trigger di validazione su `pdp`.
 * **View operative** (es. `v_pdp_correnti`) per semplificare report e API.
@@ -179,7 +187,7 @@ WHERE p.id = :id;
 
 ---
 
-## 10. Diagramma ER
+### 10. Diagramma ER
 
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%

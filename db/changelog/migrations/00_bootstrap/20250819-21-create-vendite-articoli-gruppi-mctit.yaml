@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+
+- changeSet:
+    id: 20250819-21-create-vendite-articoli-gruppi
+    author: mctit
+    runOnChange: true
+    validCheckSums:
+      - ANY
+    changes:
+      - createSequence:
+          schemaName: vendite
+          sequenceName: articoli_gruppi_id_seq
+          startValue: 1
+          incrementBy: 1
+          minValue: 1
+
+      # 1) Tabella
+      - createTable:
+          schemaName: vendite
+          tableName: articoli_gruppi
+          remarks: "Gruppi degli articoli (classificazioni di livello superiore), utili per riepiloghi e fatturazione"
+          columns:
+            - column:
+                name: id
+                type: INTEGER
+                defaultValueComputed: "nextval('vendite.articoli_gruppi_id_seq'::regclass)"
+                constraints:
+                  primaryKey: true
+                  primaryKeyName: pk_articoli_gruppi
+                  nullable: false
+            - column:
+                name: codice
+                type: VARCHAR(20)
+                constraints:
+                  nullable: false
+            - column:
+                name: descrizione
+                type: VARCHAR(100)
+                constraints:
+                  nullable: false
+            - column:
+                name: attivo
+                type: BOOLEAN
+                defaultValueBoolean: true
+                constraints:
+                  nullable: false
+            - column:
+                name: user_insert
+                type: VARCHAR(30)
+                defaultValueComputed: CURRENT_USER
+                constraints:
+                  nullable: false
+            - column:
+                name: user_update
+                type: VARCHAR(30)
+                defaultValueComputed: CURRENT_USER
+            - column:
+                name: data_insert
+                type: TIMESTAMPTZ
+                defaultValueComputed: now()
+                constraints:
+                  nullable: false
+            - column:
+                name: data_update
+                type: TIMESTAMPTZ
+                defaultValueComputed: now()
+                constraints:
+                  nullable: false
+
+      # 2) Vincolo univoco su codice
+      - addUniqueConstraint:
+          schemaName: vendite
+          tableName: articoli_gruppi
+          columnNames: codice
+          constraintName: uq_articoli_gruppi_codice
+
+      # 3) Indice case-insensitive su codice (prefisso ix_)
+      - sql:
+          splitStatements: false
+          sql: |
+            CREATE INDEX IF NOT EXISTS ix_articoli_gruppi_codice_upper
+            ON vendite.articoli_gruppi (upper(codice));
+
+      # 4) Trigger audit
+      - sql:
+          splitStatements: false
+          sql: |
+            CREATE OR REPLACE TRIGGER trg_upd_articoli_gruppi_audit_data_user
+              BEFORE UPDATE ON vendite.articoli_gruppi
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+
+      # 5) Commenti (tabella, colonne, constraint, indice, trigger)
+      - sql:
+          splitStatements: false
+          sql: |
+            COMMENT ON TABLE vendite.articoli_gruppi
+              IS 'Gruppi degli articoli (classificazioni di livello superiore), utili per riepiloghi e fatturazione';
+            COMMENT ON COLUMN vendite.articoli_gruppi.id
+              IS 'Id.Gruppo (sequence vendite.articoli_gruppi_id_seq)';
+            COMMENT ON COLUMN vendite.articoli_gruppi.codice
+              IS 'Codice univoco del gruppo';
+            COMMENT ON COLUMN vendite.articoli_gruppi.descrizione
+              IS 'Descrizione estesa del gruppo';
+            COMMENT ON COLUMN vendite.articoli_gruppi.attivo
+              IS 'Flag attivo/non attivo';
+            COMMENT ON COLUMN vendite.articoli_gruppi.user_insert
+              IS 'Utente che ha effettuato l''inserimento';
+            COMMENT ON COLUMN vendite.articoli_gruppi.user_update
+              IS 'Utente ultima modifica';
+            COMMENT ON COLUMN vendite.articoli_gruppi.data_insert
+              IS 'Data inserimento';
+            COMMENT ON COLUMN vendite.articoli_gruppi.data_update
+              IS 'Data ultima modifica';
+
+            COMMENT ON CONSTRAINT uq_articoli_gruppi_codice ON vendite.articoli_gruppi
+              IS 'Key: codice gruppo univoco';
+
+            COMMENT ON INDEX vendite.ix_articoli_gruppi_codice_upper
+              IS 'Ricerca case-insensitive su codice (upper(codice))';
+
+            COMMENT ON TRIGGER trg_upd_articoli_gruppi_audit_data_user ON vendite.articoli_gruppi
+              IS 'Aggiorna (audit) data_update e user_update al BEFORE UPDATE';

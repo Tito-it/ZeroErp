@@ -58,3 +58,39 @@ La tabella **`anagrafiche.soggetti_ruoli`** funge da collegamento (linking table
 ---
 
 > 🧠 **"Una tabella ponte che unisce flessibilità e integrità referenziale, consentendo di assegnare e tracciare ruoli multipli a ciascun soggetto senza duplicare dati anagrafici."**
+
+---
+
+###  Diagramma ER
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    soggetti       ||--o{ soggetti_ruoli : has
+    tipi_ruoli     ||--o{ soggetti_ruoli : assigns
+
+    soggetti {
+        UUID id PK
+    }
+
+    tipi_ruoli {
+        INT id PK
+    }
+
+    soggetti_ruoli {
+        int id PK
+        uuid soggetto_id FK
+        int ruolo_id FK
+        jsonb extra
+        uuid tx_id
+        timestamptz data_insert
+        timestamptz data_update
+        varchar user_insert
+        varchar user_update
+        %% Nota: vincolo UNIQUE (soggetto_id, ruolo_id) non rappresentabile qui
+    }
+```
+
+---
+
+{% include-markdown "signature-core.md" %}

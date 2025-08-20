@@ -26,3 +26,6 @@ databaseChangeLog:
               CREATE SCHEMA IF NOT EXISTS storico;
               CREATE SCHEMA IF NOT EXISTS data_conversion;
               CREATE SCHEMA IF NOT EXISTS maintenance;
+              CREATE SCHEMA IF NOT EXISTS catalogo;
+              CREATE SCHEMA IF NOT EXISTS vendite;
+              CREATE SCHEMA IF NOT EXISTS contabilita;
