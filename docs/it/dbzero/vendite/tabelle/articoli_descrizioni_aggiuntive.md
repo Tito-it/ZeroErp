@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/articoli_descrizioni_aggiuntive.md" %}
 # 📚 Tabella `articoli_descrizioni_aggiuntive`
 
 ## 🗂️ Campi principali

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/articoli_tipologie.md" %}
 # 📚 Tabella `articoli_tipologie`
 
 ## 🗂️ Campi principali

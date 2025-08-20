@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+      
+databaseChangeLog:
+  - changeSet:
+      id: 20250820-22-trgfn_child_requires_active_parent_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+          Impedisce NEW.attivo=true se il padre (id=FK) non è attivo. DEFERRABLE.
+      
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: | 
+                --------------------------------------------------------------------
+                  -- 3) PADRE: se il figlio NON ha "attivo", blocca la disattivazione
+                  --------------------------------------------------------------------
+                  CREATE OR REPLACE FUNCTION script.trgfn_prevent_deactivate_if_children()
+                  RETURNS trigger
+                  LANGUAGE plpgsql
+                  AS $$
+                  DECLARE
+                    v_child_schema text := TG_ARGV[0];
+                    v_child_table  text := TG_ARGV[1];
+                    v_fk_col       text := TG_ARGV[2];
+                    v_exists       boolean;
+                    v_sql          text;
+                  BEGIN
+                    IF TG_OP='UPDATE' AND OLD.attivo IS TRUE AND NEW.attivo IS FALSE THEN
+                      v_sql := format('SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I=$1)', v_child_schema, v_child_table, v_fk_col);
+                      EXECUTE v_sql INTO v_exists USING OLD.id;
+                      IF v_exists THEN
+                        RAISE EXCEPTION 'Non è possibile disattivare %.% (id=%): esistono righe figlio in %.%',
+                          TG_TABLE_SCHEMA, TG_TABLE_NAME, OLD.id, v_child_schema, v_child_table
+                          USING ERRCODE='23503';
+                      END IF;
+                    END IF;
+                    RETURN NEW;
+                  END;
+                  $$;
+
+                  
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                COMMENT ON FUNCTION script.trgfn_prevent_deactivate_if_children() IS
+                    'Blocca la disattivazione del padre se esistono figli ma il figlio non ha "attivo".';
+
+
+
+
+  - changeSet:
+      id: 20250820-90-trgfn_child_requires_active_parent_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250820-22-trgfn_child_requires_active_parent_v1

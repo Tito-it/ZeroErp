@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/catalogo/manual/unita_misura.md" %}
 # 📚 Tabella `unita_misura`
 
 ## 🗂️ Campi principali

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/articoli_spesa.md" %}
 # 📚 Tabella `articoli_spesa`
 
 ## 🗂️ Campi principali
