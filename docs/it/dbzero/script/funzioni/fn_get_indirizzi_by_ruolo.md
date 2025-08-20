@@ -73,5 +73,6 @@ WHERE ai.soggetto_ruolo_id = p_soggetto_ruolo_id
 ORDER BY ti.codice_interno;
 $function$
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

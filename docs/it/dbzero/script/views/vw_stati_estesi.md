@@ -16,5 +16,6 @@ SELECT id,
    FROM config.stati s;
 ```
 
+
 ---
 {% include-markdown "signature-core.md" %}

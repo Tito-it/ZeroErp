@@ -20,5 +20,6 @@ SELECT i.id AS istanza_id,
      JOIN config.stati_cliente sc ON ((sc.id = script.fn_get_stato_cliente_by_istanza(i.id))));
 ```
 
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -81,5 +81,6 @@ AS $function$
   END;
   $function$
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

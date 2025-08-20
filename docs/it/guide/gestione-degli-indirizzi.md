@@ -121,5 +121,6 @@ erDiagram
     stradario          ||--o{ storico_stradario    : history
 
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

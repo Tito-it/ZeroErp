@@ -98,4 +98,64 @@ La tabella `anagrafiche.clienti` memorizza le informazioni contrattuali e di fat
 * La tabella `clienti` è il **fulcro** della logica di fatturazione: garantisce il passaggio dalla fase precontrattuale (istanza) alla fase contrattuale.
 * Il cliente **assume lo stesso** `billing_account` generato in fase di istanza, mantenendo continuità nelle relazioni.
 
+---
+
+###  Diagramma ER relazioni
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    istanze_utilities ||--o{ clienti : has
+    soggetti_ruoli    ||--o{ clienti : has
+    utilities         ||--o{ clienti : for
+    stati_cliente     ||--o{ clienti : status_of
+    iva               ||--o{ clienti : vat_of
+    modalita_pagamento||--o{ clienti : pays_with
+
+    istanze_utilities   { int id PK }
+    soggetti_ruoli      { int id PK }
+    utilities           { int id PK }
+    stati_cliente       { int id PK }
+    iva                 { int id PK }
+    modalita_pagamento  { int id PK }
+    clienti             { int id PK }
+```
+
+---
+
+###  Diagramma ER attributi
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    clienti {
+        int       id PK
+        int       soggetto_ruolo_id FK
+        int       istanza_utility_id FK
+        char      tipo_gg_scadenza_ft
+        int       nr_giorni_scadenza
+        int       modalita_pagamento_id FK
+        char      cliente_pa
+        varchar   codice_cig
+        varchar   codice_cup
+        varchar   cod_commessa
+        char      split_payment
+        varchar   cd_cliente_importato
+        int       stato_cliente_id FK
+        int       iva_id FK
+        bool      servizio_da_fatturare
+        int       utility_id FK
+        uuid      tx_id
+        bool      storicizza
+        datetime  data_insert
+        varchar   user_insert
+        datetime  data_update
+        varchar   user_update
+    }
+```
+
+---
+
 {% include-markdown "signature-core.md" %}
+
+---

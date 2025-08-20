@@ -18,5 +18,6 @@
 | Nome | Definizione |
 |------|-------------|
 | storico_set_storicizza_pkey | `CREATE UNIQUE INDEX storico_set_storicizza_pkey ON config.storico_set_storicizza USING btree (table_name)` |
+
 ---
 {% include-markdown "signature-core.md" %}

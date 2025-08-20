@@ -1,12 +1,13 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.dati_societari`
 
 > 👀 **Vedi anche**  
-> Approfondimento Tabelle:  
+> 
+> Approfondimento Tabelle:   
 >
 > * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
 > * [config.province](/dbzero/config/tabelle/province)
-
-> Approfondimento funzioni e trigger:
+>
+> Approfondimento funzioni e trigger:   
 >   
 > * [anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_ins_upd_check_tipo_soggetto)
 > * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
@@ -127,3 +128,55 @@ La tabella **`anagrafiche.dati_societari`** contiene i dati societari estesi per
 ---
 
 > 🧠 **“Un’estensione dedicata ai dati societari, che valorizza la tabella anagrafica base separando informazioni fiscali, legali e di fatturazione in un unico punto, con regole di integrità che evitano inconsistenze.”**  
+
+---
+
+###  Diagramma ER relazioni 
+
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    soggetti  ||--|| dati_societari : has_one
+    province  ||--o{ dati_societari : registered_in
+
+    soggetti      { uuid id PK }
+    province      { int  id PK }
+    dati_societari{ bigint id PK }
+
+```
+
+---
+
+###  Diagramma ER attributi
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    dati_societari {
+        bigint   id PK
+        uuid     soggetto_id FK
+        text     forma_giuridica
+        decimal  capitale_sociale
+        int      id_prov_iscri_rea FK
+        varchar  iscrizione_rea
+        enum     socio_unico         
+        enum     liquidazione       
+        char     destinatario_fe
+        varchar  pec_fatturazione
+        varchar  codice_sdi
+        date     data_costituzione
+        datetime data_insert
+        text     user_insert
+        datetime data_update
+        text     user_update
+        uuid     tx_id
+        bool     storicizza
+    }
+
+```
+
+---
+{% include-markdown "signature-core.md" %}
+
+---

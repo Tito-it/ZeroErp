@@ -57,5 +57,6 @@ WITH fk_columns AS (
   ORDER BY fk.schema_name, fk.table_name;
 ```
 
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -201,7 +201,7 @@ def write_docs_for_schema(schema, cur):
     os.makedirs(os.path.join(schema_dir, "manual"), exist_ok=True)
     
     SIGNATURE_INCLUDE = '{% include-markdown "signature-core.md" %}'
-    FOOTER = f"\n---\n{SIGNATURE_INCLUDE}\n"
+    FOOTER = f"\n\n---\n{SIGNATURE_INCLUDE}\n"
 
 
     # Tabelle

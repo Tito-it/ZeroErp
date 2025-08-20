@@ -24,5 +24,6 @@
 | Nome | Definizione |
 |------|-------------|
 | pk_storico_clienti | `CREATE UNIQUE INDEX pk_storico_clienti ON storico.clienti USING btree (id)` |
+
 ---
 {% include-markdown "signature-core.md" %}

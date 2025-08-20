@@ -26,5 +26,6 @@
 |------|-------------|
 | ix_indirizzi_indirizzo_id | `CREATE INDEX ix_indirizzi_indirizzo_id ON storico.indirizzi USING btree (indirizzo_id)` |
 | pk_indirizzi | `CREATE UNIQUE INDEX pk_indirizzi ON storico.indirizzi USING btree (id)` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -49,5 +49,6 @@
 | trg_istanze_utilities_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_istanze_utilities_upd_protect_codice | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_upd_protect_codice()` |
 | trg_upd_istanze_utilities_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

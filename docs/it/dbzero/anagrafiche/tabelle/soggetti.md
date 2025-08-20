@@ -28,6 +28,7 @@
 | id_fiscale_univoco_cf_piva | text | YES |  |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
+| attivo | boolean | NO | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -70,5 +71,6 @@
 | trg_upd_soggetti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 | trg_z90_soggetti_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('soggetto_id')` |
 | trg_z90_soggetti_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('soggetto_id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

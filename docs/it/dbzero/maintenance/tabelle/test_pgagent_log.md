@@ -18,5 +18,6 @@
 | Nome | Definizione |
 |------|-------------|
 | test_pgagent_log_pkey | `CREATE UNIQUE INDEX test_pgagent_log_pkey ON maintenance.test_pgagent_log USING btree (id)` |
+
 ---
 {% include-markdown "signature-core.md" %}

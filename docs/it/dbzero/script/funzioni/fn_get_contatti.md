@@ -94,5 +94,6 @@ FROM (
 WHERE sub.rn = 1;
 $function$
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

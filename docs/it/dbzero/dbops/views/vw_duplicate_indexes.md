@@ -31,5 +31,6 @@ WITH index_cols AS (
   ORDER BY schema_name, table_name, (count(*)) DESC;
 ```
 
+
 ---
 {% include-markdown "signature-core.md" %}

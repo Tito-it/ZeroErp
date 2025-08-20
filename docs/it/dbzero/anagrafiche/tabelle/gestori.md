@@ -39,5 +39,6 @@
 | trg_gestori_ins_upd_check_ruolo_gestore | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore()` |
 | trg_gestori_ins_upd_check_ruolo_gestore | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore()` |
 | trg_upd_gestori_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

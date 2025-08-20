@@ -49,7 +49,15 @@ databaseChangeLog:
               - column: { name: user_update, type: VARCHAR(30), defaultValueComputed: CURRENT_USER, remarks: "Utente ultima modifica" }
               - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), remarks: "Data inserimento", constraints: { nullable: false } }
               - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), remarks: "Data ultima modifica", constraints: { nullable: false } }
-
+              - column:
+                  name: tx_id
+                  type: UUID
+                  remarks: "Id transazione"
+              - column:
+                  name: storicizza
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  remarks: "Se true, abilita storicizzazione"
         # 2) FK e Unique
         - addForeignKeyConstraint:
             baseTableSchemaName: vendite

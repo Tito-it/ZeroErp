@@ -25,5 +25,6 @@ AS $function$
   );
 $function$
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

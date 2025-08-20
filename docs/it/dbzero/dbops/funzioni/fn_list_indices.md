@@ -27,5 +27,6 @@ AS $function$
     ORDER BY tbl.relname, idx.relname;
 $function$
 ```
+
 ---
 {% include-markdown "signature-core.md" %}
