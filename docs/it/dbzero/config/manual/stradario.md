@@ -11,7 +11,7 @@
 > 
 > Approfondimento funzioni:    
 >
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
+>* [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
  * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 
@@ -60,3 +60,51 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
 ---
 
 > 🧠 **"Una vista dettagliata e georeferenziata delle strade comunali, con CAP obbligatorio e informazioni flessibili per ogni via."**
+
+---
+
+###  Diagramma ER relazioni 
+
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    comuni             ||--o{ stradario : has
+    stradario_generale ||--o{ stradario : typed_as
+    codici_postali     ||--o{ stradario : uses_cap
+
+    comuni             { int id PK }
+    stradario_generale { int id PK }
+    codici_postali     { int id PK }
+    stradario          { int id PK }
+
+```
+
+---
+
+###  Diagramma ER attributi
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    stradario {
+        int       id PK
+        int       comune_id FK
+        int       stradario_generale_id FK
+        point4326 geoloc
+        jsonb     extra_info
+        datetime  data_insert
+        varchar   user_insert
+        datetime  data_update
+        varchar   user_update
+        int       codice_postale_id FK
+        bool      storicizza
+        uuid      tx_id
+    }
+
+```
+
+---
+{% include-markdown "signature-core.md" %}
+
+---

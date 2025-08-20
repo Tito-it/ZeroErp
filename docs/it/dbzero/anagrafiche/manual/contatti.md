@@ -84,7 +84,7 @@ Migliorano le performance nelle query di recupero contatti per soggetto, tipo o 
 
 ---
 
-### ⚙️ Esempi di Utilizzo
+### ⚙️ Esempi di Utilizzo 
 
 ```sql
 -- 1) Contatto globale per il soggetto UUID '123e4567-e89b-12d3-a456-426614174000'
@@ -114,7 +114,7 @@ INSERT INTO anagrafiche.contatti (
   'Ufficio Tecnico', 'tecnico@azienda.pec'
 );
 
--- 4) Impostare un contatto come default (il trigger resetta gli altri)
+--  4) Impostare un contatto come default (il trigger resetta gli altri)
 UPDATE anagrafiche.contatti
    SET is_default = TRUE
  WHERE id = 42;
@@ -125,6 +125,7 @@ SELECT *
  WHERE soggetto_id = '123e4567-e89b-12d3-a456-426614174000'
    AND is_default;
 
+```
 ---
 
 ### 💡 Vantaggi Operativi
@@ -140,3 +141,63 @@ SELECT *
 ---
 
 > 🧠 **Centralizzare i contatti in un’unica tabella con supporto multi-contesto e contact default migliora coerenza, performance e usabilità del sistema.”**
+
+
+---
+
+###  Diagramma ER relazioni 
+
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'LR'}}}%%
+erDiagram
+    soggetti         ||--o{ contatti : has
+    soggetti_ruoli   ||--o{ contatti : scoped_by
+    utilities        ||--o{ contatti : for
+    tipi_contatti    ||--o{ contatti : typed_as
+    titoli_cortesia  ||--o{ contatti : courtesy
+
+    soggetti        { uuid id PK }
+    soggetti_ruoli  { int id PK }
+    utilities       { int id PK }
+    tipi_contatti   { int id PK }
+    titoli_cortesia { int id PK }
+    contatti        { int id PK }
+
+```
+
+---
+
+###  Diagramma ER attributi
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    contatti {
+        int      id PK
+        int      tipo_contatto_id FK
+        uuid     soggetto_id FK
+        int      soggetto_ruolo_id FK
+        int      utility_id FK
+        string   nominativo
+        string   email
+        string   telefono
+        string   cellulare
+        string   pec
+        text     note
+        string   user_insert
+        string   user_update
+        bool     is_default
+        datetime data_insert
+        datetime data_update
+        int      titolo_cortesia_id FK
+        string   default_context
+        uuid     tx_id
+    }
+
+```
+
+---
+{% include-markdown "signature-core.md" %}
+
+---

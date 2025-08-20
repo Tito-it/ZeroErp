@@ -143,6 +143,7 @@ erDiagram
     
 
 ```
+
 ---
 
 ## 📊 Diagramma ER tabelle storicizzate
@@ -158,5 +159,6 @@ erDiagram
     indirizzi              ||--o{ sto_indirizzi                       : history
     indirizzi_dettaglio    ||--o{ sto_indirizzi_dettaglio             : history
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -145,3 +145,50 @@ La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza
 ---
 
 > 🧠 **“Una singola entità per identificare l’azienda gestore e gettare le basi per la futura configurazione avanzata del sistema Zero ERP.”**  
+
+---
+
+###  Diagramma ER relazioni 
+
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    soggetti       ||--o{ gestori : has
+    soggetti_ruoli ||--o{ gestori : role_for
+    valute         ||--o{ gestori : uses
+
+    soggetti       { uuid id PK }
+    soggetti_ruoli { int  id PK }
+    valute         { int  id PK }
+    gestori        { int  id PK }
+
+```
+
+---
+
+###  Diagramma ER attributi
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    gestori {
+        int      id PK
+        uuid     soggetto_id FK
+        int      soggetto_ruolo_id FK
+        string   descrizione
+        string   cd_prod_software
+        int      valuta_id FK
+        string   iban
+        string   user_insert
+        string   user_update
+        datetime data_insert
+        datetime data_update
+    }
+
+```
+
+---
+{% include-markdown "signature-core.md" %}
+
+---

@@ -48,5 +48,6 @@ AS $function$
   WHERE tgt.proname = p_function_name
   $function$
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

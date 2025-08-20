@@ -35,5 +35,6 @@
 |------|--------|--------|--------|
 | trg_upd_utilities_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 | trg_utilities_upd_lock_codiceinterno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+
 ---
 {% include-markdown "signature-core.md" %}

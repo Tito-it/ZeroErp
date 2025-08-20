@@ -11,7 +11,7 @@ databaseChangeLog:
 
   
   - changeSet:
-      id: 20250804-10-trgfn_soggetti_ins_upd_cdsoggetto_v2
+      id: 20250818-10-trgfn_soggetti_ins_upd_cdsoggetto_v2
       author: mctit
       runOnChange: true
       validCheckSums:
@@ -30,8 +30,8 @@ databaseChangeLog:
 
 # Metto un  tag fine modifiche
   - changeSet:
-      id: 20250804-90-trgfn_soggetti_ins_upd_cdsoggetto_v2
+      id: 20250818-90-trgfn_soggetti_ins_upd_cdsoggetto_v2
       author: mctit
       changes:
         - tagDatabase:
-            tag: 20250804-10-trgfn_soggetti_ins_upd_cdsoggetto_v2
+            tag: 20250818-10-trgfn_soggetti_ins_upd_cdsoggetto_v2

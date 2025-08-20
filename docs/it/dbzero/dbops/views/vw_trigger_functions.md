@@ -16,5 +16,6 @@ SELECT n.nspname AS schema,
   ORDER BY n.nspname, cls.relname, trg.tgname;
 ```
 
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -2,12 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> * Approfodnimento tabelle:
+> Approfondimento tabelle:   
 >
->   * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
->   * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
 >
-> * Approfodnimento funzioni:
+> Approfondimento funzioni:   
 >
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 > * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
@@ -85,4 +85,58 @@ La tabella `anagrafiche.dati_catastali` archivia i **dati catastali** associati 
 
 Questa tabella è fondamentale per gestire in modo **flessibile** e **storicizzato** i dati catastali, garantendo integrità e riducendo duplicazioni tra più attivazioni sullo stesso indirizzo.
 
+---
+
+###  Diagramma ER relazioni 
+
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    indirizzi_dettaglio ||--o{ dati_catastali : has
+    istanze_utilities   ||--o{ dati_catastali : linked_by
+
+    indirizzi_dettaglio { int id PK }
+    istanze_utilities   { int id PK }
+    dati_catastali      { bigint id PK }
+
+```
+
+---
+
+###  Diagramma ER attributi
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    dati_catastali {
+        bigint    id PK
+        int       indirizzo_dettaglio_id FK
+        int       istanza_utility_id FK
+        char      sezione_catastale
+        char      foglio_catastale
+        char      particella
+        char      subalterno
+        varchar   categoria_catastale
+        varchar   classe_catastale
+        numeric   rendita_catastale
+        int       consistenza
+        char      tipo_accatastamento
+        bool      immobile_rurale
+        char      destinazione_immobile
+        int       anno_protocollo
+        int       superficie
+        datetime  data_insert
+        varchar   user_insert
+        datetime  data_update
+        varchar   user_update
+        uuid      tx_id
+        bool      storicizza
+    }
+
+```
+
+---
 {% include-markdown "signature-core.md" %}
+
+---

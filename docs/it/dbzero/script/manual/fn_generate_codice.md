@@ -7,6 +7,7 @@
 > * [config.sistema_codici](/dbzero/config/tabelle/sistema_codici)      
 >
 > Approfondimento funzioni :    
+>
 > * [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)    
 
 
@@ -93,7 +94,7 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 
 ### 🚨 Possibili eccezioni
 
-* **SEQUENZA\_NON\_CONFIGURATA**
+* **SEQUENZA_NON_CONFIGURATA**
   Viene sollevata quando:
 
   * Non esiste un record in **`config.sistema_codici`** per `codice_tipo = tipo` con `attivo = TRUE`.

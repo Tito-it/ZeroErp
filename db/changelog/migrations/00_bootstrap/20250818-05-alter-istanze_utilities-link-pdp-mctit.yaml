@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250818-05-alter-istanze_utilities-link-pdp
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ "ANY" ]
+      preConditions:
+        - onFail: CONTINUE
+        - not:
+          - columnExists:
+              schemaName: anagrafiche
+              tableName: istanze_utilities
+              columnName: pdp_id
+      changes:
+      # A) Aggiungo il collegamento opzionale al PDP
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: istanze_utilities
+            columns:
+              - column:
+                  name: pdp_id
+                  type: BIGINT
+                  remarks: "Collegamento al PDP dello stesso indirizzo (FK composita con indirizzo_dettaglio_id)."
+      
+        - addNotNullConstraint:
+            schemaName: anagrafiche
+            tableName: istanze_utilities
+            columnName: indirizzo_dettaglio_id
+            defaultNullValue: "NULL"
+            validate: false
+        # B) Se c'è il PDP, l'indirizzo è obbligatorio (ma resta nullable quando PDP è NULL)
+        
+        - sql:
+            splitStatements: false
+            sql: |
+                  DO $do$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_constraint c
+                        JOIN pg_class t ON t.oid = c.conrelid
+                        JOIN pg_namespace n ON n.oid = t.relnamespace
+                        WHERE c.contype = 'c'
+                          AND c.conname = 'chk_iu_pdp_requires_address'
+                          AND n.nspname = 'anagrafiche'
+                          AND t.relname = 'istanze_utilities'
+                      ) THEN
+                        ALTER TABLE anagrafiche.istanze_utilities
+                          ADD CONSTRAINT chk_iu_pdp_requires_address
+                          CHECK (pdp_id IS NULL OR indirizzo_dettaglio_id IS NOT NULL);
+                      END IF;
+                    END
+                    $do$;
+
+        # C) FK composita: impedisce di collegare PDP con indirizzo diverso
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: istanze_utilities
+            baseColumnNames: pdp_id, indirizzo_dettaglio_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: pdp
+            referencedColumnNames: id, indirizzo_dettaglio_id
+            constraintName: fk_iu_pdp_id_addr
+            onDelete: RESTRICT
+            onUpdate: RESTRICT
+        # D) Indice di supporto per la FK/join
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: istanze_utilities
+            indexName: idx_iu_pdp_id_addr
+            columns:
+              - column:
+                  name: pdp_id
+              - column:
+                  name: indirizzo_dettaglio_id
+     
+  - changeSet:
+      id: 20250818-90-alter-istanze_utilities-link-pdp
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250818-05-alter-istanze_utilities-link-pdp

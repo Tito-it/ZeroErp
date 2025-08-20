@@ -3,13 +3,14 @@
 > 👀 **Vedi anche**
 > Guide generali:
 >
->  * [Generazione di un cliente](/guide/generazione-cliente)
-> 
+> * [Generazione di un cliente](/guide/generazione-cliente)
+>
 > Approfondimeto tabelle:
 >
 > * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
 > * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
 > * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
+> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)
 >
 > Approfondimeto funzioni:
 >
@@ -17,6 +18,7 @@
 > * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
 > * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+
 ---
 
 ### 🎯 Scopo Principale
@@ -63,11 +65,11 @@
 
 ### ⚙️ Trigger e Funzioni Coinvolte
 
-| Trigger                                        | Evento                  | Funzione                                                       |
-| ---------------------------------------------- | ----------------------- | -------------------------------------------------------------- |
-| `trg_istanze_utilities_ins_upd_clean_fields`   | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields()`   |
-| `trg_istanze_utilities_ins_upd_gen_tx_id`      | BEFORE INSERT OR UPDATE | `dbops.trgfn_tx_id_managed()`                                  |
-| `trg_upd_istanze_utilities_audit_data_user`    | BEFORE UPDATE           | `script.trgfn_upd_audit_data_user_generic()`                   |
+| Trigger                                      | Evento                  | Funzione                                                     |
+| -------------------------------------------- | ----------------------- | ------------------------------------------------------------ |
+| `trg_istanze_utilities_ins_upd_clean_fields` | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields()` |
+| `trg_istanze_utilities_ins_upd_gen_tx_id`    | BEFORE INSERT OR UPDATE | `dbops.trgfn_tx_id_managed()`                                |
+| `trg_upd_istanze_utilities_audit_data_user`  | BEFORE UPDATE           | `script.trgfn_upd_audit_data_user_generic()`                 |
 
 ---
 
@@ -79,8 +81,44 @@
 
 ---
 
-### 🧾 Note Finali
+## ➕ Integrazione con **PDP** (`anagrafiche.pdp`)
 
-Questa struttura, aggiornata con `parent_istanza_id`, è pensata per ambienti **utilities** dove ogni **subentro** (voltura) deve essere tracciato in modo esplicito. Il flag `fittizia` rimane legato esclusivamente all’opzionalità dell’indirizzo, non a uno stato di avanzamento del processo.
+**Obiettivo**: permettere all’istanza di riferirsi a un **Punto di Prelievo** (PDP) dello **stesso indirizzo**.
+
+**Campi e vincoli aggiuntivi**
+
+* `pdp_id BIGINT NULL` (campo opzionale): l’associazione al PDP è possibile **solo** quando l’istanza è riferita a un indirizzo.
+* **FK composita** `fk_iu_pdp_id_addr (pdp_id, indirizzo_dettaglio_id)` → `anagrafiche.pdp(id, indirizzo_dettaglio_id)`
+
+  * 🔒 Garantisce che il PDP collegato abbia **il medesimo `indirizzo_dettaglio_id`** dell’istanza.
+* **CHECK** `chk_iu_pdp_requires_address: (pdp_id IS NULL OR indirizzo_dettaglio_id IS NOT NULL)`
+
+  * 🔎 Impone che **se c’è un PDP**, l’istanza **debba** avere l’indirizzo valorizzato (pur mantenendolo nullable in fase di pre‑attivazione).
+
+**Motivazioni progettuali**
+
+1. **Coerenza fisica**: il PDP è un’entità **ancorata** all’indirizzo; il link con la stessa `istanze_utilities` evita mismatch.
+2. **Pre‑attivazione supportata**: istanze senza PDP sono lecite; l’associazione avviene solo quando disponibile.
+3. **Cardinalità controllata**: grazie a `UNIQUE (indirizzo_dettaglio_id, utilities_id)` su `anagrafiche.pdp`, per uno stesso indirizzo esiste **al più un PDP per utility**; l’istanza si lega quindi ad **al più un PDP** coerente con il proprio indirizzo.
+4. **Query più semplici**: la FK composita consente join diretti e sicuri senza ulteriori condizioni sull’indirizzo.
+
+---
+
+## 6. Diagramma ER
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    soggetti             ||--o{ istanze_utilities  : has
+    indirizzi_dettaglio  ||--o{ istanze_utilities  : has
+
+    utilities            ||--o{ pdp                : has
+    indirizzi_dettaglio  ||--o{ pdp                : has
+
+    istanze_utilities    }o--|| pdp                : uses  
+    %% FK composita: (pdp_id, indirizzo_dettaglio_id) -> pdp(id, indirizzo_dettaglio_id)
+```
+
+---
 
 {% include-markdown "signature-core.md" %}

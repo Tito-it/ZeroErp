@@ -15,5 +15,6 @@ SELECT v.id AS id_via,
      LEFT JOIN config.stati s ON ((t.stato_id = s.id)));
 ```
 
+
 ---
 {% include-markdown "signature-core.md" %}

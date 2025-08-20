@@ -9,10 +9,11 @@
 >
 > Approfondimento Tabelle:      
 >
+> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)    
 > * [config.stradario](/dbzero/config/tabelle/stradario)  
 > * [config.comuni](/dbzero/config/tabelle/comuni)    
 > * [config.province](/dbzero/config/tabelle/province)   
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
+> * [storico.indirizzi_dettaglio](/dbzero/storico/tabelle/indirizzi_dettaglio)    
 >
 > Approfondimento funzioni:   
 >
@@ -70,3 +71,48 @@ La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli ind
 ---
 
 > 🧠 **“Una tabella di dettaglio civico che unisce normalizzazione testuale, geolocalizzazione puntuale e collegamenti gerarchici: il fulcro del sistema di indirizzamento completo in Zero ERP.”**  
+
+
+###  Diagramma ER 
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    config_stradario     ||--o{ indirizzi_dettaglio : has
+    indirizzi_dettaglio  ||--o{ storico_indirizzi_dettaglio : history
+    config_stradario {
+        int id PK
+    }
+    storico_indirizzi_dettaglio {
+    int id PK }
+
+    indirizzi_dettaglio {
+        int        id PK
+        int        stradario_id FK
+        int        civico
+        string     estensione_civico
+        string     palazzina
+        string     interno
+        string     piano
+        string     scala
+        text       altro
+        text       via_norm
+        text       civico_norm
+        text       indirizzo_normalizzato
+        point4326  civic_geoloc
+        point4326  street_geoloc
+        datetime   data_insert
+        varchar    user_insert
+        datetime   data_update
+        varchar    user_update
+        uuid       tx_id
+        bool       attivo
+        bool       storicizza
+    }
+
+    
+
+```
+
+---
+{% include-markdown "signature-core.md" %}

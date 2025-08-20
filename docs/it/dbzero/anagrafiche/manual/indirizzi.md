@@ -3,6 +3,7 @@
 > 👀 **Vedi anche**    
 >
 > Guide:   
+>
 > * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)       
 >
 > Approfondimento Tabelle:   
@@ -92,3 +93,55 @@ Supporta:
 ---
 
 > 🧠 **“Una tabella ponte tra struttura e flessibilità: `anagrafiche.indirizzi` consente di mappare ogni possibile indirizzo di un soggetto, conservando coerenza, precisione geografica e tracciabilità delle modifiche.”**
+
+
+---
+
+###  Diagramma ER relazioni
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    soggetti_ruoli   ||--o{ indirizzi : has
+    tipi_indirizzi   ||--o{ indirizzi : typed_as
+    indirizzi_dettaglio ||--o{ indirizzi : normalized_by
+    comuni           ||--o{ indirizzi : uses
+    codici_postali   ||--o{ indirizzi : uses
+    stati            ||--o{ indirizzi : uses
+    indirizzi               ||--o{ storico_indirizzi : history
+
+```
+
+---
+
+###  Diagramma ER attributi
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    indirizzi {
+        int        id PK
+        int        soggetto_ruolo_id FK
+        int        tipo_indirizzo_id FK
+        int        indirizzo_dettaglio_id FK
+        text       indirizzo_libero
+        int        stato_id FK
+        varchar    administrative_area
+        varchar    locality
+        varchar    sublocality
+        varchar    postal_box
+        point4326  geoloc
+        int        comune_id FK
+        int        codice_postale_id FK
+        uuid       tx_id
+        bool       storicizza
+        datetime   data_insert
+        varchar    user_insert
+        datetime   data_update
+        varchar    user_update
+    }
+
+```
+
+---
+{% include-markdown "signature-core.md" %}

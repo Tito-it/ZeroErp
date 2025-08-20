@@ -26,5 +26,6 @@
 | Nome | Definizione |
 |------|-------------|
 | job_run_log_pkey | `CREATE UNIQUE INDEX job_run_log_pkey ON maintenance.job_run_log USING btree (id)` |
+
 ---
 {% include-markdown "signature-core.md" %}

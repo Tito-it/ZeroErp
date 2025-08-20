@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250820-01-rename-anagrafiche-pdp-standards
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        # Indici: idx_* -> ix_*
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER INDEX IF EXISTS anagrafiche.idx_pdp_cliente_id
+                RENAME TO ix_pdp_cliente_id;
+              ALTER INDEX IF EXISTS anagrafiche.idx_pdp_indirizzo_dettaglio_id
+                RENAME TO ix_pdp_indirizzo_dettaglio_id;
+              ALTER INDEX IF EXISTS anagrafiche.idx_pdp_utilities_id
+                RENAME TO ix_pdp_utilities_id;
+
+              -- PK e FK: usa DO $$ per IF EXISTS sulle constraint
+              DO $$
+              BEGIN
+                -- Primary key -> pk_pdp
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE c.conname = 'pdp_pkey'
+                    AND n.nspname = 'anagrafiche'
+                    AND t.relname = 'pdp'
+                ) THEN
+                  EXECUTE 'ALTER TABLE anagrafiche.pdp RENAME CONSTRAINT pdp_pkey TO pk_pdp';
+                END IF;
+
+                -- FK cliente -> fk_pdp_clienti
+                IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_pdp_cliente') THEN
+                  EXECUTE 'ALTER TABLE anagrafiche.pdp RENAME CONSTRAINT fk_pdp_cliente TO fk_pdp_clienti';
+                END IF;
+
+                -- FK indirizzo_dettaglio -> fk_pdp_indirizzi_dettaglio
+                IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_pdp_indirizzo_det') THEN
+                  EXECUTE 'ALTER TABLE anagrafiche.pdp RENAME CONSTRAINT fk_pdp_indirizzo_det TO fk_pdp_indirizzi_dettaglio';
+                END IF;
+
+                -- FK utilities: già conforme (fk_pdp_utilities)
+                -- Nessuna azione necessaria.
+              END $$;
+
+  - changeSet:
+      id: 20250820-90-rename-anagrafiche-pdp-standards
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250820-01-rename-anagrafiche-pdp-standards

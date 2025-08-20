@@ -35,5 +35,6 @@ AS $function$
     AND c.confrelid = p_target_table;
 $function$
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

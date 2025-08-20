@@ -1,0 +1,242 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# Zero ERP – Istanze Utilities: rename codice_istanza -> codice
+# Tabella: anagrafiche.istanze_utilities
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250817-27-istanze_utilities-rename-codice_istanza-to-codice
+      author: mctit
+      context: ddl
+      runOnChange: true
+      failOnError: true
+
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: istanze_utilities
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: istanze_utilities
+                columnName: codice_istanza
+            - not:
+                - columnExists:
+                    schemaName: anagrafiche
+                    tableName: istanze_utilities
+                    columnName: codice
+
+      changes:
+        # 1) Rinomina colonna
+        - renameColumn:
+            schemaName: anagrafiche
+            tableName: istanze_utilities
+            oldColumnName: codice_istanza
+            newColumnName: codice
+
+        # 2) Rinomina vincolo UNIQUE (storico) se presente
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                    FROM pg_constraint c
+                    JOIN pg_class t ON t.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                   WHERE c.contype = 'u'
+                     AND n.nspname = 'anagrafiche'
+                     AND t.relname = 'istanze_utilities'
+                     AND c.conname = 'uq_istanze_utilities_codice_istanza'
+                ) THEN
+                  EXECUTE 'ALTER TABLE anagrafiche.istanze_utilities RENAME CONSTRAINT uq_istanze_utilities_codice_istanza TO uq_istanze_utilities_codice';
+                END IF;
+              END$$;
+
+        # 3) Rinomina indice standalone (se esiste con lo stesso nome storico)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                    FROM pg_class i
+                    JOIN pg_namespace n ON n.oid = i.relnamespace
+                   WHERE i.relkind IN ('i','I')
+                     AND n.nspname = 'anagrafiche'
+                     AND i.relname = 'uq_istanze_utilities_codice_istanza'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS anagrafiche.uq_istanze_utilities_codice_istanza RENAME TO uq_istanze_utilities_codice';
+                END IF;
+              END$$;
+
+        # 4) Aggiorna il corpo delle funzioni trigger che usano il nome vecchio (no rename della funzione)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- Protezione in UPDATE
+              DO $$
+              DECLARE
+                v_oid oid;
+                v_def text;
+              BEGIN
+                SELECT p.oid
+                  INTO v_oid
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'anagrafiche'
+                   AND p.proname  = 'trgfn_istanze_utilities_upd_protect_codice_istanza'
+                   AND pg_get_function_identity_arguments(p.oid) = ''
+                 LIMIT 1;
+
+                IF v_oid IS NOT NULL THEN
+                  v_def := pg_get_functiondef(v_oid);
+                  -- sostituzioni mirate nel corpo
+                  v_def := replace(v_def, 'NEW.codice_istanza', 'NEW.codice');
+                  v_def := replace(v_def, 'OLD.codice_istanza', 'OLD.codice');
+                  v_def := replace(v_def, '''codice_istanza''', '''codice''');
+                  EXECUTE v_def; -- CREATE OR REPLACE FUNCTION ... con corpo aggiornato
+                END IF;
+              END$$;
+
+              
+        # 5) (Opzionale) Rinomina il trigger per coerenza di naming
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_trigger tg
+                  JOIN pg_class   t  ON t.oid = tg.tgrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                 WHERE n.nspname = 'anagrafiche'
+                   AND t.relname  = 'istanze_utilities'
+                   AND tg.tgname  = 'trg_istanze_utilities_upd_protect_codice_istanza'
+                ) THEN
+                  EXECUTE 'ALTER TRIGGER trg_istanze_utilities_upd_protect_codice_istanza ON anagrafiche.istanze_utilities RENAME TO trg_istanze_utilities_upd_protect_codice';
+                END IF;
+              END$$;
+
+      rollback:
+        # Ripristino colonna
+        - renameColumn:
+            schemaName: anagrafiche
+            tableName: istanze_utilities
+            oldColumnName: codice
+            newColumnName: codice_istanza
+
+        # Ripristino vincolo UNIQUE se rinominato
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                    FROM pg_constraint c
+                    JOIN pg_class t ON t.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                   WHERE c.contype = 'u'
+                     AND n.nspname = 'anagrafiche'
+                     AND t.relname = 'istanze_utilities'
+                     AND c.conname = 'uq_istanze_utilities_codice'
+                ) THEN
+                  EXECUTE 'ALTER TABLE anagrafiche.istanze_utilities RENAME CONSTRAINT uq_istanze_utilities_codice TO uq_istanze_utilities_codice_istanza';
+                END IF;
+              END$$;
+
+        # Ripristino indice se rinominato
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                    FROM pg_class i
+                    JOIN pg_namespace n ON n.oid = i.relnamespace
+                   WHERE i.relkind IN ('i','I')
+                     AND n.nspname = 'anagrafiche'
+                     AND i.relname = 'uq_istanze_utilities_codice'
+                ) THEN
+                  EXECUTE 'ALTER INDEX IF EXISTS anagrafiche.uq_istanze_utilities_codice RENAME TO uq_istanze_utilities_codice_istanza';
+                END IF;
+              END$$;
+
+        # Ripristino funzioni trigger (rimetto i riferimenti a codice_istanza)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              DECLARE v_oid oid; v_def text; BEGIN
+                SELECT p.oid INTO v_oid
+                  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname='anagrafiche'
+                   AND p.proname='trgfn_istanze_utilities_upd_protect_codice_istanza'
+                   AND pg_get_function_identity_arguments(p.oid)=''
+                 LIMIT 1;
+                IF v_oid IS NOT NULL THEN
+                  v_def := pg_get_functiondef(v_oid);
+                  v_def := replace(v_def, 'NEW.codice', 'NEW.codice_istanza');
+                  v_def := replace(v_def, 'OLD.codice', 'OLD.codice_istanza');
+                  v_def := replace(v_def, '''codice''', '''codice_istanza''');
+                  EXECUTE v_def;
+                END IF;
+              END$$;
+
+              
+        # Ripristino nome trigger opzionale
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_trigger tg
+                  JOIN pg_class   t  ON t.oid = tg.tgrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                 WHERE n.nspname = 'anagrafiche'
+                   AND t.relname  = 'istanze_utilities'
+                   AND tg.tgname  = 'trg_istanze_utilities_upd_protect_codice'
+                ) THEN
+                  EXECUTE 'ALTER TRIGGER trg_istanze_utilities_upd_protect_codice ON anagrafiche.istanze_utilities RENAME TO trg_istanze_utilities_upd_protect_codice_istanza';
+                END IF;
+              END$$;
+
+
+  - changeSet:
+      id: 20250817-90-istanze_utilities-rename-codice_istanza-to-codice
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250817-27-istanze_utilities-rename-codice_istanza-to-codice

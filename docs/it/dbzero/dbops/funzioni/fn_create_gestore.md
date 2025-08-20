@@ -122,5 +122,6 @@ SELECT dbops.create_gestore(
 END;
 $function$
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

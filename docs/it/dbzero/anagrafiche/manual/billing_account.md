@@ -25,8 +25,8 @@
 
 La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici cliente** per ciascuna `utility`, consentendo:
 
-* **Generazione anticipata** del `account_code` in fase precontrattuale.
-* **Unicità di `account_code`** grazie al vincolo `uq_billing_account_code`.
+* **Generazione anticipata** del `codice (account)` in fase precontrattuale.
+* **Unicità di `codice`** grazie al vincolo `uq_billing_account_codice`.
 * **Unicità per istanza+utility**: non possono esistere due record con la stessa coppia (`istanza_utility_id`, `utility_id`).
 * **Strutture gerarchiche** dei codici tramite `parent_account_id`, utile per Modellare:
 
@@ -35,7 +35,7 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 
 La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici cliente** per ciascuna `utility`, consentendo:
 
-* Generazione anticipata del `account_code` in fase precontrattuale
+* Generazione anticipata del `codice (account)` in fase precontrattuale
 * Gestione di più codici nel tempo tramite il campo `parent_account_id`
 * Unicità per coppia `istanza_utility_id` + `utility_id`
 
@@ -56,7 +56,7 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 
 1. **Unicità account**
 
-   * `account_code` deve essere univoco (`uq_billing_account_code`).
+   * `codice` deve essere univoco (`uq_billing_account_codice`).
 2. **Unicità per istanza-utility**
 
    * Non possono esistere due billing account per la stessa coppia (`istanza_utility_id`, `utility_id`).
@@ -97,7 +97,7 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 
 3. **Coerenza fiscale**
 
-   * L’`account_code` del padre e dei figli deve condividere lo stesso `id_fiscale_univoco_cf_piva` del soggetto.
+   * il `codice (account)` del padre e dei figli deve condividere lo stesso `id_fiscale_univoco_cf_piva` del soggetto.
 
 
 ---
@@ -115,7 +115,7 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 ### ✅ Controlli di Coerenza
 
 * FK e vincoli CHECK assicurano la validità dei periodi (`valid_from`, `valid_to`) e delle gerarchie.
-* Il trigger `clean_fields` genera `account_code` se mancante.
+* Il trigger `clean_fields` genera `codice` se mancante.
 
 ---
 
@@ -123,5 +123,51 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 
 Questa tabella è la base per la gestione avanzata dei codici di fatturazione, con meccanismi di storicizzazione e aggregazione utili in scenari di multi-utenza e subentri tipici del settore utilities.
 
+
+
+###  Diagramma ER relazioni
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    istanze_utilities ||--o{ billing_account : has
+    soggetti_ruoli    ||--o{ billing_account : belongs_to
+    utilities         ||--o{ billing_account : for
+    billing_account   ||--o{ billing_account : parent_of
+
+    istanze_utilities { int id PK }
+    soggetti_ruoli    { int id PK }
+    utilities         { int id PK }
+    billing_account   { int id PK }
+```
+
+---
+
+###  Diagramma ER attributi
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    billing_account {
+        int      id PK
+        int      istanza_utility_id FK
+        int      soggetto_ruolo_id FK
+        int      utility_id FK
+        int      parent_account_id FK  
+        varchar  codice
+        date     valid_from
+        date     valid_to
+        datetime data_insert
+        varchar  user_insert
+        datetime data_update
+        varchar  user_update
+        uuid     tx_id
+        bool     storicizza
+    }
+```
+
+---
+
 {% include-markdown "signature-core.md" %}
 
+---

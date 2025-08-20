@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250820-02-anagrafiche-soggetti-add-attivo
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: soggetti
+            columns:
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN anagrafiche.soggetti.attivo
+                IS 'Stato attivo/inattivo del soggetto (DEFAULT TRUE)';
+
+  # 2) storico.soggetti → FK ON DELETE RESTRICT, data_insert a TIMESTAMPTZ, indice (soggetto_id, valid_from DESC)
+  - changeSet:
+      id: 20250820-03-storico-soggetti-fk-timestamptz-index
+      author: mctit
+      changes:
+        # 2a) Rendi la FK RESTRICT (droppa e ricrea)
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: storico
+            baseTableName: soggetti
+            constraintName: fk_storico_soggetti_anagrafiche_soggetti
+        - addForeignKeyConstraint:
+            baseTableSchemaName: storico
+            baseTableName: soggetti
+            baseColumnNames: soggetto_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti
+            referencedColumnNames: id
+            constraintName: fk_storico_soggetti_anagrafiche_soggetti
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        # 2b) data_insert → TIMESTAMPTZ (preserva l'istante assumendo che il valore fosse nel timezone corrente del DB)
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE storico.soggetti
+              ALTER COLUMN data_insert TYPE TIMESTAMPTZ
+              USING data_insert AT TIME ZONE current_setting('TIMEZONE');
+              ALTER TABLE storico.soggetti
+              ALTER COLUMN data_insert SET DEFAULT now();
+
+        # 2c) Indice per "ultimo snapshot": (soggetto_id, valid_from DESC)
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_storico_soggetti_soggetto_valid_from_desc
+              ON storico.soggetti (soggetto_id, valid_from DESC);
+              COMMENT ON INDEX storico.ix_storico_soggetti_soggetto_valid_from_desc
+                IS 'Lookup per ultimo snapshot: (soggetto_id, valid_from DESC)';
+
+  - changeSet:
+      id: 20250820-90-anagrafiche-soggetti-add-attivo
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250820-02-anagrafiche-soggetti-add-attivo

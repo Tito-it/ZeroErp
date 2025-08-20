@@ -43,7 +43,7 @@ databaseChangeLog:
                   type: STRING 
                   defaultValue: "NOW()"
               - column: { name: user_update,  type: STRING }
-              - column: { name: cod_tipo_indirizzo,    type: STRING }
+              - column: { name: codice,    type: STRING }
 
   - changeSet:
       id: 20250812-90-upsert-tipi_indirizzi

@@ -1,10 +1,10 @@
 id,descrizione,codice_interno,data_insert,user_insert,data_update,user_update,codice
-1,Amministrazione,AMM,2025-04-20 11:19:51.92703+02,postgres,2025-08-17 23:12:50.64779+02,titodb,AMM
-2,Tecnico,TEC,2025-04-20 11:19:51.92703+02,postgres,2025-08-17 23:12:50.64779+02,titodb,TEC
-3,Assistenza,AST,2025-04-20 11:19:51.92703+02,postgres,2025-08-17 23:12:50.64779+02,titodb,AST
-5,Info,INF,2025-04-20 11:19:51.92703+02,postgres,2025-08-17 23:12:50.64779+02,titodb,INF
-6,Commerciale,COM,2025-04-20 11:19:51.92703+02,postgres,2025-08-17 23:12:50.64779+02,titodb,COM
-7,Legale,LEG,2025-04-20 11:19:51.92703+02,postgres,2025-08-17 23:12:50.64779+02,titodb,LEG
-8,Supporto,SUP,2025-04-20 11:19:51.92703+02,postgres,2025-08-17 23:12:50.64779+02,titodb,SUP
-9,Marketing,MKT,2025-04-20 11:19:51.92703+02,postgres,2025-08-17 23:12:50.64779+02,titodb,MKT
-11,Default (fallback soggetti),DEFAULT,2025-04-20 17:51:52.718182+02,postgres,2025-08-17 23:12:50.64779+02,titodb,DEFAULT
+1,Amministrazione,AMM,2025-04-20 11:19:51.92703+02,postgres,2025-08-18 00:27:51.473002+02,titodb,AMM
+2,Tecnico,TEC,2025-04-20 11:19:51.92703+02,postgres,2025-08-18 00:27:51.473002+02,titodb,TEC
+3,Assistenza,AST,2025-04-20 11:19:51.92703+02,postgres,2025-08-18 00:27:51.473002+02,titodb,AST
+5,Info,INF,2025-04-20 11:19:51.92703+02,postgres,2025-08-18 00:27:51.473002+02,titodb,INF
+6,Commerciale,COM,2025-04-20 11:19:51.92703+02,postgres,2025-08-18 00:27:51.473002+02,titodb,COM
+7,Legale,LEG,2025-04-20 11:19:51.92703+02,postgres,2025-08-18 00:27:51.473002+02,titodb,LEG
+8,Supporto,SUP,2025-04-20 11:19:51.92703+02,postgres,2025-08-18 00:27:51.473002+02,titodb,SUP
+9,Marketing,MKT,2025-04-20 11:19:51.92703+02,postgres,2025-08-18 00:27:51.473002+02,titodb,MKT
+11,Default (fallback soggetti),DEFAULT,2025-04-20 17:51:52.718182+02,postgres,2025-08-18 00:27:51.473002+02,titodb,DEFAULT

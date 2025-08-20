@@ -25,5 +25,6 @@ SELECT p.id AS id_provincia,
      JOIN config.stati s ON ((r.stato_id = s.id)));
 ```
 
+
 ---
 {% include-markdown "signature-core.md" %}

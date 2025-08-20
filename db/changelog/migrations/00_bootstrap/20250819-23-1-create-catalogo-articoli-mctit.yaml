@@ -1,0 +1,245 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250819-23-1-create-catalogo-articoli
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      changes:
+        - createTable:
+            schemaName: catalogo
+            tableName: articoli
+            remarks: "Anagrafica articoli/voci (generica, per utilities e non)"
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  remarks: "Identificativo univoco (UUID)"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_articoli
+                    nullable: false
+              - column: { name: codice, type: VARCHAR(50), remarks: "Codice univoco articolo", constraints: { nullable: false } }
+              - column: { name: descrizione, type: VARCHAR(150), remarks: "Descrizione estesa dell'articolo", constraints: { nullable: false } }
+              - column: { name: descrizione_breve, type: VARCHAR(80), remarks: "Descrizione breve" }
+              - column: { name: uom_id, type: BIGINT, remarks: "Unità di misura principale (FK catalogo.unita_misura)" }
+              - column: { name: tipo_voce_id, type: BIGINT, remarks: "Tipologia articolo (FK vendite.articoli_tipologie)" }
+              - column: { name: gruppo_voce_id, type: BIGINT, remarks: "Gruppo articolo (FK vendite.articoli_gruppi)" }
+              - column: { name: spesa_id, type: BIGINT, remarks: "Voce di spesa associata (FK vendite.articoli_spesa)" }
+              - column: { name: iva_id, type: BIGINT, remarks: "Aliquota IVA (FK config.iva)" }
+              - column: { name: conto_contabile_vendita_id, type: BIGINT, remarks: "Conto contabile per la vendita (FK config.conti_contabili)" }
+              - column: { name: conto_contabile_acquisto_id, type: BIGINT, remarks: "Conto contabile per l'acquisto (FK config.conti_contabili)" }
+              - column:
+                  name: is_composito
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "Se true, l'articolo è composto da più componenti"
+                  constraints: { nullable: false }
+              - column:
+                  name: requires_serial
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "Se true, richiede seriale (es. matricola)"
+                  constraints: { nullable: false }
+              - column:
+                  name: voce_utility
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "Se true, l'articolo è una voce specifica di utility"
+                  constraints: { nullable: false }
+              - column:
+                  name: fondo_fattura
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "Se true, l'articolo viene esposto a fondo fattura"
+                  constraints: { nullable: false }
+              - column: { name: meta, type: JSONB, defaultValue: "{}", remarks: "Metadati estensibili in formato JSONB" }
+              - column:
+                  name: user_insert
+                  type: VARCHAR(30)
+                  defaultValueComputed: CURRENT_USER
+                  remarks: "Utente che ha effettuato l'inserimento"
+                  constraints: { nullable: false }
+              - column:
+                  name: user_update
+                  type: VARCHAR(30)
+                  defaultValueComputed: CURRENT_USER
+                  remarks: "Utente ultima modifica"
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  remarks: "Data inserimento"
+                  constraints: { nullable: false }
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  remarks: "Data ultima modifica"
+                  constraints: { nullable: false }
+              - column:
+                  name: tx_id
+                  type: UUID
+                  remarks: "Id transazione"
+              - column:
+                  name: storicizza
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  remarks: "Se true, abilita storicizzazione"
+
+        - addDefaultValue:
+            schemaName: catalogo
+            tableName: articoli
+            columnName: id
+            defaultValueComputed: "gen_random_uuid()"
+
+        - addUniqueConstraint:
+            schemaName: catalogo
+            tableName: articoli
+            columnNames: codice
+            constraintName: uq_articoli_codice
+
+        # FKs con nome fk_<base_table>_<ref_table>
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: articoli
+            baseColumnNames: uom_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            constraintName: fk_articoli_unita_misura
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: articoli
+            baseColumnNames: tipo_voce_id
+            referencedTableSchemaName: vendite
+            referencedTableName: articoli_tipologie
+            referencedColumnNames: id
+            constraintName: fk_articoli_articoli_tipologie
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: articoli
+            baseColumnNames: gruppo_voce_id
+            referencedTableSchemaName: vendite
+            referencedTableName: articoli_gruppi
+            referencedColumnNames: id
+            constraintName: fk_articoli_articoli_gruppi
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: articoli
+            baseColumnNames: spesa_id
+            referencedTableSchemaName: vendite
+            referencedTableName: articoli_spesa
+            referencedColumnNames: id
+            constraintName: fk_articoli_articoli_spesa
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: articoli
+            baseColumnNames: iva_id
+            referencedTableSchemaName: config
+            referencedTableName: iva
+            referencedColumnNames: id
+            constraintName: fk_articoli_iva
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: articoli
+            baseColumnNames: conto_contabile_vendita_id
+            referencedTableSchemaName: config
+            referencedTableName: conti_contabili
+            referencedColumnNames: id
+            constraintName: fk_articoli_conti_contabili_vendita
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: articoli
+            baseColumnNames: conto_contabile_acquisto_id
+            referencedTableSchemaName: config
+            referencedTableName: conti_contabili
+            referencedColumnNames: id
+            constraintName: fk_articoli_conti_contabili_acquisto
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        # Indice case-insensitive su codice (prefisso ix_)
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_articoli_codice_upper
+              ON catalogo.articoli (upper(codice));
+
+              -- Trigger audit BEFORE UPDATE
+              CREATE OR REPLACE TRIGGER trg_upd_articoli_audit_data_user
+                BEFORE UPDATE ON catalogo.articoli
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+
+              -- Commenti tabella/colonne
+              COMMENT ON TABLE catalogo.articoli IS 'Anagrafica articoli/voci (generica, per utilities e non).';
+              COMMENT ON COLUMN catalogo.articoli.id IS 'Identificativo univoco (UUID).';
+              COMMENT ON COLUMN catalogo.articoli.codice IS 'Codice univoco articolo.';
+              COMMENT ON COLUMN catalogo.articoli.descrizione IS 'Descrizione estesa dell''articolo.';
+              COMMENT ON COLUMN catalogo.articoli.descrizione_breve IS 'Descrizione breve.';
+              COMMENT ON COLUMN catalogo.articoli.uom_id IS 'Unità di misura principale (FK catalogo.unita_misura).';
+              COMMENT ON COLUMN catalogo.articoli.tipo_voce_id IS 'Tipologia articolo (FK vendite.articoli_tipologie).';
+              COMMENT ON COLUMN catalogo.articoli.gruppo_voce_id IS 'Gruppo articolo (FK vendite.articoli_gruppi).';
+              COMMENT ON COLUMN catalogo.articoli.spesa_id IS 'Voce di spesa associata (FK vendite.articoli_spesa).';
+              COMMENT ON COLUMN catalogo.articoli.iva_id IS 'Aliquota IVA (FK config.iva).';
+              COMMENT ON COLUMN catalogo.articoli.conto_contabile_vendita_id IS 'Conto contabile per la vendita (FK config.conti_contabili).';
+              COMMENT ON COLUMN catalogo.articoli.conto_contabile_acquisto_id IS 'Conto contabile per l''acquisto (FK config.conti_contabili).';
+              COMMENT ON COLUMN catalogo.articoli.is_composito IS 'Se true, l''articolo è composto da più componenti.';
+              COMMENT ON COLUMN catalogo.articoli.requires_serial IS 'Se true, richiede seriale (es. matricola).';
+              COMMENT ON COLUMN catalogo.articoli.voce_utility IS 'Se true, l''articolo è una voce specifica di utility.';
+              COMMENT ON COLUMN catalogo.articoli.fondo_fattura IS 'Se true, l''articolo viene esposto a fondo fattura.';
+              COMMENT ON COLUMN catalogo.articoli.meta IS 'Metadati estensibili in formato JSONB.';
+              COMMENT ON COLUMN catalogo.articoli.user_insert IS 'Utente che ha effettuato l''inserimento.';
+              COMMENT ON COLUMN catalogo.articoli.user_update IS 'Utente ultima modifica.';
+              COMMENT ON COLUMN catalogo.articoli.data_insert IS 'Data inserimento.';
+              COMMENT ON COLUMN catalogo.articoli.data_update IS 'Data ultima modifica.';
+              COMMENT ON COLUMN catalogo.articoli.tx_id IS 'Id transazione.';
+              COMMENT ON COLUMN catalogo.articoli.storicizza IS 'Se true, abilita storicizzazione.';
+
+              -- Commenti vincoli
+              COMMENT ON CONSTRAINT uq_articoli_codice ON catalogo.articoli IS 'Key: codice articolo univoco';
+              COMMENT ON CONSTRAINT fk_articoli_unita_misura ON catalogo.articoli IS 'FK: catalogo.articoli → catalogo.unita_misura';
+              COMMENT ON CONSTRAINT fk_articoli_articoli_tipologie ON catalogo.articoli IS 'FK: catalogo.articoli → vendite.articoli_tipologie';
+              COMMENT ON CONSTRAINT fk_articoli_articoli_gruppi ON catalogo.articoli IS 'FK: catalogo.articoli → vendite.articoli_gruppi';
+              COMMENT ON CONSTRAINT fk_articoli_articoli_spesa ON catalogo.articoli IS 'FK: catalogo.articoli → vendite.articoli_spesa';
+              COMMENT ON CONSTRAINT fk_articoli_iva ON catalogo.articoli IS 'FK: catalogo.articoli → config.iva';
+              COMMENT ON CONSTRAINT fk_articoli_conti_contabili_vendita ON catalogo.articoli IS 'FK: catalogo.articoli → config.conti_contabili (vendita)';
+              COMMENT ON CONSTRAINT fk_articoli_conti_contabili_acquisto ON catalogo.articoli IS 'FK: catalogo.articoli → config.conti_contabili (acquisto)';
+
+              -- Commento indice e trigger (nomi qualificati)
+              COMMENT ON INDEX catalogo.ix_articoli_codice_upper IS 'Ricerca case-insensitive su codice (upper(codice))';
+              COMMENT ON TRIGGER trg_upd_articoli_audit_data_user ON catalogo.articoli IS 'Aggiorna (audit) data_update e user_update al BEFORE UPDATE';
+
+  - changeSet:
+      id: 20250819-90-1-create-catalogo-articoli
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250819-23-1-create-catalogo-articoli

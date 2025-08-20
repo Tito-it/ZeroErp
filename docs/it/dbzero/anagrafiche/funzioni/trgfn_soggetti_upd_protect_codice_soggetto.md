@@ -14,22 +14,23 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_upd_protect_codice_soggett
 AS $function$
     BEGIN
       IF TG_OP = 'UPDATE'
-        AND OLD.codice_soggetto IS NOT NULL
-        AND NEW.codice_soggetto IS DISTINCT FROM OLD.codice_soggetto
+        AND OLD.codice IS NOT NULL
+        AND NEW.codice IS DISTINCT FROM OLD.codice
       THEN
         
         PERFORM script.fn_log_and_raise_error(
           'database',
           TG_NAME,
           'E_COLONNA_NON_MODIFICABILE',
-          jsonb_build_object('column','codice_soggetto','id',OLD.id),
+          jsonb_build_object('column','codice','id',OLD.id),
           NULL::uuid,
-          'codice_soggetto'
+          'codice soggetto'
         );
       END IF;
       RETURN NEW;
     END;
     $function$
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -69,5 +69,6 @@ AS $function$
     WHERE con.conbin ILIKE '%' || p_column_name || '%';
 $function$
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

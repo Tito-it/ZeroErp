@@ -1,0 +1,163 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250819-23-create-vendite-articoli-descrizioni-agg
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      changes:
+        # 0) Schema + sequenza per PK
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE SCHEMA IF NOT EXISTS vendite;
+        - createSequence:
+            schemaName: vendite
+            sequenceName: articoli_descrizioni_aggiuntive_id_seq
+            startValue: 1
+            incrementBy: 1
+            minValue: 1
+
+        # 1) Tabella
+        - createTable:
+            schemaName: vendite
+            tableName: articoli_descrizioni_aggiuntive
+            remarks: "Estensione degli articoli: descrizioni aggiuntive opzionali (cataloghi, documenti, ecc.)"
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  defaultValueComputed: "nextval('vendite.articoli_descrizioni_aggiuntive_id_seq'::regclass)"
+                  remarks: "Identificativo univoco"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_articoli_descrizioni_aggiuntive
+                    nullable: false
+              - column:
+                  name: articolo_id
+                  type: UUID
+                  remarks: "Riferimento all'articolo (catalogo.articoli.id)"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione
+                  type: VARCHAR(255)
+                  remarks: "Descrizione aggiuntiva dell'articolo"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ordine
+                  type: SMALLINT
+                  defaultValueNumeric: 0
+                  remarks: "Ordine di visualizzazione della descrizione"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  remarks: "Indica se la descrizione è attiva"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: VARCHAR(30)
+                  defaultValueComputed: CURRENT_USER
+                  remarks: "Utente che ha effettuato l'inserimento"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: VARCHAR(30)
+                  defaultValueComputed: CURRENT_USER
+                  remarks: "Utente ultima modifica"
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  remarks: "Data inserimento"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  remarks: "Data ultima modifica"
+                  constraints:
+                    nullable: false
+
+        # 2) Foreign key (standard fk_<base_table>_<ref_table>)
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: articoli_descrizioni_aggiuntive
+            baseColumnNames: articolo_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            constraintName: fk_articoli_descrizioni_aggiuntive_articoli
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        # 3) Indice per recupero ordinato delle descrizioni di un articolo
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_articoli_descrizioni_aggiuntive_articolo_ordine
+              ON vendite.articoli_descrizioni_aggiuntive (articolo_id, ordine);
+
+        # 4) Trigger audit
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE TRIGGER trg_upd_articoli_descrizioni_aggiuntive_audit_data_user
+                BEFORE UPDATE ON vendite.articoli_descrizioni_aggiuntive
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+
+        # 5) Commenti (tabella, colonne, constraint, indice qualificato, trigger)
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE vendite.articoli_descrizioni_aggiuntive
+                IS 'Estensione degli articoli: descrizioni aggiuntive opzionali (cataloghi, documenti, ecc.)';
+              COMMENT ON COLUMN vendite.articoli_descrizioni_aggiuntive.id
+                IS 'Id.Descrizione aggiuntiva (sequence vendite.articoli_descrizioni_aggiuntive_id_seq)';
+              COMMENT ON COLUMN vendite.articoli_descrizioni_aggiuntive.articolo_id
+                IS 'Riferimento all''articolo (catalogo.articoli.id)';
+              COMMENT ON COLUMN vendite.articoli_descrizioni_aggiuntive.descrizione
+                IS 'Descrizione aggiuntiva dell''articolo';
+              COMMENT ON COLUMN vendite.articoli_descrizioni_aggiuntive.ordine
+                IS 'Ordine di visualizzazione della descrizione';
+              COMMENT ON COLUMN vendite.articoli_descrizioni_aggiuntive.attivo
+                IS 'Flag attivo/non attivo';
+              COMMENT ON COLUMN vendite.articoli_descrizioni_aggiuntive.user_insert
+                IS 'Utente inserimento';
+              COMMENT ON COLUMN vendite.articoli_descrizioni_aggiuntive.user_update
+                IS 'Utente ultima modifica';
+              COMMENT ON COLUMN vendite.articoli_descrizioni_aggiuntive.data_insert
+                IS 'Data inserimento';
+              COMMENT ON COLUMN vendite.articoli_descrizioni_aggiuntive.data_update
+                IS 'Data ultima modifica';
+
+              COMMENT ON CONSTRAINT fk_articoli_descrizioni_aggiuntive_articoli ON vendite.articoli_descrizioni_aggiuntive
+                IS 'FK: vendite.articoli_descrizioni_aggiuntive → catalogo.articoli';
+
+              COMMENT ON INDEX vendite.ix_articoli_descrizioni_aggiuntive_articolo_ordine
+                IS 'Lookup rapido delle descrizioni per articolo in ordine definito';
+
+              COMMENT ON TRIGGER trg_upd_articoli_descrizioni_aggiuntive_audit_data_user ON vendite.articoli_descrizioni_aggiuntive
+                IS 'Aggiorna (audit) data_update e user_update al BEFORE UPDATE';
+
+  - changeSet:
+      id: 20250819-90-create-vendite-articoli-descrizioni-agg
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250819-23-create-vendite-articoli-descrizioni-agg

@@ -23,5 +23,6 @@ SELECT n.nspname AS schema,
   WHERE (n.nspname = ANY (ARRAY['dbops'::name, 'script'::name]));
 ```
 
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -17,8 +17,8 @@ AS $function$
 
    ----------------------------------------------------------------
    -- 1) Generazione codice automatico
-   IF NEW.codice_istanza IS NULL THEN
-     NEW.codice_istanza := script.fn_generate_codice('istanze_utilties');
+   IF NEW.codice IS NULL THEN
+     NEW.codice := script.fn_generate_codice('istanze_utilties');
    END IF;
 
    
@@ -27,5 +27,6 @@ AS $function$
  END;
  $function$
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

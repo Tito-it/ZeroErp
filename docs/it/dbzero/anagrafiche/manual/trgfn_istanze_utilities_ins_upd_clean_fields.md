@@ -16,7 +16,7 @@
 
 Il trigger `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
 
-1. **Generazione automatica** di `codice_istanza` quando non è specificato dall’utente.
+1. **Generazione automatica** di `codice (istanza)` quando non è specificato dall’utente.
 2. **Pulizia** e predisposizione di ulteriori campi, se in futuro fosse necessario estendere la logica di default o normalizzazione.
 
 ---
@@ -32,10 +32,10 @@ Il trigger `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields` è invocat
 
 ### 🔍 Logica Operativa
 
-1. **Verifica `codice_istanza`**
+1. **Verifica `codice (istanza)`**
 
-   * Se `NEW.codice_istanza` è `NULL` o vuoto, chiama `script.fn_generate_codice('istanze_utilties')`.
-   * Il valore restituito è assegnato a `NEW.codice_istanza`.
+   * Se `NEW.codice` è `NULL` o vuoto, chiama `script.fn_generate_codice('istanze_utilties')`.
+   * Il valore restituito è assegnato a `NEW.codice`.
 
 2. **Restituzione**
 
@@ -59,7 +59,7 @@ CREATE TRIGGER trg_istanze_utilities_ins_upd_clean_fields
 
 ### 💡 Vantaggi Operativi
 
-* **Uniformità**: tutti i record di istanze hanno un `codice_istanza` generato secondo lo stesso schema, eliminando errori manuali.
+* **Uniformità**: tutti i record di istanze hanno un `codice (istanza)` generato secondo lo stesso schema, eliminando errori manuali.
 * **Estendibilità**: la funzione può essere arricchita con ulteriori pulizie (e.g. normalizzazione di testo, assegnazione di default) senza modifiche all’applicazione.
 
 ---

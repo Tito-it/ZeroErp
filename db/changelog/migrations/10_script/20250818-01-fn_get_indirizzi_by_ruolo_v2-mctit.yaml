@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  
+
+  - changeSet:
+      id: 20250818-01-fn_get_indirizzi_by_ruolo_v2
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            comment: "Ritorna gli indirizzi di un soggetto_ruolo formattato"
+            splitStatements: false
+            sql: |     
+                    CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_ruolo(
+                      p_soggetto_ruolo_id integer)
+                        RETURNS TABLE(tipo_indirizzo character varying, indirizzo_completo text, geoloc geometry) 
+                        LANGUAGE 'sql'
+                        COST 100
+                        STABLE PARALLEL UNSAFE
+                        ROWS 1000
+
+                    AS $BODY$
+                    /*
+                      Scopo:
+                        Raccoglie gli indirizzi di un soggetto_ruolo restituendo:
+                          - tipo_indirizzo: config.tipi_indirizzi.codice_interno
+                          - indirizzo_completo: stringa human-readable
+                          - geoloc: priorità civic_geoloc (dettaglio) -> ai.geoloc
+
+                      Regole di formattazione (in ordine di priorità):
+                        1) Indirizzo normalizzato (se ai.indirizzo_dettaglio_id non NULL):
+                          ad.indirizzo_normalizzato + ", " + co.descrizione + " " + cp.codice (se presenti)
+                        2) Indirizzo libero nazionale (se ai.indirizzo_libero non NULL):
+                          ai.indirizzo_libero + ", " + co.descrizione + " " + cp.codice (se presenti)
+                        3) Internazionale/estero (fallback):
+                          ai.indirizzo_libero + locality + ", " + administrative_area + ", " + postal_box (se presenti)
+
+                      Dipendenze:
+                        - anagrafiche.indirizzi, anagrafiche.indirizzi_dettaglio
+                        - config.tipi_indirizzi, config.comuni, config.codici_postali
+                    */
+
+
+
+                    SELECT
+                       
+                      ti.codice_interno  AS tipo_indirizzo,
+                      -- 1) dettaglio normalizzato: via/civico + Comune/CAP da config.stradario
+                      CASE
+                        WHEN ai.indirizzo_dettaglio_id IS NOT NULL THEN
+                          trim(
+                            ad.indirizzo_normalizzato || 
+                            ', ' || co.descrizione ||
+                            COALESCE(' ' || cp.codice, '')
+                          )
+                        -- 2) indirizzo libero (nazionale)
+                        WHEN ai.indirizzo_libero IS NOT NULL THEN
+                          trim(
+                            ai.indirizzo_libero ||
+                            COALESCE(', ' || co.descrizione, '') ||
+                            COALESCE(' ' || cp.codice, '')
+                          )
+                        -- 3) estero / internazionale
+                        ELSE
+                          trim(
+                          ai.indirizzo_libero ||
+                            COALESCE(ai.locality, '') ||
+                            COALESCE(', ' || ai.administrative_area, '') ||
+                            COALESCE(', ' || ai.postal_box, '')
+                          )
+                      END AS indirizzo_completo,
+                      -- Geolocalizzazione prioritaria: dettaglio → indirizzo
+                      COALESCE(ad.civic_geoloc, ai.geoloc) AS geoloc
+                    FROM anagrafiche.indirizzi ai
+                    JOIN config.tipi_indirizzi ti ON ti.id = ai.tipo_indirizzo_id
+                    LEFT JOIN anagrafiche.indirizzi_dettaglio ad ON ad.id = ai.indirizzo_dettaglio_id
+                    LEFT JOIN config.comuni co ON co.id = ai.comune_id
+                    LEFT JOIN config.codici_postali cp ON cp.id = ai.codice_postale_id
+                    WHERE ai.soggetto_ruolo_id = p_soggetto_ruolo_id
+                    ORDER BY ti.codice_interno;
+                    $BODY$;
+
+
+        - sql:
+            splitStatements: false
+            sql: |
+                  COMMENT ON FUNCTION script.fn_get_indirizzi_by_ruolo(integer) IS
+                  'Ritorna gli indirizzi di un soggetto_ruolo formattati con priorità: 
+                  dettaglio normalizzato > indirizzo libero nazionale > internazionale; 
+                  geoloc preferita: civic_geoloc poi ai.geoloc. 
+                  Output: (tipo_indirizzo=tipi_indirizzi.codice_interno, indirizzo_completo, geoloc).';
+
+
+  - changeSet:
+      id: 20250818-90-fn_get_indirizzi_by_ruolo_v2
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250818-01-fn_get_indirizzi_by_ruolo_v2

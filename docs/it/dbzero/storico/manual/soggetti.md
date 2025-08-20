@@ -74,3 +74,4 @@ Questo permette di:
   `valid_from` e `valid_to` permettono di esporre facilmente i dati temporali in viste dimensionali o in processi ETL.
 
 > 🧠 **“`storico.soggetti` è il registro cronologico di ogni cambiamento ai soggetti: auditing nativo, versioning JSON ed eliminazione di silos storici.”**
+

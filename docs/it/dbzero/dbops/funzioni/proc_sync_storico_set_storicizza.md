@@ -31,5 +31,6 @@ AS $procedure$
     END;
     $procedure$
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

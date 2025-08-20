@@ -32,5 +32,6 @@
 | trg_regioni_ins_upd_clean_fields | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_regioni_ins_upd_clean_fields()` |
 | trg_regioni_ins_upd_clean_fields | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_regioni_ins_upd_clean_fields()` |
 | trg_upd_regioni_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

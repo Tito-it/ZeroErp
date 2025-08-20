@@ -21,5 +21,6 @@ SELECT s.id AS id_stradario,
      JOIN script.vw_stradario_esteso ve ON ((s.stradario_generale_id = ve.id_via)));
 ```
 
+
 ---
 {% include-markdown "signature-core.md" %}

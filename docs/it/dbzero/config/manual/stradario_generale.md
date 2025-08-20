@@ -1,7 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stradario_generale`
 
 >  👀 **Vedi anche** 
-
+>
 > Approfondimento Tabelle:  
 >
 > * [config.stradario](/dbzero/config/tabelle/stradario)      
@@ -36,3 +36,43 @@ La tabella **`config.stradario_generale`** elenca i nomi delle vie, strade e pia
 ---
 
 > 🧠 **"Un catalogo neutro di nomi di vie e piazze, pronta base per costruire indirizzi completi e localizzati attraverso l’associazione con i comuni."**
+
+---
+
+###  Diagramma ER relazioni 
+
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    toponomastica       ||--o{ stradario_generale : has
+
+    toponomastica     { int id PK }
+    stradario_generale{ int id PK }
+
+```
+
+---
+
+###  Diagramma ER attributi
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    stradario_generale {
+        int      id PK
+        int      toponomastica_id FK
+        varchar  descrizione
+        varchar  descrizione_breve
+        datetime data_insert
+        varchar  user_insert
+        datetime data_update
+        varchar  user_update
+    }
+
+```
+
+---
+{% include-markdown "signature-core.md" %}
+
+---

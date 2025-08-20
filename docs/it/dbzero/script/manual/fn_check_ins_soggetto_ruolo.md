@@ -104,3 +104,5 @@ NEW.soggetto_ruolo_id := script.fn_check_ins_soggetto_ruolo(
 
 ### 🚧 Nota di sviluppo
     Questa  la funzione generica costituisce il nucleo metodologico per la gestione dei ruoli in Zero ERP: sarà estese e replicate per ogni nuovo tipo di ruolo oggetto di implementazione.
+
+---

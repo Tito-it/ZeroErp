@@ -20,7 +20,7 @@ AS $function$
    -- ====================================================================
        -- 0) Validazioni
    -- ====================================================================
-       -- 0.1) Se account_code presente, deve esserci valid_from
+       -- 0.1) Se codice account presente, deve esserci valid_from
        IF NEW.parent_account_id IS NOT NULL THEN
 
         -- 0.1.1) Se parent_account_id non è null, valid_from deve esserci
@@ -30,7 +30,7 @@ AS $function$
              TG_NAME,
              'E_VALORE_MANCANTE',
              jsonb_build_object(
-               'account_code', NEW.account_code,
+               'codice (account)', NEW.codice,
                'column', 'valid_from'
              ),
              NULL::uuid,
@@ -63,7 +63,7 @@ AS $function$
              TG_NAME,
              'E_ID_FISCALI_DIVERSI',
              jsonb_build_object(
-               'account_code', NEW.account_code,
+               'codice (account)', NEW.codice,
                'parent_account_id', NEW.parent_account_id,
                'id_fiscale_univoco_cf_piva', cf_child,
                'parent_id_fiscale_univoco_cf_piva', cf_parent
@@ -83,7 +83,7 @@ AS $function$
              TG_NAME,
              'E_VALORE_MANCANTE',
              jsonb_build_object(
-               'account_code', NEW.account_code,
+               'codice (account)', NEW.codice,
                'column', 'valid_to'
              ),
              NULL::uuid,
@@ -108,8 +108,8 @@ AS $function$
 
    ----------------------------------------------------------------
    -- 1) Generazione codice automatico
-   IF NEW.account_code IS NULL THEN
-     NEW.account_code := script.fn_generate_codice('billing_account');
+   IF NEW.codice IS NULL THEN
+     NEW.codice := script.fn_generate_codice('billing_account');
    END IF;
 
    ------------------------------------------------------------------
@@ -117,5 +117,6 @@ AS $function$
  END;
  $function$
 ```
+
 ---
 {% include-markdown "signature-core.md" %}

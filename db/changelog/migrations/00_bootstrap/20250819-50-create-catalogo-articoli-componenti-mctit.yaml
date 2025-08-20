@@ -1,0 +1,256 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+# ========== Distinta base (BoM) ==========
+  - changeSet:
+      id: 20250819-50-create-catalogo-articoli-componenti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+      
+        
+
+        # 1) Tabella
+        - createTable:
+            schemaName: catalogo
+            tableName: articoli_componenti
+            remarks: "Distinta base (vendita) con versioning da/a"
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  remarks: "Identificativo univoco"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_articoli_componenti
+                    nullable: false
+              - column:
+                  name: prodotto_id
+                  type: UUID
+                  remarks: "Articolo padre (catalogo.articoli.id)"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: componente_id
+                  type: UUID
+                  remarks: "Articolo figlio (catalogo.articoli.id)"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: coeff_qta
+                  type: NUMERIC(18,6)
+                  defaultValueNumeric: 1.000000
+                  remarks: "Coefficiente quantità componente per unità di prodotto"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: partecipa_qta
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "Se true, il componente partecipa al calcolo quantità"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: obbligatorio
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  remarks: "Se true, componente obbligatorio"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valid_from
+                  type: DATE
+                  remarks: "Data inizio validità"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valid_to
+                  type: DATE
+                  remarks: "Data fine validità (NULL = attuale)"
+              - column:
+                  name: note
+                  type: VARCHAR(200)
+                  remarks: "Note"
+              - column:
+                  name: meta
+                  type: JSONB
+                  defaultValue: "{}"
+                  remarks: "Metadati estensibili in formato JSONB"
+              # Audit standard (valute)
+              - column:
+                  name: user_insert
+                  type: VARCHAR(30)
+                  defaultValueComputed: CURRENT_USER
+                  remarks: "Utente inserimento"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: VARCHAR(30)
+                  defaultValueComputed: CURRENT_USER
+                  remarks: "Utente ultima modifica"
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  remarks: "Data inserimento"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  remarks: "Data ultima modifica"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: UUID
+                  remarks: "Id transazione"
+              - column:
+                  name: storicizza
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  remarks: "Se true, abilita storicizzazione"
+
+        # 2) Foreign keys (standard fk_<base_table>_<ref_table> + suffisso)
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: articoli_componenti
+            baseColumnNames: prodotto_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            constraintName: fk_articoli_componenti_articoli_prodotto
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: articoli_componenti
+            baseColumnNames: componente_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            constraintName: fk_articoli_componenti_articoli_componente
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        # 3) Unicità per versione
+        - addUniqueConstraint:
+            schemaName: catalogo
+            tableName: articoli_componenti
+            columnNames: prodotto_id, componente_id, valid_from
+            constraintName: uq_articoli_componenti_prodotto_componente_from
+   
+        - sql:
+              splitStatements: false
+              sql: |
+                -- Evita sovrapposizioni di periodi per la stessa coppia (prodotto_id, componente_id)
+                ALTER TABLE catalogo.articoli_componenti
+                ADD CONSTRAINT ex_articoli_componenti_no_overlap
+                EXCLUDE USING gist (
+                  prodotto_id WITH =,
+                  componente_id WITH =,
+                  daterange(valid_from, COALESCE(valid_to, 'infinity'::date), '[]') WITH &&
+                );
+
+        # 4) Check constraints, indici, trigger e commenti
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check constraints
+              ALTER TABLE catalogo.articoli_componenti
+              ADD CONSTRAINT chk_articoli_componenti_no_selfref
+              CHECK (prodotto_id <> componente_id);
+
+              ALTER TABLE catalogo.articoli_componenti
+              ADD CONSTRAINT chk_articoli_componenti_valid_dates
+              CHECK (valid_to IS NULL OR valid_to > valid_from);
+
+              ALTER TABLE catalogo.articoli_componenti
+              ADD CONSTRAINT chk_articoli_componenti_coeff_qta_pos
+              CHECK (coeff_qta >= 0);
+
+              -- Indici per lookup/validità
+              CREATE INDEX IF NOT EXISTS ix_articoli_componenti_prodotto_from_to
+                ON catalogo.articoli_componenti (prodotto_id, valid_from, valid_to);
+              CREATE INDEX IF NOT EXISTS ix_articoli_componenti_componente_from_to
+                ON catalogo.articoli_componenti (componente_id, valid_from, valid_to);
+
+              -- Trigger audit BEFORE UPDATE
+              CREATE OR REPLACE TRIGGER trg_upd_articoli_componenti_audit_data_user
+                BEFORE UPDATE ON catalogo.articoli_componenti
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic();
+
+              -- Commenti tabella/colonne
+              COMMENT ON TABLE catalogo.articoli_componenti IS
+                'Distinta base (vendita) con versioning da/a';
+              COMMENT ON COLUMN catalogo.articoli_componenti.id IS
+                'Id.BoM (sequence catalogo.articoli_componenti_id_seq)';
+              COMMENT ON COLUMN catalogo.articoli_componenti.prodotto_id IS
+                'Articolo padre (catalogo.articoli.id)';
+              COMMENT ON COLUMN catalogo.articoli_componenti.componente_id IS
+                'Articolo figlio (catalogo.articoli.id)';
+              COMMENT ON COLUMN catalogo.articoli_componenti.coeff_qta IS
+                'Coefficiente quantità componente per unità di prodotto';
+              COMMENT ON COLUMN catalogo.articoli_componenti.partecipa_qta IS
+                'Se true, partecipa al calcolo quantità';
+              COMMENT ON COLUMN catalogo.articoli_componenti.obbligatorio IS
+                'Se true, componente obbligatorio';
+              COMMENT ON COLUMN catalogo.articoli_componenti.valid_from IS
+                'Data inizio validità';
+              COMMENT ON COLUMN catalogo.articoli_componenti.valid_to IS
+                'Data fine validità (NULL = attuale)';
+              COMMENT ON COLUMN catalogo.articoli_componenti.note IS
+                'Note';
+              COMMENT ON COLUMN catalogo.articoli_componenti.meta IS
+                'Metadati estensibili in formato JSONB';
+              COMMENT ON COLUMN catalogo.articoli_componenti.user_insert IS
+                'Utente inserimento';
+              COMMENT ON COLUMN catalogo.articoli_componenti.user_update IS
+                'Utente ultima modifica';
+              COMMENT ON COLUMN catalogo.articoli_componenti.data_insert IS
+                'Data inserimento';
+              COMMENT ON COLUMN catalogo.articoli_componenti.data_update IS
+                'Data ultima modifica';
+
+              -- Commenti vincoli
+              COMMENT ON CONSTRAINT pk_articoli_componenti ON catalogo.articoli_componenti
+                IS 'PK: identificativo univoco';
+              COMMENT ON CONSTRAINT uq_articoli_componenti_prodotto_componente_from ON catalogo.articoli_componenti
+                IS 'Unicità prodotto+componente+valid_from';
+              COMMENT ON CONSTRAINT fk_articoli_componenti_articoli_prodotto ON catalogo.articoli_componenti
+                IS 'FK: catalogo.articoli_componenti.prodotto_id → catalogo.articoli.id';
+              COMMENT ON CONSTRAINT fk_articoli_componenti_articoli_componente ON catalogo.articoli_componenti
+                IS 'FK: catalogo.articoli_componenti.componente_id → catalogo.articoli.id';
+              COMMENT ON CONSTRAINT chk_articoli_componenti_no_selfref ON catalogo.articoli_componenti
+                IS 'Vietato referenziare se stesso (padre=figlio)';
+              COMMENT ON CONSTRAINT chk_articoli_componenti_valid_dates ON catalogo.articoli_componenti
+                IS 'valid_to deve essere NULL o successivo a valid_from';
+              COMMENT ON CONSTRAINT chk_articoli_componenti_coeff_qta_pos ON catalogo.articoli_componenti
+                IS 'coeff_qta deve essere >= 0';
+
+              -- Commenti indici (qualificati) e trigger
+              COMMENT ON INDEX catalogo.ix_articoli_componenti_prodotto_from_to
+                IS 'Lookup componenti per prodotto e finestra di validità';
+              COMMENT ON INDEX catalogo.ix_articoli_componenti_componente_from_to
+                IS 'Lookup utilizzi del componente e finestra di validità';
+              COMMENT ON TRIGGER trg_upd_articoli_componenti_audit_data_user ON catalogo.articoli_componenti
+                IS 'Aggiorna (audit) data_update e user_update al BEFORE UPDATE';
+
+  - changeSet:
+      id: 20250819-90-create-catalogo-articoli-componenti
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250819-50-create-catalogo-articoli-componenti
