@@ -93,11 +93,9 @@ databaseChangeLog:
                       AND NOT t.tgisinternal
                   );
                 $$;
-
-      changes:
         - sql:
             splitStatements: false
-            stripComments: true
+            stripComments: false
             sql: |
               COMMENT ON FUNCTION dbops.fn_trigger_exists_by_function(regclass, text, text) IS
               $$
