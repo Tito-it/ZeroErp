@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+      
+databaseChangeLog:
+  - changeSet:
+      id: 20250821-02-trgfn_trigger_exists_by_function_by_name
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: | 
+                  
+                      CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_by_name(
+                          p_rel regclass,
+                          p_trigger_name text
+                        ) RETURNS boolean
+                        LANGUAGE sql
+                        AS $$
+                          SELECT EXISTS(
+                            SELECT 1 FROM pg_trigger t
+                            WHERE t.tgrelid = p_rel
+                              AND t.tgname  = p_trigger_name
+                              AND NOT t.tgisinternal
+                          );
+                        $$;
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                COMMENT ON FUNCTION dbops.fn_trigger_exists_by_name(regclass, text) IS
+                  $md$
+                  Verifica l’esistenza di un trigger **non interno** (tgisinternal = false) su una
+                  relazione specifica, identificandolo per **nome esatto**.
+
+                  • **Ritorno**: boolean — TRUE se esiste almeno un trigger non-internal con nome
+                    `p_trigger_name` sulla relazione `p_rel`, altrimenti FALSE.
+
+                  • **Parametri**
+                    - `p_rel regclass`: relazione di destinazione (tabella/vista) su cui cercare.
+                    - `p_trigger_name text`: nome del trigger da verificare (match esatto su `pg_trigger.tgname`).
+
+                  • **Note implementative**
+                    - Interroga `pg_trigger` filtrando `tgrelid = p_rel` e `tgname = p_trigger_name`.
+                    - Esclude i trigger interni (`NOT tgisinternal`).
+                    - È una funzione **idempotente** e a **basso costo** (utilizza `EXISTS`).
+
+                  • **Casi d’uso tipici**
+                    - Controlli di esistenza prima di creare/eliminare trigger in processi di automazione.
+                    - Strategie di “existence check” con criterio **BY_NAME**.
+
+                  • **Limitazioni**
+                    - Il match è sensibile al nome completo del trigger; differenze di naming policy
+                      (es. template diversi) richiedono l’uso di strategie alternative (es. BY_FUNCTION).
+                  $md$;
+
+  - changeSet:
+      id: 20250821-03-fn-trigger-exists-by-function
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: | 
+              CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_by_function(
+                  p_rel regclass,
+                  p_fn_schema text,
+                  p_fn_name   text
+                ) RETURNS boolean
+                LANGUAGE sql
+                AS $$
+                  SELECT EXISTS(
+                    SELECT 1
+                      FROM pg_trigger t
+                      JOIN pg_proc p ON p.oid = t.tgfoid
+                      JOIN pg_namespace n ON n.oid = p.pronamespace
+                    WHERE t.tgrelid = p_rel
+                      AND n.nspname = p_fn_schema
+                      AND p.proname = p_fn_name
+                      AND NOT t.tgisinternal
+                  );
+                $$;
+
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_trigger_exists_by_function(regclass, text, text) IS
+              $$
+                    Verifica esistenza di un trigger **non interno** (tgisinternal = false) su una
+                    relazione specifica, identificandolo per **funzione associata** (`pg_trigger.tgfoid`)
+                    tramite schema e nome della funzione.
+
+                    **Ritorno**: boolean — TRUE se esiste almeno un trigger non-internal sulla relazione
+                      `p_rel` che invoca la funzione `p_fn_schema.p_fn_name`, altrimenti FALSE.
+
+                    **Parametri**
+                      - `p_rel regclass`: relazione di destinazione (tabella/vista) su cui cercare.
+                      - `p_fn_schema text`: schema della funzione di trigger da verificare.
+                      - `p_fn_name text`: nome della funzione di trigger da verificare.
+
+                    **Note implementative**
+                      - Join su `pg_trigger` → `pg_proc` (tgfoid) → `pg_namespace` (pronamespace).
+                      - Esclude i trigger interni (`NOT tgisinternal`).
+                      - Restituisce TRUE anche se sono presenti **più** trigger che puntano alla stessa funzione.
+
+                    **Casi d’uso tipici**
+                      - Strategie di “existence check” con criterio **BY_FUNCTION** o **BOTH**,
+                        indipendenti dal naming effettivo del trigger.
+                      - Ambienti con naming template differenti ma logica di trigger consolidata su un’unica funzione.
+
+                    **Limitazioni**
+                      - Non disambigua funzioni omonime tra schemi diversi (lo schema viene richiesto apposta).
+                      - Non verifica la **firma** della funzione; controlla solo schema+nome.
+              $$;
+  - changeSet:
+      id: 20250821-90-trgfn_trigger_exists_by_function_by_name
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250821-02-trgfn_trigger_exists_by_function_by_name
