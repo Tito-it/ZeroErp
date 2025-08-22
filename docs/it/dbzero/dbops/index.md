@@ -20,6 +20,7 @@
 - [fn_find_function_usage](funzioni/fn_find_function_usage.md) — * **Discovery delle dipendenze**: individuare tutte le occorrenze di una funzione all’interno del codice PL/pgSQL, dei trigger e degli event trigger. * **Supporto al refactoring**: identificare facilmente i punti di utilizzo prima di rinominare o modificare una funzione.
 - [fn_foreign_keys_info](funzioni/fn_foreign_keys_info.md) — `dbops.fn_foreign_keys_info(tabella)` restituisce una vista unificata di **tutte le relazioni tramite chiavi esterne** ( foreign key) che coinvolgono la tabella specificata, distinguendo tra:
 - [fn_generate_tx_id](funzioni/fn_generate_tx_id.md) — * **Unico punto di generazione**   Evitare duplicazioni di logica ed errori creando sempre il `tx_id` tramite una function dedicata. * **Contestualizzazione**   Conservare il nome della funzione applicativa (`generating_function`) e dati di sessione JSON (   `session_info`), per migliorare la tracciabilità. * **Sicurezza**   Impostando `SECURITY DEFINER`, la function può essere invocata da ruoli meno privilegiati mantenendo i permessi di inserimento.
+- [fn_get_child_fk_col](funzioni/fn_get_child_fk_col.md)
 - [fn_get_or_create_session_tx_id](funzioni/fn_get_or_create_session_tx_id.md) — * **Unicità per sessione**: restituisce un `tx_id` costante per la durata della connessione, evitando chiamate ripetute a generatori esterni. * **Fallback sicuro**: in caso di errori di connessione o in contesti di migrazione/test, restituisce un UUID “nil” per non bloccare i processi. * **Contesto centralizzato**: memorizza il `tx_id` in una GUC di sessione (`dbops.tx_id`) per accessi successivi.
 - [fn_get_override_col](funzioni/fn_get_override_col.md)
 - [fn_list_indices](funzioni/fn_list_indices.md)
@@ -27,12 +28,20 @@
 - [fn_name_from_template](funzioni/fn_name_from_template.md)
 - [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md)
 - [fn_populate_fk_index_policy](funzioni/fn_populate_fk_index_policy.md) — * **Coerenza iniziale**   Garantire che ogni FK rilevata nella view senza indice abbia la propria entry di policy, evitando omissioni. * **Popolamento “a freddo”**   Tutti i nuovi record vengono creati con `consentito = false`, lasciando in carico all’operatore la decisione di abilitare o meno l’indice. * **Automazione**   Riduce il lavoro manuale di inserimento di policy per nuove FKs.
+- [fn_run_automations](funzioni/fn_run_automations.md)
+- [fn_run_automations_attivo](funzioni/fn_run_automations_attivo.md)
+- [fn_run_automations_audit_update](funzioni/fn_run_automations_audit_update.md)
+- [fn_run_automations_storico](funzioni/fn_run_automations_storico.md)
+- [fn_run_automations_tx_id](funzioni/fn_run_automations_tx_id.md)
 - [fn_search_column_usage](funzioni/fn_search_column_usage.md) — * Individuare rapidamente tutte le occorrenze di un campo in definizioni SQL presenti nel database. * Facilitare attività di refactoring, pulizia del codice, e verifica di dipendenze tra oggetti del database.
 - [fn_seed_fk_index_policy](funzioni/fn_seed_fk_index_policy.md) — * **Sincronizzazione iniziale**   Aggiunge in `fk_index_policy` tutte le FK con indice esistente rilevate in `vw_fk_con_indice_missing_policy`. * **Automazione**   Evita inserimenti manuali per policy già coperte da indice. * **Flag di origine**   Imposta `generated_by_script = true` per distinguere le righe create automaticamente.
 - [fn_trigger_exists_by_function](funzioni/fn_trigger_exists_by_function.md)
 - [fn_trigger_exists_by_name](funzioni/fn_trigger_exists_by_name.md)
 - [proc_apply_storicizza_defaults](funzioni/proc_apply_storicizza_defaults.md) — La procedura `dbops.apply_storicizza_defaults()` ha il compito di **impostare il valore di default `true` per la colonna `storicizza`** in tutte le tabelle elencate nella tabella di configurazione `config.storico_set_storicizza`. È utilizzata per **garantire che le nuove righe inserite siano automaticamente storicizzate**, ove previsto.
 - [proc_sync_storico_set_storicizza](funzioni/proc_sync_storico_set_storicizza.md) — `dbops.proc_sync_storico_set_storicizza` è una procedura di sincronizzazione che individua, all’interno del database, tutte le tabelle che possiedono la colonna `storicizza` con **valore di default `true`** e le registra nella tabella di configurazione `config.storico_set_storicizza`.
+- [trgfn_child_requires_active_parent](funzioni/trgfn_child_requires_active_parent.md)
+- [trgfn_prevent_deactivate_if_children](funzioni/trgfn_prevent_deactivate_if_children.md)
+- [trgfn_soft_delete_cascade](funzioni/trgfn_soft_delete_cascade.md)
 - [trgfn_tx_id_managed](funzioni/trgfn_tx_id_managed.md) — La trigger function **`dbops.trgfn_tx_id_managed()`** viene eseguita **`BEFORE INSERT OR UPDATE`** su ogni tabella che contiene la colonna `tx_id` e centralizza la **logica di validazione**, **generazione** e **assegnazione** dell’**UUID di transazione** per la riga in corso di inserimento/aggiornamento.
 
 ## 🔍 Views

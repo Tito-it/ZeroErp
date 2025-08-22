@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# 
+# Note:
+#  - Usa ALTER ... IF NOT EXISTS per colonne
+#  - Per il CHECK constraint usiamo un DO-block (Postgres non ha IF NOT EXISTS)
+#  - Indici GIN su params/result per ricerche JSONB
+#  - Indici btree per query frequenti su funzione/status
+#  - Indici opzionali (commentati) per tx_id unico e per soli ERROR
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+
+  - changeSet:
+      id: 20250822-01-sviluppo_table_audit-log
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+          - ANY
+      preConditions:
+        - onFail: CONTINUE
+        - not:
+          - columnExists:
+              schemaName: dbops
+              tableName: audit_log
+              columnName: exec_mode
+      changes:
+       - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              
+
+              -- ============================================================
+              -- Colonne aggiuntive "ad alto valore"
+              -- ============================================================
+              ALTER TABLE dbops.audit_log
+                ADD COLUMN IF NOT EXISTS exec_mode     text,         -- CI|SCHEDULED|AUTO
+                ADD COLUMN IF NOT EXISTS parts         text[],       -- es. {TX_ID,AUDIT_UPDATE,...}
+                ADD COLUMN IF NOT EXISTS rule_type     text,         -- quando logghi singole regole
+                ADD COLUMN IF NOT EXISTS dry_run       boolean,      -- true/false
+                ADD COLUMN IF NOT EXISTS sqlstate      text,         -- SQLSTATE error code
+                ADD COLUMN IF NOT EXISTS error_context text,         -- messaggio/contesto esteso
+                ADD COLUMN IF NOT EXISTS rows_affected integer,      -- conteggi opzionali
+                ADD COLUMN IF NOT EXISTS host          text,         -- hostname/pod
+                ADD COLUMN IF NOT EXISTS app_version   text,         -- versione applicativa
+                ADD COLUMN IF NOT EXISTS result        jsonb;        -- riepilogo esiti (nomi trigger, conteggi, ecc.)
+
+              -- Commenti colonne (documentazione inline)
+              COMMENT ON COLUMN dbops.audit_log.exec_mode     IS 'Modalità esecuzione: CI | SCHEDULED | AUTO';
+              COMMENT ON COLUMN dbops.audit_log.parts         IS 'Moduli eseguiti: TX_ID, AUDIT_UPDATE, STORICO, ATTIVO...';
+              COMMENT ON COLUMN dbops.audit_log.rule_type     IS 'Tipo regola quando il log è per singola regola';
+              COMMENT ON COLUMN dbops.audit_log.dry_run       IS 'Se true, esecuzione in dry-run (simulazione)';
+              COMMENT ON COLUMN dbops.audit_log.sqlstate      IS 'Codice SQLSTATE in caso di errore';
+              COMMENT ON COLUMN dbops.audit_log.error_context IS 'Dettaglio/stack-messaggio errore';
+              COMMENT ON COLUMN dbops.audit_log.rows_affected IS 'Righe interessate/stimate';
+              COMMENT ON COLUMN dbops.audit_log.host          IS 'Host/pod che ha eseguito';
+              COMMENT ON COLUMN dbops.audit_log.app_version   IS 'Versione applicativa';
+              COMMENT ON COLUMN dbops.audit_log.result        IS 'JSON di risultato (trigger creati, conteggi, metriche)';
+
+              -- ============================================================
+              -- CHECK constraint su status (START|OK|ERROR|DRYRUN|WARN)
+              -- ============================================================
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1
+                  FROM pg_constraint
+                  WHERE conname = 'chk_audit_status'
+                    AND conrelid = 'dbops.audit_log'::regclass
+                ) THEN
+                  ALTER TABLE dbops.audit_log
+                    ADD CONSTRAINT chk_audit_status
+                    CHECK (status IN ('START','OK','ERROR','DRYRUN','WARN'));
+                END IF;
+              END$$;
+
+              -- ============================================================
+              -- Indici per performance
+              -- ============================================================
+              -- Query tipiche: ultimi run di una funzione
+              CREATE INDEX IF NOT EXISTS ix_audit_fn_ts
+                ON dbops.audit_log (function_name, executed_at DESC);
+
+              -- Query tipiche: ultimi errori/warn
+              CREATE INDEX IF NOT EXISTS ix_audit_status_ts
+                ON dbops.audit_log (status, executed_at DESC);
+
+              -- Ricerca per parametri (jsonb)
+              CREATE INDEX IF NOT EXISTS ix_audit_params_gin
+                ON dbops.audit_log USING GIN (params);
+
+              -- Ricerca per risultati (jsonb)
+              CREATE INDEX IF NOT EXISTS ix_audit_result_gin
+                ON dbops.audit_log USING GIN (result);
+
+              -- ============================================================
+              -- Indici OPZIONALI (decommenta se necessari)
+              -- ============================================================
+              -- Unicità del tx_id come correlation id
+              -- CREATE UNIQUE INDEX IF NOT EXISTS uq_audit_txid
+              --   ON dbops.audit_log (tx_id);
+
+              -- Indice parziale per velocizzare la vista errori recenti
+              -- CREATE INDEX IF NOT EXISTS ix_audit_errors_recent
+              --   ON dbops.audit_log (executed_at DESC)
+              --   WHERE status = 'ERROR';
+
+              -- (Opzionale) Indice parziale per DRYRUN
+              -- CREATE INDEX IF NOT EXISTS ix_audit_dryrun_recent
+              --   ON dbops.audit_log (executed_at DESC)
+              --   WHERE dry_run IS TRUE;
+
+                
+  - changeSet:
+      id: 20250822-90-sviluppo_table_audit-log
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250822-01-sviluppo_table_audit-log

@@ -26,7 +26,7 @@ databaseChangeLog:
               --------------------------------------------------------------------
               -- 1) PADRE → FIGLI: cascade soft-delete (set attivo=false)
               --------------------------------------------------------------------
-               CREATE OR REPLACE FUNCTION script.trgfn_soft_delete_cascade()
+               CREATE OR REPLACE FUNCTION dbops.trgfn_soft_delete_cascade()
                 RETURNS trigger
                 LANGUAGE plpgsql
                 AS $$
@@ -105,7 +105,7 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
             sql: |
-              COMMENT ON FUNCTION script.trgfn_soft_delete_cascade() IS
+              COMMENT ON FUNCTION dbops.trgfn_soft_delete_cascade() IS
                 'Quando il padre passa attivo=true→false, spegne (attivo=false) i figli con FK ON DELETE RESTRICT.';
 
 

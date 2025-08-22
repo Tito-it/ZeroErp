@@ -1,0 +1,529 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+      
+databaseChangeLog:
+  - changeSet:
+      id: create-fn-run-automations-tables_v1
+  
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: | 
+              CREATE OR REPLACE FUNCTION dbops.run_automations_tables(
+                p_exec_mode text,              -- 'CI'|'SCHEDULED'|'AUTO'
+                p_schemas   text[],            -- lista schemi target
+                p_dry_run   boolean
+              ) RETURNS void
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                rtab record;
+                rrule record;
+                rel  regclass;
+
+                -- flags/naming
+                has_txid boolean;
+                has_du   boolean;
+                has_uu   boolean;
+                has_sto  boolean;
+
+                tmpl       text;
+                trg_name   text;
+                exist_strat text;
+
+                col_ts   text;
+                col_user text;
+                fk_col   text;
+              BEGIN
+              -- ======================================================================
+              -- PART 2
+              -- dbops.run_automations_tables(p_exec_mode, p_schemas, p_dry_run)
+              -- Applica regole per-tabella:
+              --   - TX_ID: crea trigger BEFORE INSERT/UPDATE → dbops.trgfn_tx_id_managed()
+              --   - AUDIT_UPDATE: crea trigger BEFORE UPDATE → script.trgfn_upd_audit_data_user_generic()
+              --   - STORICO: crea trigger BEFORE UPDATE/DELETE → script.trgfn_upd_dlt_storico_generic('<fk>')
+              -- Naming: usa template da config (con fn_name_from_template) e verifica esistenza
+              --          per nome/funzione (BY_NAME / BY_FUNCTION / BOTH).
+              -- ======================================================================
+
+                FOR rtab IN
+                  SELECT n.nspname AS schema_name,
+                         c.relname AS table_name,
+                         (quote_ident(n.nspname)||'.'||quote_ident(c.relname))::regclass AS rel
+                  FROM pg_class c
+                  JOIN pg_namespace n ON n.oid=c.relnamespace
+                  WHERE c.relkind='r'
+                    AND n.nspname = ANY(p_schemas)
+                LOOP
+                  rel := rtab.rel;
+
+                  FOR rrule IN
+                    SELECT *
+                      FROM dbops.automation_rules_tbl r
+                     WHERE r.enabled
+                       AND r.target_schema = rtab.schema_name
+                       AND (r.target_table IS NULL OR rtab.table_name LIKE r.target_table)
+                       AND (r.exec_mode='AUTO' OR r.exec_mode=p_exec_mode)
+                     ORDER BY r.priority, r.id
+                  LOOP
+                    exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
+
+                    -- -------------------------
+                    -- TX_ID
+                    -- -------------------------
+                    IF rrule.rule_type='TX_ID' THEN
+                      SELECT EXISTS(
+                        SELECT 1 FROM information_schema.columns
+                         WHERE table_schema=rtab.schema_name
+                           AND table_name =rtab.table_name
+                           AND column_name='tx_id' AND udt_name='uuid'
+                      ) INTO has_txid;
+
+                      IF has_txid THEN
+                        tmpl     := COALESCE(rrule.name_template,'trg_{table}_ins_upd_gen_tx_id');
+                        trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL,NULL);
+
+                        IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
+                        OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel,'dbops','trgfn_tx_id_managed'))
+                        OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rel, trg_name)
+                                                           OR dbops.fn_trigger_exists_by_function(rel,'dbops','trgfn_tx_id_managed')))
+                        THEN
+                          IF p_dry_run THEN
+                            PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','TX_ID','table',rtab.schema_name||'.'||rtab.table_name,'name',trg_name));
+                          ELSE
+                            BEGIN
+                              EXECUTE format($f$
+                                CREATE TRIGGER %I
+                                BEFORE INSERT OR UPDATE ON %I.%I
+                                FOR EACH ROW
+                                EXECUTE FUNCTION dbops.trgfn_tx_id_managed()
+                              $f$, trg_name, rtab.schema_name, rtab.table_name);
+                            EXCEPTION WHEN others THEN
+                              PERFORM dbops.fn_log_error_only(jsonb_build_object('where','TX_ID','table',rtab.schema_name||'.'||rtab.table_name,'error',SQLERRM));
+                            END;
+                          END IF;
+                        END IF;
+                      END IF;
+                    END IF;
+
+                    -- -------------------------
+                    -- AUDIT_UPDATE
+                    -- -------------------------
+                    IF rrule.rule_type='AUDIT_UPDATE' THEN
+                      col_ts   := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'AUDIT_TS',   COALESCE(rrule.params->>'audit_ts','data_update'));
+                      col_user := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'AUDIT_USER', COALESCE(rrule.params->>'audit_user','user_update'));
+
+                      SELECT dbops.fn_col_exists(rtab.schema_name, rtab.table_name, col_ts)
+                           , dbops.fn_col_exists(rtab.schema_name, rtab.table_name, col_user)
+                        INTO has_du, has_uu;
+
+                      IF has_du AND has_uu THEN
+                        tmpl     := COALESCE(rrule.name_template,'trg_upd_{table}_audit_data_user');
+                        trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL,NULL);
+
+                        IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
+                        OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel,'script','trgfn_upd_audit_data_user_generic'))
+                        OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rel, trg_name)
+                                                           OR dbops.fn_trigger_exists_by_function(rel,'script','trgfn_upd_audit_data_user_generic')))
+                        THEN
+                          IF p_dry_run THEN
+                            PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','AUDIT_UPDATE','table',rtab.schema_name||'.'||rtab.table_name,'name',trg_name));
+                          ELSE
+                            BEGIN
+                              EXECUTE format($f$
+                                CREATE TRIGGER %I
+                                BEFORE UPDATE ON %I.%I
+                                FOR EACH ROW
+                                EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()
+                              $f$, trg_name, rtab.schema_name, rtab.table_name);
+                            EXCEPTION WHEN others THEN
+                              PERFORM dbops.fn_log_error_only(jsonb_build_object('where','AUDIT_UPDATE','table',rtab.schema_name||'.'||rtab.table_name,'error',SQLERRM));
+                            END;
+                          END IF;
+                        END IF;
+                      END IF;
+                    END IF;
+
+                    -- -------------------------
+                    -- STORICO
+                    -- -------------------------
+                    IF rrule.rule_type='STORICO' THEN
+                      SELECT EXISTS(
+                        SELECT 1 FROM pg_class c2
+                        JOIN pg_namespace n2 ON n2.oid=c2.relnamespace
+                       WHERE n2.nspname='storico'
+                         AND c2.relkind='r'
+                         AND c2.relname=rtab.table_name||'_storico'
+                      ) INTO has_sto;
+
+                      IF has_sto THEN
+                        fk_col := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'STORICO_FK', rtab.table_name||'_id');
+
+                        -- UPDATE
+                        tmpl     := COALESCE(rrule.name_template,'rg_{table}_{op}_storico');
+                        trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL,'upd');
+
+                        IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
+                        OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel,'script','trgfn_upd_dlt_storico_generic'))
+                        OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rel, trg_name)
+                                                           OR dbops.fn_trigger_exists_by_function(rel,'script','trgfn_upd_dlt_storico_generic')))
+                        THEN
+                          IF p_dry_run THEN
+                            PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','STORICO_UPD','table',rtab.schema_name||'.'||rtab.table_name,'name',trg_name,'fk',fk_col));
+                          ELSE
+                            BEGIN
+                              EXECUTE format($f$
+                                CREATE TRIGGER %I
+                                BEFORE UPDATE ON %I.%I
+                                FOR EACH ROW
+                                EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic(%L)
+                              $f$, trg_name, rtab.schema_name, rtab.table_name, fk_col);
+                            EXCEPTION WHEN others THEN
+                              PERFORM dbops.fn_log_error_only(jsonb_build_object('where','STORICO_UPD','table',rtab.schema_name||'.'||rtab.table_name,'error',SQLERRM));
+                            END;
+                          END IF;
+                        END IF;
+
+                        -- DELETE
+                        tmpl     := COALESCE(rrule.name_template,'rg_{table}_{op}_storico');
+                        trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL,'dlt');
+
+                        IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
+                        OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel,'script','trgfn_upd_dlt_storico_generic'))
+                        OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rel, trg_name)
+                                                           OR dbops.fn_trigger_exists_by_function(rel,'script','trgfn_upd_dlt_storico_generic')))
+                        THEN
+                          IF p_dry_run THEN
+                            PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','STORICO_DLT','table',rtab.schema_name||'.'||rtab.table_name,'name',trg_name,'fk',fk_col));
+                          ELSE
+                            BEGIN
+                              EXECUTE format($f$
+                                CREATE TRIGGER %I
+                                BEFORE DELETE ON %I.%I
+                                FOR EACH ROW
+                                EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic(%L)
+                              $f$, trg_name, rtab.schema_name, rtab.table_name, fk_col);
+                            EXCEPTION WHEN others THEN
+                              PERFORM dbops.fn_log_error_only(jsonb_build_object('where','STORICO_DLT','table',rtab.schema_name||'.'||rtab.table_name,'error',SQLERRM));
+                            END;
+                          END IF;
+                        END IF;
+
+                      END IF;
+                    END IF;
+
+                  END LOOP; -- regole tabella
+                END LOOP; -- tabelle
+              END;
+              $$;
+
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                COMMENT ON FUNCTION dbops.fn_get_child_fk_col(oid) IS
+                $$md$$
+                 Applica regole per-tabella:
+                 - TX_ID: crea trigger BEFORE INSERT/UPDATE → dbops.trgfn_tx_id_managed()
+                 - AUDIT_UPDATE: crea trigger BEFORE UPDATE → script.trgfn_upd_audit_data_user_generic()
+                 - STORICO: crea trigger BEFORE UPDATE/DELETE → script.trgfn_upd_dlt_storico_generic('<fk>')
+                 Naming: usa template da config (con fn_name_from_template) e verifica esistenza
+                        per nome/funzione (BY_NAME / BY_FUNCTION / BOTH).
+                  $$md$$     ;
+                  
+  - changeSet:
+      id: 20250821-90-fn_get_child_fk_col_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250821-04-fn_get_child_fk_col_v1
+
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP – Automations (PART 2 & 3)
+#  - PART 2: dbops.run_automations_tables()  → TX_ID, AUDIT_UPDATE, STORICO
+#  - PART 3: dbops.run_automations_attivo()  → ATTIVO/soft-delete su FK RESTRICT
+#  - Thin Orchestrator: dbops.run_automations() → delega a PART 2/3
+# Dipendenze: helper con prefisso fn_* già creati (PART 1)
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  # ===========================================================
+  # PART 2 — Regole per-tabella: TX_ID, AUDIT_UPDATE, STORICO
+  # ===========================================================
+  - changeSet:
+      id: 20250821-12-create-fn-run-automations-tables
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ "ANY" ]
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+  # ===========================================================
+  # PART 3 — Regole su FK RESTRICT: ATTIVO / Soft-Delete
+  # ===========================================================
+  - changeSet:
+      id: 20250821-13-create-fn-run-automations-attivo
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ "ANY" ]
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ======================================================================
+              -- PART 3
+              -- dbops.run_automations_attivo(p_exec_mode, p_schemas, p_dry_run)
+              -- Applica regole ATTIVO/soft-delete su FK con ON DELETE RESTRICT:
+              --   - CASO A (padre&figlio con attivo): 
+              --       * padre AFTER UPDATE OF attivo → dbops.trgfn_soft_delete_cascade()
+              --       * figlio CONSTRAINT DEFERRABLE → dbops.trgfn_child_requires_active_parent()
+              --   - CASO B (solo padre con attivo):
+              --       * padre BEFORE UPDATE OF attivo → dbops.trgfn_prevent_deactivate_if_children()
+              -- Usa naming parametrico (3 template JSON: cascade/require/block).
+              -- ======================================================================
+              CREATE OR REPLACE FUNCTION dbops.run_automations_attivo(
+                p_exec_mode text,              -- 'CI'|'SCHEDULED'|'AUTO'
+                p_schemas   text[],            -- lista schemi target
+                p_dry_run   boolean
+              ) RETURNS void
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                rrule record;
+                rfk   record;
+
+                exist_strat text;
+
+                -- template (JSON con 3 nomi)
+                nm_cascade text;
+                nm_require text;
+                nm_block   text;
+
+                -- colonne attivo
+                col_attivo_parent text;
+                col_attivo_child  text;
+
+                parent_has_attivo boolean;
+                child_has_attivo  boolean;
+
+                fk_col text;
+
+                tname_parent_cascade text;
+                tname_child_require  text;
+                tname_parent_block   text;
+              BEGIN
+                FOR rrule IN
+                  SELECT *
+                    FROM dbops.automation_rules_tbl
+                   WHERE enabled
+                     AND rule_type='ATTIVO'
+                     AND (exec_mode='AUTO' OR exec_mode=p_exec_mode)
+                     AND (target_schema IS NULL OR target_schema = ANY(p_schemas))
+                   ORDER BY priority, id
+                LOOP
+                  exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
+
+                  nm_cascade := COALESCE((rrule.name_template::jsonb)->>'cascade','trg_soft_del_{parent}__{child}__{fk}');
+                  nm_require := COALESCE((rrule.name_template::jsonb)->>'require','trg_chk_{child}_parent_{fk}');
+                  nm_block   := COALESCE((rrule.name_template::jsonb)->>'block','trg_block_deact_{parent}__{child}');
+
+                  FOR rfk IN
+                    SELECT
+                      c.oid AS conoid,
+                      np.nspname AS parent_schema,
+                      cp.relname AS parent_table,
+                      nc.nspname AS child_schema,
+                      cc.relname AS child_table,
+                      c.conrelid::regclass AS child_rel,
+                      c.confrelid::regclass AS parent_rel,
+                      c.conname,
+                      c.confdeltype
+                    FROM pg_constraint c
+                    JOIN pg_class cc ON cc.oid = c.conrelid
+                    JOIN pg_namespace nc ON nc.oid = cc.relnamespace
+                    JOIN pg_class cp ON cp.oid = c.confrelid
+                    JOIN pg_namespace np ON np.oid = cp.relnamespace
+                    WHERE c.contype='f'
+                      AND c.confdeltype='r'
+                      AND (rrule.target_schema IS NULL OR nc.nspname = rrule.target_schema)
+                      -- target_table applicata a child OPPURE parent
+                      AND (rrule.target_table IS NULL OR cc.relname LIKE rrule.target_table OR cp.relname LIKE rrule.target_table)
+                      AND NOT EXISTS (
+                        SELECT 1 FROM dbops.automation_fk_exclusions e
+                        WHERE e.parent_schema=np.nspname AND e.parent_table=cp.relname
+                          AND e.child_schema=nc.nspname  AND e.child_table=cc.relname
+                      )
+                  LOOP
+                    col_attivo_parent := dbops.fn_get_override_col(rfk.parent_schema, rfk.parent_table, 'ATTIVO_COL', 'attivo');
+                    col_attivo_child  := dbops.fn_get_override_col(rfk.child_schema,  rfk.child_table,  'ATTIVO_COL', 'attivo');
+
+                    SELECT dbops.fn_col_exists(rfk.parent_schema, rfk.parent_table, col_attivo_parent)
+                         , dbops.fn_col_exists(rfk.child_schema,  rfk.child_table,  col_attivo_child)
+                      INTO parent_has_attivo, child_has_attivo;
+
+                    fk_col := dbops.fn_get_child_fk_col(rfk.conoid);
+
+                    tname_parent_cascade := dbops.fn_name_from_template(nm_cascade, rfk.parent_schema, rfk.parent_table, rfk.parent_table, rfk.child_table, rfk.conname, NULL);
+                    tname_child_require  := dbops.fn_name_from_template(nm_require, rfk.child_schema, rfk.child_table, rfk.parent_table, rfk.child_table, rfk.conname, NULL);
+                    tname_parent_block   := dbops.fn_name_from_template(nm_block, rfk.parent_schema, rfk.parent_table, rfk.parent_table, rfk.child_table, rfk.conname, NULL);
+
+                    -- CASO A: entrambi hanno attivo → cascade + require
+                    IF parent_has_attivo AND child_has_attivo THEN
+                      -- padre: cascade
+                      IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rfk.parent_rel, tname_parent_cascade))
+                      OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rfk.parent_rel,'dbops','trgfn_soft_delete_cascade'))
+                      OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rfk.parent_rel, tname_parent_cascade)
+                                                         OR dbops.fn_trigger_exists_by_function(rfk.parent_rel,'dbops','trgfn_soft_delete_cascade')))
+                      THEN
+                        IF p_dry_run THEN
+                          PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','ATTIVO_cascade','table',rfk.parent_schema||'.'||rfk.parent_table,'name',tname_parent_cascade,'fk',fk_col));
+                        ELSE
+                          BEGIN
+                            EXECUTE format($f$
+                              CREATE TRIGGER %I
+                              AFTER UPDATE OF %I ON %I.%I
+                              FOR EACH ROW
+                              EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade(%L,%L,%L)
+                            $f$, tname_parent_cascade, col_attivo_parent, rfk.parent_schema, rfk.parent_table, rfk.child_schema, rfk.child_table, fk_col);
+                          EXCEPTION WHEN others THEN
+                            PERFORM dbops.fn_log_error_only(jsonb_build_object('where','ATTIVO_cascade','table',rfk.parent_schema||'.'||rfk.parent_table,'error',SQLERRM));
+                          END;
+                        END IF;
+                      END IF;
+
+                      -- figlio: require (constraint, deferrable)
+                      IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rfk.child_rel, tname_child_require))
+                      OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rfk.child_rel,'dbops','trgfn_child_requires_active_parent'))
+                      OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rfk.child_rel, tname_child_require)
+                                                         OR dbops.fn_trigger_exists_by_function(rfk.child_rel,'dbops','trgfn_child_requires_active_parent')))
+                      THEN
+                        IF p_dry_run THEN
+                          PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','ATTIVO_require','table',rfk.child_schema||'.'||rfk.child_table,'name',tname_child_require,'fk',fk_col));
+                        ELSE
+                          BEGIN
+                            EXECUTE format($f$
+                              CREATE CONSTRAINT TRIGGER %I
+                              AFTER INSERT OR UPDATE OF %I, %I ON %I.%I
+                              DEFERRABLE INITIALLY DEFERRED
+                              FOR EACH ROW
+                              EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(%L,%L,%L,%L)
+                            $f$, tname_child_require, col_attivo_child, fk_col, rfk.child_schema, rfk.child_table,
+                                 rfk.parent_schema, rfk.parent_table, col_attivo_parent, fk_col);
+                          EXCEPTION WHEN others THEN
+                            PERFORM dbops.fn_log_error_only(jsonb_build_object('where','ATTIVO_require','table',rfk.child_schema||'.'||rfk.child_table,'error',SQLERRM));
+                          END;
+                        END IF;
+                      END IF;
+
+                    -- CASO B: solo padre ha attivo → blocco
+                    ELSIF parent_has_attivo AND NOT child_has_attivo THEN
+                      IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rfk.parent_rel, tname_parent_block))
+                      OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rfk.parent_rel,'dbops','trgfn_prevent_deactivate_if_children'))
+                      OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rfk.parent_rel, tname_parent_block)
+                                                         OR dbops.fn_trigger_exists_by_function(rfk.parent_rel,'dbops','trgfn_prevent_deactivate_if_children')))
+                      THEN
+                        IF p_dry_run THEN
+                          PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','ATTIVO_block','table',rfk.parent_schema||'.'||rfk.parent_table,'name',tname_parent_block,'fk',fk_col));
+                        ELSE
+                          BEGIN
+                            EXECUTE format($f$
+                              CREATE TRIGGER %I
+                              BEFORE UPDATE OF %I ON %I.%I
+                              FOR EACH ROW
+                              EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children(%L,%L,%L)
+                            $f$, tname_parent_block, col_attivo_parent, rfk.parent_schema, rfk.parent_table, rfk.child_schema, rfk.child_table, fk_col);
+                          EXCEPTION WHEN others THEN
+                            PERFORM dbops.fn_log_error_only(jsonb_build_object('where','ATTIVO_block','table',rfk.parent_schema||'.'||rfk.parent_table,'error',SQLERRM));
+                          END;
+                        END IF;
+                      END IF;
+                    END IF;
+
+                  END LOOP; -- fk
+                END LOOP; -- regole ATTIVO
+              END;
+              $$;
+
+  # ===========================================================
+  # Thin Orchestrator — delega a PART 2/3
+  # ===========================================================
+  - changeSet:
+      id: 20250821-14-update-run-automations-thin
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ "ANY" ]
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ======================================================================
+              -- Thin Orchestrator
+              -- dbops.run_automations(p_exec_mode, p_schemas, p_dry_run, p_parts)
+              --  - Calcola lo scope degli schemi (automation_scope se presente)
+              --  - Richiama in modo modulare:
+              --      * 'TABLE_RULES' → dbops.run_automations_tables(...)
+              --      * 'ATTIVO'      → dbops.run_automations_attivo(...)
+              --  - p_parts default: entrambe
+              -- Backward compatibile: p_parts ha default, quindi le chiamate esistenti non rompono.
+              -- ======================================================================
+              CREATE OR REPLACE FUNCTION dbops.run_automations(
+                p_exec_mode text DEFAULT 'AUTO',           -- 'CI'|'SCHEDULED'|'AUTO'
+                p_schemas   text[] DEFAULT NULL,           -- opzionale: limita schemi
+                p_dry_run   boolean DEFAULT false,
+                p_parts     text[] DEFAULT ARRAY['TABLE_RULES','ATTIVO']
+              ) RETURNS void
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_schemas text[];
+              BEGIN
+                -- Scope schemi
+                IF p_schemas IS NOT NULL THEN
+                  v_schemas := p_schemas;
+                ELSE
+                  IF EXISTS (
+                    SELECT 1
+                      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                     WHERE n.nspname='dbops' AND c.relname='automation_scope' AND c.relkind='r'
+                  ) AND EXISTS (SELECT 1 FROM dbops.automation_scope)
+                  THEN
+                    SELECT array_agg(DISTINCT schema_name) INTO v_schemas
+                      FROM dbops.automation_scope;
+                  ELSE
+                    SELECT array_agg(nspname) INTO v_schemas
+                      FROM pg_namespace
+                     WHERE nspname NOT LIKE 'pg_%'
+                       AND nspname <> 'information_schema'
+                       AND nspname <> 'storico';
+                  END IF;
+                END IF;
+
+                -- Esecuzione modulare
+                IF 'TABLE_RULES' = ANY(p_parts) THEN
+                  PERFORM dbops.run_automations_tables(p_exec_mode, v_schemas, p_dry_run);
+                END IF;
+
+                IF 'ATTIVO' = ANY(p_parts) THEN
+                  PERFORM dbops.run_automations_attivo(p_exec_mode, v_schemas, p_dry_run);
+                END IF;
+              END;
+              $$;

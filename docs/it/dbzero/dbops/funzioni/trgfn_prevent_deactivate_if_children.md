@@ -7,7 +7,7 @@ CREATE FUNCTION trgfn_prevent_deactivate_if_children()
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.trgfn_prevent_deactivate_if_children()
+CREATE OR REPLACE FUNCTION dbops.trgfn_prevent_deactivate_if_children()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

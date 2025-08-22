@@ -1,0 +1,201 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  # Blocca in produzione (accetta solo DB che finisce con _dev o _test, o APP_ENV=test)
+  - preConditions:
+      - onFail: HALT
+      - onError: HALT
+      - dbms:
+          type: postgresql
+      # -- Opzioni precedenti (commentate):
+      # - or:
+      #     - sqlCheck:
+      #         expectedResult: "OK"
+      #         sql: "SELECT CASE WHEN current_database() ~ '(_dev|_test)$' THEN 'OK' ELSE 'NO' END"
+      #     - sqlCheck:
+      #         expectedResult: "OK"
+      #         sql: "SELECT CASE WHEN current_setting('app.env', true)='test' THEN 'OK' ELSE 'NO' END"
+
+      # Consenti solo se il DB si chiama 'Zero' (case-insensitive per sicurezza):
+      - sqlCheck:
+          expectedResult: "OK"
+          sql: "SELECT CASE WHEN lower(current_database())='zero' THEN 'OK' ELSE 'NO' END"
+
+
+  # 9501: playground (schema/table) – solo in test
+  - changeSet:
+      id: 9501-lab-objects
+      author: mctit
+      context: test
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Schema test
+              CREATE SCHEMA IF NOT EXISTS lab;
+              CREATE SCHEMA IF NOT EXISTS storico;
+
+              -- TX_ID: tabella con tx_id UUID (senza default)
+              CREATE TABLE IF NOT EXISTS lab.tx_demo (
+                id     BIGSERIAL PRIMARY KEY,
+                name   text,
+                tx_id  uuid
+              );
+
+              -- AUDIT_UPDATE: tabella con data_update/user_update
+              CREATE TABLE IF NOT EXISTS lab.audit_demo (
+                id           BIGSERIAL PRIMARY KEY,
+                value        text,
+                data_update  timestamp,
+                user_update  text
+              );
+
+              -- STORICO: base + tabella storico.<base>_storico
+              CREATE TABLE IF NOT EXISTS lab.sto_demo (
+                id        BIGSERIAL PRIMARY KEY,
+                descr     text
+              );
+              -- NB: lo storico reale può avere più colonne; per il test basta la FK
+              CREATE TABLE IF NOT EXISTS storico.sto_demo_storico (
+                id            BIGSERIAL PRIMARY KEY,
+                sto_demo_id   bigint NOT NULL REFERENCES lab.sto_demo(id),
+                op            text,
+                ts            timestamp DEFAULT now()
+              );
+
+              -- ATTIVO: caso A (padre+figlio con attivo)
+              CREATE TABLE IF NOT EXISTS lab.p_parent (
+                id      BIGSERIAL PRIMARY KEY,
+                nome    text,
+                attivo  boolean DEFAULT true
+              );
+              CREATE TABLE IF NOT EXISTS lab.c_child (
+                id         BIGSERIAL PRIMARY KEY,
+                parent_id  bigint NOT NULL REFERENCES lab.p_parent(id)
+                             ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
+                info       text,
+                attivo     boolean DEFAULT true
+              );
+
+              -- ATTIVO: caso B (figlio senza attivo) → trigger di blocco sul padre
+              CREATE TABLE IF NOT EXISTS lab.c2_child_noattivo (
+                id         BIGSERIAL PRIMARY KEY,
+                parent_id  bigint NOT NULL REFERENCES lab.p_parent(id)
+                             ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
+                note       text
+              );
+
+
+
+
+  # 9502: regole per lab – solo in test
+  - changeSet:
+      id: 9502-seed-rules
+      author: mctit
+      context: test
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+               -- TX_ID
+                INSERT INTO dbops.automation_rules_tbl (enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority, note)
+                SELECT true,'TX_ID','lab','AUTO','trg_{table}_ins_upd_gen_tx_id','BY_NAME','{}'::jsonb,100,'lab txid'
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM dbops.automation_rules_tbl WHERE rule_type='TX_ID' AND target_schema='lab'
+                );
+
+                -- AUDIT_UPDATE
+                INSERT INTO dbops.automation_rules_tbl (enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority, note)
+                SELECT true,'AUDIT_UPDATE','lab','AUTO','trg_upd_{table}_audit_data_user','BY_NAME',
+                      '{"audit_ts":"data_update","audit_user":"user_update"}'::jsonb,100,'lab audit'
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM dbops.automation_rules_tbl WHERE rule_type='AUDIT_UPDATE' AND target_schema='lab'
+                );
+
+                -- STORICO
+                INSERT INTO dbops.automation_rules_tbl (enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority, note)
+                SELECT true,'STORICO','lab','AUTO','trg_{table}_{op}_storico','BY_NAME','{}'::jsonb,100,'lab storico'
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM dbops.automation_rules_tbl WHERE rule_type='STORICO' AND target_schema='lab'
+                );
+
+                -- ATTIVO / soft-delete (NO ACTION e RESTRICT)
+                INSERT INTO dbops.automation_rules_tbl (enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority, note)
+                SELECT true,'ATTIVO','lab','AUTO',
+                      '{"cascade":"trg_soft_del_{parent}__{child}__{fk}",
+                        "require":"trg_chk_{child}_parent_{fk}",
+                        "block":"trg_block_deact_{parent}__{child}"}',
+                      'BY_NAME',
+                      '{"mode":"auto","cascade_children":true,"require_active_parent":true,"block_if_child_no_attivo":true,
+                        "include_no_action": true}'::jsonb,
+                      100,'lab attivo'
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM dbops.automation_rules_tbl WHERE rule_type='ATTIVO' AND target_schema='lab'
+                );
+
+  # 9503: DRY-RUN (default) – solo in test
+  - changeSet:
+      id: 9503-dryrun-all
+      author: mctit
+      context: test
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT dbops.fn_run_automations('CI', ARRAY['lab'], true,  ARRAY['TX_ID','AUDIT_UPDATE','STORICO','ATTIVO']);
+
+  # 9504: APPLY reale – esegui solo quando richiesto
+  - changeSet:
+      id: 9504-apply-all
+      author: mctit
+      context: test_apply
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT dbops.fn_run_automations('CI', ARRAY['lab'], false, ARRAY['TX_ID','AUDIT_UPDATE','STORICO','ATTIVO']);
+
+  # 9505: VERIFY – esegui con apply
+  - changeSet:
+      id: 9505-verify
+      author: mctit
+      context: test_apply
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- SELECT sui trigger lab.* (report)
+               WITH rels AS (
+                SELECT (quote_ident(n.nspname)||'.'||quote_ident(c.relname))::regclass AS rel,
+                       n.nspname AS schema_name,
+                       c.relname AS table_name
+                FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE c.relkind='r' AND n.nspname='lab'
+              )
+              SELECT r.schema_name, r.table_name, t.tgname AS trigger_name
+              FROM pg_trigger t
+              JOIN rels r ON r.rel=t.tgrelid
+              WHERE NOT t.tgisinternal
+              ORDER BY 1,2,3;
+
+  # 9599: CLEANUP – manuale
+  - changeSet:
+      id: 9599-cleanup
+      author: mctit
+      context: test_cleanup
+      runOnChange: false
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- DROP SCHEMA lab CASCADE;
+              -- DROP TABLE storico.sto_demo_storico;

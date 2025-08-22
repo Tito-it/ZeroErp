@@ -1,0 +1,88 @@
+# ⚙️ Funzione `fn_run_automations_audit_update`
+
+```sql
+CREATE FUNCTION fn_run_automations_audit_update(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION dbops.fn_run_automations_audit_update(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+    DECLARE
+      rtab record;
+      rrule record;
+      rel  regclass;
+      has_du boolean;
+      has_uu boolean;
+      col_ts   text;
+      col_user text;
+      tmpl     text;
+      trg_name text;
+      exist_strat text;
+    BEGIN
+      FOR rtab IN
+        SELECT n.nspname AS schema_name,
+              c.relname AS table_name,
+              (quote_ident(n.nspname)||'.'||quote_ident(c.relname))::regclass AS rel
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE c.relkind='r'
+          AND n.nspname = ANY(p_schemas)
+      LOOP
+        rel := rtab.rel;
+
+        FOR rrule IN
+          SELECT *
+            FROM dbops.automation_rules_tbl r
+          WHERE r.enabled
+            AND r.rule_type='AUDIT_UPDATE'
+            AND r.target_schema = rtab.schema_name
+            AND (r.target_table IS NULL OR rtab.table_name LIKE r.target_table)
+            AND (r.exec_mode='AUTO' OR r.exec_mode=p_exec_mode)
+          ORDER BY r.priority, r.id
+        LOOP
+          exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
+
+          col_ts   := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'AUDIT_TS',   COALESCE(rrule.params->>'audit_ts','data_update'));
+          col_user := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'AUDIT_USER', COALESCE(rrule.params->>'audit_user','user_update'));
+
+          SELECT dbops.fn_col_exists(rtab.schema_name, rtab.table_name, col_ts)
+              , dbops.fn_col_exists(rtab.schema_name, rtab.table_name, col_user)
+            INTO has_du, has_uu;
+
+          IF has_du AND has_uu THEN
+            tmpl     := COALESCE(rrule.name_template,'trg_upd_{table}_audit_data_user');
+            trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL,NULL);
+
+            IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
+            OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel,'script','trgfn_upd_audit_data_user_generic'))
+            OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rel, trg_name)
+                                              OR dbops.fn_trigger_exists_by_function(rel,'script','trgfn_upd_audit_data_user_generic')))
+            THEN
+              IF p_dry_run THEN
+                PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','AUDIT_UPDATE','table',rtab.schema_name||'.'||rtab.table_name,'name',trg_name));
+              ELSE
+                BEGIN
+                  EXECUTE format($f$
+                    CREATE TRIGGER %I
+                    BEFORE UPDATE ON %I.%I
+                    FOR EACH ROW
+                    EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()
+                  $f$, trg_name, rtab.schema_name, rtab.table_name);
+                EXCEPTION WHEN others THEN
+                  PERFORM dbops.fn_log_error_only(jsonb_build_object('where','AUDIT_UPDATE','table',rtab.schema_name||'.'||rtab.table_name,'error',SQLERRM));
+                END;
+              END IF;
+            END IF;
+          END IF;
+        END LOOP;
+      END LOOP;
+    END;
+    $function$
+```
+
+---
+{% include-markdown "signature-core.md" %}
