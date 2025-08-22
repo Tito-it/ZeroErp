@@ -80,7 +80,7 @@ databaseChangeLog:
                 parent_id  bigint NOT NULL REFERENCES lab.p_parent(id)
                              ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
                 note       text
-              );
+              ); 
 
   # 2) Regole di automazione per lo schema lab (idempotenti)
   - changeSet:
