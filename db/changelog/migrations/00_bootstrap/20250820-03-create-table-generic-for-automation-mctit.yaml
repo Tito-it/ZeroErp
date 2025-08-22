@@ -183,10 +183,32 @@ databaseChangeLog:
             tableName: automation_scope
             columnNames: schema_name, table_like
             constraintName: pk_automation_scope
-
+  
   - changeSet:
       id: 20250820-90-create-table-generic-for-automation
       author: mctit
       changes:
         - tagDatabase:
             tag: 20250820-03-create-table-generic-for-automation
+
+  - changeSet:
+      id: 20250820-50-rules-target-schema-all
+      author: mctit
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              /* 1) Dati: porta i NULL a '*all' */
+              UPDATE dbops.automation_rules_tbl
+                 SET target_schema='*all'
+               WHERE target_schema IS NULL;
+
+              /* 2) Default e NOT NULL su target_schema */
+              ALTER TABLE dbops.automation_rules_tbl
+                ALTER COLUMN target_schema SET DEFAULT '*all',
+                ALTER COLUMN target_schema SET NOT NULL;
+
+              COMMENT ON COLUMN dbops.automation_rules_tbl.target_schema
+                IS 'Schema di destinazione o wildcard *all per tutti gli schemi nello scope';

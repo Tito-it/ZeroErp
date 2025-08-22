@@ -4,8 +4,8 @@
 - [audit_log](tabelle/audit_log.md) — * Monitorare e storicizzare ogni chiamata a funzioni, job e API interne. * Fornire dettagli su utente, parametri e performance di esecuzione. * Collegare gli eventi di audit agli errori e ad altri log tramite `tx_id` gestito dal trigger.
 - [automation_fk_exclusions](tabelle/automation_fk_exclusions.md)
 - [automation_overrides_cols](tabelle/automation_overrides_cols.md)
-- [automation_rules_tbl](tabelle/automation_rules_tbl.md)
-- [automation_scope](tabelle/automation_scope.md)
+- [automation_rules_tbl](tabelle/automation_rules_tbl.md) — Configurare **regole di automazione** per generare/applicare trigger e vincoli in modo dichiarativo. Ogni riga descrive **cosa** applicare (*rule_type*), **dove** (*target_schema/target_table*), **quando** (*exec_mode*), **come chiamarlo** (*name_template*), **come verificare l'esistenza** (*existence_strategy*), e **con quali parametri** (*params*).
+- [automation_scope](tabelle/automation_scope.md) — Definire **l’elenco degli schemi** su cui gli orchestratori di automazione devono operare. Funziona come una **allow‑list**: se presente e popolata, limita l’esecuzione alle sole voci elencate.
 - [error_log](tabelle/error_log.md) — * Raccogliere in un unico punto gli errori generati da funzioni, trigger o applicazioni, permettendo analisi e allineamento con il catalogo di messaggi di errore. * Consentire il **collegamento transazionale** tramite `tx_id`, per ricostruire l’intero flusso di operazioni (ad esempio un job batch) incrociando tabelle come `dbops.audit_log`.
 - [fk_index_policy](tabelle/fk_index_policy.md) — La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** per la gestione degli index sulle foreign key, consentendo di abilitare o disabilitare la creazione/uso di indici per specifici vincoli referenziali.
 - [transaction_ids](tabelle/transaction_ids.md) — La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti gli identificativi di transazione (UUID) utilizzati in Zero ERP: ogni volta che viene avviata un’operazione di modifica dati (inserimento, aggiornamento o cancellazione) che coinvolge più tabelle, si genera un nuovo **`tx_id`** in questa tabella e lo si propaga a tutte le righe interessate, garantendo la **tracciabilità** e il **raggruppamento** coerente delle modifiche.
@@ -36,6 +36,8 @@
 - [fn_run_automations_audit_update](funzioni/fn_run_automations_audit_update.md)
 - [fn_run_automations_storico](funzioni/fn_run_automations_storico.md)
 - [fn_run_automations_tx_id](funzioni/fn_run_automations_tx_id.md)
+- [fn_schema_in_scope](funzioni/fn_schema_in_scope.md)
+- [fn_schema_match](funzioni/fn_schema_match.md)
 - [fn_search_column_usage](funzioni/fn_search_column_usage.md) — * Individuare rapidamente tutte le occorrenze di un campo in definizioni SQL presenti nel database. * Facilitare attività di refactoring, pulizia del codice, e verifica di dipendenze tra oggetti del database.
 - [fn_seed_fk_index_policy](funzioni/fn_seed_fk_index_policy.md) — * **Sincronizzazione iniziale**   Aggiunge in `fk_index_policy` tutte le FK con indice esistente rilevate in `vw_fk_con_indice_missing_policy`. * **Automazione**   Evita inserimenti manuali per policy già coperte da indice. * **Flag di origine**   Imposta `generated_by_script = true` per distinguere le righe create automaticamente.
 - [fn_trigger_exists_by_function](funzioni/fn_trigger_exists_by_function.md)

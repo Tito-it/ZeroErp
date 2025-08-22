@@ -54,7 +54,7 @@ BEGIN
     WHERE enabled
       AND rule_type='ATTIVO'
       AND (exec_mode='AUTO' OR exec_mode=p_exec_mode)
-      AND (target_schema IS NULL OR target_schema = ANY(p_schemas))
+      AND dbops.fn_schema_in_scope(rrule.target_schema, v_schemas)
     ORDER BY priority, id
   LOOP
     exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
@@ -81,7 +81,8 @@ BEGIN
       JOIN pg_namespace np ON np.oid = cp.relnamespace
       WHERE c.contype='f'
         AND c.confdeltype IN ('r','a')  -- RESTRICT o NO ACTION
-        AND (rrule.target_schema IS NULL OR nc.nspname = rrule.target_schema)
+        AND ( dbops.fn_schema_match(rrule.target_schema, nc.nspname)    -- child
+            OR dbops.fn_schema_match(rrule.target_schema, np.nspname) )  -- parent
         -- target_table applicata a child OPPURE parent
         AND (rrule.target_table IS NULL OR cc.relname LIKE rrule.target_table OR cp.relname LIKE rrule.target_table)
         AND NOT EXISTS (
