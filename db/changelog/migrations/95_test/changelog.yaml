@@ -8,25 +8,35 @@
 # ------------------------------------------------------------
 
 databaseChangeLog:
-  # Blocca in produzione (accetta solo DB che finisce con _dev o _test, o APP_ENV=test)
-  - preConditions:
-      - onFail: HALT
-      - onError: HALT
-      - dbms:
-          type: postgresql
-      # -- Opzioni precedenti (commentate):
-      # - or:
-      #     - sqlCheck:
-      #         expectedResult: "OK"
-      #         sql: "SELECT CASE WHEN current_database() ~ '(_dev|_test)$' THEN 'OK' ELSE 'NO' END"
-      #     - sqlCheck:
-      #         expectedResult: "OK"
-      #         sql: "SELECT CASE WHEN current_setting('app.env', true)='test' THEN 'OK' ELSE 'NO' END"
 
-      # Consenti solo se il DB si chiama 'Zero' (case-insensitive per sicurezza):
-      - sqlCheck:
-          expectedResult: "OK"
-          sql: "SELECT CASE WHEN lower(current_database())='zero' THEN 'OK' ELSE 'NO' END"
+  # Blocca in produzione (accetta solo DB che finisce con _dev o _test, o APP_ENV=test)
+# 9500: guard – precondition valutata SOLO se lanci con --contexts=test
+  - changeSet:
+      id: 9500-guard-test-db
+      author: mctit
+      context: test
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        
+        - dbms:
+            type: postgresql
+        # -- Opzioni precedenti (commentate):
+        # - or:
+        #     - sqlCheck:
+        #         expectedResult: "OK"
+        #         sql: "SELECT CASE WHEN current_database() ~ '(_dev|_test)$' THEN 'OK' ELSE 'NO' END"
+        #     - sqlCheck:
+        #         expectedResult: "OK"
+        #         sql: "SELECT CASE WHEN current_setting('app.env', true)='test' THEN 'OK' ELSE 'NO' END"
+
+        # Consenti solo se il DB si chiama 'Zero' (case-insensitive per sicurezza):
+        - sqlCheck:
+            expectedResult: "OK"
+            sql: "SELECT CASE WHEN lower(current_database())='zero' THEN 'OK' ELSE 'NO' END"
+      changes:
+        - sql:
+            sql: "SELECT 1"  # no-op; serve solo a racchiudere la precondition
 
 
   # 9501: playground (schema/table) – solo in test
