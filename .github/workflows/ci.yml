@@ -121,7 +121,7 @@ jobs:
             --username=zeroerp \
             --password=secret \
             --changeLogFile=db/changelog/changelog-master.yaml \
-            update --contexts="!test"
+            update --contexts="!test,!test_apply,!test_cleanup"
 
        # attendiamo che pgAgent legga le nuove definizioni e lanci il job di test
       - name: Wait for pgAgent to schedule jobs
