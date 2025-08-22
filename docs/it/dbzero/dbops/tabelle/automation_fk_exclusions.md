@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/automation_fk_exclusions.md" %}
 # 📚 Tabella `automation_fk_exclusions`
 
 ## 🗂️ Campi principali
