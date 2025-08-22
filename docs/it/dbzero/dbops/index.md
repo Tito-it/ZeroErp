@@ -14,6 +14,9 @@
 - [apply_fk_index_policy](funzioni/apply_fk_index_policy.md) — Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:   
 - [fn_admin_merge_comune](funzioni/fn_admin_merge_comune.md)
 - [fn_admin_merge_stradario](funzioni/fn_admin_merge_stradario.md)
+- [fn_audit_begin](funzioni/fn_audit_begin.md)
+- [fn_audit_end](funzioni/fn_audit_end.md)
+- [fn_audit_log_once](funzioni/fn_audit_log_once.md)
 - [fn_col_exists](funzioni/fn_col_exists.md)
 - [fn_create_gestore](funzioni/fn_create_gestore.md)
 - [fn_find_file_usage](funzioni/fn_find_file_usage.md) — * **Analisi d’impatto**     Identificare rapidamente tutte le relazioni di FK verso una tabella, utile per valutare dipendenze e conseguenze di modifiche, cancellazioni o refactoring di schema.

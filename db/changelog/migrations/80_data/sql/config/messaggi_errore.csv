@@ -1,5 +1,4 @@
 codice,lingua,messaggio,causa,soluzione,id
-E_SOGGETTO_NO_CONTATTI,it,"Il soggetto non ha contatti validi: � necessario almeno un contatto con email, telefono, cellulare o PEC.","","",2
 E_INVALID_SNAPSHOT,it,Dati snapshot non validi per la tabella %s.%s,I valori che si stanno storicizzando sono nulli. ,"",22
 CF_NON_VALIDO,it,Codice Fiscale non valido: %s,"","",5
 E_IVA_CONTO_ACQ_ERR,it,Il conto %s IVA acquisti non è un conto di tipo Acquisto.,"","",3
@@ -8,27 +7,39 @@ SEQUENZA_NON_CONFIGURATA,it,Nessuna sequenza configurata per codice_tipo: %s,"",
 E_IVA_CONTO_VEN_ERR,it,Il conto %s IVA vendita non è un conto di tipo Vendita.,"","",4
 STATO_SCONOSCIUTO,it,Stato non riconosciuto: id = %s,"","",9
 E_COD_INT_RUOLO,it,Ruolo con cd_int_ruolo = %s non trovato in config.tipi_ruoli,"","",11
+E_SOGGETTI_RUOLI,it,"Errore soggetti ruoli (id=%s, soggetto_id=%s, ruolo_id=%s), Non è stata assegnata la relazione anagrafice.soggetti_ruoli ","","",10
 E_COLONNA_NON_MODIFICABILE,it,Colonna non modificabile: %s,"","",12
 E_ARGOMENTI_A_COPPIE,it,Passare gli argomenti a coppie,"","",13
 E_DEFAULT_CONTATTO_MISSING,it,Tipo contatto DEFAULT non trovato in config.tipi_contatti. Impossibile creare contatto fallback.,"","",1
 E_STORICIZZAZIONE,it,Errore storicizzazione per la tabella: %s in fase di: %s per il codice: %s valore: %s .  SQL ERROR: %s  ,Operazione non prevista in fase di storicizzazione ,"",21
-E_SOGGETTI_RUOLI,it,"Errore soggetti ruoli (id=%, soggetto_id=%, ruolo_id=%), Non � stata assegnata la relazione anagrafice.soggetti_ruoli ","","",10
-ERRORE_PARAMETRI_TABELLA,it,Parametro:%s  non trovato nella tabella: %s,Il parametro segnalato non � stato caricato nella tabella indicata.,Caricare il parametro nella rispettiva tabella,16
-E_TXID_GENERATION,it,Fallita generazione tx_id: %s,Non � stato possibile assegnare un id transaction,Andare nella tabella dei log per verificare il problema,18
-MESSAGGIO_NON_DEFINITO,it,Definire il messaggio con codice :,Non � presente il messaggio nella tabella config.messaggi_errore.,Definire il messaggio nella tabella config.messaggi_errore,14
-E_TABELLA_OP_NON_CONSENTITA,it,Operazione non consentita sulla tabella %s: %s non permessa,Si sta cercando di effettuare una operazione che non � permessa su questa tabella. ,L'attivit� non � permessa,17
+MESSAGGIO_NON_DEFINITO,it,Definire il messaggio con codice : %s,Non è presente il messaggio nella tabella config.messaggi_errore.,Definire il messaggio nella tabella config.messaggi_errore,14
+ERRORE_PARAMETRI_TABELLA,it,Parametro:%s  non trovato nella tabella: %s,Il parametro segnalato non è stato caricato nella tabella indicata.,Caricare il parametro nella rispettiva tabella,16
 E_SNAPSHOT_CLOSE_ERROR,it,Errore chiusura snapshot: %s (SQLSTATE: %s),I valori dello snapshot in chiusura sono errati,"",23
+E_TXID_GENERATION,it,Fallita generazione tx_id: %s,Non è stato possibile assegnare un id transaction,Andare nella tabella dei log per verificare il problema,18
+E_SOGGETTO_NO_CONTATTI,it,"Il soggetto non ha contatti validi: è necessario almeno un contatto con email, telefono, cellulare o PEC.","","",2
+E_TABELLA_OP_NON_CONSENTITA,it,Operazione non consentita sulla tabella %s: %s non permessa,Si sta cercando di effettuare una operazione che non è permessa su questa tabella. ,L'attività non è permessa,17
+CODICE_NON_MODIFICABILE,it,Impossibile modificare il valore interno della colonna %s,si sta cercando di aggiornare un valore definito per una colonna con utilizzo interno (di sistema) non modificabile,Il valore non può essere aggiornato. ,6
 ERRORE_PARAMETRI,it,Parametri obbligatori : %s,Non sono stati indicati tutti i parametri necessari,Inserire tutti i parametri obbligatori,15
-CODICE_NON_MODIFICABILE,it,Impossibile modificare il valore interno della colonna %s,si sta cercando di aggiornare un valore definito per una colonna con utilizzo interno (di sistema) non modificabile,Il valore non pu� essere aggiornato. ,6
 W_TXID_NOT_REGISTERED,it,Warning - tx_id %s non registrato nella tabella dbops.transaction_ids ,L'id transaction non corrisponde con quello assegnato nella tabella transactions_id ,Andare nella tabella dei log per verificare il problema,19
 E_SQL_READ_TABLE,it,Errore  in lettura tabella: %s.  Sqlerror: %s',Errore sql da verificare,Verificare la stringa sql in errore,20
+E_DRYRUN_CREATE_TRIGGER,it,Errore generazione trigger,,,36
+E_TX_ID,it,Errore generazione trigger per TX_ID. Sqlerrm: %s,,,37
+E_AUDIT_UPDATE,it,Errore generazione trigger per AUDIT_UPDATE. Sqlerrm: %s,,,38
+E_STORICO_UPD,it,Errore generazione trigger per STORICO_UPD. Sqlerrm: %s,,,39
+E_STORICO_DLT,it,Errore generazione trigger per STORICO_DLT. Sqlerrm: %s,,,40
+E_SNAPSHOT_ID_NOT_FOUND,it,Errore ottenimento ID: %s,Non è stato possibile reperire id della transazione snapshot,"",26
+"E_ATTIVO_cascade
+",it,Errore generazione regola ATTIVO_cascade. Sqlerrm: %s,,,41
+"E_ATTIVO_require
+",it,Errore generazione regola ATTIVO_require. Sqlerrm: %s,,,42
+"E_ATTIVO_block
+",it,Errore generazione regola ATTIVO_block. Sqlerrm: %s,,,43
 E_VALORE_MANCANTE,it,Indicare un valore per %s. Dato obbligatorio.,Non è stato assegnato un valore all'informazione richiesta.,Assegnare il valore al dato obbligatorio,32
 E_DATA_FINE_NON_MAGGIORE_DI_INIZIO,it,Il valore della data finale %s è minore uguale alla data iniziale,Data finale inferiore uguale alla data finale,Modificare la data finale con un valore maggiore di iniziale,33
 E_DATA_FINE_INFERIORE_DI_INIZIO,it,Il valore della data finale %s è inferiore  alla data iniziale,Data finale inferiore uguale alla data finale,Modificare la data finale con un valore maggiore o uguale di iniziale,34
 E_ID_FISCALI_DIVERSI,it,Parent account (%) appartiene a id fiscale diverso: % vs %,Gli identificativi fiscali tra account e parents non coincidono,Scegliere un parent account che coincida con l'account,35
 E_SNAPSHOT_INIT_INSERT_ERROR,it,Errore inserimento snapshot iniziale: %s (SQLSTATE: %s),Errore inserimento storico iniziale,"",24
 E_SNAPSHOT_FINAL_INSERT_ERROR,it,Errore inserimento snapshot finale: %s (SQLSTATE: %s),Errore inserimento storico finale,"",25
-E_SNAPSHOT_ID_NOT_FOUND,it,Errore ottenimento ID: %s,Non � stato possibile reperire id della transazione snapshot,"",26
 E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO,it,Informazioni della tabella anagrafiche.dati_societari non collegate ad un soggetto ti tipo Aziendale.,Informazioni della tabella anagrafiche.dati_societari non collegate ad un soggetto ti tipo Aziendale.,Collegare le informazioni ad un soggetto di tipo aziendale,27
 E_QUERY_FAILED_SCHEMA_TABLE,it,Errore nella ricerca dai dati nella tabella %s.%s,Lo schema o la tabella non sono corretti,Immettere i nomi della tabella o schema corretti,29
 E_QUERY_FAILED,it,Errore di esecuzione della query per la tabella: schema %s  tabella %s. SQLSTATE(%s),La query è errata,"",31

@@ -65,7 +65,22 @@ BEGIN
                                            OR dbops.fn_trigger_exists_by_function(rel,'script','trgfn_upd_dlt_storico_generic')))
         THEN
           IF p_dry_run THEN
-            PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','STORICO_UPD','table',rtab.schema_name||'.'||rtab.table_name,'name',trg_name,'fk',fk_col));
+           
+              PERFORM dbops.fn_audit_log_once(
+                        p_function_name => 'dbops.fn_run_automations',
+                        p_status        => 'DRYRUN',
+                        p_rule_type     => 'STORICO_UPD',
+                        p_exec_mode     => p_exec_mode,
+                        p_parts         => ARRAY['STORICO_UPD'],
+                        p_dry_run       => true,
+                        p_params        => jsonb_build_object(
+                                            'table', rtab.schema_name||'.'||rtab.table_name,
+                                            'trigger', trg_name, 'fk',fk_col,
+                                            'action', 'DRYRUN_CREATE_TRIGGER'   -- opzionale
+                                          ),
+                        p_message       => 'Trigger would be created'
+                      );
+                               
           ELSE
             BEGIN
               EXECUTE format($f$
@@ -75,7 +90,17 @@ BEGIN
                 EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic(%L)
               $f$, trg_name, rtab.schema_name, rtab.table_name, fk_col);
             EXCEPTION WHEN others THEN
-              PERFORM dbops.fn_log_error_only(jsonb_build_object('where','STORICO_UPD','table',rtab.schema_name||'.'||rtab.table_name,'error',SQLERRM));
+                      PERFORM script.fn_log(
+                        'dbops',
+                        'run_automations',
+                        'E_STORICO_UPD',
+                        jsonb_build_object(
+                          'where','STORICO_UPD',
+                          'table', rtab.schema_name||'.'||rtab.table_name,
+                          'error', SQLERRM
+                        ) , NULL::uuid, SQLERRM
+                      ); 
+            
             END;
           END IF;
         END IF;
@@ -90,7 +115,22 @@ BEGIN
                                            OR dbops.fn_trigger_exists_by_function(rel,'script','trgfn_upd_dlt_storico_generic')))
         THEN
           IF p_dry_run THEN
-            PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','STORICO_DLT','table',rtab.schema_name||'.'||rtab.table_name,'name',trg_name,'fk',fk_col));
+           
+             PERFORM dbops.fn_audit_log_once(
+                        p_function_name => 'dbops.fn_run_automations',
+                        p_status        => 'DRYRUN',
+                        p_rule_type     => 'STORICO_DLT',
+                        p_exec_mode     => p_exec_mode,
+                        p_parts         => ARRAY['STORICO_DLT'],
+                        p_dry_run       => true,
+                        p_params        => jsonb_build_object(
+                                            'table', rtab.schema_name||'.'||rtab.table_name,
+                                            'trigger', trg_name, 'fk',fk_col,
+                                            'action', 'DRYRUN_CREATE_TRIGGER'   -- opzionale
+                                          ),
+                        p_message       => 'Trigger would be created'
+                      );   
+         
           ELSE
             BEGIN
               EXECUTE format($f$
@@ -100,7 +140,18 @@ BEGIN
                 EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic(%L)
               $f$, trg_name, rtab.schema_name, rtab.table_name, fk_col);
             EXCEPTION WHEN others THEN
-              PERFORM dbops.fn_log_error_only(jsonb_build_object('where','STORICO_DLT','table',rtab.schema_name||'.'||rtab.table_name,'error',SQLERRM));
+          
+               PERFORM script.fn_log(
+                        'dbops',
+                        'run_automations',
+                        'E_STORICO_DLT',
+                        jsonb_build_object(
+                          'where','STORICO_DLT',
+                          'table', rtab.schema_name||'.'||rtab.table_name,
+                          'error', SQLERRM
+                        ) , NULL::uuid, SQLERRM
+                      ); 
+            
             END;
           END IF;
         END IF;

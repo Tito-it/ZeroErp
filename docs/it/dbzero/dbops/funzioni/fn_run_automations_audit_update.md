@@ -63,7 +63,22 @@ AS $function$
                                               OR dbops.fn_trigger_exists_by_function(rel,'script','trgfn_upd_audit_data_user_generic')))
             THEN
               IF p_dry_run THEN
-                PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','AUDIT_UPDATE','table',rtab.schema_name||'.'||rtab.table_name,'name',trg_name));
+                
+                  PERFORM dbops.fn_audit_log_once(
+                  p_function_name => 'dbops.fn_run_automations',
+                  p_status        => 'DRYRUN',
+                  p_rule_type     => 'AUDIT_UPDATE',
+                  p_exec_mode     => p_exec_mode,
+                  p_parts         => ARRAY['AUDIT_UPDATE'],
+                  p_dry_run       => true,
+                  p_params        => jsonb_build_object(
+                                      'table', rtab.schema_name||'.'||rtab.table_name,
+                                      'trigger', trg_name,
+                                      'action', 'DRYRUN_CREATE_TRIGGER'   -- opzionale
+                                    ),
+                  p_message       => 'Trigger would be created'
+                );
+
               ELSE
                 BEGIN
                   EXECUTE format($f$
@@ -73,7 +88,17 @@ AS $function$
                     EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()
                   $f$, trg_name, rtab.schema_name, rtab.table_name);
                 EXCEPTION WHEN others THEN
-                  PERFORM dbops.fn_log_error_only(jsonb_build_object('where','AUDIT_UPDATE','table',rtab.schema_name||'.'||rtab.table_name,'error',SQLERRM));
+                 
+                    PERFORM script.fn_log(
+                      'dbops',
+                      'run_automations',
+                      'E_AUDIT_UPDATE',
+                      jsonb_build_object(
+                        'where','AUDIT_UPDATE',
+                        'table', rtab.schema_name||'.'||rtab.table_name,
+                        'error', SQLERRM
+                      ) , NULL::uuid, SQLERRM
+                    );
                 END;
               END IF;
             END IF;

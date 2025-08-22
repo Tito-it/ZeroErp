@@ -11,7 +11,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | sto_demo_storico_sto_demo_id_fkey | sto_demo_id |
 | PRIMARY KEY | sto_demo_storico_pkey | id |
 
 ## 📑 Indici

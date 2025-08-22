@@ -111,8 +111,23 @@ BEGIN
         OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rfk.parent_rel, tname_parent_cascade)
                                           OR dbops.fn_trigger_exists_by_function(rfk.parent_rel,'dbops','trgfn_soft_delete_cascade')))
         THEN
-          IF p_dry_run THEN
-            PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','ATTIVO_cascade','table',rfk.parent_schema||'.'||rfk.parent_table,'name',tname_parent_cascade,'fk',fk_col));
+          IF p_dry_run THEN   
+            PERFORM dbops.fn_audit_log_once(
+                    p_function_name => 'dbops.fn_run_automations',
+                    p_status        => 'DRYRUN',
+                    p_rule_type     => 'ATTIVO_cascade',
+                    p_exec_mode     => p_exec_mode,
+                    p_parts         => ARRAY['ATTIVO_cascade'],
+                    p_dry_run       => true,
+                    p_params        => jsonb_build_object(
+                                        'action','DRYRUN_CREATE_TRIGGER',
+                                       'rule','ATTIVO_cascade',
+                                        'table',rfk.parent_schema||'.'||rfk.parent_table,
+                                        'name',tname_parent_cascade,'fk',fk_col
+                                      ),
+                    p_message       => 'TRIGGER would be created'
+                  );   
+          
           ELSE
             BEGIN
               EXECUTE format($f$
@@ -122,7 +137,19 @@ BEGIN
                 EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade(%L,%L,%L)
               $f$, tname_parent_cascade, col_attivo_parent, rfk.parent_schema, rfk.parent_table, rfk.child_schema, rfk.child_table, fk_col);
             EXCEPTION WHEN others THEN
-              PERFORM dbops.fn_log_error_only(jsonb_build_object('where','ATTIVO_cascade','table',rfk.parent_schema||'.'||rfk.parent_table,'error',SQLERRM));
+                
+               PERFORM script.fn_log(
+                    'dbops',
+                    'run_automations',
+                    'E_ATTIVO_cascade',
+                    jsonb_build_object(
+                      'where','ATTIVO_cascade',
+                      'table', rtab.schema_name||'.'||rtab.table_name,
+                      'table',rfk.parent_schema||'.'||rfk.parent_table,
+                      'error', SQLERRM
+                    ) , NULL::uuid, SQLERRM
+                  ); 
+            
             END;
           END IF;
         END IF;
@@ -134,7 +161,22 @@ BEGIN
                                           OR dbops.fn_trigger_exists_by_function(rfk.child_rel,'dbops','trgfn_child_requires_active_parent')))
         THEN
           IF p_dry_run THEN
-            PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','ATTIVO_require','table',rfk.child_schema||'.'||rfk.child_table,'name',tname_child_require,'fk',fk_col));
+                
+            PERFORM dbops.fn_audit_log_once(
+                    p_function_name => 'dbops.fn_run_automations',
+                    p_status        => 'DRYRUN',
+                    p_rule_type     => 'ATTIVO_require',
+                    p_exec_mode     => p_exec_mode,
+                    p_parts         => ARRAY['ATTIVO_require'],
+                    p_dry_run       => true,
+                    p_params        => jsonb_build_object(
+                                        'action','DRYRUN_CREATE_TRIGGER',
+                                       'rule','ATTIVO_require',
+                                        'table',rfk.parent_schema||'.'||rfk.parent_table,
+                                        'name',tname_parent_cascade,'fk',fk_col
+                                      ),
+                    p_message       => 'TRIGGER would be created'
+                  ); 
           ELSE
             BEGIN
               EXECUTE format($f$
@@ -146,7 +188,19 @@ BEGIN
               $f$, tname_child_require, col_attivo_child, fk_col, rfk.child_schema, rfk.child_table,
                   rfk.parent_schema, rfk.parent_table, col_attivo_parent, fk_col);
             EXCEPTION WHEN others THEN
-              PERFORM dbops.fn_log_error_only(jsonb_build_object('where','ATTIVO_require','table',rfk.child_schema||'.'||rfk.child_table,'error',SQLERRM));
+             
+                 PERFORM script.fn_log(
+                    'dbops',
+                    'run_automations',
+                    'E_ATTIVO_require',
+                    jsonb_build_object(
+                      'where','ATTIVO_require',
+                      'table',rfk.parent_schema||'.'||rfk.parent_table,
+                       'error', SQLERRM
+                    ) , NULL::uuid, SQLERRM
+                  ); 
+
+            
             END;
           END IF;
         END IF;
@@ -159,7 +213,22 @@ BEGIN
                                           OR dbops.fn_trigger_exists_by_function(rfk.parent_rel,'dbops','trgfn_prevent_deactivate_if_children')))
         THEN
           IF p_dry_run THEN
-            PERFORM dbops.fn_log_error_only(jsonb_build_object('action','DRYRUN_CREATE_TRIGGER','rule','ATTIVO_block','table',rfk.parent_schema||'.'||rfk.parent_table,'name',tname_parent_block,'fk',fk_col));
+            
+             PERFORM dbops.fn_audit_log_once(
+                    p_function_name => 'dbops.fn_run_automations',
+                    p_status        => 'DRYRUN',
+                    p_rule_type     => 'ATTIVO_block',
+                    p_exec_mode     => p_exec_mode,
+                    p_parts         => ARRAY['ATTIVO_block'],
+                    p_dry_run       => true,
+                    p_params        => jsonb_build_object(
+                                        'action','DRYRUN_CREATE_TRIGGER',
+                                       'rule','ATTIVO_block',
+                                        'table',rfk.parent_schema||'.'||rfk.parent_table,
+                                        'name',tname_parent_cascade,'fk',fk_col
+                                      ),
+                    p_message       => 'TRIGGER would be created'
+                  ); 
           ELSE
             BEGIN
               EXECUTE format($f$
@@ -169,7 +238,18 @@ BEGIN
                 EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children(%L,%L,%L)
               $f$, tname_parent_block, col_attivo_parent, rfk.parent_schema, rfk.parent_table, rfk.child_schema, rfk.child_table, fk_col);
             EXCEPTION WHEN others THEN
-              PERFORM dbops.fn_log_error_only(jsonb_build_object('where','ATTIVO_block','table',rfk.parent_schema||'.'||rfk.parent_table,'error',SQLERRM));
+                  
+                PERFORM script.fn_log(
+                    'dbops',
+                    'run_automations',
+                    'E_ATTIVO_block',
+                    jsonb_build_object(
+                      'where','ATTIVO_block',
+                      'table',rfk.parent_schema||'.'||rfk.parent_table,
+                      'error', SQLERRM
+                    ) , NULL::uuid, SQLERRM
+                  ); 
+            
             END;
           END IF;
         END IF;
