@@ -2,8 +2,8 @@
 
 ## 📚 Tabelle
 - [audit_log](tabelle/audit_log.md) — * Monitorare e storicizzare ogni chiamata a funzioni, job e API interne. * Fornire dettagli su utente, parametri e performance di esecuzione. * Collegare gli eventi di audit agli errori e ad altri log tramite `tx_id` gestito dal trigger.
-- [automation_fk_exclusions](tabelle/automation_fk_exclusions.md)
-- [automation_overrides_cols](tabelle/automation_overrides_cols.md)
+- [automation_fk_exclusions](tabelle/automation_fk_exclusions.md) — `dbops.automation_fk_exclusions` elenca le **coppie Padre/Figlio** (schema/tabella) da **escludere** dalla regola automatica **ATTIVO** (soft-delete):
+- [automation_overrides_cols](tabelle/automation_overrides_cols.md) — Centralizzare le **eccezioni di naming delle colonne** usate dagli automatismi (audit, soft‑delete, storico, ecc.). Quando il tuo schema usa nomi diversi dagli standard (es. `attivo` → `is_enabled`, `data_update` → `modified_at`), qui definisci l’override **per tabella**.
 - [automation_rules_tbl](tabelle/automation_rules_tbl.md) — Configurare **regole di automazione** per generare/applicare trigger e vincoli in modo dichiarativo. Ogni riga descrive **cosa** applicare (*rule_type*), **dove** (*target_schema/target_table*), **quando** (*exec_mode*), **come chiamarlo** (*name_template*), **come verificare l'esistenza** (*existence_strategy*), e **con quali parametri** (*params*).
 - [automation_scope](tabelle/automation_scope.md) — Definire **l’elenco degli schemi** su cui gli orchestratori di automazione devono operare. Funziona come una **allow‑list**: se presente e popolata, limita l’esecuzione alle sole voci elencate.
 - [error_log](tabelle/error_log.md) — * Raccogliere in un unico punto gli errori generati da funzioni, trigger o applicazioni, permettendo analisi e allineamento con il catalogo di messaggi di errore. * Consentire il **collegamento transazionale** tramite `tx_id`, per ricostruire l’intero flusso di operazioni (ad esempio un job batch) incrociando tabelle come `dbops.audit_log`.

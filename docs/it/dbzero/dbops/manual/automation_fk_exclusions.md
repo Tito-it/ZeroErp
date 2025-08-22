@@ -5,7 +5,7 @@
 > * `dbops.run_automations` (orchestratore)
 > * Regola **ATTIVO / soft-delete** (funzioni: `trgfn_soft_delete_cascade`, `trgfn_child_requires_active_parent`, `trgfn_prevent_deactivate_if_children`)
 
-### 🎯 Scopo
+### 🎯 Scopo Principale
 
 `dbops.automation_fk_exclusions` elenca le **coppie Padre/Figlio** (schema/tabella) da **escludere** dalla regola automatica **ATTIVO** (soft-delete):
 
