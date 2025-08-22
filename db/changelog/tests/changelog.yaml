@@ -167,7 +167,7 @@ databaseChangeLog:
   - changeSet:
       id: 9504-apply-all
       author: mctit
-      context: test_apply
+      context: test
       changes:
         - sql:
             splitStatements: false
@@ -178,7 +178,7 @@ databaseChangeLog:
   - changeSet:
       id: 9505-verify
       author: mctit
-      context: test_apply
+      context: test
       changes:
         - sql:
             splitStatements: false
@@ -201,7 +201,7 @@ databaseChangeLog:
   - changeSet:
       id: 9599-cleanup
       author: mctit
-      context: test_cleanup
+      context: test
       runOnChange: false
       changes:
         - sql:
