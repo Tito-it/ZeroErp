@@ -5,7 +5,8 @@
 > Approfondimenti funzioni:   
 >
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
->
+> * [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only)     
+
 > Estensioni PostgreSQL:   
 >
 > * GUC `dblink.log_connection`
@@ -21,26 +22,6 @@ La funzione **`script.fn_ensure_logconn()`** garantisce l’apertura di una conn
 * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_and_raise_error` per eseguire INSERT in un contesto transazionale separato.
 
 ---
-
-### 🔍 Dettagli di Implementazione
-
-```plpgsql
-CREATE OR REPLACE FUNCTION script.fn_ensure_logconn()
-  RETURNS void
-  LANGUAGE plpgsql
-AS $$
-BEGIN
-  -- Prova ad aprire la connessione dblink 'logconn' usando la GUC
-  PERFORM dblink_connect_u(
-    'logconn',
-    current_setting('dblink.log_connection', true)
-  );
-EXCEPTION WHEN duplicate_object THEN
-  -- Se la connessione 'logconn' è già definita, ignora l’eccezione
-  NULL;
-END;
-$$;
-```
 
 * **`dblink_connect_u(connection_name, conninfo)`**: apre una connessione con nome `connection_name` sulla stringa `conninfo` (in formato URI o DSN).
 * **GUC `dblink.log_connection`**: parametro di configurazione (custom) contenente la stringa di connessione.

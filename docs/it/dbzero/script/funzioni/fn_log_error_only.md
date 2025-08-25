@@ -11,66 +11,129 @@ CREATE FUNCTION fn_log_error_only(p_area text, p_function_name text, p_error_cod
 CREATE OR REPLACE FUNCTION script.fn_log_error_only(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
  RETURNS void
  LANGUAGE plpgsql
+ SET search_path TO 'public', 'pg_temp'
 AS $function$
-  DECLARE
-      v_id     BIGINT;
-      v_msg    TEXT;
-      v_detail TEXT;
-      v_hint   TEXT;
-      v_lang   TEXT := coalesce(current_setting('myapp.user_language', TRUE), 'it');
-      v_ctx    JSONB := p_context;
-      v_sql    TEXT;
-  BEGIN
-      -- -------------------------------------------------
-      -- Input
-      -- p_area: area di applicazione (esempio: 'database')
-      -- p_function_name: nome della funzione chiamante
-      -- p_error_code: codice dell'errore da loggare
-      -- p_context: contesto dell'errore (JSONB)
-      -- p_tx_id: ID della transazione corrente (se NULL, viene generato automaticamente)
-      -- p_valori: valori variabili da inserire nel messaggio di errore
-      -- Output
-      -- Logga l'errore nel database senza sollevare eccezione
-      -- -------------------------------------------------
-      -- opzionale: spegni logging via dblink in certe sessioni (es. CI)
-      IF coalesce(current_setting('myapp.log_with_dblink', true), 'on') <> 'on' THEN
-        RETURN;
-      END IF;
+ DECLARE
+   v_id       bigint;
+   v_msg      text;
+   v_detail   text;
+   v_hint     text;
+   v_lang     text := coalesce(current_setting('myapp.user_language', true), 'it');
+   v_ctx      jsonb := p_context;
+   v_sql      text;
 
-      IF p_tx_id IS NULL THEN
-          p_tx_id := dbops.fn_get_or_create_session_tx_id();
-      END IF;
+   v_dsn            text;
+   v_has_dblink     boolean;
+   v_has_logconn    boolean;
+   v_vals           text[] := coalesce(p_valori, ARRAY[]::text[]);  -- ✅ sempre array
+ BEGIN
+   IF coalesce(current_setting('myapp.log_with_dblink', true), 'on') <> 'on' THEN
+     RETURN;
+   END IF;
 
-      SELECT id, messaggio, causa, soluzione
-        INTO v_id, v_msg, v_detail, v_hint
-        FROM config.messaggi_errore
-      WHERE codice = p_error_code AND lingua = v_lang;
+   IF p_tx_id IS NULL THEN
+     p_tx_id := dbops.fn_get_or_create_session_tx_id();
+   END IF;
 
-      IF NOT FOUND THEN
-        SELECT messaggio||' '||p_error_code, causa, soluzione
-          INTO v_msg, v_detail, v_hint
-          FROM config.messaggi_errore
-          WHERE codice='MESSAGGIO_NON_DEFINITO' AND lingua=v_lang;
-        IF v_msg IS NULL THEN
-            v_msg := '[MESSAGGIO NON DEFINITO: '||p_error_code||']';
-            v_detail := 'Catalogo mancante='||quote_literal(p_error_code);
-            v_hint   := 'Aggiungere record in config.messaggi_errore';
-            v_id     := NULL;
-        END IF;
-      END IF;
+   -- ✅ prendi il primo match “buono” se il catalogo ha duplicati
+   SELECT id, messaggio, causa, soluzione
+     INTO v_id, v_msg, v_detail, v_hint
+   FROM config.messaggi_errore
+   WHERE codice = p_error_code AND lingua = v_lang
+   LIMIT 1;
 
-      IF array_length(p_valori,1) IS NOT NULL THEN
-          v_msg := format(v_msg, VARIADIC p_valori);
-      END IF;
+   IF NOT FOUND THEN
+     SELECT messaggio||' '||p_error_code, causa, soluzione
+       INTO v_msg, v_detail, v_hint
+     FROM config.messaggi_errore
+     WHERE codice='MESSAGGIO_NON_DEFINITO' AND lingua=v_lang
+     LIMIT 1;
 
-      v_sql := format(
-        'INSERT INTO dbops.error_log(occurred_at, area, function_name, messaggio_errore_id, context, tx_id)
-        VALUES (now(), %L, %L, %s, %L::jsonb, %L::uuid)',
-        p_area, p_function_name, coalesce(v_id::text,'NULL'), v_ctx::text, p_tx_id::text
-      );
-      PERFORM dblink_exec('logconn'::text, v_sql, true);
-  END;
-  $function$
+     IF v_msg IS NULL THEN
+       v_msg   := '[MESSAGGIO NON DEFINITO: '||p_error_code||']';
+       v_detail := 'Catalogo mancante='||quote_literal(p_error_code);
+       v_hint   := 'Aggiungere record in config.messaggi_errore';
+       v_id     := NULL;
+     END IF;
+   END IF;
+
+   -- ✅ format “safe”: se non ci sono placeholder, non scoppia
+   BEGIN
+     IF cardinality(v_vals) > 0 THEN
+       v_msg := format(v_msg, VARIADIC v_vals);
+     END IF;
+   EXCEPTION WHEN others THEN
+     -- se il template non combacia coi placeholder, tieni il messaggio “grezzo”
+     NULL;
+   END;
+
+   v_sql := format(
+     'INSERT INTO dbops.error_log(occurred_at, area, function_name, messaggio_errore_id, context, tx_id)
+     VALUES (now(), %L, %L, %s, %L::jsonb, %L::uuid)',
+     p_area, p_function_name, coalesce(v_id::text,'NULL'), v_ctx::text, p_tx_id::text
+   );
+
+   v_dsn := coalesce(
+             nullif(coalesce(current_setting('myapp.logconn', true), ''), ''),
+             nullif(coalesce(current_setting('myapp.dblink_log_connection', true), ''), '')
+           );
+
+   SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname='dblink') INTO v_has_dblink;
+
+   IF v_has_dblink AND v_dsn IS NOT NULL AND v_dsn <> '' THEN
+     BEGIN
+       PERFORM dblink_exec(v_dsn, v_sql, true);
+       RETURN;
+     EXCEPTION WHEN OTHERS THEN
+       BEGIN
+         EXECUTE v_sql;
+       EXCEPTION WHEN OTHERS THEN
+         NULL;
+       END;
+       RETURN;
+     END;
+   END IF;
+
+   IF v_has_dblink THEN
+     BEGIN
+       PERFORM script.fn_ensure_logconn();
+     EXCEPTION WHEN OTHERS THEN
+       NULL;
+     END;
+
+     -- ✅ controlla “logconn” con una SRF incapsulata
+     BEGIN
+       WITH conns AS (
+         SELECT unnest(dblink_get_connections()) AS name
+       )
+       SELECT EXISTS (SELECT 1 FROM conns WHERE name='logconn')
+       INTO v_has_logconn;
+     EXCEPTION WHEN OTHERS THEN
+       v_has_logconn := false;
+     END;
+
+     IF v_has_logconn THEN
+       BEGIN
+         PERFORM dblink_exec('logconn', v_sql, true);
+         RETURN;
+       EXCEPTION WHEN OTHERS THEN
+         BEGIN
+           EXECUTE v_sql;
+         EXCEPTION WHEN OTHERS THEN
+           NULL;
+         END;
+         RETURN;
+       END;
+     END IF;
+   END IF;
+
+   BEGIN
+     EXECUTE v_sql;
+   EXCEPTION WHEN OTHERS THEN
+     NULL;
+   END;
+ END;
+ $function$
 ```
 
 ---

@@ -19,6 +19,7 @@
 - [fn_audit_log_once](funzioni/fn_audit_log_once.md)
 - [fn_col_exists](funzioni/fn_col_exists.md)
 - [fn_create_gestore](funzioni/fn_create_gestore.md)
+- [fn_ensure_storico_table](funzioni/fn_ensure_storico_table.md)
 - [fn_find_file_usage](funzioni/fn_find_file_usage.md) — * **Analisi d’impatto**     Identificare rapidamente tutte le relazioni di FK verso una tabella, utile per valutare dipendenze e conseguenze di modifiche, cancellazioni o refactoring di schema.
 - [fn_find_function_usage](funzioni/fn_find_function_usage.md) — * **Discovery delle dipendenze**: individuare tutte le occorrenze di una funzione all’interno del codice PL/pgSQL, dei trigger e degli event trigger. * **Supporto al refactoring**: identificare facilmente i punti di utilizzo prima di rinominare o modificare una funzione.
 - [fn_foreign_keys_info](funzioni/fn_foreign_keys_info.md) — `dbops.fn_foreign_keys_info(tabella)` restituisce una vista unificata di **tutte le relazioni tramite chiavi esterne** ( foreign key) che coinvolgono la tabella specificata, distinguendo tra:
@@ -35,6 +36,7 @@
 - [fn_run_automations_attivo](funzioni/fn_run_automations_attivo.md)
 - [fn_run_automations_audit_update](funzioni/fn_run_automations_audit_update.md)
 - [fn_run_automations_storico](funzioni/fn_run_automations_storico.md)
+- [fn_run_automations_storico_provision](funzioni/fn_run_automations_storico_provision.md)
 - [fn_run_automations_tx_id](funzioni/fn_run_automations_tx_id.md)
 - [fn_schema_in_scope](funzioni/fn_schema_in_scope.md)
 - [fn_schema_match](funzioni/fn_schema_match.md)

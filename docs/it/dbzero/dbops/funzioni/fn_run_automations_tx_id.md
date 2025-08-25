@@ -85,7 +85,7 @@ BEGIN
                 EXECUTE FUNCTION dbops.trgfn_tx_id_managed()
               $f$, trg_name, rtab.schema_name, rtab.table_name);
             EXCEPTION WHEN others THEN
-                PERFORM script.fn_log(
+                PERFORM script.fn_log_and_raise_error(
                   'dbops',
                   'run_automations',
                   'E_TX_ID',

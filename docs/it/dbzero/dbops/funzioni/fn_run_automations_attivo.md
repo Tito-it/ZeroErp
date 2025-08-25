@@ -139,7 +139,7 @@ BEGIN
               $f$, tname_parent_cascade, col_attivo_parent, rfk.parent_schema, rfk.parent_table, rfk.child_schema, rfk.child_table, fk_col);
             EXCEPTION WHEN others THEN
                 
-               PERFORM script.fn_log(
+               PERFORM script.fn_log_and_raise_error(
                     'dbops',
                     'run_automations',
                     'E_ATTIVO_cascade',
@@ -190,7 +190,7 @@ BEGIN
                   rfk.parent_schema, rfk.parent_table, col_attivo_parent, fk_col);
             EXCEPTION WHEN others THEN
              
-                 PERFORM script.fn_log(
+                 PERFORM script.fn_log_and_raise_error(
                     'dbops',
                     'run_automations',
                     'E_ATTIVO_require',
@@ -240,7 +240,7 @@ BEGIN
               $f$, tname_parent_block, col_attivo_parent, rfk.parent_schema, rfk.parent_table, rfk.child_schema, rfk.child_table, fk_col);
             EXCEPTION WHEN others THEN
                   
-                PERFORM script.fn_log(
+                PERFORM script.fn_log_and_raise_error(
                     'dbops',
                     'run_automations',
                     'E_ATTIVO_block',

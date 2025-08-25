@@ -90,7 +90,7 @@ BEGIN
                 EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic(%L)
               $f$, trg_name, rtab.schema_name, rtab.table_name, fk_col);
             EXCEPTION WHEN others THEN
-                      PERFORM script.fn_log(
+                      PERFORM script.fn_log_and_raise_error(
                         'dbops',
                         'run_automations',
                         'E_STORICO_UPD',
@@ -141,7 +141,7 @@ BEGIN
               $f$, trg_name, rtab.schema_name, rtab.table_name, fk_col);
             EXCEPTION WHEN others THEN
           
-               PERFORM script.fn_log(
+               PERFORM script.fn_log_and_raise_error(
                         'dbops',
                         'run_automations',
                         'E_STORICO_DLT',
