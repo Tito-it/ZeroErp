@@ -1,0 +1,44 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+      
+databaseChangeLog:
+  - changeSet:
+      id: 20250822-11-fn_schema_match_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY 
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_schema_match(
+                  p_rule_target text,    -- valore in automation_rules_tbl.target_schema
+                  p_schema      text     -- schema candidato (es. rtab.schema_name, nc.nspname)
+                ) RETURNS boolean
+                LANGUAGE plpgsql IMMUTABLE AS $$
+                BEGIN
+                /*  Helper: match su singolo schema */
+                  IF p_rule_target IS NULL THEN
+                    RETURN false; -- con NOT NULL non dovrebbe capitare; manteniamo difensivo
+                  END IF;
+                  IF lower(p_rule_target)='*all' THEN
+                    RETURN true;
+                  END IF;
+                  RETURN lower(p_rule_target)=lower(p_schema);
+                END;
+                $$;
+
+  - changeSet:
+      id: 20250822-90-fn_schema_match_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250822-11-fn_schema_match_v1

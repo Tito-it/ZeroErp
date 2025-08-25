@@ -1,10 +1,10 @@
 id,descrizione,descrizione_breve,data_insert,user_insert,data_update,user_update
-1,Signora,Sig.ra,2025-04-12 10:02:57.856068+02,postgres,2025-08-18 00:27:36.934566+02,titodb
-2,Signore,Sign.re,2025-04-12 10:02:57.856068+02,postgres,2025-08-18 00:27:36.934566+02,titodb
-3,Dottore,Dott.,2025-04-12 10:02:57.856068+02,postgres,2025-08-18 00:27:36.934566+02,titodb
-4,Ingegnere,Ing.,2025-04-12 10:02:57.856068+02,postgres,2025-08-18 00:27:36.934566+02,titodb
-5,Presidente,Presidente,2025-04-12 10:02:57.856068+02,postgres,2025-08-18 00:27:36.934566+02,titodb
-6,Professore,Prof.,2025-04-12 10:02:57.856068+02,postgres,2025-08-18 00:27:36.934566+02,titodb
-7,Professoressa,Prof.ssa,2025-04-12 10:02:57.856068+02,postgres,2025-08-18 00:27:36.934566+02,titodb
-8,Dottoressa,Dott.ssa,2025-04-12 10:02:57.856068+02,postgres,2025-08-18 00:27:36.934566+02,titodb
-9,Spettabile,Spett.le,2025-04-12 10:02:57.856068+02,postgres,2025-08-18 00:27:36.934566+02,titodb
+1,Signora,Sig.ra,2025-04-12 10:02:57.856068+02,postgres,2025-08-22 19:16:16.241542+02,titodb
+2,Signore,Sign.re,2025-04-12 10:02:57.856068+02,postgres,2025-08-22 19:16:16.241542+02,titodb
+3,Dottore,Dott.,2025-04-12 10:02:57.856068+02,postgres,2025-08-22 19:16:16.241542+02,titodb
+4,Ingegnere,Ing.,2025-04-12 10:02:57.856068+02,postgres,2025-08-22 19:16:16.241542+02,titodb
+5,Presidente,Presidente,2025-04-12 10:02:57.856068+02,postgres,2025-08-22 19:16:16.241542+02,titodb
+6,Professore,Prof.,2025-04-12 10:02:57.856068+02,postgres,2025-08-22 19:16:16.241542+02,titodb
+7,Professoressa,Prof.ssa,2025-04-12 10:02:57.856068+02,postgres,2025-08-22 19:16:16.241542+02,titodb
+8,Dottoressa,Dott.ssa,2025-04-12 10:02:57.856068+02,postgres,2025-08-22 19:16:16.241542+02,titodb
+9,Spettabile,Spett.le,2025-04-12 10:02:57.856068+02,postgres,2025-08-22 19:16:16.241542+02,titodb

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/automation_rules_tbl.md" %}
 # 📚 Tabella `automation_rules_tbl`
 
 ## 🗂️ Campi principali
@@ -6,7 +7,7 @@
 | id | bigint | NO |  |
 | enabled | boolean | NO | true |
 | rule_type | text | NO |  |
-| target_schema | text | NO |  |
+| target_schema | text | NO | '*all'::text |
 | target_table | text | YES |  |
 | exec_mode | text | NO | 'AUTO'::text |
 | name_template | text | YES |  |

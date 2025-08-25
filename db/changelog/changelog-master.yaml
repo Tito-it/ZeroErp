@@ -24,3 +24,8 @@ databaseChangeLog:
       path: migrations
       relativeToChangelogFile: true
       errorIfMissingOrEmpty: false  
+
+   # tests (caricato sempre, ma i changeSet hanno context test/test_apply/test_cleanup)
+  - include:
+      file: tests/changelog.yaml
+      relativeToChangelogFile: true

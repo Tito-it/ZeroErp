@@ -26,7 +26,7 @@ databaseChangeLog:
                 -- 2) FIGLIO: richiede padre attivo quando il figlio è attivo
                 --    (DEFERRABLE: controllo a fine transazione)
                 --------------------------------------------------------------------
-                CREATE OR REPLACE FUNCTION script.trgfn_child_requires_active_parent()
+                CREATE OR REPLACE FUNCTION dbops.trgfn_child_requires_active_parent()
                 RETURNS trigger
                 LANGUAGE plpgsql
                 AS $$
@@ -146,7 +146,7 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
             sql: |
-                COMMENT ON FUNCTION script.trgfn_child_requires_active_parent() IS
+                COMMENT ON FUNCTION dbops.trgfn_child_requires_active_parent() IS
                   'Impedisce NEW.attivo=true se il padre (id=FK) non è attivo. DEFERRABLE.';
 
 

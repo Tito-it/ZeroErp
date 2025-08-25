@@ -1,6 +1,6 @@
 id,codice,iso_code,iso_num_code,descrizione,simbolo,user_insert,user_update,data_insert,data_update
-1,EUR       ,EUR,978,Euro,€ ,admin,titodb,2025-05-12 18:05:50.880575+02,2025-08-18 00:27:51.40897+02
-2,USD       ,USD,840,Dollaro Statunitense,$ ,admin,titodb,2025-05-12 18:05:50.880575+02,2025-08-18 00:27:51.40897+02
-3,GBP       ,GBP,826,Sterlina Britannica,£ ,admin,titodb,2025-05-12 18:05:50.880575+02,2025-08-18 00:27:51.40897+02
-4,CHF       ,CHF,756,Franco Svizzero,CHF ,admin,titodb,2025-05-12 18:05:50.880575+02,2025-08-18 00:27:51.40897+02
-5,JPY       ,JPY,392,Yen Giapponese,¥ ,admin,titodb,2025-05-12 18:05:50.880575+02,2025-08-18 00:27:51.40897+02
+1,EUR       ,EUR,978,Euro,€ ,admin,titodb,2025-05-12 18:05:50.880575+02,2025-08-22 19:16:31.180198+02
+2,USD       ,USD,840,Dollaro Statunitense,$ ,admin,titodb,2025-05-12 18:05:50.880575+02,2025-08-22 19:16:31.180198+02
+3,GBP       ,GBP,826,Sterlina Britannica,£ ,admin,titodb,2025-05-12 18:05:50.880575+02,2025-08-22 19:16:31.180198+02
+4,CHF       ,CHF,756,Franco Svizzero,CHF ,admin,titodb,2025-05-12 18:05:50.880575+02,2025-08-22 19:16:31.180198+02
+5,JPY       ,JPY,392,Yen Giapponese,¥ ,admin,titodb,2025-05-12 18:05:50.880575+02,2025-08-22 19:16:31.180198+02

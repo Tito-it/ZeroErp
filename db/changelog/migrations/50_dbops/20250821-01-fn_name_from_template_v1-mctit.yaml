@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+      
+databaseChangeLog:
+  - changeSet:
+      id: 20250821-01-fn_name_from_template_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+           Questa funzione ha lo scopo di generare in modo dinamico un nome di oggetto 
+           (trigger, funzione, ecc.)a partire da un template parametrico
+      
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: | 
+                CREATE OR REPLACE FUNCTION dbops.fn_name_from_template(
+                    p_template text,
+                    p_schema   text,
+                    p_table    text,
+                    p_parent   text DEFAULT NULL,
+                    p_child    text DEFAULT NULL,
+                    p_fk       text DEFAULT NULL,
+                    p_op       text DEFAULT NULL
+                  ) RETURNS text
+                  LANGUAGE plpgsql
+                  AS $$
+                  DECLARE
+                    s text;
+                  BEGIN
+                    -- ----------------------------------------------
+                    --  p_template → stringa modello, può contenere placeholder come 
+                    --  {schema}, {table}, {parent}, {child}, {fk}, {op}.
+                    --       es. {schema}.{table} → {schema}.{table}
+                    --   p_schema → nome dello schema di destinazione.
+                    --   p_table → nome della tabella di destinazione.
+                    --   p_parent → nome della tabella padre (per FK).
+                    --   p_child → nome della tabella figlia (per FK).
+                    --   p_fk → nome della foreign key.
+                    --    p_op → operazione (INS, UPD, DEL, ecc.).
+                    ----------------------------------------------
+    
+                    s := p_template;
+                    s := replace(s, '{schema}', COALESCE(p_schema,''));
+                    s := replace(s, '{table}',  COALESCE(p_table,''));
+                    s := replace(s, '{parent}', COALESCE(p_parent,''));
+                    s := replace(s, '{child}',  COALESCE(p_child,''));
+                    s := replace(s, '{fk}',     COALESCE(p_fk,''));
+                    s := replace(s, '{op}',     COALESCE(p_op,''));
+
+                    IF length(s) <= 63 THEN
+                      RETURN s;
+                    ELSE
+                      -- hash compatto e non deprecato
+                      RETURN left(s, 63-1-6) || '_' || substr(to_hex(hashtextextended(s, 0)), 1, 6);
+                    END IF;
+                  END;
+                  $$;
+                  
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                COMMENT ON FUNCTION dbops.fn_name_from_template(text,text,text,text,text,text,text) IS
+                    'Questa funzione ha lo scopo di generare in modo dinamico un nome di oggetto (trigger, funzione, ecc.) 
+                    a partire da un template parametrico, garantendo che:
+                    1)I segnaposto nel template vengano sostituiti con i valori reali di schema, tabella, parent, child, 
+                    chiave esterna o operazione.
+                    2)   Il nome finale non superi il limite di PostgreSQL (63 caratteri): in caso di overflow
+                     viene troncato e completato con un digest hash per assicurare l’univocità.';
+
+
+  - changeSet:
+      id: 20250821-90-fn_name_from_template_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250821-01-fn_name_from_template_v1

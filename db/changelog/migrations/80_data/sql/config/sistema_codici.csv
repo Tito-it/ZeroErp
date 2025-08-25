@@ -1,4 +1,4 @@
 id,codice_tipo,descrizione,prefisso,separatore,lunghezza_numero,usa_sequenza,nome_sequenza,attivo,data_insert,user_insert,data_update,user_update,tx_id
-3,istanze_utilities,Codice istanza (ex fornitura) automatico,IFO,"",6,t,anagrafiche.istanze_utilities_codice_seq,t,2025-04-22 16:38:12.173131+02,postgres,2025-08-18 00:27:51.516682+02,titodb,4890e69e-bddf-4fb6-9fc4-288158dfaf8e
-1,soggetto,Codice soggetto automatico,SGT,"",6,t,anagrafiche.soggetti_codice_seq,t,2025-04-12 09:47:40.919091+02,postgres,2025-08-18 00:27:51.516682+02,titodb,4890e69e-bddf-4fb6-9fc4-288158dfaf8e
-2,billing_account,Codice cliente(account) automatico,BAC,"",6,t,anagrafiche.billing_account_codice_seq,t,2025-04-22 16:25:06.668578+02,postgres,2025-08-18 00:27:51.516682+02,titodb,4890e69e-bddf-4fb6-9fc4-288158dfaf8e
+3,istanze_utilities,Codice istanza (ex fornitura) automatico,IFO,"",6,t,anagrafiche.istanze_utilities_codice_seq,t,2025-04-22 16:38:12.173131+02,postgres,2025-08-22 19:16:31.280185+02,titodb,46069a14-2a56-475a-94ec-75541789d8c4
+1,soggetto,Codice soggetto automatico,SGT,"",6,t,anagrafiche.soggetti_codice_seq,t,2025-04-12 09:47:40.919091+02,postgres,2025-08-22 19:16:31.280185+02,titodb,46069a14-2a56-475a-94ec-75541789d8c4
+2,billing_account,Codice cliente(account) automatico,BAC,"",6,t,anagrafiche.billing_account_codice_seq,t,2025-04-22 16:25:06.668578+02,postgres,2025-08-22 19:16:31.280185+02,titodb,46069a14-2a56-475a-94ec-75541789d8c4

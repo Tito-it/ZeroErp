@@ -25,7 +25,7 @@ databaseChangeLog:
                 --------------------------------------------------------------------
                   -- 3) PADRE: se il figlio NON ha "attivo", blocca la disattivazione
                   --------------------------------------------------------------------
-                  CREATE OR REPLACE FUNCTION script.trgfn_prevent_deactivate_if_children()
+                  CREATE OR REPLACE FUNCTION dbops.trgfn_prevent_deactivate_if_children()
                   RETURNS trigger
                   LANGUAGE plpgsql
                   AS $$
@@ -54,7 +54,7 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
             sql: |
-                COMMENT ON FUNCTION script.trgfn_prevent_deactivate_if_children() IS
+                COMMENT ON FUNCTION dbops.trgfn_prevent_deactivate_if_children() IS
                     'Blocca la disattivazione del padre se esistono figli ma il figlio non ha "attivo".';
 
 

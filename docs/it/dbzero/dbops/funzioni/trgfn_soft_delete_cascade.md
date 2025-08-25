@@ -7,7 +7,7 @@ CREATE FUNCTION trgfn_soft_delete_cascade()
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.trgfn_soft_delete_cascade()
+CREATE OR REPLACE FUNCTION dbops.trgfn_soft_delete_cascade()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

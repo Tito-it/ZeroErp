@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+      
+databaseChangeLog:
+  - changeSet:
+      id: 20250821-09-create-fn-run-automations_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: | 
+                    
+                    CREATE OR REPLACE FUNCTION dbops.fn_run_automations(
+                      p_exec_mode text DEFAULT 'AUTO',
+                      p_schemas   text[] DEFAULT NULL,
+                      p_dry_run   boolean DEFAULT false,
+                      p_parts     text[] DEFAULT ARRAY['TX_ID','AUDIT_UPDATE','STORICO','ATTIVO']
+                    ) RETURNS void
+                    LANGUAGE plpgsql
+                    AS $$
+                    DECLARE
+                      v_schemas text[];
+                      needs_table_rules boolean;
+                    BEGIN
+                      -- Orchestratore: calcola scope e chiama le parti richieste.
+                      -- p_parts: 'TX_ID','AUDIT_UPDATE','STORICO','ATTIVO' (e 'TABLE_RULES' per compatibilità) 
+                    
+                      -- Scope schemi
+                      IF p_schemas IS NOT NULL THEN
+                        v_schemas := p_schemas;
+                      ELSE
+                        IF EXISTS (
+                          SELECT 1
+                            FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                          WHERE n.nspname='dbops' AND c.relname='automation_scope' AND c.relkind='r'
+                        ) AND EXISTS (SELECT 1 FROM dbops.automation_scope)
+                        THEN
+                          SELECT array_agg(DISTINCT schema_name) INTO v_schemas
+                            FROM dbops.automation_scope;
+                        ELSE
+                          SELECT array_agg(nspname) INTO v_schemas
+                            FROM pg_namespace
+                          WHERE n.nspname NOT LIKE 'pg_%'
+                            AND n.nspname <> 'information_schema'
+                            AND n.nspname <> 'storico';
+                        END IF;
+                      END IF;
+
+                      -- Compatibilità: se p_parts contiene 'TABLE_RULES', abilita i tre moduli tabellari
+                      needs_table_rules := ('TABLE_RULES' = ANY(p_parts));
+
+                      IF needs_table_rules OR 'TX_ID' = ANY(p_parts) THEN
+                        PERFORM dbops.fn_run_automations_tx_id(p_exec_mode, v_schemas, p_dry_run);
+                      END IF;
+
+                      IF needs_table_rules OR 'AUDIT_UPDATE' = ANY(p_parts) THEN
+                        PERFORM dbops.fn_run_automations_audit_update(p_exec_mode, v_schemas, p_dry_run);
+                      END IF;
+
+                      IF needs_table_rules OR 'STORICO' = ANY(p_parts) THEN
+                        PERFORM dbops.fn_run_automations_storico(p_exec_mode, v_schemas, p_dry_run);
+                      END IF;
+
+                      IF 'ATTIVO' = ANY(p_parts) THEN
+                        PERFORM dbops.fn_run_automations_attivo(p_exec_mode, v_schemas, p_dry_run);
+                      END IF;
+                    END;
+                    $$;
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                COMMENT ON FUNCTION dbops.fn_run_automations(text, text[], boolean, text[] ) IS
+                  $$
+                    Orchestratore: calcola scope e chiama le parti richieste.
+                    p_parts: 'TX_ID','AUDIT_UPDATE','STORICO','ATTIVO' (e 'TABLE_RULES' per compatibilità) 
+                  $$;
+                  
+  - changeSet:
+      id: 20250821-90-create-fn-run-automations_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250821-09-create-fn-run-automations_v1

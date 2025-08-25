@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+      
+databaseChangeLog:
+  - changeSet:
+      id: 20250822-12-fn_schema_in_scope_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY 
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |                            
+                 CREATE OR REPLACE FUNCTION dbops.fn_schema_in_scope(
+                    p_rule_target text,    -- automation_rules_tbl.target_schema
+                    p_schemas     text[]   -- elenco schemi (scope calcolato)
+                  ) RETURNS boolean
+                  LANGUAGE plpgsql IMMUTABLE AS $$
+                  DECLARE s text;
+                  BEGIN
+                    /*  Helper: match rispetto allo scope (array di schemi) */
+                    IF p_rule_target IS NULL THEN
+                      RETURN false;
+                    END IF;
+                    IF lower(p_rule_target)='*all' THEN
+                      RETURN true;
+                    END IF;
+                    IF p_schemas IS NULL OR array_length(p_schemas,1) IS NULL THEN
+                      RETURN false;
+                    END IF;
+                    FOREACH s IN ARRAY p_schemas LOOP
+                      IF lower(p_rule_target)=lower(s) THEN
+                        RETURN true;
+                      END IF;
+                    END LOOP;
+                    RETURN false;
+                  END;
+                  $$;
+
+              
+  - changeSet:
+      id: 20250822-90-fn_schema_in_scope_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250822-12-fn_schema_in_scope_v1

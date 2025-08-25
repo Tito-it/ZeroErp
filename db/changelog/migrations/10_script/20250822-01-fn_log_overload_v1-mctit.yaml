@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250822-01-fn_log_overload_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            # 1) Forma base: 4 argomenti
+          sql: |
+            CREATE OR REPLACE FUNCTION script.fn_log(
+              p_area          text,
+              p_function_name text,
+              p_error_code    text,
+              p_context       jsonb
+            ) RETURNS void
+            LANGUAGE sql
+            AS $fn$
+               -- 1) Forma base: 4 argomenti
+              SELECT script.fn_log_error_only($1,$2,$3,$4,NULL::uuid,VARIADIC ARRAY[]::text[] )
+            $fn$;
+        - sql:
+            splitStatements: false
+            stripComments: false
+          sql: |
+            COMMENT ON FUNCTION script.fn_log(text, text, text, jsonb)
+              IS 'Façade esplicito: area, funzione, codice, contesto. Delega a fn_log_error_only (tx_id = NULL).';
+       
+  - changeSet:
+      id: 20250822-02-fn_log_overload_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+      # 2) Con tx_id: 5 argomenti
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_log(
+                p_area          text,
+                p_function_name text,
+                p_error_code    text,
+                p_context       jsonb,
+                p_tx_id         uuid
+              ) RETURNS void
+              LANGUAGE sql
+              AS $$
+              -- Con tx_id: 5 argomenti , 6 nulla
+                SELECT script.fn_log_error_only($1,$2,$3,$4,$5,VARIADIC ARRAY[]::text[])
+              $$;
+        - sql:
+            splitStatements: false
+            stripComments: false
+          sql: |
+              COMMENT ON FUNCTION script.fn_log(text, text, text, jsonb, uuid)
+                IS 'Façade con tx_id esplicito. Delega a fn_log_error_only.';
+
+  - changeSet:
+      id: 20250822-03-fn_log_overload_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+     
+         # 3) Completa con VARIADIC: 6 argomenti
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.log(
+                p_area          text,
+                p_function_name text,
+                p_error_code    text,
+                p_context       jsonb,
+                p_tx_id         uuid,
+                VARIADIC p_valori text[]
+              ) RETURNS void
+              LANGUAGE sql
+              AS $$
+                  --  Completa con VARIADIC: 6 argomenti
+                SELECT script.fn_log_error_only($1,$2,$3,$4,$5, VARIADIC $6)
+              $$;
+        - sql:
+              splitStatements: false
+              stripComments: false
+              sql: |
+                COMMENT ON FUNCTION script.log(text, text, text, jsonb, uuid, text[])
+                  IS 'Façade completo: supporta VARIADIC valori per format().';
+
+             
+  - changeSet:
+      id: 20250822-90-fn_log_overload_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250822-01-fn_log_overload_v1

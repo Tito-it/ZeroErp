@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+      
+databaseChangeLog:
+  - changeSet:
+      id: 20250821-05-create-fn-run-automations-txid_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: | 
+                    -- Crea i trigger TX_ID dove esiste tx_id UUID
+                    CREATE OR REPLACE FUNCTION dbops.fn_run_automations_tx_id(
+                      p_exec_mode text,      -- 'CI'|'SCHEDULED'|'AUTO'
+                      p_schemas   text[],    -- lista schemi target
+                      p_dry_run   boolean
+                    ) RETURNS void
+                    LANGUAGE plpgsql
+                    AS $$
+                    DECLARE
+                      rtab record;
+                      rrule record;
+                      rel  regclass;
+                      has_txid boolean;
+                      tmpl     text;
+                      trg_name text;
+                      exist_strat text;
+                    BEGIN
+                      FOR rtab IN
+                        SELECT n.nspname AS schema_name,
+                              c.relname AS table_name,
+                              (quote_ident(n.nspname)||'.'||quote_ident(c.relname))::regclass AS rel
+                        FROM pg_class c
+                        JOIN pg_namespace n ON n.oid=c.relnamespace
+                        WHERE c.relkind='r'
+                          AND n.nspname = ANY(p_schemas)
+                      LOOP
+                        rel := rtab.rel;
+
+                        FOR rrule IN
+                          SELECT *
+                            FROM dbops.automation_rules_tbl r
+                          WHERE r.enabled
+                            AND r.rule_type='TX_ID'
+                            AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
+                            AND (r.target_table IS NULL OR rtab.table_name LIKE r.target_table)
+                            AND (r.exec_mode='AUTO' OR r.exec_mode=p_exec_mode)
+                          ORDER BY r.priority, r.id
+                        LOOP
+                          exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
+
+                          SELECT EXISTS(
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_schema=rtab.schema_name
+                              AND table_name =rtab.table_name
+                              AND column_name='tx_id' AND udt_name='uuid'
+                          ) INTO has_txid;
+
+                          IF has_txid THEN
+                            tmpl     := COALESCE(rrule.name_template,'trg_{table}_ins_upd_gen_tx_id');
+                            trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL,NULL);
+
+                            IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
+                            OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel,'dbops','trgfn_tx_id_managed'))
+                            OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rel, trg_name)
+                                                              OR dbops.fn_trigger_exists_by_function(rel,'dbops','trgfn_tx_id_managed')))
+                            THEN
+                              IF p_dry_run THEN
+
+                                PERFORM dbops.fn_audit_log_once(
+                                      p_function_name => 'dbops.fn_run_automations',
+                                      p_status        => 'DRYRUN',
+                                      p_rule_type     => 'TX_ID',
+                                      p_exec_mode     => p_exec_mode,
+                                      p_parts         => ARRAY['TX_ID'],
+                                      p_dry_run       => true,
+                                      p_params        => jsonb_build_object(
+                                                          'table', rtab.schema_name||'.'||rtab.table_name,
+                                                          'trigger', trg_name,
+                                                          'action', 'DRYRUN_CREATE_TRIGGER'   -- opzionale
+                                                        ),
+                                      p_message       => 'Trigger would be created'
+                                    );
+
+                              ELSE
+                                BEGIN
+                                  EXECUTE format($f$
+                                    CREATE TRIGGER %I
+                                    BEFORE INSERT OR UPDATE ON %I.%I
+                                    FOR EACH ROW
+                                    EXECUTE FUNCTION dbops.trgfn_tx_id_managed()
+                                  $f$, trg_name, rtab.schema_name, rtab.table_name);
+                                EXCEPTION WHEN others THEN
+                                    PERFORM script.fn_log_and_raise_error(
+                                      'dbops',
+                                      'run_automations',
+                                      'E_TX_ID',
+                                      jsonb_build_object(
+                                        'where','TX_ID',
+                                        'table', rtab.schema_name||'.'||rtab.table_name,
+                                        'error', SQLERRM
+                                      ) , NULL::uuid, SQLERRM
+                                    );
+
+
+                                END;
+                              END IF;
+                            END IF;
+                          END IF;
+                        END LOOP;
+                      END LOOP;
+                    END;
+                    $$;
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                COMMENT ON FUNCTION dbops.fn_run_automations_tx_id(text, text[], boolean ) IS 
+                   'Crea i trigger TX_ID dove esiste tx_id UUID.';
+                  
+                  
+  - changeSet:
+      id: 20250821-90-create-fn-run-automations-txid_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250821-05-create-fn-run-automations-txid_v1
