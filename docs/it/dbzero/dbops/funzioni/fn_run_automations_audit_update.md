@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION dbops.fn_run_automations_audit_update(p_exec_mode tex
  LANGUAGE plpgsql
 AS $function$
     DECLARE
+      v_schemas text[];
       rtab record;
       rrule record;
       rel  regclass;
@@ -23,6 +24,7 @@ AS $function$
       trg_name text;
       exist_strat text;
     BEGIN
+      v_schemas := dbops.fn_resolve_scope(p_schemas);
       FOR rtab IN
         SELECT n.nspname AS schema_name,
               c.relname AS table_name,
@@ -30,7 +32,8 @@ AS $function$
         FROM pg_class c
         JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE c.relkind='r'
-          AND n.nspname = ANY(p_schemas)
+          AND n.nspname = ANY(v_schemas)
+          AND dbops.fn_table_in_scope(n.nspname, c.relname)
       LOOP
         rel := rtab.rel;
 

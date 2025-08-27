@@ -1,6 +1,8 @@
 # Schema `storico`
 
 ## 📚 Tabelle
+- [articoli](tabelle/articoli.md)
+- [articoli_componenti](tabelle/articoli_componenti.md)
 - [clienti](tabelle/clienti.md)
 - [comune_trasformazioni](tabelle/comune_trasformazioni.md)
 - [comuni](tabelle/comuni.md) — * **Audit Trail**: Conservare una traccia immutabile di ogni modifica e cancellazione applicata a `config.comuni`. * **Versioning dei record**: Permettere la ricostruzione dello stato storico di ogni comune in un dato momento. * **Query storiche**: Supportare interrogazioni basate su intervalli temporali grazie ai campi `valid_from` e `valid_to`. * **Classificazione operazioni**: Utilizzare `tipo_operazione_id` e `change_type` per distinguere INSERT iniziale, UPDATE e DELETE. ---

@@ -32,6 +32,7 @@
 - [fn_name_from_template](funzioni/fn_name_from_template.md)
 - [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md)
 - [fn_populate_fk_index_policy](funzioni/fn_populate_fk_index_policy.md) — * **Coerenza iniziale**   Garantire che ogni FK rilevata nella view senza indice abbia la propria entry di policy, evitando omissioni. * **Popolamento “a freddo”**   Tutti i nuovi record vengono creati con `consentito = false`, lasciando in carico all’operatore la decisione di abilitare o meno l’indice. * **Automazione**   Riduce il lavoro manuale di inserimento di policy per nuove FKs.
+- [fn_resolve_scope](funzioni/fn_resolve_scope.md)
 - [fn_run_automations](funzioni/fn_run_automations.md)
 - [fn_run_automations_attivo](funzioni/fn_run_automations_attivo.md)
 - [fn_run_automations_audit_update](funzioni/fn_run_automations_audit_update.md)
@@ -42,6 +43,7 @@
 - [fn_schema_match](funzioni/fn_schema_match.md)
 - [fn_search_column_usage](funzioni/fn_search_column_usage.md) — * Individuare rapidamente tutte le occorrenze di un campo in definizioni SQL presenti nel database. * Facilitare attività di refactoring, pulizia del codice, e verifica di dipendenze tra oggetti del database.
 - [fn_seed_fk_index_policy](funzioni/fn_seed_fk_index_policy.md) — * **Sincronizzazione iniziale**   Aggiunge in `fk_index_policy` tutte le FK con indice esistente rilevate in `vw_fk_con_indice_missing_policy`. * **Automazione**   Evita inserimenti manuali per policy già coperte da indice. * **Flag di origine**   Imposta `generated_by_script = true` per distinguere le righe create automaticamente.
+- [fn_table_in_scope](funzioni/fn_table_in_scope.md)
 - [fn_trigger_exists_by_function](funzioni/fn_trigger_exists_by_function.md)
 - [fn_trigger_exists_by_name](funzioni/fn_trigger_exists_by_name.md)
 - [proc_apply_storicizza_defaults](funzioni/proc_apply_storicizza_defaults.md) — La procedura `dbops.apply_storicizza_defaults()` ha il compito di **impostare il valore di default `true` per la colonna `storicizza`** in tutte le tabelle elencate nella tabella di configurazione `config.storico_set_storicizza`. È utilizzata per **garantire che le nuove righe inserite siano automaticamente storicizzate**, ove previsto.

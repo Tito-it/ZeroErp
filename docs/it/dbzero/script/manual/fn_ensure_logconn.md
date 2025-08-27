@@ -19,11 +19,11 @@ La funzione **`script.fn_ensure_logconn()`** garantisce l’apertura di una conn
 ### 🎯 Scopo Principale
 
 * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple.
-* **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_and_raise_error` per eseguire INSERT in un contesto transazionale separato.
+* **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
 
 ---
 
-* **`dblink_connect_u(connection_name, conninfo)`**: apre una connessione con nome `connection_name` sulla stringa `conninfo` (in formato URI o DSN).
+* **`dblink_connect(connection_name, conninfo)`**: apre una connessione con nome `connection_name` sulla stringa `conninfo` (in formato URI o DSN).
 * **GUC `dblink.log_connection`**: parametro di configurazione (custom) contenente la stringa di connessione.
 * **Eccezione `duplicate_object`**: intercettata per evitare errori se `logconn` è già presente.
 
@@ -52,6 +52,15 @@ La funzione **`script.fn_ensure_logconn()`** garantisce l’apertura di una conn
    ```sql
    SELECT script.fn_ensure_logconn();
    ```
+
+---
+
+## Allegati / Best practice
+
+* **Never-throw**: il logging non deve mai interrompere il flusso applicativo.
+* **Isolamento**: usare canale `dblink` separato (`logconn`).
+* **Context first**: includere nel log contesto utile (`tx_id`, chi/che-cosa/parametri).
+* **Sicurezza**: ruoli dedicati ai log, `SECURITY DEFINER` solo quando serve, `search_path` esplicito.
 
 ---
 

@@ -1,0 +1,25 @@
+# ⚙️ Procedura `proc_automations_storico_job`
+
+```sql
+CREATE PROCEDURE proc_automations_storico_job()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE PROCEDURE maintenance.proc_automations_storico_job()
+ LANGUAGE plpgsql
+AS $procedure$
+BEGIN
+  PERFORM maintenance.fn_run_and_log(
+    p_jobname  := 'automations_storico',
+    p_stepname := 'run_automations_storico',
+    p_sql      := 'SELECT dbops.fn_run_automations_storico(''SCHEDULED'', NULL, false);',
+    p_lock_key := hashtext('automations_storico')
+  );
+END;
+$procedure$
+```
+
+---
+{% include-markdown "signature-core.md" %}

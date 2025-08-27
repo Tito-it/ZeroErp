@@ -1,0 +1,31 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250827-02-storico-drop-legacy-fk
+      author: mctit
+      #context: test_apply   # o rimuovi il context se vuoi sempre applicarlo
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE r record;
+              BEGIN
+                FOR r IN
+                  SELECT conrelid::regclass AS rel,
+                         conname           AS fk_name
+                  FROM pg_constraint
+                  JOIN pg_namespace n ON n.oid = pg_constraint.connamespace
+                  WHERE contype='f' AND n.nspname='storico'
+                LOOP
+                  EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', r.rel, r.fk_name);
+                END LOOP;
+              END;
+              $$;

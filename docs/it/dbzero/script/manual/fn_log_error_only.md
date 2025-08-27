@@ -2,7 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> * [script.fn\_log\_and\_raise\_error](/dbzero/script/funzioni/fn_log_and_raise_error) *(log + abort)*
+> Approfondimento funzioni:
+>
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) *(log + abort)*
+> * [script.fn_ensure_logconn](/dbzero/script/funzioni/.fn_ensure_logconn)
+
+Ultimo aggiornamento: **26/08/2025**
+
+
 
 La funzione **`script.fn_log_error_only`** registra **solo** un messaggio in `dbops.error_log` **senza** interrompere l’esecuzione. È ideale per:
 
@@ -18,30 +25,91 @@ La funzione **`script.fn_log_error_only`** registra **solo** un messaggio in `db
 
 ---
 
-### 🔍 Parametri di Input
+### Comportamento (contratto)
 
-| Nome                | Tipo     | Descrizione                                                                                  |
-| ------------------- | -------- | -------------------------------------------------------------------------------------------- |
-| `p_area`            | `TEXT`   | Area di applicazione (es. `'database'`, `'service'`, ecc.)                                   |
-| `p_function_name`   | `TEXT`   | Nome della funzione o del contesto chiamante                                                 |
-| `p_error_code`      | `TEXT`   | Codice di riferimento del messaggio in `config.messaggi_errore` (es. `'E_STORICO_MANCANTE'`) |
-| `p_context`         | `JSONB`  | Oggetto JSON con informazioni di contesto (es. tabella, record, parametri)                   |
-| `p_tx_id`           | `UUID`   | ID della transazione corrente (se `NULL`, viene generato automaticamente)                    |
-| `VARIADIC p_valori` | `TEXT[]` | Valori da sostituire nei placeholder del messaggio (uso `format`)                            |
+* **Never-throw:** eventuali errori del canale di log vengono **assorbiti** (il chiamante non viene interrotto).
+* **Connessione separata:** il log avviene tramite **`dblink` dedicato** (`logconn`) per **isolare** il logging dalla transazione corrente.
+* **Contesto ricco:** salva area, funzione, codice messaggio, `tx_id` e `context` JSONB.
+* **Resilienza:**
+
+  * se il codice non è in `config.messaggi_errore`, usa fallback (`'MESSAGGIO_NON_DEFINITO'`).
+  * se `tx_id` non è passato, viene **recuperato/creato** (es. `dbops.fn_get_or_create_session_tx_id()`).
+* **Idempotenza logica:** ogni chiamata genera una riga (nessun upsert necessario).
+
+---
+
+### Firma consigliata
+
+```sql
+-- Schema suggerito: script.*  
+-- SECURITY DEFINER opzionale se serve accedere a risorse non concesse ai caller
+CREATE OR REPLACE FUNCTION script.fn_log_error_only(
+    p_area          text,
+    p_function_name text,
+    p_error_code    text,
+    p_context       jsonb DEFAULT '{}'::jsonb,
+    p_tx_id         uuid  DEFAULT NULL,
+    VARIADIC p_valori text[]
+) RETURNS void;
+```
 
 ---
 
-### ⚙️ Flusso di Esecuzione
+### Flusso interno (riassunto)
 
-1. **Recupero `tx_id`**: se `p_tx_id` è `NULL`, invoca `dbops.fn_get_or_create_session_tx_id()`.
-2. **Lookup del messaggio**: cerca in `config.messaggi_errore` il record corrispondente a `p_error_code` e lingua (GUC `myapp.user_language`).
-
-   * Se non trovato, usa il codice `'MESSAGGIO_NON_DEFINITO'`.
-3. **Sostituzione placeholder**: applica `format(v_msg, VARIADIC p_valori)` se presenti.
-4. **Insert su `dbops.error_log`**: costruisce dinamicamente l’`INSERT` con `dblink_exec` in connessione separata.
-5. **Fine**: termina senza sollevare nulla, proseguendo il normale flusso PL/pgSQL.
+1. **Assicura connessione di log**: `PERFORM script.fn_ensure_logconn();`
+2. **Tx id**: se `p_tx_id IS NULL` → `SELECT dbops.fn_get_or_create_session_tx_id();`
+3. **Lookup messaggio**: legge `config.messaggi_errore` per lingua (GUC es. `myapp.user_language`). Fallback a `'MESSAGGIO_NON_DEFINITO'`.
+4. **Formatting**: `format(v_msg, VARIADIC p_valori)` (se forniti).
+5. **Insert via dblink**: `SELECT dblink_exec('logconn', $$INSERT ...$$);`
+6. **Cattura errori**: qualsiasi eccezione viene intercettata e **non rilanciata**.
 
 ---
+
+### Prerequisiti
+
+* Estensione **`dblink`** installata nel DB dell’applicazione.
+* GUC **`dblink.log_connection`** valorizzata con la conninfo del DB di logging (può coincidere con quello applicativo), es.:
+  `postgresql://log_user:log_pwd@host:5432/appdb?sslmode=disable`
+* Tabella **`dbops.error_log`** esistente.
+
+---
+
+### Sicurezza & Permessi
+
+* Se si usa `dblink_connect_u`, richiede superuser o configurazioni ad hoc; preferibile `dblink_connect` con utente dedicato ai log.
+* Valutare `SECURITY DEFINER` **solo se necessario** (es. log verso DB di servizio con credenziali dedicate). In tal caso impostare owner, `search_path` e GRANT con attenzione.
+* Il **caller** necessita solo di `EXECUTE` sulla funzione; i permessi sulla tabella di log sono gestiti sul lato remoto via `dblink`.
+
+---
+
+### Esempio d’uso (PL/pgSQL)
+
+```plpgsql
+BEGIN
+  -- ... logica applicativa ...
+EXCEPTION WHEN OTHERS THEN
+  PERFORM script.fn_log_error_only(
+    p_area           => 'service',
+    p_function_name  => 'sync_customer',
+    p_error_code     => 'E_SYNC_WARN',
+    p_context        => jsonb_build_object('customer_id', v_id, 'note', 'retry scheduled'),
+    p_tx_id          => NULL,
+    VARIADIC p_valori => ARRAY[coalesce(SQLERRM, 'n/a')]
+  );
+  -- prosegue senza RAISE
+END;
+```
+
+---
+
+### Troubleshooting
+
+* **`dblink` non configurato** → la funzione continua “a vuoto” (non lancia). Verificare la GUC `dblink.log_connection` e l’operatività di `script.fn_ensure_logconn()`.
+* **Messaggio non trovato** → verificare `config.messaggi_errore` o la lingua corrente; con fallback non si blocca.
+
+---
+
 
 ### 💡 Vantaggi Operativi
 
@@ -53,6 +121,4 @@ La funzione **`script.fn_log_error_only`** registra **solo** un messaggio in `db
 ---
 
 > 🧠 **“Usa `fn_log_error_only` per il logging passivo—per casi in cui vuoi solo registrare, mai bloccare.”**
-
----
 

@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION dbops.fn_run_automations_attivo(p_exec_mode text, p_s
  LANGUAGE plpgsql
 AS $function$
 DECLARE
+  v_schemas text[];
   rrule record;
   rfk   record;
 
@@ -47,21 +48,22 @@ BEGIN
   -- Usa naming parametrico (3 template JSON: cascade/require/block).
   -- ======================================================================
 
-
+  v_schemas := dbops.fn_resolve_scope(p_schemas);
   FOR rrule IN
-    SELECT *
-      FROM dbops.automation_rules_tbl
-    WHERE enabled
-      AND rule_type='ATTIVO'
-      AND (exec_mode='AUTO' OR exec_mode=p_exec_mode)
-      AND dbops.fn_schema_in_scope(rrule.target_schema, v_schemas)
-    ORDER BY priority, id
+  SELECT r.*
+  FROM dbops.automation_rules_tbl r
+  WHERE r.enabled
+    AND r.rule_type = 'ATTIVO'
+    AND (r.exec_mode = 'AUTO' OR r.exec_mode = p_exec_mode)
+    AND dbops.fn_schema_in_scope(r.target_schema, v_schemas)  -- <-- r., non rrule
+  ORDER BY r.priority, r.id
+
   LOOP
     exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
 
-    nm_cascade := COALESCE((rrule.name_template::jsonb)->>'cascade','trg_soft_del_{parent}__{child}__{fk}');
-    nm_require := COALESCE((rrule.name_template::jsonb)->>'require','trg_chk_{child}_parent_{fk}');
-    nm_block   := COALESCE((rrule.name_template::jsonb)->>'block','trg_block_deact_{parent}__{child}');
+    nm_cascade := COALESCE((rrule.name_template::jsonb)->>'cascade','trg_soft_del_{parent}{child}{fkcol}');
+    nm_require := COALESCE((rrule.name_template::jsonb)->>'require','trg_chk_{child}_parent_{fkcol}');
+    nm_block   := COALESCE((rrule.name_template::jsonb)->>'block','trg_block_deact_{parent}{child}');
 
     FOR rfk IN
       SELECT
@@ -81,8 +83,11 @@ BEGIN
       JOIN pg_namespace np ON np.oid = cp.relnamespace
       WHERE c.contype='f'
         AND c.confdeltype IN ('r','a')  -- RESTRICT o NO ACTION
-        AND ( dbops.fn_schema_match(rrule.target_schema, nc.nspname)    -- child
-            OR dbops.fn_schema_match(rrule.target_schema, np.nspname) )  -- parent
+        AND nc.nspname <> 'storico'  
+        AND ( dbops.fn_schema_match(rrule.target_schema, nc.nspname)  )  -- child
+         --   OR dbops.fn_schema_match(rrule.target_schema, np.nspname) )  -- parent
+        AND dbops.fn_table_in_scope(nc.nspname, cc.relname)
+         --  AND dbops.fn_table_in_scope(np.nspname, cp.relname))
         -- target_table applicata a child OPPURE parent
         AND (rrule.target_table IS NULL OR cc.relname LIKE rrule.target_table OR cp.relname LIKE rrule.target_table)
         AND NOT EXISTS (
@@ -99,10 +104,33 @@ BEGIN
         INTO parent_has_attivo, child_has_attivo;
 
       fk_col := dbops.fn_get_child_fk_col(rfk.conoid);
-
+    /*
       tname_parent_cascade := dbops.fn_name_from_template(nm_cascade, rfk.parent_schema, rfk.parent_table, rfk.parent_table, rfk.child_table, rfk.conname, NULL);
       tname_child_require  := dbops.fn_name_from_template(nm_require, rfk.child_schema, rfk.child_table, rfk.parent_table, rfk.child_table, rfk.conname, NULL);
       tname_parent_block   := dbops.fn_name_from_template(nm_block, rfk.parent_schema, rfk.parent_table, rfk.parent_table, rfk.child_table, rfk.conname, NULL);
+    */ 
+
+      tname_parent_cascade :=
+        replace(
+          dbops.fn_name_from_template(nm_cascade,
+            rfk.parent_schema, rfk.parent_table,
+            rfk.parent_table, rfk.child_table, rfk.conname, NULL),
+          '{fkcol}', fk_col
+        );
+
+      tname_child_require :=
+        replace(
+          dbops.fn_name_from_template(nm_require,
+            rfk.child_schema, rfk.child_table,
+            rfk.parent_table, rfk.child_table, rfk.conname, NULL),
+          '{fkcol}', fk_col
+        );
+
+      tname_parent_block :=
+        dbops.fn_name_from_template(nm_block,
+          rfk.parent_schema, rfk.parent_table,
+          rfk.parent_table, rfk.child_table, rfk.conname, NULL);
+
 
       -- CASO A: entrambi hanno attivo → cascade + require
       IF parent_has_attivo AND child_has_attivo THEN
