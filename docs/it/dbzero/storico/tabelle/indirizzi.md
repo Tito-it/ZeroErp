@@ -18,7 +18,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_storico_indirizzi_anagrafiche_indirizzi | indirizzo_id |
 | PRIMARY KEY | pk_indirizzi | id |
 
 ## 📑 Indici
@@ -26,6 +25,12 @@
 |------|-------------|
 | ix_indirizzi_indirizzo_id | `CREATE INDEX ix_indirizzi_indirizzo_id ON storico.indirizzi USING btree (indirizzo_id)` |
 | pk_indirizzi | `CREATE UNIQUE INDEX pk_indirizzi ON storico.indirizzi USING btree (id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_indirizzi_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_indirizzi_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

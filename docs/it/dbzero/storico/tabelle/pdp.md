@@ -18,7 +18,6 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | pdp_tipo_operazione_check |  |
-| FOREIGN KEY | fk_st_pdp_base | pdp_id |
 | PRIMARY KEY | pdp_pkey | id |
 
 ## 📑 Indici

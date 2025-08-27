@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250826-03-catalogo-articoli_e_componenti-add-attivo-mctit
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        - onFail: CONTINUE
+        - not:
+          - columnExists:
+              schemaName: catalogo
+              tableName: articoli
+              columnName: attivo
+      changes:
+        - addColumn:
+            schemaName: catalogo
+            tableName: articoli
+            columns:
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN catalogo.articoli.attivo
+                IS 'Stato attivo/inattivo del articolo (DEFAULT TRUE)';
+
+  
+        
+
+  - changeSet:
+      id: 20250826-04-catalogo-articoli_e_componenti-add-attivo-mctit
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        - onFail: CONTINUE
+        - not:
+          - columnExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+              columnName: attivo
+      changes:
+        - addColumn:
+            schemaName: catalogo
+            tableName: articoli_componenti
+            columns:
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN catalogo.articoli_componenti.attivo
+                IS 'Stato attivo/inattivo del articolo (DEFAULT TRUE)';
+
+  
+      
+
+  - changeSet:
+      id: 20250826-90-catalogo-articoli_e_componenti-add-attivo-mctit
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250826-03-catalogo-articoli_e_componenti-add-attivo-mctit

@@ -18,7 +18,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_storico_parameters_config_parameters | parameter_id |
 | PRIMARY KEY | pk_storico_parameters | id |
 
 ## 📑 Indici

@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250825-02-create-pgagent-automations-job
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+        Crea/aggiorna 5 job pgAgent (TX_ID, AUDIT_UPDATE, STORICO_PROVISION, STORICO, ATTIVO)
+        schedulati ogni giorno alle 21:00 che invocano le procedure wrapper in maintenance.*
+      
+      preConditions:
+        onFail: CONTINUE
+        onError: CONTINUE
+        tableExists:
+            schemaName: pgagent
+            tableName: pga_job
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# pgAgent jobs per automations – run daily @ 21:00
+# Allinea lo stile allo schema maintenance (fn_run_and_log + wrapper PROC)
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250822-41-create-pgagent-jobs-automations-daily-21
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ "ANY" ]
+      comments: >
+        Crea/aggiorna 5 job pgAgent (TX_ID, AUDIT_UPDATE, STORICO_PROVISION, STORICO, ATTIVO)
+        schedulati ogni giorno alle 21:00 che invocano le procedure wrapper in maintenance.*
+      preConditions:
+        onFail: CONTINUE
+        onError: CONTINUE
+        tableExists:
+          schemaName: pgagent
+          tableName: pga_job
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                v_classid INTEGER;
+                -- util: array minuti/ore per 21:00 (minuto 0, ora 21) e tutti i giorni/mesi abilitati
+                v_minutes boolean[] := (SELECT array_agg((i = 0)::boolean)  FROM generate_series(0,59) AS g(i));   -- 60 elem, TRUE solo al minuto 0
+                v_hours   boolean[] := (SELECT array_agg((i = 21)::boolean) FROM generate_series(0,23) AS g(i));  -- 24 elem, TRUE solo all'ora 21
+                v_weekdays boolean[] := ARRAY[TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE]::boolean[];                     -- tutti i giorni della settimana
+                v_monthdays boolean[] := array_fill(TRUE, ARRAY[32])::boolean[];                                  -- tutti i giorni del mese
+                v_months    boolean[] := array_fill(TRUE, ARRAY[12])::boolean[];                                  -- tutti i mesi
+              BEGIN
+                -- 1) Classe 'Routine Maintenance'
+                SELECT jclid
+                  INTO v_classid
+                  FROM pgagent.pga_jobclass
+                 WHERE jclname = 'Routine Maintenance'
+                 LIMIT 1;
+
+                IF v_classid IS NULL THEN
+                  RAISE EXCEPTION 'Job class "Routine Maintenance" non trovata';
+                END IF;
+
+                -- helper locale per creare un job "da zero"
+                PERFORM 1;  -- no-op per chiarezza
+
+                -- =========================
+                -- TX_ID
+                -- =========================
+                DELETE FROM pgagent.pga_job WHERE jobname = 'automations_tx_id';
+                INSERT INTO pgagent.pga_job(jobjclid, jobname, jobdesc, jobenabled)
+                VALUES (v_classid, 'automations_tx_id',
+                        'Esegue dbops.fn_run_automations_tx_id (SCHEDULED) ogni giorno alle 21:00',
+                        true);
+
+                INSERT INTO pgagent.pga_schedule(
+                  jscjobid, jscname, jscenabled, jscminutes, jschours, jscweekdays, jscmonthdays, jscmonths, jscstart
+                )
+                SELECT jobid, 'daily_21', true, v_minutes, v_hours, v_weekdays, v_monthdays, v_months, now()
+                FROM pgagent.pga_job WHERE jobname = 'automations_tx_id';
+
+                INSERT INTO pgagent.pga_jobstep(
+                  jstjobid, jstname, jstkind, jstcode, jstdbname
+                )
+                SELECT jobid, 'run_automations_tx_id', 's',
+                       $sql$CALL maintenance.proc_automations_tx_id_job();$sql$,
+                       current_database()
+                FROM pgagent.pga_job WHERE jobname = 'automations_tx_id';
+
+                -- =========================
+                -- AUDIT_UPDATE
+                -- =========================
+                DELETE FROM pgagent.pga_job WHERE jobname = 'automations_audit_update';
+                INSERT INTO pgagent.pga_job(jobjclid, jobname, jobdesc, jobenabled)
+                VALUES (v_classid, 'automations_audit_update',
+                        'Esegue dbops.fn_run_automations_audit_update (SCHEDULED) ogni giorno alle 21:00',
+                        true);
+
+                INSERT INTO pgagent.pga_schedule(
+                  jscjobid, jscname, jscenabled, jscminutes, jschours, jscweekdays, jscmonthdays, jscmonths, jscstart
+                )
+                SELECT jobid, 'daily_21', true, v_minutes, v_hours, v_weekdays, v_monthdays, v_months, now()
+                FROM pgagent.pga_job WHERE jobname = 'automations_audit_update';
+
+                INSERT INTO pgagent.pga_jobstep(
+                  jstjobid, jstname, jstkind, jstcode, jstdbname
+                )
+                SELECT jobid, 'run_automations_audit_update', 's',
+                       $sql$CALL maintenance.proc_automations_audit_update_job();$sql$,
+                       current_database()
+                FROM pgagent.pga_job WHERE jobname = 'automations_audit_update';
+
+                -- =========================
+                -- STORICO_PROVISION
+                -- =========================
+                DELETE FROM pgagent.pga_job WHERE jobname = 'automations_storico_provision';
+                INSERT INTO pgagent.pga_job(jobjclid, jobname, jobdesc, jobenabled)
+                VALUES (v_classid, 'automations_storico_provision',
+                        'Provision tabelle storico (SCHEDULED) ogni giorno alle 21:00',
+                        true);
+
+                INSERT INTO pgagent.pga_schedule(
+                  jscjobid, jscname, jscenabled, jscminutes, jschours, jscweekdays, jscmonthdays, jscmonths, jscstart
+                )
+                SELECT jobid, 'daily_21', true, v_minutes, v_hours, v_weekdays, v_monthdays, v_months, now()
+                FROM pgagent.pga_job WHERE jobname = 'automations_storico_provision';
+
+                INSERT INTO pgagent.pga_jobstep(
+                  jstjobid, jstname, jstkind, jstcode, jstdbname
+                )
+                SELECT jobid, 'run_automations_storico_provision', 's',
+                       $sql$CALL maintenance.proc_automations_storico_provision_job();$sql$,
+                       current_database()
+                FROM pgagent.pga_job WHERE jobname = 'automations_storico_provision';
+
+                -- =========================
+                -- STORICO
+                -- =========================
+                DELETE FROM pgagent.pga_job WHERE jobname = 'automations_storico';
+                INSERT INTO pgagent.pga_job(jobjclid, jobname, jobdesc, jobenabled)
+                VALUES (v_classid, 'automations_storico',
+                        'Esegue dbops.fn_run_automations_storico (SCHEDULED) ogni giorno alle 21:00',
+                        true);
+
+                INSERT INTO pgagent.pga_schedule(
+                  jscjobid, jscname, jscenabled, jscminutes, jschours, jscweekdays, jscmonthdays, jscmonths, jscstart
+                )
+                SELECT jobid, 'daily_21', true, v_minutes, v_hours, v_weekdays, v_monthdays, v_months, now()
+                FROM pgagent.pga_job WHERE jobname = 'automations_storico';
+
+                INSERT INTO pgagent.pga_jobstep(
+                  jstjobid, jstname, jstkind, jstcode, jstdbname
+                )
+                SELECT jobid, 'run_automations_storico', 's',
+                       $sql$CALL maintenance.proc_automations_storico_job();$sql$,
+                       current_database()
+                FROM pgagent.pga_job WHERE jobname = 'automations_storico';
+
+                -- =========================
+                -- ATTIVO
+                -- =========================
+                DELETE FROM pgagent.pga_job WHERE jobname = 'automations_attivo';
+                INSERT INTO pgagent.pga_job(jobjclid, jobname, jobdesc, jobenabled)
+                VALUES (v_classid, 'automations_attivo',
+                        'Esegue dbops.fn_run_automations_attivo (SCHEDULED) ogni giorno alle 21:00',
+                        true);
+
+                INSERT INTO pgagent.pga_schedule(
+                  jscjobid, jscname, jscenabled, jscminutes, jschours, jscweekdays, jscmonthdays, jscmonths, jscstart
+                )
+                SELECT jobid, 'daily_21', true, v_minutes, v_hours, v_weekdays, v_monthdays, v_months, now()
+                FROM pgagent.pga_job WHERE jobname = 'automations_attivo';
+
+                INSERT INTO pgagent.pga_jobstep(
+                  jstjobid, jstname, jstkind, jstcode, jstdbname
+                )
+                SELECT jobid, 'run_automations_attivo', 's',
+                       $sql$CALL maintenance.proc_automations_attivo_job();$sql$,
+                       current_database()
+                FROM pgagent.pga_job WHERE jobname = 'automations_attivo';
+
+              END;
+              $$;
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250825-90-create-pgagent-automations-job
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250825-02-create-pgagent-automations-job

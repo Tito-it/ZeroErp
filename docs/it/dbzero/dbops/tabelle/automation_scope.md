@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | schema_name | text | NO |  |
-| table_like | text | NO |  |
+| table_like | text | NO | '*all'::text |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -18,7 +18,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_stradario_config | stradario_id, via_id_nuovo |
 | PRIMARY KEY | pk_stradario | id |
 
 ## 📑 Indici

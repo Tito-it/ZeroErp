@@ -1,243 +1,246 @@
-# 📗 Guida Tecnica – Automazioni DB
+# 📗 Guida Tecnica – Automazioni DB (aggiornata)
 
-> 📋 **Destinatari:** sviluppatori database, backend, devops
+> **Scope:** aggiorna la guida esistente con le novità su wildcard `*all` e gli ultimi affinamenti senza stravolgere la struttura.
 >
-> 👀 **Vedi anche:**
->
-> * Tabelle: `dbops.automation_rules_tbl`, `dbops.automation_overrides_cols`, `dbops.automation_fk_exclusions`, `dbops.automation_scope`, `dbops.audit_log`
-> * Funzioni orchestratore: `dbops.fn_run_automations`, `dbops.run_automations_tx_id`, `dbops.run_automations_audit_update`, `dbops.run_automations_storico`, `dbops.fn_run_automations_attivo`
-> * Trigger/Helpers: `dbops.trgfn_tx_id_managed`, `script.trgfn_upd_audit_data_user_generic`, `script.trgfn_upd_dlt_storico_generic`, `dbops.trgfn_soft_delete_cascade`, `dbops.trgfn_child_requires_active_parent`, `dbops.trgfn_prevent_deactivate_if_children`
-> * Logging: `dbops.audit_log` (+ dblink `logconn` via `script.fn_ensure_logconn`)
+> **Riferimenti chiave**: `dbops.automation_rules_tbl`, `dbops.automation_overrides_cols`, `dbops.automation_fk_exclusions`, `dbops.automation_scope`, orchestratori `dbops.fn_run_automations_*`, audit `dbops.audit_log`.
 
 ---
 
 ## 1) 🎯 Perché un framework di automazione
 
-### Esigenza
-
-In Zero ERP molte attività DB sono **ripetitive** e **basate su convenzioni**: assegnare `tx_id`, aggiornare `data_update/user_update`, gestire storico, propagare `attivo` su relazioni padre/figlio. Farlo a mano è costoso, introduce **incoerenze** e rallenta il delivery.
-
-### Idea di fondo
-
-Rendere queste attività **dichiarative**: invece di scrivere N trigger per M tabelle, l’owner dichiara *cosa* vuole (regola), *dove* applicarla (scope) e *come* chiamarla (template). L’orchestratore traduce la configurazione in trigger/constraint coerenti, idempotenti e osservabili.
-
-**Obiettivi**
-
-* **Coerenza**: stessi nomi, stesse funzioni, stesse condizioni di attivazione.
-* **Velocità**: onboarding immediato di nuove tabelle/schema con poche righe di config.
-* **Sicurezza**: dry‑run, audit strutturato, strategie di esistenza configurabili.
-* **Flessibilità**: override di colonne non standard e esclusioni puntuali.
+Automatizzare attività ripetitive (assegnazione `tx_id`, audit update, storico, soft‑delete/`attivo`) riduce errori manuali e accelera i rilasci. Le regole dichiarative descrivono **cosa** e **dove** applicare; gli orchestratori generano trigger/oggetti in modo **idempotente**, con **dry‑run** e **audit**.
 
 ---
 
-## 2) 🧩 Architettura logica
+## 2) 🧩 Architettura (sintesi)
 
-```
-┌────────────────────┐        ┌────────────────────────────┐
-│ automation_scope   │  →     │ fn_run_automations*        │
-└────────────────────┘        │  (orchestratori modulari)  │
-          │                   └────────────────────────────┘
-          │                           │
-          ▼                           ▼
-┌────────────────────┐       ┌──────────────────────────────┐
-│ automation_rules   │  +→   │ GENERATORI TRIGGER           │
-│  (rule_type, ... ) │       │  • TX_ID                     │
-└────────────────────┘       │  • AUDIT_UPDATE              │
-          │                  │  • STORICO                   │
-          │                  │  • ATTIVO (cascade/require/  │
-          ▼                  │           block su FK)       │
-┌────────────────────┐       └──────────────────────────────┘
-│ overrides_cols     │                ▲
-│ fk_exclusions      │                │
-└────────────────────┘                │
-          │                           │
-          ▼                           │
-     ┌───────────┐      audit →  ┌──────────────┐
-     │ pg_catalog│  ───────────→ │ dbops.audit_ │
-     │ (intros.) │               │ log          │
-     └───────────┘               └──────────────┘
-```
-
-Componenti:
-
-* **Scope**: limita gli schemi target (parametro, tabella o fallback su catalogo).
-* **Rules**: cosa applicare (TX_ID, AUDIT_UPDATE, STORICO, ATTIVO), dove, con quale naming ed esistenza.
-* **Overrides/Exclusions**: adattano casi particolari (colonne non standard, relazioni da saltare).
-* **Orchestratori**: funzioni PL/pgSQL che leggono config + catalogo e creano i trigger idempotentemente.
-* **Audit**: `dbops.audit_log` cattura dry‑run, apply, errori (anche **fuori transazione** via dblink).
+* **Scope** (`automation_scope` + `fn_resolve_scope` / parametro): delimita gli schemi/tabelle.
+* **Rules** (`automation_rules_tbl`): regole per schema/tabella (TX_ID, AUDIT_UPDATE, STORICO, ATTIVO, + STORICO_PROVISION).
+* **Overrides/Exclusions**: colonne non standard e FK da saltare.
+* **Orchestratori**: `fn_run_automations_*` per ogni area.
+* **Audit**: `audit_log` (anche out‑of‑tx via dblink opzionale).
 
 ---
 
-## 3) 🔑 Regole supportate
+## 3) 🔑 Regole supportate (sintesi)
 
 ### 3.1 TX_ID
 
-**Scopo**: garantire un `tx_id` coerente su tabelle che lo espongono.
-**Meccanismo**: trigger `BEFORE INSERT OR UPDATE` → `dbops.trgfn_tx_id_managed()`.
+Trigger `BEFORE INSERT OR UPDATE` → `dbops.trgfn_tx_id_managed()`.
 
 ### 3.2 AUDIT_UPDATE
 
-**Scopo**: aggiornare metadati `data_update` / `user_update`.
-**Meccanismo**: trigger `BEFORE UPDATE` → `script.trgfn_upd_audit_data_user_generic()`.
+Trigger `BEFORE UPDATE` → `script.trgfn_upd_audit_data_user_generic()`.
 
-### 3.3 STORICO
+### 3.3 STORICO (trigger)
 
-**Scopo**: snapshot JSONB degli UPDATE/DELETE verso `storico.<tabella>_storico`.
-**Meccanismo**: trigger `BEFORE UPDATE` + `BEFORE DELETE` → `script.trgfn_upd_dlt_storico_generic(fk)`.
+* Trigger **unico** `BEFORE UPDATE OR DELETE` → `script.trgfn_upd_dlt_storico_generic(fk)`.
+* **Naming default**: `trgx_z90_{table}_upd_dlt_storico` (prefisso per ordinamento).
+* Scrive su **`storico.<stesso_nome_tabella>`** (senza suffisso `_storico`).
 
-### 3.4 ATTIVO (soft‑delete funzionale)
+### 3.4 STORICO_PROVISION (provisioning tabelle storico)
 
-**Scopo**: coerenza dello stato `attivo` tra padre/figlio con FK **NO ACTION/RESTRICT**.
-**Meccanismo**:
+* Crea `storico.<tabella>` se mancante con struttura standard (FK → PK padre, `snapshot` JSONB, `change_type`, `tipo_operazione`, ecc.).
+* Param opzionale: `create_gin_index` su `snapshot`.
 
-* **CASO A**: padre *e* figlio hanno `attivo` →
+### 3.5 ATTIVO (soft‑delete funzionale)
 
-  * padre: `AFTER UPDATE OF attivo` → `dbops.trgfn_soft_delete_cascade(child_schema, child_table, fk_col)`
-  * figlio: `CONSTRAINT TRIGGER DEFERRABLE` → `dbops.trgfn_child_requires_active_parent(parent_schema, parent_table, parent_attivo, fk_col)`
-* **CASO B**: solo il padre ha `attivo` →
-
-  * padre: `BEFORE UPDATE OF attivo` → `dbops.trgfn_prevent_deactivate_if_children(child_schema, child_table, fk_col)`
-
-**Nota FK**: supporto a `confdeltype IN ('r','a')` (RESTRICT e NO ACTION). `NO ACTION` permette coerenze **deferrable** a fine transazione.
+* FK `RESTRICT` **o** `NO ACTION` (anche DEFERRABLE): cascade/require/block come da design originale.
 
 ---
 
-## 4) ⚙️ Configurazione (tabelle chiave)
+## 4) ⚙️ Configurazione
 
-### 4.1 `dbops.automation_rules_tbl`
+### 4.1 `automation_rules_tbl` (novità `*all`)
 
-Regole per schema/tabella, con:
+* `target_schema`: ora supporta **`'*all'`** per applicare la regola a **tutti gli schemi** nello scope risolto. Rimangono validi valori specifici (es. `anagrafiche`).
+* `target_table`: pattern `LIKE` (es. `foo_%`).
+* `existence_strategy`: `BY_NAME` / `BY_FUNCTION` / `BOTH` (consigliato `BOTH`).
+* `name_template`: stringa; per ATTIVO JSON `{cascade,require,block}`.
+* `params`: chiavi per singola regola (es. `apply_triggers`, `create_gin_index`, `include_no_action`, `drop_legacy_ud`).
 
-* `rule_type` ∈ {TX_ID, AUDIT_UPDATE, STORICO, ATTIVO}
-* `exec_mode` ∈ {AUTO, CI, SCHEDULED}
-* `name_template` (stringa; per ATTIVO: JSON con `cascade/require/block`)
-* `existence_strategy` ∈ {BY_NAME, BY_FUNCTION, BOTH}
-* `params` (JSONB) per dettagli opzionali (es. `include_no_action`)
-* `priority`, `note`, audit fields
+**Esempi minimali**
 
-### 4.2 `dbops.automation_overrides_cols`
+* STORICO (trigger): `('STORICO','*all', name_template='trgx_z90_{table}_upd_dlt_storico', params='{"apply_triggers":true}')`.
+* STORICO_PROVISION: `('STORICO_PROVISION','*all', name_template=NULL, params='{"create_gin_index":false}')`.
 
-Override delle colonne non standard per tabella:
-`ATTIVO_COL`, `AUDIT_TS`, `AUDIT_USER`, `STORICO_FK`.
+### 4.2 `automation_scope` (novità `*all`)
 
-### 4.3 `dbops.automation_fk_exclusions`
+* Colonne: `schema_name`, `table_like` (PK composita). **`table_like` non è NULL**: usare il sentinel **`'*all'`** per indicare “tutte le tabelle dello schema”.
+* Il runner usa:
 
-Esclude coppie **parent/child** dall’applicazione della regola `ATTIVO`.
+  * `fn_resolve_scope(p_schemas)` → se `NULL` o vuoto: legge `automation_scope`; se assente/vuota: fallback a tutti gli schemi utente **escluso `storico`**.
+  * `fn_table_in_scope(schema, table)` → rispetta `'*all'` e i pattern per singole tabelle.
 
-### 4.4 `dbops.automation_scope`
+### 4.3 Overrides / Exclusions
 
-Lista di schemi da considerare. Se assente/vuota → fallback su tutti gli schemi utente (escluso `storico`).
-
----
-
-## 5) 🧠 Naming & Idempotenza
-
-* **Template** con placeholder: `{schema}`, `{table}`, `{parent}`, `{child}`, `{fk}`, `{op}` (`upd|dlt`).
-* **Limite 63 char**: adottare eventuale abbreviatore/hash nel helper `fn_name_from_template`.
-* **Strategie di esistenza**:
-
-  * `BY_NAME` → verifica su `pg_trigger.tgname`.
-  * `BY_FUNCTION` → verifica su funzione invocata.
-  * `BOTH` → vero se almeno uno dei due.
+* `automation_overrides_cols`: override colonne (`ATTIVO_COL`, `AUDIT_TS`, `AUDIT_USER`, `STORICO_FK`, `STORICIZZA_COL`).
+* `automation_fk_exclusions`: esclude coppie parent/child per ATTIVO.
 
 ---
 
-## 6) 🚦 Esecuzione: modalità & rollout
+## 5) 🧠 Naming & idempotenza
 
-* **`AUTO`**: regola sempre valida per qualunque esecuzione.
-* **`CI`**: usata in pipeline CI/CD (migrazioni).
-* **`SCHEDULED`**: demandata a job periodici (scheduler DB o sistema).
-
-**Liquibase contexts** (raccomandato nei test):
-
-* `test` → setup playground + seed rules
-* `test_apply` → apply reale
-* `test_cleanup` → cleanup
-
-**Dry‑run**: `p_dry_run=true` produce solo log in `dbops.audit_log` senza creare oggetti.
+* Placeholder: `{schema}`, `{table}`, `{parent}`, `{child}`, `{fk}`, `{op}` (se usato). Con trigger unico storico passare `'upd_dlt'` **solo** se il template lo richiede; altrimenti usare il nuovo default senza `{op}`.
+* Limite 63 char: helper `fn_name_from_template` gestisce abbreviazioni/hash.
 
 ---
 
-## 7) 📝 Audit & Osservabilità
+## 6) 🚦 Esecuzione & modalità
 
-* **`dbops.audit_log`**: `BEGIN/END` e `one‑shot` (`fn_audit_begin`, `fn_audit_end`, `fn_audit_log_once`).
-* **Out‑of‑transaction**: via dblink `logconn` (GUC `myapp.log_with_dblink` + `script.fn_ensure_logconn`).
-* Colonne utili: `exec_mode`, `parts`, `rule_type`, `dry_run`, `sqlstate`, `result` (conteggi/nomi trigger), `duration_ms`.
+* `exec_mode`: `AUTO`, `CI`, `SCHEDULED` (runner e job pgAgent puntano a queste modalità).
+* **Dry‑run**: tutti i runner accettano `p_dry_run=true` e loggano con `fn_audit_log_once`.
+* **Esclusione schema `storico`**: i runner **STORICO** e **STORICO_PROVISION** non processano tabelle nello schema `storico`.
 
-Esempio DRYRUN (TX_ID):
+---
+
+## 7) 📝 Audit & Log
+
+* `dbops.audit_log`: `DRYRUN/OK/ERROR/SKIP_EXISTS`, con `params` strutturati (tabella, trigger, azione…).
+* Errori bloccanti: `script.fn_log_and_raise_error(...)` + audit.
+* Facoltativo: log out‑of‑tx via dblink `logconn` (GUC `myapp.log_with_dblink='on'`).
+
+---
+
+## 8) ✅ Mini‑checklist di uso
+
+1. Inserisci/aggiorna **rules** (usa `'*all'` dove serve).
+2. (Opzionale) Popola **scope**: righe `('<schema>','*all')` o pattern puntuali.
+3. Esegui **dry‑run** del/i runner interessati (es. `fn_run_automations_storico(..., true)`).
+4. Verifica audit → poi **apply** (`p_dry_run=false`).
+5. Controlla i trigger creati (`pg_trigger`) e, per STORICO, la presenza della tabella `storico.<tabella>`.
+
+---
+
+## 9) 📌 Note operative / differenze recenti
+
+* **Wildcard `*all`** introdotta sia in **rules** (`target_schema`) sia in **scope** (`table_like`).
+* **STORICO** separato da **STORICO_PROVISION**: meno ambiguità tra provisioning e trigger.
+* **Storico table**: stesso nome della base, schema `storico` (niente `_storico`).
+* **Trigger storico**: unificato **UPDATE+DELETE** con default `trgx_z90_{table}_upd_dlt_storico`.
+* **ATTIVO**: copre FK `RESTRICT` e `NO ACTION` (DEFERRABLE consigliato).
+* Runner aggiornati: `fn_resolve_scope`, `fn_table_in_scope`, `fn_schema_match('*all', ...)`.
+* Guard globale: schema `storico` escluso dai runner di storico.
+
+---
+
+> **In sintesi**: con `*all` su rules/scope, provisioning separato e trigger storico unificato, l’onboarding è più veloce, prevedibile e governabile da config. Conserviamo dry‑run, audit e naming standard per un rollout sicuro.
+
+## 10) 🧪 Esempi di configurazione (`automation_rules_tbl`)
+
+Di seguito insert **idempotenti** (usano `WHERE NOT EXISTS`) per le regole più comuni. Adatta `target_schema`/`target_table` alle tue esigenze.
+
+### 10.1 TX_ID
 
 ```sql
-PERFORM dbops.fn_audit_log_once(
-  p_function_name => 'run_automations',
-  p_status        => 'DRYRUN',
-  p_rule_type     => 'TX_ID',
-  p_exec_mode     => 'CI',
-  p_parts         => ARRAY['TX_ID'],
-  p_dry_run       => true,
-  p_params        => jsonb_build_object('table', 'anagrafiche.soggetti', 'trigger', 'trg_soggetti_ins_upd_gen_tx_id'),
-  p_message       => 'Trigger would be created'
+INSERT INTO dbops.automation_rules_tbl
+(enabled, rule_type, target_schema, target_table, exec_mode,
+ name_template, existence_strategy, params, priority, note)
+SELECT true,'TX_ID','*all',NULL,'AUTO',
+       'trg_{table}_ins_upd_gen_tx_id','BOTH','{}'::jsonb,100,'tx_id globale'
+WHERE NOT EXISTS (
+  SELECT 1 FROM dbops.automation_rules_tbl
+  WHERE rule_type='TX_ID' AND target_schema='*all'
 );
 ```
 
----
-
-## 8) 🔍 Pattern operativi di test
-
-1. **Seed** regole su `lab` (context `test`).
-2. **Dry‑run** `TX_ID/AUDIT_UPDATE/STORICO/ATTIVO`.
-3. **Apply** (context `test_apply`).
-4. **Verify**: elenco trigger su `lab.%` e assert minimi.
-5. **Cleanup** (context `test_cleanup`).
-
----
-
-## 9) ⚠️ Errori tipici & rimedi
-
-* **Nessun trigger creato**: regola disabilitata, scope vuoto, `exec_mode` non compatibile, strategia esistenza errata.
-* **Nome oltre 63 char**: riduci template o usa helper con hash.
-* **Storico non attivo**: tabella `storico.<t>_storico` assente o `STORICO_FK` non risolto.
-* **ATTIVO non applicato**: relazione esclusa in `automation_fk_exclusions` o mancanza della colonna `attivo` su parent/child.
-
----
-
-## 10) 🔐 Sicurezza & permessi
-
-* L’utente dell’orchestratore deve poter **CREARE TRIGGER/FUNCTION** negli schemi target.
-* Le funzioni richiamate devono avere **schema qualificato** ed essere **SECURITY DEFINER** solo se necessario.
-
----
-
-## 11) 📌 Best practice
-
-* Mantieni regole **specifiche** per schema/tabella; usa i pattern con moderazione.
-* Standardizza i template naming (brevi e leggibili).
-* Versiona seed e modifiche con changeSet dedicati e `runOnChange` solo dove serve.
-* Usa **`NO ACTION DEFERRABLE`** dove possibile sulle FK che devono rispettare coerenze a fine transazione.
-
----
-
-## 12) 📊 Esempi rapidi di configurazione
-
-**Rule TX_ID (schema intero)**
+### 10.2 AUDIT_UPDATE
 
 ```sql
-INSERT INTO dbops.automation_rules_tbl(enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority)
-VALUES (true,'TX_ID','anagrafiche','AUTO','trg_{table}_ins_upd_gen_tx_id','BY_NAME','{}'::jsonb,100);
+INSERT INTO dbops.automation_rules_tbl
+(enabled, rule_type, target_schema, target_table, exec_mode,
+ name_template, existence_strategy, params, priority, note)
+SELECT true,'AUDIT_UPDATE','*all',NULL,'AUTO',
+       'trg_upd_{table}_audit_data_user','BOTH',
+       '{"audit_ts":"data_update","audit_user":"user_update"}'::jsonb,
+       100,'audit update globale'
+WHERE NOT EXISTS (
+  SELECT 1 FROM dbops.automation_rules_tbl
+  WHERE rule_type='AUDIT_UPDATE' AND target_schema='*all'
+);
 ```
 
-**Rule ATTIVO (includi NO ACTION, template personalizzati)**
+### 10.3 STORICO (trigger unico UPDATE+DELETE)
 
 ```sql
-INSERT INTO dbops.automation_rules_tbl(enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority)
-VALUES (
-  true,'ATTIVO','vendite','AUTO',
-  '{"cascade":"trg_soft_del_{parent}__{child}__{fk}",
-    "require":"trg_chk_{child}_parent_{fk}",
-    "block":"trg_block_deact_{parent}__{child}"}',
-  'BY_NAME','{"include_no_action":true}'::jsonb,100);
+INSERT INTO dbops.automation_rules_tbl
+(enabled, rule_type, target_schema, target_table, exec_mode,
+ name_template, existence_strategy, params, priority, note)
+SELECT true,'STORICO','*all',NULL,'AUTO',
+       'trgx_z90_{table}_upd_dlt_storico','BOTH',
+       '{"apply_triggers": true, "drop_legacy_ud": true}'::jsonb,
+       100,'storico: trigger unificato'
+WHERE NOT EXISTS (
+  SELECT 1 FROM dbops.automation_rules_tbl
+  WHERE rule_type='STORICO' AND target_schema='*all'
+);
 ```
 
----
+> **Nota**: la tabella di destinazione deve esistere in `storico.<stesso_nome_tabella>` (creata da STORICO_PROVISION). Override possibili via `automation_overrides_cols` (`STORICIZZA_COL`, `STORICO_FK`).
+
+### 10.4 STORICO_PROVISION (creazione tabelle in `storico`)
+
+```sql
+INSERT INTO dbops.automation_rules_tbl
+(enabled, rule_type, target_schema, target_table, exec_mode,
+ name_template, existence_strategy, params, priority, note)
+SELECT true,'STORICO_PROVISION','*all',NULL,'AUTO',
+       NULL,'BOTH', '{"create_gin_index": false}'::jsonb,
+       100,'storico: provisioning tabelle'
+WHERE NOT EXISTS (
+  SELECT 1 FROM dbops.automation_rules_tbl
+  WHERE rule_type='STORICO_PROVISION' AND target_schema='*all'
+);
+```
+
+Esempio più mirato (solo schema `catalogo`, tabelle `articoli_%`):
+
+```sql
+INSERT INTO dbops.automation_rules_tbl
+(enabled, rule_type, target_schema, target_table, exec_mode,
+ name_template, existence_strategy, params, priority, note)
+VALUES (true,'STORICO_PROVISION','catalogo','articoli_%','AUTO',
+        NULL,'BOTH','{"create_gin_index": true}'::jsonb,100,'storico: prov catalogo');
+```
+
+### 10.5 ATTIVO (soft‑delete/consistenza funzionale)
+
+```sql
+INSERT INTO dbops.automation_rules_tbl
+(enabled, rule_type, target_schema, target_table, exec_mode,
+ name_template, existence_strategy, params, priority, note)
+SELECT true,'ATTIVO','*all',NULL,'AUTO',
+       '{"cascade":"trg_soft_del_{parent}__{child}__{fk}",
+         "require":"trg_chk_{child}_parent_{fk}",
+         "block":"trg_block_deact_{parent}__{child}"}',
+       'BOTH', '{"include_no_action": true}'::jsonb,
+       100,'attivo: RESTRICT/NO ACTION'
+WHERE NOT EXISTS (
+  SELECT 1 FROM dbops.automation_rules_tbl
+  WHERE rule_type='ATTIVO' AND target_schema='*all'
+);
+```
+
+### 10.6 Esempi di override (colonne non standard)
+
+> La tabella `automation_overrides_cols` permette di definire nomi custom per colonna per tabella.
+
+```sql
+-- Usa "attivo_flag" invece di "attivo"
+INSERT INTO dbops.automation_overrides_cols(schema_name, table_name, override_key, column_name)
+VALUES ('vendite','ordini','ATTIVO_COL','attivo_flag');
+
+-- Per storico: FK diversa da <table>_id
+INSERT INTO dbops.automation_overrides_cols(schema_name, table_name, override_key, column_name)
+VALUES ('catalogo','articoli_componenti','STORICO_FK','articoli_componenti_id');
+```
+
+### 10.7 Note pratiche
+
+* Usa `target_schema='*all'` quando vuoi applicare globalmente, altrimenti specifica lo schema.
+* `existence_strategy='BOTH'` minimizza conflitti (nome o funzione).
+* Per STORICO, preferisci il template **senza** `{op}` (trigger unico). Se mantieni un template con `{op}`, passa `'upd_dlt'` all’helper di naming.
+* Tutti i runner supportano `p_dry_run`. Controlla gli esiti in `dbops.audit_log`.
 
 > 🧠 **In sintesi**: l’automazione sposta il focus dalla *scrittura di trigger* alla *dichiarazione di regole*. Con scope controllato, override mirati e audit forte, si ottiene un rollout rapido, coerente e osservabile in tutti gli ambienti.
 

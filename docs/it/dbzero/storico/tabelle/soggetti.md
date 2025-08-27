@@ -18,7 +18,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_storico_soggetti_anagrafiche_soggetti | soggetto_id |
 | PRIMARY KEY | pk_storico_soggetti | id |
 
 ## 📑 Indici

@@ -5,128 +5,187 @@
 #
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
-# ------------------------------------------------------------
-      
+# ------------------------------------------------------------                   
 # ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Auto-provision storico tables per regola STORICO (storicizza=true)
-# - Helper: dbops.fn_ensure_storico_table(...)
-# - Runner: dbops.fn_run_automations_storico_provision(...)  (SOLO creazione tabelle)
+# Storico provision: naming/columns fix (no _storico, PK nominata, change_type/tipo_operazione)
 # ------------------------------------------------------------
 databaseChangeLog:
   - changeSet:
-      id: 20250822-01-storico-auto-provision
+      id: 20250826-03-storico-provision-table-naming
       author: mctit
       runOnChange: true
+      validCheckSums: [ "ANY" ]
       changes:
         - sql:
             splitStatements: false
             stripComments: false
             sql: |
-              
-                    CREATE OR REPLACE FUNCTION dbops.fn_ensure_storico_table(
-                      p_schema_base       text,
-                      p_table_base        text,
-                      p_fk_col            text,      -- es. '<table>_id'
-                      p_create_gin_index  boolean,   -- index GIN su snapshot
-                      p_dry_run           boolean
-                    ) RETURNS void
-                    LANGUAGE plpgsql AS $$
-                    DECLARE
-                      v_exists   boolean;
-                      v_sql      text;
-                      v_tbl_sto  text := format('%I_storico', p_table_base);
-                      v_full_base text := format('%I.%I', p_schema_base, p_table_base);
-                      v_full_sto  text := format('storico.%I', v_tbl_sto);
-                    BEGIN 
-                      -- Helper: crea (se manca) storico.<table>_storico con struttura standard
-                      -- esiste già?
-                      SELECT EXISTS (
-                        SELECT 1
-                        FROM pg_class c
-                        JOIN pg_namespace n ON n.oid=c.relnamespace
-                        WHERE n.nspname='storico' AND c.relname=v_tbl_sto AND c.relkind='r'
-                      ) INTO v_exists;
+              CREATE OR REPLACE FUNCTION dbops.fn_ensure_storico_table(
+                p_schema_base       text,
+                p_table_base        text,
+                p_fk_col            text,      -- es. '<table>_id'
+                p_create_gin_index  boolean,   -- index GIN su snapshot
+                p_dry_run           boolean
+              ) RETURNS void
+              LANGUAGE plpgsql AS $$
+              DECLARE
+                v_exists      boolean;
+                v_sql         text;
 
-                      IF v_exists THEN
-                        RETURN;
-                      END IF;
+                -- nome tabella storico = stesso nome della base, schema 'storico'
+                v_tbl_sto     text := format('%I', p_table_base);
+                v_full_base   text := format('%I.%I', p_schema_base, p_table_base);
+                v_full_sto    text := format('storico.%I', v_tbl_sto);
 
-                      -- build DDL
-                      v_sql := format($ddl$
-                        CREATE SCHEMA IF NOT EXISTS storico;
-                        CREATE TABLE IF NOT EXISTS %s (
-                          id              BIGSERIAL PRIMARY KEY,
-                          %I              bigint NOT NULL,
-                          op              text NOT NULL,                      -- 'UPD' | 'DLT' | altro
-                          ts              timestamptz NOT NULL DEFAULT now(), -- timestamp evento
-                          snapshot        jsonb,                              -- contenuto riga (NEW/OLD)
-                          user_update     text,
-                          data_update     timestamptz,
-                          tx_id           uuid,
-                          valid_from      timestamptz DEFAULT now(),
-                          valid_to        timestamptz
-                        );
-                        -- FK opzionale sulla base (commentata se non desideri vincolo)
-                        ALTER TABLE %s
-                          ADD CONSTRAINT fk_%I FOREIGN KEY (%I) REFERENCES %s(id);
-                        CREATE INDEX IF NOT EXISTS ix_%s_%I_ts      ON %s (ts);
-                        CREATE INDEX IF NOT EXISTS ix_%s_%I_fk      ON %s (%I);
-                      $ddl$,
-                        v_full_sto,
-                        p_fk_col,
-                        -- FK (commentata)
-                        v_full_sto, p_table_base, p_fk_col, v_full_base,
-                        p_table_base, p_fk_col, v_full_sto,
-                        p_table_base, p_fk_col, v_full_sto, p_fk_col
-                      );
+                -- PK padre (monocolonna) e tipo per allineare la FK
+                v_parent_reg  regclass := (quote_ident(p_schema_base)||'.'||quote_ident(p_table_base))::regclass;
+                v_parent_pk   text;
+                v_parent_pk_n int;
+                v_fk_type     text;
 
-                      IF p_create_gin_index THEN
-                        v_sql := v_sql || format(E'\nCREATE INDEX IF NOT EXISTS ix_%s_snapshot_gin ON %s USING GIN (snapshot);\n',
-                                                p_table_base, v_full_sto);
-                      END IF;
+                -- nomi vincoli/indici
+                v_pk_name     text := format('pk_%s_%s', 'storico', p_table_base);
+                v_fk_name     text := format('fk_%s', p_table_base);
+                v_ix_fk_name  text := format('ix_%s_%s_fk', p_table_base, p_fk_col);
+                v_ix_gin_name text := format('ix_%s_snapshot_gin', p_table_base);
+              BEGIN
+                -- esiste già la tabella storico?<— esci
+                SELECT EXISTS (
+                  SELECT 1
+                  FROM pg_class c
+                  JOIN pg_namespace n ON n.oid=c.relnamespace
+                  WHERE n.nspname='storico' AND c.relname=p_table_base AND c.relkind='r'
+                ) INTO v_exists;
+                IF v_exists THEN
+                  RETURN;
+                END IF;
 
-                      IF p_dry_run THEN
-                        PERFORM dbops.fn_audit_log_once(
-                          p_function_name => 'fn_run_automations_storico',
-                          p_status        => 'DRYRUN',
-                          p_rule_type     => 'STORICO',
-                          p_dry_run       => true,
-                          p_params        => jsonb_build_object('table', v_full_sto, 'action','CREATE_STORICO_TABLE'),
-                          p_message       => 'Storico table would be created'
-                        );
-                        RETURN;
-                      END IF;
+                -- PK e tipo dal padre (assume PK monocampo; fallback su 'id')
+                SELECT a.attname, array_length(i.indkey,1)
+                  INTO v_parent_pk, v_parent_pk_n
+                FROM pg_index i
+                JOIN pg_attribute a
+                  ON a.attrelid=i.indrelid AND a.attnum = i.indkey[0]
+                WHERE i.indrelid = v_parent_reg
+                  AND i.indisprimary
+                  AND array_length(i.indkey,1)=1
+                LIMIT 1;
 
-                      BEGIN
-                        EXECUTE v_sql;
-                        PERFORM dbops.fn_audit_log_once(
-                          p_function_name => 'fn_run_automations_storico',
-                          p_status        => 'OK',
-                          p_rule_type     => 'STORICO',
-                          p_params        => jsonb_build_object('table', v_full_sto, 'action','CREATE_STORICO_TABLE'),
-                          p_message       => 'Storico table created'
-                        );
+                IF v_parent_pk IS NOT NULL THEN
+                  SELECT format_type(att.atttypid, att.atttypmod)
+                    INTO v_fk_type
+                  FROM pg_attribute att
+                  WHERE att.attrelid = v_parent_reg
+                    AND att.attname  = v_parent_pk
+                    AND NOT att.attisdropped;
+                END IF;
 
-                      EXCEPTION WHEN OTHERS THEN
-                        PERFORM script.fn_log_and_raise_error(
-                          'dbops',
-                          'fn_run_automations_storico',          -- function_name / contesto
-                          'E_STORICO_PROVISION',              -- codice breve dell’errore
-                          jsonb_build_object(
-                            'action','CREATE_STORICO_TABLE',
-                            'schema', p_schema_base,
-                            'table',  p_table_base,
-                            'target', format('storico.%s_storico', p_table_base),
-                            'fk',     p_fk_col
-                          ),
-                          NULL::uuid,
-                          SQLERRM
-                        );
+                IF v_fk_type IS NULL THEN
+                  v_parent_pk := 'id';
+                  SELECT format_type(att.atttypid, att.atttypmod)
+                    INTO v_fk_type
+                  FROM pg_attribute att
+                  WHERE att.attrelid = v_parent_reg
+                    AND att.attname  = 'id'
+                    AND NOT att.attisdropped;
 
-                      END;
-                    END;
-                    $$;
+                  IF v_fk_type IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'dbops',
+                      'fn_run_automations_storico_provision',
+                      'E_STORICO_PARENT_PK_NOT_FOUND',
+                      jsonb_build_object('schema',p_schema_base,'table',p_table_base),
+                      NULL::uuid,
+                      ARRAY['Impossibile determinare PK o tipo per tabella padre']
+                    );
+                    RETURN;
+                  END IF;
+                END IF;
+
+                -- DDL: tabella, commenti, FK, indici (no indice su ts; non esiste più)
+                v_sql := format($ddl$
+                  CREATE SCHEMA IF NOT EXISTS storico;
+                  CREATE TABLE IF NOT EXISTS %s (
+                    id              BIGSERIAL,
+                    %I              %s NOT NULL,
+                    change_type     char(1) DEFAULT 'A',
+                    tipo_operazione smallint,
+                    snapshot        jsonb,
+                    user_insert     text DEFAULT CURRENT_USER,
+                    data_insert     timestamptz DEFAULT now(),
+                    tx_id           uuid,
+                    valid_from      timestamptz DEFAULT now(),
+                    valid_to        timestamptz,
+                    CONSTRAINT %I PRIMARY KEY (id)
+                  );
+                  COMMENT ON COLUMN %s.change_type
+                    IS 'Tipo di cambiamento: A=Active, S=Suppressed, F=Fused, D=Divided';
+                  COMMENT ON COLUMN %s.tipo_operazione
+                    IS 'Tipo operazione (1=insert, 2=update, 3=delete)';
+                  
+                 -- non si genera più la fk perchè bloccerebbe la cancellazione delle righe della tabella e non è corretto
+                 -- si crea solo l'indice.
+                 -- ALTER TABLE %s
+                 --   ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES %s(%I);
+
+                  CREATE INDEX IF NOT EXISTS %I ON %s (%I);
+                $ddl$,
+                  v_full_sto,
+                  p_fk_col, v_fk_type,
+                  v_pk_name,
+                  v_full_sto,
+                  v_full_sto,
+                  v_full_sto,
+                  v_fk_name, p_fk_col, v_full_base, v_parent_pk,
+                  v_ix_fk_name, v_full_sto, p_fk_col
+                );
+
+                IF p_create_gin_index THEN
+                  v_sql := v_sql || format(E'\nCREATE INDEX IF NOT EXISTS %I ON %s USING GIN (snapshot);\n',
+                                           v_ix_gin_name, v_full_sto);
+                END IF;
+
+                IF p_dry_run THEN
+                  PERFORM dbops.fn_audit_log_once(
+                    p_function_name => 'fn_run_automations_storico_provision',
+                    p_status        => 'DRYRUN',
+                    p_rule_type     => 'STORICO_PROVISION',
+                    p_dry_run       => true,
+                    p_params        => jsonb_build_object('table', v_full_sto, 'action','CREATE_STORICO_TABLE'),
+                    p_message       => 'Storico table would be created'
+                  );
+                  RETURN;
+                END IF;
+
+                BEGIN
+                  EXECUTE v_sql;
+                  PERFORM dbops.fn_audit_log_once(
+                    p_function_name => 'fn_run_automations_storico_provision',
+                    p_status        => 'OK',
+                    p_rule_type     => 'STORICO_PROVISION',
+                    p_params        => jsonb_build_object('table', v_full_sto, 'action','CREATE_STORICO_TABLE'),
+                    p_message       => 'Storico table created'
+                  );
+                EXCEPTION WHEN OTHERS THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops',
+                    'fn_run_automations_storico_provision',
+                    'E_STORICO_PROVISION',
+                    jsonb_build_object(
+                      'action','CREATE_STORICO_TABLE',
+                      'schema', p_schema_base,
+                      'table',  p_table_base,
+                      'target', v_full_sto,
+                      'fk',     p_fk_col
+                    ),
+                    NULL::uuid,
+                    ARRAY[SQLERRM]
+                  );
+                END;
+              END;
+              $$;
+ 
 
                     
                     CREATE OR REPLACE FUNCTION dbops.fn_run_automations_storico_provision(
@@ -138,26 +197,15 @@ databaseChangeLog:
                     DECLARE
                       rtab record;
                       rrule record;
-                      v_schemas text[] := p_schemas;
+                      v_schemas text[] ;
                       has_flag boolean;
                       storicizza_col text;
                       fk_col text;
                       create_gin boolean;
                     BEGIN
-                      -- Runner: scansiona regole STORICO con auto_provision, crea solo le tabelle storico mancanti
-                      -- scope fallback se p_schemas è NULL
-                      IF v_schemas IS NULL THEN
-                        IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-                                  WHERE n.nspname='dbops' AND c.relname='automation_scope' AND c.relkind='r') THEN
-                          SELECT array_agg(DISTINCT schema_name) INTO v_schemas FROM dbops.automation_scope;
-                        ELSE
-                          SELECT array_agg(nspname) INTO v_schemas
-                          FROM pg_namespace
-                          WHERE nspname NOT LIKE 'pg_%'
-                            AND nspname <> 'information_schema'
-                            AND nspname <> 'storico';
-                        END IF;
-                      END IF;
+                      v_schemas := dbops.fn_resolve_scope(p_schemas);
+
+                    
 
                       -- loop tabelle degli schemi target
                       FOR rtab IN
@@ -165,22 +213,25 @@ databaseChangeLog:
                         FROM pg_class c
                         JOIN pg_namespace n ON n.oid=c.relnamespace
                         WHERE c.relkind='r' AND n.nspname = ANY(v_schemas)
+                        AND n.nspname <> 'storico'   
+                        AND dbops.fn_table_in_scope(n.nspname, c.relname)
                       LOOP
-                        -- regole STORICO pertinenti
+                        -- regole 'STORICO_PROVISION' pertinenti (schema match con wildcard *all + target_table)
                         FOR rrule IN
                           SELECT *
                           FROM dbops.automation_rules_tbl r
                           WHERE r.enabled
-                            AND r.rule_type='STORICO'
+                            AND r.rule_type='STORICO_PROVISION'
                             AND (r.exec_mode='AUTO' OR r.exec_mode=p_exec_mode)
-                            AND r.target_schema = rtab.schema_name
+                            AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
                             AND (r.target_table IS NULL OR rtab.table_name LIKE r.target_table)
                         LOOP
-                          -- parametri
+                          --  parametri regola
                           create_gin := COALESCE((rrule.params->>'create_gin_index')::boolean, false);
-                          IF COALESCE((rrule.params->>'auto_provision')::boolean, false) IS NOT TRUE THEN
+
+                          /*IF COALESCE((rrule.params->>'auto_provision')::boolean, false) IS NOT TRUE THEN
                             CONTINUE;
-                          END IF;
+                          END IF; */
 
                           -- colonna storicizza (override: STORICIZZA_COL)
                           storicizza_col := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'STORICIZZA_COL', 'storicizza');
@@ -189,10 +240,10 @@ databaseChangeLog:
                             CONTINUE;
                           END IF;
 
-                          -- fk storico (override: STORICO_FK)
+                          -- calcolo FK colonna storico (override: STORICO_FK)
                           fk_col := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'STORICO_FK', rtab.table_name||'_id');
 
-                          -- crea tabella storico se manca
+                          -- crea tabella storico se manca (dry-run / ok / error handling già dentro helper)
                           PERFORM dbops.fn_ensure_storico_table(rtab.schema_name, rtab.table_name, fk_col, create_gin, p_dry_run);
                         END LOOP;
                       END LOOP;
