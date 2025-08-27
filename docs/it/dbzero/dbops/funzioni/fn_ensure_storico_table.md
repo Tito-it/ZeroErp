@@ -105,9 +105,11 @@ BEGIN
       IS 'Tipo di cambiamento: A=Active, S=Suppressed, F=Fused, D=Divided';
     COMMENT ON COLUMN %s.tipo_operazione
       IS 'Tipo operazione (1=insert, 2=update, 3=delete)';
-
-    ALTER TABLE %s
-      ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES %s(%I);
+    
+   -- non si genera più la fk perchè bloccerebbe la cancellazione delle righe della tabella e non è corretto
+   -- si crea solo l'indice.
+   -- ALTER TABLE %s
+   --   ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES %s(%I);
 
     CREATE INDEX IF NOT EXISTS %I ON %s (%I);
   $ddl$,

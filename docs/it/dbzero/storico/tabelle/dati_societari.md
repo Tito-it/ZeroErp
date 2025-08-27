@@ -18,7 +18,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_storico_dati_societari_anagrafiche_dati_societari | dati_societari_id |
 | PRIMARY KEY | pk_storico_dati_societari | id |
 
 ## 📑 Indici

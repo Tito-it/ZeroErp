@@ -31,6 +31,7 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_soft_del_articoli_tipologie__articoli__fk_articoli_a_b9278b | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli', 'tipo_voce_id')` |
+| trg_soft_del_articoli_tipologie_articoli_fk_articoli_art_2bfca9 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli', 'tipo_voce_id')` |
 | trg_upd_articoli_tipologie_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---

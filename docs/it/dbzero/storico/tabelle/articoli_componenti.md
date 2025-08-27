@@ -17,14 +17,12 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_articoli_componenti | articoli_componenti_id |
 | PRIMARY KEY | pk_storico_articoli_componenti | id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_articoli_componenti_articoli_componenti_id_fk | `CREATE INDEX ix_articoli_componenti_articoli_componenti_id_fk ON storico.articoli_componenti USING btree (articoli_componenti_id)` |
-| ix_storico_articoli_componenti_componente_valid_from_desc | `CREATE INDEX ix_storico_articoli_componenti_componente_valid_from_desc ON storico.articoli_componenti USING btree (articoli_componenti_id, valid_from DESC)` |
 | pk_storico_articoli_componenti | `CREATE UNIQUE INDEX pk_storico_articoli_componenti ON storico.articoli_componenti USING btree (id)` |
 
 ## 🚨 Trigger

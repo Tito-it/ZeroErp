@@ -5,25 +5,7 @@
 #
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
-# ------------------------------------------------------------
-      
-# ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Auto-provision storico tables per regola STORICO (storicizza=true)
-# - Helper: dbops.fn_ensure_storico_table(...)
-# - Runner: dbops.fn_run_automations_storico_provision(...)  (SOLO creazione tabelle)
-# ------------------------------------------------------------
-databaseChangeLog:
-  - changeSet:
-      id: 20250822-01-storico-auto-provision
-      author: mctit
-      runOnChange: true
-      changes:
-        - sql:
-            splitStatements: false
-            stripComments: false
-            sql: |
-                   
+# ------------------------------------------------------------                   
 # ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Storico provision: naming/columns fix (no _storico, PK nominata, change_type/tipo_operazione)

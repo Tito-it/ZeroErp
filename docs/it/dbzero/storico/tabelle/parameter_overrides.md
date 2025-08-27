@@ -18,7 +18,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_storico_parameter_overrides_config_parameter_overrides | parameter_override_id |
 | PRIMARY KEY | pk_storico_parameter_overrides | id |
 
 ## 📑 Indici

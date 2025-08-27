@@ -13,6 +13,9 @@ CREATE OR REPLACE FUNCTION dbops.fn_name_from_template(p_template text, p_schema
 AS $function$
   DECLARE
     s text;
+    h6 text := CASE WHEN p_fk IS NOT NULL AND length(p_fk)>0
+                THEN substr(to_hex(hashtextextended(p_fk,0)),1,6) ELSE '' END;
+    s_no_if text;
   BEGIN
     -- ----------------------------------------------
     --  p_template → stringa modello, può contenere placeholder come 
@@ -26,20 +29,40 @@ AS $function$
     --    p_op → operazione (INS, UPD, DEL, ecc.).
     ----------------------------------------------
 
-    s := p_template;
+    --s := p_template;
+    s  := COALESCE(p_template, '{table}');
+   
+
     s := replace(s, '{schema}', COALESCE(p_schema,''));
     s := replace(s, '{table}',  COALESCE(p_table,''));
     s := replace(s, '{parent}', COALESCE(p_parent,''));
     s := replace(s, '{child}',  COALESCE(p_child,''));
     s := replace(s, '{fk}',     COALESCE(p_fk,''));
     s := replace(s, '{op}',     COALESCE(p_op,''));
+  
+    -- hash sempre (se presente nel template esplicito)
+    s := replace(s,'{fkhash6}',h6);
 
-    IF length(s) <= 63 THEN
-      RETURN s;
-    ELSE
-      -- hash compatto e non deprecato
-      RETURN left(s, 63-1-6) || '_' || substr(to_hex(hashtextextended(s, 0)), 1, 6);
+    -- hash solo se il nome è lungo
+    IF position('{fkhash6_if_long}' IN s) > 0 THEN
+      s_no_if := replace(s,'{fkhash6_if_long}','');
+      IF length(s_no_if) > 63 THEN
+        s := replace(s,'{fkhash6_if_long}',h6);
+      ELSE
+        s := s_no_if;
+      END IF;
     END IF;
+
+    -- elimina i doppi underscore 
+    s:= regexp_replace(s, '_{2,}', '_', 'g');
+    s := regexp_replace(s, '^_+|_+$', '', 'g');
+
+     -- guard 63 char con hash consistente
+    IF length(s) > 63 THEN
+      s := left(s, 63-1-6) || '_' || substr(to_hex(hashtextextended(s,0)), 1, 6);
+    END IF;
+
+    RETURN s;
   END;
   $function$
 ```

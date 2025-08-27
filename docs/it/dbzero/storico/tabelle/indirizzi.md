@@ -18,7 +18,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_storico_indirizzi_anagrafiche_indirizzi | indirizzo_id |
 | PRIMARY KEY | pk_indirizzi | id |
 
 ## 📑 Indici

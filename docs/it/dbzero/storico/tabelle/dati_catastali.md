@@ -17,7 +17,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_storico_dati_catastali_anagrafiche_dati_catastali | dato_catastale_id |
 | PRIMARY KEY | pk_storico_dati_catastali | id |
 
 ## 📑 Indici

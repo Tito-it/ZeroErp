@@ -14,9 +14,9 @@
 - [apply_fk_index_policy](funzioni/apply_fk_index_policy.md) — Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:   
 - [fn_admin_merge_comune](funzioni/fn_admin_merge_comune.md)
 - [fn_admin_merge_stradario](funzioni/fn_admin_merge_stradario.md)
-- [fn_audit_begin](funzioni/fn_audit_begin.md)
-- [fn_audit_end](funzioni/fn_audit_end.md)
-- [fn_audit_log_once](funzioni/fn_audit_log_once.md)
+- [fn_audit_begin](funzioni/fn_audit_begin.md) — La funzione **`fn_audit_begin`** avvia una nuova sessione di auditing registrando un evento iniziale nella tabella `dbops.audit_log`. È utilizzata come punto di partenza per tracciare processi o automazioni che richiedono visibilità sull’intero ciclo di esecuzione.
+- [fn_audit_end](funzioni/fn_audit_end.md) — La funzione **`fn_audit_end`** chiude una sessione di auditing avviata da `fn_audit_begin`, registrando lo stato finale nel record corrispondente in `dbops.audit_log`.
+- [fn_audit_log_once](funzioni/fn_audit_log_once.md) — La funzione **`fn_audit_log_once`** registra un singolo evento di audit senza richiedere una sessione completa (`fn_audit_begin`/`fn_audit_end`). È utile per eventi puntuali o messaggi informativi.
 - [fn_col_exists](funzioni/fn_col_exists.md)
 - [fn_create_gestore](funzioni/fn_create_gestore.md)
 - [fn_ensure_storico_table](funzioni/fn_ensure_storico_table.md)
@@ -44,8 +44,11 @@
 - [fn_search_column_usage](funzioni/fn_search_column_usage.md) — * Individuare rapidamente tutte le occorrenze di un campo in definizioni SQL presenti nel database. * Facilitare attività di refactoring, pulizia del codice, e verifica di dipendenze tra oggetti del database.
 - [fn_seed_fk_index_policy](funzioni/fn_seed_fk_index_policy.md) — * **Sincronizzazione iniziale**   Aggiunge in `fk_index_policy` tutte le FK con indice esistente rilevate in `vw_fk_con_indice_missing_policy`. * **Automazione**   Evita inserimenti manuali per policy già coperte da indice. * **Flag di origine**   Imposta `generated_by_script = true` per distinguere le righe create automaticamente.
 - [fn_table_in_scope](funzioni/fn_table_in_scope.md)
+- [fn_trigger_exists_block_by_args](funzioni/fn_trigger_exists_block_by_args.md)
 - [fn_trigger_exists_by_function](funzioni/fn_trigger_exists_by_function.md)
 - [fn_trigger_exists_by_name](funzioni/fn_trigger_exists_by_name.md)
+- [fn_trigger_exists_cascade_by_args](funzioni/fn_trigger_exists_cascade_by_args.md)
+- [fn_trigger_exists_require_by_args](funzioni/fn_trigger_exists_require_by_args.md)
 - [proc_apply_storicizza_defaults](funzioni/proc_apply_storicizza_defaults.md) — La procedura `dbops.apply_storicizza_defaults()` ha il compito di **impostare il valore di default `true` per la colonna `storicizza`** in tutte le tabelle elencate nella tabella di configurazione `config.storico_set_storicizza`. È utilizzata per **garantire che le nuove righe inserite siano automaticamente storicizzate**, ove previsto.
 - [proc_sync_storico_set_storicizza](funzioni/proc_sync_storico_set_storicizza.md) — `dbops.proc_sync_storico_set_storicizza` è una procedura di sincronizzazione che individua, all’interno del database, tutte le tabelle che possiedono la colonna `storicizza` con **valore di default `true`** e le registra nella tabella di configurazione `config.storico_set_storicizza`.
 - [trgfn_child_requires_active_parent](funzioni/trgfn_child_requires_active_parent.md)

@@ -17,7 +17,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_storico_clienti_anagrafiche_clienti | cliente_id |
 | PRIMARY KEY | pk_storico_clienti | id |
 
 ## 📑 Indici

@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+      
+databaseChangeLog:
+  - changeSet:
+      id: 20250827-03-fn_trigger_exists_cascade_require_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: | 
+                  -- CASCADE (padre): dbops.trgfn_soft_delete_cascade(child_schema, child_table, fk_col)
+                  CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_cascade_by_args(
+                    p_parent_rel   regclass,
+                    p_child_schema text,
+                    p_child_table  text,
+                    p_fk_col       text
+                  ) RETURNS boolean
+                  LANGUAGE sql STABLE AS $$
+                    SELECT EXISTS (
+                      SELECT 1
+                      FROM pg_trigger t
+                      JOIN pg_proc p ON p.oid = t.tgfoid
+                      WHERE t.tgrelid = p_parent_rel
+                        AND NOT t.tgisinternal
+                        AND p.proname = 'trgfn_soft_delete_cascade'
+                        AND pg_get_triggerdef(t.oid) ILIKE
+                            format('%%EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade(''%s'',''%s'',''%s'')%%',
+                                  p_child_schema, p_child_table, p_fk_col)
+                    );
+                  $$;
+
+  - changeSet:
+      id: 20250827-04-fn_trigger_exists_cascade_require_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: | 
+
+
+                  -- REQUIRE (figlio): dbops.trgfn_child_requires_active_parent(parent_schema,parent_table,parent_attivo_col,fk_col)
+                  CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_require_by_args(
+                    p_child_rel         regclass,
+                    p_parent_schema     text,
+                    p_parent_table      text,
+                    p_parent_attivo_col text,
+                    p_fk_col            text
+                  ) RETURNS boolean
+                  LANGUAGE sql STABLE AS $$
+                    SELECT EXISTS (
+                      SELECT 1
+                      FROM pg_trigger t
+                      JOIN pg_proc p ON p.oid = t.tgfoid
+                      WHERE t.tgrelid = p_child_rel
+                        AND NOT t.tgisinternal
+                        AND p.proname = 'trgfn_child_requires_active_parent'
+                        AND pg_get_triggerdef(t.oid) ILIKE
+                            format('%%EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(''%s'',''%s'',''%s'',''%s'')%%',
+                                  p_parent_schema, p_parent_table, p_parent_attivo_col, p_fk_col)
+                    );
+                  $$;
+                 
+
+                  
+  - changeSet:
+      id: 20250827-90-fn_trigger_exists_cascade_require_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250827-03-fn_trigger_exists_cascade_require_v1

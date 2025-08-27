@@ -15,11 +15,6 @@
 | tipo_operazione | smallint | YES |  |
 | change_type | character | NO | 'A'::bpchar |
 
-## 🔒 Vincoli
-| Tipo | Nome | Colonne |
-|------|------|---------|
-| FOREIGN KEY | fk_comuni_config | comune_id |
-
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|

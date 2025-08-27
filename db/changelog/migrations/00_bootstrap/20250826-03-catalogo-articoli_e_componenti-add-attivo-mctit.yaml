@@ -13,6 +13,13 @@ databaseChangeLog:
       runOnChange: true
       validCheckSums:
         - ANY
+      preConditions:
+        - onFail: CONTINUE
+        - not:
+          - columnExists:
+              schemaName: catalogo
+              tableName: articoli
+              columnName: attivo
       changes:
         - addColumn:
             schemaName: catalogo
@@ -39,6 +46,13 @@ databaseChangeLog:
       runOnChange: true
       validCheckSums:
         - ANY
+      preConditions:
+        - onFail: CONTINUE
+        - not:
+          - columnExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+              columnName: attivo
       changes:
         - addColumn:
             schemaName: catalogo

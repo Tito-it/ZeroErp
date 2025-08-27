@@ -61,7 +61,7 @@ LOOP
         fk_col := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'STORICO_FK', rtab.table_name||'_id');
 
         -- naming (nuovo default: unico trigger UPD+DLT)
-        tmpl     := COALESCE(rrule.name_template, 'trgx_z90_{table}_upd_dlt_storico');
+        tmpl     := COALESCE(rrule.name_template, 'trg_z90_{table}_upd_dlt_storico');
         trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL, 'upd_dlt');
         exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
 

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_audit_end.md" %}
 # ⚙️ Funzione `fn_audit_end`
 
 ```sql
