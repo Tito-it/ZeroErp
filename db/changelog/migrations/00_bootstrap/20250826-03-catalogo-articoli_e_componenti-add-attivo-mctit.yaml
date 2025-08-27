@@ -31,14 +31,7 @@ databaseChangeLog:
                 IS 'Stato attivo/inattivo del articolo (DEFAULT TRUE)';
 
   
-        # 2c) Indice per "ultimo snapshot": (articolo_id, valid_from DESC)
-        - sql:
-            splitStatements: false
-            sql: |
-              CREATE INDEX IF NOT EXISTS ix_storico_articoli_articolo_valid_from_desc
-              ON storico.articoli (articoli_id, valid_from DESC);
-              COMMENT ON INDEX storico.ix_storico_articoli_articolo_valid_from_desc
-                IS 'Lookup per ultimo snapshot: (articoli_id, valid_from DESC)';
+        
 
   - changeSet:
       id: 20250826-04-catalogo-articoli_e_componenti-add-attivo-mctit
@@ -64,14 +57,7 @@ databaseChangeLog:
                 IS 'Stato attivo/inattivo del articolo (DEFAULT TRUE)';
 
   
-        # 2c) Indice per "ultimo snapshot": (articolo_id, valid_from DESC)
-        - sql:
-            splitStatements: false
-            sql: |
-              CREATE INDEX IF NOT EXISTS ix_storico_articoli_componenti_componente_valid_from_desc
-              ON storico.articoli_componenti (articoli_componenti_id, valid_from DESC);
-              COMMENT ON INDEX storico.ix_storico_articoli_componenti_componente_valid_from_desc
-                IS 'Lookup per ultimo snapshot: (articoli_componenti_id, valid_from DESC)';
+      
 
   - changeSet:
       id: 20250826-90-catalogo-articoli_e_componenti-add-attivo-mctit
