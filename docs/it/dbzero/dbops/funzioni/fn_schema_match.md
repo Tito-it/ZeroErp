@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_schema_match.md" %}
 # ⚙️ Funzione `fn_schema_match`
 
 ```sql

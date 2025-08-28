@@ -2,8 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> * `dbops.fn_run_automations` / moduli `TX_ID`, `AUDIT_UPDATE`, `STORICO`, `ATTIVO`
+> Approfondimento funzioni: 
 > * Helper: `dbops.fn_get_override_col(schema, table, key, default)`
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
+> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)
+
 
 ### 🎯 Scopo Principale
 

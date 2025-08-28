@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_resolve_scope.md" %}
 # ⚙️ Funzione `fn_resolve_scope`
 
 ```sql

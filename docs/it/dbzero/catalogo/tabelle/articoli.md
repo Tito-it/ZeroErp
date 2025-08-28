@@ -52,6 +52,10 @@
 |------|--------|--------|--------|
 | trg_articoli_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_articoli_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_chk_articoli_parent_fk_articoli_unita_misura | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id')` |
+| trg_chk_articoli_parent_fk_articoli_unita_misura | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id')` |
+| trg_soft_del_articoli_articoli_componenti_fk_articoli_co_126924 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli_componenti', 'prodotto_id')` |
+| trg_soft_del_articoli_articoli_componenti_fk_articoli_co_9b0295 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli_componenti', 'componente_id')` |
 | trg_upd_articoli_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 | trg_z90_articoli_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('articoli_id')` |
 | trg_z90_articoli_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('articoli_id')` |
