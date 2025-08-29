@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | bigint | NO | nextval('maintenance.job_run_log_id_seq'::regclass) |
+| id | bigint | NO |  |
 | jobname | text | NO |  |
 | stepname | text | YES |  |
 | started_at | timestamp with time zone | NO | clock_timestamp() |

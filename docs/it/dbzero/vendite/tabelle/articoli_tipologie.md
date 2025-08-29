@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('vendite.articoli_tipologie_id_seq'::regclass) |
+| id | integer | NO |  |
 | codice | character varying | NO |  |
 | descrizione | character varying | NO |  |
 | descrizione_breve | character varying | YES |  |

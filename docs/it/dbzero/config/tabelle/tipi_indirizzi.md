@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.tipi_indirizzi_id_seq'::regclass) |
+| id | integer | NO |  |
 | codice_interno | character varying | NO |  |
 | descrizione | text | NO |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |

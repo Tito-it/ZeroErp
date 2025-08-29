@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('anagrafiche.indirizzi_dettaglio_id_seq'::regclass) |
+| id | integer | NO |  |
 | stradario_id | integer | NO |  |
 | civico | integer | YES |  |
 | estensione_civico | character varying | YES |  |

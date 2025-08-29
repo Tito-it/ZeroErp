@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('anagrafiche.indirizzi_id_seq'::regclass) |
+| id | integer | NO |  |
 | soggetto_ruolo_id | integer | NO |  |
 | tipo_indirizzo_id | integer | NO |  |
 | indirizzo_dettaglio_id | integer | YES |  |

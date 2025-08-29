@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.iva_natura_id_seq'::regclass) |
+| id | integer | NO |  |
 | codice | character | NO |  |
 | descrizione | character varying | NO |  |
 | data_insert | timestamp with time zone | NO | now() |

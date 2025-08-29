@@ -3,7 +3,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | bigint | NO | nextval('storico.dati_catastali_id_seq'::regclass) |
+| id | bigint | NO |  |
 | valid_from | timestamp with time zone | NO | now() |
 | valid_to | timestamp with time zone | YES |  |
 | change_type | character | YES | 'A'::bpchar |

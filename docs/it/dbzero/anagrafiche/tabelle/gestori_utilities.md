@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('anagrafiche.gestori_utilities_ruoli_id_seq'::regclass) |
+| id | integer | NO |  |
 | gestore_id | integer | NO |  |
 | utility_id | integer | NO |  |
 | extra | jsonb | YES | '{}'::jsonb |

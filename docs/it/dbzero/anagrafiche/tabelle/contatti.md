@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('anagrafiche.contatti_id_seq'::regclass) |
+| id | integer | NO |  |
 | tipo_contatto_id | integer | NO |  |
 | soggetto_id | uuid | NO |  |
 | soggetto_ruolo_id | integer | YES |  |

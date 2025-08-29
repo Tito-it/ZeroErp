@@ -3,7 +3,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | bigint | NO | nextval('storico.sto_demo_storico_id_seq'::regclass) |
+| id | bigint | NO |  |
 | sto_demo_id | bigint | NO |  |
 | op | text | YES |  |
 | ts | timestamp without time zone | YES | now() |

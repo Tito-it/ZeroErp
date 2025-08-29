@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('anagrafiche.istanze_utilities_id_seq'::regclass) |
+| id | integer | NO |  |
 | fittizia | boolean | NO | false |
 | codice | character varying | NO |  |
 | proprietario_inquilino | character | NO | 'I'::bpchar |

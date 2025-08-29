@@ -3,7 +3,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('storico.stradario_trasformazioni_id_seq'::regclass) |
+| id | integer | NO |  |
 | via_id_orig | integer | NO |  |
 | via_id_nuovo | integer | NO |  |
 | tipo_evento | character | NO |  |

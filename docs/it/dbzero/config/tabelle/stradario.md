@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.stradario_id_seq'::regclass) |
+| id | integer | NO |  |
 | comune_id | integer | NO |  |
 | stradario_generale_id | integer | NO |  |
 | geoloc | USER-DEFINED | YES |  |

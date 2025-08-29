@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('vendite.regole_fatturazione_articolo_id_seq'::regclass) |
+| id | integer | NO |  |
 | prodotto_id | uuid | NO |  |
 | visibilita_componenti | character varying | NO | 'solo_padre'::character varying |
 | calcolo_qta_padre | character varying | NO | 'fissa'::character varying |

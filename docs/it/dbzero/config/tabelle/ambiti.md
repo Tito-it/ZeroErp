@@ -3,7 +3,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.ambiti_id_seq'::regclass) |
+| id | integer | NO |  |
 | codice | character | NO |  |
 | descrizione | character | NO |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |

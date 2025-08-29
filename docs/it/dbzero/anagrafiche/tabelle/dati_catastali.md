@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | bigint | NO | nextval('anagrafiche.dati_catastali_id_seq'::regclass) |
+| id | bigint | NO |  |
 | indirizzo_dettaglio_id | integer | NO |  |
 | sezione_catastale | character | YES |  |
 | foglio_catastale | character | YES |  |

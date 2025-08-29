@@ -18,6 +18,8 @@
 ## ⚙️ Funzioni
 - [trgfn_billing_account_ins_upd_clean_fields](funzioni/trgfn_billing_account_ins_upd_clean_fields.md) — Il trigger `anagrafiche.trgfn_billing_account_ins_upd_clean_fields` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
 - [trgfn_billing_account_upd_protect_account_code](funzioni/trgfn_billing_account_upd_protect_account_code.md) — Il trigger `anagrafiche.trgfn_billing_account_upd_protect_account_code`, invocato **prima di ogni UPDATE** su `anagrafiche.billing_account`, impedisce modifiche improprie al campo **`codice (account)`** una volta assegnato.
+- [trgfn_clienti_set_periodo](funzioni/trgfn_clienti_set_periodo.md)
+- [trgfn_clienti_sync_pdp](funzioni/trgfn_clienti_sync_pdp.md)
 - [trgfn_contatti_ins_upd_set_default_contatto](funzioni/trgfn_contatti_ins_upd_set_default_contatto.md) — * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 - [trgfn_dati_societari_ins_upd_check_tipo_soggetto](funzioni/trgfn_dati_societari_ins_upd_check_tipo_soggetto.md) — Verificare che il soggetto associato ai dati societari ( `new.soggetto_id` in `anagrafiche.dati_societari` ) abbia un `codice_interno` ammesso (solo **`SC`** o **`SP`**). In caso contrario, viene lanciato un errore tramite `script.fn_log_and_raise_error`.
 - [trgfn_gestori_ins_upd_check_ruolo_gestore](funzioni/trgfn_gestori_ins_upd_check_ruolo_gestore.md) — - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_check_ins_soggetto_ruolo` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.

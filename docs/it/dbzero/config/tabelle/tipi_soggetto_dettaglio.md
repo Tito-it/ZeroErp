@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | bigint | NO | nextval('config.tipi_soggetto_dettaglio_id_seq'::regclass) |
+| id | bigint | NO |  |
 | tipo_soggetto_id | character varying | NO |  |
 | stato_iso2 | character varying | NO |  |
 | codice_interno | character varying | NO |  |
