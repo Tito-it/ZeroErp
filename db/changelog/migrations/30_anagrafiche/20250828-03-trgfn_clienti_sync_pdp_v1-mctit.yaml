@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250828-03-trgfn_clienti_sync_pdp_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ "ANY" ]
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              
+              -- Trigger function: sincronizza pdp_id dalla istanza_utility
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_sync_pdp()
+              RETURNS trigger
+              LANGUAGE plpgsql AS $$
+              BEGIN
+                IF NEW.istanza_utility_id IS NOT NULL THEN
+                  SELECT iu.pdp_id
+                  INTO NEW.pdp_id
+                  FROM anagrafiche.istanze_utilities iu
+                  WHERE iu.id = NEW.istanza_utility_id;
+
+                  -- opzionale: se non trovato, azzera pdp_id
+                  IF NOT FOUND THEN
+                    NEW.pdp_id := NULL;
+                  END IF;
+                END IF;
+                RETURN NEW;
+              END$$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_clienti_sync_pdp()
+                IS 'Allinea la colonna denormalizzata pdp_id in base a anagrafiche.istanze_utilities(istanza_utility_id)';
+
+              
+              -- Trigger BEFORE INSERT/UPDATE per sync pdp e set periodo
+              DROP TRIGGER IF EXISTS trg_clienti_sync_pdp ON anagrafiche.clienti;
+              CREATE TRIGGER trg_clienti_sync_pdp
+              BEFORE INSERT OR UPDATE ON anagrafiche.clienti
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_pdp();
+
+              COMMENT ON TRIGGER trg_clienti_sync_pdp ON anagrafiche.clienti
+                IS 'Sincronizza pdp_id dalla istanza_utility collegata';
+  
+  
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250828-90-trgfn_clienti_sync_pdp_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250828-03-trgfn_clienti_sync_pdp_v1

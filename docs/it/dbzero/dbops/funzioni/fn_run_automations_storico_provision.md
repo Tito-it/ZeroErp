@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_run_automations_storico_provision.md" %}
 # ⚙️ Funzione `fn_run_automations_storico_provision`
 
 ```sql

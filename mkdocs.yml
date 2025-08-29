@@ -98,11 +98,14 @@ nav:
         - API: dev/api.md
 
   - Guide tecniche:
-      - Elenco guide: 
+      
           - Implementazione Transaction ID: guide/tx_id_implementation_guide.md
           - Storicizzazione Tabelle: guide/storicizzazione-tabelle.md
           - Configurazione e gestione parametri: guide/configurazione-e-gestione-parametri.md
           - Automazione DB: guide/automazione-db.md
-          - Gestione dei Messaggi di Errore e Generazione Log : guide/Messaggi-di-Errore-e-Generazione-Log.md
+          - Log :
+              - Messaggi di Errore : guide/Messaggi-di-Errore-e-Generazione-Log.md
+              - Messaggi di Audit : guide/messaggi-audit.md
+              - Processi e Job : guide/Analisi-tracciamento-processi-e-job.md
           - Generazione di un cliente : guide/generazione-cliente.md
           - Gestione degli indirizzi : guide/gestione-degli-indirizzi.md

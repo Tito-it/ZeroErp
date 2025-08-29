@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_name_from_template.md" %}
 # ⚙️ Funzione `fn_name_from_template`
 
 ```sql

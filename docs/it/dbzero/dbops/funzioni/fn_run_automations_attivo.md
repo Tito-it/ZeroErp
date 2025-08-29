@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_run_automations_attivo.md" %}
 # ⚙️ Funzione `fn_run_automations_attivo`
 
 ```sql
@@ -90,24 +91,22 @@ BEGIN
       JOIN pg_namespace np ON np.oid = cp.relnamespace
       WHERE c.contype='f'
         AND c.confdeltype IN ('r','a')  -- RESTRICT o NO ACTION
-        -- *** Scope effettivo per CHILD ***
+        -- *** Scope effettivo per figlo e padre***
         AND nc.nspname = ANY(v_schemas)
+        AND np.nspname = ANY(v_schemas)
         AND dbops.fn_table_in_scope(nc.nspname, cc.relname)
+        AND dbops.fn_table_in_scope(np.nspname, cp.relname)        
          -- *** Match rule (rispetta *all) ***
-        AND dbops.fn_schema_match(rrule.target_schema, nc.nspname)
-        AND (rrule.target_table IS NULL OR cc.relname LIKE rrule.target_table)
+        AND (
+           dbops.fn_schema_match(rrule.target_schema, np.nspname)      -- parent schema
+           OR dbops.fn_schema_match(rrule.target_schema, nc.nspname)      -- child  schema
+  )
+        -- target_table applicata a child OPPURE parent
+        AND (rrule.target_table IS NULL OR cc.relname LIKE rrule.target_table OR cp.relname LIKE rrule.target_table)
         -- *** Escludi sempre storico (padre & figlio) ***
         AND nc.nspname <> 'storico'  -- child
         AND np.nspname <> 'storico'  -- parent (by safety)
-
-      --  AND ( dbops.fn_schema_match(r.target_schema, nc.nspname)  )  -- child
-      --  AND dbops.fn_table_in_scope(nc.nspname, cc.relname)
          
-        -- target_table applicata a child OPPURE parent
-        --AND (r.target_table IS NULL OR cc.relname LIKE r.target_table OR cp.relname LIKE r.target_table)
-        -- solo child (più logico)
-        --AND (rule.target_table IS NULL OR cc.relname LIKE rule.target_table)
-
         AND NOT EXISTS (
           SELECT 1 FROM dbops.automation_fk_exclusions e
           WHERE e.parent_schema=np.nspname AND e.parent_table=cp.relname
@@ -161,6 +160,29 @@ BEGIN
           OR (exist_strat='BOTH'        AND NOT (exists_by_name OR exists_by_args)) 
 
         THEN
+
+          -- se prima avevamo il BLOCK sul padre, droppalo
+                  IF COALESCE((rrule.params->>'reconcile_on_change')::boolean, true) THEN
+                    IF p_dry_run THEN
+                      PERFORM dbops.fn_audit_log_once(
+                        p_function_name => 'fn_run_automations_attivo',
+                        p_status        => 'DRYRUN',
+                        p_rule_type     => 'ATTIVO',
+                        p_params        => jsonb_build_object(
+                                            'action','DROP_BLOCK',
+                                            'table', rfk.parent_schema||'.'||rfk.parent_table,
+                                            'fk', fk_col
+                                          ),
+                        p_message       => 'Would drop BLOCK trigger (child gained attivo)'
+                      );
+                    ELSE
+                      PERFORM dbops.fn_drop_triggers_by_function_args(
+                        rfk.parent_rel, 'dbops', 'trgfn_prevent_deactivate_if_children',
+                        rfk.child_schema, rfk.child_table, fk_col
+                      );
+                    END IF;
+                  END IF;
+
           IF p_dry_run THEN   
             PERFORM dbops.fn_audit_log_once(
                     p_function_name => 'dbops.fn_run_automations',
@@ -180,6 +202,7 @@ BEGIN
           
           ELSE
             BEGIN
+              
               EXECUTE format($f$
                 CREATE TRIGGER %I
                 AFTER UPDATE OF %I ON %I.%I
@@ -272,6 +295,35 @@ BEGIN
           OR (exist_strat='BOTH'        AND NOT (exists_by_name OR exists_by_args)) 
           
         THEN
+          -- se prima avevamo CASCADE+REQUIRE, droppali
+          IF COALESCE((rrule.params->>'reconcile_on_change')::boolean, true) THEN
+            IF p_dry_run THEN
+              PERFORM dbops.fn_audit_log_once(
+                p_function_name => 'fn_run_automations_attivo',
+                p_status        => 'DRYRUN',
+                p_rule_type     => 'ATTIVO',
+                p_params        => jsonb_build_object(
+                                    'action','DROP_CASCADE_REQUIRE',
+                                    'parent', rfk.parent_schema||'.'||rfk.parent_table,
+                                    'child',  rfk.child_schema||'.'||rfk.child_table,
+                                    'fk',     fk_col
+                                  ),
+                p_message       => 'Would drop CASCADE (parent) + REQUIRE (child)'
+              );
+            ELSE
+              -- CASCADE sul padre
+              PERFORM dbops.fn_drop_triggers_by_function_args(
+                rfk.parent_rel, 'dbops', 'trgfn_soft_delete_cascade',
+                rfk.child_schema, rfk.child_table, fk_col
+              );
+              -- REQUIRE sul figlio (ha 4 argomenti)
+              PERFORM dbops.fn_drop_triggers_by_function_args(
+                rfk.child_rel, 'dbops', 'trgfn_child_requires_active_parent',
+                rfk.parent_schema, rfk.parent_table, col_attivo_parent, fk_col
+              );
+            END IF;
+          END IF;
+
           IF p_dry_run THEN
             
              PERFORM dbops.fn_audit_log_once(

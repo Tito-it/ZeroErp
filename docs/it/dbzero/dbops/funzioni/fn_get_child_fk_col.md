@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_get_child_fk_col.md" %}
 # ⚙️ Funzione `fn_get_child_fk_col`
 
 ```sql

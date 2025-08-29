@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_get_override_col.md" %}
 # ⚙️ Funzione `fn_get_override_col`
 
 ```sql

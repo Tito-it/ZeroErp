@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+      
+databaseChangeLog:
+  - changeSet:
+      id: 20250828-01-fn_drop_triggers_by_function_args_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: | 
+                  -- Droppa tutti i trigger su p_rel che invocano p_func_schema.p_func_name(p_args...)
+                        CREATE OR REPLACE FUNCTION dbops.fn_drop_triggers_by_function_args(
+                          p_rel         regclass,
+                          p_func_schema text,
+                          p_func_name   text,
+                          VARIADIC p_args text[]
+                        ) RETURNS int
+                        LANGUAGE plpgsql AS $$
+                        DECLARE
+                          r    record;
+                          n    int := 0;
+                          pat  text;
+                        BEGIN
+                          pat := format(
+                                  'EXECUTE FUNCTION %I.%I(%s)',
+                                  p_func_schema, p_func_name,
+                                  array_to_string(ARRAY(SELECT quote_literal(a) FROM unnest(p_args) a), ', ')
+                                );
+
+                          FOR r IN
+                            SELECT t.tgname
+                            FROM pg_trigger t
+                            WHERE t.tgrelid = p_rel
+                              AND NOT t.tgisinternal
+                              AND pg_get_triggerdef(t.oid) ILIKE ('%'||pat||'%')
+                          LOOP
+                            EXECUTE format('DROP TRIGGER IF EXISTS %I ON %s', r.tgname, p_rel::text);
+                            n := n + 1;
+                          END LOOP;
+
+                          RETURN n;
+                        END;
+                        $$;
+
+                  
+  - changeSet:
+      id: 20250828-90-fn_drop_triggers_by_function_args_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250828-01-fn_drop_triggers_by_function_args_v1

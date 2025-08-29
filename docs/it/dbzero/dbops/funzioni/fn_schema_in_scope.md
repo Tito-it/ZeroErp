@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_schema_in_scope.md" %}
 # ⚙️ Funzione `fn_schema_in_scope`
 
 ```sql

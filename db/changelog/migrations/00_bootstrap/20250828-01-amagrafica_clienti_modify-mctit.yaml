@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250828-02-alter-clienti-add-cols
+      author: mctit
+      changes:
+        # Colonne principali (se mancano)
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: clienti
+            columns:
+              - column:
+                  name: pdp_id
+                  type: BIGINT
+                  remarks: "FK denormalizzata → config.pdp.id (punto di prelievo collegato all'istanza)"
+              - column:
+                  name: data_attivazione
+                  type: DATE
+                  remarks: "Data inizio validità commerciale (inclusiva)"
+              - column:
+                  name: data_sospensione
+                  type: DATE
+                  remarks: "Eventuale data sospensione"
+              - column:
+                  name: data_riattivazione
+                  type: DATE
+                  remarks: "Eventuale data di riattivazione"
+              - column:
+                  name: data_chiusura
+                  type: DATE
+                  remarks: "Data fine validità commerciale (inclusiva)"
+              - column:
+                  name: tipo_giorni_scadenza
+                  type: CHAR(1)
+                  defaultValue: "N"
+                  remarks: "Regola calcolo scadenza fattura: G=Somma gg, M=Fine mese, F=Fine mese successivo + somma gg, N=Non definito"
+              - column:
+                  name: numero_giorni
+                  type: SMALLINT
+                  remarks: "Numero giorni usato solo con tipo_giorni_scadenza in ('G','F')"
+              - column:
+                  name: garanzia_tipo
+                  type: CHAR(1)
+                  defaultValue: "D"
+                  remarks: "Tipo garanzia: D=Deposito, F=Fideiussione"
+              - column:
+                  name: garanzia_importo
+                  type: NUMERIC(12,2)
+                  defaultValueNumeric: 0
+                  remarks: "Importo garanzia (deposito/fideiussione)"
+              - column:
+                  name: periodo
+                  type: DATERANGE
+                  remarks: "Intervallo normalizzato [data_attivazione, data_chiusura+1) per vincoli di sovrapposizione"
+
+        # Commenti su colonne appena aggiunte
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN anagrafiche.clienti.pdp_id IS 'FK denormalizzata → config.pdp.id (punto di prelievo collegato all''istanza_utility_id)';
+              COMMENT ON COLUMN anagrafiche.clienti.data_attivazione IS 'Data inizio validità commerciale (inclusiva)';
+              COMMENT ON COLUMN anagrafiche.clienti.data_sospensione IS 'Eventuale data di sospensione del servizio';
+              COMMENT ON COLUMN anagrafiche.clienti.data_riattivazione IS 'Eventuale data di riattivazione del servizio';
+              COMMENT ON COLUMN anagrafiche.clienti.data_chiusura IS 'Data fine validità commerciale (inclusiva: cliente attivo fino a questo giorno)';
+              COMMENT ON COLUMN anagrafiche.clienti.tipo_giorni_scadenza IS 'Regola calcolo scadenza fattura: G=Somma gg, M=Fine mese, F=Fine mese successivo + somma gg, N=Non definito';
+              COMMENT ON COLUMN anagrafiche.clienti.numero_giorni IS 'Numero giorni; obbligatorio se tipo_giorni_scadenza in (G,F), altrimenti deve essere NULL';
+              COMMENT ON COLUMN anagrafiche.clienti.garanzia_tipo IS 'Tipo garanzia: D=Deposito, F=Fideiussione';
+              COMMENT ON COLUMN anagrafiche.clienti.garanzia_importo IS 'Importo garanzia (deposito/fideiussione), non negativo';
+              COMMENT ON COLUMN anagrafiche.clienti.periodo IS 'Intervallo normalizzato [data_attivazione, data_chiusura+1) usato per vincoli NO OVERLAP su pdp_id';
+
+  - changeSet:
+      id: 20250828-03-alter-clienti-add-cols
+      author: mctit
+      changes:
+        # Indice per lookup per PDP
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: clienti
+            indexName: ix_clienti_pdp_id
+            columns:
+              - column:
+                  name: pdp_id
+        # (Opzionale) FK pdp_id → config.pdp.id, se presente la tabella
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: clienti
+            baseColumnNames: pdp_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: pdp
+            referencedColumnNames: id
+            constraintName: fk_clienti_pdp
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+  - changeSet:
+      id: 20250828-04-alter-clienti-add-cols
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Date coerenti: chiusura >= attivazione se entrambe valorizzate
+              ALTER TABLE anagrafiche.clienti
+              ADD CONSTRAINT chk_clienti_date_coerenti
+              CHECK (data_chiusura IS NULL OR data_attivazione IS NULL OR data_chiusura >= data_attivazione);
+
+              -- tipo_giorni_scadenza ammessi
+              ALTER TABLE anagrafiche.clienti
+              ADD CONSTRAINT chk_clienti_tipo_giorni_scadenza
+              CHECK (tipo_giorni_scadenza IN ('G','M','F','N'));
+
+              -- numero_giorni richiesto solo per G e F; proibito per M e N
+              ALTER TABLE anagrafiche.clienti
+              ADD CONSTRAINT chk_clienti_numero_giorni_uso
+              CHECK (
+                (tipo_giorni_scadenza IN ('G','F') AND numero_giorni IS NOT NULL)
+                OR
+                (tipo_giorni_scadenza IN ('M','N') AND numero_giorni IS NULL)
+              );
+
+              -- numero_giorni nel range ragionevole (0..365) quando presente
+              ALTER TABLE anagrafiche.clienti
+              ADD CONSTRAINT chk_clienti_numero_giorni_range
+              CHECK (numero_giorni IS NULL OR (numero_giorni BETWEEN 0 AND 365));
+
+              -- garanzia_tipo ammessi + importo non negativo
+              ALTER TABLE anagrafiche.clienti
+              ADD CONSTRAINT chk_clienti_garanzia_tipo
+              CHECK (garanzia_tipo IN ('D','F'));
+
+              ALTER TABLE anagrafiche.clienti
+              ADD CONSTRAINT chk_clienti_garanzia_importo_nonneg
+              CHECK (garanzia_importo >= 0);
+              
+  - changeSet:
+      id: 20250828-05-alter-clienti-add-cols
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Vincolo NO OVERLAP: sullo stesso PDP gli intervalli non possono sovrapporsi
+              ALTER TABLE anagrafiche.clienti
+              ADD CONSTRAINT ex_clienti_no_overlap_stesso_pdp
+              EXCLUDE USING gist (
+                pdp_id WITH =,
+                periodo WITH &&
+              )
+              WHERE (pdp_id IS NOT NULL AND periodo IS NOT NULL);
+
+              COMMENT ON CONSTRAINT ex_clienti_no_overlap_stesso_pdp ON anagrafiche.clienti
+                IS 'Esclusione: sul medesimo PDP gli intervalli commerciali (periodo) non possono sovrapporsi';
+
+  - changeSet:
+      id: 20250828-90--alter-clienti-add-cols
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250828-02-alter-clienti-add-cols

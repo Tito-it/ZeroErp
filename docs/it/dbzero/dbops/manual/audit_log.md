@@ -2,6 +2,10 @@
 
 > 👀 **Vedi anche**
 >
+> Guide:
+>     
+> [Audit Logging](/guide/messagggi_audit)
+>
 > Approfondimento tabelle:   
 > 
 > * [dbops.error_log](/dbzero/dbops/tabelle/error_log)    
@@ -10,7 +14,7 @@
 >
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
 
-La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e job, consentendo di tracciare chi ha eseguito cosa, quando e con quali parametri, nonché l’esito e la durata. Il campo **`tx_id`** non possiede più un valore di default: viene assegnato **automaticamente** dal **trigger** `trg_assign_tx_id_audit_log` utilizzando la trigger function `dbops.trgfn_tx_id_managed()`, garantendo coerenza con il modello di `error_log`.
+La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e job, consentendo di tracciare chi ha eseguito cosa, quando e con quali parametri, nonché l’esito e la durata. Il campo **`tx_id`** non possiede più un valore di default: viene assegnato **automaticamente** dal **trigger**  utilizzando la trigger function `dbops.trgfn_tx_id_managed()`, garantendo coerenza con il modello di `error_log`.
 
 ---
 
@@ -34,7 +38,7 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
 | `status`        | `text`              | Esito dell’esecuzione (`SUCCESS`, `FAILED`, `WARNING`).                                                              |
 | `message`       | `text`              | Messaggio descrittivo dell’esito.                                                                                    |
 | `duration_ms`   | `integer`           | Durata dell’esecuzione in millisecondi.                                                                              |
-| `tx_id`         | `uuid`              | Identificativo di transazione: valorizzato **dal trigger** `trg_assign_tx_id_audit_log` con `trgfn_tx_id_managed()`. |
+| `tx_id`         | `uuid`              | Identificativo di transazione: valorizzato **dal trigger**  con `trgfn_tx_id_managed()`. |
 
 ---
 
@@ -46,15 +50,6 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
   * `executed_by` → `CURRENT_USER`
   * `executed_at` → `now()`
   * **`tx_id`** non ha default DDL: il valore è sempre gestito dal trigger **`trg_assign_tx_id_audit_log`**.
-
----
-
-### 🚨 Trigger
-
-* **`trg_assign_tx_id_audit_log`** (BEFORE INSERT OR UPDATE):
-
-  * **Esegue**: `dbops.trgfn_tx_id_managed()`
-  * **Scopo**: genera o recupera il corretto `tx_id` (sessione o nuovo) secondo la logica centralizzata.
 
 ---
 
@@ -101,4 +96,4 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
 
 ---
 
-> 🧠 **“Con il trigger `trg_assign_tx_id_audit_log`, ogni record di audit è automaticamente correlato al contesto transazionale, semplificando debug, monitoraggio e analisi dei processi.”**
+> 🧠 **“Con la colonna `tx_id`, ogni record di audit è automaticamente correlato al contesto transazionale, semplificando debug, monitoraggio e analisi dei processi.”**

@@ -1,7 +1,7 @@
 ## 📘 Documentazione Funzione –  `dbops.fn_audit_begin`
 
 ---
-
+ 
 > 👀 **Vedi anche**     
 >
 > Approdondimento tabelle:   
@@ -11,7 +11,7 @@
 > Approdondimento funzioni:   
 >
 > * [`dbops.fn_audit_end`](/dbzero/dbops/funzioni/fn_audit_end)   
-> * [dbops.fn_audit_log_once`](/dbzero/dbops/funzioni/fn_audit_log_once)   
+> * [`dbops.fn_audit_log_once`](/dbzero/dbops/funzioni/fn_audit_log_once)   
 
 ---
 
