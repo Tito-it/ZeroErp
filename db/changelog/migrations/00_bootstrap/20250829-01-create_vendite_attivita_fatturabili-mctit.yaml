@@ -1,0 +1,214 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250829-01-create_vendite_attivita_fatturabili
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            remarks: "Registro attività/prestazioni da fatturare. Se competenza_mese è valorizzato (YYYY-MM-01), l’attività non può essere fatturata prima di quel mese."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  generationType: BY DEFAULT   # oppure ALWAYS
+                  startWith: 1
+                  incrementBy: 1
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+
+              - column:
+                  name: articolo_id
+                  type: UUID
+                  remarks: "FK → catalogo.articoli.id"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: billing_account_id
+                  type: INTEGER
+                  remarks: "FK opzionale → anagrafiche.billing_account.id (emissione fattura)"
+
+              - column:
+                  name: istanza_utility_id
+                  type: INTEGER
+                  remarks: "FK → anagrafiche.istanze_utilities.id (attribuzione tecnica)"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_attivita
+                  type: DATE
+                  remarks: "Data dell’attività/erogazione"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: quantita
+                  type: "NUMERIC(18,6)"
+                  remarks: "Quantità rilevata (es. ore)"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: competenza_mese
+                  type: DATE
+                  remarks: "Competenza mensile (normalizzata al 1° del mese). Se presente: non fatturare prima di quel mese"
+
+              - column:
+                  name: competenza_data
+                  type: DATE
+                  remarks: "Competenza puntuale alternativa (opzionale)"
+
+              - column:
+                  name: approvato
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "Workflow: TRUE se pronta alla fatturazione"
+
+              - column:
+                  name: fatturato
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "TRUE se già fatturata (anti-doppia fatturazione)"
+
+              - column:
+                  name: note
+                  type: "VARCHAR(250)"
+
+              - column:
+                  name: meta
+                  type: JSONB
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estensibili (riferimenti intervento, operatore, ecc.)"
+
+              - column: { name: tx_id,      type: UUID }
+              - column:
+                  name: storicizza
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: "VARCHAR(30)"
+                  defaultValueComputed: CURRENT_USER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: "VARCHAR(30)"
+                  defaultValueComputed: CURRENT_USER
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+
+        # Commenti
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE vendite.attivita_fatturabili
+                IS 'Registro attività/prestazioni da fatturare (HH, una tantum, manuali). Se competenza_mese è valorizzato (YYYY-MM-01), non fatturare prima di quel mese.';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.articolo_id
+                IS 'FK → catalogo.articoli.id (prodotto/servizio).';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.billing_account_id
+                IS 'FK opzionale → anagrafiche.billing_account.id (account di fatturazione).';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.istanza_utility_id
+                IS 'FK → anagrafiche.istanze_utilities.id (punto/istanza tecnica).';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.data_attivita
+                IS 'Data esecuzione/prestazione.';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.quantita
+                IS 'Quantità rilevata (es. ore).';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.competenza_mese
+                IS 'Competenza mensile (primo del mese). Se valorizzata, vieta la fatturazione prima del mese indicato.';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.competenza_data
+                IS 'Competenza puntuale alternativa (opzionale).';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.approvato
+                IS 'TRUE se l’attività è approvata e pronta per la fatturazione.';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.fatturato
+                IS 'TRUE se l’attività risulta già fatturata (blocco doppia fatturazione).';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.meta
+                IS 'Metadati liberi in JSONB.';
+
+  # Vincoli (FK + CHECK)
+  - changeSet:
+      id: 220250829-02-create_vendite_attivita_fatturabili
+      author: mctit
+      changes:
+        # Foreign keys
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: articolo_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            constraintName: fk_attivita_fatturabili_articoli
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: billing_account_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            constraintName: fk_attivita_fatturabili_billing_account
+            onDelete: SET NULL
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: istanza_utility_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            constraintName: fk_attivita_fatturabili_istanze_utilities
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        # CHECK di coerenza
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+              ADD CONSTRAINT chk_attivita_quantita_pos
+              CHECK (quantita > 0);
+
+              ALTER TABLE vendite.attivita_fatturabili
+              ADD CONSTRAINT chk_attivita_competenza_mese_primo
+              CHECK (competenza_mese IS NULL OR EXTRACT(DAY FROM competenza_mese) = 1);
+
+              ALTER TABLE vendite.attivita_fatturabili
+              ADD CONSTRAINT chk_attivita_competenza_data_logica
+              CHECK (competenza_data IS NULL OR competenza_data >= data_attivita);
+
+  
+
+  - changeSet:
+      id: 20250829-90-create_vendite_attivita_fatturabili
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250829-01-create_vendite_attivita_fatturabili
