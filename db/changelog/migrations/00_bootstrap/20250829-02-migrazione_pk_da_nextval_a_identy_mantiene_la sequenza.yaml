@@ -54,7 +54,9 @@ databaseChangeLog:
                   AND i.is_identity = 'NO'                      -- non già identity
                   AND pg_get_expr(d.adbin, d.adrelid) LIKE 'nextval(%'  -- usa nextval
                   AND c.relkind IN ('r','p')                    -- tabelle normali/parent partiz.
-                  AND i.table_schema not in ('public',   'topology')
+                  AND i.table_schema  in ('anagrafiche',   'catalogo', 'config', 'contabilita', 
+                                          'dbops',    'maintenance', 'script',                   
+                                          'vendite',   'storico')      -- schemi applicativi
                   --AND i.table_schema = 'config'
                   --AND i.table_name   = 'valute'
               LOOP
