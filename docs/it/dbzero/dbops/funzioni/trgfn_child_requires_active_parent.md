@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/trgfn_child_requires_active_parent.md" %}
 # ⚙️ Funzione `trgfn_child_requires_active_parent`
 
 ```sql

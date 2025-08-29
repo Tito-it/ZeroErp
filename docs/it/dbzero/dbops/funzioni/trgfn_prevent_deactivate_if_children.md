@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/trgfn_prevent_deactivate_if_children.md" %}
 # ⚙️ Funzione `trgfn_prevent_deactivate_if_children`
 
 ```sql

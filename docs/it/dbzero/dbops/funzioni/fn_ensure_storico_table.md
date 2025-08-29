@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_ensure_storico_table.md" %}
 # ⚙️ Funzione `fn_ensure_storico_table`
 
 ```sql

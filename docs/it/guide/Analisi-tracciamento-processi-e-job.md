@@ -92,3 +92,6 @@ Progettare un sistema dedicato al **tracciamento dei job** che:
 ## Conclusione
 
 Il sistema proposto affianca `audit_log` ed `error_log`, offrendo un **livello dedicato al monitoraggio dei job**. Sarà così possibile tracciare processi lunghi come il calcolo fatture, mostrando in modo trasparente **stato, step, progressi e anomalie**.
+
+---
+{% include-markdown "signature-core.md" %}

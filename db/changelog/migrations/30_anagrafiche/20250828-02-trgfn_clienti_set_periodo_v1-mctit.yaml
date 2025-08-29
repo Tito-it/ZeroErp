@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250828-02-trgfn_clienti_set_periodo_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ "ANY" ]
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_set_periodo()
+              RETURNS trigger
+              LANGUAGE plpgsql AS $$
+              DECLARE
+                fine_esclusiva DATE;
+              BEGIN
+                -- Trigger function: normalizza "periodo" = [data_attivazione, data_chiusura+1)  
+                -- Inclusività della data_chiusura: se valorizzata, usiamo (data_chiusura + 1 giorno) come estremo esclusivo
+                fine_esclusiva := CASE
+                  WHEN NEW.data_chiusura IS NULL THEN 'infinity'::date
+                  ELSE NEW.data_chiusura + 1
+                END;
+                IF NEW.data_attivazione IS NOT NULL THEN
+                  NEW.periodo := daterange(NEW.data_attivazione, fine_esclusiva, '[)');
+                ELSE
+                  NEW.periodo := NULL;
+                END IF;
+                RETURN NEW;
+              END$$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_clienti_set_periodo()
+                IS 'Imposta periodo = [data_attivazione, data_chiusura+1) per modellare fine inclusiva in un range con estremo destro esclusivo';
+
+              
+              -- Trigger BEFORE INSERT/UPDATE per sync pdp e set periodo
+              DROP TRIGGER IF EXISTS trg_clienti_set_periodo ON anagrafiche.clienti;
+              CREATE TRIGGER trg_clienti_set_periodo
+              BEFORE INSERT OR UPDATE ON anagrafiche.clienti
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_periodo();
+
+              COMMENT ON TRIGGER trg_clienti_set_periodo ON anagrafiche.clienti
+                IS 'Normalizza la colonna periodo come daterange [attivazione, chiusura+1)';
+  
+  
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 220250828-90-trgfn_clienti_set_periodo_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250828-02-trgfn_clienti_set_periodo_v1

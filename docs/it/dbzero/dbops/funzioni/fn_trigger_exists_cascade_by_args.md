@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_trigger_exists_cascade_by_args.md" %}
 # ⚙️ Funzione `fn_trigger_exists_cascade_by_args`
 
 ```sql

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/trgfn_soft_delete_cascade.md" %}
 # ⚙️ Funzione `trgfn_soft_delete_cascade`
 
 ```sql

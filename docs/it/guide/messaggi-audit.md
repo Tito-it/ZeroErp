@@ -44,3 +44,6 @@ Il sistema di **audit logging** implementato nello schema `dbops` fornisce una t
 ---
 
 Questo sistema costituisce la base per tutte le **automazioni di logging** nel progetto Zero ERP, garantendo tracciabilità, affidabilità e conformità alle best practice di auditing.
+
+---
+{% include-markdown "signature-core.md" %}
