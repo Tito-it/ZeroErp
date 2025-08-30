@@ -204,7 +204,35 @@ databaseChangeLog:
               ADD CONSTRAINT chk_attivita_competenza_data_logica
               CHECK (competenza_data IS NULL OR competenza_data >= data_attivita);
 
-  
+  # Indici utili
+  - changeSet:
+      id: 20250829-04-indexes-attivita
+      author: mctit
+      changes:
+        - createIndex:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            indexName: ix_attivita_articolo_flags
+            columns:
+              - column: { name: articolo_id }
+              - column: { name: approvato }
+              - column: { name: fatturato }
+
+        - createIndex:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            indexName: ix_attivita_billing_competenza
+            columns:
+              - column: { name: billing_account_id }
+              - column: { name: competenza_mese }
+
+        - createIndex:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            indexName: ix_attivita_istanza_data
+            columns:
+              - column: { name: istanza_utility_id }
+              - column: { name: data_attivita }
 
   - changeSet:
       id: 20250829-90-create_vendite_attivita_fatturabili

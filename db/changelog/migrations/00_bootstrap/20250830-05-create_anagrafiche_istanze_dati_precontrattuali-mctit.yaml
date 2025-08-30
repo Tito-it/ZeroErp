@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250830-05-create_anagrafiche_istanze_dati_precontrattuali
+      author: mctit
+      changes:
+        # ==========================================================
+        # 1) anagrafiche.istanze_dati_precontrattuali
+        # ==========================================================
+        - createTable:
+            schemaName: anagrafiche
+            tableName: istanze_dati_precontrattuali
+            remarks: "Parametri tecnici precontrattuali per istanze utilities; base per pricing/condizioni prima del contratto"
+            columns:
+                - column:
+                    name: id
+                    type: BIGINT
+                    autoIncrement: true
+                    generationType: BY DEFAULT
+                    constraints:
+                        primaryKey: true
+                        primaryKeyName: pk_istanze_dati_precontrattuali
+                        nullable: false
+                
+                - column: { name: istanza_utility_id, type: INTEGER, constraints: { nullable: false } }
+                - column: { name: utility_id, type: INTEGER, constraints: { nullable: false } }
+
+                - column: { name: stato,        type: "VARCHAR(16)",   defaultValue: "RICEVUTO", remarks: "RICEVUTO|VALIDATO|CONSOLIDATO|SCARTATO" }
+
+                # campi core cross-utility (minimi; estendibili via JSONB)
+                - column: { name: tipo_utenza_id,   type: INTEGER,  remarks: "FK → config.tipi_utenze.id" }
+                - column: { name: classe_utenza_id, type: INTEGER,  remarks: "FK → config.classi_utenze.id" }
+                - column: { name: param_1_num,  type: "NUMERIC(18,6)", remarks: "es. potenza impegnata" }
+                - column: { name: param_2_txt,  type: "VARCHAR(80)",   remarks: "es. tensione/pressione" }
+
+                - column: { name: meta, type: JSONB, defaultValue: "{}", remarks: "Estensioni specifiche per utility" }
+
+                - column: { name: tx_id,       type: UUID }
+                - column: { name: storicizza,  type: BOOLEAN, defaultValueBoolean: true }
+
+                - column: { name: data_insert,  type: "TIMESTAMPTZ",   defaultValueComputed: now(),         constraints: { nullable: false } }
+                - column: { name: user_insert,  type: "VARCHAR(80)",   defaultValueComputed: CURRENT_USER,  constraints: { nullable: false } }
+                - column: { name: data_update,  type: "TIMESTAMPTZ",   defaultValueComputed: now(),         constraints: { nullable: false } }
+                - column: { name: user_update,  type: "VARCHAR(80)",   defaultValueComputed: CURRENT_USER }
+
+
+        # FK esistenti
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: istanze_dati_precontrattuali
+            baseColumnNames: istanza_utility_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            constraintName: fk_idp_istanze_utilities
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: istanze_dati_precontrattuali
+            baseColumnNames: utility_id
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            constraintName: fk_idp_utilities
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        # NUOVE FK su tipo/classe utenza
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: istanze_dati_precontrattuali
+            baseColumnNames: tipo_utenza_id
+            referencedTableSchemaName: config
+            referencedTableName: tipi_utenze
+            referencedColumnNames: id
+            constraintName: fk_idp_tipi_utenze
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: istanze_dati_precontrattuali
+            baseColumnNames: classe_utenza_id
+            referencedTableSchemaName: config
+            referencedTableName: classi_utenze
+            referencedColumnNames: id
+            constraintName: fk_idp_classi_utenze
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        # CHECK + EXCLUDE (no-overlap per istanza+utility)
+        - sql:
+            splitStatements: false
+            sql: |
+                ALTER TABLE anagrafiche.istanze_dati_precontrattuali
+                ADD CONSTRAINT chk_idp_stato
+                CHECK (stato IN ('RICEVUTO','VALIDATO','CONSOLIDATO','SCARTATO'));
+
+
+        # Indici (incluse le nuove FK)
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: istanze_dati_precontrattuali
+            indexName: ix_idp_istanza_utility_id
+            columns:
+                - column: { name: istanza_utility_id }
+
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: istanze_dati_precontrattuali
+            indexName: ix_idp_utility_id
+            columns:
+                - column: { name: utility_id }
+
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: istanze_dati_precontrattuali
+            indexName: ix_idp_tipo_utenza_id
+            columns:
+                - column: { name: tipo_utenza_id }
+
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: istanze_dati_precontrattuali
+            indexName: ix_idp_classe_utenza_id
+            columns:
+                - column: { name: classe_utenza_id }
+
+        # Commenti
+        - sql:
+            splitStatements: false
+            sql: |
+                COMMENT ON TABLE anagrafiche.istanze_dati_precontrattuali
+                IS 'Dati tecnici precontrattuali per istanze utilities: parametri di profilazione e condizioni preliminari (core + JSONB).';
+               
+                COMMENT ON COLUMN anagrafiche.istanze_dati_precontrattuali.tipo_utenza_id
+                IS 'FK → config.tipi_utenze.id';
+                COMMENT ON COLUMN anagrafiche.istanze_dati_precontrattuali.classe_utenza_id
+                IS 'FK → config.classi_utenze.id';
+      
+  - changeSet:
+      id: 20250830-90-create_anagrafiche_istanze_dati_precontrattuali
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250830-05-create_anagrafiche_istanze_dati_precontrattuali

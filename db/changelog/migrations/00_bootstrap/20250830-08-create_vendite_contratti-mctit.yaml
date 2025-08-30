@@ -1,0 +1,243 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250830-08-create_vendite_contratti
+      author: mctit
+      changes:
+  # ==========================================================
+  # 3) Contratti (testata/righe) con ambito e no-overlap
+  # ==========================================================
+        - createTable:
+            schemaName: vendite
+            tableName: contratti
+            remarks: "Contratti commerciali; versione attiva per BA/istanza/utility per ambito; numerazione dedicata"
+            columns:
+              - column:
+                    name: id
+                    type: BIGINT
+                    autoIncrement: true
+                    generationType: BY DEFAULT
+                    constraints:
+                        primaryKey: true
+                        primaryKeyName: pk_contratti
+                        nullable: false
+
+              - column: { name: numero_contratto,  type: VARCHAR(30), constraints: { nullable: false } }
+              - column: { name: billing_account_id, type: INTEGER, constraints: { nullable: false } }
+              - column: { name: istanza_utility_id, type: INTEGER, constraints: { nullable: false } }
+              - column: { name: utility_id,         type: INTEGER, constraints: { nullable: false } }
+              - column: { name: ambito,             type: VARCHAR(24), defaultValue: "COMMODITY",
+                          remarks: "es. COMMODITY|SERVIZI_ACCESSORI|MANUTENZIONE|NOLI|ALTRO" }
+
+              - column: { name: valid_from, type: DATE, defaultValueComputed: CURRENT_DATE, constraints: { nullable: false } }
+              - column: { name: valid_to,   type: DATE }
+
+              - column: { name: stato, type: VARCHAR(12), defaultValue: "BOZZA",
+                          remarks: "BOZZA|ATTIVO|SOSPESO|CESSATO" }
+
+              - column: { name: parent_contratto_id, type: BIGINT, remarks: "collegamento opzionale a contratto precedente" }
+              - column: { name: meta, type: JSONB, defaultValue: "{}" }
+              - column: { name: note, type: TEXT }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false } }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false } }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false } }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER }
+
+       
+
+        # Unicità numero contratto (puoi variare a tuo gusto)
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: contratti
+            columnNames: numero_contratto
+            constraintName: uq_contratti_numero
+
+        # FK
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: contratti
+            baseColumnNames: billing_account_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            constraintName: fk_contratti_billing_account
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: contratti
+            baseColumnNames: istanza_utility_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            constraintName: fk_contratti_istanza
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: contratti
+            baseColumnNames: utility_id
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            constraintName: fk_contratti_utility
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: contratti
+            baseColumnNames: parent_contratto_id
+            referencedTableSchemaName: vendite
+            referencedTableName: contratti
+            referencedColumnNames: id
+            constraintName: fk_contratti_parent
+            onDelete: SET NULL
+            onUpdate: CASCADE
+
+        # No-overlap per (BA, istanza, utility, ambito)
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti
+              ADD CONSTRAINT ex_contratti_no_overlap
+              EXCLUDE USING gist (
+                billing_account_id WITH =,
+                istanza_utility_id WITH =,
+                utility_id         WITH =,
+                ambito             WITH =,
+                daterange(valid_from, COALESCE(valid_to, 'infinity'::date), '[]') WITH &&
+              );
+
+              ALTER TABLE vendite.contratti
+              ADD CONSTRAINT chk_contratti_stato
+              CHECK (stato IN ('BOZZA','ATTIVO','SOSPESO','CESSATO'));
+
+        # Indici
+        - createIndex:
+            schemaName: vendite
+            tableName: contratti
+            indexName: ix_contratti_ba_istanza
+            columns:
+              - column: { name: billing_account_id }
+              - column: { name: istanza_utility_id }
+        - createIndex:
+            schemaName: vendite
+            tableName: contratti
+            indexName: ix_contratti_ambito
+            columns:
+              - column: { name: ambito }
+
+  - changeSet:
+      id: 20250830-09-create-contratti-righe
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: contratti_righe
+            remarks: "Righe contratto: canoni, una tantum, orari, consumi con regole"
+            columns:
+              
+              - column:
+                    name: id
+                    type: BIGINT
+                    autoIncrement: true
+                    generationType: BY DEFAULT
+                    constraints:
+                        primaryKey: true
+                        primaryKeyName: pk_contratti_righe
+                        nullable: false
+
+              - column: { name: contratto_id, type: BIGINT, constraints: { nullable: false } }
+              - column: { name: articolo_id,  type: UUID,   constraints: { nullable: false } }
+
+              - column: { name: tipo_erogazione, type: VARCHAR(16), remarks: "CANONE|UNA_TANTUM|ORARIO|CONSUMO" }
+              - column: { name: fonte_quantita_attesa, type: VARCHAR(24), remarks: "FISSA|MANUALE|TIMESHEET|LETTURE|DERIVATA_COMPONENTI" }
+
+              # Parametri canone (se usato)
+              - column: { name: periodicita, type: VARCHAR(12), remarks: "MENSILE|BIMESTRALE|TRIMESTRALE|ANNUALE (opz.)" }
+              - column: { name: generazione_canone, type: VARCHAR(16), remarks: "INIZIO_PERIODO|FINE_PERIODO|PRORATA" }
+              - column: { name: competenza_canone,  type: VARCHAR(16), remarks: "MESE_CORRENTE|MESE_SUCCESSIVO" }
+
+              # Pricing base (puoi estendere con sconti/scaglioni in futuro)
+              - column: { name: prezzo_unitario, type: "NUMERIC(15,6)" }
+              - column: { name: quantita_fissa,  type: "NUMERIC(18,6)" }
+
+              - column: { name: ordine, type: SMALLINT, defaultValueNumeric: 0 }
+              - column: { name: attivo, type: BOOLEAN, defaultValueBoolean: true }
+
+              - column: { name: meta,   type: JSONB, defaultValue: "{}" }
+
+        
+
+        # FK
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: contratti_righe
+            baseColumnNames: contratto_id
+            referencedTableSchemaName: vendite
+            referencedTableName: contratti
+            referencedColumnNames: id
+            constraintName: fk_contrighe_contratti
+            onDelete: CASCADE
+            onUpdate: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: contratti_righe
+            baseColumnNames: articolo_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            constraintName: fk_contrighe_articoli
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        # CHECK di coerenza base
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+              ADD CONSTRAINT chk_contrighe_tipo_erog
+              CHECK (tipo_erogazione IN ('CANONE','UNA_TANTUM','ORARIO','CONSUMO'));
+
+              ALTER TABLE vendite.contratti_righe
+              ADD CONSTRAINT chk_contrighe_fonte_qta
+              CHECK (fonte_quantita_attesa IN ('FISSA','MANUALE','TIMESHEET','LETTURE','DERIVATA_COMPONENTI'));
+
+              ALTER TABLE vendite.contratti_righe
+              ADD CONSTRAINT chk_contrighe_coerenza_canone
+              CHECK (
+                (tipo_erogazione <> 'CANONE')
+                OR (generazione_canone IN ('INIZIO_PERIODO','FINE_PERIODO','PRORATA'))
+              );
+
+        # Indici
+        - createIndex:
+            schemaName: vendite
+            tableName: contratti_righe
+            indexName: ix_contrighe_contratto
+            columns:
+              - column: { name: contratto_id }
+        - createIndex:
+            schemaName: vendite
+            tableName: contratti_righe
+            indexName: ix_contrighe_articolo
+            columns:
+              - column: { name: articolo_id }        
+
+  # ==========================================================
+  # 3) Contratti (testata/righe) con ambito e no-overlap
+  # ==========================================================
+  
+  - changeSet:
+      id: 20250830-90-create_vendite_contratti-mctit
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250830-08-create_vendite_contratti-mctit

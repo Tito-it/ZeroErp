@@ -6,8 +6,15 @@
 - [articoli_spesa](tabelle/articoli_spesa.md) — * Definire un **catalogo centralizzato** delle voci di spesa utilizzabili in fatturazione. * Abilitare **riepiloghi e totalizzazioni** per voce di spesa nei documenti (es. bolletta, fattura). * Offrire un **testo di stampa** specifico per la voce di spesa, distinto dalla descrizione interna.
 - [articoli_tipologie](tabelle/articoli_tipologie.md) — * Classificare gli articoli secondo **tipologie funzionali** (es. materia prima, servizi, accessori). * Distinguere tra **descrizione estesa** e **descrizione breve**, per gestire contesti documentali differenti. * Fornire uno strumento di aggregazione per reportistica e controlli gestionali.
 - [attivita_fatturabili](tabelle/attivita_fatturabili.md)
+- [contratti](tabelle/contratti.md)
+- [contratti_righe](tabelle/contratti_righe.md)
+- [preventivi](tabelle/preventivi.md)
+- [preventivi_righe](tabelle/preventivi_righe.md)
 - [regole_fatturazione_articolo](tabelle/regole_fatturazione_articolo.md) — * Definire le **policy di calcolo** per ogni articolo. * Stabilire la **visibilità** dei componenti di un articolo complesso (solo padre, padre+componenti, solo componenti). * Impostare la logica di **calcolo della quantità del padre** (fissa o somma di componenti flaggati). * Definire regole di **arrotondamento** per importi e quantità. * Consentire estensioni tramite il campo JSONB `meta`.
 
 ## ⚙️ Funzioni
+- [trgfn_attivita_guard_ba_coerenza](funzioni/trgfn_attivita_guard_ba_coerenza.md)
+- [trgfn_attivita_guard_fonte](funzioni/trgfn_attivita_guard_fonte.md)
+- [trgfn_attivita_norm_competenza_mese](funzioni/trgfn_attivita_norm_competenza_mese.md)
 
 ## 🔍 Views

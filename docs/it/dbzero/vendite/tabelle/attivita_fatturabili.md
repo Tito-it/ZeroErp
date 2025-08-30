@@ -37,6 +37,19 @@
 | Nome | Definizione |
 |------|-------------|
 | attivita_fatturabili_pkey | `CREATE UNIQUE INDEX attivita_fatturabili_pkey ON vendite.attivita_fatturabili USING btree (id)` |
+| ix_attivita_articolo_flags | `CREATE INDEX ix_attivita_articolo_flags ON vendite.attivita_fatturabili USING btree (articolo_id, approvato, fatturato)` |
+| ix_attivita_billing_competenza | `CREATE INDEX ix_attivita_billing_competenza ON vendite.attivita_fatturabili USING btree (billing_account_id, competenza_mese)` |
+| ix_attivita_istanza_data | `CREATE INDEX ix_attivita_istanza_data ON vendite.attivita_fatturabili USING btree (istanza_utility_id, data_attivita)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_attivita_guard_ba_coerenza | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_guard_ba_coerenza()` |
+| trg_attivita_guard_ba_coerenza | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_guard_ba_coerenza()` |
+| trg_attivita_guard_fonte | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_guard_fonte()` |
+| trg_attivita_guard_fonte | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_guard_fonte()` |
+| trg_attivita_norm_competenza_mese | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_norm_competenza_mese()` |
+| trg_attivita_norm_competenza_mese | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_norm_competenza_mese()` |
 
 ---
 {% include-markdown "signature-core.md" %}

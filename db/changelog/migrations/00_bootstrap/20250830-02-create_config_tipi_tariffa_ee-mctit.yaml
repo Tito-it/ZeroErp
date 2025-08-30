@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250830-02-create_config_tipi_tariffa_ee
+      author: mctit
+      changes:
+        # Tabella
+
+        # -------------------------
+        # 1) config.li_ee_tariffa
+        # -------------------------
+        - createTable:
+            schemaName: config
+            tableName: tipi_tariffe_ee
+            remarks: "Tipologia Tariffa mercato elettrico"
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_tipi_tariffe_ee
+                    nullable: false
+              - column:
+                  name: codice
+                  type: VARCHAR(20)
+                  remarks: "Codice tariffa ee"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: gruppo_tariffa_ee
+                  type: VARCHAR(2)
+                  remarks: "Gruppo tariffa ee (verificare)"
+                  constraints:
+                    nullable: false
+
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE  config.tipi_tariffe_ee IS 'Tipologia Tariffa mercato elettrico';
+              COMMENT ON COLUMN config.tipi_tariffe_ee.id              IS 'Id. tariffa ee';
+              COMMENT ON COLUMN config.tipi_tariffe_ee.codice          IS 'Codice tariffa ee';
+              COMMENT ON COLUMN config.tipi_tariffe_ee.gruppo_tariffa_ee IS 'Gruppo tariffa ee (verificare)';
+
+  
+  - changeSet:
+      id: 20250830-90-create_config_tipi_tariffa_ee
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250830-02-create_config_tipi_tariffa_ee

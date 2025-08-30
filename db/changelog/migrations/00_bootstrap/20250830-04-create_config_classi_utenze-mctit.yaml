@@ -1,0 +1,181 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250830-04-create_config_classi_utenze
+      author: mctit
+      changes:
+       # -------------------------
+        # 3) config.utenza_classi
+        # -------------------------
+        - createTable:
+            schemaName: config
+            tableName: classi_utenze
+            remarks: "Classi di utenza e parametri EE collegati a tipo_utenza/tariffa/categoria accisa"
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_classi_utenze
+                    nullable: false
+              - column:
+                  name: codice
+                  type: VARCHAR(20)
+                  remarks: "Codice classe utenza"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione
+                  type: VARCHAR(100)
+                  remarks: "Descrizione classe utenza"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione_breve
+                  type: VARCHAR(40)
+                  remarks: "Descrizione abbreviata"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tipo_utenza_id
+                  type: INTEGER
+                  remarks: "FK → config.tipi_utenze.id"
+              - column:
+                  name: categoria_accisa_id
+                  type: INTEGER
+                  remarks: "FK → config.categoria_accisa.id"
+              - column:
+                  name: pot_contratto_min_ee
+                  type: "NUMERIC(9,3)"
+                  remarks: "EE Potenza contratto minima (range validità)"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: pot_contratto_max_ee
+                  type: "NUMERIC(9,3)"
+                  remarks: "EE Potenza contratto massima (range validità)"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tipi_tariffa_ee_id
+                  type: INTEGER
+                  remarks: "FK → config.create_config_tipi_tariffa_ee.id"
+              - column:
+                  name: tipo_pod
+                  type: VARCHAR(2)
+                  remarks: "Tipo Pod EE"
+                  constraints:
+                    nullable: false
+        
+       
+
+        # UNIQUE e indici
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: classi_utenze
+            columnNames: codice
+            constraintName: uq_classi_utenze_codice
+
+        - createIndex:
+            schemaName: config
+            tableName: classi_utenze
+            indexName: ix_classi_utenze_tipo_utenza_id
+            columns:
+              - column:
+                  name: tipo_utenza_id
+
+        - createIndex:
+            schemaName: config
+            tableName: classi_utenze
+            indexName: ix_classi_utenze_descrizione
+            columns:
+              - column:
+                  name: descrizione
+
+        - createIndex:
+            schemaName: config
+            tableName: classi_utenze
+            indexName: ix_classi_utenze_tipi_tariffa_ee_id
+            columns:
+              - column:
+                  name: tipi_tariffa_ee_id
+
+        - createIndex:
+            schemaName: config
+            tableName: classi_utenze
+            indexName: ix_classi_utenze_categoria_accisa_id
+            columns:
+              - column:
+                  name: categoria_accisa_id
+
+        # FK
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: classi_utenze
+            baseColumnNames: tipo_utenza_id
+            constraintName: fk_classi_utenze_tipi_utenze
+            referencedTableSchemaName: config
+            referencedTableName: tipi_utenze
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: classi_utenze
+            baseColumnNames: tipi_tariffa_ee_id
+            constraintName: fk_classi_utenze_tipi_tariffa_ee
+            referencedTableSchemaName: config
+            referencedTableName: tipi_tariffe_ee
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: classi_utenze
+            baseColumnNames: categoria_accisa_id
+            constraintName: fk_classi_utenze_categoria_accisa
+            referencedTableSchemaName: config
+            referencedTableName: categoria_accisa
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        # Constraints 
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.classi_utenze
+                ADD CONSTRAINT chk_classi_utenze_tipo_pod
+                CHECK (tipo_pod IN ('01','02','03','04','0'));
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE  config.classi_utenze IS 'Classi di utenza e parametri EE collegati a tipo_utenza/tariffa/categoria accisa';
+              COMMENT ON COLUMN config.classi_utenze.id                   IS 'Id. Classe utenza';
+              COMMENT ON COLUMN config.classi_utenze.codice               IS 'Codice classe utenza';
+              COMMENT ON COLUMN config.classi_utenze.descrizione          IS 'Descrizione classe utenza';
+              COMMENT ON COLUMN config.classi_utenze.descrizione_breve    IS 'Descrizione abbreviata';
+              COMMENT ON COLUMN config.classi_utenze.tipo_utenza_id       IS 'Id. tipo utenza';
+              COMMENT ON COLUMN config.classi_utenze.categoria_accisa_id  IS 'Id. categoria dichiarazione accisa';
+              COMMENT ON COLUMN config.classi_utenze.pot_contratto_min_ee IS 'EE Potenza cnt. minima range validità';
+              COMMENT ON COLUMN config.classi_utenze.pot_contratto_max_ee IS 'EE Potenza cnt. massima range validità';
+              COMMENT ON COLUMN config.classi_utenze.tipi_tariffa_ee_id       IS 'Id. tipo tariffa EE';
+              COMMENT ON COLUMN config.classi_utenze.tipo_pod             IS 'Tipo Pod EE';
+  - changeSet:
+      id: 20250830-90-create_config_classi_utenze
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250830-04-create_config_classi_utenze
