@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('anagrafiche.contatti_id_seq'::regclass) |
+| id | integer | NO |  |
 | tipo_contatto_id | integer | NO |  |
 | soggetto_id | uuid | NO |  |
 | soggetto_ruolo_id | integer | YES |  |
@@ -33,7 +33,7 @@
 | FOREIGN KEY | fk_titoli_cortesia_config | titolo_cortesia_id, titolo_cortesia_id |
 | FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
 | PRIMARY KEY | pk_contatti | id |
-| UNIQUE | uq_contatti_multilevel | soggetto_ruolo_id, utility_id, soggetto_id, tipo_contatto_id |
+| UNIQUE | uq_contatti_multilevel | soggetto_id, soggetto_ruolo_id, utility_id, tipo_contatto_id |
 
 ## 📑 Indici
 | Nome | Definizione |

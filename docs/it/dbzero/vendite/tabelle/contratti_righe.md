@@ -1,0 +1,38 @@
+# 📚 Tabella `contratti_righe`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO |  |
+| contratto_id | bigint | NO |  |
+| articolo_id | uuid | NO |  |
+| tipo_erogazione | character varying | YES |  |
+| fonte_quantita_attesa | character varying | YES |  |
+| periodicita | character varying | YES |  |
+| generazione_canone | character varying | YES |  |
+| competenza_canone | character varying | YES |  |
+| prezzo_unitario | numeric | YES |  |
+| quantita_fissa | numeric | YES |  |
+| ordine | smallint | YES | 0 |
+| attivo | boolean | YES | true |
+| meta | jsonb | YES | '{}'::jsonb |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | chk_contrighe_coerenza_canone |  |
+| CHECK | chk_contrighe_fonte_qta |  |
+| CHECK | chk_contrighe_tipo_erog |  |
+| FOREIGN KEY | fk_contrighe_articoli | articolo_id |
+| FOREIGN KEY | fk_contrighe_contratti | contratto_id |
+| PRIMARY KEY | pk_contratti_righe | id |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_contrighe_articolo | `CREATE INDEX ix_contrighe_articolo ON vendite.contratti_righe USING btree (articolo_id)` |
+| ix_contrighe_contratto | `CREATE INDEX ix_contrighe_contratto ON vendite.contratti_righe USING btree (contratto_id)` |
+| pk_contratti_righe | `CREATE UNIQUE INDEX pk_contratti_righe ON vendite.contratti_righe USING btree (id)` |
+
+---
+{% include-markdown "signature-core.md" %}

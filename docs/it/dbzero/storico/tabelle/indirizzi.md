@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('storico.indirizzi_id_seq'::regclass) |
+| id | integer | NO |  |
 | valid_from | timestamp with time zone | NO | CURRENT_DATE |
 | valid_to | timestamp with time zone | YES |  |
 | data_insert | timestamp with time zone | YES | CURRENT_TIMESTAMP |

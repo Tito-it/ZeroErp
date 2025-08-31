@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('storico.stradario_id_seq'::regclass) |
+| id | integer | NO |  |
 | valid_from | date | NO | CURRENT_DATE |
 | valid_to | date | YES |  |
 | change_type | character | YES | 'A'::bpchar |

@@ -1,0 +1,228 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# Zero ERP — Mandati SEPA (domiciliazioni)
+# Tabella: pagamenti.sepa_mandati
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  # 1) Tabella
+  - changeSet:
+      id: 20250831-05-create-pagamenti-sepa_mandati
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+
+      changes:
+
+        - createTable:
+            schemaName: pagamenti
+            tableName: sepa_mandati
+            remarks: "Mandati SEPA (CORE/B2B) per domiciliazione; legati a conto di ruolo e perimetro fatturazione."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { nullable: false, primaryKey: true, primaryKeyName: pk_sepa_mandati }
+                  remarks: "PK"
+              - column:
+                  name: soggetto_ruolo_conto_id
+                  type: BIGINT
+                  constraints: { nullable: false }
+                  remarks: "FK → anagrafiche.soggetti_ruoli_conti_bancari.id"
+              - column:
+                  name: billing_account_id
+                  type: INTEGER
+                  remarks: "Perimetro fatturazione (FK opzionale, aggiunta condizionata in changeSet separato)"
+              - column:
+                  name: istanza_utility_id
+                  type: INTEGER
+                  remarks: "Perimetro fornitura (FK → anagrafiche.istanze_utilities)"
+              - column:
+                  name: umr
+                  type: VARCHAR(35)
+                  constraints: { nullable: false }
+                  remarks: "Unique Mandate Reference"
+              - column:
+                  name: schema
+                  type: VARCHAR(8)
+                  constraints: { nullable: false }
+                  remarks: "CORE | B2B"
+              - column:
+                  name: creditor_id
+                  type: VARCHAR(35)
+                  remarks: "Identificativo creditore SEPA (CI del gestore)"
+              - column: { name: data_firma,        type: DATE,        remarks: "Data firma del mandato" }
+              - column: { name: data_attivazione,  type: DATE,        remarks: "Data attivazione (obbligatoria se stato=ATTIVO)" }
+              - column: { name: data_revoca,       type: DATE,        remarks: "Data revoca (se revocato)" }
+              - column:
+                  name: stato
+                  type: VARCHAR(16)
+                  defaultValue: "IN_VALIDAZIONE"
+                  constraints: { nullable: false }
+                  remarks: "ATTIVO | SOSPESO | REVOCATO | SCADUTO | IN_VALIDAZIONE"
+              - column: { name: iban_snapshot,           type: VARCHAR(34), remarks: "IBAN fotografato alla firma (opz.)" }
+              - column: { name: intestatario_snapshot,   type: VARCHAR(140), remarks: "Intestatario fotografato alla firma (opz.)" }
+              - column: { name: meta, type: JSONB, defaultValue: "{}", remarks: "Estensioni (flags PSD2, canali, consensi...)" }
+              - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Snapshot su UPDATE/DELETE" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit" }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false }, remarks: "Audit" }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit" }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, remarks: "Audit" }
+
+  # 2) FK, CHECK, UNIQUE (parziali), Commenti, Indici
+  - changeSet:
+      id: 20250831-06-create-pagamenti-sepa_mandati
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: pagamenti, tableName: sepa_mandati }
+        - tableExists: { schemaName: anagrafiche, tableName: soggetti_ruoli_conti_bancari }
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pagamenti
+            baseTableName: sepa_mandati
+            baseColumnNames: soggetto_ruolo_conto_id
+            constraintName: fk_sepa_mandati_soggetto_ruolo_conto
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli_conti_bancari
+            referencedColumnNames: id
+            onUpdate: CASCADE 
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pagamenti
+            baseTableName: sepa_mandati
+            baseColumnNames: istanza_utility_id
+            constraintName: fk_sepa_mandati_istanza_utility
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            onUpdate: CASCADE 
+            onDelete: NO ACTION
+        
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pagamenti
+            baseTableName: sepa_mandati
+            baseColumnNames: billing_account_id
+            constraintName: fk_sepa_mandati_billing_account
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            onUpdate: CASCADE 
+            onDelete: NO ACTION      
+
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check valori ammessi
+              ALTER TABLE pagamenti.sepa_mandati
+              ADD CONSTRAINT chk_sepa_mandati_schema
+              CHECK (schema IN ('CORE','B2B'));
+
+              ALTER TABLE pagamenti.sepa_mandati
+              ADD CONSTRAINT chk_sepa_mandati_stato
+              CHECK (stato IN ('ATTIVO','SOSPESO','REVOCATO','SCADUTO','IN_VALIDAZIONE'));
+
+              -- Coerenza date
+              ALTER TABLE pagamenti.sepa_mandati
+              ADD CONSTRAINT chk_sepa_mandati_date
+              CHECK (
+                (data_attivazione IS NULL OR data_firma IS NULL OR data_attivazione >= data_firma)
+                AND (data_revoca IS NULL OR data_attivazione IS NULL OR data_revoca >= data_attivazione)
+              );
+
+              -- Attribuzione perimetro: almeno uno tra BA o istanza (lasciamo liberi di valorizzarli entrambi se serve)
+              ALTER TABLE pagamenti.sepa_mandati
+              ADD CONSTRAINT chk_sepa_mandati_perimetro
+              CHECK ((billing_account_id IS NOT NULL) OR (istanza_utility_id IS NOT NULL));
+
+              -- Formati opzionali
+              ALTER TABLE pagamenti.sepa_mandati
+              ADD CONSTRAINT chk_sepa_mandati_umr_fmt
+              CHECK (umr ~ '^[A-Za-z0-9._-]{3,35}$');
+
+              ALTER TABLE pagamenti.sepa_mandati
+              ADD CONSTRAINT chk_sepa_mandati_iban_snap_fmt
+              CHECK (iban_snapshot IS NULL OR iban_snapshot ~ '^[A-Z0-9]{15,34}$');
+
+              -- Unique parziali: un solo mandato ATTIVO per perimetro+schema
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_indexes
+                   WHERE schemaname='pagamenti'
+                     AND indexname='ix_sepa_mandati_ba_schema_attivo'
+                ) THEN
+                  EXECUTE 'CREATE UNIQUE INDEX ix_sepa_mandati_ba_schema_attivo
+                             ON pagamenti.sepa_mandati (billing_account_id, schema)
+                           WHERE stato = ''ATTIVO'' AND billing_account_id IS NOT NULL';
+                END IF;
+
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_indexes
+                   WHERE schemaname='pagamenti'
+                     AND indexname='ix_sepa_mandati_istanza_schema_attivo'
+                ) THEN
+                  EXECUTE 'CREATE UNIQUE INDEX ix_sepa_mandati_istanza_schema_attivo
+                             ON pagamenti.sepa_mandati (istanza_utility_id, schema)
+                           WHERE stato = ''ATTIVO'' AND istanza_utility_id IS NOT NULL';
+                END IF;
+              END$$;
+
+              -- Commenti
+              COMMENT ON TABLE pagamenti.sepa_mandati
+                IS 'Mandati SEPA CORE/B2B; legati a conto di ruolo e perimetro BA/istanza utility.';
+              COMMENT ON CONSTRAINT fk_sepa_mandati_soggetto_ruolo_conto ON pagamenti.sepa_mandati
+                IS 'FK → anagrafiche.soggetti_ruoli_conti_bancari(id).';
+              COMMENT ON CONSTRAINT fk_sepa_mandati_istanza_utility ON pagamenti.sepa_mandati
+                IS 'FK → anagrafiche.istanze_utilities(id).';
+              COMMENT ON CONSTRAINT chk_sepa_mandati_schema ON pagamenti.sepa_mandati
+                IS 'Valori ammessi: CORE|B2B.';
+              COMMENT ON CONSTRAINT chk_sepa_mandati_stato ON pagamenti.sepa_mandati
+                IS 'Stati: ATTIVO|SOSPESO|REVOCATO|SCADUTO|IN_VALIDAZIONE.';
+              COMMENT ON CONSTRAINT chk_sepa_mandati_date ON pagamenti.sepa_mandati
+                IS 'Ordine temporale firma ≤ attivazione ≤ revoca.';
+              COMMENT ON CONSTRAINT chk_sepa_mandati_perimetro ON pagamenti.sepa_mandati
+                IS 'Richiede almeno uno tra billing_account o istanza utility.';
+              COMMENT ON CONSTRAINT chk_sepa_mandati_umr_fmt ON pagamenti.sepa_mandati
+                IS 'UMR 3-35 caratteri (alfa-num,._-).';
+              COMMENT ON CONSTRAINT chk_sepa_mandati_iban_snap_fmt ON pagamenti.sepa_mandati
+                IS 'IBAN snapshot uppercase 15-34 alfanumerico.';
+
+              -- Indici operativi
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_indexes
+                   WHERE schemaname='pagamenti' AND indexname='ix_sepa_mandati_src'
+                ) THEN
+                  EXECUTE 'CREATE INDEX ix_sepa_mandati_src
+                             ON pagamenti.sepa_mandati (soggetto_ruolo_conto_id)';
+                END IF;
+
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_indexes
+                   WHERE schemaname='pagamenti' AND indexname='ix_sepa_mandati_ba_attivi'
+                ) THEN
+                  EXECUTE 'CREATE INDEX ix_sepa_mandati_ba_attivi
+                             ON pagamenti.sepa_mandati (billing_account_id)
+                           WHERE stato = ''ATTIVO''';
+                END IF;
+              END$$;
+
+  - changeSet:
+        id: 20250831-90-create-pagamenti-sepa_mandati
+        author: mctit
+        changes:
+          - tagDatabase:
+              tag: 20250831-05-create-pagamenti-sepa_mandati

@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.toponomastica_id_seq'::regclass) |
+| id | integer | NO |  |
 | descrizione | character varying | NO |  |
 | stato_id | integer | YES |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |

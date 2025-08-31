@@ -1,0 +1,152 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250830-01-create_config_tipi_utenze
+      author: mctit
+      changes:
+        # Tabella
+        - createTable:
+            schemaName: config
+            tableName: tipi_utenze
+            remarks: "Tipo utenza. Esempi: Domestico, Altri usi, Condominio…"
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_tipi_utenze 
+                    nullable: false
+              - column:
+                  name: codice
+                  type: VARCHAR(20)
+                  remarks: "Codice Tipo utenza"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione
+                  type: VARCHAR(100)
+                  remarks: "Descrizione Tipo utenza"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione_breve
+                  type: VARCHAR(40)
+                  remarks: "Descrizione abbreviata tipo utenza"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: iva_id
+                  type: INTEGER
+                  remarks: "FK → config.iva.id"
+              - column:
+                  name: utility_id
+                  type: INTEGER
+                  remarks: "FK → config.utilities.id"
+              - column:
+                  name: tipo_pdr_std
+                  type: CHAR(1)
+                  defaultValue: "0"
+                  remarks: "Tipo PDR: 0=Dom., 1=Condominio, 2=Altri Usi, 3=Pubblico"
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 20250830-02-create_config_tipi_utenze
+      author: mctit
+      changes:
+
+       
+
+        # UNIQUE su codice
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: tipi_utenze
+            columnNames: codice
+            constraintName: uq_tipi_utenze_codice
+
+        # Indici (come in MySQL)
+        - createIndex:
+            schemaName: config
+            tableName: tipi_utenze
+            indexName: ix_tipi_utenze_descrizione
+            columns:
+              - column:
+                  name: descrizione
+
+        - createIndex:
+            schemaName: config
+            tableName: tipi_utenze
+            indexName: ix_tipi_utenze_iva_id
+            columns:
+              - column:
+                  name: iva_id
+
+        - createIndex:
+            schemaName: config
+            tableName: tipi_utenze
+            indexName: ix_tipi_utenze_utility_id
+            columns:
+              - column:
+                  name: utility_id
+
+        # FK
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: tipi_utenze
+            baseColumnNames: iva_id
+            constraintName: fk_tipi_utenze_iva
+            referencedTableSchemaName: config
+            referencedTableName: iva
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: tipi_utenze
+            baseColumnNames: utility_id
+            constraintName: fk_tipi_utenze_utility
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+       # Constraints 
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.tipi_utenze
+                ADD CONSTRAINT chk_tipi_utenze_tipo_pdr_std
+                CHECK (tipo_pdr_std IN ('0','1','2','3'));
+
+        # Commenti (COMMENT ON …) per compatibilità piena con PostgreSQL
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE  config.tipi_utenze IS 'Tipo utenza. Utilizzata per definire il tipo d’uso (Domestico, Altri usi, Condominio, Pubblico).';
+              COMMENT ON COLUMN config.tipi_utenze.id                IS 'Id Tipo utenza';
+              COMMENT ON COLUMN config.tipi_utenze.codice            IS 'Codice Tipo utenza';
+              COMMENT ON COLUMN config.tipi_utenze.descrizione       IS 'Descrizione Tipo utenza';
+              COMMENT ON COLUMN config.tipi_utenze.descrizione_breve IS 'Descrizione abbreviata tipo utenza';
+              COMMENT ON COLUMN config.tipi_utenze.iva_id            IS 'Id IVA (config.iva.id)';
+              COMMENT ON COLUMN config.tipi_utenze.utility_id        IS 'Id Utility (config.utilities.id)';
+              COMMENT ON COLUMN config.tipi_utenze.tipo_pdr_std      IS 'Tipo PDR: 0=Dom., 1=Condominio, 2=Altri Usi, 3=Pubblico';
+
+  
+  - changeSet:
+      id: 20250830-90-create_config_tipi_utenze
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250830-01-create_config_tipi_utenze

@@ -23,7 +23,7 @@
 |------|------|---------|
 | FOREIGN KEY | fk_overrides_parameter | parameter_id |
 | PRIMARY KEY | parameter_overrides_pkey | id |
-| UNIQUE | uq_overrides_full_scope | user_id, session_key, function_name, tenant_id, parameter_id |
+| UNIQUE | uq_overrides_full_scope | parameter_id, tenant_id, user_id, session_key, function_name |
 
 ## 📑 Indici
 | Nome | Definizione |

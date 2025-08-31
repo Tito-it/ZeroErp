@@ -3,7 +3,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.tipi_documenti_id_seq'::regclass) |
+| id | integer | NO |  |
 | codice | character varying | NO |  |
 | descrizione | character varying | NO |  |
 | codice_interno | character varying | NO |  |

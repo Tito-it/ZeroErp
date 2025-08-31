@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250831-14-trgfn-sepa_mandati-guard-audit_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: pagamenti, tableName: sepa_mandati }
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_sepa_mandati_guard()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                -- Stato ATTIVO richiede data_attivazione
+                IF NEW.stato = 'ATTIVO' AND NEW.data_attivazione IS NULL THEN
+                  RAISE EXCEPTION 'Mandato ATTIVO senza data_attivazione' USING ERRCODE='23514';
+                   PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_sepa_mandati_guard',
+                                      'E_DATA_ATTIVAZIONE_MANDATO',
+                                      jsonb_build_object(
+                                        'tabella','pagamenti.sepa_mandati',
+                                        'data_attivazione',  0,
+                                        'error', SQLERRM
+                                      ) , NULL::uuid, NULL
+                                    ); 
+                END IF;
+
+                -- Normalizzazione UMR e IBAN snapshot
+                IF NEW.umr IS NOT NULL THEN
+                  NEW.umr := regexp_replace(NEW.umr, '\s+', '', 'g');
+                END IF;
+                IF NEW.iban_snapshot IS NOT NULL THEN
+                  NEW.iban_snapshot := upper(regexp_replace(NEW.iban_snapshot, '\s+', '', 'g'));
+                END IF;
+
+                RETURN NEW;
+              END$$;
+
+              COMMENT ON FUNCTION script.trgfn_sepa_mandati_guard()
+                IS 'Controlli coerenza SEPA (stati/date/UMR), normalizzazione e audit base.';
+
+              -- Trigger
+              CREATE OR REPLACE TRIGGER trg_sepa_mandati_ins_upd_guard
+                BEFORE INSERT OR UPDATE
+                ON pagamenti.sepa_mandati
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_sepa_mandati_guard();
+              COMMENT ON TRIGGER trg_sepa_mandati_ins_upd_guard ON pagamenti.sepa_mandati
+                IS 'Guard-rail + audit base.';
+
+
+
+  - changeSet:
+      id: 20250831-90-trgfn-sepa_mandati-guard-audit_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250831-14-trgfn-sepa_mandati-guard-audit_v1

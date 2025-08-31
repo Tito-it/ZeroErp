@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250831-12-trgfn_soggetti_conti_bancari_guardi_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_soggetti_conti_bancari_guard()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_attivo boolean;
+              BEGIN
+                -- Evita legami a conti_bancari disattivati
+                SELECT attivo INTO v_attivo
+                  FROM anagrafiche.conti_bancari
+                 WHERE id = NEW.conto_id;
+                IF v_attivo IS NOT TRUE THEN
+                  
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_soggetti_conti_bancari_guard',
+                                      'E_CONTO_BANCARIO',
+                                      jsonb_build_object(
+                                        'tabella','anagrafiche.conti_bancari',
+                                        'conto_id',  NEW.conto_id::text,
+                                        'error', SQLERRM
+                                      ) , NULL::uuid, NEW.conto_id::text
+                                    ); 
+                
+                END IF;
+
+                -- Coerenza validità già controllata da CHECK, ma forziamo normalizzazione date
+                IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
+                   AND NEW.valido_al < NEW.valido_dal THEN
+                  
+                    PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_soggetti_conti_bancari_guard',
+                                      'E_DATA_AL_MINORE_DAL',
+                                      jsonb_build_object(
+                                        'tabella','anagrafiche.conti_bancari',
+                                        'data_al',  NEW.data_al::text,
+                                        'data_dal',  NEW.data_dal::text,
+                                        'error', SQLERRM
+                                      ) , NULL::uuid, NEW.data_al::text, NEW.data_dal::text
+                                    ); 
+                END IF;
+
+
+                RETURN NEW;
+              END$$;
+
+              COMMENT ON FUNCTION script.trgfn_soggetti_conti_bancari_guard()
+                IS 'Guard-rail su anagrafiche.soggetti_conti_bancari: blocca uso di conti_bancari non attivi e normalizza coerenza date/audit.';
+
+  - changeSet:
+      id: 20250831-13-soggetti_conti_bancari_guardi_v1
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: anagrafiche, tableName: soggetti_conti_bancari }
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Guard-rail, audit base
+              CREATE OR REPLACE TRIGGER trg_soggetti_conti_bancari_ins_upd_guard
+                BEFORE INSERT OR UPDATE
+                ON anagrafiche.soggetti_conti_bancari
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_soggetti_conti_bancari_guard();
+
+              COMMENT ON TRIGGER trg_soggetti_conti_bancari_ins_upd_guard ON anagrafiche.soggetti_conti_bancari
+                IS 'Controlla conto attivo, coerenza date e aggiorna audit base.';
+
+
+  - changeSet:
+      id: 20250831-90-trgfn_soggetti_conti_bancari_guardi_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250831-12-trgfn_soggetti_conti_bancari_guardi_v1

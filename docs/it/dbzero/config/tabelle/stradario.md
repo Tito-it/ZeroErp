@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.stradario_id_seq'::regclass) |
+| id | integer | NO |  |
 | comune_id | integer | NO |  |
 | stradario_generale_id | integer | NO |  |
 | geoloc | USER-DEFINED | YES |  |
@@ -25,7 +25,7 @@
 | FOREIGN KEY | fk_stradario_comune_id | comune_id |
 | FOREIGN KEY | fk_stradario_stradario_generale_id | stradario_generale_id |
 | PRIMARY KEY | pk_stradario | id |
-| UNIQUE | uq_stradario_comune_stradario_gen_cp | stradario_generale_id, codice_postale_id, comune_id |
+| UNIQUE | uq_stradario_comune_stradario_gen_cp | comune_id, stradario_generale_id, codice_postale_id |
 
 ## 📑 Indici
 | Nome | Definizione |

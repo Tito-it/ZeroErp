@@ -1,0 +1,174 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Zero ERP — Associazione conti bancari a livello RUOLO
+# Tabella: anagrafiche.soggetti_ruoli_conti_bancari
+# ------------------------------------------------------------# ------------------------------------------------------------
+
+databaseChangeLog:
+
+  # 1) Tabella
+  - changeSet:
+      id: 20250831-04-create-anagrafiche-soggetti_ruoli_conti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+
+      preConditions:
+        - onFail: HALT
+        - tableExists:  { schemaName: anagrafiche, tableName: soggetti_ruoli }
+        - tableExists:  { schemaName: anagrafiche, tableName: conti_bancari }
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli_conti_bancari
+            remarks: "Associa conti bancari (IBAN) a livello di RUOLO con uso, predefiniti e validità (override dei conti a livello soggetto)."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { nullable: false, primaryKey: true, primaryKeyName: pk_soggetti_ruoli_conti_bancari }
+                  remarks: "PK"
+              - column:
+                  name: soggetto_ruolo_id
+                  type: BIGINT
+                  constraints: { nullable: false }
+                  remarks: "FK → anagrafiche.soggetti_ruoli.id"
+              - column:
+                  name: conto_id
+                  type: BIGINT
+                  constraints: { nullable: false }
+                  remarks: "FK → anagrafiche.conti_bancari.id"
+              - column:
+                  name: uso
+                  type: VARCHAR(16)
+                  defaultValue: "GENERICO"
+                  constraints: { nullable: false }
+                  remarks: "INCASSO | PAGAMENTO | RIMBORSO | GENERICO"
+              - column:
+                  name: predefinito
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints: { nullable: false }
+                  remarks: "Se true è il conto predefinito per l'uso"
+              - column: { name: valido_dal, type: DATE, remarks: "Validità dal (opz.)" }
+              - column: { name: valido_al,  type: DATE, remarks: "Validità al (opz.)" }
+              - column: { name: intestazione_dichiarata, type: VARCHAR(140), remarks: "Intestazione dichiarata (se diversa dal conto)" }
+              - column: { name: verificato, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false }, remarks: "Verifica (es. micro-bonifico/PSD2)" }
+              - column: { name: bloccato,  type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false }, remarks: "Blocco per compliance/AML" }
+              - column: { name: meta, type: JSONB, defaultValue: "{}", remarks: "Estensioni" }
+              - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Snapshot su UPDATE/DELETE" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit" }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false }, remarks: "Audit" }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit" }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, remarks: "Audit" }
+
+  # 2) FK, CHECK, UNIQUE, Commenti, Indici (incl. unique parziali)
+  - changeSet:
+      id: 20250831-05-create-anagrafiche-soggetti_ruoli_conti
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: anagrafiche, tableName: soggetti_ruoli_conti_bancari }
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_ruoli_conti_bancari
+            baseColumnNames: soggetto_ruolo_id
+            constraintName: fk_soggetti_ruoli_conti_bancari_soggetti_ruoli
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_ruoli_conti_bancari
+            baseColumnNames: conto_id
+            constraintName: fk_soggetti_ruoli_conti_bancari_conti_bancari
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: conti_bancari
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Evita duplicati della stessa associazione (stesso uso) per ruolo/conto
+              ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
+              ADD CONSTRAINT uq_soggetti_ruoli_conti_bancari_soggetto_ruolo_id_conto_id_uso
+              UNIQUE (soggetto_ruolo_id, conto_id, uso);
+
+              -- Un solo predefinito per (ruolo, uso): UNIQUE PARZIALE
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_indexes
+                   WHERE schemaname='anagrafiche'
+                     AND indexname='ix_soggetti_ruoli_conti_bancari_predef_per_uso'
+                ) THEN
+                  EXECUTE 'CREATE UNIQUE INDEX ix_soggetti_ruoli_conti_bancari_predef_per_uso
+                             ON anagrafiche.soggetti_ruoli_conti_bancari (soggetto_ruolo_id, uso)
+                           WHERE predefinito = true';
+                END IF;
+              END$$;
+
+              -- Check validità e valori ammessi
+              ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
+              ADD CONSTRAINT chk_soggetti_ruoli_conti_bancari_validita
+              CHECK (valido_al IS NULL OR valido_dal IS NULL OR valido_al >= valido_dal);
+
+              ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
+              ADD CONSTRAINT chk_soggetti_ruoli_conti_bancari_uso
+              CHECK (uso IN ('INCASSO','PAGAMENTO','RIMBORSO','GENERICO'));
+
+              -- Commenti
+              COMMENT ON TABLE anagrafiche.soggetti_ruoli_conti_bancari
+                IS 'Associazione conti bancari a livello RUOLO (override).';
+              COMMENT ON CONSTRAINT fk_soggetti_ruoli_conti_bancari_soggetti_ruoli ON anagrafiche.soggetti_ruoli_conti_bancari
+                IS 'FK → anagrafiche.soggetti_ruoli(id).';
+              COMMENT ON CONSTRAINT fk_soggetti_ruoli_conti_bancari_conti_bancari ON anagrafiche.soggetti_ruoli_conti_bancari
+                IS 'FK → anagrafiche.conti_bancari(id).';
+              COMMENT ON CONSTRAINT uq_soggetti_ruoli_conti_bancari_soggetto_ruolo_id_conto_id_uso ON anagrafiche.soggetti_ruoli_conti_bancari
+                IS 'Evita duplicati (ruolo, conto, uso).';
+              COMMENT ON CONSTRAINT chk_soggetti_ruoli_conti_bancari_validita ON anagrafiche.soggetti_ruoli_conti_bancari
+                IS 'valido_al ≥ valido_dal quando presenti.';
+              COMMENT ON CONSTRAINT chk_soggetti_ruoli_conti_bancari_uso ON anagrafiche.soggetti_ruoli_conti_bancari
+                IS 'Valori ammessi: INCASSO|PAGAMENTO|RIMBORSO|GENERICO.';
+
+              -- Indici operativi
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_indexes
+                  WHERE schemaname='anagrafiche' AND indexname='ix_soggetti_ruoli_conti_bancari_soggetto_ruolo_id'
+                ) THEN
+                  EXECUTE 'CREATE INDEX ix_soggetti_ruoli_conti_bancari_soggetto_ruolo_id
+                             ON anagrafiche.soggetti_ruoli_conti_bancari (soggetto_ruolo_id)';
+                END IF;
+
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_indexes
+                  WHERE schemaname='anagrafiche' AND indexname='ix_soggetti_ruoli_conti_bancari_conto_id'
+                ) THEN
+                  EXECUTE 'CREATE INDEX ix_soggetti_ruoli_conti_bancari_conto_id
+                             ON anagrafiche.soggetti_ruoli_conti_bancari (conto_id)';
+                END IF;
+              END$$;
+ 
+  - changeSet:
+        id: 20250831-90-create-anagrafiche-soggetti_ruoli_conti
+        author: mctit
+        changes:
+          - tagDatabase:
+              tag: 20250831-04-create-anagrafiche-soggetti_ruoli_conti

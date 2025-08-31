@@ -3,7 +3,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('maintenance.test_pgagent_log_id_seq'::regclass) |
+| id | integer | NO |  |
 | fired_at | timestamp with time zone | NO | now() |
 | jobname | text | NO |  |
 | status | integer | NO |  |

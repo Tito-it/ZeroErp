@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | bigint | NO | nextval('dbops.error_log_id_seq'::regclass) |
+| id | bigint | NO |  |
 | occurred_at | timestamp with time zone | NO | now() |
 | area | text | NO |  |
 | function_name | text | NO |  |

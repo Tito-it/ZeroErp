@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Anagrafe conti_bancari (IBAN) unica
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  # 1) Tabella master conti_bancari
+  - changeSet:
+      id: 20250831-01-create-anagrafiche-conti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: conti_bancari
+            remarks: "Anagrafe unica dei conti_bancari (IBAN)."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { nullable: false, primaryKey: true, primaryKeyName: pk_conti_bancari }
+                  remarks: "PK"
+              - column: { name: iban, type: VARCHAR(34), constraints: { nullable: false }, remarks: "IBAN normalizzato (uppercase, no spazi)" }
+              - column: { name: bic_swift, type: VARCHAR(11), remarks: "BIC (8 o 11 caratteri)" }
+              - column: { name: intestatario_predefinito, type: VARCHAR(140), remarks: "Intestatario (descrizione canonicizzata)" }
+              - column: { name: paese, type: CHAR(2), remarks: "ISO-3166 alpha-2 (derivato da IBAN)" }
+              - column: { name: banca_nome, type: VARCHAR(120), remarks: "Facoltativo" }
+              - column: { name: attivo, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Abilitato all'uso" }
+              - column: { name: verificato, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false }, remarks: "Esito verifica (es. PSD2/micro-bonifico)" }
+              - column: { name: meta, type: JSONB, defaultValue: "{}", remarks: "Estensioni" }
+              - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Snapshot su UPDATE/DELETE" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit" }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false }, remarks: "Audit" }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit" }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, remarks: "Audit" }
+
+        # Vincoli e commenti su vincoli/tabl.
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.conti_bancari
+              ADD CONSTRAINT uq_conti_bancari_iban UNIQUE (iban);
+
+              ALTER TABLE anagrafiche.conti_bancari
+              ADD CONSTRAINT chk_conti_bancari_iban_fmt
+              CHECK (iban ~ '^[A-Z0-9]{15,34}$');
+
+              ALTER TABLE anagrafiche.conti_bancari
+              ADD CONSTRAINT chk_conti_bancari_bic_fmt
+              CHECK (bic_swift IS NULL OR bic_swift ~ '^[A-Z0-9]{8}([A-Z0-9]{3})?$');
+
+              ALTER TABLE anagrafiche.conti_bancari
+              ADD CONSTRAINT chk_conti_bancari_paese_fmt
+              CHECK (paese IS NULL OR paese ~ '^[A-Z]{2}$');
+
+              COMMENT ON TABLE anagrafiche.conti_bancari IS 'Anagrafe unica dei conti_bancari (IBAN), deduplicata a livello globale.';
+              COMMENT ON CONSTRAINT uq_conti_bancari_iban ON anagrafiche.conti_bancari IS 'Unicità IBAN globale.';
+              COMMENT ON CONSTRAINT chk_conti_bancari_iban_fmt ON anagrafiche.conti_bancari IS 'IBAN uppercase, 15-34, alfanumerico.';
+              COMMENT ON CONSTRAINT chk_conti_bancari_bic_fmt ON anagrafiche.conti_bancari IS 'BIC 8 o 11, uppercase alfanumerico.';
+              COMMENT ON CONSTRAINT chk_conti_bancari_paese_fmt ON anagrafiche.conti_bancari IS 'ISO-3166 alpha-2 uppercase.';
+
+  # 1.b) Commenti espliciti su colonne (oltre alle remarks)
+  - changeSet:
+      id: 20250831-01b-comments-columns-conti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: anagrafiche, tableName: conti_bancari }
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN anagrafiche.conti_bancari.id IS 'PK surrogata.';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.iban IS 'IBAN normalizzato (uppercase, senza spazi). Unico a livello globale.';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.bic_swift IS 'BIC/SWIFT 8 o 11 caratteri (uppercase, alfanumerico).';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.intestatario_predefinito IS 'Intestatario canonicizzato mostrato di default.';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.paese IS 'Codice paese ISO-3166 alpha-2 (derivato da IBAN).';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.banca_nome IS 'Nome banca (opzionale, informativo).';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.attivo IS 'Flag di abilitazione all’uso del conto.';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.verificato IS 'Esito verifica (esempio: PSD2/micro-bonifico).';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.meta IS 'Metadati/estensioni in JSONB.';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.tx_id IS 'Transaction ID per correlazione audit/log.';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.storicizza IS 'Se TRUE, snapshot su UPDATE/DELETE.';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.data_insert IS 'Timestamp inserimento (audit).';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.user_insert IS 'Utente inserimento (audit).';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.data_update IS 'Timestamp ultima modifica (audit).';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.user_update IS 'Utente ultimo aggiornamento.';
+
+              -- Commenti vincoli
+              COMMENT ON CONSTRAINT uq_conti_bancari_iban ON anagrafiche.conti_bancari IS 'Unicità IBAN globale.';
+              COMMENT ON CONSTRAINT chk_conti_bancari_iban_fmt ON anagrafiche.conti_bancari IS 'Formato IBAN: uppercase, 15-34, alfanumerico.';
+              COMMENT ON CONSTRAINT chk_conti_bancari_bic_fmt ON anagrafiche.conti_bancari IS 'Formato BIC: 8 o 11, uppercase alfanumerico.';
+              COMMENT ON CONSTRAINT chk_conti_bancari_paese_fmt ON anagrafiche.conti_bancari IS 'Formato paese: ISO-3166 alpha-2 uppercase.';
+
+            # Indici utili
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_indexes
+                   WHERE schemaname='anagrafiche' AND indexname='ix_conti_bancari_attivo'
+                ) THEN
+                  EXECUTE 'CREATE INDEX ix_conti_bancari_attivo ON anagrafiche.conti_bancari(attivo)';
+                END IF;
+              END$$;
+
+       
+
+  - changeSet:
+        id: 20250831-90-create-anagrafiche-conti
+        author: mctit
+        changes:
+          - tagDatabase:
+              tag: 20250831-01-create-anagrafiche-conti

@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('vendite.articoli_descrizioni_aggiuntive_id_seq'::regclass) |
+| id | integer | NO |  |
 | articolo_id | uuid | NO |  |
 | descrizione | character varying | NO |  |
 | ordine | smallint | NO | 0 |

@@ -3,7 +3,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | bigint | NO | nextval('storico.articoli_componenti_id_seq'::regclass) |
+| id | bigint | NO |  |
 | articoli_componenti_id | uuid | NO |  |
 | change_type | character | YES | 'A'::bpchar |
 | tipo_operazione | smallint | YES |  |

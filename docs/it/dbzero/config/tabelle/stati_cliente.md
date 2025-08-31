@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.stati_cliente_id_seq'::regclass) |
+| id | integer | NO |  |
 | codice_interno | character | NO |  |
 | descrizione | character varying | NO | ''::character varying |
 | descrizione_breve | character | NO |  |

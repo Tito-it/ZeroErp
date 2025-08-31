@@ -1,0 +1,130 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250830-07-create_vendite_preventivi_righe
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+          - ANY
+      changes:
+        
+        - createTable:
+            schemaName: vendite
+            tableName: preventivi_righe
+            remarks: "Righe preventivo: articoli, quantità, prezzi fotografati"
+            columns:
+              - column:
+                    name: id
+                    type: BIGINT
+                    autoIncrement: true
+                    generationType: BY DEFAULT
+                    constraints:
+                        primaryKey: true
+                        primaryKeyName: pk_preventivi_righe
+                        nullable: false
+              
+              - column: { name: preventivo_id, type: BIGINT, constraints: { nullable: false } }
+
+              - column: { name: articolo_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: descrizione,  type: VARCHAR(200) }
+              - column: { name: unita_misura_id, type: INTEGER, remarks: "FK → catalogo.unita_misura.id (se presente)" }
+
+              - column: { name: quantita,           type: "NUMERIC(18,6)", constraints: { nullable: false } }
+              - column: { name: prezzo_unitario,    type: "NUMERIC(15,6)", constraints: { nullable: false } }
+              - column: { name: sconto_percentuale, type: "NUMERIC(7,4)",  defaultValueNumeric: 0, remarks: "0..100" }
+
+              - column: { name: iva_id, type: INTEGER, remarks: "FK → config.iva.id (se usi tabella IVA per default)" }
+              - column: { name: meta,   type: JSONB, defaultValue: "{}" }
+              - column: { name: ordine, type: SMALLINT, defaultValueNumeric: 0 }
+              - column: { name: attivo, type: BOOLEAN, defaultValueBoolean: true }
+
+        
+
+        # FK
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: preventivi_righe
+            baseColumnNames: preventivo_id
+            referencedTableSchemaName: vendite
+            referencedTableName: preventivi
+            referencedColumnNames: id
+            constraintName: fk_prevrighe_preventivi
+            onDelete: CASCADE
+            onUpdate: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: preventivi_righe
+            baseColumnNames: articolo_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            constraintName: fk_prevrighe_articoli
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        # opzionale, solo se hai tabella U.M. e IVA analoghe
+        # - addForeignKeyConstraint: ... unita_misura_id
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: preventivi_righe
+            baseColumnNames: unita_misura_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            constraintName: fk_prevrighe_unita_misura
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+        # - addForeignKeyConstraint: ... iva_id
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: preventivi_righe
+            baseColumnNames: iva_id
+            referencedTableSchemaName: config
+            referencedTableName: iva
+            referencedColumnNames: id
+            constraintName: fk_prevrighe_iva
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        # CHECK
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+              ADD CONSTRAINT chk_prevrighe_sconto
+              CHECK (sconto_percentuale >= 0 AND sconto_percentuale <= 100);
+
+              ALTER TABLE vendite.preventivi_righe
+              ADD CONSTRAINT chk_prevrighe_quantita_prezzo
+              CHECK (quantita > 0 AND prezzo_unitario >= 0);
+
+        - createIndex:
+            schemaName: vendite
+            tableName: preventivi_righe
+            indexName: ix_prevrighe_preventivo
+            columns:
+              - column: { name: preventivo_id }
+        - createIndex:
+            schemaName: vendite
+            tableName: preventivi_righe
+            indexName: ix_prevrighe_articolo
+            columns:
+              - column: { name: articolo_id }
+
+  # ==========================================================
+  # 3) Contratti (testata/righe) con ambito e no-overlap
+  # ==========================================================
+  
+  - changeSet:
+      id: 20250830-90-create_vendite_preventivi_righe
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250830-07-create_vendite_preventivi_righe

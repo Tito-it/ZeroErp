@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250830-06-create_vendite_preventivi
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+          - ANY
+      changes:
+        # ==========================================================
+        # 2) Preventivi (testata/righe) con multi-revisione
+        # ==========================================================
+  
+        - createTable:
+            schemaName: vendite
+            tableName: preventivi
+            remarks: "Preventivi/offerte con revisioni; una sola revisione attiva per numero"
+            columns:
+            
+              - column:
+                    name: id
+                    type: BIGINT
+                    autoIncrement: true
+                    generationType: BY DEFAULT
+                    constraints:
+                        primaryKey: true
+                        primaryKeyName: pk_preventivi
+                        nullable: false
+
+              - column: { name: numero_preventivo,   type: VARCHAR(30), constraints: { nullable: false } }
+              - column: { name: rev,                 type: INTEGER,     defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: is_revision_attiva,  type: BOOLEAN,     defaultValueBoolean: false, constraints: { nullable: false } }
+
+              - column: { name: stato, type: VARCHAR(12), defaultValue: "BOZZA",
+                          remarks: "BOZZA|EMESSO|ACCETTATO|RIFIUTATO|SCADUTO" }
+
+              - column: { name: billing_account_id,  type: INTEGER, remarks: "FK opzionale se già presente" }
+              - column: { name: istanza_utility_id,  type: INTEGER, remarks: "FK opzionale se già nota" }
+              - column: { name: utility_id,          type: INTEGER, constraints: { nullable: false } }
+
+              - column: { name: validita_dal, type: DATE }
+              - column: { name: validita_al,  type: DATE }
+
+              - column: { name: totale_imponibile, type: "NUMERIC(15,2)", defaultValueNumeric: 0 }
+              - column: { name: totale_iva,        type: "NUMERIC(15,2)", defaultValueNumeric: 0 }
+              - column: { name: totale_documento,  type: "NUMERIC(15,2)", defaultValueNumeric: 0 }
+              - column: { name: valuta_id,         type: INTEGER, remarks: "FK obbligatoria" }
+
+              - column: { name: note, type: TEXT }
+              - column: { name: meta, type: JSONB, defaultValue: "{}" }
+
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false } }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false } }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false } }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER }
+
+        
+
+        # Unicità logica revisione
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: preventivi
+            columnNames: numero_preventivo, rev
+            constraintName: uq_preventivi_numero_rev
+
+        # Unique "una sola attiva per numero" (partial unique index)
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE UNIQUE INDEX IF NOT EXISTS ux_preventivi_numero_attiva
+              ON vendite.preventivi (numero_preventivo)
+              WHERE is_revision_attiva = true;
+
+        # FK
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: preventivi
+            baseColumnNames: billing_account_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            constraintName: fk_preventivi_billing_account
+            onDelete: SET NULL
+            onUpdate: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: preventivi
+            baseColumnNames: istanza_utility_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            constraintName: fk_preventivi_istanza
+            onDelete: SET NULL
+            onUpdate: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: preventivi
+            baseColumnNames: utility_id
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            constraintName: fk_preventivi_utility
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: preventivi
+            baseColumnNames: valuta_id
+            referencedTableSchemaName: config
+            referencedTableName: valute
+            referencedColumnNames: id
+            constraintName: fk_preventivi_valuta
+            onDelete: SET NULL
+            onUpdate: CASCADE
+
+        # CHECK + indici
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.preventivi
+              ADD CONSTRAINT chk_preventivi_stato
+              CHECK (stato IN ('BOZZA','EMESSO','ACCETTATO','RIFIUTATO','SCADUTO'));
+
+              ALTER TABLE vendite.preventivi
+              ADD CONSTRAINT chk_preventivi_validita
+              CHECK (validita_dal IS NULL OR validita_al IS NULL OR validita_al >= validita_dal);
+
+        - createIndex:
+            schemaName: vendite
+            tableName: preventivi
+            indexName: ix_preventivi_numero
+            columns:
+              - column: { name: numero_preventivo }
+        - createIndex:
+            schemaName: vendite
+            tableName: preventivi
+            indexName: ix_preventivi_stato
+            columns:
+              - column: { name: stato }
+
+  - changeSet:
+      id: 20250830-90-create_vendite_preventivi
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250830-06-create_vendite_preventivi

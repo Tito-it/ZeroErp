@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | bigint | NO | nextval('anagrafiche.dati_societari_id_seq'::regclass) |
+| id | bigint | NO |  |
 | soggetto_id | uuid | NO |  |
 | forma_giuridica | text | NO |  |
 | capitale_sociale | numeric | NO |  |

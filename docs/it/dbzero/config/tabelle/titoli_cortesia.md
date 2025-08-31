@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('config.titoli_cortesia_id_seq'::regclass) |
+| id | integer | NO |  |
 | descrizione | text | NO |  |
 | descrizione_breve | text | NO |  |
 | data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |

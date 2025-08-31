@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | bigint | NO | nextval('storico.indirizzi_dettaglio_id_seq'::regclass) |
+| id | bigint | NO |  |
 | valid_from | date | NO | CURRENT_DATE |
 | valid_to | date | YES |  |
 | change_type | character | YES | 'A'::bpchar |

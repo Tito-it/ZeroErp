@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO | nextval('anagrafiche.soggetti_ruoli_id_seq'::regclass) |
+| id | integer | NO |  |
 | soggetto_id | uuid | NO |  |
 | ruolo_id | integer | NO |  |
 | extra | jsonb | YES | '{}'::jsonb |
@@ -35,6 +35,7 @@
 |------|--------|--------|--------|
 | trg_soggetti_ruoli_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_soggetti_ruoli_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_upd_soggetti_ruoli_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250830-03-create_config_categoria_accisa
+      author: mctit
+      changes:
+        # Tabella
+        # -------------------------
+        # 2) config.categoria_accisa
+        # -------------------------
+        - createTable:
+            schemaName: config
+            tableName: categoria_accisa
+            remarks: "Categoria accisa per utility"
+            columns:
+              - column:
+                  name: id
+                  type: INTEGER
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_categoria_accisa
+                    nullable: false
+              - column:
+                  name: utility_id
+                  type: INTEGER
+                  remarks: "FK → config.utilities.id"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: codice
+                  type: VARCHAR(20)
+                  remarks: "Codice categoria accisa"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione
+                  type: VARCHAR(200)
+                  defaultValue: ""
+                  remarks: "Descrizione categoria accisa"
+                  constraints:
+                    nullable: false
+
+        # Unique su (codice, utility_id) — equivalente all'intento 'Key: categoria, Utility'
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: categoria_accisa
+            columnNames: codice, utility_id
+            constraintName: uq_categoria_accisa_codice_utility
+
+        - createIndex:
+            schemaName: config
+            tableName: categoria_accisa
+            indexName: ix_categoria_accisa_descrizione
+            columns:
+              - column:
+                  name: descrizione
+
+        - createIndex:
+            schemaName: config
+            tableName: categoria_accisa
+            indexName: ix_categoria_accisa_utility_id
+            columns:
+              - column:
+                  name: utility_id
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: categoria_accisa
+            baseColumnNames: utility_id
+            constraintName: fk_categoria_accisa_utility
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE  config.categoria_accisa IS 'Categoria accisa per utility';
+              COMMENT ON COLUMN config.categoria_accisa.id          IS 'Id. Categoria Accisa';
+              COMMENT ON COLUMN config.categoria_accisa.utility_id  IS 'Id Utility';
+              COMMENT ON COLUMN config.categoria_accisa.codice      IS 'Codice categoria accisa';
+              COMMENT ON COLUMN config.categoria_accisa.descrizione IS 'Descrizione categoria accisa';
+
+        
+  
+  - changeSet:
+      id: 20250830-90-create_config_categoria_accisa
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250830-03-create_config_categoria_accisa

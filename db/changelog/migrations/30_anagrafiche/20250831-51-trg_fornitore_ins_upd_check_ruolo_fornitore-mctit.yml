@@ -1,0 +1,40 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+
+- changeSet:
+      id: 20250831-51-trg_fornitori_ins_upd_check_ruolo_fornitore
+      author: mctit
+      comments: >
+        Associa il trigger trg_fornitori_ins_upd_check_ruolo_fornitore alla tabella anagrafiche.fornitori.
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |        
+              CREATE OR REPLACE TRIGGER trg_fornitori_ins_upd_check_ruolo_fornitore
+                    BEFORE INSERT OR UPDATE 
+                    ON  anagrafiche.fornitori
+                    FOR EACH ROW
+                    EXECUTE FUNCTION anagrafiche.trgfn_fornitori_ins_upd_check_ruolo_fornitore();
+
+                COMMENT ON TRIGGER trg_fornitori_ins_upd_check_ruolo_fornitore ON anagrafiche.fornitori
+                    IS 'Controlla il ruolo del fornitore prima di inserire o aggiornare. Se non esiste lo genera tramite la funzione script.fn_check_ins_soggetto_ruolo.';
+                                    
+ # Metto un  tag fine modifiche
+- changeSet:
+      id: 20250831-90-trgfn_fornitori_ins_upd_check_ruolo_fornitore
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250831-51-trg_fornitori_ins_upd_check_ruolo_fornitore
