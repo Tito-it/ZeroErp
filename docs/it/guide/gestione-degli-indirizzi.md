@@ -42,10 +42,10 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 
 * **[config.stati](/dbzero/config/tabelle/stati)** : Stati con `iso_code2`, `iso_code3`.
 * **[config.regioni](/dbzero/config/tabelle/regioni)**, **[config.province](/dbzero/config/tabelle/province)**, **[config.comuni](/dbzero/config/tabelle/comuni)**: gerarchia geografica.
-* **[config.codici_postali](/dbzero/config/tabelle/codici_postali`)**: CAP per comune.
+* **[config.codici_postali](/dbzero/config/tabelle/codici_postali)**: CAP per comune.
 * **[config.toponomastica](/dbzero/config/tabelle/toponomastica`)**: tipologie di toponimo (via, strada, etc.).
 * **[config.stradario_generale](/dbzero/config/tabelle/stradario_generale)**: anagrafica delle vie (toponomastica + nome.).
-* **[config.stradario](/dbzero/config/tabelle/stradario`)**: stradario per via di un luogo (comune + stradario_generale).
+* **[config.stradario](/dbzero/config/tabelle/stradario)**: stradario per via di un luogo (comune + stradario_generale).
 * **[config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)**: classi di indirizzo(residenza, posta, etc.).
 
 ### 2.2. Dettaglio Civico e Associazione (`anagrafiche`)
@@ -55,7 +55,7 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 
 ### 2.3. Storico (`storico`)
 
-* **[storico.stradario](/dbzero/storico/tabelle/stradario)**, **[storico.indirizzi](/dbzero/storico/tabelle/stradario)**: snapshot JSONB con periodi di validità e tx_id.
+* **[storico.stradario](/dbzero/storico/tabelle/stradario)**, **[storico.indirizzi](/dbzero/storico/tabelle/indirizzi)**, **[storico.indirizzi_dettaglio](/dbzero/storico/tabelle/indirizzi_dettaglio)**: snapshot JSONB con periodi di validità e tx_id.
 
 ---
 

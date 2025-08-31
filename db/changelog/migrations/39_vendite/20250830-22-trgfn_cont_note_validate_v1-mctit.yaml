@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:  
+  - changeSet:
+      id: 20250830-22-trgfn_cont_note_validate_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      
+      changes:
+
+           # Trigger: la riga deve appartenere al contratto indicato
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contnote_validate()
+              RETURNS trigger
+              LANGUAGE plpgsql AS $$
+              DECLARE v_ctr_id BIGINT;
+              BEGIN
+                IF NEW.anchor_tipo = 'RIGA' THEN
+                  SELECT contratto_id INTO v_ctr_id
+                  FROM vendite.contratti_righe
+                  WHERE id = NEW.target_riga_id;
+
+                  IF NOT FOUND OR v_ctr_id IS DISTINCT FROM NEW.target_id THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite','note_contratto','E_NOTE_RIGA_MISMATCH',
+                      jsonb_build_object('target_id',NEW.target_id,'target_riga_id',NEW.target_riga_id),
+                      NULL::uuid,
+                      format('La riga %s non appartiene al contratto %s', NEW.target_riga_id, NEW.target_id)
+                    );
+                  END IF;
+                END IF;
+                RETURN NEW;
+              END$$;
+              COMMENT ON FUNCTION vendite.trgfn_contnote_validate()
+                IS 'Verifica appartenenza della riga al contratto per le note ancorate alla riga.';
+
+              DROP TRIGGER IF EXISTS trg_contnote_validate ON vendite.note_contratto;
+              CREATE TRIGGER trg_contnote_validate
+              BEFORE INSERT OR UPDATE ON vendite.note_contratto
+              FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_contnote_validate();
+      
+  # Metto un tag fine modifiche
+  - changeSet:
+      id: 20250830-90-trgfn_cont_note_validate_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250830-22-trgfn_cont_note_validate_v1

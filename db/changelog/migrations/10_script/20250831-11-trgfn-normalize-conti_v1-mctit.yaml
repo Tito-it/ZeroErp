@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250831-11-trgfn-normalize-conti_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_conti_bancari_ins_upd_normalize()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                IF NEW.iban IS NOT NULL THEN
+                  NEW.iban := upper(regexp_replace(NEW.iban, '\s+', '', 'g'));
+                  IF NEW.paese IS NULL AND length(NEW.iban) >= 2 THEN
+                    NEW.paese := substr(NEW.iban, 1, 2);
+                  END IF;
+                END IF;
+
+                IF NEW.bic_swift IS NOT NULL THEN
+                  NEW.bic_swift := upper(regexp_replace(NEW.bic_swift, '\s+', '', 'g'));
+                END IF;
+
+                
+                RETURN NEW;
+              END
+              $$;
+
+              COMMENT ON FUNCTION script.trgfn_conti_bancari_ins_upd_normalize() IS
+              'Trigger function BEFORE INSERT/UPDATE su anagrafiche.conti_bancari:
+               - Normalizza IBAN/BIC (uppercase, no spazi)
+               - Deriva paese da IBAN se mancante
+               - Aggiorna audit (data_update, user_insert/user_update).';
+
+  # 3) Trigger: normalize + audit + tx_id + storico (con commenti)
+  - changeSet:
+      id: 20250831-12-trgfn-normalize-conti_v1
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: anagrafiche, tableName: conti_bancari }
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Normalizzazione IBAN/BIC e derivazione paese
+              CREATE OR REPLACE TRIGGER trg_conti_bancari_ins_upd_normalize
+                BEFORE INSERT OR UPDATE
+                ON anagrafiche.conti_bancari
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_conti_bancari_ins_upd_normalize();
+
+              COMMENT ON TRIGGER trg_conti_bancari_ins_upd_normalize ON anagrafiche.conti_bancari IS
+              'Normalizza IBAN/BIC, deriva paese e aggiorna audit su INSERT/UPDATE.';
+
+  - changeSet:
+      id: 20250831-90-trgfn-normalize-conti_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250831-11-trgfn-normalize-conti_v1
