@@ -1,0 +1,185 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — anagrafiche.fornitori (master ruolo FORNITORE)
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  # 1) Tabella
+  - changeSet:
+      id: 20250831-42-create-anagrafiche-fornitori
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        
+        - tableExists:  
+            { schemaName: anagrafiche, tableName: soggetti_ruoli }
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: fornitori
+            remarks: "Master del ruolo FORNITORE (1:1 con anagrafiche.soggetti_ruoli): configurazione fiscale/operativa e preferenze di pagamento."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { nullable: false, primaryKey: true, primaryKeyName: pk_fornitori }
+                  remarks: "PK"
+              - column:
+                  name: soggetto_ruolo_id
+                  type: BIGINT
+                  constraints: { nullable: false }
+                  remarks: "FK 1:1 → anagrafiche.soggetti_ruoli(id)"
+              - column:
+                  name: codice
+                  type: VARCHAR(32)
+                  remarks: "Codice interno fornitore (univoco)"
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints: { nullable: false }
+                  remarks: "Abilitazione logica"
+              - column:
+                  name: stato_operativo
+                  type: VARCHAR(16)
+                  remarks: "es. QUALIFICATO | IN_VERIFICA | SOSPESO"
+              # Fatturazione / fiscale
+              - column: { name: valuta_id,             type: INTEGER,  remarks: "FK → config.valute(id)" }
+              - column: { name: modalita_pagamento_id, type: INTEGER,  remarks: "FK → config.modalita_pagamento(id)" }
+              - column: { name: giorni_pagamento,      type: SMALLINT, remarks: "Giorni di pagamento (es. 30/60)" }
+              - column: { name: fine_mese,             type: BOOLEAN,  remarks: "Scadenza fine mese" }
+              - column: { name: split_payment,         type: BOOLEAN,  remarks: "Scissione pagamenti" }
+              - column: { name: ritenuta_acconto,      type: BOOLEAN,  remarks: "Applica ritenuta d’acconto" }
+              - column: { name: ritenuta_aliquota,     type: "NUMERIC(5,2)", remarks: "Aliquota ritenuta (%)" }
+              - column: { name: regime_fiscale,        type: VARCHAR(8),  remarks: "Codice RF SdI (opz.)" }
+              - column: { name: bollo_esente,          type: BOOLEAN,     remarks: "Esenzione imposta di bollo" }
+              - column: { name: canale_fe,             type: VARCHAR(7),  remarks: "Codice destinatario FE (7 car.)" }
+              - column: { name: pec_email,             type: VARCHAR(256), remarks: "PEC per FE (opz.)" }
+              # Operativo / qualità
+              - column: { name: rating,              type: SMALLINT, remarks: "Valutazione qualità (0-100 o 1-5)" }
+              - column: { name: qualifica_scadenza, type: DATE,     remarks: "Scadenza qualifica/validazione" }
+              - column: { name: note,               type: TEXT,     remarks: "Note operative" }
+              # Estensioni / audit
+              - column: { name: meta,         type: JSONB, defaultValue: "{}", remarks: "Estensioni (JSONB)" }
+              - column: { name: tx_id,        type: UUID, remarks: "Id transazione" }
+              - column: { name: storicizza,   type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Snapshot su UPDATE/DELETE" }
+              - column: { name: data_insert,  type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit" }
+              - column: { name: user_insert,  type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false }, remarks: "Audit" }
+              - column: { name: data_update,  type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit" }
+              - column: { name: user_update,  type: VARCHAR(80), defaultValueComputed: CURRENT_USER, remarks: "Audit" }
+
+  # 2) FK, UNIQUE, CHECK, Commenti, Indici
+  - changeSet:
+      id: 20250831-61-constraints-indexes-fornitori
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: anagrafiche, tableName: fornitori }
+      changes:
+        # FK
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: fornitori
+            baseColumnNames: soggetto_ruolo_id
+            constraintName: fk_fornitori_soggetti_ruoli
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: fornitori
+            baseColumnNames: valuta_id
+            constraintName: fk_fornitori_valute
+            referencedTableSchemaName: config
+            referencedTableName: valute
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: fornitori
+            baseColumnNames: modalita_pagamento_id
+            constraintName: fk_fornitori_modalita_pagamento
+            referencedTableSchemaName: config
+            referencedTableName: modalita_pagamento
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # UNIQUE
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: fornitori
+            columnNames: soggetto_ruolo_id
+            constraintName: uq_fornitori_soggetto_ruolo_id
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: fornitori
+            columnNames: codice
+            constraintName: uq_fornitori_codice
+
+        # CHECK + Commenti + Indici
+        - sql:
+            splitStatements: false
+            sql: |
+              -- CHECK basilari
+              ALTER TABLE anagrafiche.fornitori
+              ADD CONSTRAINT chk_fornitori_rating
+              CHECK (rating IS NULL OR rating BETWEEN 0 AND 100);
+
+              ALTER TABLE anagrafiche.fornitori
+              ADD CONSTRAINT chk_fornitori_canale_fe_len
+              CHECK (canale_fe IS NULL OR char_length(canale_fe) = 7);
+
+              ALTER TABLE anagrafiche.fornitori
+              ADD CONSTRAINT chk_fornitori_ritenuta_aliquota
+              CHECK (ritenuta_aliquota IS NULL OR (ritenuta_aliquota >= 0 AND ritenuta_aliquota <= 100));
+
+              -- Commenti tabella
+              COMMENT ON TABLE anagrafiche.fornitori
+                IS 'Master FORNITORE (1:1 con soggetti_ruoli): configurazione fiscale, operativa e qualità.';
+
+              -- Commenti constraint principali
+              COMMENT ON CONSTRAINT fk_fornitori_soggetti_ruoli ON anagrafiche.fornitori
+                IS 'Relazione 1:1 con anagrafiche.soggetti_ruoli (ruolo=FORNITORE).';
+              COMMENT ON CONSTRAINT uq_fornitori_soggetto_ruolo_id ON anagrafiche.fornitori
+                IS 'Un fornitore per ogni soggetto_ruolo.';
+              COMMENT ON CONSTRAINT uq_fornitori_codice ON anagrafiche.fornitori
+                IS 'Codice interno univoco del fornitore.';
+              COMMENT ON CONSTRAINT chk_fornitori_rating ON anagrafiche.fornitori
+                IS 'Rating compreso tra 0 e 100 quando valorizzato.';
+              COMMENT ON CONSTRAINT chk_fornitori_canale_fe_len ON anagrafiche.fornitori
+                IS 'canale_fe deve essere di 7 caratteri (se presente).';
+              COMMENT ON CONSTRAINT chk_fornitori_ritenuta_aliquota ON anagrafiche.fornitori
+                IS 'Aliquota ritenuta 0..100 (se presente).';
+
+              -- Indici operativi
+              CREATE INDEX IF NOT EXISTS ix_fornitori_codice
+                ON anagrafiche.fornitori (codice);
+
+              CREATE INDEX IF NOT EXISTS ix_fornitori_soggetto_ruolo_id
+                ON anagrafiche.fornitori (soggetto_ruolo_id);
+
+              CREATE INDEX IF NOT EXISTS ix_fornitori_attivo_stato
+                ON anagrafiche.fornitori (attivo, stato_operativo);
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250831-90-create-anagrafiche-fornitori
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250831-42-create-anagrafiche-fornitori

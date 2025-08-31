@@ -88,6 +88,7 @@ nav:
           - Config:     dbzero/config/index.md
           - Dbops:      dbzero/dbops/index.md
           - Maintenance: dbzero/maintenance/index.md
+          - Pagamenti:  dbzero/pagamenti/index.md
           - Script:     dbzero/script/index.md
           - Storico:    dbzero/storico/index.md
           - Public:    dbzero/public/index.md
@@ -108,4 +109,5 @@ nav:
               - Messaggi di Audit : guide/messaggi-audit.md
               - Processi e Job : guide/Analisi-tracciamento-processi-e-job.md
           - Generazione di un cliente : guide/generazione-cliente.md
+          - Gestione conti bancari: guide/gestione-conti-bancari.md
           - Gestione degli indirizzi : guide/gestione-degli-indirizzi.md

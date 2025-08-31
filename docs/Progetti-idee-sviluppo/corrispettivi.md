@@ -142,3 +142,6 @@ Gestire i **documenti commerciali** (corrispettivi/scontrini) emessi da punti ca
 > `vendite.doc_commerciali`, `doc_commerciali_righe`, `doc_commerciali_pagamenti`, `doc_commerciali_iva`, `doc_commerciali_link_fattura`, `vendite.chiusure_cassa`,
 >
 > * tabelline di base `config.rt_device` / `config.punti_cassa` per ancorare numerazione e Z.
+
+---
+{% include-markdown "signature-core.md" %}

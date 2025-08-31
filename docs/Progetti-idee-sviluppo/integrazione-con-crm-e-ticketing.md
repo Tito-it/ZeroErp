@@ -307,3 +307,6 @@ CREATE TABLE IF NOT EXISTS assistenza.ticket_materiali (
 ---
 
 > **Note**: Adattare nomi colonne/chiavi allineandosi alle convenzioni di Zero ERP (prefissi trigger/funzioni, `*_id`, audit, `tx_id`, `storicizza`, ecc.).
+
+---
+{% include-markdown "signature-core.md" %}

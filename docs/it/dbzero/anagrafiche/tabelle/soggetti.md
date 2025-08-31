@@ -61,6 +61,7 @@
 |------|--------|--------|--------|
 | trg_block_deact_soggetti_gestori | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'gestori', 'soggetto_id')` |
 | trg_block_deact_soggetti_istanze_utilities | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'istanze_utilities', 'soggetto_id')` |
+| trg_block_deact_soggetti_soggetti_conti_bancari | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'soggetti_conti_bancari', 'soggetto_id')` |
 | trg_soggetti_ins_upd_clean_fields | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_clean_fields()` |
 | trg_soggetti_ins_upd_clean_fields | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_clean_fields()` |
 | trg_soggetti_ins_upd_dispatch_valida_cf_piva | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()` |
