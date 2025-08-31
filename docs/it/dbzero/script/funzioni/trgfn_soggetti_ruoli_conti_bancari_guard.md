@@ -17,7 +17,7 @@ BEGIN
   -- Evita legami a conti disattivati
   SELECT attivo INTO v_attivo
     FROM anagrafiche.conti_bancari
-   WHERE id = NEW.conto_id;
+   WHERE id = NEW.conto_bancario_id;
   IF v_attivo IS NOT TRUE THEN
 
      PERFORM script.fn_log_and_raise_error(
@@ -26,9 +26,9 @@ BEGIN
                         'E_CONTO_BANCARIO',
                         jsonb_build_object(
                           'tabella','anagrafiche.conti_bancari',
-                          'conto_id',  NEW.conto_id::text,
+                          'conto_bancario_id',  NEW.conto_bancario_id::text,
                           'error', SQLERRM
-                        ) , NULL::uuid, NEW.conto_id::text
+                        ) , NULL::uuid, NEW.conto_bancario_id::text
                       ); 
   END IF;
 

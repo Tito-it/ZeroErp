@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fornitori.md" %}
 # 📚 Tabella `fornitori`
 
 ## 🗂️ Campi principali

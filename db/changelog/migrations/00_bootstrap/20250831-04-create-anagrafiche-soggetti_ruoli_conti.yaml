@@ -43,7 +43,7 @@ databaseChangeLog:
                   constraints: { nullable: false }
                   remarks: "FK → anagrafiche.soggetti_ruoli.id"
               - column:
-                  name: conto_id
+                  name: conto_bancario_id
                   type: BIGINT
                   constraints: { nullable: false }
                   remarks: "FK → anagrafiche.conti_bancari.id"
@@ -76,6 +76,9 @@ databaseChangeLog:
   - changeSet:
       id: 20250831-05-create-anagrafiche-soggetti_ruoli_conti
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
       preConditions:
         - onFail: HALT
         - tableExists: { schemaName: anagrafiche, tableName: soggetti_ruoli_conti_bancari }
@@ -93,7 +96,7 @@ databaseChangeLog:
         - addForeignKeyConstraint:
             baseTableSchemaName: anagrafiche
             baseTableName: soggetti_ruoli_conti_bancari
-            baseColumnNames: conto_id
+            baseColumnNames: conto_bancario_id
             constraintName: fk_soggetti_ruoli_conti_bancari_conti_bancari
             referencedTableSchemaName: anagrafiche
             referencedTableName: conti_bancari
@@ -106,8 +109,8 @@ databaseChangeLog:
             sql: |
               -- Evita duplicati della stessa associazione (stesso uso) per ruolo/conto
               ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
-              ADD CONSTRAINT uq_soggetti_ruoli_conti_bancari_soggetto_ruolo_id_conto_id_uso
-              UNIQUE (soggetto_ruolo_id, conto_id, uso);
+              ADD CONSTRAINT uq_soggetti_ruoli_conti_bancari_soggetto_ruolo_id_conto_bancario_id_uso
+              UNIQUE (soggetto_ruolo_id, conto_bancario_id, uso);
 
               -- Un solo predefinito per (ruolo, uso): UNIQUE PARZIALE
               DO $$
@@ -139,7 +142,7 @@ databaseChangeLog:
                 IS 'FK → anagrafiche.soggetti_ruoli(id).';
               COMMENT ON CONSTRAINT fk_soggetti_ruoli_conti_bancari_conti_bancari ON anagrafiche.soggetti_ruoli_conti_bancari
                 IS 'FK → anagrafiche.conti_bancari(id).';
-              COMMENT ON CONSTRAINT uq_soggetti_ruoli_conti_bancari_soggetto_ruolo_id_conto_id_uso ON anagrafiche.soggetti_ruoli_conti_bancari
+              COMMENT ON CONSTRAINT uq_soggetti_ruoli_conti_bancari_soggetto_ruolo_id_conto_bancario_id_uso ON anagrafiche.soggetti_ruoli_conti_bancari
                 IS 'Evita duplicati (ruolo, conto, uso).';
               COMMENT ON CONSTRAINT chk_soggetti_ruoli_conti_bancari_validita ON anagrafiche.soggetti_ruoli_conti_bancari
                 IS 'valido_al ≥ valido_dal quando presenti.';
@@ -159,10 +162,10 @@ databaseChangeLog:
 
                 IF NOT EXISTS (
                   SELECT 1 FROM pg_indexes
-                  WHERE schemaname='anagrafiche' AND indexname='ix_soggetti_ruoli_conti_bancari_conto_id'
+                  WHERE schemaname='anagrafiche' AND indexname='ix_soggetti_ruoli_conti_bancari_conto_bancario_id'
                 ) THEN
-                  EXECUTE 'CREATE INDEX ix_soggetti_ruoli_conti_bancari_conto_id
-                             ON anagrafiche.soggetti_ruoli_conti_bancari (conto_id)';
+                  EXECUTE 'CREATE INDEX ix_soggetti_ruoli_conti_bancari_conto_bancario_id
+                             ON anagrafiche.soggetti_ruoli_conti_bancari (conto_bancario_id)';
                 END IF;
               END$$;
  
