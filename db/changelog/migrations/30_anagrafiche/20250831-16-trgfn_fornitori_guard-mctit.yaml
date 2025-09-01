@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 databaseChangeLog:
 
-  # 2) FUNCTION: script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)
+  # 2) FUNCTION: anagrafiche.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)
   - changeSet:
       id: 20250831-16-trgfn_fornitori_guard
       author: mctit
@@ -24,7 +24,7 @@ databaseChangeLog:
         - sql:
             splitStatements: false
             sql: |
-              CREATE OR REPLACE FUNCTION script.trgfn_fornitori_guard()
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_fornitori_guard()
               RETURNS trigger
               LANGUAGE plpgsql
               AS $$
@@ -38,7 +38,7 @@ databaseChangeLog:
                 RETURN NEW;
               END$$;
 
-              COMMENT ON FUNCTION script.trgfn_fornitori_guard()
+              COMMENT ON FUNCTION anagrafiche.trgfn_fornitori_guard()
                 IS 'Guard-rail: normalizza canale_fe e aggiorna audit base.';
 
   # 4) Trigger: guard + tx_id + audit + storico
@@ -58,7 +58,7 @@ databaseChangeLog:
                 BEFORE INSERT OR UPDATE
                 ON anagrafiche.fornitori
                 FOR EACH ROW
-                EXECUTE FUNCTION script.trgfn_fornitori_guard();
+                EXECUTE FUNCTION anagrafiche.trgfn_fornitori_guard();
               COMMENT ON TRIGGER trg_fornitori_ins_upd_guard ON anagrafiche.fornitori
                 IS 'Normalizza canale_fe e imposta audit base.';
   - changeSet:

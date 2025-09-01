@@ -20,7 +20,7 @@ databaseChangeLog:
         - sql:
             splitStatements: false
             sql: |
-              CREATE OR REPLACE FUNCTION script.trgfn_sepa_mandati_guard()
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_sepa_mandati_guard()
               RETURNS trigger
               LANGUAGE plpgsql
               AS $$
@@ -28,7 +28,7 @@ databaseChangeLog:
                 -- Stato ATTIVO richiede data_attivazione
                 IF NEW.stato = 'ATTIVO' AND NEW.data_attivazione IS NULL THEN
                   RAISE EXCEPTION 'Mandato ATTIVO senza data_attivazione' USING ERRCODE='23514';
-                   PERFORM script.fn_log_and_raise_error(
+                   PERFORM anagrafiche.fn_log_and_raise_error(
                                       'database',
                                       'trgfn_sepa_mandati_guard',
                                       'E_DATA_ATTIVAZIONE_MANDATO',
@@ -51,7 +51,7 @@ databaseChangeLog:
                 RETURN NEW;
               END$$;
 
-              COMMENT ON FUNCTION script.trgfn_sepa_mandati_guard()
+              COMMENT ON FUNCTION anagrafiche.trgfn_sepa_mandati_guard()
                 IS 'Controlli coerenza SEPA (stati/date/UMR), normalizzazione e audit base.';
 
               -- Trigger
@@ -59,7 +59,7 @@ databaseChangeLog:
                 BEFORE INSERT OR UPDATE
                 ON pagamenti.sepa_mandati
                 FOR EACH ROW
-                EXECUTE FUNCTION script.trgfn_sepa_mandati_guard();
+                EXECUTE FUNCTION anagrafiche.trgfn_sepa_mandati_guard();
               COMMENT ON TRIGGER trg_sepa_mandati_ins_upd_guard ON pagamenti.sepa_mandati
                 IS 'Guard-rail + audit base.';
 

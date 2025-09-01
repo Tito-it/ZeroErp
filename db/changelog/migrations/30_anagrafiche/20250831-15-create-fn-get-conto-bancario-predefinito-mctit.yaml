@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 databaseChangeLog:
 
-  # 2) FUNCTION: script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)
+  # 2) FUNCTION: anagrafiche.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)
   - changeSet:
       id: 20250831-15-create-fn-get-conto-bancario-predefinito
       author: mctit
@@ -22,7 +22,7 @@ databaseChangeLog:
         - sql:
             splitStatements: false
             sql: |
-              CREATE OR REPLACE FUNCTION script.fn_get_conto_bancario_predefinito(
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_get_conto_bancario_predefinito(
                   p_soggetto_ruolo_id BIGINT,
                   p_uso               VARCHAR
               )
@@ -60,7 +60,7 @@ databaseChangeLog:
                 END IF;
               END$$;
 
-              COMMENT ON FUNCTION script.fn_get_conto_bancario_predefinito(BIGINT, VARCHAR)
+              COMMENT ON FUNCTION anagrafiche.fn_get_conto_bancario_predefinito(BIGINT, VARCHAR)
                 IS 'Restituisce il conto bancario selezionato per (soggetto_ruolo, uso) con fallback: RUOLO → SOGGETTO, poi uso richiesto → GENERICO. Ritorna 0 o 1 riga.';
       
   - changeSet:

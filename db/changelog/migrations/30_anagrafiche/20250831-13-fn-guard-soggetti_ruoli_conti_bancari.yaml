@@ -17,7 +17,7 @@ databaseChangeLog:
         - sql:
             splitStatements: false
             sql: |
-              CREATE OR REPLACE FUNCTION script.trgfn_soggetti_conti_bancari_guard()
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_conti_bancari_guard()
               RETURNS trigger
               LANGUAGE plpgsql
               AS $$
@@ -30,7 +30,7 @@ databaseChangeLog:
                  WHERE id = NEW.conto_bancario_id;
                 IF v_attivo IS NOT TRUE THEN
                   
-                  PERFORM script.fn_log_and_raise_error(
+                  PERFORM anagrafiche.fn_log_and_raise_error(
                                       'database',
                                       'trgfn_soggetti_conti_bancari_guard',
                                       'E_CONTO_BANCARIO',
@@ -47,7 +47,7 @@ databaseChangeLog:
                 IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
                    AND NEW.valido_al < NEW.valido_dal THEN
                   
-                    PERFORM script.fn_log_and_raise_error(
+                    PERFORM anagrafiche.fn_log_and_raise_error(
                                       'database',
                                       'trgfn_soggetti_conti_bancari_guard',
                                       'E_DATA_AL_MINORE_DAL',
@@ -64,7 +64,7 @@ databaseChangeLog:
                 RETURN NEW;
               END$$;
 
-              COMMENT ON FUNCTION script.trgfn_soggetti_conti_bancari_guard()
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_conti_bancari_guard()
                 IS 'Guard-rail su anagrafiche.soggetti_conti_bancari: blocca uso di conti_bancari non attivi e normalizza coerenza date/audit.';
 
 
@@ -82,7 +82,7 @@ databaseChangeLog:
         - sql:
             splitStatements: false
             sql: |
-              CREATE OR REPLACE FUNCTION script.trgfn_soggetti_ruoli_conti_bancari_guard()
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
               RETURNS trigger
               LANGUAGE plpgsql
               AS $$
@@ -95,7 +95,7 @@ databaseChangeLog:
                  WHERE id = NEW.conto_bancario_id;
                 IF v_attivo IS NOT TRUE THEN
 
-                   PERFORM script.fn_log_and_raise_error(
+                   PERFORM anagrafiche.fn_log_and_raise_error(
                                       'database',
                                       'trgfn_soggetti_conti_bancari_guard',
                                       'E_CONTO_BANCARIO',
@@ -111,7 +111,7 @@ databaseChangeLog:
                 IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
                    AND NEW.valido_al < NEW.valido_dal THEN
                   
-                      PERFORM script.fn_log_and_raise_error(
+                      PERFORM anagrafiche.fn_log_and_raise_error(
                                       'database',
                                       'trgfn_soggetti_conti_bancari_guard',
                                       'E_DATA_AL_MINORE_DAL',
@@ -126,7 +126,7 @@ databaseChangeLog:
                 RETURN NEW;
               END$$;
 
-              COMMENT ON FUNCTION script.trgfn_soggetti_ruoli_conti_bancari_guard()
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
                 IS 'Guard-rail: impedisce uso di conti non attivi, controlla coerenza date e cura audit base.';
 
   # 4) Trigger: guard + tx_id + audit + storico
@@ -144,7 +144,7 @@ databaseChangeLog:
                 BEFORE INSERT OR UPDATE
                 ON anagrafiche.soggetti_ruoli_conti_bancari
                 FOR EACH ROW
-                EXECUTE FUNCTION script.trgfn_soggetti_ruoli_conti_bancari_guard();
+                EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard();
               COMMENT ON TRIGGER trg_soggetti_ruoli_conti_bancari_ins_upd_guard ON anagrafiche.soggetti_ruoli_conti_bancari
                 IS 'Controlli coerenza + audit base.';
 

@@ -17,7 +17,7 @@ databaseChangeLog:
         - sql:
             splitStatements: false
             sql: |
-              CREATE OR REPLACE FUNCTION script.trgfn_conti_bancari_ins_upd_normalize()
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_conti_bancari_ins_upd_normalize()
               RETURNS trigger
               LANGUAGE plpgsql
               AS $$
@@ -38,7 +38,7 @@ databaseChangeLog:
               END
               $$;
 
-              COMMENT ON FUNCTION script.trgfn_conti_bancari_ins_upd_normalize() IS
+              COMMENT ON FUNCTION anagrafiche.trgfn_conti_bancari_ins_upd_normalize() IS
               'Trigger function BEFORE INSERT/UPDATE su anagrafiche.conti_bancari:
                - Normalizza IBAN/BIC (uppercase, no spazi)
                - Deriva paese da IBAN se mancante
@@ -63,7 +63,7 @@ databaseChangeLog:
                 BEFORE INSERT OR UPDATE
                 ON anagrafiche.conti_bancari
                 FOR EACH ROW
-                EXECUTE FUNCTION script.trgfn_conti_bancari_ins_upd_normalize();
+                EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_ins_upd_normalize();
 
               COMMENT ON TRIGGER trg_conti_bancari_ins_upd_normalize ON anagrafiche.conti_bancari IS
               'Normalizza IBAN/BIC, deriva paese e aggiorna audit su INSERT/UPDATE.';
