@@ -32,7 +32,7 @@
 | CHECK | chk_prevnote_anchor |  |
 | FOREIGN KEY | fk_prevnote_riga | target_riga_id |
 | FOREIGN KEY | fk_prevnote_testata | target_id |
-| PRIMARY KEY | note_preventivo_pkey | target_tipo, id |
+| PRIMARY KEY | note_preventivo_pkey | id, target_tipo |
 
 ## 📑 Indici
 | Nome | Definizione |

@@ -21,12 +21,15 @@
 - [soggetti_ruoli_conti_bancari](tabelle/soggetti_ruoli_conti_bancari.md) — `anagrafiche.soggetti_ruoli_conti_bancari` gestisce l’**associazione tra un Ruolo** di un soggetto (CLIENTE, FORNITORE, GESTORE, …) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 
 ## ⚙️ Funzioni
-- [trgfn_billing_account_ins_upd_clean_fields](funzioni/trgfn_billing_account_ins_upd_clean_fields.md) — Il trigger `anagrafiche.trgfn_billing_account_ins_upd_clean_fields` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
+- [fn_get_conto_bancario_predefinito](funzioni/fn_get_conto_bancario_predefinito.md)
+- [trgfn_billing_account_ins_upd_guard_normalize](funzioni/trgfn_billing_account_ins_upd_guard_normalize.md) — Il trigger `anagrafiche.trgfn_billing_account_ins_upd_guard_normalize` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
 - [trgfn_billing_account_upd_protect_account_code](funzioni/trgfn_billing_account_upd_protect_account_code.md) — Il trigger `anagrafiche.trgfn_billing_account_upd_protect_account_code`, invocato **prima di ogni UPDATE** su `anagrafiche.billing_account`, impedisce modifiche improprie al campo **`codice (account)`** una volta assegnato.
 - [trgfn_clienti_set_periodo](funzioni/trgfn_clienti_set_periodo.md)
 - [trgfn_clienti_sync_pdp](funzioni/trgfn_clienti_sync_pdp.md)
 - [trgfn_contatti_ins_upd_set_default_contatto](funzioni/trgfn_contatti_ins_upd_set_default_contatto.md) — * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
+- [trgfn_conti_bancari_ins_upd_normalize](funzioni/trgfn_conti_bancari_ins_upd_normalize.md)
 - [trgfn_dati_societari_ins_upd_check_tipo_soggetto](funzioni/trgfn_dati_societari_ins_upd_check_tipo_soggetto.md) — Verificare che il soggetto associato ai dati societari ( `new.soggetto_id` in `anagrafiche.dati_societari` ) abbia un `codice_interno` ammesso (solo **`SC`** o **`SP`**). In caso contrario, viene lanciato un errore tramite `script.fn_log_and_raise_error`.
+- [trgfn_fornitori_guard](funzioni/trgfn_fornitori_guard.md)
 - [trgfn_fornitori_ins_upd_check_ruolo_fornitore](funzioni/trgfn_fornitori_ins_upd_check_ruolo_fornitore.md)
 - [trgfn_gestori_ins_upd_check_ruolo_gestore](funzioni/trgfn_gestori_ins_upd_check_ruolo_gestore.md) — - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_check_ins_soggetto_ruolo` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio](funzioni/trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio.md) — * **Uniformità dei dati**: garantire che i campi relativi all’indirizzo (`via_norm`, `civico_norm`, `indirizzo_normalizzato`) rispettino regole di maiuscole, spaziatura e formattazione. * **Preparazione per ricerche e comparazioni**: offrire valori normalizzati che migliorano le performance di query basate su stringhe (es. ricerche full-text, join su via). * **Affidabilità**: centralizzare la logica di normalizzazione nel database, evitando differenze tra applicazioni diverse.
@@ -35,8 +38,11 @@
 - [trgfn_istanze_utilities_ins_upd_clean_fields](funzioni/trgfn_istanze_utilities_ins_upd_clean_fields.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
 - [trgfn_istanze_utilities_upd_protect_codice](funzioni/trgfn_istanze_utilities_upd_protect_codice.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_upd_protect_codice`, eseguito **prima di ogni UPDATE** su `anagrafiche.istanze_utilities`, impedisce modifiche non autorizzate al campo **`codice (istanza)`** una volta impostato.
 - [trgfn_pdp_protect_cols](funzioni/trgfn_pdp_protect_cols.md)
+- [trgfn_sepa_mandati_guard](funzioni/trgfn_sepa_mandati_guard.md)
+- [trgfn_soggetti_conti_bancari_guard](funzioni/trgfn_soggetti_conti_bancari_guard.md)
 - [trgfn_soggetti_ins_upd_check_soggetto_contatti](funzioni/trgfn_soggetti_ins_upd_check_soggetto_contatti.md) — * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
 - [trgfn_soggetti_ins_upd_clean_fields](funzioni/trgfn_soggetti_ins_upd_clean_fields.md) — * **Impostare valori di default** per campi mancanti in `anagrafiche.soggetti` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
+- [trgfn_soggetti_ruoli_conti_bancari_guard](funzioni/trgfn_soggetti_ruoli_conti_bancari_guard.md)
 - [trgfn_soggetti_upd_protect_codice_soggetto](funzioni/trgfn_soggetti_upd_protect_codice_soggetto.md) — Il trigger `anagrafiche.trgfn_soggetti_upd_protect_codice_soggetto`, esploso **prima di ogni UPDATE** sulla tabella `anagrafiche.soggetti`, garantisce che il campo **`codice(soggetto)`** non possa essere modificato una volta assegnato.
 - [trgfn_soggetti_valida_cf_piva_dispatch](funzioni/trgfn_soggetti_valida_cf_piva_dispatch.md) — La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** viene eseguita **`BEFORE INSERT OR UPDATE`** sulla tabella **`anagrafiche.soggetti`** e instrada la validazione di codice fiscale e partita IVA in base allo Stato e al dettaglio di soggetto.
 

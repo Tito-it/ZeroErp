@@ -30,7 +30,7 @@
 | FOREIGN KEY | fk_soggetti_conti_bancari_conti_bancari | conto_bancario_id |
 | FOREIGN KEY | fk_soggetti_conti_bancari_soggetti | soggetto_id |
 | PRIMARY KEY | pk_soggetti_conti_bancari | id |
-| UNIQUE | uq_soggetti_conti_bancari_soggetto_id_conto_id_uso | soggetto_id, conto_bancario_id, uso |
+| UNIQUE | uq_soggetti_conti_bancari_soggetto_id_conto_id_uso | uso, conto_bancario_id, soggetto_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -40,6 +40,12 @@
 | ix_soggetti_conti_bancari_soggetto_id | `CREATE INDEX ix_soggetti_conti_bancari_soggetto_id ON anagrafiche.soggetti_conti_bancari USING btree (soggetto_id)` |
 | pk_soggetti_conti_bancari | `CREATE UNIQUE INDEX pk_soggetti_conti_bancari ON anagrafiche.soggetti_conti_bancari USING btree (id)` |
 | uq_soggetti_conti_bancari_soggetto_id_conto_id_uso | `CREATE UNIQUE INDEX uq_soggetti_conti_bancari_soggetto_id_conto_id_uso ON anagrafiche.soggetti_conti_bancari USING btree (soggetto_id, conto_bancario_id, uso)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_soggetti_conti_bancari_ins_upd_guard | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_conti_bancari_guard()` |
+| trg_soggetti_conti_bancari_ins_upd_guard | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_conti_bancari_guard()` |
 
 ---
 {% include-markdown "signature-core.md" %}
