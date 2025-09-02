@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Acquisti: ordini_righe_fulfillment (ponte ordine↔DDT)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250902-19-create_acquisti_ordini_righe_fulfillment
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:  { schemaName: acquisti, tableName: ordini_righe }
+        - tableExists:  { schemaName: acquisti, tableName: ddt_righe }
+      changes:
+        - createTable:
+            schemaName: acquisti
+            tableName: ordini_righe_fulfillment
+            remarks: "Fulfillment parziale/totale da righe ordine a righe DDT (acquisto)."
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT, constraints: { primaryKey: true, primaryKeyName: pk_fula, nullable: false }, remarks: "PK" }
+              - column: { name: ordine_riga_id, type: BIGINT, constraints: { nullable: false }, remarks: "FK → acquisti.ordini_righe.id (riga ordine)" }
+              - column: { name: ddt_riga_id, type: BIGINT, constraints: { nullable: false }, remarks: "FK → acquisti.ddt_righe.id (riga DDT)" }
+              - column: { name: qta_ricevuta, type: NUMERIC("18,6"), constraints: { nullable: false }, remarks: "Quantità ricevuta (deve essere > 0)" }
+              - column: { name: note, type: VARCHAR(200), remarks: "Note" }
+              - column: { name: meta, type: JSONB, defaultValue: "{}", constraints: { nullable: false }, remarks: "Estensioni JSON" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Snapshot su UPDATE/DELETE" }
+              - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data inserimento" }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false }, remarks: "Audit: utente inserimento" }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data aggiornamento" }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, remarks: "Audit: utente aggiornamento" }
+
+        # Foreign keys
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini_righe_fulfillment
+            baseColumnNames: ordine_riga_id
+            constraintName: fk_ordini_fula_ordine_riga
+            referencedTableSchemaName: acquisti
+            referencedTableName: ordini_righe
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini_righe_fulfillment
+            baseColumnNames: ddt_riga_id
+            constraintName: fk_ordini_fula_ddt_riga
+            referencedTableSchemaName: acquisti
+            referencedTableName: ddt_righe
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        # Check
+        - addCheckConstraint:
+            schemaName: acquisti
+            tableName: ordini_righe_fulfillment
+            constraintName: chk_ordini_fula_qta_pos
+            checkConstraint: "(qta_ricevuta > 0)"
+
+        # Indici
+        - createIndex:
+            schemaName: acquisti
+            tableName: ordini_righe_fulfillment
+            indexName: uq_ordini_fula_pair
+            unique: true
+            columns:
+              - column: { name: ordine_riga_id }
+              - column: { name: ddt_riga_id }
+
+        - createIndex:
+            schemaName: acquisti
+            tableName: ordini_righe_fulfillment
+            indexName: ix_ordini_fula_ddt_riga
+            columns:
+              - column: { name: ddt_riga_id }
+          
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250902-90-create_acquisti_ordini_righe_fulfillment
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250902-19-create_acquisti_ordini_righe_fulfillment

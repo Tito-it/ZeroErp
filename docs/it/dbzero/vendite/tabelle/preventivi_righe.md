@@ -34,5 +34,13 @@
 | ix_prevrighe_preventivo | `CREATE INDEX ix_prevrighe_preventivo ON vendite.preventivi_righe USING btree (preventivo_id)` |
 | pk_preventivi_righe | `CREATE UNIQUE INDEX pk_preventivi_righe ON vendite.preventivi_righe USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_chk_preventivi_righe_parent_fk_prevrighe_articoli | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id')` |
+| trg_chk_preventivi_righe_parent_fk_prevrighe_articoli | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id')` |
+| trg_chk_preventivi_righe_parent_fk_prevrighe_unita_misura | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'unita_misura_id')` |
+| trg_chk_preventivi_righe_parent_fk_prevrighe_unita_misura | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'unita_misura_id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

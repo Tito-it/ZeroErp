@@ -46,6 +46,7 @@
 |------|--------|--------|--------|
 | trg_prevnote_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_prevnote_validate()` |
 | trg_prevnote_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_prevnote_validate()` |
+| trg_upd_note_preventivo_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

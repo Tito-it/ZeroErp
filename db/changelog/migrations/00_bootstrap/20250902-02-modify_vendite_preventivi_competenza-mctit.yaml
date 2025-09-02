@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250902-02-modify_vendite_preventivi_competenza
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      preConditions:
+        - tableExists:
+            schemaName: vendite
+            tableName: preventivi
+
+      changes:
+        # --- Colonne in testata ---
+        - addColumn:
+            schemaName: vendite
+            tableName: preventivi
+            columns:
+              - column:
+                  name: competenza_mese
+                  type: DATE
+                  remarks: "Hint di competenza (mese) ereditabile sulle attività; deve essere sempre il primo del mese."
+              - column:
+                  name: fatturazione_immediata
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "Se TRUE, alla conferma il sistema genera attività fatturabili con competenza_mese al mese corrente."
+
+        # --- Check: competenza_mese deve essere il 1° del mese ---
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1
+                  FROM pg_constraint
+                  WHERE conname = 'chk_preventivi_competenza_mese_primo'
+                    AND conrelid = 'vendite.preventivi'::regclass
+                ) THEN
+                  ALTER TABLE vendite.preventivi
+                  ADD CONSTRAINT chk_preventivi_competenza_mese_primo
+                  CHECK (competenza_mese IS NULL OR EXTRACT(day FROM competenza_mese) = 1);
+                END IF;
+              END$$;
+
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250902-90-modify_vendite_preventivi_competenza
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250902-02-modify_vendite_preventivi_competenza

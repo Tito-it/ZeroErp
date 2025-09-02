@@ -97,16 +97,7 @@ AS $function$
         END IF;
       END IF;
 
-      ------------------------------------------------------------------
-      -- 3) Audit base (se non già coperto da trigger generico)
-      ------------------------------------------------------------------
-      NEW.data_update := now();
-      IF TG_OP = 'INSERT' AND NEW.user_insert IS NULL THEN
-        NEW.user_insert := current_user;
-      ELSE
-        NEW.user_update := current_user;
-      END IF;
-
+      
       RETURN NEW;
     END;
     $function$

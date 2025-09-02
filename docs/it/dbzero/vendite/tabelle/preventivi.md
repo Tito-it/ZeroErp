@@ -23,10 +23,13 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
+| competenza_mese | date | YES |  |
+| fatturazione_immediata | boolean | YES | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_preventivi_competenza_mese_primo |  |
 | CHECK | chk_preventivi_stato |  |
 | CHECK | chk_preventivi_validita |  |
 | FOREIGN KEY | fk_preventivi_billing_account | billing_account_id |
@@ -44,6 +47,13 @@
 | pk_preventivi | `CREATE UNIQUE INDEX pk_preventivi ON vendite.preventivi USING btree (id)` |
 | uq_preventivi_numero_rev | `CREATE UNIQUE INDEX uq_preventivi_numero_rev ON vendite.preventivi USING btree (numero_preventivo, rev)` |
 | ux_preventivi_numero_attiva | `CREATE UNIQUE INDEX ux_preventivi_numero_attiva ON vendite.preventivi USING btree (numero_preventivo) WHERE (is_revision_attiva = true)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_preventivi_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_preventivi_norm()` |
+| trg_preventivi_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_preventivi_norm()` |
+| trg_upd_preventivi_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

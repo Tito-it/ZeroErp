@@ -23,7 +23,7 @@ databaseChangeLog:
             stripComments: true
             sql: |
                    
-                   CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_guard_ba_coerenza()
+                   CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()
                       RETURNS trigger
                       LANGUAGE plpgsql AS $$
                       DECLARE v_iu_id INTEGER;
@@ -70,15 +70,15 @@ databaseChangeLog:
                         END IF;
                         RETURN NEW;
                     END$$;
-                  
-                      COMMENT ON FUNCTION vendite.trgfn_attivita_guard_ba_coerenza()
+
+                      COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()
                         IS 'Se billing_account_id è valorizzato, verifica che l’istanza_utility sia la stessa dell’account.';
 
 
-                          DROP TRIGGER IF EXISTS trg_attivita_guard_ba_coerenza ON vendite.attivita_fatturabili;
-                          CREATE TRIGGER trg_attivita_guard_ba_coerenza
+                          DROP TRIGGER IF EXISTS trg_a10_attivita_fatturabili_ins_upd_guard_ba_coerenza ON vendite.attivita_fatturabili;
+                          CREATE TRIGGER trg_a10_attivita_fatturabili_ins_upd_guard_ba_coerenza
                           BEFORE INSERT OR UPDATE ON vendite.attivita_fatturabili
-                          FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_attivita_guard_ba_coerenza();
+                          FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza();
 
   
 

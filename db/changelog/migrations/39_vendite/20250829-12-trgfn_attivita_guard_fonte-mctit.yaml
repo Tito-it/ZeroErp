@@ -18,12 +18,12 @@ databaseChangeLog:
       changes:
             
         - sql:
-            comment: "1) Crea trigger " 
+           
             splitStatements: false
             stripComments: true
             sql: |
                     
-                    CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_guard_fonte()
+                    CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte()
                     RETURNS trigger
                     LANGUAGE plpgsql AS $$
                     DECLARE v_fonte TEXT;
@@ -123,13 +123,13 @@ databaseChangeLog:
                     END$$;
 
 
-                    COMMENT ON FUNCTION vendite.trgfn_attivita_guard_fonte()
+                    COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte()
                       IS 'Blocca inserimenti/aggiornamenti se la fonte_quantita non è tra TIMESHEET, MANUALE, FISSA o se la competenza è incoerente.';
 
-                    DROP TRIGGER IF EXISTS trg_attivita_guard_fonte ON vendite.attivita_fatturabili;
-                    CREATE TRIGGER trg_attivita_guard_fonte
+                    DROP TRIGGER IF EXISTS trg_a10_attivita_fatturabili_ins_upd_guard_fonte ON vendite.attivita_fatturabili;
+                    CREATE TRIGGER trg_a10_attivita_fatturabili_ins_upd_guard_fonte
                     BEFORE INSERT OR UPDATE ON vendite.attivita_fatturabili
-                    FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_attivita_guard_fonte();
+                    FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte();
 
 
 

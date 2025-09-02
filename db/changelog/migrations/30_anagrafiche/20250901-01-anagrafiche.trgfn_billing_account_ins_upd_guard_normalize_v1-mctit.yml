@@ -9,7 +9,6 @@
 
 databaseChangeLog:
 
-  
   - changeSet:
       id: 20250901-01-anagrafiche.trgfn_billing_account_ins_upd_guard_normalize_v1
       author: mctit
@@ -117,16 +116,7 @@ databaseChangeLog:
                         END IF;
                       END IF;
 
-                      ------------------------------------------------------------------
-                      -- 3) Audit base (se non già coperto da trigger generico)
-                      ------------------------------------------------------------------
-                      NEW.data_update := now();
-                      IF TG_OP = 'INSERT' AND NEW.user_insert IS NULL THEN
-                        NEW.user_insert := current_user;
-                      ELSE
-                        NEW.user_update := current_user;
-                      END IF;
-
+                      
                       RETURN NEW;
                     END;
                     $$;
@@ -135,8 +125,8 @@ databaseChangeLog:
                     IS 'Normalize+Guard per anagrafiche.billing_account: pulizie (codice) e validazioni (parent, CF coerenti, date).';
 
                     -- TRIGGER (unico, compatto)
-                    DROP TRIGGER IF EXISTS trg_z20_billing_account_ins_upd_guard_normalize ON anagrafiche.billing_account;
-                    CREATE TRIGGER trg_z20_billing_account_ins_upd_guard_normalize
+                    DROP TRIGGER IF EXISTS trg_billing_account_ins_upd_guard_normalize ON anagrafiche.billing_account;
+                    CREATE TRIGGER trg_billing_account_ins_upd_guard_normalize
                     BEFORE INSERT OR UPDATE
                     ON anagrafiche.billing_account
                     FOR EACH ROW

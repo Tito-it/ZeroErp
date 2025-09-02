@@ -16,10 +16,15 @@
 - [regole_fatturazione_articolo](tabelle/regole_fatturazione_articolo.md) — * Definire le **policy di calcolo** per ogni articolo. * Stabilire la **visibilità** dei componenti di un articolo complesso (solo padre, padre+componenti, solo componenti). * Impostare la logica di **calcolo della quantità del padre** (fissa o somma di componenti flaggati). * Definire regole di **arrotondamento** per importi e quantità. * Consentire estensioni tramite il campo JSONB `meta`.
 
 ## ⚙️ Funzioni
+- [trgfn_a10_attivita_fatturabili_guard_fatturato](funzioni/trgfn_a10_attivita_fatturabili_guard_fatturato.md)
+- [trgfn_attivita_fatturabili_guard_ba_coerenza](funzioni/trgfn_attivita_fatturabili_guard_ba_coerenza.md)
+- [trgfn_attivita_fatturabili_guard_fonte](funzioni/trgfn_attivita_fatturabili_guard_fonte.md)
+- [trgfn_attivita_fatturabili_norm](funzioni/trgfn_attivita_fatturabili_norm.md)
 - [trgfn_attivita_guard_ba_coerenza](funzioni/trgfn_attivita_guard_ba_coerenza.md)
 - [trgfn_attivita_guard_fonte](funzioni/trgfn_attivita_guard_fonte.md)
 - [trgfn_attivita_norm_competenza_mese](funzioni/trgfn_attivita_norm_competenza_mese.md)
 - [trgfn_contnote_validate](funzioni/trgfn_contnote_validate.md)
+- [trgfn_preventivi_norm](funzioni/trgfn_preventivi_norm.md)
 - [trgfn_prevnote_validate](funzioni/trgfn_prevnote_validate.md)
 
 ## 🔍 Views

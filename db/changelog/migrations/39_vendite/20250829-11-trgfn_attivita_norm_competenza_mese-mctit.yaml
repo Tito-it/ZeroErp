@@ -22,27 +22,35 @@ databaseChangeLog:
             splitStatements: false
             stripComments: true
             sql: |
-                  CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_norm_competenza_mese()
+                  CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_norm()
                   RETURNS trigger
                   LANGUAGE plpgsql AS $$
                   BEGIN
-                  -- Normalizza competenza_mese al 1° del mese (YYYY-MM-01)
-             
+                    -- Normalizza competenza_mese al 1° del mese (YYYY-MM-01)
                     IF NEW.competenza_mese IS NOT NULL THEN
                       NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
                     END IF;
+
+                     --- Normalize: UPPER/trim su sorgente_tipo e default riga=0 se mancante ---
+                    IF NEW.sorgente_tipo IS NOT NULL THEN
+                      NEW.sorgente_tipo := upper(btrim(NEW.sorgente_tipo));
+                      IF NEW.sorgente_riga IS NULL THEN
+                        NEW.sorgente_riga := 0;  -- per far funzionare l'idempotenza
+                      END IF;
+                    END IF;
+
                     RETURN NEW;
                   END$$;
-                  COMMENT ON FUNCTION vendite.trgfn_attivita_norm_competenza_mese()
+                  COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_norm()
                     IS 'Se competenza_mese è valorizzato, normalizza al primo giorno del mese.';
 
 
                             -- Triggers
-                  DROP TRIGGER IF EXISTS trg_attivita_norm_competenza_mese ON vendite.attivita_fatturabili;
-                  CREATE TRIGGER trg_attivita_norm_competenza_mese
+                  DROP TRIGGER IF EXISTS trg_attivita_fatturabili_ins_upd_norm ON vendite.attivita_fatturabili;
+                  CREATE TRIGGER trg_attivita_fatturabili_ins_upd_norm
                   BEFORE INSERT OR UPDATE ON vendite.attivita_fatturabili
-                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_attivita_norm_competenza_mese();  
-                  COMMENT ON TRIGGER trg_attivita_norm_competenza_mese ON vendite.attivita_fatturabili
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_norm();  
+                  COMMENT ON TRIGGER trg_attivita_fatturabili_ins_upd_norm ON vendite.attivita_fatturabili
                     IS 'BEFORE INSERT OR UPDATE: normalizza competenza_mese al 1° del mese (YYYY-MM-01)';
 
   # Metto un tag fine modifiche

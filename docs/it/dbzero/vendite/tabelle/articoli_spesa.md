@@ -31,6 +31,7 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_soft_del_articoli_spesa__articoli__fk_articoli_artic_535934 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli', 'spesa_id')` |
+| trg_soft_del_articoli_spesa_articoli_fk_articoli_articol_c28fee | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli', 'spesa_id')` |
 | trg_soft_del_articoli_spesa_articoli_fk_articoli_articoli_spesa | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli', 'spesa_id')` |
 | trg_upd_articoli_spesa_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 

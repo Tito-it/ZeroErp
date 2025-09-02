@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Acquisti: ddt_righe
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250902-18-create_acquisto_ddt_righe
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      preConditions:
+        - onFail: HALT
+        - tableExists:  { schemaName: acquisti, tableName: ddt }   # testata già presente
+      changes:
+        - createTable:
+            schemaName: acquisti
+            tableName: ddt_righe
+            remarks: "Righe DDT di acquisto (merce ricevuta)."
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT, constraints: { primaryKey: true, primaryKeyName: pk_ddtar, nullable: false }, remarks: "PK" }
+              - column: { name: ddt_id, type: BIGINT, constraints: { nullable: false }, remarks: "FK → acquisti.ddt.id (testata)" }
+              - column: { name: riga_nr, type: INTEGER, constraints: { nullable: false }, remarks: "Numero riga (progressivo per DDT)" }
+              - column: { name: articolo_id, type: UUID, constraints: { nullable: false }, remarks: "Articolo (catalogo.articoli.id)" }
+              - column: { name: descrizione, type: VARCHAR(150), constraints: { nullable: false }, remarks: "Descrizione riga (snapshot)" }
+              - column: { name: uom_id, type: BIGINT, remarks: "Unità di misura (catalogo.unita_misura.id)" }
+              - column: { name: qta, type: NUMERIC(18,6), constraints: { nullable: false }, remarks: "Quantità (deve essere > 0)" }
+              - column: { name: lotto, type: VARCHAR(50), remarks: "Lotto (se applicabile)" }
+              - column: { name: seriale, type: VARCHAR(50), remarks: "Seriale (se applicabile)" }
+              - column: { name: note, type: TEXT, remarks: "Note riga" }
+              - column: { name: meta, type: JSONB, defaultValue: "{}", constraints: { nullable: false }, remarks: "Estensioni JSON" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Snapshot su UPDATE/DELETE" }
+              - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data inserimento" }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false }, remarks: "Audit: utente inserimento" }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data aggiornamento" }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, remarks: "Audit: utente aggiornamento" }
+
+        # Foreign keys
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ddt_righe
+            baseColumnNames: ddt_id
+            constraintName: fk_ddt_acquisto_r_testata
+            referencedTableSchemaName: acquisti
+            referencedTableName: ddt
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ddt_righe
+            baseColumnNames: articolo_id
+            constraintName: fk_ddt_acquisto_r_articolo
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ddt_righe
+            baseColumnNames: uom_id
+            constraintName: fk_ddt_acquisto_r_uom
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # Check constraints
+        - addCheckConstraint:
+            schemaName: acquisti
+            tableName: ddt_righe
+            constraintName: chk_ddt_acquisto_r_qta_pos
+            checkConstraint: "(qta > 0)"
+
+        # Indici
+        - createIndex:
+            schemaName: acquisti
+            tableName: ddt_righe
+            indexName: uq_ddt_acquisto_r_riga_nr
+            unique: true
+            columns:
+              - column: { name: ddt_id }
+              - column: { name: riga_nr }
+
+        - createIndex:
+            schemaName: acquisti
+            tableName: ddt_righe
+            indexName: ix_ddt_acquisto_r_articolo
+            columns:
+              - column: { name: articolo_id }
+
+             
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250902-90-create-vendite-ddt-righe
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250902-15-create-vendite-ddt-righe

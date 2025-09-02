@@ -44,12 +44,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_billing_account_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_a10_billing_account_upd_protect_account_code | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_upd_protect_account_code()` |
 | trg_billing_account_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_billing_account_upd_protect_account_code | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_upd_protect_account_code()` |
+| trg_billing_account_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_billing_account_ins_upd_guard_normalize | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_guard_normalize()` |
+| trg_billing_account_ins_upd_guard_normalize | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_guard_normalize()` |
 | trg_upd_billing_account_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-| trg_z20_billing_account_ins_upd_guard_normalize | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_guard_normalize()` |
-| trg_z20_billing_account_ins_upd_guard_normalize | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_guard_normalize()` |
 | trg_z90_billing_account_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('billing_account_id')` |
 | trg_z90_billing_account_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('billing_account_id')` |
 

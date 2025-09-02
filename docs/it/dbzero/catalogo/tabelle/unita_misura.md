@@ -32,6 +32,7 @@
 |------|--------|--------|--------|
 | trg_soft_del_unita_misura__articoli__fk_articoli_unita_misura | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli', 'uom_id')` |
 | trg_soft_del_unita_misura_articoli_fk_articoli_unita_misura | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli', 'uom_id')` |
+| trg_soft_del_unita_misura_preventivi_righe_fk_prevrighe__562e4f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('vendite', 'preventivi_righe', 'unita_misura_id')` |
 | trg_upd_unita_misura_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
