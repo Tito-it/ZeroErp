@@ -38,7 +38,7 @@ databaseChangeLog:
                 SELECT
                   sr.id                                  AS soggetto_ruolo_id,
                   r.uso                                   AS uso,
-                  r.conto_id                              AS conto_id,
+                  r.conto_bancario_id                     AS conto_bancario_id,
                   r.id                                    AS soggetto_ruolo_conto_id,
                   NULL::bigint                            AS soggetto_conto_id,
                   r.predefinito                           AS predefinito,
@@ -51,7 +51,7 @@ databaseChangeLog:
                 JOIN anagrafiche.soggetti_ruoli_conti_bancari r
                   ON r.soggetto_ruolo_id = sr.id
                 JOIN anagrafiche.conti_bancari cb
-                  ON cb.id = r.conto_id
+                  ON cb.id = r.conto_bancario_id
                 WHERE (r.valido_dal IS NULL OR r.valido_dal <= CURRENT_DATE)
                   AND (r.valido_al  IS NULL OR r.valido_al  >= CURRENT_DATE)
                   AND COALESCE(r.bloccato, false) = false
@@ -61,7 +61,7 @@ databaseChangeLog:
                 SELECT
                   sr.id                                  AS soggetto_ruolo_id,
                   s.uso                                   AS uso,
-                  s.conto_id                              AS conto_id,
+                  s.conto_bancario_id                     AS conto_bancario_id,
                   NULL::bigint                            AS soggetto_ruolo_conto_id,
                   s.id                                    AS soggetto_conto_id,
                   s.predefinito                           AS predefinito,
@@ -74,7 +74,7 @@ databaseChangeLog:
                 JOIN anagrafiche.soggetti_conti_bancari s
                   ON s.soggetto_id = sr.soggetto_id
                 JOIN anagrafiche.conti_bancari cb
-                  ON cb.id = s.conto_id
+                  ON cb.id = s.conto_bancario_id
                 WHERE (s.valido_dal IS NULL OR s.valido_dal <= CURRENT_DATE)
                   AND (s.valido_al  IS NULL OR s.valido_al  >= CURRENT_DATE)
                   AND COALESCE(s.bloccato, false) = false
@@ -88,7 +88,7 @@ databaseChangeLog:
               SELECT DISTINCT ON (soggetto_ruolo_id, uso)
                 soggetto_ruolo_id,
                 uso,
-                conto_id,
+                conto_bancario_id,
                 soggetto_ruolo_conto_id,
                 soggetto_conto_id,
                 fonte,
@@ -114,7 +114,7 @@ databaseChangeLog:
                 IS 'Ruolo per cui si seleziona il conto.';
               COMMENT ON COLUMN anagrafiche.vw_conti_bancari_per_ruolo.uso
                 IS 'Uso richiesto: INCASSO | PAGAMENTO | RIMBORSO | GENERICO.';
-              COMMENT ON COLUMN anagrafiche.vw_conti_bancari_per_ruolo.conto_id
+              COMMENT ON COLUMN anagrafiche.vw_conti_bancari_per_ruolo.conto_bancario_id
                 IS 'Conto bancario selezionato (anagrafiche.conti_bancari.id).';
               COMMENT ON COLUMN anagrafiche.vw_conti_bancari_per_ruolo.soggetto_ruolo_conto_id
                 IS 'Associazione di RUOLO usata (se fonte=RUOLO).';

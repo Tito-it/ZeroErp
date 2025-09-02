@@ -19,7 +19,7 @@
 | FOREIGN KEY | fk_gestori_anagrafiche | gestore_id |
 | FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
 | PRIMARY KEY | pk_gestori_utilities_ruoli | id |
-| UNIQUE | uq_gestore_utility | gestore_id, utility_id |
+| UNIQUE | uq_gestore_utility | utility_id, gestore_id |
 
 ## 📑 Indici
 | Nome | Definizione |

@@ -38,7 +38,7 @@ databaseChangeLog:
                   constraints: { nullable: false }
                   remarks: "FK → anagrafiche.soggetti.id"
               - column:
-                  name: conto_id
+                  name: conto_bancario_id
                   type: BIGINT
                   constraints: { nullable: false }
                   remarks: "FK → anagrafiche.conti_bancari.id"
@@ -91,7 +91,7 @@ databaseChangeLog:
         - addForeignKeyConstraint:
             baseTableSchemaName: anagrafiche
             baseTableName: soggetti_conti_bancari
-            baseColumnNames: conto_id
+            baseColumnNames: conto_bancario_id
             constraintName: fk_soggetti_conti_bancari_conti_bancari
             referencedTableSchemaName: anagrafiche
             referencedTableName: conti_bancari
@@ -105,7 +105,7 @@ databaseChangeLog:
               -- Unicità della stessa associazione (stesso uso) per soggetto/conto
               ALTER TABLE anagrafiche.soggetti_conti_bancari
               ADD CONSTRAINT uq_soggetti_conti_bancari_soggetto_id_conto_id_uso
-                            UNIQUE (soggetto_id, conto_id, uso);
+                            UNIQUE (soggetto_id, conto_bancario_id, uso);
 
               -- Consenti un solo predefinito per (soggetto, uso): UNIQUE PARZIALE tramite indice univoco
               DO $$
@@ -158,10 +158,10 @@ databaseChangeLog:
 
                 IF NOT EXISTS (
                   SELECT 1 FROM pg_indexes
-                  WHERE schemaname='anagrafiche' AND indexname='ix_soggetti_conti_bancari_conto_id'
+                  WHERE schemaname='anagrafiche' AND indexname='ix_soggetti_conti_bancari_conto_bancario_id'
                 ) THEN
-                  EXECUTE 'CREATE INDEX ix_soggetti_conti_bancari_conto_id
-                             ON anagrafiche.soggetti_conti_bancari (conto_id)';
+                  EXECUTE 'CREATE INDEX ix_soggetti_conti_bancari_conto_bancario_id
+                             ON anagrafiche.soggetti_conti_bancari (conto_bancario_id)';
                 END IF;
               END$$;
   - changeSet:

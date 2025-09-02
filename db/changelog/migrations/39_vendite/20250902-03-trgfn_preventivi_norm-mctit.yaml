@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:  
+  - changeSet:
+      id: 20250902-03-trgfn_preventivi_norm
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_norm()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                -- Normalizzazione automatica al 1° del mese ---
+                IF NEW.competenza_mese IS NOT NULL THEN
+                  NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
+                END IF;
+                RETURN NEW;
+              END$$;
+
+              COMMENT ON FUNCTION vendite.trgfn_preventivi_norm()
+                IS 'Normalizza competenza_mese al primo giorno del mese (YYYY-MM-01).';
+
+              DROP TRIGGER IF EXISTS trg_preventivi_ins_upd_norm ON vendite.preventivi;
+              CREATE TRIGGER trg_preventivi_ins_upd_norm
+              BEFORE INSERT OR UPDATE
+              ON vendite.preventivi
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_preventivi_norm();
+
+              COMMENT ON TRIGGER trg_preventivi_ins_upd_norm ON vendite.preventivi
+                IS 'BEFORE INS/UPD: forza competenza_mese al 1° del mese.';
+      
+      
+                    
+
+
+  # Metto un tag fine modifiche
+  - changeSet:
+      id: 20250902-90-trgfn_preventivi_norm
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250902-03-trgfn_preventivi_norm

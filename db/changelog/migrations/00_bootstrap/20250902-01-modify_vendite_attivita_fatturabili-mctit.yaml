@@ -1,0 +1,194 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250902-01-modify_vendite_attivita_fatturabili
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      preConditions:
+        - tableExists:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+
+      changes:
+              # --- Colonne sorgente ---
+        - addColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columns:
+              - column:
+                  name: sorgente_tipo
+                  type: VARCHAR(32)
+                  remarks: "Codice sorgente standardizzato (es. PREVENTIVO_RIGA | CONTRATTO_RIGA | TICKET | MISURA | MANUALE)."
+              - column:
+                  name: sorgente_id
+                  type: UUID
+                  remarks: "Identificativo entità sorgente (UUID consigliato)."
+              - column:
+                  name: sorgente_riga
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  remarks: "Identificativo riga nella sorgente (0 se la sorgente non ha righe)."
+
+        # --- Colonne operatività/controllo ---
+        - addColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columns:
+              - column:
+                  name: posticipa_al
+                  type: DATE
+                  remarks: "Data dalla quale la riga può essere ripescata dal ciclo di fatturazione (posticipo)."
+              - column:
+                  name: sospesa
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "Se TRUE, la riga è esclusa dal prelievo finché non viene riabilitata."
+              - column:
+                  name: exclude_reason
+                  type: VARCHAR(200)
+                  remarks: "Motivo dell’esclusione/posticipo (auditing)."
+
+              - column:
+                  name: lock_in_fatturazione
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "Lock di lavorazione impostato dall’engine per evitare doppi prelievi."
+              - column:
+                  name: lock_batch_id
+                  type: UUID
+                  remarks: "Identificativo batch di lavorazione (opzionale)."
+
+              - column:
+                  name: fattura_riga_id
+                  type: BIGINT
+                  remarks: "Collegamento alla riga di fattura generata (se valorizzato la riga è 'consumata')."
+
+        # --- Commenti colonne ---
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN vendite.attivita_fatturabili.sorgente_tipo IS 'Codice sorgente standardizzato: PREVENTIVO_RIGA | CONTRATTO_RIGA | TICKET | MISURA | MANUALE ...';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.sorgente_id   IS 'ID dell''entità sorgente (UUID consigliato).';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.sorgente_riga IS 'ID riga nella sorgente (0 se non applicabile).';
+
+              COMMENT ON COLUMN vendite.attivita_fatturabili.posticipa_al         IS 'Data dalla quale la riga può essere ripescata dal ciclo di fatturazione (posticipo).';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.sospesa               IS 'Se TRUE, la riga è esclusa dal prelievo finché non viene riabilitata.';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.exclude_reason        IS 'Motivo dell’esclusione/posticipo (auditing).';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.lock_in_fatturazione  IS 'Lock di lavorazione impostato dall’engine per evitare doppi prelievi.';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.lock_batch_id         IS 'Identificativo batch di lavorazione (opzionale).';
+              COMMENT ON COLUMN vendite.attivita_fatturabili.fattura_riga_id       IS 'Collegamento alla riga di fattura generata (se valorizzato la riga è consumata).';
+
+        # --- CHECK basilare di coerenza (se tipo valorizzato serve anche id) ---
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_constraint
+                  WHERE conname = 'chk_attivita_sorgente_tripla'
+                    AND conrelid = 'vendite.attivita_fatturabili'::regclass
+                ) THEN
+                  ALTER TABLE vendite.attivita_fatturabili
+                  ADD CONSTRAINT chk_attivita_sorgente_tripla
+                  CHECK (
+                    (sorgente_tipo IS NULL AND sorgente_id IS NULL AND sorgente_riga IS NULL)
+                    OR
+                    (sorgente_tipo IS NOT NULL AND sorgente_id IS NOT NULL)
+                  );
+                END IF;
+              END$$;
+
+        # --- Indici operativi ---
+        - createIndex:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            indexName: ix_attivita_fatturabili_posticipa_sospesa
+            columns:
+              - column: { name: posticipa_al }
+              - column: { name: sospesa }
+
+        - createIndex:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            indexName: ix_attivita_fatturabili_lock
+            columns:
+              - column: { name: lock_in_fatturazione }
+              - column: { name: lock_batch_id }
+
+        - createIndex:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            indexName: ix_attivita_fatturabili_fattura_riga_id
+            columns:
+              - column: { name: fattura_riga_id }
+
+        # --- Indice operativo per lookup sorgente ---
+        - createIndex:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            indexName: ix_attivita_fatturabili_sorgente
+            columns:
+              - column: { name: sorgente_tipo }
+              - column: { name: sorgente_id }
+
+        # --- UNIQUE parziale per idempotenza (PostgreSQL) ---
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_class c
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  WHERE n.nspname = 'vendite' AND c.relname = 'uq_af_sorgente'
+                ) THEN
+                  CREATE UNIQUE INDEX uq_af_sorgente
+                    ON vendite.attivita_fatturabili (sorgente_tipo, sorgente_id, sorgente_riga)
+                    WHERE sorgente_tipo IS NOT NULL;
+                  COMMENT ON INDEX vendite.uq_af_sorgente
+                    IS 'Idempotenza import: una sola riga per (sorgente_tipo, sorgente_id, sorgente_riga).';
+                END IF;
+              END$$;
+
+
+        # --- (Opzionale) FK a vendite.fatture_righe se la tabella esiste ---
+      #  - sql:
+      #      splitStatements: false
+      #      sql: |
+      #        DO $$
+      #        BEGIN
+      #          IF EXISTS (
+      #            SELECT 1 FROM information_schema.tables
+      #            WHERE table_schema='vendite' AND table_name='fatture_righe'
+      #          ) THEN
+      #            -- Aggiunge la FK solo se esiste la tabella di destinazione
+      #            BEGIN
+      #              ALTER TABLE vendite.attivita_fatturabili
+      #                ADD CONSTRAINT fk_attivita_fatturabili_fatture_righe
+      #                FOREIGN KEY (fattura_riga_id)
+      #                REFERENCES vendite.fatture_righe(id)
+      #                ON UPDATE CASCADE
+      #                ON DELETE RESTRICT;
+      #            EXCEPTION WHEN duplicate_object THEN
+      #              -- FK già presente: ignora
+      #              NULL;
+      #            END;
+      #          END IF;
+      #        END$$;
+  
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250902-90-modify_vendite_attivita_fatturabili
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250902-01-modify_vendite_attivita_fatturabili

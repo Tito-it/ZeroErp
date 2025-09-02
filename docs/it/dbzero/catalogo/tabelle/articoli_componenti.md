@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/catalogo/manual/articoli_componenti.md" %}
 # 📚 Tabella `articoli_componenti`
 
 ## 🗂️ Campi principali
@@ -30,7 +31,7 @@
 | FOREIGN KEY | fk_articoli_componenti_articoli_componente | componente_id |
 | FOREIGN KEY | fk_articoli_componenti_articoli_prodotto | prodotto_id |
 | PRIMARY KEY | pk_articoli_componenti | id |
-| UNIQUE | uq_articoli_componenti_prodotto_componente_from | prodotto_id, componente_id, valid_from |
+| UNIQUE | uq_articoli_componenti_prodotto_componente_from | valid_from, componente_id, prodotto_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -51,8 +52,8 @@
 | trg_chk_articoli_componenti_parent_fk_articoli_component_86ae92 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'componente_id')` |
 | trg_chk_articoli_componenti_parent_fk_articoli_component_86ae92 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'componente_id')` |
 | trg_upd_articoli_componenti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-| trg_z90_articoli_componenti_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('articoli_componenti_id')` |
 | trg_z90_articoli_componenti_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('articoli_componenti_id')` |
+| trg_z90_articoli_componenti_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('articoli_componenti_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

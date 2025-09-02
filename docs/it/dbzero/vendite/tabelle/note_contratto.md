@@ -32,7 +32,7 @@
 | CHECK | chk_note_target_tipo |  |
 | FOREIGN KEY | fk_contnote_riga | target_riga_id |
 | FOREIGN KEY | fk_contnote_testata | target_id |
-| PRIMARY KEY | note_contratto_pkey | target_tipo, id |
+| PRIMARY KEY | note_contratto_pkey | id, target_tipo |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -46,6 +46,7 @@
 |------|--------|--------|--------|
 | trg_contnote_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contnote_validate()` |
 | trg_contnote_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contnote_validate()` |
+| trg_upd_note_contratto_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

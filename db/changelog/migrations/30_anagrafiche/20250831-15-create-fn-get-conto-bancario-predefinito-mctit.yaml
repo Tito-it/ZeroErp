@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 databaseChangeLog:
 
-  # 2) FUNCTION: script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)
+  # 2) FUNCTION: anagrafiche.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)
   - changeSet:
       id: 20250831-15-create-fn-get-conto-bancario-predefinito
       author: mctit
@@ -22,12 +22,12 @@ databaseChangeLog:
         - sql:
             splitStatements: false
             sql: |
-              CREATE OR REPLACE FUNCTION script.fn_get_conto_bancario_predefinito(
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_get_conto_bancario_predefinito(
                   p_soggetto_ruolo_id BIGINT,
                   p_uso               VARCHAR
               )
               RETURNS TABLE (
-                conto_id                    BIGINT,
+                conto_bancario_id           BIGINT,
                 fonte                       VARCHAR,
                 soggetto_ruolo_conto_id     BIGINT,
                 soggetto_conto_id           BIGINT
@@ -40,7 +40,7 @@ databaseChangeLog:
               BEGIN
                 -- 1) Prova uso richiesto
                 RETURN QUERY
-                SELECT v.conto_id, v.fonte, v.soggetto_ruolo_conto_id, v.soggetto_conto_id
+                SELECT v.conto_bancario_id, v.fonte, v.soggetto_ruolo_conto_id, v.soggetto_conto_id
                   FROM anagrafiche.vw_conti_bancari_per_ruolo v
                  WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
                    AND v.uso = v_uso
@@ -52,7 +52,7 @@ databaseChangeLog:
                 -- 2) Fallback a GENERICO (se l’uso richiesto non è GENERICO)
                 IF v_uso <> 'GENERICO' THEN
                   RETURN QUERY
-                  SELECT v.conto_id, v.fonte, v.soggetto_ruolo_conto_id, v.soggetto_conto_id
+                  SELECT v.conto_bancario_id, v.fonte, v.soggetto_ruolo_conto_id, v.soggetto_conto_id
                     FROM anagrafiche.vw_conti_bancari_per_ruolo v
                    WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
                      AND v.uso = 'GENERICO'
@@ -60,7 +60,7 @@ databaseChangeLog:
                 END IF;
               END$$;
 
-              COMMENT ON FUNCTION script.fn_get_conto_bancario_predefinito(BIGINT, VARCHAR)
+              COMMENT ON FUNCTION anagrafiche.fn_get_conto_bancario_predefinito(BIGINT, VARCHAR)
                 IS 'Restituisce il conto bancario selezionato per (soggetto_ruolo, uso) con fallback: RUOLO → SOGGETTO, poi uso richiesto → GENERICO. Ritorna 0 o 1 riga.';
       
   - changeSet:

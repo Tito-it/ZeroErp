@@ -1,0 +1,283 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# Liquibase: Convert FK RESTRICT -> NO ACTION (PostgreSQL)
+# ------------------------------------------------------------
+
+#  -- opzionale: limita agli schemi interessati
+#                     AND n_src.nspname ~* '^(anagrafiche|config|dbops|vendite|catalogo|storico)$' 
+#                     AND rel_src.relname  ='clienti'
+# ------------------------------------------------------------
+# Liquibase — Bulk fix FK: RESTRICT -> NO ACTION (selettivo)
+# PostgreSQL only
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# Liquibase — Bulk fix FK: RESTRICT -> NO ACTION (selettivo)
+# PostgreSQL only
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  # 1) UPDATE: solo le FK con ON UPDATE RESTRICT diventano NO ACTION
+  - changeSet:
+      id: 20250901-31-fk-update-restrict-to-noaction
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        - onFail: HALT
+        - dbms: { type: postgresql }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              DECLARE
+                r RECORD;
+                v_cols       TEXT;
+                v_ref_cols   TEXT;
+                v_match      TEXT;
+                v_deferr     TEXT;
+                v_init       TEXT;
+                v_valid      TEXT;
+                v_act_upd    TEXT;
+                v_act_del    TEXT;
+                v_ddl        TEXT;
+              BEGIN
+                FOR r IN
+                  SELECT
+                    c.oid                       AS con_oid,
+                    n_src.nspname               AS src_schema,
+                    rel_src.relname             AS src_table,
+                    rel_src.oid                 AS src_oid,
+                    c.conname                   AS con_name,
+                    n_ref.nspname               AS ref_schema,
+                    rel_ref.relname             AS ref_table,
+                    rel_ref.oid                 AS ref_oid,
+                    c.conkey                    AS src_attnums,
+                    c.confkey                   AS ref_attnums,
+                    c.confmatchtype             AS matchtype,     -- 's','f','p'
+                    c.condeferrable             AS is_deferrable,
+                    c.condeferred               AS is_deferred,
+                    c.convalidated              AS is_validated,
+                    c.confupdtype               AS updtype,       -- 'r','a','c','n','d'
+                    c.confdeltype               AS deltype        -- 'r','a','c','n','d'
+                  FROM pg_constraint c
+                  JOIN pg_class     rel_src ON rel_src.oid = c.conrelid
+                  JOIN pg_namespace n_src   ON n_src.oid   = rel_src.relnamespace
+                  JOIN pg_class     rel_ref ON rel_ref.oid = c.confrelid
+                  JOIN pg_namespace n_ref   ON n_ref.oid   = rel_ref.relnamespace
+                  WHERE c.contype = 'f'
+                    AND c.confupdtype = 'r'                -- SOLO UPDATE = RESTRICT
+                    AND n_src.nspname NOT LIKE 'pg\_%' ESCAPE '\'
+                    AND n_src.nspname <> 'information_schema'
+                    -- opzionale: limita agli schemi/tabelle
+                     AND n_src.nspname ~* '^(anagrafiche|config|dbops|vendite|catalogo|storico)$'
+                    -- AND rel_src.relname = 'indirizzi'
+                LOOP
+                  -- Colonne figlio nell'ordine della FK
+                  SELECT string_agg(format('%I', a.attname), ', ' ORDER BY k.ord)
+                    INTO v_cols
+                  FROM unnest(r.src_attnums) WITH ORDINALITY AS k(attnum, ord)
+                  JOIN pg_attribute a ON a.attrelid = r.src_oid AND a.attnum = k.attnum;
+
+                  -- Colonne padre nell'ordine della FK
+                  SELECT string_agg(format('%I', a.attname), ', ' ORDER BY k.ord)
+                    INTO v_ref_cols
+                  FROM unnest(r.ref_attnums) WITH ORDINALITY AS k(attnum, ord)
+                  JOIN pg_attribute a ON a.attrelid = r.ref_oid AND a.attnum = k.attnum;
+
+                  IF v_cols IS NULL OR v_ref_cols IS NULL THEN
+                    RAISE NOTICE 'Skip %.%.%: colonne non risolte', r.src_schema, r.src_table, r.con_name;
+                    CONTINUE;
+                  END IF;
+
+                  -- MATCH
+                  v_match := CASE r.matchtype
+                               WHEN 'f' THEN ' MATCH FULL'
+                               WHEN 'p' THEN ' MATCH PARTIAL'
+                               ELSE ''  -- 's' simple default
+                             END;
+
+                  -- DEFERRABLE / INITIALLY
+                  v_deferr := CASE WHEN r.is_deferrable THEN ' DEFERRABLE' ELSE ' NOT DEFERRABLE' END;
+                  v_init   := CASE WHEN r.is_deferrable AND r.is_deferred THEN ' INITIALLY DEFERRED'
+                                   WHEN r.is_deferrable THEN ' INITIALLY IMMEDIATE'
+                                   ELSE '' END;
+
+                  -- VALIDATED
+                  v_valid := CASE WHEN r.is_validated THEN '' ELSE ' NOT VALID' END;
+
+                  -- Azioni: forza SOLO UPDATE se era RESTRICT; DELETE preservata
+                  v_act_upd := CASE r.updtype
+                                  WHEN 'r' THEN 'NO ACTION'
+                                  WHEN 'a' THEN 'NO ACTION'
+                                  WHEN 'c' THEN 'CASCADE'
+                                  WHEN 'n' THEN 'SET NULL'
+                                  WHEN 'd' THEN 'SET DEFAULT'
+                                  ELSE 'NO ACTION'
+                               END;
+
+                  v_act_del := CASE r.deltype
+                                  WHEN 'a' THEN 'NO ACTION'
+                                  WHEN 'r' THEN 'RESTRICT'
+                                  WHEN 'c' THEN 'CASCADE'
+                                  WHEN 'n' THEN 'SET NULL'
+                                  WHEN 'd' THEN 'SET DEFAULT'
+                                  ELSE 'NO ACTION'
+                               END;
+
+                  -- Drop + recreate
+                  v_ddl := format('ALTER TABLE %I.%I DROP CONSTRAINT %I;', r.src_schema, r.src_table, r.con_name);
+                  RAISE NOTICE 'Dropping: %', v_ddl;
+                  EXECUTE v_ddl;
+
+                  v_ddl := format(
+                    'ALTER TABLE %I.%I ADD CONSTRAINT %I FOREIGN KEY (%s) REFERENCES %I.%I (%s)%s ON UPDATE %s ON DELETE %s%s%s%s;',
+                    r.src_schema, r.src_table, r.con_name,
+                    v_cols,
+                    r.ref_schema, r.ref_table, v_ref_cols,
+                    v_match,
+                    v_act_upd,
+                    v_act_del,
+                    v_deferr,
+                    v_init,
+                    v_valid
+                  );
+                  RAISE NOTICE 'Creating: %', v_ddl;
+                  EXECUTE v_ddl;
+                END LOOP;
+              END$$;
+
+  # 2) DELETE: solo le FK con ON DELETE RESTRICT diventano NO ACTION
+  - changeSet:
+      id: 20250901-32-fk-delete-restrict-to-noaction
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      preConditions:
+        - onFail: HALT
+        - dbms: { type: postgresql }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              DECLARE
+                r RECORD;
+                v_cols       TEXT;
+                v_ref_cols   TEXT;
+                v_match      TEXT;
+                v_deferr     TEXT;
+                v_init       TEXT;
+                v_valid      TEXT;
+                v_act_upd    TEXT;
+                v_act_del    TEXT;
+                v_ddl        TEXT;
+              BEGIN
+                FOR r IN
+                  SELECT
+                    c.oid                       AS con_oid,
+                    n_src.nspname               AS src_schema,
+                    rel_src.relname             AS src_table,
+                    rel_src.oid                 AS src_oid,
+                    c.conname                   AS con_name,
+                    n_ref.nspname               AS ref_schema,
+                    rel_ref.relname             AS ref_table,
+                    rel_ref.oid                 AS ref_oid,
+                    c.conkey                    AS src_attnums,
+                    c.confkey                   AS ref_attnums,
+                    c.confmatchtype             AS matchtype,
+                    c.condeferrable             AS is_deferrable,
+                    c.condeferred               AS is_deferred,
+                    c.convalidated              AS is_validated,
+                    c.confupdtype               AS updtype,
+                    c.confdeltype               AS deltype
+                  FROM pg_constraint c
+                  JOIN pg_class     rel_src ON rel_src.oid = c.conrelid
+                  JOIN pg_namespace n_src   ON n_src.oid   = rel_src.relnamespace
+                  JOIN pg_class     rel_ref ON rel_ref.oid = c.confrelid
+                  JOIN pg_namespace n_ref   ON n_ref.oid   = rel_ref.relnamespace
+                  WHERE c.contype = 'f'
+                    AND c.confdeltype = 'r'                -- SOLO DELETE = RESTRICT
+                    AND n_src.nspname NOT LIKE 'pg\_%' ESCAPE '\'
+                    AND n_src.nspname <> 'information_schema'
+                    -- opzionale: limita agli schemi/tabelle
+                    AND n_src.nspname ~* '^(anagrafiche|config|dbops|vendite|catalogo|storico)$'
+                   -- AND rel_src.relname = 'indirizzi'
+                LOOP
+                  SELECT string_agg(format('%I', a.attname), ', ' ORDER BY k.ord)
+                    INTO v_cols
+                  FROM unnest(r.src_attnums) WITH ORDINALITY AS k(attnum, ord)
+                  JOIN pg_attribute a ON a.attrelid = r.src_oid AND a.attnum = k.attnum;
+
+                  SELECT string_agg(format('%I', a.attname), ', ' ORDER BY k.ord)
+                    INTO v_ref_cols
+                  FROM unnest(r.ref_attnums) WITH ORDINALITY AS k(attnum, ord)
+                  JOIN pg_attribute a ON a.attrelid = r.ref_oid AND a.attnum = k.attnum;
+
+                  IF v_cols IS NULL OR v_ref_cols IS NULL THEN
+                    RAISE NOTICE 'Skip %.%.%: colonne non risolte', r.src_schema, r.src_table, r.con_name;
+                    CONTINUE;
+                  END IF;
+
+                  v_match := CASE r.matchtype
+                               WHEN 'f' THEN ' MATCH FULL'
+                               WHEN 'p' THEN ' MATCH PARTIAL'
+                               ELSE '' END;
+
+                  v_deferr := CASE WHEN r.is_deferrable THEN ' DEFERRABLE' ELSE ' NOT DEFERRABLE' END;
+                  v_init   := CASE WHEN r.is_deferrable AND r.is_deferred THEN ' INITIALLY DEFERRED'
+                                   WHEN r.is_deferrable THEN ' INITIALLY IMMEDIATE'
+                                   ELSE '' END;
+
+                  v_valid := CASE WHEN r.is_validated THEN '' ELSE ' NOT VALID' END;
+
+                  -- Azioni: forza SOLO DELETE se era RESTRICT; UPDATE preservata
+                  v_act_upd := CASE r.updtype
+                                  WHEN 'a' THEN 'NO ACTION'
+                                  WHEN 'r' THEN 'RESTRICT'
+                                  WHEN 'c' THEN 'CASCADE'
+                                  WHEN 'n' THEN 'SET NULL'
+                                  WHEN 'd' THEN 'SET DEFAULT'
+                                  ELSE 'NO ACTION'
+                               END;
+
+                  v_act_del := CASE r.deltype
+                                  WHEN 'r' THEN 'NO ACTION'
+                                  WHEN 'a' THEN 'NO ACTION'
+                                  WHEN 'c' THEN 'CASCADE'
+                                  WHEN 'n' THEN 'SET NULL'
+                                  WHEN 'd' THEN 'SET DEFAULT'
+                                  ELSE 'NO ACTION'
+                               END;
+
+                  v_ddl := format('ALTER TABLE %I.%I DROP CONSTRAINT %I;', r.src_schema, r.src_table, r.con_name);
+                  RAISE NOTICE 'Dropping: %', v_ddl;
+                  EXECUTE v_ddl;
+
+                  v_ddl := format(
+                    'ALTER TABLE %I.%I ADD CONSTRAINT %I FOREIGN KEY (%s) REFERENCES %I.%I (%s)%s ON UPDATE %s ON DELETE %s%s%s%s;',
+                    r.src_schema, r.src_table, r.con_name,
+                    v_cols,
+                    r.ref_schema, r.ref_table, v_ref_cols,
+                    v_match,
+                    v_act_upd,
+                    v_act_del,
+                    v_deferr,
+                    v_init,
+                    v_valid
+                  );
+                  RAISE NOTICE 'Creating: %', v_ddl;
+                  EXECUTE v_ddl;
+                END LOOP;
+              END$$;

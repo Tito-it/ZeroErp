@@ -58,7 +58,7 @@ AS $function$
             INTO has_du, has_uu;
 
           IF has_du AND has_uu THEN
-            tmpl     := COALESCE(rrule.name_template,'trg_upd_{table}_audit_data_user');
+            tmpl     := COALESCE(rrule.name_template,'trg_{table}_upd_audit_data_user');
             trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL,NULL);
 
             IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))

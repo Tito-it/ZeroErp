@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 databaseChangeLog:
 
-  # 2) FUNCTION: script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)
+  # 2) FUNCTION: anagrafiche.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)
   - changeSet:
       id: 20250831-16-trgfn_fornitori_guard
       author: mctit
@@ -21,10 +21,10 @@ databaseChangeLog:
         - tableExists: 
             { schemaName: anagrafiche, tableName: fornitori }
       changes:
-        - sql:
+        - sql:  
             splitStatements: false
             sql: |
-              CREATE OR REPLACE FUNCTION script.trgfn_fornitori_guard()
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()
               RETURNS trigger
               LANGUAGE plpgsql
               AS $$
@@ -33,18 +33,26 @@ databaseChangeLog:
                 IF NEW.canale_fe IS NOT NULL THEN
                   NEW.canale_fe := upper(regexp_replace(NEW.canale_fe, '\s+', '', 'g'));
                 END IF;
-
+                -- Generazione codice se assente
+                IF NEW.codice IS NULL OR btrim(NEW.codice) = '' THEN
+                        NEW.codice := script.fn_generate_codice('fornitori');
+                ELSE
+                        NEW.codice := btrim(NEW.codice);
+                END IF;
 
                 RETURN NEW;
               END$$;
 
-              COMMENT ON FUNCTION script.trgfn_fornitori_guard()
+              COMMENT ON FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()
                 IS 'Guard-rail: normalizza canale_fe e aggiorna audit base.';
 
   # 4) Trigger: guard + tx_id + audit + storico
   - changeSet:
       id: 20250831-17-triggers-fornitori
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
       preConditions:
         - onFail: HALT
         - tableExists: 
@@ -54,12 +62,12 @@ databaseChangeLog:
             splitStatements: false
             sql: |
               -- Guard-rail
-              CREATE OR REPLACE TRIGGER trg_fornitori_ins_upd_guard
+              CREATE OR REPLACE TRIGGER trg_fornitori_ins_upd_guard_normalize
                 BEFORE INSERT OR UPDATE
                 ON anagrafiche.fornitori
                 FOR EACH ROW
-                EXECUTE FUNCTION script.trgfn_fornitori_guard();
-              COMMENT ON TRIGGER trg_fornitori_ins_upd_guard ON anagrafiche.fornitori
+                EXECUTE FUNCTION anagrafiche.trgfn_fornitori_guard_normalize();
+              COMMENT ON TRIGGER trg_fornitori_ins_upd_guard_normalize ON anagrafiche.fornitori
                 IS 'Normalizza canale_fe e imposta audit base.';
   - changeSet:
       id: 20250831-90-trgfn_fornitori_guard

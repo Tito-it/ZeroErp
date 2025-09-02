@@ -35,7 +35,6 @@
 | CHECK | chk_sepa_mandati_umr_fmt |  |
 | FOREIGN KEY | fk_sepa_mandati_billing_account | billing_account_id |
 | FOREIGN KEY | fk_sepa_mandati_istanza_utility | istanza_utility_id |
-| FOREIGN KEY | fk_sepa_mandati_soggetto_ruolo_conto | soggetto_ruolo_conto_id |
 | PRIMARY KEY | pk_sepa_mandati | id |
 
 ## 📑 Indici
@@ -50,8 +49,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_sepa_mandati_ins_upd_guard | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_sepa_mandati_guard()` |
-| trg_sepa_mandati_ins_upd_guard | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_sepa_mandati_guard()` |
+| trg_sepa_mandati_ins_upd_guard | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_sepa_mandati_guard()` |
+| trg_sepa_mandati_ins_upd_guard | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_sepa_mandati_guard()` |
 
 ---
 {% include-markdown "signature-core.md" %}

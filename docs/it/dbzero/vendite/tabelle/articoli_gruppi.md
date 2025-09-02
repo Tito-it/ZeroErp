@@ -31,6 +31,7 @@
 |------|--------|--------|--------|
 | trg_soft_del_articoli_gruppi__articoli__fk_articoli_arti_52402e | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli', 'gruppo_voce_id')` |
 | trg_soft_del_articoli_gruppi_articoli_fk_articoli_artico_ba61b9 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli', 'gruppo_voce_id')` |
+| trg_soft_del_articoli_gruppi_articoli_fk_articoli_artico_e11dd4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli', 'gruppo_voce_id')` |
 | trg_upd_articoli_gruppi_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---

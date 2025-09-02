@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_billing_account_ins_upd_clean_fields`
+## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_billing_account_ins_upd_guard_normalize`
 
 > 👀 **Vedi anche**
 >
@@ -14,7 +14,7 @@
 
 ### 🎯 Scopo Principale
 
-Il trigger `anagrafiche.trgfn_billing_account_ins_upd_clean_fields` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
+Il trigger `anagrafiche.trgfn_billing_account_ins_upd_guard_normalize` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
 
 ---
 
