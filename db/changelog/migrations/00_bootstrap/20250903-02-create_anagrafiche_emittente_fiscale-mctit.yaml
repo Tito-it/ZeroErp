@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Anagrafiche: emittenti_fiscali
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250903-02-create_anagrafiche_emittente_fiscale
+      author: mctit
+      
+      preConditions:
+        - onFail: HALT
+        - tableExists:  { schemaName: anagrafiche, tableName: soggetti_ruoli }
+        - tableExists:  { schemaName: anagrafiche,  tableName: conti_bancari }
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: emittenti_fiscali
+            remarks: "Ruoli che emettono fiscalmente (gestore/reseller/brand): preferenze di numerazione, IBAN predefinito, override fiscali e branding."
+            columns:
+              - column: { name: id,  type: BIGINT, autoIncrement: true, generationType: BY DEFAULT,
+                          constraints: { primaryKey: true, primaryKeyName: pk_emittf, nullable: false },
+                          remarks: "PK" }
+              - column: { name: uid, type: UUID, defaultValueComputed: gen_random_uuid(),
+                          constraints: { nullable: false },
+                          remarks: "Identificatore esterno (UUID) per API/integrazioni." }
+              - column: { name: soggetto_ruolo_id, type: BIGINT,
+                          constraints: { nullable: false },
+                          remarks: "FK 1:1 → anagrafiche.soggetti_ruoli.id (ruolo atteso: EMITTENTE_FISCALE)." }
+              - column: { name: codice, type: VARCHAR(32), constraints: { nullable: false },
+                          remarks: "Codice interno univoco (immutabile)." }
+              - column: { name: descrizione, type: VARCHAR(120), constraints: { nullable: false },
+                          remarks: "Descrizione emittente fiscale." }
+              - column: { name: attivo, type: BOOLEAN, defaultValueBoolean: true,
+                          constraints: { nullable: false },
+                          remarks: "Se TRUE, emittente abilitato." }
+ 
+
+              # Opzionali fiscali (override)
+              - column: { name: regime_fiscale_rf, type: VARCHAR(8),
+                          remarks: "Codice regime fiscale RF (SdI), es. RF01..RF19." }
+              - column: { name: esigibilita_iva_default, type: CHAR(1),
+                          remarks: "Esigibilità IVA default: I|D|S." }
+              - column: { name: split_payment_default, type: BOOLEAN,
+                          remarks: "Flag split payment di default." }
+              - column: { name: bollo_auto, type: BOOLEAN,
+                          remarks: "Applicazione automatica bollo." }
+              - column: { name: bollo_soglia, type: "NUMERIC(12,2)",
+                          remarks: "Soglia importo per bollo (>= 0)." }
+              - column: { name: rounding_policy, type: VARCHAR(16),
+                          remarks: "Policy arrotondamenti." }
+
+              # Branding / meta
+              - column: { name: brand_meta, type: JSONB, defaultValue: "{}", constraints: { nullable: false },
+                          remarks: "Dati di branding/layout (logo, contatti, disclaimer, note pagamento, etc.)." }
+
+              # Audit
+              - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false },
+                          remarks: "Snapshot su UPDATE/DELETE" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false },
+                          remarks: "Audit: data inserimento" }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false },
+                          remarks: "Audit: utente inserimento" }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false },
+                          remarks: "Audit: data aggiornamento" }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER,
+                          remarks: "Audit: utente aggiornamento" }
+
+        # Unicità
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: emittenti_fiscali
+            columnNames: uid
+            constraintName: uq_emittenti_fiscali_uid
+
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: emittenti_fiscali
+            columnNames: codice
+            constraintName: uq:codice
+
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: emittenti_fiscali
+            columnNames: soggetto_ruolo_id
+            constraintName: uq_emittenti_fiscali_ruolo
+
+        # Foreign keys
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: emittenti_fiscali
+            baseColumnNames: soggetto_ruolo_id
+            constraintName: fk_emittenti_fiscali_ruolo
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        
+        # Check constraint
+        - sql:
+            splitStatements: false
+            sql: |
+
+              ALTER TABLE anagrafiche.emittenti_fiscali
+              ADD CONSTRAINT chk_emittenti_fiscali_codice_non_vuoto
+              CHECK (btrim(codice) <> '');
+
+
+              ALTER TABLE anagrafiche.emittenti_fiscali
+              ADD CONSTRAINT chk_emittenti_fiscali_esigibilita
+              CHECK (esigibilita_iva_default IS NULL OR esigibilita_iva_default IN ('I','D','S'));
+
+
+              ALTER TABLE anagrafiche.emittenti_fiscali
+              ADD CONSTRAINT chk_emittenti_fiscali_bollo_soglia
+              CHECK (bollo_soglia IS NULL OR bollo_soglia >= 0);
+
+        # Indici operativi
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: emittenti_fiscali
+            indexName: ix_emittenti_fiscali_attivo
+            columns:
+              - column: { name: attivo }
+
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250903-90-create_anagrafiche_emittente_fiscale
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250903-05-create_anagrafiche_emittente_fiscale

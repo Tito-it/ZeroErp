@@ -22,20 +22,20 @@ Questa guida descrive l’architettura per la **gestione centralizzata dei conti
 
 * **Anagrafiche (dati “chi/cosa”)**
 
-  * `anagrafiche.conti_bancari` – anagrafe IBAN deduplicata
-  * `anagrafiche.soggetti` – soggetto fiscale
-  * `anagrafiche.soggetti_ruoli` – ruolo del soggetto (CLIENTE, FORNITORE, GESTORE…)
-  * `anagrafiche.soggetti_conti_bancari` – legame **SOGGETTO ↔ CONTO** (fallback)
-  * `anagrafiche.soggetti_ruoli_conti_bancari` – legame **RUOLO ↔ CONTO** (override)
+  * [`anagrafiche.conti_bancari`](/dbzero/anagrafiche/tabelle/conti_bancari) – anagrafe IBAN deduplicata
+  * [`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti) – soggetto fiscale
+  * [`anagrafiche.soggetti_ruoli`](/dbzero/anagrafiche/tabelle/soggetti_ruoli) – ruolo del soggetto (CLIENTE, FORNITORE, GESTORE…)
+  * [`anagrafiche.soggetti_conti_bancari`](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari) – legame **SOGGETTO ↔ CONTO** (fallback)
+  * [`anagrafiche.soggetti_ruoli_conti_bancari`](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari) – legame **RUOLO ↔ CONTO** (override)
 
 * **Pagamenti (dati “come/quando”)**
 
-  * `pagamenti.sepa_mandati` – mandate SEPA collegati al **conto effettivo** e al perimetro (es. `billing_account` o `istanza_utility`)
+  * [`pagamenti.sepa_mandati`](/dbzero/pagamenti/tabelle/manmdati) – mandate SEPA collegati al **conto effettivo** e al perimetro (es. `billing_account` o `istanza_utility`)
 
 * **Artefatti di selezione**
 
-  * `anagrafiche.vw_conti_bancari_per_ruolo` – vista con **fallback RUOLO → SOGGETTO**
-  * `script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)` – funzione helper per ottenere 1 riga (o nessuna) del conto selezionato
+  * [`anagrafiche.vw_conti_bancari_per_ruolo`](/dbzero/anagrafiche/funzioni/vw_conti_bancari_per_ruolo)  – vista con **fallback RUOLO → SOGGETTO**
+  * [`script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)`](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito) – funzione helper per ottenere 1 riga (o nessuna) del conto selezionato
 
 ---
 

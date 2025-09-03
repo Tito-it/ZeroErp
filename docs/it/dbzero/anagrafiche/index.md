@@ -7,6 +7,7 @@
 - [conti_bancari](tabelle/conti_bancari.md) — `anagrafiche.conti_bancari` è l’**anagrafe unica degli IBAN**. Centralizza e **deduplica** i conti correnti, li **normalizza** (uppercase, senza spazi) e li rende riusabili da **qualsiasi soggetto** e **ruolo**. Questo disaccoppiamento:
 - [dati_catastali](tabelle/dati_catastali.md) — La tabella `anagrafiche.dati_catastali` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
 - [dati_societari](tabelle/dati_societari.md) — - **Estendere l’anagrafica generale**     I soggetti di tipo giuridico (aziende) hanno esigenze di memorizzazione di dati societari che non interessano le persone fisiche. Spostando queste informazioni in `dati_societari`, si mantiene la tabella `anagrafiche.soggetti` leggera e focalizzata sui campi anagrafici di base. Solo per i tipi soggetti appropriati controllati dalla trigger function `anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto`
+- [emittenti_fiscali](tabelle/emittenti_fiscali.md)
 - [fornitori](tabelle/fornitori.md) — `anagrafiche.fornitori` è la **tabella master del ruolo FORNITORE** (relazione **1:1** con `anagrafiche.soggetti_ruoli`). Contiene le **impostazioni fiscali/operative** necessarie per la gestione dei fornitori, le **preferenze di pagamento** (valuta, modalità e termini), parametri di **qualifica/valutazione** e l’**audit**.
 - [gestori](tabelle/gestori.md) — - **Identificare il gestore del sistema**     Memorizzare la riga unica che corrisponde all’azienda proprietaria o amministratrice di Zero ERP, distinguendola da tutti gli altri soggetti (clienti, fornitori, partner, ecc.).
 - [gestori_utilities](tabelle/gestori_utilities.md) — La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori e le utilities disponibili nel sistema Zero ERP. Ogni gestore, identificato dal suo ruolo, può gestire una o più utilities specifiche.
@@ -22,6 +23,7 @@
 
 ## ⚙️ Funzioni
 - [fn_get_conto_bancario_predefinito](funzioni/fn_get_conto_bancario_predefinito.md)
+- [trgfn_a10_emittenti_fiscali_protect_codice](funzioni/trgfn_a10_emittenti_fiscali_protect_codice.md)
 - [trgfn_billing_account_ins_upd_guard_normalize](funzioni/trgfn_billing_account_ins_upd_guard_normalize.md) — Il trigger `anagrafiche.trgfn_billing_account_ins_upd_guard_normalize` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
 - [trgfn_billing_account_upd_protect_account_code](funzioni/trgfn_billing_account_upd_protect_account_code.md) — Il trigger `anagrafiche.trgfn_billing_account_upd_protect_account_code`, invocato **prima di ogni UPDATE** su `anagrafiche.billing_account`, impedisce modifiche improprie al campo **`codice (account)`** una volta assegnato.
 - [trgfn_clienti_set_periodo](funzioni/trgfn_clienti_set_periodo.md)
@@ -29,6 +31,7 @@
 - [trgfn_contatti_ins_upd_set_default_contatto](funzioni/trgfn_contatti_ins_upd_set_default_contatto.md) — * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 - [trgfn_conti_bancari_ins_upd_normalize](funzioni/trgfn_conti_bancari_ins_upd_normalize.md)
 - [trgfn_dati_societari_ins_upd_check_tipo_soggetto](funzioni/trgfn_dati_societari_ins_upd_check_tipo_soggetto.md) — Verificare che il soggetto associato ai dati societari ( `new.soggetto_id` in `anagrafiche.dati_societari` ) abbia un `codice_interno` ammesso (solo **`SC`** o **`SP`**). In caso contrario, viene lanciato un errore tramite `script.fn_log_and_raise_error`.
+- [trgfn_emittenti_fiscali_norm](funzioni/trgfn_emittenti_fiscali_norm.md)
 - [trgfn_fornitori_guard_normalize](funzioni/trgfn_fornitori_guard_normalize.md)
 - [trgfn_fornitori_ins_upd_check_ruolo_fornitore](funzioni/trgfn_fornitori_ins_upd_check_ruolo_fornitore.md)
 - [trgfn_fornitori_upd_protect_account_code](funzioni/trgfn_fornitori_upd_protect_account_code.md)

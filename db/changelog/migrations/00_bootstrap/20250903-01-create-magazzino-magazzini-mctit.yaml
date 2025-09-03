@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Magazzino: magazzini
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250903-01-create-magazzino-magazzini
+      author: mctit
+      
+      changes:
+        - createTable:
+            schemaName: magazzino
+            tableName: magazzini
+            remarks: "Anagrafica magazzini/depositi. Indirizzo legato a anagrafiche.indirizzi_dettaglio (magazzino non è un ruolo)."
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT, constraints: { primaryKey: true, primaryKeyName: pk_magazzini, nullable: false }, remarks: "PK" }
+              - column: { name: uid, type: UUID, defaultValueComputed: gen_random_uuid(), constraints: { nullable: false }, remarks: "Identificatore esterno (UUID) per API/integrazioni." }
+              - column: { name: codice, type: VARCHAR(32), constraints: { nullable: false }, remarks: "Codice univoco magazzino (immutabile dopo la creazione)." }
+              - column: { name: descrizione, type: VARCHAR(120), constraints: { nullable: false }, remarks: "Descrizione magazzino" }
+              - column: { name: indirizzo_dettaglio_id, type: INTEGER, constraints: { nullable: false }, remarks: "FK → anagrafiche.indirizzi_dettaglio.id (indirizzo normalizzato del magazzino)." }
+              - column: { name: attivo, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Se TRUE, magazzino abilitato" }
+              - column: { name: predefinito, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false }, remarks: "Se TRUE, magazzino di default per spedizioni/partenze." }
+              - column: { name: meta, type: JSONB, defaultValue: "{}", constraints: { nullable: false }, remarks: "Estensioni JSON" }
+              - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Snapshot su UPDATE/DELETE" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data inserimento" }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false }, remarks: "Audit: utente inserimento" }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data aggiornamento" }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, remarks: "Audit: utente aggiornamento" }
+
+        # Vincoli univocità
+        - addUniqueConstraint:
+            schemaName: magazzino
+            tableName: magazzini
+            columnNames: codice
+            constraintName: uq_magazzini_codice
+
+        - addUniqueConstraint:
+            schemaName: magazzino
+            tableName: magazzini
+            columnNames: uid
+            constraintName: uq_magazzini_uid
+
+        # Foreign key
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: magazzini
+            baseColumnNames: indirizzo_dettaglio_id
+            constraintName: fk_magazzini_indirizzo_dettaglio
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: indirizzi_dettaglio
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        
+
+        - createIndex:
+            schemaName: magazzino
+            tableName: magazzini
+            indexName: ix_magazzini_indirizzo_dettaglio
+            columns:
+              - column: { name: indirizzo_dettaglio_id }
+
+        # Indice case-insensitive sul codice
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_magazzini_codice_upper
+                ON magazzino.magazzini (upper(codice));
+        
+        # Check constraint
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.magazzini
+              ADD CONSTRAINT chk_magazzini_codice_nonvuoto
+              CHECK (btrim(codice) <> '');
+
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250903-90-create-magazzino-magazzini
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250903-01-create-magazzino-magazzini

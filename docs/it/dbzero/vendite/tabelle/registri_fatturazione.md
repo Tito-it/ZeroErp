@@ -1,0 +1,39 @@
+# 📚 Tabella `registri_fatturazione`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO |  |
+| uid | uuid | NO | gen_random_uuid() |
+| codice | character varying | NO |  |
+| descrizione | character varying | NO |  |
+| emittente_soggetto_ruolo_id | bigint | NO |  |
+| serie_default | character varying | YES |  |
+| reset_policy | character varying | NO | 'ANNUALE'::character varying |
+| attivo | boolean | NO | true |
+| meta | jsonb | NO | '{}'::jsonb |
+| tx_id | uuid | YES |  |
+| storicizza | boolean | NO | true |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | character varying | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying | YES | CURRENT_USER |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | chk_registri_fatturazione_reset |  |
+| FOREIGN KEY | fk_registri_fatturazione_emitt | emittente_soggetto_ruolo_id |
+| PRIMARY KEY | pk_regfatt | id |
+| UNIQUE | uq_registri_fatturazione_codice | codice |
+| UNIQUE | uq_registri_fatturazione_uid | uid |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| pk_regfatt | `CREATE UNIQUE INDEX pk_regfatt ON vendite.registri_fatturazione USING btree (id)` |
+| uq_registri_fatturazione_codice | `CREATE UNIQUE INDEX uq_registri_fatturazione_codice ON vendite.registri_fatturazione USING btree (codice)` |
+| uq_registri_fatturazione_uid | `CREATE UNIQUE INDEX uq_registri_fatturazione_uid ON vendite.registri_fatturazione USING btree (uid)` |
+
+---
+{% include-markdown "signature-core.md" %}

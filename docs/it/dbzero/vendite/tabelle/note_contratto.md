@@ -32,7 +32,7 @@
 | CHECK | chk_note_target_tipo |  |
 | FOREIGN KEY | fk_contnote_riga | target_riga_id |
 | FOREIGN KEY | fk_contnote_testata | target_id |
-| PRIMARY KEY | note_contratto_pkey | id, target_tipo |
+| PRIMARY KEY | note_contratto_pkey | target_tipo, id |
 
 ## 📑 Indici
 | Nome | Definizione |
