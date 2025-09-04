@@ -269,3 +269,6 @@ LIMIT 1;
 * `SEDELEG` — Sede Legale (id 3)
 * `SEDEOP` — Sede Operativa (id 4)
 * `POSTA` — Corrispondenza Postale (id 5)
+
+---
+{% include-markdown "signature-core.md" %}
