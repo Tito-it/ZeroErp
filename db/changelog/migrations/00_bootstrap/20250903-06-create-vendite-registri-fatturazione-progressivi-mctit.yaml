@@ -15,7 +15,9 @@ databaseChangeLog:
   - changeSet:
       id: 20250903-03-create-vendite-registri-fatturazione-progressivi
       author: mctit
-      
+      runOnChange: true
+      validCheckSums:
+        - ANY
 
       preConditions:
         - onFail: HALT
@@ -33,7 +35,7 @@ databaseChangeLog:
                   generationType: BY DEFAULT
                   constraints:
                     primaryKey: true
-                    primaryKeyName: pk_regprog
+                    primaryKeyName: pk_registri_progressivi
                     nullable: false
                   remarks: "PK"
               - column:
@@ -70,14 +72,12 @@ databaseChangeLog:
             baseTableSchemaName: vendite
             baseTableName: registri_fatturazione_progressivi
             baseColumnNames: registro_id
-            constraintName: fk_regprog_registro
+            constraintName: fk_registri_progressivi_registro
             referencedTableSchemaName: vendite
             referencedTableName: registri_fatturazione
             referencedColumnNames: id
             onUpdate: CASCADE
             onDelete: CASCADE
-
-       
 
         
         # Check constraint
@@ -90,7 +90,32 @@ databaseChangeLog:
               CHECK (mese IS NULL OR (mese BETWEEN 1 AND 12));
 
 
-             
+  - changeSet:
+      id: 20250903-04-create-vendite-registri-fatturazione-progressivi
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+                  -- Unicità progressivo considerando NULL = '' per serie e NULL = 0 per mese
+                  DO $$
+                  BEGIN
+                    IF NOT EXISTS (
+                      SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                      WHERE n.nspname='vendite' AND c.relname='uq_registri_progressivi_scope'
+                    ) THEN
+                      CREATE UNIQUE INDEX uq_registri_progressivi_scope
+                        ON vendite.registri_fatturazione_progressivi(
+                          registro_id, anno,
+                          COALESCE(mese, 0),
+                          COALESCE(serie, '')
+                        );
+                      COMMENT ON INDEX vendite.uq_registri_progressivi_scope IS 'Unicità per registro+anno+(mese se MENSILE)+serie (coalesce).';
+                    END IF;
+                  END$$;
 
 # Metto un  tag fine modifiche
   - changeSet:

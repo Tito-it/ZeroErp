@@ -1,0 +1,82 @@
+# ⚙️ Funzione `fn_numera_fattura_opz_emessa`
+
+```sql
+CREATE FUNCTION fn_numera_fattura_opz_emessa(p_fattura_id bigint, p_set_emessa boolean, p_codice_interno_emessa text)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_numera_fattura_opz_emessa(p_fattura_id bigint, p_set_emessa boolean DEFAULT true, p_codice_interno_emessa text DEFAULT 'EMESSA'::text)
+ RETURNS TABLE(registro_id bigint, anno smallint, mese smallint, serie character varying, numero bigint)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_is_numbered   BOOLEAN;
+  v_reset           TEXT;
+  v_data            DATE;
+  v_registro_id     BIGINT;
+  v_anno            SMALLINT;
+  v_mese            SMALLINT;
+  v_serie           VARCHAR(8);
+  v_numero          BIGINT;
+  v_stato_emessa_id BIGINT;
+BEGIN
+  -- 1) Lock solo la riga fattura per minimizzare concorrenza
+   SELECT f.numero IS NOT NULL       AS is_numbered,
+        f.data, f.registro_id, r.reset_policy,
+        f.anno, f.serie, f.numero
+    INTO v_is_numbered,
+        v_data, v_registro_id, v_reset,
+        v_anno, v_serie, v_numero
+    FROM vendite.fatture f
+    JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
+  WHERE f.id = p_fattura_id
+  FOR UPDATE;
+
+
+  IF v_registro_id IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database','fn_numera_fattura_opz_emessa','E_FATTURA_NON_TROVATA',
+      jsonb_build_object('fattura_id', p_fattura_id),
+      NULL::uuid, p_fattura_id::text
+    );
+  END IF;
+
+  -- 2) Se già numerata: ritorna i valori correnti (idempotente, niente lock extra)
+  IF v_is_numbered THEN
+    v_mese := CASE WHEN v_reset = 'MENSILE'
+                  THEN EXTRACT(MONTH FROM v_data)::SMALLINT
+                  ELSE NULL
+              END;
+    RETURN QUERY SELECT v_registro_id, v_anno, v_mese, v_serie, v_numero;
+    RETURN;
+  END IF;
+
+  -- 3) Assegna il numero (blocca la riga progressivi solo per l'incremento)
+  SELECT t.registro_id, t.anno, t.mese, t.serie, t.numero
+    INTO v_registro_id, v_anno, v_mese, v_serie, v_numero
+    FROM vendite.fn_assign_numero_fattura(p_fattura_id) AS t;
+
+  -- 4) (Opzionale) Imposta stato EMESSA usando il codice_interno stabile
+  IF p_set_emessa THEN
+    SELECT id INTO v_stato_emessa_id
+      FROM config.stati_doc_fiscale
+     WHERE codice_interno = p_codice_interno_emessa
+     LIMIT 1;
+
+    IF v_stato_emessa_id IS NOT NULL THEN
+      UPDATE vendite.fatture
+         SET stato_doc_fiscale_id = COALESCE(stato_doc_fiscale_id, v_stato_emessa_id)
+       WHERE id = p_fattura_id;
+    END IF;
+  END IF;
+
+  -- 5) Ritorna i dati assegnati → il chiamante può COMMITtare subito
+  RETURN QUERY SELECT v_registro_id, v_anno, v_mese, v_serie, v_numero;
+END
+$function$
+```
+
+---
+{% include-markdown "signature-core.md" %}

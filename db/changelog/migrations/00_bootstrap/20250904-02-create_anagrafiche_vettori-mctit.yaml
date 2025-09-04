@@ -1,0 +1,164 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Anagrafiche: vettori
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250904-02-create_anagrafiche_vettori
+      author: mctit
+      
+      preConditions:
+        - onFail: HALT
+        - tableExists:  { schemaName: anagrafiche, tableName: soggetti_ruoli }
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: vettori
+            remarks: "Ruolo RES (rivenditori/vettore). Metadati generici, FK 1:1 al soggetto_ruolo."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_vettori
+                    nullable: false
+                  remarks: "PK"
+              - column:
+                  name: uid
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints: { nullable: false }
+                  remarks: "Identificatore esterno (UUID) per API/integrazioni."
+              - column:
+                  name: soggetto_ruolo_id
+                  type: BIGINT
+                  constraints: { nullable: false }
+                  remarks: "FK → anagrafiche.soggetti_ruoli.id (ruolo atteso: RES)."
+              - column:
+                  name: codice
+                  type: VARCHAR(32)
+                  constraints: { nullable: false }
+                  remarks: "Codice interno univoco vettore (immutabile)."
+              - column:
+                  name: descrizione
+                  type: VARCHAR(120)
+                  constraints: { nullable: false }
+                  remarks: "Descrizione vettore."
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints: { nullable: false }
+                  remarks: "Se TRUE, vettore abilitato."
+              - column:
+                  name: meta
+                  type: JSONB
+                  defaultValue: "{}"
+                  constraints: { nullable: false }
+                  remarks: "Metadati estensibili (JSONB)."
+              - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
+              - column:
+                  name: storicizza
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints: { nullable: false }
+                  remarks: "Snapshot su UPDATE/DELETE"
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+                  remarks: "Audit: data inserimento"
+              - column:
+                  name: user_insert
+                  type: VARCHAR(80)
+                  defaultValueComputed: CURRENT_USER
+                  constraints: { nullable: false }
+                  remarks: "Audit: utente inserimento"
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+                  remarks: "Audit: data aggiornamento"
+              - column:
+                  name: user_update
+                  type: VARCHAR(80)
+                  defaultValueComputed: CURRENT_USER
+                  remarks: "Audit: utente aggiornamento"
+
+        # Vincoli di unicità
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: vettori
+            columnNames: uid
+            constraintName: uq_vettori_uid
+
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: vettori
+            columnNames: codice
+            constraintName: uq_vettori_codice
+
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: vettori
+            columnNames: soggetto_ruolo_id
+            constraintName: uq_vettori_ruolo
+
+        # Foreign key
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: vettori
+            baseColumnNames: soggetto_ruolo_id
+            constraintName: fk_vettori_ruolo
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+       
+
+        # Indici
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: vettori
+            indexName: ix_vettori_attivo
+            columns:
+              - column: { name: attivo }
+
+        # Check constraint
+        - sql:
+            splitStatements: false
+            sql: |
+
+              ALTER TABLE anagrafiche.vettori
+              ADD CONSTRAINT chk_vettori_codice_non_vuoto
+              CHECK (btrim(codice) <> '');
+
+        # Indice case-insensitive su codice (espressione)
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_vettori_codice_upper
+                ON anagrafiche.vettori (upper(codice));
+                
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250904-90-create_anagrafiche_vettori
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250904-02-create_anagrafiche_vettori

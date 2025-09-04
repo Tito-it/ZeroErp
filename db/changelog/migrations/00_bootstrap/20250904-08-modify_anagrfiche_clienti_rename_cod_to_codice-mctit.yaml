@@ -1,0 +1,45 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250904-08-modify_anagrfiche_clienti_rename_cod_to_codice
+      author: mctit
+      
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: anagrafiche, tableName: clienti }
+            - columnExists: { schemaName: anagrafiche, tableName: clienti, columnName: cod_commessa }
+            - columnExists: { schemaName: anagrafiche, tableName: clienti, columnName: cd_cliente_importato }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- Rinomina colonna cod_commessa -> codice_commessa
+              ALTER TABLE anagrafiche.clienti
+                RENAME COLUMN cod_commessa TO codice_commessa;
+              COMMENT ON COLUMN anagrafiche.clienti.codice_commessa
+                IS 'Codice commessa (ex cod_commessa).';
+
+              -- Rinomina colonna cd_cliente_importato -> codice_cliente_importato
+              ALTER TABLE anagrafiche.clienti
+                RENAME COLUMN cd_cliente_importato TO codice_cliente_importato;
+              COMMENT ON COLUMN anagrafiche.clienti.codice_cliente_importato
+                IS 'Codice cliente importato (ex cd_cliente_importato).';
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250904-90-modify_anagrfiche_clienti_rename_cod_to_codice
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250904-08-modify_anagrfiche_clienti_rename_cod_to_codice
+    

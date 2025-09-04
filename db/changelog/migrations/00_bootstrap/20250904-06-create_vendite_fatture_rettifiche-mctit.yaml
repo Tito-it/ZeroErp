@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ==============================
+# 3) TAB. RETTIFICHE: vendite.fatture_rettifiche
+# Associa più documenti rettificanti a uno o più rettificati (N:N)
+# ==============================
+databaseChangeLog:
+  - changeSet:
+      id: 20250904-06-create_vendite_fatture_rettifiche
+      author: mctit
+      runOnChange: true
+      changes:
+       
+        - createTable:
+            schemaName: vendite
+            tableName: fatture_rettifiche
+            remarks: "Link fra documenti rettificanti e documenti rettificati (supporto N:N)."
+            columns:
+              - column:
+                    name: id
+                    type: BIGINT 
+                    remarks: "PK "
+                    autoIncrement: true
+                    generationType: BY DEFAULT
+                    constraints:
+                      primaryKey: true
+                      primaryKeyName: pk_fatture_rettifiche
+                      nullable: false
+              
+              - column:
+                    name: fattura_id
+                    type: BIGINT
+                    remarks: "Documento rettificante (es. nota credito). FK vendite.fatture(id)."
+                    constraints:
+                      nullable: false
+              - column:
+                    name: rettificata_id
+                    type: BIGINT
+                    remarks: "Documento rettificato (fattura originaria). FK vendite.fatture(id)."
+                    constraints:
+                      nullable: false
+        - addUniqueConstraint:
+                    schemaName: vendite
+                    tableName: fatture_rettifiche
+                    columnNames: fattura_id, rettificata_id
+                    constraintName: uq_fatture_rettifiche_pair
+        - addForeignKeyConstraint:
+                    baseTableSchemaName: vendite
+                    baseTableName: fatture_rettifiche
+                    baseColumnNames: fattura_id
+                    constraintName: fk_fatture_ret_fattura
+                    referencedTableSchemaName: vendite
+                    referencedTableName: fatture
+                    referencedColumnNames: id
+                    onDelete: CASCADE
+                    onUpdate: CASCADE
+        - addForeignKeyConstraint:
+                    baseTableSchemaName: vendite
+                    baseTableName: fatture_rettifiche
+                    baseColumnNames: rettificata_id
+                    constraintName: fk_fatture_ret_rettificata
+                    referencedTableSchemaName: vendite
+                    referencedTableName: fatture
+                    referencedColumnNames: id
+                    onDelete: CASCADE
+                    onUpdate: CASCADE
+        - createIndex:
+                    schemaName: vendite
+                    tableName: fatture_rettifiche
+                    indexName: ix_fatture_ret_fattura
+                    columns:
+                      - column: { name: fattura_id }
+        - createIndex:
+                    schemaName: vendite
+                    tableName: fatture_rettifiche
+                    indexName: ix_fatret_rettificata
+                    columns:
+                      - column: { name: rettificata_id }
+        - sql:
+             sql: |
+                  COMMENT ON CONSTRAINT fk_fatture_ret_fattura ON vendite.fatture_rettifiche IS 'FK → vendite.fatture(id) – documento rettificante';
+                   COMMENT ON CONSTRAINT fk_fatture_ret_rettificata ON vendite.fatture_rettifiche IS 'FK → vendite.fatture(id) – documento rettificato';
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250904-90-create_vendite_fatture_rettifiche
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250904-06-create_vendite_fatture_rettifiche

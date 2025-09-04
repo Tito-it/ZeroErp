@@ -1,0 +1,236 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Vendite: fatture_righe (+ trigger norm/guard)
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250903-12-create-vendite-fatture-righe
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        
+        - tableExists:  { schemaName: vendite, tableName: fatture }          # FK parent
+        - tableExists:  { schemaName: catalogo, tableName: articoli }        # FK opzionale
+        - tableExists:  { schemaName: catalogo, tableName: unita_misura }    # FK opzionale
+        - tableExists:  { schemaName: anagrafiche, tableName: billing_account } # FK opzionale
+        - tableExists:  { schemaName: config, tableName: iva }               # FK opzionale
+      changes:
+        # -----------------------------
+        # Tabella: vendite.fatture_righe
+        # -----------------------------
+        - createTable:
+            schemaName: vendite
+            tableName: fatture_righe
+            remarks: "Righe fattura: contenuti, IVA snapshot, attribuzione al child BA, importi congelati, sorgente."
+            columns:
+              - column:
+                    name: id
+                    type: BIGINT 
+                    autoIncrement: true
+                    generationType: BY DEFAULT
+                    constraints:
+                      primaryKey: true
+                      primaryKeyName: pk_fatture_righe
+                      nullable: false
+                    remarks: "PK"
+              
+              - column: { name: fattura_id, type: BIGINT, constraints: { nullable: false },
+                          remarks: "FK → vendite.fatture.id (testata fattura)" }
+
+              - column: { name: riga_nr, type: INTEGER, constraints: { nullable: false },
+                          remarks: "Numero riga progressivo all’interno della fattura" }
+
+              # Contenuto
+              - column: { name: articolo_id, type: UUID,
+                          remarks: "Articolo (catalogo.articoli.id) — opzionale" }
+              - column: { name: descrizione, type: VARCHAR(150), constraints: { nullable: false },
+                          remarks: "Descrizione riga (snapshot)" }
+              - column: { name: uom_id, type: BIGINT,
+                          remarks: "Unità di misura (catalogo.unita_misura.id)" }
+              - column: { name: qta, type: "NUMERIC(18,6)", constraints: { nullable: false },
+                          remarks: "Quantità (≥ 0)" }
+              - column: { name: prezzo_unitario, type: "NUMERIC(18,6)", constraints: { nullable: false },
+                          remarks: "Prezzo unitario (≥ 0)" }
+              - column: { name: sconto_perc, type: "NUMERIC(5,2)",
+                          remarks: "Sconto % (0–100, opzionale)" }
+
+              # IVA snapshot
+              - column: { name: iva_id, type: INTEGER,
+                          remarks: "Aliquota IVA (config.iva.id) — opzionale" }
+              # - column: { name: iva_perc, type: NUMERIC(5,2), remarks: "IVA % (snapshot)" }
+              # - column: { name: natura, type: VARCHAR(4), remarks: "Natura IVA (N1..N6...)" }
+              - column: { name: esigibilita, type: CHAR(1),
+                          remarks: "Esigibilità IVA riga: I|D|S (override se necessario)" }
+              - column: { name: split_payment, type: BOOLEAN,
+                          remarks: "Split payment applicato alla riga (override se necessario)" }
+
+              # Attribuzione a BA figlio (se NULL = parent BA)
+              - column: { name: dest_billing_account_id, type: INTEGER,
+                          remarks: "Billing Account destinatario attribuzione (se NULL eredita dalla testata)" }
+
+              # Importi congelati
+              - column: { name: imponibile_riga, type: "NUMERIC(18,6)",
+                          remarks: "Imponibile riga (snapshot calcolo)" }
+              - column: { name: imposta_riga, type: "NUMERIC(18,6)",
+                          remarks: "Imposta riga (snapshot calcolo)" }
+              - column: { name: totale_riga, type: "NUMERIC(18,6)",
+                          remarks: "Totale riga (snapshot calcolo)" }
+
+              # Sorgente / idempotenza (trittico)
+              - column: { name: source_tipo, type: VARCHAR(32),
+                          remarks: "Tipo sorgente/namespace (es. ERP_LEGACY, SHOPIFY, CSV_IMPORT). Normalizzato UPPER+TRIM dal trigger." }
+              - column: { name: source_id, type: UUID,
+                          remarks: "Identificatore esterno della risorsa padre nella sorgente (es. ordine/lotto import)." }
+              - column: { name: source_riga, type: BIGINT, defaultValueNumeric: 0,
+                          remarks: "ID/progressivo riga nella sorgente (0 se non applicabile)." }
+
+              # Meta / audit
+              # - column: { name: note, type: TEXT, remarks: "Note riga" }
+              - column: { name: meta, type: JSONB, defaultValue: "{}", constraints: { nullable: false },
+                          remarks: "Estensioni JSON" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false },
+                          remarks: "Se TRUE, snapshot su UPDATE/DELETE (per questa tabella è FALSE di default)" }
+              - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false },
+                          remarks: "Audit: data inserimento" }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false },
+                          remarks: "Audit: utente inserimento" }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false },
+                          remarks: "Audit: data aggiornamento" }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER,
+                          remarks: "Audit: utente aggiornamento" }
+
+        # -----------------------------
+        # Foreign keys
+        # -----------------------------
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_righe
+            baseColumnNames: fattura_id
+            constraintName: fk_fatture_righe_fat
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_righe
+            baseColumnNames: articolo_id
+            constraintName: fk_fatture_righe_art
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_righe
+            baseColumnNames: uom_id
+            constraintName: fk_fatture_righe_uom
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_righe
+            baseColumnNames: dest_billing_account_id
+            constraintName: fk_fatture_righe_ba_dest
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_righe
+            baseColumnNames: iva_id
+            constraintName: fk_fatture_righe_iva
+            referencedTableSchemaName: config
+            referencedTableName: iva
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # -----------------------------
+        # Check constraints (come nello SQL)
+        # -----------------------------
+        
+        - sql:
+            splitStatements: false
+            sql: |
+
+              ALTER TABLE vendite.fatture_righe
+              ADD CONSTRAINT chk_fatture_righe_sconto_perc
+              CHECK (sconto_perc IS NULL OR (sconto_perc >= 0 AND sconto_perc <= 100));    
+
+        # -----------------------------
+        # Indici
+        # -----------------------------
+        # Unicità riga all'interno della fattura
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture_righe
+            indexName: uq_fatture_righe_riga_nr
+            unique: true
+            columns:
+              - column: { name: fattura_id }
+              - column: { name: riga_nr }
+
+        # Idempotenza import (unico parziale)
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture_righe
+            indexName: uq_fatture_righe_source
+            unique: true
+            columns:
+              - column: { name: source_tipo }
+              - column: { name: source_id }
+              - column: { name: source_riga }
+            where: "source_tipo IS NOT NULL"
+            remarks: "Idempotenza import riga (source_tipo, source_id, source_riga) — solo se source_tipo valorizzato"
+
+        # Operativi
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture_righe
+            indexName: ix_fatture_righe_fattura
+            columns:
+              - column: { name: fattura_id }
+
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture_righe
+            indexName: ix_fatture_righe_ba_dest
+            columns:
+              - column: { name: dest_billing_account_id }
+
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture_righe
+            indexName: ix_fatture_righe_iva
+            columns:
+              - column: { name: iva_id }
+
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250904-90-create_vendite_fatture_righe
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250904-09-create_vendite_fatture_righe

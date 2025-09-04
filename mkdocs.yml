@@ -87,6 +87,7 @@ nav:
           - Catalogo: dbzero/catalogo/index.md
           - Config:     dbzero/config/index.md
           - Dbops:      dbzero/dbops/index.md
+          - Magazzino:  dbzero/magazzino/index.md
           - Maintenance: dbzero/maintenance/index.md
           - Pagamenti:  dbzero/pagamenti/index.md
           - Script:     dbzero/script/index.md

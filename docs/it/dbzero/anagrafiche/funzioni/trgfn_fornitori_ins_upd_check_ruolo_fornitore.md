@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_fornitori_ins_upd_check_ruolo_forni
  LANGUAGE plpgsql
 AS $function$
  BEGIN
-       -- FUNCTION: 
+       
        --   Ogni volta che inserisco/aggiorno in fornitori, gestisco la
        --   creazione/verifica della riga corrispondente in soggetti_ruoli
        --   alimentando poi in NEW.soggetto_ruolo_id il record finale.

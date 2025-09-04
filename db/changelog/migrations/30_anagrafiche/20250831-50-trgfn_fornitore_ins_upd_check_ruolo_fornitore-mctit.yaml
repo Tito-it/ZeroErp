@@ -27,7 +27,7 @@ databaseChangeLog:
                     LANGUAGE plpgsql
                 AS $$
                 BEGIN
-                      -- FUNCTION: 
+                      
                       --   Ogni volta che inserisco/aggiorno in fornitori, gestisco la
                       --   creazione/verifica della riga corrispondente in soggetti_ruoli
                       --   alimentando poi in NEW.soggetto_ruolo_id il record finale.
