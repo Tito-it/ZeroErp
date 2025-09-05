@@ -31,7 +31,7 @@
 | PRIMARY KEY | pk_dati_societari | id |
 | UNIQUE | uq_ds_codice_sdi | codice_sdi |
 | UNIQUE | uq_ds_pec_fatt | pec_fatturazione |
-| UNIQUE | uq_ds_prov_cea | iscrizione_rea, id_prov_iscri_rea |
+| UNIQUE | uq_ds_prov_cea | id_prov_iscri_rea, iscrizione_rea |
 | UNIQUE | uq_ds_soggetto | soggetto_id |
 
 ## 📑 Indici

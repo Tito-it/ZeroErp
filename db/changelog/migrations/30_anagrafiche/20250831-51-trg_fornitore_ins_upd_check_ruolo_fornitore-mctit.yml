@@ -29,7 +29,8 @@ databaseChangeLog:
                     EXECUTE FUNCTION anagrafiche.trgfn_fornitori_ins_upd_check_ruolo_fornitore();
 
                 COMMENT ON TRIGGER trg_fornitori_ins_upd_check_ruolo_fornitore ON anagrafiche.fornitori
-                    IS 'Controlla il ruolo del fornitore prima di inserire o aggiornare. Se non esiste lo genera tramite la funzione script.fn_check_ins_soggetto_ruolo.';
+                    IS 'Controlla il ruolo del fornitore prima di inserire o aggiornare.
+                     Se non esiste lo genera tramite la funzione script.fn_check_ins_soggetto_ruolo.Rigenera';
                                     
  # Metto un  tag fine modifiche
 - changeSet:

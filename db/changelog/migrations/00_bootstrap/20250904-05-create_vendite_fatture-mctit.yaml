@@ -1,0 +1,424 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP – vendite.fatture
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250904-05-create_vendite_fatture
+      author: mctit
+      runOnChange: true
+      validCheckSums: ["ANY"]
+      preConditions:
+        - onFail: HALT
+        - and:
+            # Tabelle referenziate (FK)
+            - tableExists: { schemaName: vendite, tableName: registri_fatturazione }
+            - tableExists: { schemaName: anagrafiche, tableName: soggetti_ruoli }
+            - tableExists: { schemaName: anagrafiche, tableName: billing_account }
+            - tableExists: { schemaName: config, tableName: valute }
+            - tableExists: { schemaName: config, tableName: modalita_pagamento }
+            - tableExists: { schemaName: anagrafiche, tableName: indirizzi }
+
+      changes:
+        # ==============================
+        # 1) TAB. PRINCIPALE: vendite.fatture
+        # ==============================
+        - createTable:
+            schemaName: vendite
+            tableName: fatture
+            remarks: "Fatture di vendita (testata). Un documento fiscale per registro/anno/serie/numero; stati e tipi non legati a sistemi nazionali."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT 
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogate."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_fatture
+                    nullable: false
+              
+
+              - column:
+                  name: uid
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  remarks: "Identificativo esterno/idempotenza applicativa."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: registro_id
+                  type: BIGINT
+                  remarks: "Registro/serie di numerazione fiscale. FK vendite.registri_fatturazione(id)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: anno
+                  type: SMALLINT
+                  remarks: "Anno di numerazione; valorizzato all'assegnazione del numero."
+              - column:
+                  name: serie
+                  type: VARCHAR(8)
+                  remarks: "Serie (opzionale)."
+              - column:
+                  name: numero
+                  type: BIGINT
+                  remarks: "Numero documento (assegnato quando EMESSA/REGISTRATA a seconda del flusso)."
+              - column:
+                  name: data
+                  type: DATE
+                  defaultValueComputed: CURRENT_DATE
+                  remarks: "Data documento (emissione)."
+                  constraints:
+                    nullable: false
+              
+
+              - column:
+                  name: tipo_doc_fiscale_id
+                  type: BIGINT
+                  remarks: "FK → config.tipi_doc_fiscale(id)."
+              - column:
+                  name: stato_doc_fiscale_id
+                  type: BIGINT
+                  remarks: "FK → config.stati_doc_fiscale(id)."
+
+
+              # Attori
+              - column:
+                  name: emittente_soggetto_ruolo_id
+                  type: BIGINT
+                  remarks: "Soggetto/Ruolo che emette fiscalmente. FK anagrafiche.soggetti_ruoli(id)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: billing_account_id
+                  type: INTEGER
+                  remarks: "Payer/BA padre. FK anagrafiche.billing_account(id)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: reseller_soggetto_ruolo_id
+                  type: BIGINT
+                  remarks: "(Opzionale) Reseller per branding/commissioni. FK anagrafiche.soggetti_ruoli(id)."
+
+              # Pagamenti/valuta
+              - column:
+                  name: valuta_id
+                  type: INTEGER
+                  remarks: "Valuta del documento. FK config.valute(id)."
+              - column:
+                  name: tasso_cambio
+                  type: NUMERIC(18,8)
+                  defaultValueNumeric: 1
+                  remarks: "Tasso di cambio applicato rispetto alla valuta di conto."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: modalita_pagamento_id
+                  type: INTEGER
+                  remarks: "Modalità di pagamento. FK config.modalita_pagamento(id)."
+              - column:
+                  name: giorni_pagamento
+                  type: SMALLINT
+                  remarks: "Termini pagamento: n. giorni."
+              - column:
+                  name: fine_mese
+                  type: BOOLEAN
+                  remarks: "Se true, scadenza a fine mese."
+
+              # Totali (congelati)
+              - column:
+                  name: imponibile_tot
+                  type: NUMERIC(18,6)
+                  remarks: "Imponibile totale."
+              - column:
+                  name: imposta_tot
+                  type: NUMERIC(18,6)
+                  remarks: "Imposta totale (somma imposte per aliquota)."
+              - column:
+                  name: bollo_applicato
+                  type: BOOLEAN
+                  remarks: "Bollo virtuale applicato (se previsto)."
+              - column:
+                  name: bollo_importo
+                  type: NUMERIC(6,2)
+                  remarks: "Importo bollo."
+              - column:
+                  name: arrotondamento_precedente
+                  type: NUMERIC(18,6)
+                  remarks: "Arrotondamento storico precedente (se ricalcolo)."
+              - column:
+                  name: arrotondamento_attuale
+                  type: NUMERIC(18,6)
+                  remarks: "Arrotondamento applicato in questa versione."
+              - column:
+                  name: totale_escluso_imponibile
+                  type: NUMERIC(18,6)
+                  remarks: "Totale delle voci extra-base (es. bolli/spese/arrotondamenti non concorrenti a imponibile)."
+              - column:
+                  name: totale_doc
+                  type: NUMERIC(18,6)
+                  remarks: "Totale documento complessivo."
+
+              # Flag/contabilizzazione
+              - column:
+                  name: minimo
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "True se 'fattura di minimo' (utilities)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_contabilizzazione
+                  type: DATE
+                  remarks: "Data registrazione contabile (AAAA-MM-GG)."
+
+              # Origine/idempotenza
+              - column:
+                  name: source_tipo
+                  type: VARCHAR(32)
+                  remarks: "Sorgente applicativa (tipo)."
+              - column:
+                  name: source_id
+                  type: UUID
+                  remarks: "Sorgente applicativa (id)."
+
+              # Meta/Audit
+              - column:
+                  name: meta
+                  type: JSONB
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estensibili/snapshot pointer."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: storicizza
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  remarks: "Abilita storicizzazione su update/delete (framework)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: UUID
+                  remarks: "Transaction correlation id."
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  remarks: "Timestamp inserimento riga."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: VARCHAR(80)
+                  defaultValueComputed: CURRENT_USER
+                  remarks: "Utente inserimento."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  remarks: "Timestamp ultimo aggiornamento."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: VARCHAR(80)
+                  defaultValueComputed: CURRENT_USER
+                  remarks: "Utente ultimo aggiornamento."
+
+        
+        # Indici e vincoli di unicità
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture
+            indexName: uq_fatture_uid
+            unique: true
+            columns:
+              - column: { name: uid }
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- Unicità idempotenza import (solo se valorizzato il tipo sorgente)
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                  WHERE n.nspname='vendite' AND c.relname='uq_fatture_source'
+                ) THEN
+                  CREATE UNIQUE INDEX uq_fatture_source
+                    ON vendite.fatture(source_tipo, source_id)
+                    WHERE source_tipo IS NOT NULL;
+                  COMMENT ON INDEX vendite.uq_fatture_source IS 'Idempotenza import (source_tipo, source_id).';
+                END IF;
+              END$$;
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- Unicità numerazione (registro, anno, serie[coalesce], numero) solo quando numerata
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                  WHERE n.nspname='vendite' AND c.relname='uq_fatture_numero'
+                ) THEN
+                  CREATE UNIQUE INDEX uq_fatture_numero
+                    ON vendite.fatture(
+                      registro_id,
+                      anno,
+                      COALESCE(serie,''),
+                      numero
+                    )
+                    WHERE numero IS NOT NULL;
+                  COMMENT ON INDEX vendite.uq_fatture_numero IS 'Unicità (registro, anno, serie, numero) solo se numerata.';
+                END IF;
+              END$$;
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture
+            indexName: ix_fatture_ba_data
+            columns:
+              - column: { name: billing_account_id }
+              - column: { name: data }
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture
+            indexName: ix_fatture_emitt_data
+            columns:
+              - column: { name: emittente_soggetto_ruolo_id }
+              - column: { name: data }
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture
+            indexName: ix_fatture_stato_doc
+            columns:
+              - column: { name: stato_doc_fiscale_id }
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture
+            indexName: ix_fatture_data_contabile
+            columns:
+              - column: { name: data_contabilizzazione }
+
+        # Foreign Keys (separate per commentare i vincoli)
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture
+            baseColumnNames: registro_id
+            constraintName: fk_fatture_registro
+            referencedTableSchemaName: vendite
+            referencedTableName: registri_fatturazione
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture
+            baseColumnNames: emittente_soggetto_ruolo_id
+            constraintName: fk_fatture_emittente
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture
+            baseColumnNames: billing_account_id
+            constraintName: fk_fatture_ba
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture
+            baseColumnNames: reseller_soggetto_ruolo_id
+            constraintName: fk_fatture_reseller
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture
+            baseColumnNames: valuta_id
+            constraintName: fk_fatture_valuta
+            referencedTableSchemaName: config
+            referencedTableName: valute
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture
+            baseColumnNames: modalita_pagamento_id
+            constraintName: fk_fatture_modpag
+            referencedTableSchemaName: config
+            referencedTableName: modalita_pagamento
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        # 6) Vincoli FK + NOT NULL
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture
+            baseColumnNames: tipo_doc_fiscale_id
+            constraintName: fk_fatture_tipo_doc_fiscale
+            referencedTableSchemaName: config
+            referencedTableName: tipi_doc_fiscale
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture
+            baseColumnNames: stato_doc_fiscale_id
+            constraintName: fk_fatture_stato_doc_fiscale
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_fiscale
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+
+
+        # Commenti espliciti sui vincoli FK
+        - sql:
+            sql: |
+              COMMENT ON CONSTRAINT fk_fatture_registro    ON vendite.fatture IS 'FK → vendite.registri_fatturazione(id)';
+              COMMENT ON CONSTRAINT fk_fatture_emittente   ON vendite.fatture IS 'FK → anagrafiche.soggetti_ruoli(id) – emittente fiscale';
+              COMMENT ON CONSTRAINT fk_fatture_ba          ON vendite.fatture IS 'FK → anagrafiche.billing_account(id) – payer';
+              COMMENT ON CONSTRAINT fk_fatture_reseller    ON vendite.fatture IS 'FK → anagrafiche.soggetti_ruoli(id) – reseller (opzionale)';
+              COMMENT ON CONSTRAINT fk_fatture_valuta      ON vendite.fatture IS 'FK → config.valute(id)';
+              COMMENT ON CONSTRAINT fk_fatture_modpag      ON vendite.fatture IS 'FK → config.modalita_pagamento(id)';
+              COMMENT ON CONSTRAINT fk_fatture_tipo_doc_fiscale ON vendite.fatture IS 'FK → config.tipi_doc_fiscale(id)';
+              COMMENT ON CONSTRAINT fk_fatture_stato_doc_fiscale ON vendite.fatture IS 'FK → config.stati_doc_fiscale(id)';
+
+        
+
+       
+        
+                
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250904-90-create_vendite_fatture
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 220250904-05-create_vendite_fatture

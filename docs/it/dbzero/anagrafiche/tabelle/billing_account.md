@@ -28,7 +28,7 @@
 | FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
 | PRIMARY KEY | pk_billing_account | id |
 | UNIQUE | uq_billing_account_codice | codice |
-| UNIQUE | uq_billing_instance_utility | utility_id, istanza_utility_id |
+| UNIQUE | uq_billing_instance_utility | istanza_utility_id, utility_id |
 
 ## 📑 Indici
 | Nome | Definizione |

@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:  
+  - changeSet:
+      id: 20250904-22-trgfn_a10_fatture_protect_num_v1
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: fatture }
+        - columnExists: { schemaName: vendite, tableName: fatture, columnName: stato_doc_fiscale_id }
+        - columnExists: { schemaName: vendite, tableName: fatture, columnName: tipo_doc_fiscale_id }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_a10_fatture_protect_num()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_is_locked boolean := false;
+                v_stato     text;
+              BEGIN
+                -- Stati “bloccanti” identificati da codice_interno (immutabile)
+                SELECT s.codice_interno IN ('EMESSA','INVIATA','CONSEGNATA','SCARTATA','REGISTRATA','ANNULLATA'),
+                       s.codice_interno
+                  INTO v_is_locked, v_stato
+                  FROM config.stati_doc_fiscale s
+                 WHERE s.id = OLD.stato_doc_fiscale_id;
+
+                IF COALESCE(v_is_locked, false) THEN
+                  IF NEW.numero                 IS DISTINCT FROM OLD.numero
+                     OR NEW.serie               IS DISTINCT FROM OLD.serie
+                     OR NEW.anno                IS DISTINCT FROM OLD.anno
+                     OR NEW.data                IS DISTINCT FROM OLD.data
+                     OR NEW.registro_id         IS DISTINCT FROM OLD.registro_id
+                     OR NEW.tipo_doc_fiscale_id IS DISTINCT FROM OLD.tipo_doc_fiscale_id
+                  THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_NUMERAZIONE_IMMUTABILE',
+                      jsonb_build_object('fattura_id', OLD.id, 'stato', v_stato),
+                      NULL::uuid, OLD.id::text
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END$$;
+
+              DROP TRIGGER IF EXISTS trg_a10_fatture_upd_protect_num ON vendite.fatture;
+              CREATE TRIGGER trg_a10_fatture_upd_protect_num
+              BEFORE UPDATE ON vendite.fatture
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_a10_fatture_protect_num();
+
+
+
+  # Metto un tag fine modifiche
+  - changeSet:
+      id: 20250904-90-trgfn_a10_fatture_protect_num_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250904-22-trgfn_a10_fatture_protect_num_v1

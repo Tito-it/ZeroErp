@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250904-23-trgfn_a11_fatture_numerata_non_annulabile
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: vendite, tableName: fatture }
+            - tableExists: { schemaName: config, tableName: stati_doc_fiscale }
+            - columnExists: { schemaName: vendite, tableName: fatture, columnName: stato_doc_fiscale_id }
+            - columnExists: { schemaName: vendite, tableName: fatture, columnName: numero }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- A11: vieta passaggio ad ANNULLATA se la fattura è numerata
+              CREATE OR REPLACE FUNCTION vendite.trgfn_a11_fatture_numerata_non_annulabile()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_to_cancel  boolean := false;
+                v_numbered   boolean := false;
+                v_numero     bigint;
+              BEGIN
+                -- Considera solo i cambi di stato
+                IF NEW.stato_doc_fiscale_id IS DISTINCT FROM OLD.stato_doc_fiscale_id THEN
+                  -- È un passaggio verso ANNULLATA?
+                  SELECT (s.codice_interno = 'ANNULLATA')
+                    INTO v_to_cancel
+                    FROM config.stati_doc_fiscale s
+                   WHERE s.id = NEW.stato_doc_fiscale_id;
+
+                  -- Fattura numerata? (nuovo o vecchio valore)
+                  v_numero := COALESCE(NEW.numero, OLD.numero);
+                  v_numbered := v_numero IS NOT NULL;
+
+                  IF v_to_cancel AND v_numbered THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_FATTURA_NON_ANNULLABILE',
+                      jsonb_build_object('fattura_id', OLD.id, 'numero', v_numero),
+                      NULL::uuid, OLD.id::text
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END$$;
+
+              DROP TRIGGER IF EXISTS trg_a11_fatture_upd_numerata_non_annulabile ON vendite.fatture;
+              CREATE TRIGGER trg_a11_fatture_upd_numerata_non_annulabile
+              BEFORE UPDATE ON vendite.fatture
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_a11_fatture_numerata_non_annulabile();
+
+
+
+  # Metto un tag fine modifiche
+  - changeSet:
+      id: 20250904-90-trgfn_a11_fatture_numerata_non_annulabile_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250904-23-trgfn_a11_fatture_numerata_non_annulabile_v1

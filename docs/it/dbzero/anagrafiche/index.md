@@ -7,6 +7,7 @@
 - [conti_bancari](tabelle/conti_bancari.md) — `anagrafiche.conti_bancari` è l’**anagrafe unica degli IBAN**. Centralizza e **deduplica** i conti correnti, li **normalizza** (uppercase, senza spazi) e li rende riusabili da **qualsiasi soggetto** e **ruolo**. Questo disaccoppiamento:
 - [dati_catastali](tabelle/dati_catastali.md) — La tabella `anagrafiche.dati_catastali` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
 - [dati_societari](tabelle/dati_societari.md) — - **Estendere l’anagrafica generale**     I soggetti di tipo giuridico (aziende) hanno esigenze di memorizzazione di dati societari che non interessano le persone fisiche. Spostando queste informazioni in `dati_societari`, si mantiene la tabella `anagrafiche.soggetti` leggera e focalizzata sui campi anagrafici di base. Solo per i tipi soggetti appropriati controllati dalla trigger function `anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto`
+- [emittenti_fiscali](tabelle/emittenti_fiscali.md)
 - [fornitori](tabelle/fornitori.md) — `anagrafiche.fornitori` è la **tabella master del ruolo FORNITORE** (relazione **1:1** con `anagrafiche.soggetti_ruoli`). Contiene le **impostazioni fiscali/operative** necessarie per la gestione dei fornitori, le **preferenze di pagamento** (valuta, modalità e termini), parametri di **qualifica/valutazione** e l’**audit**.
 - [gestori](tabelle/gestori.md) — - **Identificare il gestore del sistema**     Memorizzare la riga unica che corrisponde all’azienda proprietaria o amministratrice di Zero ERP, distinguendola da tutti gli altri soggetti (clienti, fornitori, partner, ecc.).
 - [gestori_utilities](tabelle/gestori_utilities.md) — La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori e le utilities disponibili nel sistema Zero ERP. Ogni gestore, identificato dal suo ruolo, può gestire una o più utilities specifiche.
@@ -15,20 +16,28 @@
 - [istanze_dati_precontrattuali](tabelle/istanze_dati_precontrattuali.md) — La tabella `anagrafiche.istanze_dati_precontrattuali` raccoglie **tutte le informazioni pre‑contrattuali** relative ad una specifica **istanza utility** (fornitura/utenza). Il campo **`meta` (JSONB)** consente di archiviare attributi **specifici per tipo di utility** (es. potenza impegnata, pressione, soglie tecniche, parametri di profilazione).
 - [istanze_utilities](tabelle/istanze_utilities.md) — * Registrare ogni **attivazione** di servizio (volta) per un soggetto su un punto di erogazione. * Gestire la **gerarchia** delle attivazioni successive (subentri/volture) tramite `parent_istanza_id`. * Supportare record **fittizi**, ossia senza indirizzo obbligatorio.
 - [pdp](tabelle/pdp.md) — `anagrafiche.pdp` rappresenta i **Punti di Prelievo (PDP)** come entità **fisiche** ancorate a un **indirizzo** (`indirizzo_dettaglio_id`), identificate da un **codice univoco globale** (campo `pdp`) e **tipizzate** rispetto a una **utility** (`utilities_id`, es. GAS, ENERGIA…). La tabella **base** contiene lo **stato corrente** (incluso il **cliente attuale** se presente). Questa scelta separa stato (qui) da storia (in storico.pdp), semplificando le query operative e garantendo audit completo.
+- [resellers](tabelle/resellers.md)
 - [soggetti](tabelle/soggetti.md) — - **Coerenza dei dati**     Garantire che ogni soggetto—persona fisica, giuridica o fisica forzata—sia identificato in modo univoco e validato secondo le regole aziendali.
 - [soggetti_conti_bancari](tabelle/soggetti_conti_bancari.md) — `anagrafiche.soggetti_conti_bancari` gestisce l’**associazione tra un Soggetto** (persona/azienda) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 - [soggetti_ruoli](tabelle/soggetti_ruoli.md) — * **Associazione molti-a-molti**: stabilisce una relazione N\:N tra la tabella `anagrafiche.soggetti` e `config.tipi_ruoli`, consentendo a ogni soggetto di rivestire più ruoli (es. cliente, fornitore, gestore) e a ogni ruolo di essere assegnato a molti soggetti. * **Estensione semantica**: il campo `extra` (JSONB) offre la possibilità di collegare metadati aggiuntivi per la singola associazione soggetto-ruolo (ad esempio, parametri contrattuali specifici se il ruolo è “fornitore” o date di attivazione per il ruolo “cliente”). * **Tracciatura delle modifiche**: grazie ai campi di audit (`user_insert`, `data_insert`, `user_update`, `data_update`) aggiornati automaticamente, la tabella conserva la cronologia di creazione e aggiornamento di ciascuna associazione.
 - [soggetti_ruoli_conti_bancari](tabelle/soggetti_ruoli_conti_bancari.md) — `anagrafiche.soggetti_ruoli_conti_bancari` gestisce l’**associazione tra un Ruolo** di un soggetto (CLIENTE, FORNITORE, GESTORE, …) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
+- [vettori](tabelle/vettori.md)
 
 ## ⚙️ Funzioni
 - [fn_get_conto_bancario_predefinito](funzioni/fn_get_conto_bancario_predefinito.md)
+- [trgfn_a10_emittenti_fiscali_protect_codice](funzioni/trgfn_a10_emittenti_fiscali_protect_codice.md)
+- [trgfn_a10_resellers_protect_codice](funzioni/trgfn_a10_resellers_protect_codice.md)
+- [trgfn_a10_vettori_protect_codice](funzioni/trgfn_a10_vettori_protect_codice.md)
 - [trgfn_billing_account_ins_upd_guard_normalize](funzioni/trgfn_billing_account_ins_upd_guard_normalize.md) — Il trigger `anagrafiche.trgfn_billing_account_ins_upd_guard_normalize` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
 - [trgfn_billing_account_upd_protect_account_code](funzioni/trgfn_billing_account_upd_protect_account_code.md) — Il trigger `anagrafiche.trgfn_billing_account_upd_protect_account_code`, invocato **prima di ogni UPDATE** su `anagrafiche.billing_account`, impedisce modifiche improprie al campo **`codice (account)`** una volta assegnato.
+- [trgfn_clienti_ins_upd_check_ruolo_cliente](funzioni/trgfn_clienti_ins_upd_check_ruolo_cliente.md)
 - [trgfn_clienti_set_periodo](funzioni/trgfn_clienti_set_periodo.md)
 - [trgfn_clienti_sync_pdp](funzioni/trgfn_clienti_sync_pdp.md)
 - [trgfn_contatti_ins_upd_set_default_contatto](funzioni/trgfn_contatti_ins_upd_set_default_contatto.md) — * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 - [trgfn_conti_bancari_ins_upd_normalize](funzioni/trgfn_conti_bancari_ins_upd_normalize.md)
 - [trgfn_dati_societari_ins_upd_check_tipo_soggetto](funzioni/trgfn_dati_societari_ins_upd_check_tipo_soggetto.md) — Verificare che il soggetto associato ai dati societari ( `new.soggetto_id` in `anagrafiche.dati_societari` ) abbia un `codice_interno` ammesso (solo **`SC`** o **`SP`**). In caso contrario, viene lanciato un errore tramite `script.fn_log_and_raise_error`.
+- [trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis](funzioni/trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis.md)
+- [trgfn_emittenti_fiscali_norm](funzioni/trgfn_emittenti_fiscali_norm.md)
 - [trgfn_fornitori_guard_normalize](funzioni/trgfn_fornitori_guard_normalize.md)
 - [trgfn_fornitori_ins_upd_check_ruolo_fornitore](funzioni/trgfn_fornitori_ins_upd_check_ruolo_fornitore.md)
 - [trgfn_fornitori_upd_protect_account_code](funzioni/trgfn_fornitori_upd_protect_account_code.md)
@@ -39,6 +48,8 @@
 - [trgfn_istanze_utilities_ins_upd_clean_fields](funzioni/trgfn_istanze_utilities_ins_upd_clean_fields.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
 - [trgfn_istanze_utilities_upd_protect_codice](funzioni/trgfn_istanze_utilities_upd_protect_codice.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_upd_protect_codice`, eseguito **prima di ogni UPDATE** su `anagrafiche.istanze_utilities`, impedisce modifiche non autorizzate al campo **`codice (istanza)`** una volta impostato.
 - [trgfn_pdp_protect_cols](funzioni/trgfn_pdp_protect_cols.md)
+- [trgfn_resellers_ins_upd_check_ruolo_reseller](funzioni/trgfn_resellers_ins_upd_check_ruolo_reseller.md)
+- [trgfn_resellers_norm](funzioni/trgfn_resellers_norm.md)
 - [trgfn_sepa_mandati_guard](funzioni/trgfn_sepa_mandati_guard.md)
 - [trgfn_soggetti_conti_bancari_guard](funzioni/trgfn_soggetti_conti_bancari_guard.md)
 - [trgfn_soggetti_ins_upd_check_soggetto_contatti](funzioni/trgfn_soggetti_ins_upd_check_soggetto_contatti.md) — * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
@@ -46,6 +57,8 @@
 - [trgfn_soggetti_ruoli_conti_bancari_guard](funzioni/trgfn_soggetti_ruoli_conti_bancari_guard.md)
 - [trgfn_soggetti_upd_protect_codice_soggetto](funzioni/trgfn_soggetti_upd_protect_codice_soggetto.md) — Il trigger `anagrafiche.trgfn_soggetti_upd_protect_codice_soggetto`, esploso **prima di ogni UPDATE** sulla tabella `anagrafiche.soggetti`, garantisce che il campo **`codice(soggetto)`** non possa essere modificato una volta assegnato.
 - [trgfn_soggetti_valida_cf_piva_dispatch](funzioni/trgfn_soggetti_valida_cf_piva_dispatch.md) — La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** viene eseguita **`BEFORE INSERT OR UPDATE`** sulla tabella **`anagrafiche.soggetti`** e instrada la validazione di codice fiscale e partita IVA in base allo Stato e al dettaglio di soggetto.
+- [trgfn_vettori_ins_upd_check_ruolo_vettore](funzioni/trgfn_vettori_ins_upd_check_ruolo_vettore.md)
+- [trgfn_vettori_norm](funzioni/trgfn_vettori_norm.md)
 
 ## 🔍 Views
 - [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md)

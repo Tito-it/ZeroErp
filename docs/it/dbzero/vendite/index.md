@@ -8,15 +8,24 @@
 - [attivita_fatturabili](tabelle/attivita_fatturabili.md)
 - [contratti](tabelle/contratti.md)
 - [contratti_righe](tabelle/contratti_righe.md)
+- [fatture](tabelle/fatture.md)
+- [fatture_indirizzi](tabelle/fatture_indirizzi.md)
+- [fatture_rettifiche](tabelle/fatture_rettifiche.md)
+- [fatture_righe](tabelle/fatture_righe.md)
 - [note](tabelle/note.md)
 - [note_contratto](tabelle/note_contratto.md)
 - [note_preventivo](tabelle/note_preventivo.md)
 - [preventivi](tabelle/preventivi.md)
 - [preventivi_righe](tabelle/preventivi_righe.md)
+- [registri_fatturazione](tabelle/registri_fatturazione.md)
+- [registri_fatturazione_progressivi](tabelle/registri_fatturazione_progressivi.md)
 - [regole_fatturazione_articolo](tabelle/regole_fatturazione_articolo.md) — * Definire le **policy di calcolo** per ogni articolo. * Stabilire la **visibilità** dei componenti di un articolo complesso (solo padre, padre+componenti, solo componenti). * Impostare la logica di **calcolo della quantità del padre** (fissa o somma di componenti flaggati). * Definire regole di **arrotondamento** per importi e quantità. * Consentire estensioni tramite il campo JSONB `meta`.
 
 ## ⚙️ Funzioni
+- [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md)
 - [trgfn_a10_attivita_fatturabili_guard_fatturato](funzioni/trgfn_a10_attivita_fatturabili_guard_fatturato.md)
+- [trgfn_a10_fatture_protect_num](funzioni/trgfn_a10_fatture_protect_num.md)
+- [trgfn_a11_fatture_numerata_non_annulabile](funzioni/trgfn_a11_fatture_numerata_non_annulabile.md)
 - [trgfn_attivita_fatturabili_guard_ba_coerenza](funzioni/trgfn_attivita_fatturabili_guard_ba_coerenza.md)
 - [trgfn_attivita_fatturabili_guard_fonte](funzioni/trgfn_attivita_fatturabili_guard_fonte.md)
 - [trgfn_attivita_fatturabili_norm](funzioni/trgfn_attivita_fatturabili_norm.md)
@@ -24,6 +33,7 @@
 - [trgfn_attivita_guard_fonte](funzioni/trgfn_attivita_guard_fonte.md)
 - [trgfn_attivita_norm_competenza_mese](funzioni/trgfn_attivita_norm_competenza_mese.md)
 - [trgfn_contnote_validate](funzioni/trgfn_contnote_validate.md)
+- [trgfn_fatture_righe_norm_guard](funzioni/trgfn_fatture_righe_norm_guard.md)
 - [trgfn_preventivi_norm](funzioni/trgfn_preventivi_norm.md)
 - [trgfn_prevnote_validate](funzioni/trgfn_prevnote_validate.md)
 
