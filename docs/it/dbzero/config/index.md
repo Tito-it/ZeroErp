@@ -2,7 +2,9 @@
 
 ## 📚 Tabelle
 - [ambiti](tabelle/ambiti.md)
+- [aspetti_beni](tabelle/aspetti_beni.md)
 - [categoria_accisa](tabelle/categoria_accisa.md)
+- [causali_trasporto](tabelle/causali_trasporto.md)
 - [classi_utenze](tabelle/classi_utenze.md)
 - [codici_postali](tabelle/codici_postali.md) — * **Elenco dei codici postali**   Per ogni comune (city/municipality), memorizza tutti i codici postali (Postal Code o ZIP Code) validi per quell’area geografica.
 - [comuni](tabelle/comuni.md) — * **Censimento dei comuni**   Elenco dei comuni presenti in ciascuno stato, identificati da nome e collegamento gerarchico a provincia e stato. * **Attributi specifici per stato**   La colonna `extra_country` (JSONB) permette di memorizzare dati aggiuntivi specifici per ogni paese (per l’Italia: codice catastale, codice ISTAT, fascia climatica, ecc.). * **Integrazione con lo stradario**   L’associazione tra `config.stradario_generale` (prefissi e nomi delle vie) e `config.comuni` genera la tabella `config.stradario`, che contiene l’indirizzo completo con la localizzazione geografica sul comune di appartenenza.   Utilizzata per associare i record di **`config.stradario`** al comune di appartenenza, completa il percorso di indirizzamento. * **Storicizzazione**   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.comuni`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
@@ -17,6 +19,7 @@
 - [province](tabelle/province.md) — * **Elenco delle province**   Contiene tutte le province di uno stato (es. in Italia: RM, MI, FI), con sigla e nome descrittivo.
 - [regioni](tabelle/regioni.md) — * **Elenco delle regioni**   Comprende tutte le regioni appartenenti a uno stato (es. in Italia: `Lazio`, `Campania`, `Sicilia`), con collegamento al rispettivo `stato_id` in **`config.stati`**.
 - [sistema_codici](tabelle/sistema_codici.md) — * **Definizione del formato codice**   Consente di specificare per ogni tipo di codice (`codice_tipo`) un **prefisso**, un **separatore** e la **lunghezza numerica** totale, rendendo parametrica la struttura dei codici generati. * **Configurazione del meccanismo di sequenza**   Tramite il flag `usa_sequenza` e l’attributo `nome_sequenza`, si abilita o meno l’utilizzo di una progressione automatica basata su sequenza di database, a garanzia di unicità e ordinarietà. * **Attivazione o disattivazione**   Il campo `attivo` permette di abilitare o disabilitare temporaneamente il sistema di generazione per un tipo di codice, senza cancellare la configurazione.
+- [sorgenti](tabelle/sorgenti.md)
 - [stati](tabelle/stati.md) — * **Elenco degli stati/paesi**   Contiene tutte le nazioni riconosciute, con sigle e codici ISO standard (ISO 3166-1 alpha-2 e alpha-3) e prefisso telefonico internazionale.
 - [stati_cliente](tabelle/stati_cliente.md) — La tabella `config.stati_cliente` definisce i possibili **stati funzionali** di un cliente all’interno di Zero ERP, utilizzati sia per il controllo dei processi (letture, fatturazione) sia per la logica di avanzamento (precontrattuale, attivo, sospeso, chiuso, ecc.).
 - [stati_doc_fiscale](tabelle/stati_doc_fiscale.md)
@@ -43,7 +46,10 @@
 - [trgfn_iva_ins_upd_check_conti_iva](funzioni/trgfn_iva_ins_upd_check_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_iva_stati_ins_upd_clean_fields](funzioni/trgfn_iva_stati_ins_upd_clean_fields.md) — * **Impostare valori di default** per campi mancanti in `config.iva_stati` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_regioni_ins_upd_clean_fields](funzioni/trgfn_regioni_ins_upd_clean_fields.md) — * **Impostare valori di default** per campi mancanti in `config.regioni` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
+- [trgfn_sorgenti_norm](funzioni/trgfn_sorgenti_norm.md)
+- [trgfn_stradario_generale_norm](funzioni/trgfn_stradario_generale_norm.md)
 - [trgfn_stradario_generale_upd_non_permesso](funzioni/trgfn_stradario_generale_upd_non_permesso.md) — * **Blocco modifiche non consentite**: evitare update di descrizione, descrizione_breve o toponomastica_id in `config.stradario_generale` se il record è già in uso in `config.stradario`. * **Identificazione precisa**: indicare tramite JSON il nome della colonna modificata e l’ID del record per diagnosticare efficacemente l’errore. * **Centralizzazione logica**: mantenere il controllo integrità nel database, riducendo complessità lato applicazione.
+- [trgfn_toponomastica_bump_norm](funzioni/trgfn_toponomastica_bump_norm.md)
 - [trgfn_toponomastica_upd_non_permesso](funzioni/trgfn_toponomastica_upd_non_permesso.md) — * **Protezione semantica**: garantire coerenza tra topografia e stradario evitando rinominazioni dirette di toponomastiche già in uso. * **Decisione di design**: anziché storicizzare o consentire modifiche parziali, obbligare alla creazione di nuove topografìe per cambiare descrizione. * **Centralizzazione**: concentrare la logica di blocco in una sola funzione trigger per ridurre complessità applicativa.
 
 ## 🔍 Views

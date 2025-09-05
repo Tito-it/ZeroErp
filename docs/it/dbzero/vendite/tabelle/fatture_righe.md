@@ -19,9 +19,6 @@
 | imponibile_riga | numeric | YES |  |
 | imposta_riga | numeric | YES |  |
 | totale_riga | numeric | YES |  |
-| source_tipo | character varying | YES |  |
-| source_id | uuid | YES |  |
-| source_riga | bigint | YES | 0 |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | false |
 | tx_id | uuid | YES |  |
@@ -29,6 +26,9 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
+| sorgente_tipo_id | bigint | YES |  |
+| sorgente_id | uuid | YES |  |
+| sorgente_riga | bigint | YES | 0 |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -38,6 +38,7 @@
 | FOREIGN KEY | fk_fatture_righe_ba_dest | dest_billing_account_id |
 | FOREIGN KEY | fk_fatture_righe_fat | fattura_id |
 | FOREIGN KEY | fk_fatture_righe_iva | iva_id |
+| FOREIGN KEY | fk_fatture_righe_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_fatture_righe_uom | uom_id |
 | PRIMARY KEY | pk_fatture_righe | id |
 
@@ -49,13 +50,13 @@
 | ix_fatture_righe_iva | `CREATE INDEX ix_fatture_righe_iva ON vendite.fatture_righe USING btree (iva_id)` |
 | pk_fatture_righe | `CREATE UNIQUE INDEX pk_fatture_righe ON vendite.fatture_righe USING btree (id)` |
 | uq_fatture_righe_riga_nr | `CREATE UNIQUE INDEX uq_fatture_righe_riga_nr ON vendite.fatture_righe USING btree (fattura_id, riga_nr)` |
-| uq_fatture_righe_source | `CREATE UNIQUE INDEX uq_fatture_righe_source ON vendite.fatture_righe USING btree (source_tipo, source_id, source_riga)` |
+| uq_fatture_righe_sorgente_fk | `CREATE UNIQUE INDEX uq_fatture_righe_sorgente_fk ON vendite.fatture_righe USING btree (sorgente_tipo_id, sorgente_id, sorgente_riga)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_fatture_righe_norm_guard | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fatture_righe_norm_guard()` |
-| trg_fatture_righe_norm_guard | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_righe_norm_guard()` |
+| trg_fatture_righe_ins_upd_norm_guard | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fatture_righe_norm_guard()` |
+| trg_fatture_righe_ins_upd_norm_guard | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_righe_norm_guard()` |
 
 ---
 {% include-markdown "signature-core.md" %}

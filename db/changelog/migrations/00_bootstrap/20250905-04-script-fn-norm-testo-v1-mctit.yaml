@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250905-04-script-fn-norm-testo-v1
+      author: mctit
+      changes:
+                
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |              
+        
+              CREATE OR REPLACE FUNCTION script.fn_norm_testo(p_txt text)
+              RETURNS text
+              LANGUAGE sql
+              IMMUTABLE
+              AS $$
+              
+                -- Normalizza testo: lower, unaccent, spazi/punteggiatura compattati
+                SELECT
+                  trim(
+                    regexp_replace(
+                      regexp_replace(
+                        lower(unaccent(coalesce(p_txt,''))),
+                        '[^\w\s]', ' ', 'g'           -- rimuove punteggiatura
+                      ),
+                      '\s+', ' ', 'g'               -- comprime spazi
+                    )
+                  )
+              
+              $$;
+
+              
+              CREATE OR REPLACE FUNCTION script.fn_norm_via(p_topo text, p_via text)
+              RETURNS text
+              LANGUAGE sql
+              IMMUTABLE
+              AS $$
+              
+               -- Normalizza via: toponomastica + nome via
+                SELECT script.fn_norm_testo(coalesce(p_topo,'') || ' ' || coalesce(p_via,''));
+              
+              $$;
+
+
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250905-90-script-fn-norm-testo-v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250905-04-script-fn-norm-testo-v1

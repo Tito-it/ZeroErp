@@ -1,0 +1,43 @@
+﻿# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  
+  - changeSet:
+      id: 20250905-22-trgfn_stradario_generale_norm_v1
+      author: mctit
+      runOnChange: true 
+      changes:
+        
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_stradario_generale_norm()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE v_topo text;
+              BEGIN
+                -- Legge la toponomastica corrente e calcola il normalizzato
+                SELECT descrizione INTO v_topo
+                  FROM config.toponomastica
+                 WHERE id = NEW.toponomastica_id;
+
+                NEW.indirizzo_normalizzato := script.fn_norm_via(v_topo, NEW.descrizione);
+                RETURN NEW;
+              END$$;
+
+              DROP TRIGGER IF EXISTS trg_stradario_generale_ins_upd_norm
+                ON config.stradario_generale;
+
+              CREATE TRIGGER trg_stradario_generale_ins_upd_norm
+              BEFORE INSERT OR UPDATE OF toponomastica_id, descrizione
+              ON config.stradario_generale
+              FOR EACH ROW
+              EXECUTE FUNCTION config.trgfn_stradario_generale_norm();

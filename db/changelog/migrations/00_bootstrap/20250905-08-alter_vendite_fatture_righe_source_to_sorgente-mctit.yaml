@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Vendite: fatture_righe, migrazione da source_tipo → sorgente_tipo_id (FK)
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250905-08-alter_vendite_fatture_righe_source_to_sorgente
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:  { schemaName: vendite, tableName: fatture_righe }
+        - tableExists:  { schemaName: config,  tableName: sorgenti }
+      changes:
+        # 1) Drop indice unico precedente (source_tipo, source_id, source_riga)
+        
+        - sql:
+            splitStatements: false
+            sql: |    
+                DROP INDEX IF EXISTS vendite.uq_fatture_righe_source_fk;
+        
+        - dropColumn:
+            schemaName: vendite
+            tableName: fatture_righe
+            columnName: source_id
+            ifExists: true
+        - dropColumn:
+            schemaName: vendite
+            tableName: fatture_righe
+            columnName: source_riga
+            ifExists: true
+
+  # 2) Aggiunta nuove colonne con naming coerente
+  - changeSet:
+      id: 20250905-09-alter_vendite_fatture_righe_source_to_sorgente
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: fatture_righe }
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: fatture_righe
+            columns:
+              - column:
+                  name: sorgente_id
+                  type: UUID
+                  remarks: "Identificatore esterno della risorsa padre nella sorgente"
+              - column:
+                  name: sorgente_riga
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  remarks: "Identificatore/progressivo riga nella sorgente (0 se non applicabile)"
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN vendite.fatture_righe.sorgente_id
+                IS 'Identificatore esterno della risorsa padre nella sorgente (ex source_id).';
+              COMMENT ON COLUMN vendite.fatture_righe.sorgente_riga
+                IS 'Progressivo/ID riga nella sorgente (ex source_riga).';        
+
+        # 5) Ricrea indice unico parziale di idempotenza con il nuovo FK
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture_righe
+            indexName: uq_fatture_righe_sorgente_fk
+            unique: true
+            columns:
+              - column: { name: sorgente_tipo_id }
+              - column: { name: sorgente_id }
+              - column: { name: sorgente_riga }
+            where: "sorgente_tipo_id IS NOT NULL"
+            remarks: "Idempotenza import riga (sorgente_tipo_id, sorgente_id, sorgente_riga)"
+
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250905-90-alter_vendite_fatture_righe_source_to_sorgente
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250905-08-alter_vendite_fatture_righe_source_to_sorgente

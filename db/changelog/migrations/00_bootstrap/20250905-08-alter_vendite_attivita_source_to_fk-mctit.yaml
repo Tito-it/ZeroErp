@@ -1,0 +1,134 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Vendite: attivita_fatturabili, migrazione sorgente_tipo → sorgente_tipo_id (FK)
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250905-08-alter_vendite_attivita_source_to_fk
+      author: mctit
+      preConditions:
+        - onFail: CONTINUE
+        - tableExists:  { schemaName: vendite, tableName: attivita_fatturabili }
+        - tableExists:  { schemaName: config,  tableName: sorgenti }
+      changes:
+        # 1) Drop UNIQUE index precedente basato su testo (se esiste)
+        - dropIndex:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            indexName: uq_af_sorgente
+            ifExists: true
+
+        # 2) Aggiungi colonna FK (se non esiste già)
+        - addColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columns:
+              - column:
+                  name: sorgente_tipo_id
+                  type: BIGINT
+                  remarks: "FK → config.sorgenti (ex sorgente_tipo testuale)"
+
+        # 3) Aggiungi vincolo FK verso config.sorgenti
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: sorgente_tipo_id
+            constraintName: fk_attivita_fatturabili_sorgente_tipo
+            referencedTableSchemaName: config
+            referencedTableName: sorgenti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # 4) Commento sul vincolo FK
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON CONSTRAINT fk_attivita_fatturabili_sorgente_tipo ON vendite.attivita_fatturabili
+                IS 'FK → config.sorgenti per indicare la fonte (ex sorgente_tipo testuale).';
+
+        # 5) Drop della colonna testuale obsoleta (se presente)
+        - dropColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columnName: sorgente_tipo
+            ifExists: true
+
+        # 6) Ricrea UNIQUE parziale di idempotenza con il nuovo FK
+        - createIndex:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            indexName: uq_attivita_fatturabili_sorgente_fk
+            unique: true
+            columns:
+              - column: { name: sorgente_tipo_id }
+              - column: { name: sorgente_id }
+              - column: { name: sorgente_riga }
+            where: "sorgente_tipo_id IS NOT NULL"
+            remarks: "Idempotenza import attività (sorgente_tipo_id, sorgente_id, sorgente_riga)"
+
+
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                v_pk_name   text;
+                v_idx_name  text;
+              BEGIN
+                -- 1) Trova la PK attuale (se esiste)
+                SELECT c.conname
+                  INTO v_pk_name
+                FROM pg_constraint c
+                JOIN pg_class t   ON t.oid = c.conrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                WHERE n.nspname = 'vendite'
+                  AND t.relname = 'attivita_fatturabili'
+                  AND c.contype = 'p'
+                LIMIT 1;
+
+                IF v_pk_name IS NULL THEN
+                  -- 2) Nessuna PK: creala con il nome desiderato
+                  EXECUTE 'ALTER TABLE vendite.attivita_fatturabili
+                             ADD CONSTRAINT pk_attivita_fatturabili PRIMARY KEY (id)';
+                ELSIF v_pk_name <> 'pk_attivita_fatturabili' THEN
+                  -- 3) Rinomina la PK al nome target
+                  EXECUTE format(
+                    'ALTER TABLE vendite.attivita_fatturabili RENAME CONSTRAINT %I TO pk_attivita_fatturabili',
+                    v_pk_name
+                  );
+                END IF;
+
+                -- 4) Recupera il nome dell'indice associato alla PK corrente (già rinominata o appena creata)
+                SELECT i.relname
+                  INTO v_idx_name
+                FROM pg_constraint c
+                JOIN pg_class t    ON t.oid = c.conrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                JOIN pg_class i    ON i.oid = c.conindid
+                WHERE n.nspname = 'vendite'
+                  AND t.relname = 'attivita_fatturabili'
+                  AND c.contype = 'p'
+                LIMIT 1;
+
+                -- 5) Se l'indice ha ancora il vecchio nome, rinominalo; se si chiama già come la PK, non far nulla
+                IF v_idx_name IS NOT NULL AND v_idx_name <> 'pk_attivita_fatturabili' THEN
+                  EXECUTE format('ALTER INDEX vendite.%I RENAME TO pk_attivita_fatturabili', v_idx_name);
+                END IF;
+              END$$;               
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250905-90-alter_vendite_attivita_source_to_fk
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250905-08-alter_vendite_attivita_source_to_fk

@@ -1,0 +1,46 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250905-05-config-stradario-generale-upd-indirizzo-normalizzato
+      author: mctit
+      changes:
+               
+        # 1) Backfill valori esistenti
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              UPDATE config.stradario_generale sg
+                 SET indirizzo_normalizzato = script.fn_norm_via(t.descrizione, sg.descrizione)
+                FROM config.toponomastica t
+               WHERE t.id = sg.toponomastica_id;
+
+        # 2) NOT NULL dopo backfill
+        - addNotNullConstraint:
+            schemaName: config
+            tableName: stradario_generale
+            columnName: indirizzo_normalizzato
+            constraintName: stradario_generale_indirizzo_normalizzato_not_null
+
+        # 3) Indice GIN trigram per ricerche veloci su "nome via"
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_stradario_generale_norm_trgm
+                ON config.stradario_generale
+              USING GIN (indirizzo_normalizzato gin_trgm_ops);
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250905-90-config-stradario-generale-upd-indirizzo-normalizzato
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250905-05-config-stradario-generale-upd-indirizzo-normalizzato

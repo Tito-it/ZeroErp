@@ -14,11 +14,7 @@ AS $function$
 DECLARE
   v_parent INTEGER;
 BEGIN
-  -- Normalizza source_tipo (UPPER+TRIM) e default BA = parent se NULL
-  IF NEW.source_tipo IS NOT NULL THEN
-    NEW.source_tipo := upper(btrim(NEW.source_tipo));
-  END IF;
-
+ 
   IF NEW.dest_billing_account_id IS NULL THEN
     SELECT billing_account_id
       INTO v_parent

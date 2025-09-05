@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# Zero ERP — Config: aspetti beni (DDT)
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250905-16-create-config-aspetti-beni
+      author: mctit
+      
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: aspetti_beni
+            remarks: "Elenco aspetti beni (DDT)."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_aspetti_beni
+                    nullable: false
+              - column:
+                  name: codice
+                  type: VARCHAR(16)
+                  constraints: { nullable: false, unique: true }
+                  remarks: "Codice univoco aspetto beni"
+              - column:
+                  name: descrizione
+                  type: VARCHAR(120)
+                  constraints: { nullable: false }
+                  remarks: "Descrizione estesa aspetto beni"
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints: { nullable: false }
+                  remarks: "Flag attivo"
+              - column:
+                  name: meta
+                  type: JSONB
+                  defaultValue: "{}"
+                  remarks: "Estensioni/parametri opzionali"
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+                  remarks: "Audit: data inserimento"
+              - column:
+                  name: user_insert
+                  type: VARCHAR(80)
+                  defaultValueComputed: CURRENT_USER
+                  constraints: { nullable: false }
+                  remarks: "Audit: utente inserimento"
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+                  remarks: "Audit: data aggiornamento"
+              - column:
+                  name: user_update
+                  type: VARCHAR(80)
+                  defaultValueComputed: CURRENT_USER
+                  remarks: "Audit: utente aggiornamento"
+
+        - createIndex:
+            schemaName: config
+            tableName: aspetti_beni
+            indexName: ix_aspetti_beni_attivo
+            columns:
+              - column: { name: attivo }
+
+  - changeSet:
+      id: 20250905-90-create_vendite_aspetti_beni
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250905-15-create_vendite_aspetti_beni

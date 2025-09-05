@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Vendite: fatture_righe, migrazione da source_tipo → sorgente_tipo_id (FK)
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250905-07-alter_vendite_fatture_righe_source_to_fk
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:  { schemaName: vendite, tableName: fatture_righe }
+        - tableExists:  { schemaName: config,  tableName: sorgenti }
+      changes:
+        # 1) Drop indice unico precedente (source_tipo, source_id, source_riga)
+        - dropIndex:
+            schemaName: vendite
+            tableName: fatture_righe
+            indexName: uq_fatture_righe_source
+            ifExists: true
+
+        # 2) Add nuova colonna FK (se non esiste già)
+        - addColumn:
+            schemaName: vendite
+            tableName: fatture_righe
+            columns:
+              - column:
+                  name: sorgente_tipo_id
+                  type: BIGINT
+                  remarks: "FK → config.sorgenti (ex source_tipo testuale)"
+
+        # 3) Add FK constraint verso config.sorgenti
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_righe
+            baseColumnNames: sorgente_tipo_id
+            constraintName: fk_fatture_righe_sorgente_tipo
+            referencedTableSchemaName: config
+            referencedTableName: sorgenti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # 4) Drop colonna testuale obsoleta (se esiste)
+        - dropColumn:
+            schemaName: vendite
+            tableName: fatture_righe
+            columnName: source_tipo
+            ifExists: true
+
+        # 5) Ricrea indice unico parziale di idempotenza con il nuovo FK
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture_righe
+            indexName: uq_fatture_righe_source_fk
+            unique: true
+            columns:
+              - column: { name: sorgente_tipo_id }
+              - column: { name: source_id }
+              - column: { name: source_riga }
+            where: "sorgente_tipo_id IS NOT NULL"
+            remarks: "Idempotenza import riga (sorgente_tipo_id, source_id, source_riga)"
+
+        # 6) Commento sul vincolo FK
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON CONSTRAINT fk_fatture_righe_sorgente_tipo ON vendite.fatture_righe
+                IS 'FK → config.sorgenti (ex source_tipo testuale).';
+             
+                 
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250905-90-alter_vendite_fatture_righe_source_to_fk
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250905-07-alter_vendite_fatture_righe_source_to_fk
