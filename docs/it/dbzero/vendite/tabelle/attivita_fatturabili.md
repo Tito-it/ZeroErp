@@ -21,7 +21,6 @@
 | user_update | character varying | YES | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
-| sorgente_tipo | character varying | YES |  |
 | sorgente_id | uuid | YES |  |
 | sorgente_riga | bigint | YES | 0 |
 | posticipa_al | date | YES |  |
@@ -30,6 +29,7 @@
 | lock_in_fatturazione | boolean | YES | false |
 | lock_batch_id | uuid | YES |  |
 | fattura_riga_id | bigint | YES |  |
+| sorgente_tipo_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -37,24 +37,23 @@
 | CHECK | chk_attivita_competenza_data_logica |  |
 | CHECK | chk_attivita_competenza_mese_primo |  |
 | CHECK | chk_attivita_quantita_pos |  |
-| CHECK | chk_attivita_sorgente_tripla |  |
 | FOREIGN KEY | fk_attivita_fatturabili_articoli | articolo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_billing_account | billing_account_id |
 | FOREIGN KEY | fk_attivita_fatturabili_istanze_utilities | istanza_utility_id |
-| PRIMARY KEY | attivita_fatturabili_pkey | id |
+| FOREIGN KEY | fk_attivita_fatturabili_sorgente_tipo | sorgente_tipo_id |
+| PRIMARY KEY | pk_attivita_fatturabili | id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| attivita_fatturabili_pkey | `CREATE UNIQUE INDEX attivita_fatturabili_pkey ON vendite.attivita_fatturabili USING btree (id)` |
 | ix_attivita_articolo_flags | `CREATE INDEX ix_attivita_articolo_flags ON vendite.attivita_fatturabili USING btree (articolo_id, approvato, fatturato)` |
 | ix_attivita_billing_competenza | `CREATE INDEX ix_attivita_billing_competenza ON vendite.attivita_fatturabili USING btree (billing_account_id, competenza_mese)` |
 | ix_attivita_fatturabili_fattura_riga_id | `CREATE INDEX ix_attivita_fatturabili_fattura_riga_id ON vendite.attivita_fatturabili USING btree (fattura_riga_id)` |
 | ix_attivita_fatturabili_lock | `CREATE INDEX ix_attivita_fatturabili_lock ON vendite.attivita_fatturabili USING btree (lock_in_fatturazione, lock_batch_id)` |
 | ix_attivita_fatturabili_posticipa_sospesa | `CREATE INDEX ix_attivita_fatturabili_posticipa_sospesa ON vendite.attivita_fatturabili USING btree (posticipa_al, sospesa)` |
-| ix_attivita_fatturabili_sorgente | `CREATE INDEX ix_attivita_fatturabili_sorgente ON vendite.attivita_fatturabili USING btree (sorgente_tipo, sorgente_id)` |
 | ix_attivita_istanza_data | `CREATE INDEX ix_attivita_istanza_data ON vendite.attivita_fatturabili USING btree (istanza_utility_id, data_attivita)` |
-| uq_af_sorgente | `CREATE UNIQUE INDEX uq_af_sorgente ON vendite.attivita_fatturabili USING btree (sorgente_tipo, sorgente_id, sorgente_riga) WHERE (sorgente_tipo IS NOT NULL)` |
+| pk_attivita_fatturabili | `CREATE UNIQUE INDEX pk_attivita_fatturabili ON vendite.attivita_fatturabili USING btree (id)` |
+| uq_attivita_fatturabili_sorgente_fk | `CREATE UNIQUE INDEX uq_attivita_fatturabili_sorgente_fk ON vendite.attivita_fatturabili USING btree (sorgente_tipo_id, sorgente_id, sorgente_riga)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

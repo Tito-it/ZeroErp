@@ -12,7 +12,6 @@ databaseChangeLog:
       author: mctit
       preConditions:
         - onFail: HALT
-        - schemaExists: { schemaName: vendite }
       changes:
         - createTable:
             schemaName: vendite
@@ -38,7 +37,7 @@ databaseChangeLog:
               - column: { name: source_tipo, type: VARCHAR(32), remarks: "Origine import (tipo)" }
               - column: { name: source_id, type: UUID, remarks: "Origine import (id)" }
               - column: { name: valuta_id, type: INTEGER, remarks: "FK → config.valute" }
-              - column: { name: tasso_cambio, type: NUMERIC("18,8"), defaultValueNumeric: 1, constraints: { nullable: false }, remarks: "Tasso di cambio" }
+              - column: { name: tasso_cambio, type: "NUMERIC(18,8)", defaultValueNumeric: 1, constraints: { nullable: false }, remarks: "Tasso di cambio" }
               - column: { name: modalita_pagamento_id, type: INTEGER, remarks: "FK → config.modalita_pagamento" }
               - column: { name: giorni_pagamento, type: SMALLINT, remarks: "Giorni pagamento" }
               - column: { name: fine_mese, type: BOOLEAN, remarks: "Pagamento fine mese" }
@@ -50,17 +49,17 @@ databaseChangeLog:
               - column: { name: aspetto_beni, type: VARCHAR(40), remarks: "Aspetto beni (DDT)" }
               - column: { name: vettore_soggetto_ruolo_id, type: BIGINT, remarks: "FK → vettore come ruolo anagrafico" }
               - column: { name: num_colli, type: INTEGER, remarks: "Numero colli" }
-              - column: { name: peso_lordo, type: NUMERIC("18,3"), remarks: "Peso lordo" }
-              - column: { name: peso_netto, type: NUMERIC("18,3"), remarks: "Peso netto" }
-              - column: { name: volume, type: NUMERIC("18,3"), remarks: "Volume" }
+              - column: { name: peso_lordo, type: "NUMERIC(18,3)", remarks: "Peso lordo" }
+              - column: { name: peso_netto, type: "NUMERIC(18,3)", remarks: "Peso netto" }
+              - column: { name: volume, type: "NUMERIC(18,3)", remarks: "Volume" }
               - column: { name: porto, type: VARCHAR(16), remarks: "FRANCO|ASSEGNATO (per DDT/fattura differita)" }
               - column: { name: targa, type: VARCHAR(20), remarks: "Targa veicolo" }
               - column: { name: data_ora_partenza, type: TIMESTAMPTZ, remarks: "Data/ora partenza" }
               - column: { name: data_ora_consegna_prev, type: TIMESTAMPTZ, remarks: "Data/ora consegna prevista" }
-              - column: { name: imponibile_tot, type: NUMERIC("18,6"), remarks: "Totale imponibile" }
-              - column: { name: sconto_tot, type: NUMERIC("18,6"), remarks: "Totale sconto" }
-              - column: { name: iva_tot, type: NUMERIC("18,6"), remarks: "Totale IVA" }
-              - column: { name: totale_doc, type: NUMERIC("18,6"), remarks: "Totale documento" }
+              - column: { name: imponibile_tot, type: "NUMERIC(18,6)", remarks: "Totale imponibile" }
+              - column: { name: sconto_tot, type: "NUMERIC(18,6)", remarks: "Totale sconto" }
+              - column: { name: iva_tot, type: "NUMERIC(18,6)", remarks: "Totale IVA" }
+              - column: { name: totale_doc, type: "NUMERIC(18,6)", remarks: "Totale documento" }
               - column: { name: note, type: TEXT, remarks: "Note documento" }
               - column: { name: meta, type: JSONB, defaultValue: "{}", remarks: "Estensioni JSON" }
               - column: { name: tx_id, type: UUID, remarks: "Id transazione" }

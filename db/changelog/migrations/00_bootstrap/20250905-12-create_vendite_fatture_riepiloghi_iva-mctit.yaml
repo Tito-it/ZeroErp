@@ -1,0 +1,171 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Vendite: fatture_riepiloghi_iva
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250905-12-create_vendite_fatture_riepiloghi_iva
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:  { schemaName: vendite, tableName: fatture }
+        
+        - tableExists:  { schemaName: config,  tableName: iva }
+        - tableExists:  { schemaName: config,  tableName: iva_natura }
+      changes:
+        # -----------------------------
+        # Tabella
+        # -----------------------------
+        - createTable:
+            schemaName: vendite
+            tableName: fatture_riepiloghi_iva
+            remarks: "Specchietto IVA per fattura (aliquota/natura/esigibilità/split)."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_fatture_r_iva
+                    nullable: false
+
+              - column:
+                  name: fattura_id
+                  type: BIGINT
+                  remarks: "FK → vendite.fatture.id (testata fattura)"
+                  constraints: { nullable: false }
+
+              - column:
+                  name: iva_id
+                  type: INTEGER
+                  remarks: "Aliquota IVA (config.iva.id) — opzionale"
+
+              - column:
+                  name: natura_id
+                  type: INTEGER
+                  remarks: "Natura IVA (config.iva_natura.id) — opzionale; spesso derivata da config.iva.natura_id"
+
+              - column:
+                  name: esigibilita
+                  type: CHAR(1)
+                  remarks: "Esigibilità IVA: I|D|S (immediata/differita/split)"
+
+              - column:
+                  name: split_payment
+                  type: BOOLEAN
+                  remarks: "Flag split payment (se applicabile)"
+
+              - column:
+                  name: imponibile
+                  type: NUMERIC(18,6)
+                  defaultValueNumeric: 0
+                  remarks: "Imponibile per riga di riepilogo"
+                  constraints: { nullable: false }
+
+              - column:
+                  name: imposta
+                  type: NUMERIC(18,6)
+                  defaultValueNumeric: 0
+                  remarks: "Imposta per riga di riepilogo"
+                  constraints: { nullable: false }
+
+              - column:
+                  name: arrotondamento
+                  type: NUMERIC(18,6)
+                  defaultValueNumeric: 0
+                  remarks: "Arrotondamento applicato per la combinazione fiscale"
+                  constraints: { nullable: false }
+
+        # -----------------------------
+        # Foreign keys
+        # -----------------------------
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_riepiloghi_iva
+            baseColumnNames: fattura_id
+            constraintName: fk_fatture_r_iva_fattura
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_riepiloghi_iva
+            baseColumnNames: iva_id
+            constraintName: fk_fatture_r_iva_iva
+            referencedTableSchemaName: config
+            referencedTableName: iva
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_riepiloghi_iva
+            baseColumnNames: natura_id
+            constraintName: fk_fatture_r_iva_natura
+            referencedTableSchemaName: config
+            referencedTableName: iva_natura
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # -----------------------------
+        # Check constraints
+        # -----------------------------
+        
+        - sql:
+            splitStatements: false
+            sql: |
+
+              ALTER TABLE vendite.fatture_riepiloghi_iva
+              ADD CONSTRAINT chk_fatture_r_iva_esigibilita
+              CHECK (esigibilita IS NULL OR esigibilita IN ('I','D','S'));
+
+        # -----------------------------
+        # Indici
+        # -----------------------------
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture_riepiloghi_iva
+            indexName: ix_fatture_r_iva_fattura
+            columns:
+              - column: { name: fattura_id }
+
+        # Indice UNICO sulla combinazione fiscale (usa espressioni → blocco SQL)
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Unicità per combinazione fiscale per ciascuna fattura:
+              -- COALESCE per trattare i NULL come valore di default e garantire l'unicità logica.
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_fatture_r_iva_key
+                ON vendite.fatture_riepiloghi_iva (
+                  fattura_id,
+                  COALESCE(natura_id, 0),
+                  COALESCE(esigibilita, 'I'),
+                  COALESCE(split_payment, false),
+                  COALESCE(iva_id, 0)
+                );
+
+              COMMENT ON INDEX vendite.uq_fatture_r_iva_key
+                IS 'Unicità riga riepilogo per fattura e combinazione fiscale (fattura_id, natura_id?, esigibilità, split, iva_id?).';
+
+  - changeSet:
+      id: 20250905-90-create_vendite_fatture_riepiloghi_iva
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250905-12-create_vendite_fatture_riepiloghi_iva

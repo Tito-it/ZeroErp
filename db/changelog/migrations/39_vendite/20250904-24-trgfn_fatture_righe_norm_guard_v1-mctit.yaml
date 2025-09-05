@@ -10,7 +10,8 @@ databaseChangeLog:
   - changeSet:
       id: 20250904-24-trgfn_fatture_righe_norm_guard_v1
       author: mctit
-      
+      runOnChange: true
+      validCheckSums: ["ANY"]
       changes:
         - sql:
             splitStatements: false
@@ -25,11 +26,7 @@ databaseChangeLog:
               DECLARE
                 v_parent INTEGER;
               BEGIN
-                -- Normalizza source_tipo (UPPER+TRIM) e default BA = parent se NULL
-                IF NEW.source_tipo IS NOT NULL THEN
-                  NEW.source_tipo := upper(btrim(NEW.source_tipo));
-                END IF;
-
+               
                 IF NEW.dest_billing_account_id IS NULL THEN
                   SELECT billing_account_id
                     INTO v_parent
@@ -42,7 +39,7 @@ databaseChangeLog:
               END$$;
 
               COMMENT ON FUNCTION vendite.trgfn_fatture_righe_norm_guard()
-                IS 'Normalizza source_tipo (UPPER+TRIM) e, se NULL, setta dest_billing_account_id = BA della testata fattura.';
+                IS 'setta dest_billing_account_id = BA della testata fattura.';
 
         # -----------------------------
         # Trigger
@@ -50,8 +47,8 @@ databaseChangeLog:
         - sql:
             splitStatements: false
             sql: |
-              DROP TRIGGER IF EXISTS trg_fatture_righe_norm_guard ON vendite.fatture_righe;
-              CREATE TRIGGER trg_fatture_righe_norm_guard
+              DROP TRIGGER IF EXISTS trg_fatture_righe_ins_upd_norm_guard ON vendite.fatture_righe;
+              CREATE TRIGGER trg_fatture_righe_ins_upd_norm_guard
                 BEFORE INSERT OR UPDATE ON vendite.fatture_righe
                 FOR EACH ROW
                 EXECUTE FUNCTION vendite.trgfn_fatture_righe_norm_guard();      

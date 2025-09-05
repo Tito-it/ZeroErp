@@ -31,6 +31,8 @@ databaseChangeLog:
               CREATE EXTENSION IF NOT EXISTS pgcrypto;
               CREATE EXTENSION IF NOT EXISTS postgis;
               CREATE EXTENSION IF NOT EXISTS postgis_topology;
+              CREATE EXTENSION IF NOT EXISTS unaccent;
+              CREATE EXTENSION IF NOT EXISTS pg_trgm;
             #  CREATE EXTENSION IF NOT EXISTS pgagent;
   # pgAgent: prova a creare solo se esiste l'estensione nel server; altrimenti non bloccare la pipeline
   - changeSet:

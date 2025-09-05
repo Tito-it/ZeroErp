@@ -1,0 +1,30 @@
+# 📚 Tabella `aspetti_beni`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO |  |
+| codice | character varying | NO |  |
+| descrizione | character varying | NO |  |
+| attivo | boolean | NO | true |
+| meta | jsonb | YES | '{}'::jsonb |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | character varying | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying | YES | CURRENT_USER |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| PRIMARY KEY | pk_aspetti_beni | id |
+| UNIQUE | aspetti_beni_codice_key | codice |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| aspetti_beni_codice_key | `CREATE UNIQUE INDEX aspetti_beni_codice_key ON config.aspetti_beni USING btree (codice)` |
+| ix_aspetti_beni_attivo | `CREATE INDEX ix_aspetti_beni_attivo ON config.aspetti_beni USING btree (attivo)` |
+| pk_aspetti_beni | `CREATE UNIQUE INDEX pk_aspetti_beni ON config.aspetti_beni USING btree (id)` |
+
+---
+{% include-markdown "signature-core.md" %}

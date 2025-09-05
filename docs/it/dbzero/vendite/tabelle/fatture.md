@@ -30,8 +30,6 @@
 | totale_doc | numeric | YES |  |
 | minimo | boolean | NO | false |
 | data_contabilizzazione | date | YES |  |
-| source_tipo | character varying | YES |  |
-| source_id | uuid | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | false |
 | tx_id | uuid | YES |  |
@@ -39,6 +37,8 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
+| sorgente_tipo_id | bigint | YES |  |
+| sorgente_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -48,6 +48,7 @@
 | FOREIGN KEY | fk_fatture_modpag | modalita_pagamento_id |
 | FOREIGN KEY | fk_fatture_registro | registro_id |
 | FOREIGN KEY | fk_fatture_reseller | reseller_soggetto_ruolo_id |
+| FOREIGN KEY | fk_fatture_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_fatture_stato_doc_fiscale | stato_doc_fiscale_id |
 | FOREIGN KEY | fk_fatture_tipo_doc_fiscale | tipo_doc_fiscale_id |
 | FOREIGN KEY | fk_fatture_valuta | valuta_id |
@@ -62,8 +63,7 @@
 | ix_fatture_stato_doc | `CREATE INDEX ix_fatture_stato_doc ON vendite.fatture USING btree (stato_doc_fiscale_id)` |
 | pk_fatture | `CREATE UNIQUE INDEX pk_fatture ON vendite.fatture USING btree (id)` |
 | uq_fatture_numero | `CREATE UNIQUE INDEX uq_fatture_numero ON vendite.fatture USING btree (registro_id, anno, COALESCE(serie, ''::character varying), numero) WHERE (numero IS NOT NULL)` |
-| uq_fatture_source | `CREATE UNIQUE INDEX uq_fatture_source ON vendite.fatture USING btree (source_tipo, source_id) WHERE (source_tipo IS NOT NULL)` |
-| uq_fatture_uid | `CREATE UNIQUE INDEX uq_fatture_uid ON vendite.fatture USING btree (uid)` |
+| uq_fatture_sorgente_fk | `CREATE UNIQUE INDEX uq_fatture_sorgente_fk ON vendite.fatture USING btree (sorgente_tipo_id, sorgente_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

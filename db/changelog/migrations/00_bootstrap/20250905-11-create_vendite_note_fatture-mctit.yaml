@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+
+
+  - changeSet:
+      id: 20250830-11-create_vendite_note_fatture
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE TABLE IF NOT EXISTS vendite.note_fatture
+              PARTITION OF vendite.note FOR VALUES IN ('FATTURA');
+              COMMENT ON TABLE vendite.note_fatture
+                IS 'Partizione note per fatture (FK forti verso testata/righe FATTURA).';
+
+        # FK verso testata e (se presente) righe FATTURA
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: note_fatture
+            baseColumnNames: target_id
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture
+            referencedColumnNames: id
+            constraintName: fk_fatture_note_testata
+            onUpdate: CASCADE
+            onDelete: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: note_fatture
+            baseColumnNames: target_riga_id
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture_righe
+            referencedColumnNames: id
+            constraintName: fk_fatture_note_riga
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        # Check di coerenza ancoraggio
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.note_fatture
+              ADD CONSTRAINT chk_fatture_note_anchor
+              CHECK (
+                (anchor_tipo = 'DOCUMENTO' AND target_riga_id IS NULL AND posizione IN ('HEADER','FOOTER','SEZIONE'))
+                OR
+                (anchor_tipo = 'RIGA'      AND target_riga_id IS NOT NULL AND posizione IN ('BEFORE','AFTER'))
+              );
+              COMMENT ON CONSTRAINT chk_fatture_note_anchor ON vendite.note_fatture
+                IS 'Regole di coerenza tra anchor_tipo, riga e posizione per fatture.';
+
+        # Indice di rendering
+        - createIndex:
+            schemaName: vendite
+            tableName: note_fatture
+            indexName: ix_fatture_note_render
+            columns:
+              - column: { name: target_id }
+              - column: { name: anchor_tipo }
+              - column: { name: target_riga_id }
+              - column: { name: posizione }
+              - column: { name: seq }
+
+  
+  - changeSet:
+      id: 20250830-90-create_vendite_note_fatture
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250830-11-create_vendite_note_fatture

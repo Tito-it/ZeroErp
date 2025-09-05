@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Vendite: fatture_riepiloghi_iva
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Vendite: fatture_scadenze
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250905-12-create_vendite_fatture_riepiloghi_iva
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:  { schemaName: vendite, tableName: fatture }
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: fatture_scadenze
+            remarks: "Rate/scadenze di pagamento per fattura (snapshot)."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { primaryKey: true, primaryKeyName: pk_fatture_scadenze, nullable: false }
+                  remarks: "PK"
+              - column:
+                  name: fattura_id
+                  type: BIGINT
+                  constraints: { nullable: false }
+                  remarks: "FK → vendite.fatture.id (testata fattura)"
+              - column:
+                  name: numero_rata
+                  type: SMALLINT
+                  constraints: { nullable: false }
+                  remarks: "Numero rata/progressivo (per fattura)"
+              - column:
+                  name: data_scadenza
+                  type: DATE
+                  constraints: { nullable: false }
+                  remarks: "Data di scadenza rata"
+              - column:
+                  name: importo
+                  type: NUMERIC(18,6)
+                  constraints: { nullable: false }
+                  remarks: "Importo rata (>= 0)"
+              - column:
+                  name: meta
+                  type: JSONB
+                  defaultValue: "{}"
+                  constraints: { nullable: false }
+                  remarks: "Estensioni JSON"
+             
+              - column:
+                  name: storicizza
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints: { nullable: false }
+                  remarks: "Snapshot su UPDATE/DELETE"
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+                  remarks: "Audit: data inserimento"
+              - column:
+                  name: user_insert
+                  type: VARCHAR(80)
+                  defaultValueComputed: CURRENT_USER
+                  constraints: { nullable: false }
+                  remarks: "Audit: utente inserimento"
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+                  remarks: "Audit: data aggiornamento"
+              - column:
+                  name: user_update
+                  type: VARCHAR(80)
+                  defaultValueComputed: CURRENT_USER
+                  remarks: "Audit: utente aggiornamento"
+              
+              - column:
+                  name: tx_id
+                  type: UUID
+                  remarks: "Transaction correlation id."
+
+        # Foreign key
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_scadenze
+            baseColumnNames: fattura_id
+            constraintName: fk_fatture_scadenze_fattura
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        # Check constraint
+        
+        - sql:
+            splitStatements: false
+            sql: |
+
+              ALTER TABLE vendite.fatture_scadenze
+              ADD CONSTRAINT chk_fatture_scadenze_importo_pos
+              CHECK (importo >= 0);
+
+
+        # Indici
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture_scadenze
+            indexName: uq_fatture_scadenze_nr
+            unique: true
+            columns:
+              - column: { name: fattura_id }
+              - column: { name: numero_rata }
+
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture_scadenze
+            indexName: ix_fatture_scadenze_data
+            columns:
+              - column: { name: data_scadenza }
+
+  - changeSet:
+      id: 20250905-90-create_vendite_fatture_riepiloghi_iva
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250905-12-create_vendite_fatture_riepiloghi_iva

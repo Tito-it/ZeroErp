@@ -36,8 +36,7 @@
 | FOREIGN KEY | fk_stati_config | stato_id, stato_id |
 | FOREIGN KEY | fk_tipi_indirizzo_config | tipo_indirizzo_id |
 | PRIMARY KEY | pk_indirizzi | id |
-| UNIQUE | uq_indirizzi_dettaglio_unique | soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_dettaglio_id |
-| UNIQUE | uq_indirizzi_libero_unique | soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_libero |
+| UNIQUE | uq_indirizzi_ruolo_tipo | soggetto_ruolo_id, tipo_indirizzo_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -50,8 +49,7 @@
 | ix_indirizzi_stato_id | `CREATE INDEX ix_indirizzi_stato_id ON anagrafiche.indirizzi USING btree (stato_id)` |
 | ix_indirizzi_tipo_indirizzo_id | `CREATE INDEX ix_indirizzi_tipo_indirizzo_id ON anagrafiche.indirizzi USING btree (tipo_indirizzo_id)` |
 | pk_indirizzi | `CREATE UNIQUE INDEX pk_indirizzi ON anagrafiche.indirizzi USING btree (id)` |
-| uq_indirizzi_dettaglio_unique | `CREATE UNIQUE INDEX uq_indirizzi_dettaglio_unique ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_dettaglio_id)` |
-| uq_indirizzi_libero_unique | `CREATE UNIQUE INDEX uq_indirizzi_libero_unique ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, tipo_indirizzo_id, indirizzo_libero)` |
+| uq_indirizzi_ruolo_tipo | `CREATE UNIQUE INDEX uq_indirizzi_ruolo_tipo ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, tipo_indirizzo_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

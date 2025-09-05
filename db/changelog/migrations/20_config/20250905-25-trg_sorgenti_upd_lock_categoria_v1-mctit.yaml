@@ -1,0 +1,36 @@
+﻿# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  
+
+  - changeSet:
+      id: 20250905-25-trg_sorgenti_upd_lock_categoria_v1
+      author: mctit
+      runOnChange: true 
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche alla categoria
+                CREATE OR REPLACE TRIGGER trg_sorgenti_upd_lock_categoria
+                BEFORE UPDATE 
+                ON config.sorgenti
+                FOR EACH ROW
+                WHEN (old.categoria::text IS DISTINCT FROM 
+                      new.categoria::text)
+                EXECUTE FUNCTION script.trgfn_lock_columns(
+                  'categoria', 
+                  'CODICE_NON_MODIFICABILE'
+                );
+
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_sorgenti_upd_lock_categoria
+                ON config.sorgenti
+                IS 'La categoria sorgente non può essere modificato';
