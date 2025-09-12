@@ -5,6 +5,7 @@
 - [articoli_gruppi](tabelle/articoli_gruppi.md) — * Consentire la **classificazione gerarchica** degli articoli in gruppi omogenei. * Facilitare **statistiche e analisi di vendita** per categoria. * Supportare **criteri di stampa e raggruppamento** nei documenti fiscali e gestionali. * Offrire un **meccanismo di attivazione/disattivazione** senza perdere lo storico.
 - [articoli_spesa](tabelle/articoli_spesa.md) — * Definire un **catalogo centralizzato** delle voci di spesa utilizzabili in fatturazione. * Abilitare **riepiloghi e totalizzazioni** per voce di spesa nei documenti (es. bolletta, fattura). * Offrire un **testo di stampa** specifico per la voce di spesa, distinto dalla descrizione interna.
 - [articoli_tipologie](tabelle/articoli_tipologie.md) — * Classificare gli articoli secondo **tipologie funzionali** (es. materia prima, servizi, accessori). * Distinguere tra **descrizione estesa** e **descrizione breve**, per gestire contesti documentali differenti. * Fornire uno strumento di aggregazione per reportistica e controlli gestionali.
+- [articolo_regole_fatturazione](tabelle/articolo_regole_fatturazione.md)
 - [attivita_fatturabili](tabelle/attivita_fatturabili.md)
 - [contratti](tabelle/contratti.md)
 - [contratti_righe](tabelle/contratti_righe.md)
@@ -17,7 +18,11 @@
 - [note](tabelle/note.md)
 - [note_contratto](tabelle/note_contratto.md)
 - [note_fatture](tabelle/note_fatture.md)
+- [note_ordini](tabelle/note_ordini.md)
 - [note_preventivo](tabelle/note_preventivo.md)
+- [ordini](tabelle/ordini.md)
+- [ordini_indirizzi](tabelle/ordini_indirizzi.md)
+- [ordini_righe](tabelle/ordini_righe.md)
 - [preventivi](tabelle/preventivi.md)
 - [preventivi_righe](tabelle/preventivi_righe.md)
 - [registri_fatturazione](tabelle/registri_fatturazione.md)
@@ -28,6 +33,7 @@
 - [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md)
 - [trgfn_a10_attivita_fatturabili_guard_fatturato](funzioni/trgfn_a10_attivita_fatturabili_guard_fatturato.md)
 - [trgfn_a10_fatture_protect_num](funzioni/trgfn_a10_fatture_protect_num.md)
+- [trgfn_a10_ordini_v_protect_num](funzioni/trgfn_a10_ordini_v_protect_num.md)
 - [trgfn_a11_fatture_numerata_non_annulabile](funzioni/trgfn_a11_fatture_numerata_non_annulabile.md)
 - [trgfn_attivita_fatturabili_guard_ba_coerenza](funzioni/trgfn_attivita_fatturabili_guard_ba_coerenza.md)
 - [trgfn_attivita_fatturabili_guard_fonte](funzioni/trgfn_attivita_fatturabili_guard_fonte.md)

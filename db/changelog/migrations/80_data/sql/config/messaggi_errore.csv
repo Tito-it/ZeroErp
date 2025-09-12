@@ -22,10 +22,17 @@ E_ARGOMENTI_A_COPPIE,it,Passare gli argomenti a coppie,"","",13
 E_DEFAULT_CONTATTO_MISSING,it,Tipo contatto DEFAULT non trovato in config.tipi_contatti. Impossibile creare contatto fallback.,"","",1
 W_TXID_NOT_REGISTERED,it,Warning - tx_id %s non registrato nella tabella dbops.transaction_ids ,L'id transaction non corrisponde con quello assegnato nella tabella transactions_id ,Andare nella tabella dei log per verificare il problema,19
 E_SQL_READ_TABLE,it,Errore  in lettura tabella: %s.  Sqlerror: %s',Errore sql da verificare,Verificare la stringa sql in errore,20
-E_DRYRUN_CREATE_TRIGGER,it,Errore generazione trigger,"","",36
-E_TX_ID,it,Errore generazione trigger per TX_ID. Sqlerrm: %s,"","",37
 E_AUDIT_UPDATE,it,Errore generazione trigger per AUDIT_UPDATE. Sqlerrm: %s,"","",38
 E_STORICO_UPD,it,Errore generazione trigger per STORICO_UPD. Sqlerrm: %s,"","",39
+E_COMPETENZA_SUPERATA,it,Data attività %s successiva al mese di competenza %s,Non può essere generata una attività con data inferiore alla competenza,Assegnare una data competenza superiore o uguale alla data attività,48
+E_REGOLA_FATTURAZIONE_MANCANTE,it,Regola di fatturazione mancante per articolo %s,"","",46
+E_FONTE_QUANTITA_NON_VALIDA,it,Fonte quantità %s non compatibile con vendite.attivita_fatturabili (articolo %s),"","",47
+E_COMPETENZA,it,"Specificare SOLO competenza_mese oppure competenza_data (trovati entrambi: mese=%s, data=%s)","","",49
+E_COERENZA_ID,it,il valore id  per  %s valore %s non coincide con quello presente nella tabella %s valore%s,"","",50
+E_NOTA_PREVENTIVO,it,La riga %s non appartiene al preventivo %s,"","",51
+E_NOTA_CONTRATTO,it,La riga %s non appartiene al preventivo %s,"","",52
+E_CONTO_BANCARIO,it,Conto bancario  %s non attivo.,"","",53
+E_DATA_AL_MINORE_DAL,it,Il valore della data al %s è inferiore  alla data dal %s,"","",54
 E_STORICO_DLT,it,Errore generazione trigger per STORICO_DLT. Sqlerrm: %s,"","",40
 E_SNAPSHOT_ID_NOT_FOUND,it,Errore ottenimento ID: %s,Non è stato possibile reperire id della transazione snapshot,"",26
 "E_ATTIVO_cascade
@@ -36,12 +43,18 @@ E_SNAPSHOT_ID_NOT_FOUND,it,Errore ottenimento ID: %s,Non è stato possibile repe
 ",it,Errore generazione regola ATTIVO_block. Sqlerrm: %s,"","",43
 E_VALORE_MANCANTE,it,Indicare un valore per %s. Dato obbligatorio.,Non è stato assegnato un valore all'informazione richiesta.,Assegnare il valore al dato obbligatorio,32
 E_DATA_FINE_NON_MAGGIORE_DI_INIZIO,it,Il valore della data finale %s è minore uguale alla data iniziale,Data finale inferiore uguale alla data finale,Modificare la data finale con un valore maggiore di iniziale,33
+E_SNAPSHOT_INIT_INSERT_ERROR,it,Errore inserimento snapshot iniziale: %s (SQLSTATE: %s),Errore inserimento storico iniziale,"",24
 E_DATA_FINE_INFERIORE_DI_INIZIO,it,Il valore della data finale %s è inferiore  alla data iniziale,Data finale inferiore uguale alla data finale,Modificare la data finale con un valore maggiore o uguale di iniziale,34
 E_ID_FISCALI_DIVERSI,it,Parent account (%) appartiene a id fiscale diverso: % vs %,Gli identificativi fiscali tra account e parents non coincidono,Scegliere un parent account che coincida con l'account,35
-E_SNAPSHOT_INIT_INSERT_ERROR,it,Errore inserimento snapshot iniziale: %s (SQLSTATE: %s),Errore inserimento storico iniziale,"",24
 E_SNAPSHOT_FINAL_INSERT_ERROR,it,Errore inserimento snapshot finale: %s (SQLSTATE: %s),Errore inserimento storico finale,"",25
+E_DATA_ATTIVAZIONE_MANDATO,it,Mandato ATTIVO senza data_attivazione,"","",55
+E_NUMERAZIONE_IMMUTABILE,it,La numerazione non può essere modificata,Il documento è numerato e non si può rinumerare,"",56
+E_FATTURA_NON_ANNULLABILE,it,La fattura numerata non si può annullare,Il documento è numerato e non si può annullare,"",58
+E_DRYRUN_CREATE_TRIGGER,it,Errore generazione trigger,"","",36
+E_TX_ID,it,Errore generazione trigger per TX_ID. Sqlerrm: %s,"","",37
 E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO,it,Informazioni della tabella anagrafiche.dati_societari non collegate ad un soggetto ti tipo Aziendale.,Informazioni della tabella anagrafiche.dati_societari non collegate ad un soggetto ti tipo Aziendale.,Collegare le informazioni ad un soggetto di tipo aziendale,27
 E_QUERY_FAILED_SCHEMA_TABLE,it,Errore nella ricerca dai dati nella tabella %s.%s,Lo schema o la tabella non sono corretti,Immettere i nomi della tabella o schema corretti,29
 E_QUERY_FAILED,it,Errore di esecuzione della query per la tabella: schema %s  tabella %s. SQLSTATE(%s),La query è errata,"",31
 E_DEFAULT_ERRATO,it,la tabella %s parametro %s non ha valori per %s,Il codice impostato nella tabella dei parametri non ha un valore valido,Verificare la tabella dei parametri di default e reimpostare il codice correttamente,28
-E_STORICO_PROVISION,it,Errore generazione della tabella nello schema storico,,,44
+E_STORICO_PROVISION,it,Errore generazione della tabella nello schema storico,"","",44
+E_STORICO_PARENT_PK_NOT_FOUND,it,Impossibile determinare PK o tipo per tabella padre. (SQLERROR: %s),"","",45

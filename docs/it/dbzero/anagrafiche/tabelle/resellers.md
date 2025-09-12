@@ -48,6 +48,8 @@
 | trg_resellers_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_norm()` |
 | trg_resellers_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_norm()` |
 | trg_upd_resellers_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_z90_resellers_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('resellers_id')` |
+| trg_z90_resellers_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('resellers_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog: 
+  - changeSet:
+      id: 20250907-01-update-tipi-doc-fiscale-fe-and-internal
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: tipi_doc_fiscale }
+      changes:
+        # 1) Aggiungo colonne
+        - addColumn:
+            schemaName: config
+            tableName: tipi_doc_fiscale
+            columns:
+              - column:
+                  name: codice_interno
+                  type: VARCHAR(32)
+                  remarks: "Codice tecnico stabile per logica/app (immutabile)."
+              - column:
+                  name: codice_fe
+                  type: VARCHAR(8)
+                  remarks: "Codice Fatturazione Elettronica (Italia), es. TD01/TD04. Facoltativo."
+
+        # 2) Backfill codice_interno dagli attuali codici
+        - sql:
+            splitStatements: false
+            sql: |
+              UPDATE config.tipi_doc_fiscale
+                 SET codice_interno = codice
+               WHERE codice_interno IS NULL;
+
+        # 3) Vincoli su codice_interno
+        - addNotNullConstraint:
+            schemaName: config
+            tableName: tipi_doc_fiscale
+            columnName: codice_interno
+            constraintName: tipi_doc_fiscale_codice_interno_not_null
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: tipi_doc_fiscale
+            columnNames: codice_interno
+            constraintName: uq_tipi_doc_fiscale_codice_interno
+
+        # 4) Immutabilità codice_interno (usa il tuo trigger generico)
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_tipi_doc_fiscale_upd_lock_codiceinterno ON config.tipi_doc_fiscale;
+              CREATE TRIGGER trg_tipi_doc_fiscale_upd_lock_codiceinterno
+              BEFORE UPDATE ON config.tipi_doc_fiscale
+              FOR EACH ROW
+              WHEN (old.codice_interno IS DISTINCT FROM new.codice_interno)
+              EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno','CODICE_NON_MODIFICABILE');
+
+        # 5) Vincoli/indici su codice_fe (pattern TD##, univoco quando valorizzato)
+        
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_tipi_doc_fiscale_codice_fe
+                ON config.tipi_doc_fiscale(codice_fe)
+              WHERE codice_fe IS NOT NULL;
+
+        # 6) Commenti colonne (espliciti)
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN config.tipi_doc_fiscale.codice_interno
+                IS 'Codice tecnico stabile per logica e mapping; immutabile.';
+              COMMENT ON COLUMN config.tipi_doc_fiscale.codice_fe
+                IS 'Codice FE Italia (es. TD01, TD04). NULL se non applicabile.';
+
+  - changeSet:
+      id: 20250912-02-update-config-tipi-doc-fiscale
+      author: mctit
+      changes:              
+        - addColumn:
+            schemaName: config
+            tableName: tipi_doc_fiscale
+            columns: 
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data inserimento" }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false }, remarks: "Audit: utente inserimento" }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data aggiornamento" }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, remarks: "Audit: utente aggiornamento" }
+  - changeSet:
+      id: 20250912-90-update-config-tipi-doc-fiscale
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250912-01-update-config-tipi-doc-fiscale
