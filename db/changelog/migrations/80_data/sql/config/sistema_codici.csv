@@ -1,8 +1,8 @@
 id,codice_tipo,descrizione,prefisso,separatore,lunghezza_numero,usa_sequenza,nome_sequenza,attivo,data_insert,user_insert,data_update,user_update,tx_id
-3,istanze_utilities,Codice istanza (ex fornitura) automatico,IFO,"",6,t,anagrafiche.istanze_utilities_codice_seq,t,2025-04-22 16:38:12.173131+02,postgres,2025-09-12 12:02:31.532032+02,titodb,48272f44-f0c2-406d-aa20-a9d0634ed2d8
-1,soggetto,Codice soggetto automatico,SGT,"",6,t,anagrafiche.soggetti_codice_seq,t,2025-04-12 09:47:40.919091+02,postgres,2025-09-12 12:02:31.532032+02,titodb,48272f44-f0c2-406d-aa20-a9d0634ed2d8
-2,billing_account,Codice cliente(account) automatico,BAC,"",6,t,anagrafiche.billing_account_codice_seq,t,2025-04-22 16:25:06.668578+02,postgres,2025-09-12 12:02:31.532032+02,titodb,48272f44-f0c2-406d-aa20-a9d0634ed2d8
-4,fornitori,Codice fornitore,FOR,"",6,t,anagrafiche.fornitori_codice_seq,t,2025-09-01 23:10:41.13888+02,postgres,2025-09-12 12:02:31.532032+02,titodb,48272f44-f0c2-406d-aa20-a9d0634ed2d8
-5,emittenti-f,Codice emittente fiscale,EMF,"",6,t,anagrafiche.emittente_f_codice_seq,t,2025-09-04 12:40:42.136476+02,postgres,2025-09-12 12:02:31.532032+02,titodb,48272f44-f0c2-406d-aa20-a9d0634ed2d8
-6,resellers,Codice reseller,RES,"",6,t,anagrafiche.resellers_codice_seq,t,2025-09-04 12:42:02.660385+02,postgres,2025-09-12 12:02:31.532032+02,titodb,48272f44-f0c2-406d-aa20-a9d0634ed2d8
-7,vettori,Codice vettore,VET,"",6,t,anagrfiche.vettore_codice_seq,t,2025-09-04 12:42:46.570967+02,postgres,2025-09-12 12:02:31.532032+02,titodb,48272f44-f0c2-406d-aa20-a9d0634ed2d8
+3,istanze_utilities,Codice istanza (ex fornitura) automatico,IFO,"",6,t,anagrafiche.istanze_utilities_codice_seq,t,2025-04-22 16:38:12.173131+02,postgres,2025-09-12 15:21:03.311773+02,titodb,3521899c-18e9-4fb4-b3dc-398cd612637a
+1,soggetto,Codice soggetto automatico,SGT,"",6,t,anagrafiche.soggetti_codice_seq,t,2025-04-12 09:47:40.919091+02,postgres,2025-09-12 15:21:03.311773+02,titodb,3521899c-18e9-4fb4-b3dc-398cd612637a
+2,billing_account,Codice cliente(account) automatico,BAC,"",6,t,anagrafiche.billing_account_codice_seq,t,2025-04-22 16:25:06.668578+02,postgres,2025-09-12 15:21:03.311773+02,titodb,3521899c-18e9-4fb4-b3dc-398cd612637a
+4,fornitori,Codice fornitore,FOR,"",6,t,anagrafiche.fornitori_codice_seq,t,2025-09-01 23:10:41.13888+02,postgres,2025-09-12 15:21:03.311773+02,titodb,3521899c-18e9-4fb4-b3dc-398cd612637a
+5,emittenti-f,Codice emittente fiscale,EMF,"",6,t,anagrafiche.emittente_f_codice_seq,t,2025-09-04 12:40:42.136476+02,postgres,2025-09-12 15:21:03.311773+02,titodb,3521899c-18e9-4fb4-b3dc-398cd612637a
+6,resellers,Codice reseller,RES,"",6,t,anagrafiche.resellers_codice_seq,t,2025-09-04 12:42:02.660385+02,postgres,2025-09-12 15:21:03.311773+02,titodb,3521899c-18e9-4fb4-b3dc-398cd612637a
+7,vettori,Codice vettore,VET,"",6,t,anagrfiche.vettore_codice_seq,t,2025-09-04 12:42:46.570967+02,postgres,2025-09-12 15:21:03.311773+02,titodb,3521899c-18e9-4fb4-b3dc-398cd612637a

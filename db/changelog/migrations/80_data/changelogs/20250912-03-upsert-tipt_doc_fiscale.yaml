@@ -39,14 +39,12 @@ databaseChangeLog:
               
               - column: { name: descrizione,  type: STRING }
               - column: { name: attivo,  type: BOOLEAN }
-              - column: { name: ordine,    type: STRING }
+              - column: { name: ordine,    type: STRING , defaultValue: 'null'}
               - column:
                   name: meta
                   type: JSON
                   # se il CSV ha valore vuoto, usa {} come JSON valido
                   defaultValue: "{}"
-              - column: { name: codice_interno,    type: STRING }
-              
               - column: { name: codice_interno,    type: STRING }
               - column: { name: codice_fe,    type: STRING }             
               - column: { name: data_insert,  type: STRING }

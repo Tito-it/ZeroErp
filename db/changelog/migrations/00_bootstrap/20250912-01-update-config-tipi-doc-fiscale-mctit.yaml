@@ -10,9 +10,16 @@ databaseChangeLog:
   - changeSet:
       id: 20250907-01-update-tipi-doc-fiscale-fe-and-internal
       author: mctit
+      runOnChange: true
+      validCheckSums: ["ANY"]
       preConditions:
-        - onFail: HALT
-        - tableExists: { schemaName: config, tableName: tipi_doc_fiscale }
+      - onFail: MARK_RAN     # se la precondition fallisce, segna come eseguito e salta
+      - onError: MARK_RAN
+      - not:
+          - columnExists:
+              schemaName: config
+              tableName: tipi_doc_fiscale
+              columnName: codice_interno
       changes:
         # 1) Aggiungo colonne
         - addColumn:
@@ -48,17 +55,7 @@ databaseChangeLog:
             columnNames: codice_interno
             constraintName: uq_tipi_doc_fiscale_codice_interno
 
-        # 4) Immutabilità codice_interno (usa il tuo trigger generico)
-        - sql:
-            splitStatements: false
-            sql: |
-              DROP TRIGGER IF EXISTS trg_tipi_doc_fiscale_upd_lock_codiceinterno ON config.tipi_doc_fiscale;
-              CREATE TRIGGER trg_tipi_doc_fiscale_upd_lock_codiceinterno
-              BEFORE UPDATE ON config.tipi_doc_fiscale
-              FOR EACH ROW
-              WHEN (old.codice_interno IS DISTINCT FROM new.codice_interno)
-              EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno','CODICE_NON_MODIFICABILE');
-
+        
         # 5) Vincoli/indici su codice_fe (pattern TD##, univoco quando valorizzato)
         
         - sql:

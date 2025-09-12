@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250912-02-create_vendite_ddt_indirizzi
+      author: mctit
+      runOnChange: true
+      changes:
+       
+        - createTable:
+            schemaName: vendite
+            tableName: ddt_indirizzi
+            remarks: "Snapshot indirizzi collegati al ddt; uno per tipo ( spedizione, fornitura, residenza). Includere nello snapshot la mail."
+            columns:
+                  - column:
+                        name: id
+                        type: BIGINT 
+                        remarks: "PK "
+                        autoIncrement: true
+                        generationType: BY DEFAULT
+                        constraints:
+                          primaryKey: true
+                          primaryKeyName: pk_ddt_indirizzi
+                          nullable: false
+                  
+                  - column:
+                        name: ddt_id
+                        type: BIGINT
+                        remarks: "FK → vendite.ddt(id)."
+                        constraints:
+                          nullable: false
+                  - column:
+                        name: tipo_indirizzo_id
+                        type: BIGINT
+                        remarks: "FK → config.tipi_indirizzi(id). Sostituisce ddt_indirizzi.tipo_indirizzo (string)."
+                  - column:
+                        name: snapshot
+                        type: JSONB
+                        defaultValueComputed: "'{}'::jsonb"
+                        remarks: "Snapshot completo dell'indirizzo al momento dell'emissione."
+                        constraints:
+                          nullable: false
+                  - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data inserimento" }
+                  - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false }, remarks: "Audit: utente inserimento" }
+                  - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data aggiornamento" }
+                  - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, remarks: "Audit: utente aggiornamento" }
+
+
+
+        - addUniqueConstraint:
+                  schemaName: vendite
+                  tableName: ddt_indirizzi
+                  columnNames: ddt_id, tipo_indirizzo_id
+                  constraintName: uq_ddt_indirizzi_uno_per_tipo
+
+
+        - addForeignKeyConstraint:
+                  baseTableSchemaName: vendite
+                  baseTableName: ddt_indirizzi
+                  baseColumnNames: ddt_id
+                  constraintName: fk_ddt_indirizzo_ordine
+                  referencedTableSchemaName: vendite
+                  referencedTableName: ddt
+                  referencedColumnNames: id
+                  onDelete: CASCADE
+                  onUpdate: CASCADE
+        # 3) Vincolo FK + NOT NULL
+        - addForeignKeyConstraint:
+                  baseTableSchemaName: vendite
+                  baseTableName: ddt_indirizzi
+                  baseColumnNames: tipo_indirizzo_id
+                  constraintName: fk_ddt_indirizzo_tipo
+                  referencedTableSchemaName: config
+                  referencedTableName: tipi_indirizzi
+                  referencedColumnNames: id
+                  onUpdate: CASCADE
+                  onDelete: NO ACTION
+        - addNotNullConstraint:
+                  schemaName: vendite
+                  tableName: ddt_indirizzi
+                  columnName: tipo_indirizzo_id
+                  constraintName: ddt_indirizzo_tipo_id_not_null         
+
+
+        - createIndex:
+                  schemaName: vendite
+                  tableName: ddt_indirizzi
+                  indexName: ix_ddt_indirizzo_ordine
+                  columns:
+                  - column: { name: ddt_id }
+          
+
+        - sql:
+                 sql: |
+                  COMMENT ON CONSTRAINT fk_ddt_indirizzo_ordine ON vendite.ddt_indirizzi IS 'FK → vendite.ddt(id)';
+                  COMMENT ON CONSTRAINT fk_ddt_indirizzo_tipo ON vendite.ddt_indirizzi IS 'FK → anagrafiche.indirizzi(id)';
+
+
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250907-90-create_vendite_ddt_indirizzi
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250907-01-create_vendite_ddt_indirizzi

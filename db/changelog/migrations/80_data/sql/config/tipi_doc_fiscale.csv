@@ -1,3 +1,3 @@
 id,codice,descrizione,attivo,ordine,meta,codice_interno,codice_fe,data_insert,user_insert,data_update,user_update
-1,FATTURA,Fattura,t,,{},FATTURA,TD01,2025-09-12 14:54:58.078948+02,titodb,2025-09-12 14:54:58.078948+02,titodb
-2,NOTA_CREDITO,Nota di credito,t,,{},NOTA_CREDITO,TD04,2025-09-12 14:54:58.078948+02,titodb,2025-09-12 14:54:58.078948+02,titodb
+1,FATTURA,Fattura,t,10,{},FATTURA,TD01,2025-09-12 14:54:58.078948+02,titodb,2025-09-12 14:54:58.078948+02,titodb
+2,NOTA_CREDITO,Nota di credito,t,20,{},NOTA_CREDITO,TD04,2025-09-12 14:54:58.078948+02,titodb,2025-09-12 14:54:58.078948+02,titodb
