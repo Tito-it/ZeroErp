@@ -1,0 +1,13 @@
+{
+  "terminal.integrated.cwd": "${workspaceFolder}",
+  "files.eol": "\n",
+  "editor.tabSize": 2,
+  "editor.formatOnSave": true,
+
+  // Python (se usi venv locale al repo)
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+
+  // YAML/Markdown comodi per Liquibase & docs
+  "[yaml]": { "editor.insertSpaces": true, "editor.tabSize": 2 },
+  "[markdown]": { "editor.wordWrap": "bounded" }
+}

@@ -26,5 +26,11 @@
 | ix_causali_trasporto_attivo | `CREATE INDEX ix_causali_trasporto_attivo ON config.causali_trasporto USING btree (attivo)` |
 | pk_causali_trasporto | `CREATE UNIQUE INDEX pk_causali_trasporto ON config.causali_trasporto USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_block_deact_causali_trasporto_ordini | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini', 'causale_trasporto_id')` |
+| trg_upd_causali_trasporto_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

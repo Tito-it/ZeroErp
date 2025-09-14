@@ -25,5 +25,11 @@
 | ix_resellers_resellers_id_fk | `CREATE INDEX ix_resellers_resellers_id_fk ON storico.resellers USING btree (resellers_id)` |
 | pk_storico_resellers | `CREATE UNIQUE INDEX pk_storico_resellers ON storico.resellers USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_resellers_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_resellers_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

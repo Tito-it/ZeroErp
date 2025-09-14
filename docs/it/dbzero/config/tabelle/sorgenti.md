@@ -33,10 +33,16 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_sorgenti_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_sorgenti_norm()` |
+| trg_block_deact_sorgenti_attivita_fatturabili | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'attivita_fatturabili', 'sorgente_tipo_id')` |
+| trg_block_deact_sorgenti_fatture | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture', 'sorgente_tipo_id')` |
+| trg_block_deact_sorgenti_fatture_righe | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_righe', 'sorgente_tipo_id')` |
+| trg_block_deact_sorgenti_ordini | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini', 'source_tipo_id')` |
+| trg_block_deact_sorgenti_ordini_righe | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini_righe', 'sorgente_tipo_id')` |
 | trg_sorgenti_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_sorgenti_norm()` |
+| trg_sorgenti_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_sorgenti_norm()` |
 | trg_sorgenti_upd_lock_categoria | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('categoria', 'CODICE_NON_MODIFICABILE')` |
 | trg_sorgenti_upd_lock_cod_interno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+| trg_upd_sorgenti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

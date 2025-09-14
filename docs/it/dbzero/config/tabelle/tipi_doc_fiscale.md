@@ -9,12 +9,19 @@
 | attivo | boolean | NO | true |
 | ordine | smallint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
+| codice_interno | character varying | NO |  |
+| codice_fe | character varying | YES |  |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | character varying | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying | YES | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | PRIMARY KEY | pk_tipi_doc_fiscale | id |
 | UNIQUE | uq_tipi_doc_fiscale_codice | codice |
+| UNIQUE | uq_tipi_doc_fiscale_codice_interno | codice_interno |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -22,11 +29,14 @@
 | ix_tipi_doc_fiscale_attivo | `CREATE INDEX ix_tipi_doc_fiscale_attivo ON config.tipi_doc_fiscale USING btree (attivo)` |
 | pk_tipi_doc_fiscale | `CREATE UNIQUE INDEX pk_tipi_doc_fiscale ON config.tipi_doc_fiscale USING btree (id)` |
 | uq_tipi_doc_fiscale_codice | `CREATE UNIQUE INDEX uq_tipi_doc_fiscale_codice ON config.tipi_doc_fiscale USING btree (codice)` |
+| uq_tipi_doc_fiscale_codice_fe | `CREATE UNIQUE INDEX uq_tipi_doc_fiscale_codice_fe ON config.tipi_doc_fiscale USING btree (codice_fe) WHERE (codice_fe IS NOT NULL)` |
+| uq_tipi_doc_fiscale_codice_interno | `CREATE UNIQUE INDEX uq_tipi_doc_fiscale_codice_interno ON config.tipi_doc_fiscale USING btree (codice_interno)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_block_deact_tipi_doc_fiscale_fatture | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture', 'tipo_doc_fiscale_id')` |
+| trg_tipi_doc_fiscale_upd_lock_codiceinterno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
 
 ---
 {% include-markdown "signature-core.md" %}

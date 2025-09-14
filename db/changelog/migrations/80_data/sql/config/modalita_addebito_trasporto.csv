@@ -1,0 +1,4 @@
+id,codice_interno,codice,descrizione,attivo,ordine,meta
+1,FRANCO,PPD,Porto franco (spese a carico mittente),t,10,{}
+2,ASSEGNATO,COL,Porto assegnato (spese a carico destinatario),t,20,{}
+3,TERZI,TP,Addebito a terzi,t,30,{}

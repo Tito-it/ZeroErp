@@ -25,5 +25,11 @@
 | ix_vettori_vettori_id_fk | `CREATE INDEX ix_vettori_vettori_id_fk ON storico.vettori USING btree (vettori_id)` |
 | pk_storico_vettori | `CREATE UNIQUE INDEX pk_storico_vettori ON storico.vettori USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_vettori_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_vettori_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}
