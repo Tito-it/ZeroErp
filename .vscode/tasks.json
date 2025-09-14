@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Liquibase: validate",
+      "type": "shell",
+      "command": "liquibase",
+      "args": ["--defaults-file=${workspaceFolder}/db/liquibase.properties", "validate"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Liquibase: status",
+      "type": "shell",
+      "command": "liquibase",
+      "args": ["--defaults-file=${workspaceFolder}/db/liquibase.properties", "status", "--verbose"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Liquibase: updateSQL",
+      "type": "shell",
+      "command": "liquibase",
+      "args": ["--defaults-file=${workspaceFolder}/db/liquibase.properties", "updateSQL"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Liquibase: update",
+      "type": "shell",
+      "command": "liquibase",
+      "args": ["--defaults-file=${workspaceFolder}/db/liquibase.properties", "update"],
+      "problemMatcher": []
+    }
+  ]
+}

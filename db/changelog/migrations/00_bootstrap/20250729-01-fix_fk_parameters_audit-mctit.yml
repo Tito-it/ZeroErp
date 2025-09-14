@@ -38,15 +38,15 @@ databaseChangeLog:
 
         
         # 2) Popolo code_orig tramite UPDATE SQL
-        - sql:
-            splitStatements: false
-            stripComments: true
-            sql: |
-              SET session_replication_role = replica;
-              UPDATE config.parameters_audit
-                 SET code_orig = parameter_code
-               WHERE parameter_code IS NOT NULL;
-               SET session_replication_role = origin;
+        #- sql:
+        #    splitStatements: false
+        #    stripComments: true
+        #    sql: |
+        #     -- SET session_replication_role = replica;
+        #     -- UPDATE config.parameters_audit
+        #     --    SET code_orig = parameter_code
+        #     --  WHERE parameter_code IS NOT NULL;
+        #     --  SET session_replication_role = origin;
 
         # 3) Rendo parameter_code nullable
         - modifyDataType:
