@@ -17,7 +17,7 @@ databaseChangeLog:
         - createTable:
             schemaName: config
             tableName: stati_doc_ordini
-            remarks: "Dominio stati del documento ordini (codici stabili; descrizioni multilingua)."
+            remarks: "Dominio stati del documento ordini (codici stabili; descrizioni multilingua) ."
             columns:
                 - column:
                     name: id

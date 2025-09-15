@@ -34,7 +34,7 @@ databaseChangeLog:
               - column: { name: uid, type: UUID, defaultValueComputed: gen_random_uuid(), constraints: { nullable: false }, remarks: "Identificatore esterno (UUID) per API/integrazioni." }
               - column: { name: anno, type: SMALLINT, remarks: "Anno numerazione" }
               - column: { name: serie, type: VARCHAR(8), remarks: "Serie numerazione" }
-              - column: { name: numero, type: VARCHAR(20), remarks: "Numero documento" }
+              - column: { name: numero, type: VARCHAR(20), remarks: "Numero documento " }
               - column: { name: data, type: DATE, defaultValueComputed: CURRENT_DATE, constraints: { nullable: false }, remarks: "Data DDT" }
 
               #- column: { name: stato, type: VARCHAR(16), defaultValue: "DRAFT", constraints: { nullable: false }, remarks: "Stato documento: DRAFT|EMESSO|SPEDITO|CONSEGNATO|RESO|ANNULLATO" }
