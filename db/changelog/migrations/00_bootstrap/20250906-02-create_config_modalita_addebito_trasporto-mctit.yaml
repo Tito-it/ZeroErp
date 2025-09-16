@@ -10,11 +10,12 @@ databaseChangeLog:
   - changeSet:
       id: 20250906-02-create_config_modalita_addebito_trasporto
       author: mctit
+      runOnChange: true
       changes:
         - createTable:
             schemaName: config
             tableName: modalita_addebito_trasporto
-            remarks: "Dominio: modalità di addebito delle spese di trasporto (porto)."
+            remarks: "Dominio: modalità di addebito delle spese di trasporto (porto). "
             columns:
               
               - column:

@@ -17,7 +17,7 @@ databaseChangeLog:
         - createTable:
             schemaName: vendite
             tableName: ddt_indirizzi
-            remarks: "Snapshot indirizzi collegati al ddt; uno per tipo ( spedizione, fornitura, residenza). Includere nello snapshot la mail."
+            remarks: "Snapshot indirizzi collegati al ddt; uno per tipo ( spedizione, fornitura, residenza). Includere nello snapshot la mail. "
             columns:
                   - column:
                         name: id

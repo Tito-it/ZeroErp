@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20250819-60-create-vendite-regole-fatturazione
       author: mctit
-
+      runOnChange: true
       changes:
         
 
@@ -18,7 +18,7 @@ databaseChangeLog:
         - createTable:
             schemaName: vendite
             tableName: articolo_regole_fatturazione
-            remarks: "Policy di visibilità/calcolo/arrotondamenti per articolo"
+            remarks: "Policy di visibilità/calcolo/arrotondamenti per articolo "
             columns:
               
               - column:
@@ -140,6 +140,21 @@ databaseChangeLog:
               COMMENT ON CONSTRAINT chk_regole_metodo_arrotondamento_quantita ON vendite.articolo_regole_fatturazione IS 'Metodi ammessi quantità';
               COMMENT ON INDEX vendite.ix_articolo_regole_fatturazione_articolo IS 'Lookup per articolo';
               COMMENT ON TRIGGER trg_upd_articolo_regole_fatturazione_audit_data_user ON vendite.articolo_regole_fatturazione IS 'Aggiorna (audit) data_update e user_update';
+
+
+
+
+  - changeSet:
+      id: 20250819-61-create-vendite-regole-fatturazione
+      author: mctit
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+
+                  DROP TRIGGER IF EXISTS trg_upd_regole_fatturazione_articolo_audit_data_user ON vendite.regole_fatturazione_articolo;                    
+                  DROP TABLE IF EXISTS vendite.regole_fatturazione_articolo;
 
   - changeSet:
       id: 20250819-90-create-vendite-regole-fatturazione

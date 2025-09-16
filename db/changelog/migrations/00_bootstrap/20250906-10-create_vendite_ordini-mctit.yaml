@@ -14,13 +14,14 @@ databaseChangeLog:
   - changeSet: 
       id: 20250906-10-create-vendite-ordini
       author: mctit
+      runOnChange: true
       preConditions:
         - onFail: HALT
       changes:
         - createTable:
             schemaName: vendite
             tableName: ordini
-            remarks: "Ordini di vendita (testata) con campi già utili alla futura emissione di DDT."
+            remarks: "Ordini di vendita (testata) con campi già utili alla futura emissione di DDT. "
             columns:
               - column:
                     name: id

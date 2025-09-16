@@ -29,7 +29,7 @@ databaseChangeLog:
               - column:
                   name: codice_interno
                   type: VARCHAR(32)
-                  remarks: "Codice tecnico stabile per logica/app (immutabile)."
+                  remarks: "Codice tecnico stabile per logica/app (immutabile). "
               - column:
                   name: codice_fe
                   type: VARCHAR(8)

@@ -10,6 +10,7 @@
 databaseChangeLog:
   - changeSet:
       id: 20250907-02-create_vendite_ordini_righe
+      runOnChange: true
       author: mctit
       preConditions:
         - onFail: HALT
@@ -18,7 +19,7 @@ databaseChangeLog:
         - createTable:
             schemaName: vendite
             tableName: ordini_righe
-            remarks: "Righe ordine di vendita, con snapshot (descrizione/UoM/IVA) e idempotenza sorgente."
+            remarks: "Righe ordine di vendita, con snapshot (descrizione/UoM/IVA) e idempotenza sorgente. "
             columns:
               - column:
                   name: id

@@ -6,6 +6,12 @@
       "type": "shell",
       "command": "liquibase",
       "args": ["--defaults-file=${workspaceFolder}/db/liquibase.properties", "validate"],
+      //aggiunte 
+        "options": {
+          "env": {
+            "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64"
+          }
+        },
       "problemMatcher": []
     },
     {
@@ -13,6 +19,12 @@
       "type": "shell",
       "command": "liquibase",
       "args": ["--defaults-file=${workspaceFolder}/db/liquibase.properties", "status", "--verbose"],
+      //aggiunte 
+        "options": {
+          "env": {
+            "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64"
+          }
+        },
       "problemMatcher": []
     },
     {
@@ -20,6 +32,12 @@
       "type": "shell",
       "command": "liquibase",
       "args": ["--defaults-file=${workspaceFolder}/db/liquibase.properties", "updateSQL"],
+      //aggiunte 
+        "options": {
+          "env": {
+            "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64"
+          }
+        },
       "problemMatcher": []
     },
     {
@@ -27,6 +45,19 @@
       "type": "shell",
       "command": "liquibase",
       "args": ["--defaults-file=${workspaceFolder}/db/liquibase.properties", "update"],
+      //aggiunte 
+        "options": {
+          "env": {
+            "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64"
+          }
+        },
+      "problemMatcher": []
+    },
+    {
+      "label": "Docs: serve",
+      "type": "shell",
+      "command": "bash",
+      "args": ["-lc", "source ${workspaceFolder}/.venv/bin/activate && mkdocs serve -a 127.0.0.1:8000"],
       "problemMatcher": []
     }
   ]

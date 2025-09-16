@@ -12,6 +12,7 @@ databaseChangeLog:
   - changeSet:
       id: 20250907-03-create_vendite_note_ordini
       author: mctit
+      runOnChange: true
       changes:
         - sql:
             splitStatements: false
@@ -19,7 +20,7 @@ databaseChangeLog:
               CREATE TABLE IF NOT EXISTS vendite.note_ordini
               PARTITION OF vendite.note FOR VALUES IN ('ordine');
               COMMENT ON TABLE vendite.note_ordini
-                IS 'Partizione note per ordini (FK forti verso testata/righe ordine).';
+                IS 'Partizione note per ordini (FK forti verso testata/righe ordine ).';
 
         # FK verso testata e (se presente) righe ordine
         - addForeignKeyConstraint:
@@ -55,7 +56,7 @@ databaseChangeLog:
                 (anchor_tipo = 'RIGA'      AND target_riga_id IS NOT NULL AND posizione IN ('BEFORE','AFTER'))
               );
               COMMENT ON CONSTRAINT chk_ordini_note_anchor ON vendite.note_ordini
-                IS 'Regole di coerenza tra anchor_tipo, riga e posizione per ordini.';
+                IS 'Regole di coerenza tra anchor_tipo, riga e posizione per ordini. ';
 
         # Indice di rendering
         - createIndex:

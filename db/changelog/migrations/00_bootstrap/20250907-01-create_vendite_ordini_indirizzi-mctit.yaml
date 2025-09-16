@@ -17,7 +17,7 @@ databaseChangeLog:
         - createTable:
             schemaName: vendite
             tableName: ordini_indirizzi
-            remarks: "Snapshot indirizzi collegati alla ordine; uno per tipo (ordinezione, spedizione, fornitura, residenza). Includere nello snapshot la mail."
+            remarks: "Snapshot indirizzi collegati alla ordine; uno per tipo (ordinezione, spedizione, fornitura, residenza). Includere nello snapshot la mail. "
             columns:
                   - column:
                         name: id

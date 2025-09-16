@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20250905-16-create-config-aspetti-beni
       author: mctit
-      
+      runOnChange: true
       changes:
         - createTable:
             schemaName: config

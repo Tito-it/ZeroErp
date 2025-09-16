@@ -31,3 +31,4 @@ databaseChangeLog:
               CREATE SCHEMA IF NOT EXISTS contabilita;
               CREATE SCHEMA IF NOT EXISTS pagamenti;
               CREATE SCHEMA IF NOT EXISTS magazzino;
+              CREATE SCHEMA IF NOT EXISTS acquisti;
