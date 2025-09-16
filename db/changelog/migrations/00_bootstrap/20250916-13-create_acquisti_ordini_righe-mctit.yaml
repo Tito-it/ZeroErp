@@ -1,0 +1,177 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Acquisti: ordini_righe
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250916-13-create-acquisti-ordini-righe
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: acquisti, tableName: ordini }
+      changes:
+        - createTable:
+            schemaName: acquisti
+            tableName: ordini_righe
+            remarks: "Righe ordine di acquisto, con snapshot descrizione/UoM/IVA e campi di idempotenza."
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT, constraints: { primaryKey: true, primaryKeyName: pk_ao_righe, nullable: false }, remarks: "PK" }
+              - column: { name: ordine_id, type: BIGINT, constraints: { nullable: false }, remarks: "FK → acquisti.ordini(id) (testata)" }
+              - column: { name: riga_nr, type: INTEGER, constraints: { nullable: false }, remarks: "Progressivo riga per ordine" }
+              - column: { name: articolo_id, type: UUID, constraints: { nullable: false }, remarks: "Articolo → catalogo.articoli(id)" }
+              - column: { name: descrizione, type: VARCHAR(150), constraints: { nullable: false }, remarks: "Descrizione riga (snapshot)" }
+              - column: { name: uom_id, type: BIGINT, remarks: "Unità di misura → catalogo.unita_misura(id)" }
+              - column: { name: qta, type: "NUMERIC(18,6)", constraints: { nullable: false }, remarks: "Quantità" }
+              - column: { name: prezzo_unitario, type: "NUMERIC(18,6)", constraints: { nullable: false }, remarks: "Prezzo unitario" }
+              - column: { name: sconto_perc, type: "NUMERIC(5,2)", remarks: "Sconto % (0–100)" }
+              - column: { name: iva_id, type: INTEGER, remarks: "Aliquota IVA → config.iva(id)" }
+              # - column: { name: iva_perc, type: NUMERIC(5,2), remarks: "IVA % (snapshot)" }
+              - column: { name: stato_doc_ordine_id, type: BIGINT, remarks: "FK → config.stati_doc_ordini(id)" }
+              - column: { name: sorgente_tipo_id, type: BIGINT, remarks: "FK → config.sorgenti(id)" }
+              - column: { name: sorgente_id, type: UUID, remarks: "Identificatore esterno della risorsa nella sorgente" }
+              - column: { name: sorgente_riga, type: BIGINT, defaultValueNumeric: 0, remarks: "ID/prog. riga nella sorgente (0 se non applicabile)" }
+              - column: { name: meta, type: JSONB, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false }, remarks: "Estensioni JSON" }
+              - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Snapshot su UPDATE/DELETE" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data inserimento" }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false }, remarks: "Audit: utente inserimento" }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data aggiornamento" }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, remarks: "Audit: utente aggiornamento" }
+
+        # FKs
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini_righe
+            baseColumnNames: ordine_id
+            constraintName: fk_ao_r_testata
+            referencedTableSchemaName: acquisti
+            referencedTableName: ordini
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini_righe
+            baseColumnNames: articolo_id
+            constraintName: fk_ao_r_articolo
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini_righe
+            baseColumnNames: uom_id
+            constraintName: fk_ao_r_uom
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini_righe
+            baseColumnNames: iva_id
+            constraintName: fk_ao_r_iva
+            referencedTableSchemaName: config
+            referencedTableName: iva
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini_righe
+            baseColumnNames: sorgente_tipo_id
+            constraintName: fk_ao_r_sorgente_tipo
+            referencedTableSchemaName: config
+            referencedTableName: sorgenti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini_righe
+            baseColumnNames: stato_doc_ordine_id
+            constraintName: fk_ao_r_stato_doc_ordine
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_ordini
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # CHECKs
+        - sql: 
+            splitStatements: false 
+            sql: | 
+                 ALTER TABLE acquisti.ordini_righe 
+                 ADD CONSTRAINT chk_ordini_ao_r_przz_pos
+                 CHECK (prezzo_unitario >= 0);
+
+                 ALTER TABLE acquisti.ordini_righe 
+                 ADD CONSTRAINT chk_ordini_ao_r_qta_pos
+                 CHECK (qta > 0);
+
+                 ALTER TABLE acquisti.ordini_righe 
+                 ADD CONSTRAINT chk_ordini_ao_r_sconto_perc
+                 CHECK (sconto_perc IS NULL OR (sconto_perc >= 0 AND sconto_perc <= 100));
+
+
+
+        # Unicità: (ordine_id, riga_nr)
+        - createIndex:
+            schemaName: acquisti
+            tableName: ordini_righe
+            indexName: uq_ao_r_riga_nr
+            unique: true
+            columns:
+              - column: { name: ordine_id }
+              - column: { name: riga_nr }
+
+        # Idempotenza riga (nuovi nomi)
+        - createIndex:
+            schemaName: acquisti
+            tableName: ordini_righe
+            indexName: uq_ao_r_sorgente
+            unique: true
+            where: "sorgente_tipo_id IS NOT NULL"
+            columns:
+              - column: { name: sorgente_tipo_id }
+              - column: { name: sorgente_id }
+              - column: { name: sorgente_riga }
+
+        # Indici operativi
+        - createIndex:
+            schemaName: acquisti
+            tableName: ordini_righe
+            indexName: ix_ao_r_testata
+            columns:
+              - column: { name: ordine_id }
+        - createIndex:
+            schemaName: acquisti
+            tableName: ordini_righe
+            indexName: ix_ao_r_articolo
+            columns:
+              - column: { name: articolo_id }
+        - createIndex:
+            schemaName: acquisti
+            tableName: ordini_righe
+            indexName: ix_ao_r_stato_doc
+            columns:
+              - column: { name: stato_doc_ordine_id }
+            
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250916-90-create-acquisti-ordini_righe
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250916-13-create-acquisti-ordini_righe

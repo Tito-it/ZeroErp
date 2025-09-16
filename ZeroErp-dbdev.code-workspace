@@ -20,6 +20,9 @@
     },
     {
       "path": "db/changelog/migrations/80_data"
+    },
+    {
+      "path": "db/changelog/baseline"
     }
   ],
   "settings": {

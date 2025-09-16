@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+# 2.b) Partizione ACQUISTI: note_ddt (analogamente)
+  - changeSet:
+      id: 20250916-22-acquisti-note-ddt
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists: { schemaName: acquisti, tableName: note }
+        - not:
+            - tableExists: { schemaName: acquisti, tableName: note_ddt }
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE TABLE acquisti.note_ddt
+              PARTITION OF acquisti.note FOR VALUES IN ('DDT');
+              COMMENT ON TABLE acquisti.note_ddt
+                IS 'Partizione note per DDT/ricezioni fornitore.';
+        - preConditions:
+            - onFail: CONTINUE
+            - tableExists: { schemaName: acquisti, tableName: ddt }
+          changes:
+            - addForeignKeyConstraint:
+                baseTableSchemaName: acquisti
+                baseTableName: note_ddt
+                baseColumnNames: target_id
+                referencedTableSchemaName: acquisti
+                referencedTableName: ddt
+                referencedColumnNames: id
+                constraintName: fk_acq_ddt_note_testata
+                onUpdate: CASCADE
+                onDelete: CASCADE
+        - preConditions:
+            - onFail: CONTINUE
+            - tableExists: { schemaName: acquisti, tableName: ddt_righe }
+          changes:
+            - addForeignKeyConstraint:
+                baseTableSchemaName: acquisti
+                baseTableName: note_ddt
+                baseColumnNames: target_riga_id
+                referencedTableSchemaName: acquisti
+                referencedTableName: ddt_righe
+                referencedColumnNames: id
+                constraintName: fk_acq_ddt_note_riga
+                onUpdate: CASCADE
+                onDelete: CASCADE
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE acquisti.note_ddt
+              ADD CONSTRAINT chk_acq_ddt_note_anchor
+              CHECK (
+                (anchor_tipo = 'DOCUMENTO' AND target_riga_id IS NULL AND posizione IN ('HEADER','FOOTER','SEZIONE'))
+                OR
+                (anchor_tipo = 'RIGA'      AND target_riga_id IS NOT NULL AND posizione IN ('BEFORE','AFTER'))
+              );
+              COMMENT ON CONSTRAINT chk_acq_ddt_note_anchor ON acquisti.note_ddt
+                IS 'Coerenza tra anchor_tipo, riga e posizione (DDT acquisto).';
+        - createIndex:
+            schemaName: acquisti
+            tableName: note_ddt
+            indexName: ix_acq_ddt_note_render
+            columns:
+              - column: { name: target_id }
+              - column: { name: anchor_tipo }
+              - column: { name: target_riga_id }
+              - column: { name: posizione }
+              - column: { name: seq }
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250916-90-acquisti-note-ddt
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250916-22-acquisti-note-ddt

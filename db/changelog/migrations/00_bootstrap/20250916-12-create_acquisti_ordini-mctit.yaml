@@ -1,0 +1,271 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250916-12-create-acquisti-ordini
+      author: mctit
+      
+      changes:
+        - createTable:
+            schemaName: acquisti
+            tableName: ordini
+            remarks: "Ordini di acquisto (testata) con campi già utili alla ricezione e DDT fornitore."
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT, constraints: { primaryKey: true, primaryKeyName: pk_ordini_a, nullable: false }, remarks: "PK" }
+            
+              - column:
+                  name: uid
+                  type: UUID
+                  remarks: "Identificatore esterno stabile (esposizione API / integrazioni)."
+            
+              - column: { name: soggetto_ruolo_id, type: BIGINT, constraints: { nullable: false }, remarks: "FK → fornitore/ruolo (anagrafiche.soggetti_ruoli)" }
+              - column: { name: serie, type: VARCHAR(8), remarks: "Serie documento" }
+              - column: { name: numero, type: VARCHAR(20), remarks: "Numero documento" }
+              - column: { name: anno, type: SMALLINT, remarks: "Anno documento" }
+              - column: { name: data, type: DATE, defaultValueComputed: CURRENT_DATE, constraints: { nullable: false }, remarks: "Data ordine" }
+              #- column: { name: stato, type: VARCHAR(16), defaultValue: "DRAFT", constraints: { nullable: false }, remarks: "Stato documento: DRAFT|SENT|CONFIRMED|RECEIVED|CANCELLED|INVOICED" }
+              - column: { name: stato_doc_ordine_id, type: BIGINT, remarks: "FK → config.stati_doc_ordini(id)" }              
+              - column: { name: sorgente_tipo_id, type: BIGINT, remarks: "FK → config.sorgenti(id)" }
+              - column: { name: sorgente_id, type: UUID, remarks: "Identificatore esterno nella sorgente" }
+              
+              - column: { name: valuta_id, type: INTEGER, remarks: "FK → config.valute" }
+              - column: { name: tasso_cambio, type: "NUMERIC(18,8)", defaultValueNumeric: 1, constraints: { nullable: false }, remarks: "Tasso di cambio" }
+              - column: { name: modalita_pagamento_id, type: INTEGER, remarks: "FK → config.modalita_pagamento" }
+              - column: { name: giorni_pagamento, type: SMALLINT, remarks: "Giorni pagamento" }
+              - column: { name: fine_mese, type: BOOLEAN, remarks: "Pagamento fine mese" }
+              - column: { name: indirizzo_consegna_id, type: INTEGER, remarks: "FK → indirizzo consegna (magazzino)" }
+              - column: { name: indirizzo_cons_snapshot, type: JSONB, defaultValue: "{}", constraints: { nullable: false }, remarks: "Snapshot indirizzo consegna" }
+              #- column: { name: causale_trasporto, type: VARCHAR(40), remarks: "Causale trasporto (DDT fornitore)" }
+              - column: { name: causale_trasporto_id, type: BIGINT, remarks: "FK → config.causali_trasporto(id)" }
+              
+              #- column: { name: aspetto_beni, type: VARCHAR(40), remarks: "Aspetto beni (DDT fornitore)" }
+              - column: { name: aspetto_bene_id, type: BIGINT, remarks: "FK → config.aspetti_beni(id)" }
+              
+              - column: { name: num_colli, type: INTEGER, remarks: "Numero colli" }
+              - column: { name: peso_lordo, type: "NUMERIC(18,3)", remarks: "Peso lordo" }
+              - column: { name: peso_netto, type: "NUMERIC(18,3)", remarks: "Peso netto" }
+              - column: { name: volume, type: "NUMERIC(18,3)", remarks: "Volume" }
+              #- column: { name: porto, type: VARCHAR(16), remarks: "FRANCO|ASSEGNATO (per DDT/ordini acquisto)" }
+              - column: { name: modalita_addebito_trasporto_id, type: BIGINT, remarks: "FK → config.modalita_addebito_trasporto(id)" }
+
+              - column: { name: data_ora_consegna_prev, type: TIMESTAMPTZ, remarks: "Data/ora consegna prevista" }
+              - column: { name: imponibile_tot_atteso, type: "NUMERIC(18,6)", remarks: "Totale imponibile atteso" }
+              - column: { name: sconto_tot_atteso, type: "NUMERIC(18,6)", remarks: "Totale sconto atteso" }
+              - column: { name: iva_tot_atteso, type: "NUMERIC(18,6)", remarks: "Totale IVA atteso" }
+              - column: { name: totale_doc_atteso, type: "NUMERIC(18,6)", remarks: "Totale documento atteso" }
+              - column: { name: meta, type: JSONB, defaultValue: "{}", constraints: { nullable: false }, remarks: "Estensioni JSON" }
+              - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Snapshot su UPDATE/DELETE" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data inserimento" }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false }, remarks: "Audit: utente inserimento" }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data aggiornamento" }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, remarks: "Audit: utente aggiornamento" }
+              - column: { name: hash_contenuto, type: VARCHAR(64), remarks: "SHA-256 hex del payload/record normalizzato" }
+
+
+        # Foreign keys
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini
+            baseColumnNames: soggetto_ruolo_id
+            constraintName: fk_ordini_ao_fornitore_ruolo
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini
+            baseColumnNames: valuta_id
+            constraintName: fk_ordini_ao_valute
+            referencedTableSchemaName: config
+            referencedTableName: valute
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini
+            baseColumnNames: modalita_pagamento_id
+            constraintName: fk_ordini_ao_modpag
+            referencedTableSchemaName: config
+            referencedTableName: modalita_pagamento
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini
+            baseColumnNames: indirizzo_consegna_id
+            constraintName: fk_ordini_ao_indir_cons
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: indirizzi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini
+            baseColumnNames: modalita_addebito_trasporto_id
+            referencedTableSchemaName: config
+            referencedTableName: modalita_addebito_trasporto
+            referencedColumnNames: id
+            constraintName: fk_ao_matr
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini
+            baseColumnNames: stato_doc_ordine_id
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_ordini
+            referencedColumnNames: id
+            constraintName: fk_ao_stato_doc_ordine
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+                baseTableSchemaName: acquisti
+                baseTableName: ordini
+                baseColumnNames: causale_trasporto_id
+                referencedTableSchemaName: config
+                referencedTableName: causali_trasporto
+                referencedColumnNames: id
+                constraintName: fk_ao_causale_trasporto
+                onUpdate: CASCADE
+                onDelete: NO ACTION
+        - addForeignKeyConstraint:
+                baseTableSchemaName: acquisti
+                baseTableName: ordini
+                baseColumnNames: aspetto_bene_id
+                referencedTableSchemaName: config
+                referencedTableName: aspetti_beni
+                referencedColumnNames: id
+                constraintName: fk_ao_aspetto_bene
+                onUpdate: CASCADE
+                onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ordini
+            baseColumnNames: sorgente_tipo_id
+            referencedTableSchemaName: config
+            referencedTableName: sorgenti
+            referencedColumnNames: id
+            constraintName: fk_ao_sorgente_tipo
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        # Checks
+        
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE acquisti.ordini
+              ADD CONSTRAINT chk_ordini_ao_totali_nonneg
+              CHECK ((imponibile_tot_atteso IS NULL OR imponibile_tot_atteso >= 0) AND (sconto_tot_atteso IS NULL OR sconto_tot_atteso >= 0) AND (iva_tot_atteso IS NULL OR iva_tot_atteso >= 0) AND (totale_doc_atteso IS NULL OR totale_doc_atteso >= 0));    
+        
+        - addNotNullConstraint:
+            schemaName: acquisti
+            tableName: ordini
+            columnName: stato_doc_ordine_id
+            constraintName: nn_ao_stato_doc_ordine
+
+        
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN acquisti.ordini.uid
+                IS 'Identificatore esterno (UUID). Default: gen_random_uuid().';
+                COMMENT ON COLUMN acquisti.ordini.modalita_addebito_trasporto_id IS 'FK → config.modalita_addebito_trasporto(id)';
+              COMMENT ON COLUMN acquisti.ordini.stato_doc_ordine_id              IS 'FK → config.stati_doc_ordini(id)';
+              COMMENT ON COLUMN acquisti.ordini.causale_trasporto_id            IS 'FK → config.causali_trasporto(id)';
+              COMMENT ON COLUMN acquisti.ordini.aspetto_bene_id                 IS 'FK → config.aspetti_beni(id)';
+              COMMENT ON COLUMN acquisti.ordini.sorgente_tipo_id                IS 'FK → config.sorgenti(id)';
+              COMMENT ON COLUMN acquisti.ordini.sorgente_id                     IS 'Identificatore esterno nella sorgente';
+              COMMENT ON COLUMN acquisti.ordini.hash_contenuto                  IS 'SHA-256 hex del payload/record normalizzato';
+
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE acquisti.ordini
+              ALTER COLUMN uid SET DEFAULT gen_random_uuid();
+        - sql:
+            splitStatements: false
+            sql: |
+              UPDATE acquisti.ordini
+                 SET uid = gen_random_uuid()
+               WHERE uid IS NULL;
+
+        - createIndex:
+            schemaName: acquisti
+            tableName: ordini
+            indexName: ix_ao_fornitore_stato_data
+            columns:
+              - column: { name: soggetto_ruolo_id }
+              - column: { name: stato_doc_ordine_id }
+              - column: { name: data }
+        - createIndex:
+            schemaName: acquisti
+            tableName: ordini
+            indexName: ix_ao_stato_doc_ordine
+            columns:
+              - column: { name: stato_doc_ordine_id }
+        - createIndex:
+            schemaName: acquisti
+            tableName: ordini
+            indexName: uq_ao_sorgente
+            unique: true
+            columns:
+              - column: { name: sorgente_tipo_id }
+              - column: { name: sorgente_id }
+            where: "sorgente_tipo_id IS NOT NULL"
+            remarks: "Idempotenza import (sorgente_tipo_id, sorgente_id)"
+
+        - createIndex:
+            schemaName: acquisti
+            tableName: ordini
+            indexName: uq_ordini_ao_uid
+            unique: true
+            columns:
+              - column: { name: uid }
+        
+        - sql:
+            splitStatements: false
+            sql: |
+              
+              -- Numerazione: unico per anno+serie+numero
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                  WHERE n.nspname='acquisti' AND c.relname='uq_ordini_ao_anno_serie_numero'
+                ) THEN
+                  CREATE UNIQUE INDEX uq_ordini_ao_anno_serie_numero
+                    ON acquisti.ordini(anno, serie, numero)
+                    WHERE numero IS NOT NULL;
+                  COMMENT ON INDEX acquisti.uq_ordini_ao_anno_serie_numero IS 'Unicità numerazione (anno, serie, numero) ordini di acquisto.';
+                END IF;
+              END$$;
+       
+              -- Indici operativi
+              CREATE INDEX IF NOT EXISTS ix_ordini_ao_fornitore_stato_data
+                ON acquisti.ordini (soggetto_ruolo_id, stato_doc_ordine_id, data);
+              
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250916-90-create-acquisti-ordini
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250916-12-create-acquisti-ordini
