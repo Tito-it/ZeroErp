@@ -8,10 +8,10 @@
 | toponomastica_id | integer | NO |  |
 | descrizione | character varying | NO |  |
 | descrizione_breve | character varying | NO |  |
-| data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_insert | character varying | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_update | character varying | NO | CURRENT_USER |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | character varying | NO | 'CURRENT_USER'::character varying |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying | NO | 'CURRENT_USER'::character varying |
 | indirizzo_normalizzato | text | NO |  |
 
 ## 🔒 Vincoli
@@ -25,7 +25,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_stradario_generale_norm_trgm | `CREATE INDEX ix_stradario_generale_norm_trgm ON config.stradario_generale USING gin (indirizzo_normalizzato gin_trgm_ops)` |
-| ix_stradario_generale_toponomastica_id | `CREATE INDEX ix_stradario_generale_toponomastica_id ON config.stradario_generale USING btree (toponomastica_id)` |
+| ix_toponomastica_id | `CREATE INDEX ix_toponomastica_id ON config.stradario_generale USING btree (toponomastica_id)` |
 | pk_stradario_generale | `CREATE UNIQUE INDEX pk_stradario_generale ON config.stradario_generale USING btree (id)` |
 | uq_toponomastica_descr | `CREATE UNIQUE INDEX uq_toponomastica_descr ON config.stradario_generale USING btree (toponomastica_id, descrizione)` |
 

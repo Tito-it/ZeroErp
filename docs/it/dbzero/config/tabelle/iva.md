@@ -14,15 +14,16 @@
 | conto_iva_acquisti_id | integer | YES |  |
 | conto_iva_vendita_id | integer | YES |  |
 | id_iva_split | integer | YES |  |
-| data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_insert | text | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_update | text | NO | CURRENT_USER |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | 'CURRENT_USER'::text |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | 'CURRENT_USER'::text |
+| attivo | boolean | NO | true |
+| storicizza | boolean | YES | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_iva_assoggettamento |  |
 | CHECK | chk_iva_assoggettamento_aliquota |  |
 | FOREIGN KEY | fk_iva_conto_acq | conto_iva_acquisti_id |
 | FOREIGN KEY | fk_iva_conto_ven | conto_iva_vendita_id |

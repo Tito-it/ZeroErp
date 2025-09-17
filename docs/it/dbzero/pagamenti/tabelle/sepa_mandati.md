@@ -35,6 +35,7 @@
 | CHECK | chk_sepa_mandati_umr_fmt |  |
 | FOREIGN KEY | fk_sepa_mandati_billing_account | billing_account_id |
 | FOREIGN KEY | fk_sepa_mandati_istanza_utility | istanza_utility_id |
+| FOREIGN KEY | fk_sepa_mandati_soggetto_ruolo_conto | soggetto_ruolo_conto_id |
 | PRIMARY KEY | pk_sepa_mandati | id |
 
 ## 📑 Indici

@@ -8,10 +8,10 @@
 | fittizia | boolean | NO | false |
 | codice | character varying | NO |  |
 | proprietario_inquilino | character | NO | 'I'::bpchar |
-| data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_insert | character varying | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_update | character varying | NO | CURRENT_USER |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | character varying | NO | 'CURRENT_USER'::character varying |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying | NO | 'CURRENT_USER'::character varying |
 | soggetto_id | uuid | NO |  |
 | indirizzo_dettaglio_id | integer | NO |  |
 | tx_id | uuid | YES |  |
@@ -27,7 +27,7 @@
 | FOREIGN KEY | fk_istanze_utilities_indirizzo_dettaglio | indirizzo_dettaglio_id |
 | FOREIGN KEY | fk_istanze_utilities_parent_istanza | parent_istanza_id |
 | FOREIGN KEY | fk_istanze_utilities_soggetto | soggetto_id |
-| FOREIGN KEY | fk_iu_pdp_id_addr | pdp_id, indirizzo_dettaglio_id |
+| FOREIGN KEY | fk_iu_pdp_id_addr | indirizzo_dettaglio_id, pdp_id |
 | PRIMARY KEY | pk_istanze_utilities | id |
 | UNIQUE | uq_istanze_utilities_codice | codice |
 
@@ -35,7 +35,6 @@
 | Nome | Definizione |
 |------|-------------|
 | idx_iu_pdp_id_addr | `CREATE INDEX idx_iu_pdp_id_addr ON anagrafiche.istanze_utilities USING btree (pdp_id, indirizzo_dettaglio_id)` |
-| ix_istanze_utilities_indirizzo_dettaglio_id | `CREATE INDEX ix_istanze_utilities_indirizzo_dettaglio_id ON anagrafiche.istanze_utilities USING btree (indirizzo_dettaglio_id)` |
 | ix_istanze_utilities_soggetto_id | `CREATE INDEX ix_istanze_utilities_soggetto_id ON anagrafiche.istanze_utilities USING btree (soggetto_id)` |
 | pk_istanze_utilities | `CREATE UNIQUE INDEX pk_istanze_utilities ON anagrafiche.istanze_utilities USING btree (id)` |
 | uq_istanze_utilities_codice | `CREATE UNIQUE INDEX uq_istanze_utilities_codice ON anagrafiche.istanze_utilities USING btree (codice)` |

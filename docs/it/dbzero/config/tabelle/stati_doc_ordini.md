@@ -29,12 +29,5 @@
 | uq_stati_doc_ordini_codice | `CREATE UNIQUE INDEX uq_stati_doc_ordini_codice ON config.stati_doc_ordini USING btree (codice)` |
 | uq_stati_doc_ordini_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_ordini_codice_interno ON config.stati_doc_ordini USING btree (codice_interno)` |
 
-## 🚨 Trigger
-| Nome | Timing | Evento | Azione |
-|------|--------|--------|--------|
-| trg_block_deact_stati_doc_ordini_ordini | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini', 'stato_doc_ordine_id')` |
-| trg_block_deact_stati_doc_ordini_ordini_righe | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini_righe', 'stato_doc_ordine_id')` |
-| trg_stati_doc_ordini_upd_lock_codiceinterno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
-
 ---
 {% include-markdown "signature-core.md" %}

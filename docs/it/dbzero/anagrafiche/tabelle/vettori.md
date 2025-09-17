@@ -41,15 +41,10 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_a10_vettori_upd_protect_codice | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_a10_vettori_protect_codice()` |
-| trg_upd_vettori_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-| trg_vettori_ins_upd_check_ruolo_vettore | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_ins_upd_check_ruolo_vettore()` |
 | trg_vettori_ins_upd_check_ruolo_vettore | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_ins_upd_check_ruolo_vettore()` |
-| trg_vettori_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_vettori_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_vettori_ins_upd_check_ruolo_vettore | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_ins_upd_check_ruolo_vettore()` |
 | trg_vettori_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_norm()` |
 | trg_vettori_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_norm()` |
-| trg_z90_vettori_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('vettori_id')` |
-| trg_z90_vettori_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('vettori_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -9,8 +9,8 @@
 | tipo_evento | character | NO |  |
 | data_evento | date | NO |  |
 | note | text | YES |  |
-| data_insert | timestamp without time zone | YES | CURRENT_TIMESTAMP |
-| user_insert | character varying | YES | CURRENT_USER |
+| data_insert | timestamp without time zone | YES | now() |
+| user_insert | character varying | YES | 'CURRENT_USER'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -20,8 +20,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_stradario_trasformazioni_via_id_nuovo | `CREATE INDEX ix_stradario_trasformazioni_via_id_nuovo ON storico.stradario_trasformazioni USING btree (via_id_nuovo)` |
-| ix_stradario_trasformazioni_via_id_orig | `CREATE INDEX ix_stradario_trasformazioni_via_id_orig ON storico.stradario_trasformazioni USING btree (via_id_orig)` |
+| ix_stradario_trasf_via_orig | `CREATE INDEX ix_stradario_trasf_via_orig ON storico.stradario_trasformazioni USING btree (via_id_orig)` |
 | pk_stradario_trasformazioni | `CREATE UNIQUE INDEX pk_stradario_trasformazioni ON storico.stradario_trasformazioni USING btree (id)` |
 
 ---

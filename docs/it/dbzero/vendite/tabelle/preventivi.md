@@ -17,7 +17,6 @@
 | totale_iva | numeric | YES | 0 |
 | totale_documento | numeric | YES | 0 |
 | valuta_id | integer | YES |  |
-| note | text | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying | NO | CURRENT_USER |
@@ -37,7 +36,7 @@
 | FOREIGN KEY | fk_preventivi_utility | utility_id |
 | FOREIGN KEY | fk_preventivi_valuta | valuta_id |
 | PRIMARY KEY | pk_preventivi | id |
-| UNIQUE | uq_preventivi_numero_rev | numero_preventivo, rev |
+| UNIQUE | uq_preventivi_numero_rev | rev, numero_preventivo |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -53,7 +52,6 @@
 |------|--------|--------|--------|
 | trg_preventivi_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_preventivi_norm()` |
 | trg_preventivi_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_preventivi_norm()` |
-| trg_upd_preventivi_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

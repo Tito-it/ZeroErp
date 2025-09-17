@@ -9,8 +9,8 @@
 | tipo_evento | character | NO |  |
 | data_evento | date | NO |  |
 | note | text | YES |  |
-| data_insert | timestamp without time zone | YES | CURRENT_TIMESTAMP |
-| user_insert | character varying | YES | CURRENT_USER |
+| data_insert | timestamp without time zone | YES | now() |
+| user_insert | character varying | YES | 'CURRENT_USER'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

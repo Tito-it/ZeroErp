@@ -7,10 +7,10 @@
 | id | integer | NO |  |
 | descrizione | character varying | NO | ''::character varying |
 | provincia_id | integer | YES |  |
-| data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_insert | character varying | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_update | character varying | NO | CURRENT_USER |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | character varying | NO | 'CURRENT_USER'::character varying |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying | NO | 'CURRENT_USER'::character varying |
 | extra_country | jsonb | YES |  |
 | storicizza | boolean | NO | false |
 | tx_id | uuid | YES |  |
@@ -24,8 +24,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_comuni_provincia_id | `CREATE INDEX ix_comuni_provincia_id ON config.comuni USING btree (provincia_id)` |
 | ix_descrizione_comune | `CREATE INDEX ix_descrizione_comune ON config.comuni USING btree (descrizione)` |
+| ix_provincia_id | `CREATE INDEX ix_provincia_id ON config.comuni USING btree (provincia_id)` |
 | pk_comuni | `CREATE UNIQUE INDEX pk_comuni ON config.comuni USING btree (id)` |
 
 ## 🚨 Trigger
@@ -34,10 +34,8 @@
 | trg_comuni_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_comuni_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_upd_comuni_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-| trg_z90_comuni_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('comune_id')` |
 | trg_z90_comuni_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('comune_id')` |
-| trgx_z90_comuni_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('comuni_id')` |
-| trgx_z90_comuni_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('comuni_id')` |
+| trg_z90_comuni_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('comune_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

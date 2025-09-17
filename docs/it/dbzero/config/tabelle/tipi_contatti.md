@@ -7,16 +7,15 @@
 | id | integer | NO |  |
 | descrizione | text | NO |  |
 | codice_interno | character varying | NO |  |
-| data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_insert | text | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_update | text | NO | CURRENT_USER |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | 'CURRENT_USER'::text |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | 'CURRENT_USER'::text |
 | codice | character varying | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_tipi_contatti_descr_non_vuota |  |
 | PRIMARY KEY | pk_tipi_contatti | id |
 | UNIQUE | uq_tipi_contatti_codice_interno | codice_interno |
 

@@ -7,16 +7,16 @@
 | id | integer | NO |  |
 | codice_tipo | text | NO |  |
 | descrizione | text | YES |  |
-| prefisso | text | NO | ''::text |
-| separatore | text | YES | ''::text |
+| prefisso | text | NO |  |
+| separatore | text | YES |  |
 | lunghezza_numero | integer | NO | 6 |
 | usa_sequenza | boolean | YES | true |
 | nome_sequenza | text | YES |  |
 | attivo | boolean | NO | true |
-| data_insert | timestamp with time zone | YES | CURRENT_TIMESTAMP |
-| user_insert | text | YES | CURRENT_USER |
-| data_update | timestamp with time zone | YES | CURRENT_TIMESTAMP |
-| user_update | text | YES | CURRENT_USER |
+| data_insert | timestamp with time zone | YES | now() |
+| user_insert | text | YES | 'CURRENT_USER'::text |
+| data_update | timestamp with time zone | YES | now() |
+| user_update | text | YES | 'CURRENT_USER'::text |
 | tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli

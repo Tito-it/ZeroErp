@@ -14,7 +14,6 @@
 | stato | character varying | YES | 'BOZZA'::character varying |
 | parent_contratto_id | bigint | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
-| note | text | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
@@ -39,11 +38,6 @@
 | ix_contratti_ba_istanza | `CREATE INDEX ix_contratti_ba_istanza ON vendite.contratti USING btree (billing_account_id, istanza_utility_id)` |
 | pk_contratti | `CREATE UNIQUE INDEX pk_contratti ON vendite.contratti USING btree (id)` |
 | uq_contratti_numero | `CREATE UNIQUE INDEX uq_contratti_numero ON vendite.contratti USING btree (numero_contratto)` |
-
-## 🚨 Trigger
-| Nome | Timing | Evento | Azione |
-|------|--------|--------|--------|
-| trg_upd_contratti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

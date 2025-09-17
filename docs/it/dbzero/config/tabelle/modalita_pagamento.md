@@ -6,10 +6,10 @@
 | id | integer | NO |  |
 | codice | character | NO |  |
 | descrizione | character varying | NO |  |
-| data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_insert | character varying | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_update | character varying | NO | CURRENT_USER |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | character varying | NO | 'CURRENT_USER'::character varying |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying | NO | 'CURRENT_USER'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

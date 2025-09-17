@@ -58,19 +58,14 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_a10_attivita_fatturabili_ins_upd_guard_ba_coerenza | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()` |
 | trg_a10_attivita_fatturabili_ins_upd_guard_ba_coerenza | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()` |
-| trg_a10_attivita_fatturabili_ins_upd_guard_fonte | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte()` |
+| trg_a10_attivita_fatturabili_ins_upd_guard_ba_coerenza | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()` |
 | trg_a10_attivita_fatturabili_ins_upd_guard_fonte | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte()` |
-| trg_a10_attivita_fatturabili_upd_dlt_guard_fatturato | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_a10_attivita_fatturabili_guard_fatturato()` |
+| trg_a10_attivita_fatturabili_ins_upd_guard_fonte | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte()` |
 | trg_a10_attivita_fatturabili_upd_dlt_guard_fatturato | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_attivita_fatturabili_guard_fatturato()` |
-| trg_attivita_fatturabili_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_attivita_fatturabili_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_attivita_fatturabili_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_norm()` |
+| trg_a10_attivita_fatturabili_upd_dlt_guard_fatturato | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_a10_attivita_fatturabili_guard_fatturato()` |
 | trg_attivita_fatturabili_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_norm()` |
-| trg_upd_attivita_fatturabili_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-| trg_z90_attivita_fatturabili_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('attivita_fatturabili_id')` |
-| trg_z90_attivita_fatturabili_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('attivita_fatturabili_id')` |
+| trg_attivita_fatturabili_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_norm()` |
 
 ---
 {% include-markdown "signature-core.md" %}

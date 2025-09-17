@@ -7,8 +7,8 @@
 | id | integer | NO |  |
 | valid_from | timestamp with time zone | NO | CURRENT_DATE |
 | valid_to | timestamp with time zone | YES |  |
-| data_insert | timestamp with time zone | YES | CURRENT_TIMESTAMP |
-| user_insert | character varying | YES | CURRENT_USER |
+| data_insert | timestamp with time zone | YES | now() |
+| user_insert | character varying | YES | 'CURRENT_USER'::character varying |
 | indirizzo_id | integer | YES |  |
 | snapshot | jsonb | NO |  |
 | tipo_operazione | smallint | NO |  |
@@ -23,14 +23,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_indirizzi_indirizzo_id | `CREATE INDEX ix_indirizzi_indirizzo_id ON storico.indirizzi USING btree (indirizzo_id)` |
 | pk_indirizzi | `CREATE UNIQUE INDEX pk_indirizzi ON storico.indirizzi USING btree (id)` |
-
-## 🚨 Trigger
-| Nome | Timing | Evento | Azione |
-|------|--------|--------|--------|
-| trg_indirizzi_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_indirizzi_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -23,12 +23,11 @@
 |------|------|---------|
 | FOREIGN KEY | fk_overrides_parameter | parameter_id |
 | PRIMARY KEY | parameter_overrides_pkey | id |
-| UNIQUE | uq_overrides_full_scope | parameter_id, tenant_id, user_id, session_key, function_name |
+| UNIQUE | uq_overrides_full_scope | tenant_id, session_key, function_name, user_id, parameter_id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_parameter_overrides_parameter_id | `CREATE INDEX ix_parameter_overrides_parameter_id ON config.parameter_overrides USING btree (parameter_id)` |
 | parameter_overrides_pkey | `CREATE UNIQUE INDEX parameter_overrides_pkey ON config.parameter_overrides USING btree (id)` |
 | uq_overrides_full_scope | `CREATE UNIQUE INDEX uq_overrides_full_scope ON config.parameter_overrides USING btree (parameter_id, tenant_id, user_id, session_key, function_name)` |
 
@@ -38,11 +37,8 @@
 | trg_parameter_overrides_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_parameter_overrides_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_upd_overrides_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-| trg_upd_parameter_overrides_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-| trg_z90_parameter_overrides_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('parameter_override_id')` |
 | trg_z90_parameter_overrides_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('parameter_override_id')` |
-| trgx_z90_parameter_overrides_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('parameter_overrides_id')` |
-| trgx_z90_parameter_overrides_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('parameter_overrides_id')` |
+| trg_z90_parameter_overrides_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('parameter_override_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

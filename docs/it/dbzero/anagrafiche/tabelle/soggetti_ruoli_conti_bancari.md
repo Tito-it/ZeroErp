@@ -30,7 +30,7 @@
 | FOREIGN KEY | fk_soggetti_ruoli_conti_bancari_conti_bancari | conto_bancario_id |
 | FOREIGN KEY | fk_soggetti_ruoli_conti_bancari_soggetti_ruoli | soggetto_ruolo_id |
 | PRIMARY KEY | pk_soggetti_ruoli_conti_bancari | id |
-| UNIQUE | uq_soggetti_ruoli_conti_bancari_soggetto_ruolo_id_conto_bancari | soggetto_ruolo_id, conto_bancario_id, uso |
+| UNIQUE | uq_soggetti_ruoli_conti_bancari_soggetto_ruolo_id_conto_bancari | uso, conto_bancario_id, soggetto_ruolo_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -44,13 +44,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_soggetti_ruoli_conti_bancari_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_soggetti_ruoli_conti_bancari_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_soggetti_ruoli_conti_bancari_ins_upd_guard | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()` |
 | trg_soggetti_ruoli_conti_bancari_ins_upd_guard | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()` |
-| trg_upd_soggetti_ruoli_conti_bancari_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-| trg_z90_soggetti_ruoli_conti_bancari_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('soggetti_ruoli_conti_bancari_id')` |
-| trg_z90_soggetti_ruoli_conti_bancari_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('soggetti_ruoli_conti_bancari_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

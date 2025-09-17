@@ -12,18 +12,14 @@
 | abilita_fattura | character | NO | 'S'::bpchar |
 | codice | character | NO | 'IS'::bpchar |
 | stato_cliente_ia | character | NO | 'I'::bpchar |
-| data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_insert | text | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_update | text | NO | CURRENT_USER |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | 'CURRENT_USER'::text |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | 'CURRENT_USER'::text |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_stati_cli_abilita_fattura |  |
-| CHECK | chk_stati_cli_check_lettura |  |
-| CHECK | chk_stati_cli_stato_cliente |  |
-| CHECK | chk_stati_cli_stato_cliente_pc |  |
 | PRIMARY KEY | pk_stati_cliente | id |
 | UNIQUE | uq_stati_cli_codice_interno | codice_interno |
 

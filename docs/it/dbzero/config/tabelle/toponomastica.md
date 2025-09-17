@@ -7,10 +7,10 @@
 | id | integer | NO |  |
 | descrizione | character varying | NO |  |
 | stato_id | integer | YES |  |
-| data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_insert | character varying | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_update | character varying | NO | CURRENT_USER |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | character varying | NO | 'CURRENT_USER'::character varying |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying | NO | 'CURRENT_USER'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -22,7 +22,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_toponomastica_stato_id | `CREATE INDEX ix_toponomastica_stato_id ON config.toponomastica USING btree (stato_id)` |
+| ix_config_toponomastica_stato_id | `CREATE INDEX ix_config_toponomastica_stato_id ON config.toponomastica USING btree (stato_id)` |
 | pk_toponomastica | `CREATE UNIQUE INDEX pk_toponomastica ON config.toponomastica USING btree (id)` |
 | uq_toponomastica_descrizione | `CREATE UNIQUE INDEX uq_toponomastica_descrizione ON config.toponomastica USING btree (descrizione)` |
 

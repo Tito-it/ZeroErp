@@ -26,11 +26,5 @@
 | ix_aspetti_beni_attivo | `CREATE INDEX ix_aspetti_beni_attivo ON config.aspetti_beni USING btree (attivo)` |
 | pk_aspetti_beni | `CREATE UNIQUE INDEX pk_aspetti_beni ON config.aspetti_beni USING btree (id)` |
 
-## 🚨 Trigger
-| Nome | Timing | Evento | Azione |
-|------|--------|--------|--------|
-| trg_block_deact_aspetti_beni_ordini | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini', 'aspetto_bene_id')` |
-| trg_upd_aspetti_beni_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-
 ---
 {% include-markdown "signature-core.md" %}

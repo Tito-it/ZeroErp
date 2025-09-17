@@ -50,12 +50,5 @@
 | uq_ordrig_riga_nr | `CREATE UNIQUE INDEX uq_ordrig_riga_nr ON vendite.ordini_righe USING btree (ordine_id, riga_nr)` |
 | uq_ordrig_sorgente_fk | `CREATE UNIQUE INDEX uq_ordrig_sorgente_fk ON vendite.ordini_righe USING btree (sorgente_tipo_id, sorgente_id, sorgente_riga)` |
 
-## 🚨 Trigger
-| Nome | Timing | Evento | Azione |
-|------|--------|--------|--------|
-| trg_ordini_righe_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_ordini_righe_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_upd_ordini_righe_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-
 ---
 {% include-markdown "signature-core.md" %}

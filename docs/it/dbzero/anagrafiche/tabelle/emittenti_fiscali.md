@@ -50,13 +50,8 @@
 | trg_a10_emittenti_fiscali_upd_protect_codice | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_a10_emittenti_fiscali_protect_codice()` |
 | trg_emittenti_fiscali_ins_upd_check_ruolo_emi_fis | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis()` |
 | trg_emittenti_fiscali_ins_upd_check_ruolo_emi_fis | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis()` |
-| trg_emittenti_fiscali_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_emittenti_fiscali_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_emittenti_fiscali_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_norm()` |
 | trg_emittenti_fiscali_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_norm()` |
-| trg_upd_emittenti_fiscali_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-| trg_z90_emittenti_fiscali_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('emittenti_fiscali_id')` |
-| trg_z90_emittenti_fiscali_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('emittenti_fiscali_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

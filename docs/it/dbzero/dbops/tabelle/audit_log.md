@@ -6,7 +6,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | function_name | text | NO |  |
-| executed_by | text | NO | CURRENT_USER |
+| executed_by | text | NO | 'CURRENT_USER'::text |
 | executed_at | timestamp with time zone | NO | now() |
 | params | jsonb | YES |  |
 | status | text | NO |  |
