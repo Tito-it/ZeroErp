@@ -88,12 +88,14 @@ nav:
           - Config:     dbzero/config/index.md
           - Dbops:      dbzero/dbops/index.md
           - Magazzino:  dbzero/magazzino/index.md
-          - Maintenance: dbzero/maintenance/index.md
-          - Pagamenti:  dbzero/pagamenti/index.md
-          - Script:     dbzero/script/index.md
-          - Storico:    dbzero/storico/index.md
-          - Public:    dbzero/public/index.md
           - Vendite: dbzero/vendite/index.md
+          - Acquisti: dbzero/acquisti/index.md
+          - Pagamenti:  dbzero/pagamenti/index.md
+          - Storico:    dbzero/storico/index.md
+          - Script:     dbzero/script/index.md
+          - Maintenance: dbzero/maintenance/index.md
+          - Public:    dbzero/public/index.md
+          
   - Strumenti:
         - Generatore Documentazione: dbzero/tools/gen_db_docs.md
   - Sviluppatori:

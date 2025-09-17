@@ -1,0 +1,208 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Acquisti: DDT (Documento di Trasporto)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250917-01-create_acquisti_ddt
+      author: mctit
+                    #  -- Attori
+              #  mittente_soggetto_ruolo_id  BIGINT,       -- es. la nostra azienda/ruolo
+              #  destinatario_soggetto_ruolo_id BIGINT NOT NULL, -- cliente/ruolo
+              #  vettore_soggetto_ruolo_id   BIGINT,       -- corriere/trasportatore (ruolo)
+              #  -- Indirizzi (FK + snapshot)
+              #  indirizzo_partenza_id       INTEGER,
+              #  indirizzo_part_snapshot     JSONB          NOT NULL DEFAULT '{}'::jsonb,
+              #  indirizzo_consegna_id       INTEGER,
+              #  indirizzo_cons_snapshot     JSONB          NOT NULL DEFAULT '{}'::jsonb,
+
+      changes:
+        - createTable:
+            schemaName: acquisti
+            tableName: ddt
+            remarks: "Documento di Trasporto (DDT) – acquisto (ricezione da fornitore)."
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT, constraints: { primaryKey: true, primaryKeyName: pk_ddta, nullable: false }, remarks: "PK" }
+              - column: { name: uid, type: UUID, defaultValueComputed: "gen_random_uuid()", constraints: { nullable: false }, remarks: "Identificatore esterno (UUID) per API/integrazioni." }
+              # Numerazione fornitore (opzionale)
+              - column: { name: anno, type: SMALLINT, remarks: "Anno numerazione fornitore (opzionale)" }
+              - column: { name: serie, type: VARCHAR(8), remarks: "Serie numerazione fornitore (opzionale)" }
+              - column: { name: numero, type: VARCHAR(40), remarks: "Numero DDT del fornitore (spesso alfanumerico)" }
+              - column: { name: data, type: DATE, defaultValueComputed: CURRENT_DATE, constraints: { nullable: false }, remarks: "Data DDT" }
+              - column: { name: stato_doc_ddt_id, type: BIGINT, constraints: { nullable: false }, remarks: "FK → config.stati_doc_ddt.id (DRAFT|EMESSO|SPEDITO|CONSEGNATO|RESO|ANNULLATO)" }
+              # Attori
+              - column: { name: mittente_soggetto_ruolo_id, type: BIGINT, constraints: { nullable: false }, remarks: "Mittente (fornitore/ruolo)" }
+              - column: { name: destinatario_soggetto_ruolo_id, type: BIGINT, remarks: "Destinatario (nostra azienda/ruolo, facoltativo)" }
+              # Indirizzi + snapshot (facoltativi)
+              #- column: { name: indirizzo_partenza_id, type: INTEGER, remarks: "FK → anagrafiche.indirizzi(id) — partenza" }
+              #- column: { name: indirizzo_part_snapshot, type: JSONB, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false }, remarks: "Snapshot indirizzo partenza" }
+              #- column: { name: indirizzo_consegna_id, type: INTEGER, remarks: "FK → anagrafiche.indirizzi(id) — consegna" }
+              #- column: { name: indirizzo_cons_snapshot, type: JSONB, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false }, remarks: "Snapshot indirizzo consegna" }
+              # Dati trasporto (normalizzati)
+              - column: { name: causale_trasporto_id, type: BIGINT, remarks: "FK → config.causali_trasporto(id)" }
+              - column: { name: aspetto_bene_id, type: BIGINT, remarks: "FK → config.aspetti_beni(id)" }
+              - column: { name: modalita_addebito_trasporto_id, type: BIGINT, remarks: "FK → config.modalita_addebito_trasporto(id)" }
+              - column: { name: num_colli, type: INTEGER, remarks: "Numero colli" }
+              - column: { name: peso_lordo, type: "NUMERIC(18,3)", remarks: "Peso lordo" }
+              - column: { name: peso_netto, type: "NUMERIC(18,3)", remarks: "Peso netto" }
+              - column: { name: volume, type: "NUMERIC(18,3)", remarks: "Volume" }
+              - column: { name: data_ora_consegna_eff, type: TIMESTAMPTZ, remarks: "Data/ora consegna effettiva" }
+              # Collegamenti
+              - column: { name: ordine_id, type: BIGINT, remarks: "FK → acquisti.ordini(id) (opzionale)" }
+              # Origine / idempotenza
+              - column: { name: sorgente_tipo_id, type: BIGINT, remarks: "FK → config.sorgenti(id)" }
+              - column: { name: sorgente_id, type: UUID, remarks: "Identificatore esterno nella sorgente" }
+              # Meta/audit
+              - column: { name: meta, type: JSONB, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false }, remarks: "Estensioni JSON" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Snapshot su UPDATE/DELETE" }
+              - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data inserimento" }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, constraints: { nullable: false }, remarks: "Audit: utente inserimento" }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false }, remarks: "Audit: data aggiornamento" }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: CURRENT_USER, remarks: "Audit: utente aggiornamento" }
+
+        # FKs
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ddt
+            baseColumnNames: mittente_soggetto_ruolo_id
+            constraintName: fk_a_ddt_mittente_ruolo
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ddt
+            baseColumnNames: destinatario_soggetto_ruolo_id
+            constraintName: fk_a_ddt_destinatario_ruolo
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ddt
+            baseColumnNames: ordine_id
+            constraintName: fk_a_ddt_ordine
+            referencedTableSchemaName: acquisti
+            referencedTableName: ordini
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ddt
+            baseColumnNames: stato_doc_ddt_id
+            constraintName: fk_a_ddt_stato_ddt
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_ddt
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ddt
+            baseColumnNames: sorgente_tipo_id
+            constraintName: fk_a_ddt_sorgente_tipo
+            referencedTableSchemaName: config
+            referencedTableName: sorgenti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ddt
+            baseColumnNames: causale_trasporto_id
+            constraintName: fk_a_ddt_causale_trasporto
+            referencedTableSchemaName: config
+            referencedTableName: causali_trasporto
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ddt
+            baseColumnNames: aspetto_bene_id
+            constraintName: fk_a_ddt_aspetto_bene
+            referencedTableSchemaName: config
+            referencedTableName: aspetti_beni
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: ddt
+            baseColumnNames: modalita_addebito_trasporto_id
+            constraintName: fk_a_ddt_mod_add_trasporto
+            referencedTableSchemaName: config
+            referencedTableName: modalita_addebito_trasporto
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # CHECK pesi/volume non negativi
+        #- addCheckConstraint:
+        #    schemaName: acquisti
+        #    tableName: ddt
+        #    constraintName: chk_a_ddt_pesi_volume_nonneg
+        #    checkConstraint: "((peso_lordo IS NULL OR peso_lordo >= 0) AND (peso_netto IS NULL OR peso_netto >= 0) AND (volume IS NULL OR volume >= 0))"
+
+        # Indici (unici e non)
+        - createIndex:
+            schemaName: acquisti
+            tableName: ddt
+            indexName: uq_a_ddt_anno_serie_numero
+            unique: true
+            columns:
+              - column: { name: anno }
+              - column: { name: serie }
+              - column: { name: numero }
+            where: "numero IS NOT NULL"
+        - createIndex:
+            schemaName: acquisti
+            tableName: ddt
+            indexName: uq_a_ddt_uid
+            unique: true
+            columns:
+              - column: { name: uid }
+        - createIndex:
+            schemaName: acquisti
+            tableName: ddt
+            indexName: ix_a_ddt_mittente_stato_data
+            columns:
+              - column: { name: mittente_soggetto_ruolo_id }
+              - column: { name: stato_doc_ddt_id }
+              - column: { name: data }
+
+        # Idempotenza import (sorgente_tipo_id, sorgente_id)
+        - createIndex:
+            schemaName: acquisti
+            tableName: ddt
+            indexName: uq_a_ddt_sorgente
+            unique: true
+            where: "sorgente_tipo_id IS NOT NULL"
+            columns:
+              - column: { name: sorgente_tipo_id }
+              - column: { name: sorgente_id }
+
+        
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250917-90-create_acquisti_ddt
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250917-01-create_acquisti_ddt
