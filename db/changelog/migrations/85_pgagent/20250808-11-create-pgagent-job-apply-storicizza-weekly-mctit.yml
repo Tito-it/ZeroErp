@@ -30,7 +30,7 @@ databaseChangeLog:
         - onFail: MARK_RAN
           onError: CONTINUE
           sqlCheck:
-             expectedResult: "0"
+             expectedResult: 1
              sql: |
                 SELECT COUNT(*) 
                 FROM pg_extension 

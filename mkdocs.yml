@@ -67,7 +67,6 @@ nav:
       - Prerequisiti: it/installazione.md
   - Architettura:
       - Panoramica: it/architettura.md
-      #- Flusso Dati: it/flusso-dati.md
       - Database:
           - Liquibase Setup & Workflow: it/liquibase-setup-workflow.md
           - Linee Guida SQL: it/linee-guida-sql.md
