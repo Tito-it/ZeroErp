@@ -28,7 +28,7 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
         'database', TG_NAME, 'E_NUMERAZIONE_IMMUTABILE',
         jsonb_build_object('ddt_id', OLD.id, 'stato', v_codice_stato),
-        NULL::uuid, OLD.id::text
+        NULL::uuid, 'acquisti.ddt' , OLD.id::text
       );
     END IF;
   END IF;

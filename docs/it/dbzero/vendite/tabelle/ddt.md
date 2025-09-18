@@ -60,5 +60,10 @@
 | uq_ddt_v_source_fk | `CREATE UNIQUE INDEX uq_ddt_v_source_fk ON vendite.ddt USING btree (source_tipo_id, source_id) WHERE (source_tipo_id IS NOT NULL)` |
 | uq_ddt_vendita_uid | `CREATE UNIQUE INDEX uq_ddt_vendita_uid ON vendite.ddt USING btree (uid)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_a10_v_ddt_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_v_ddt_protect_num()` |
+
 ---
 {% include-markdown "signature-core.md" %}

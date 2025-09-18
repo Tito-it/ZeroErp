@@ -23,9 +23,11 @@
 - [sorgenti](tabelle/sorgenti.md)
 - [stati](tabelle/stati.md) — * **Elenco degli stati/paesi**   Contiene tutte le nazioni riconosciute, con sigle e codici ISO standard (ISO 3166-1 alpha-2 e alpha-3) e prefisso telefonico internazionale.
 - [stati_cliente](tabelle/stati_cliente.md) — La tabella `config.stati_cliente` definisce i possibili **stati funzionali** di un cliente all’interno di Zero ERP, utilizzati sia per il controllo dei processi (letture, fatturazione) sia per la logica di avanzamento (precontrattuale, attivo, sospeso, chiuso, ecc.).
+- [stati_doc_contratti](tabelle/stati_doc_contratti.md)
 - [stati_doc_ddt](tabelle/stati_doc_ddt.md)
 - [stati_doc_fiscale](tabelle/stati_doc_fiscale.md)
 - [stati_doc_ordini](tabelle/stati_doc_ordini.md)
+- [stati_doc_preventivi](tabelle/stati_doc_preventivi.md)
 - [stati_pratiche](tabelle/stati_pratiche.md)
 - [storico_set_storicizza](tabelle/storico_set_storicizza.md) — `config.storico_set_storicizza` è la **tabella di configurazione** che elenca le tabelle per le quali lo **storico dei dati** deve essere abilitato **in modo predefinito**. Le tabelle presenti qui hanno la colonna `storicizza` con **default TRUE**: ciò garantisce che **ogni nuova riga** venga automaticamente marcata per la storicizzazione (snapshot su UPDATE/DELETE e protezione dal reset a FALSE a cura dei trigger).
 - [stradario](tabelle/stradario.md) — * **Mappa comunale delle vie**   Contiene l’elenco delle strade e vie di ogni comune, con riferimento al prefisso e al nome forniti da `config.stradario_generale`. * **Geolocalizzazione**   Il campo `geoloc` (geometry Point, SRID 4326) consente di associare ogni via a coordinate geografiche per mappe e ricerche spaziali. * **Associazione CAP**   Collega ogni via a un codice postale obbligatorio (`codice_postale_id`), gestito nella tabella `config.codici_postali`. * **Informazioni estese**   Il campo `extra_info` (JSONB) permette di memorizzare dati aggiuntivi, come eventuali frazioni, indicazioni o note specifiche. * **Storicizzazione**   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.stradario`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.    ---

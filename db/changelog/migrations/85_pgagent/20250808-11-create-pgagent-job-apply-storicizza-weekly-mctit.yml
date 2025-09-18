@@ -18,12 +18,13 @@ databaseChangeLog:
         Crea/aggiorna un job pgAgent che esegue ogni sabato alle 07:00
         il wrapper maintenance.proc_apply_storicizza_defaults_job().
       
-      preConditions:
-        onFail: CONTINUE
-        onError: CONTINUE
-        tableExists:
-            schemaName: pgagent
-            tableName: pga_job
+      #preConditions:
+      #  - onFail: CONTINUE
+      #    onError: CONTINUE
+      #    always: true
+          #tableExists:
+          #  schemaName: pgagent
+          #  tableName: pga_job
       changes:
         - sql:
             splitStatements: false
@@ -34,17 +35,19 @@ databaseChangeLog:
                     v_jobid   INTEGER;
                     v_classid INTEGER;
                   BEGIN
-                    -- 1) Classe 'Routine Maintenance'
-                    SELECT jclid
-                      INTO v_classid
-                      FROM pgagent.pga_jobclass
-                    WHERE jclname = 'Routine Maintenance'
-                    LIMIT 1;
+                    -- 1) Classe 'Routine Maintenance '
 
-                    IF v_classid IS NULL THEN
-                      RAISE EXCEPTION 'Job class "Routine Maintenance" non trovata';
-                    END IF;
- 
+                    SELECT jclid INTO v_classid
+                      FROM pgagent.pga_jobclass
+                      WHERE jclname = 'Routine Maintenance'
+                      LIMIT 1;
+
+                      IF v_classid IS NULL THEN
+                        INSERT INTO pgagent.pga_jobclass (jclname, jcldesc)
+                        VALUES ('Routine Maintenance', 'Default job class')
+                        RETURNING jclid INTO v_classid;
+                      END IF;
+
                     -- 2) Elimina eventuale job omonimo
                     DELETE FROM pgagent.pga_job
                     WHERE jobname = 'apply_storicizza_weekly';

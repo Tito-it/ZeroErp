@@ -33,7 +33,7 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
         'database', TG_NAME, 'E_NUMERAZIONE_IMMUTABILE',
         jsonb_build_object('fattura_id', OLD.id, 'stato', v_stato),
-        NULL::uuid, OLD.id::text
+        NULL::uuid, 'vendite.fatture' , OLD.id::text
       );
     END IF;
   END IF;

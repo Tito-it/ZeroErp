@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250919-02-upsert-dbops-automation_rules_tbl
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: automation_rules_tbl
+      changes:
+        # Upsert dei dati nella tabella tipi_indirizzi
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/automation_rules_tbl.csv
+            tableName: automation_rules_tbl
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,           type: STRING }
+              - column: { name: enabled,  type: BOOLEAN }
+              - column: { name: rules_type,    type: STRING }
+              
+              - column: { name: target_schema,  type: STRING }
+              - column: { name: target_table,  type: STRING }
+              - column: { name: exec_mode,  type: STRING }
+              - column: { name: name_template,  type: STRING }
+              - column: { name: existence_strategy,  type: STRING }
+              - column:
+                  name: params
+                  type: JSON
+                  # se il CSV ha valore vuoto, usa {} come JSON valido
+                  defaultValue: "{}"
+              - column: { name: priority,    type: STRING }
+              - column: { name: note,    type: STRING }             
+              
+  - changeSet:
+      id: 20250918-90-upsert-automation_rules_tbl
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250918-01-upsert-automation_rules_tbl

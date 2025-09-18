@@ -11,6 +11,8 @@ databaseChangeLog:
   - changeSet:
       id: 20250917-31-trgfn_a10_ordini_a_ddt_protect_num_v1
       author: mctit
+      runOnChange: true
+      validCheckSums: ["ANY"]  
       preConditions:
         - onFail: HALT
         - tableExists: { schemaName: acquisti, tableName: ddt }
@@ -39,7 +41,7 @@ databaseChangeLog:
                     PERFORM script.fn_log_and_raise_error(
                       'database', TG_NAME, 'E_NUMERAZIONE_IMMUTABILE',
                       jsonb_build_object('ddt_id', OLD.id, 'stato', v_codice_stato),
-                      NULL::uuid, OLD.id::text
+                      NULL::uuid, 'acquisti.ddt' , OLD.id::text
                     );
                   END IF;
                 END IF;

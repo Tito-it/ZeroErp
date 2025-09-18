@@ -66,5 +66,10 @@
 | uq_ordini_v_source_fk | `CREATE UNIQUE INDEX uq_ordini_v_source_fk ON vendite.ordini USING btree (source_tipo_id, source_id) WHERE (source_tipo_id IS NOT NULL)` |
 | uq_ordini_v_uid | `CREATE UNIQUE INDEX uq_ordini_v_uid ON vendite.ordini USING btree (uid)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_a10_ordini_v_upd_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_ordini_v_protect_num()` |
+
 ---
 {% include-markdown "signature-core.md" %}

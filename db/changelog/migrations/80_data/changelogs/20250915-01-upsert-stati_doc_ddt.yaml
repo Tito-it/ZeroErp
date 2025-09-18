@@ -11,7 +11,7 @@ databaseChangeLog:
   - changeSet:
       id: 20250915-01-upsert-stati_doc_ddt
       author: mctit
-      runOnChange: true
+      #runOnChange: true
       validCheckSums:
         - ANY
       failOnError: true

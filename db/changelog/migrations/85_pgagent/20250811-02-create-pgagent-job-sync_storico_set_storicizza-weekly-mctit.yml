@@ -19,9 +19,9 @@ databaseChangeLog:
         dbops.sync_storico_set_storicizza() ogni sabato alle 07:05.
       
       preConditions:
-        onFail: CONTINUE
-        onError: CONTINUE
-        tableExists:
+        - onFail: CONTINUE
+          onError: CONTINUE
+          tableExists:
             schemaName: pgagent
             tableName: pga_job
       changes:
@@ -35,15 +35,17 @@ databaseChangeLog:
                     v_classid INTEGER;
                   BEGIN
                     -- 1) Classe 'Routine Maintenance'
-                    SELECT jclid
-                      INTO v_classid
+                    
+                    SELECT jclid INTO v_classid
                       FROM pgagent.pga_jobclass
-                    WHERE jclname = 'Routine Maintenance'
-                    LIMIT 1;
+                      WHERE jclname = 'Routine Maintenance'
+                      LIMIT 1;
 
-                    IF v_classid IS NULL THEN
-                      RAISE EXCEPTION 'Job class "Routine Maintenance" non trovata';
-                    END IF;
+                      IF v_classid IS NULL THEN
+                        INSERT INTO pgagent.pga_jobclass (jclname, jcldesc)
+                        VALUES ('Routine Maintenance', 'Default job class')
+                        RETURNING jclid INTO v_classid;
+                      END IF;
 
                     -- 2) Elimina eventuale job omonimo
                     DELETE FROM pgagent.pga_job

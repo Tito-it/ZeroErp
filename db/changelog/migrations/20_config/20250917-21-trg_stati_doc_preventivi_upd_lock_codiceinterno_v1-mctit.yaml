@@ -1,0 +1,35 @@
+﻿# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20250917-21-trg_stati_doc_preventivi_upd_lock_codiceinterno_v1
+      author: mctit
+      #runOnChange: true 
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                CREATE OR REPLACE TRIGGER trg_stati_doc_preventivi_upd_lock_codiceinterno
+                BEFORE UPDATE
+                ON config.stati_doc_preventivi
+                FOR EACH ROW
+                WHEN (old.codice_interno::text IS DISTINCT FROM 
+                      new.codice_interno::text)
+                EXECUTE FUNCTION script.trgfn_lock_columns(
+                  'codice_interno', 
+                  'CODICE_NON_MODIFICABILE'
+                );
+
+                -- 2) Aggiungo un commento al trigger di lock
+                COMMENT ON TRIGGER trg_stati_doc_preventivi_upd_lock_codiceinterno
+                ON config.stati_doc_preventivi
+                IS 'Il codice interno  non può essere modificato';

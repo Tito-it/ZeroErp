@@ -19,7 +19,7 @@ BEGIN
     FROM config.stati_doc_ordini s
    WHERE s.id = OLD.stato_doc_ordine_id;
 
-  IF v_codice IN ('CONFIRMED','ALLOCATED','SHIPPED','DELIVERED','INVOICED','CANCELLED') THEN
+  IF v_codice NOT IN ('DRAFT','') THEN
     IF NEW.numero IS DISTINCT FROM OLD.numero
        OR NEW.serie  IS DISTINCT FROM OLD.serie
        OR NEW.anno   IS DISTINCT FROM OLD.anno
@@ -27,7 +27,7 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
         'database', TG_NAME, 'E_NUMERAZIONE_IMMUTABILE',
         jsonb_build_object('id', OLD.id, 'stato', v_codice),
-        NULL::uuid, OLD.id::text
+        NULL::uuid,'vendite.ordini' , OLD.id::text
       );
     END IF;
   END IF;
