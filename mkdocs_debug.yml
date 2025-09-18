@@ -1,0 +1,15 @@
+site_name: Zero ERP — debug
+docs_dir: docs
+theme:
+  name: material
+nav:
+  - Home: it/index.md
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.superfences

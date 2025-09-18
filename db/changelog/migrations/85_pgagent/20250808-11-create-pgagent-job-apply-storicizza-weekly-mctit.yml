@@ -24,7 +24,18 @@ databaseChangeLog:
       #    always: true
           #tableExists:
           #  schemaName: pgagent
-          #  tableName: pga_job
+          #  tableName: pga_jo
+      
+      preConditions:
+        - onFail: MARK_RAN
+          onError: CONTINUE
+          sqlCheck:
+             expectedResult: 0
+             sql: |
+                SELECT COUNT(*) 
+                FROM pg_extension 
+                WHERE extname = 'pgagent'
+      
       changes:
         - sql:
             splitStatements: false
@@ -35,7 +46,7 @@ databaseChangeLog:
                     v_jobid   INTEGER;
                     v_classid INTEGER;
                   BEGIN
-                    -- 1) Classe 'Routine Maintenance '
+                    -- 1) Classe 'Routine Maintenance ' -- 
 
                     SELECT jclid INTO v_classid
                       FROM pgagent.pga_jobclass
