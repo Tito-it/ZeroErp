@@ -11,7 +11,7 @@ databaseChangeLog:
   - changeSet:
       id: 20250915-01-upsert-stati_doc_ddt
       author: mctit
-      #runOnChange: true
+      runOnChange: true
       validCheckSums:
         - ANY
       failOnError: true
@@ -30,8 +30,7 @@ databaseChangeLog:
             separator: ","
             encoding: UTF-8
             nullValue: ""
-            primaryKey: 
-                      - id
+            primaryKey: "id"
             columns:
               - column: { name: id,           type: STRING }
               
@@ -46,13 +45,13 @@ databaseChangeLog:
                   # se il CSV ha valore vuoto, usa {} come JSON valido
                   defaultValue: "{}"
               - column: { name: codice_interno,    type: STRING }
-              #- column: { name: data_insert,  type: STRING }
-              #- column: { name: user_insert,  type: STRING }
-              #- column:
-              #    name: data_update
-               #   type: STRING 
-               #   defaultValue: "NOW()"
-              #- column: { name: user_update,  type: STRING }
+              - column: { name: data_insert,  type: STRING }
+              - column: { name: user_insert,  type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING 
+                  defaultValue: "NOW()"
+              - column: { name: user_update,  type: STRING }
              
 
   - changeSet:
