@@ -20,9 +20,9 @@
 | iva_id | integer | NO |  |
 | servizio_da_fatturare | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | character varying | NO | 'CURRENT_USER'::character varying |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | NO | CURRENT_USER |
+| user_update | character varying | NO | 'CURRENT_USER'::character varying |
 | utility_id | integer | YES |  |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
@@ -45,12 +45,7 @@
 | CHECK | chk_clienti_garanzia_tipo |  |
 | CHECK | chk_clienti_numero_giorni_range |  |
 | CHECK | chk_clienti_numero_giorni_uso |  |
-| CHECK | chk_clienti_pa |  |
-| CHECK | chk_clienti_scadenza_logic |  |
-| CHECK | chk_clienti_servizio_da_fatturare |  |
-| CHECK | chk_clienti_split_payment |  |
 | CHECK | chk_clienti_tipo_giorni_scadenza |  |
-| CHECK | chk_clienti_tipo_scadenza |  |
 | FOREIGN KEY | fk_clienti_istanze_utilities | istanza_utility_id |
 | FOREIGN KEY | fk_clienti_pdp | pdp_id |
 | FOREIGN KEY | fk_iva_config | iva_id |
@@ -64,14 +59,14 @@
 | Nome | Definizione |
 |------|-------------|
 | ex_clienti_no_overlap_stesso_pdp | `CREATE INDEX ex_clienti_no_overlap_stesso_pdp ON anagrafiche.clienti USING gist (pdp_id, periodo) WHERE ((pdp_id IS NOT NULL) AND (periodo IS NOT NULL))` |
+| ix_anagrafiche_clienti_istanza_id | `CREATE INDEX ix_anagrafiche_clienti_istanza_id ON anagrafiche.clienti USING btree (istanza_utility_id)` |
+| ix_anagrafiche_clienti_iva_id | `CREATE INDEX ix_anagrafiche_clienti_iva_id ON anagrafiche.clienti USING btree (iva_id)` |
+| ix_anagrafiche_clienti_modalita_pagamento_id | `CREATE INDEX ix_anagrafiche_clienti_modalita_pagamento_id ON anagrafiche.clienti USING btree (modalita_pagamento_id)` |
+| ix_anagrafiche_clienti_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_clienti_soggetto_ruolo_id ON anagrafiche.clienti USING btree (soggetto_ruolo_id)` |
+| ix_anagrafiche_clienti_stato_cliente_id | `CREATE INDEX ix_anagrafiche_clienti_stato_cliente_id ON anagrafiche.clienti USING btree (stato_cliente_id)` |
+| ix_cliente_utility | `CREATE INDEX ix_cliente_utility ON anagrafiche.clienti USING btree (utility_id)` |
 | ix_clienti_cd_importato | `CREATE INDEX ix_clienti_cd_importato ON anagrafiche.clienti USING btree (codice_cliente_importato)` |
-| ix_clienti_istanza_utility_id | `CREATE INDEX ix_clienti_istanza_utility_id ON anagrafiche.clienti USING btree (istanza_utility_id)` |
-| ix_clienti_iva_id | `CREATE INDEX ix_clienti_iva_id ON anagrafiche.clienti USING btree (iva_id)` |
-| ix_clienti_modalita_pagamento_id | `CREATE INDEX ix_clienti_modalita_pagamento_id ON anagrafiche.clienti USING btree (modalita_pagamento_id)` |
 | ix_clienti_pdp_id | `CREATE INDEX ix_clienti_pdp_id ON anagrafiche.clienti USING btree (pdp_id)` |
-| ix_clienti_soggetto_ruolo_id | `CREATE INDEX ix_clienti_soggetto_ruolo_id ON anagrafiche.clienti USING btree (soggetto_ruolo_id)` |
-| ix_clienti_stato_cliente_id | `CREATE INDEX ix_clienti_stato_cliente_id ON anagrafiche.clienti USING btree (stato_cliente_id)` |
-| ix_clienti_utility_id | `CREATE INDEX ix_clienti_utility_id ON anagrafiche.clienti USING btree (utility_id)` |
 | pk_clienti | `CREATE UNIQUE INDEX pk_clienti ON anagrafiche.clienti USING btree (id)` |
 
 ## 🚨 Trigger
@@ -79,15 +74,15 @@
 |------|--------|--------|--------|
 | trg_clienti_ins_upd_check_ruolo_cliente | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_ins_upd_check_ruolo_cliente()` |
 | trg_clienti_ins_upd_check_ruolo_cliente | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_ins_upd_check_ruolo_cliente()` |
-| trg_clienti_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_clienti_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_clienti_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_clienti_set_periodo | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_periodo()` |
 | trg_clienti_set_periodo | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_periodo()` |
 | trg_clienti_sync_pdp | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_pdp()` |
 | trg_clienti_sync_pdp | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_pdp()` |
 | trg_upd_clienti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-| trg_z90_clienti_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('cliente_id')` |
 | trg_z90_clienti_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('cliente_id')` |
+| trg_z90_clienti_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('cliente_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

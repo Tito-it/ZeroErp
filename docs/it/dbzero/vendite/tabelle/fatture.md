@@ -70,11 +70,6 @@
 |------|--------|--------|--------|
 | trg_a10_fatture_upd_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_fatture_protect_num()` |
 | trg_a11_fatture_upd_numerata_non_annulabile | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a11_fatture_numerata_non_annulabile()` |
-| trg_fatture_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_fatture_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_upd_fatture_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-| trg_z90_fatture_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('fatture_id')` |
-| trg_z90_fatture_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('fatture_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

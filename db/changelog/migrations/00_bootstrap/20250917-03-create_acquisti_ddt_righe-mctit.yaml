@@ -12,10 +12,8 @@
 # ------------------------------------------------------------
 databaseChangeLog:
   - changeSet:
-      id: 20250902-18-create_acquisto_ddt_righe
+      id: 20250917-03-create_acquisti_ddt_righe
       author: mctit
-      runOnChange: true
-      validCheckSums: [ANY]
       preConditions:
         - onFail: HALT
         - tableExists:  { schemaName: acquisti, tableName: ddt }   # testata già presente
@@ -31,10 +29,10 @@ databaseChangeLog:
               - column: { name: articolo_id, type: UUID, constraints: { nullable: false }, remarks: "Articolo (catalogo.articoli.id)" }
               - column: { name: descrizione, type: VARCHAR(150), constraints: { nullable: false }, remarks: "Descrizione riga (snapshot)" }
               - column: { name: uom_id, type: BIGINT, remarks: "Unità di misura (catalogo.unita_misura.id)" }
-              - column: { name: qta, type: NUMERIC(18,6), constraints: { nullable: false }, remarks: "Quantità (deve essere > 0)" }
+              - column: { name: qta, type: "NUMERIC(18,6)", constraints: { nullable: false }, remarks: "Quantità (deve essere > 0)" }
               - column: { name: lotto, type: VARCHAR(50), remarks: "Lotto (se applicabile)" }
               - column: { name: seriale, type: VARCHAR(50), remarks: "Seriale (se applicabile)" }
-              - column: { name: note, type: TEXT, remarks: "Note riga" }
+              #- column: { name: note, type: TEXT, remarks: "Note riga" }
               - column: { name: meta, type: JSONB, defaultValue: "{}", constraints: { nullable: false }, remarks: "Estensioni JSON" }
               - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Snapshot su UPDATE/DELETE" }
               - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
@@ -77,12 +75,13 @@ databaseChangeLog:
             onUpdate: CASCADE
             onDelete: NO ACTION
 
-        # Check constraints
-        - addCheckConstraint:
-            schemaName: acquisti
-            tableName: ddt_righe
-            constraintName: chk_ddt_acquisto_r_qta_pos
-            checkConstraint: "(qta > 0)"
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE acquisti.ddt_righe
+              ADD CONSTRAINT chk_ddt_acquisto_r_qta_pos
+              CHECK (qta > 0);
 
         # Indici
         - createIndex:
@@ -105,8 +104,8 @@ databaseChangeLog:
 
 # Metto un  tag fine modifiche
   - changeSet:
-      id: 20250902-90-create-vendite-ddt-righe
+      id: 20250917-90-create_acquisti_ddt_righe
       author: mctit
       changes:
         - tagDatabase:
-            tag: 20250902-15-create-vendite-ddt-righe
+            tag: 20250917-03-create_acquisti_ddt_righe

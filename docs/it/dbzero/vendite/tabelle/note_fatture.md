@@ -32,7 +32,7 @@
 | CHECK | chk_note_target_tipo |  |
 | FOREIGN KEY | fk_fatture_note_riga | target_riga_id |
 | FOREIGN KEY | fk_fatture_note_testata | target_id |
-| PRIMARY KEY | note_fatture_pkey | target_tipo, id |
+| PRIMARY KEY | note_fatture_pkey | id, target_tipo |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -40,11 +40,6 @@
 | ix_fatture_note_render | `CREATE INDEX ix_fatture_note_render ON vendite.note_fatture USING btree (target_id, anchor_tipo, target_riga_id, posizione, seq)` |
 | note_fatture_pkey | `CREATE UNIQUE INDEX note_fatture_pkey ON vendite.note_fatture USING btree (target_tipo, id)` |
 | note_fatture_target_tipo_target_id_anchor_tipo_posizione_se_idx | `CREATE INDEX note_fatture_target_tipo_target_id_anchor_tipo_posizione_se_idx ON vendite.note_fatture USING btree (target_tipo, target_id, anchor_tipo, posizione, seq)` |
-
-## 🚨 Trigger
-| Nome | Timing | Evento | Azione |
-|------|--------|--------|--------|
-| trg_upd_note_fatture_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

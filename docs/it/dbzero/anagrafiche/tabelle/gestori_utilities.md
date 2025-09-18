@@ -8,8 +8,8 @@
 | gestore_id | integer | NO |  |
 | utility_id | integer | NO |  |
 | extra | jsonb | YES | '{}'::jsonb |
-| user_insert | character varying | NO | CURRENT_USER |
-| user_update | character varying | NO | CURRENT_USER |
+| user_insert | character varying | NO | 'CURRENT_USER'::character varying |
+| user_update | character varying | NO | 'CURRENT_USER'::character varying |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 
@@ -24,8 +24,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_gestori_utilities_gestore_id | `CREATE INDEX ix_gestori_utilities_gestore_id ON anagrafiche.gestori_utilities USING btree (gestore_id)` |
-| ix_gestori_utilities_utility_id | `CREATE INDEX ix_gestori_utilities_utility_id ON anagrafiche.gestori_utilities USING btree (utility_id)` |
+| ix_anagrafiche_gestori_utilities_ruoli_gestore_id | `CREATE INDEX ix_anagrafiche_gestori_utilities_ruoli_gestore_id ON anagrafiche.gestori_utilities USING btree (gestore_id)` |
+| ix_gur_utility | `CREATE INDEX ix_gur_utility ON anagrafiche.gestori_utilities USING btree (utility_id)` |
 | pk_gestori_utilities_ruoli | `CREATE UNIQUE INDEX pk_gestori_utilities_ruoli ON anagrafiche.gestori_utilities USING btree (id)` |
 | uq_gestore_utility | `CREATE UNIQUE INDEX uq_gestore_utility ON anagrafiche.gestori_utilities USING btree (gestore_id, utility_id)` |
 

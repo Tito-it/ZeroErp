@@ -8,15 +8,14 @@
 | codice | character varying | NO |  |
 | descrizione | character varying | NO |  |
 | tipo_conto | character | NO |  |
-| data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_insert | text | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_update | text | NO | CURRENT_USER |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | 'CURRENT_USER'::text |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | 'CURRENT_USER'::text |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_ftcc_tipo_conto |  |
 | PRIMARY KEY | pk_conti_contabili | id |
 | UNIQUE | uq_conti_contabili_codice | codice |
 

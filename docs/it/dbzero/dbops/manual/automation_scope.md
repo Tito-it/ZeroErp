@@ -2,8 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> * Orchestratori: `dbops.fn_run_automations`, `dbops.run_automations_tx_id`, `dbops.run_automations_audit_update`, `dbops.run_automations_storico`, `dbops.fn_run_automations_attivo`
-> * Tabelle correlate: `dbops.automation_rules_tbl`, `dbops.automation_overrides_cols`, `dbops.automation_fk_exclusions`
+> Approfondimento tabelle:  
+>
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)      
+> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)      
+> * [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)      
+>
+> Approfondimento funzioni:  
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)      
+> * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)      
+>
+> * Orchestratori:  `dbops.run_automations_tx_id`, `dbops.run_automations_audit_update`, `dbops.run_automations_storico
+
+
+
+
+
 
 ### 🎯 Scopo Principale
 

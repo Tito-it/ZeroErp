@@ -10,8 +10,8 @@
 | iso_num_code | smallint | YES |  |
 | descrizione | character varying | NO |  |
 | simbolo | character varying | NO |  |
-| user_insert | character varying | NO | CURRENT_USER |
-| user_update | character varying | YES | CURRENT_USER |
+| user_insert | character varying | NO | 'CURRENT_USER'::character varying |
+| user_update | character varying | YES | 'CURRENT_USER'::character varying |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 
@@ -33,6 +33,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_upd_valute_audit | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 | trg_upd_valute_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---

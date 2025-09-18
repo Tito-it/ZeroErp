@@ -7,9 +7,9 @@
 | codice | text | NO |  |
 | lingua | text | NO | 'it'::text |
 | messaggio | text | NO |  |
+| id | bigint | NO |  |
 | causa | text | YES |  |
 | soluzione | text | YES |  |
-| id | bigint | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -13,7 +13,7 @@
 
 databaseChangeLog:
   - changeSet:
-      id: 20250902-19-create_acquisti_ordini_righe_fulfillment
+      id: 20250917-05-create_acquisti_ordini_righe_fulfillment
       author: mctit
       preConditions:
         - onFail: HALT
@@ -28,7 +28,7 @@ databaseChangeLog:
               - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT, constraints: { primaryKey: true, primaryKeyName: pk_fula, nullable: false }, remarks: "PK" }
               - column: { name: ordine_riga_id, type: BIGINT, constraints: { nullable: false }, remarks: "FK → acquisti.ordini_righe.id (riga ordine)" }
               - column: { name: ddt_riga_id, type: BIGINT, constraints: { nullable: false }, remarks: "FK → acquisti.ddt_righe.id (riga DDT)" }
-              - column: { name: qta_ricevuta, type: NUMERIC("18,6"), constraints: { nullable: false }, remarks: "Quantità ricevuta (deve essere > 0)" }
+              - column: { name: qta_ricevuta, type: "NUMERIC(18,6)", constraints: { nullable: false }, remarks: "Quantità ricevuta (deve essere > 0)" }
               - column: { name: note, type: VARCHAR(200), remarks: "Note" }
               - column: { name: meta, type: JSONB, defaultValue: "{}", constraints: { nullable: false }, remarks: "Estensioni JSON" }
               - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Snapshot su UPDATE/DELETE" }
@@ -43,7 +43,7 @@ databaseChangeLog:
             baseTableSchemaName: acquisti
             baseTableName: ordini_righe_fulfillment
             baseColumnNames: ordine_riga_id
-            constraintName: fk_ordini_fula_ordine_riga
+            constraintName: fk_ordini_ful_a_ordine_riga
             referencedTableSchemaName: acquisti
             referencedTableName: ordini_righe
             referencedColumnNames: id
@@ -54,7 +54,7 @@ databaseChangeLog:
             baseTableSchemaName: acquisti
             baseTableName: ordini_righe_fulfillment
             baseColumnNames: ddt_riga_id
-            constraintName: fk_ordini_fula_ddt_riga
+            constraintName: fk_ordini_ful_a_ddt_riga
             referencedTableSchemaName: acquisti
             referencedTableName: ddt_righe
             referencedColumnNames: id
@@ -62,17 +62,19 @@ databaseChangeLog:
             onDelete: CASCADE
 
         # Check
-        - addCheckConstraint:
-            schemaName: acquisti
-            tableName: ordini_righe_fulfillment
-            constraintName: chk_ordini_fula_qta_pos
-            checkConstraint: "(qta_ricevuta > 0)"
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE acquisti.ordini_righe_fulfillment
+              ADD CONSTRAINT chk_ordini_ful_a_qta_pos
+              CHECK (qta_ricevuta > 0);
 
         # Indici
         - createIndex:
             schemaName: acquisti
             tableName: ordini_righe_fulfillment
-            indexName: uq_ordini_fula_pair
+            indexName: uq_ordini_ful_a_pair
             unique: true
             columns:
               - column: { name: ordine_riga_id }
@@ -81,15 +83,15 @@ databaseChangeLog:
         - createIndex:
             schemaName: acquisti
             tableName: ordini_righe_fulfillment
-            indexName: ix_ordini_fula_ddt_riga
+            indexName: ix_ordini_ful_a_ddt_riga
             columns:
               - column: { name: ddt_riga_id }
           
 
 # Metto un  tag fine modifiche
   - changeSet:
-      id: 20250902-90-create_acquisti_ordini_righe_fulfillment
+      id: 20250917-90-create_acquisti_ordini_righe_fulfillment
       author: mctit
       changes:
         - tagDatabase:
-            tag: 20250902-19-create_acquisti_ordini_righe_fulfillment
+            tag: 20250917-05-create_acquisti_ordini_righe_fulfillment

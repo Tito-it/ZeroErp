@@ -25,11 +25,5 @@
 | uq_modalita_addebito_trasporto_codice | `CREATE UNIQUE INDEX uq_modalita_addebito_trasporto_codice ON config.modalita_addebito_trasporto USING btree (codice)` |
 | uq_modalita_addebito_trasporto_codice_interno | `CREATE UNIQUE INDEX uq_modalita_addebito_trasporto_codice_interno ON config.modalita_addebito_trasporto USING btree (codice_interno)` |
 
-## 🚨 Trigger
-| Nome | Timing | Evento | Azione |
-|------|--------|--------|--------|
-| trg_block_deact_modalita_addebito_trasporto_ordini | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini', 'modalita_addebito_trasporto_id')` |
-| trg_mod_add_trasporto_upd_lock_codiceinterno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
-
 ---
 {% include-markdown "signature-core.md" %}

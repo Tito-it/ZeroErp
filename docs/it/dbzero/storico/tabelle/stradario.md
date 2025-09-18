@@ -5,12 +5,15 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
+| stradario_generale_id | integer | NO |  |
 | valid_from | date | NO | CURRENT_DATE |
 | valid_to | date | YES |  |
 | change_type | character | YES | 'A'::bpchar |
-| data_insert | timestamp without time zone | YES | CURRENT_TIMESTAMP |
-| user_insert | character varying | YES | CURRENT_USER |
+| data_insert | timestamp without time zone | YES | now() |
+| user_insert | character varying | YES | 'CURRENT_USER'::character varying |
 | stradario_id | integer | YES |  |
+| geoloc | USER-DEFINED | YES |  |
+| extra_info | jsonb | YES |  |
 | snapshot | jsonb | YES |  |
 | tipo_operazione | smallint | YES |  |
 | tx_id | uuid | YES |  |
@@ -23,6 +26,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_storico_stradario_stradario_generale_id | `CREATE INDEX ix_storico_stradario_stradario_generale_id ON storico.stradario USING btree (stradario_generale_id)` |
 | ix_storico_stradario_stradario_id | `CREATE INDEX ix_storico_stradario_stradario_id ON storico.stradario USING btree (stradario_id)` |
 | ix_storico_stradario_valid_periodo | `CREATE INDEX ix_storico_stradario_valid_periodo ON storico.stradario USING btree (valid_from, valid_to)` |
 | pk_stradario | `CREATE UNIQUE INDEX pk_stradario ON storico.stradario USING btree (id)` |

@@ -23,7 +23,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_soggetti_soggetto_id | `CREATE INDEX ix_soggetti_soggetto_id ON storico.soggetti USING btree (soggetto_id)` |
 | ix_storico_soggetti_soggetto_valid_from_desc | `CREATE INDEX ix_storico_soggetti_soggetto_valid_from_desc ON storico.soggetti USING btree (soggetto_id, valid_from DESC)` |
 | pk_storico_soggetti | `CREATE UNIQUE INDEX pk_storico_soggetti ON storico.soggetti USING btree (id)` |
 

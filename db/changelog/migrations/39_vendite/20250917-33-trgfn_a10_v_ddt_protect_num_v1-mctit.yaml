@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20250917-33-trgfn_a10_v_ddt_protect_num
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: ddt }
+      changes:
+        # Trigger protect (blocca numero/serie/anno/data dopo determinati stati)
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_a10_v_ddt_protect_num()
+              RETURNS trigger
+              LANGUAGE plpgsql AS $$
+              DECLARE
+                v_codice_stato text;
+              BEGIN
+                SELECT s.codice_interno
+                  INTO v_codice_stato
+                  FROM config.stati_doc_ddt s
+                 WHERE s.id = OLD.stato_doc_ddt_id;
+
+                -- dopo CONSEGNATO/RESO/ANNULLATO blocco numerazione/data (adatta la lista se ti serve SPEDITO)
+                IF v_codice_stato IN ('CONSEGNATO','RESO','ANNULLATO') THEN
+                  IF NEW.numero IS DISTINCT FROM OLD.numero
+                     OR NEW.serie IS DISTINCT FROM OLD.serie
+                     OR NEW.anno  IS DISTINCT FROM OLD.anno
+                     OR NEW.data  IS DISTINCT FROM OLD.data THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_NUMERAZIONE_IMMUTABILE',
+                      jsonb_build_object('ddt_id', OLD.id, 'stato', v_codice_stato),
+                      NULL::uuid, 'vendite.ddt' , OLD.id::text
+                    );
+                  END IF;
+                END IF;
+                RETURN NEW;
+              END$$;
+
+              DROP TRIGGER IF EXISTS trg_a10_v_ddt_protect_num ON vendite.ddt;
+              CREATE TRIGGER trg_a10_v_ddt_protect_num
+              BEFORE UPDATE ON vendite.ddt
+              FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_a10_v_ddt_protect_num();
+       
+          
+  # Metto un tag fine modifiche
+  - changeSet:
+      id: 20250917-90-trgfn_a10_ordini_v_ddt_protect_num_v1
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250917-33-trgfn_a10_ordini_v_ddt_protect_num_v1

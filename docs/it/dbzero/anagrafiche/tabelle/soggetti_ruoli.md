@@ -20,13 +20,13 @@
 | FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id, soggetto_id, soggetto_id, soggetto_id |
 | FOREIGN KEY | fk_tipi_ruoli_config | ruolo_id |
 | PRIMARY KEY | pk_soggetti_ruoli | id |
-| UNIQUE | uq_soggetto_ruolo | soggetto_id, ruolo_id |
+| UNIQUE | uq_soggetto_ruolo | ruolo_id, soggetto_id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_soggetti_ruoli_ruolo_id | `CREATE INDEX ix_soggetti_ruoli_ruolo_id ON anagrafiche.soggetti_ruoli USING btree (ruolo_id)` |
-| ix_soggetti_ruoli_soggetto_id | `CREATE INDEX ix_soggetti_ruoli_soggetto_id ON anagrafiche.soggetti_ruoli USING btree (soggetto_id)` |
+| ix_anagrafiche_soggetti_ruoli_ruolo_id | `CREATE INDEX ix_anagrafiche_soggetti_ruoli_ruolo_id ON anagrafiche.soggetti_ruoli USING btree (ruolo_id)` |
+| ix_anagrafiche_soggetti_ruoli_soggetto_id | `CREATE INDEX ix_anagrafiche_soggetti_ruoli_soggetto_id ON anagrafiche.soggetti_ruoli USING btree (soggetto_id)` |
 | pk_soggetti_ruoli | `CREATE UNIQUE INDEX pk_soggetti_ruoli ON anagrafiche.soggetti_ruoli USING btree (id)` |
 | uq_soggetto_ruolo | `CREATE UNIQUE INDEX uq_soggetto_ruolo ON anagrafiche.soggetti_ruoli USING btree (soggetto_id, ruolo_id)` |
 

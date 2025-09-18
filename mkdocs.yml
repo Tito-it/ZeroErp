@@ -46,11 +46,12 @@ markdown_extensions:
       permalink: true
   - admonition
   - codehilite
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_code_format
+  #- pymdownx.superfences:
+  #    custom_fences:
+  #      - name: mermaid
+  #        class: mermaid
+  #        format: !!python/name:pymdownx.superfences.fence_code_format
+
 extra_javascript:
   - https://unpkg.com/mermaid@11.9.0/dist/mermaid.min.js
   #- assets/javascripts/mermaid-init.js
@@ -66,7 +67,6 @@ nav:
       - Prerequisiti: it/installazione.md
   - Architettura:
       - Panoramica: it/architettura.md
-      #- Flusso Dati: it/flusso-dati.md
       - Database:
           - Liquibase Setup & Workflow: it/liquibase-setup-workflow.md
           - Linee Guida SQL: it/linee-guida-sql.md
@@ -88,12 +88,14 @@ nav:
           - Config:     dbzero/config/index.md
           - Dbops:      dbzero/dbops/index.md
           - Magazzino:  dbzero/magazzino/index.md
-          - Maintenance: dbzero/maintenance/index.md
-          - Pagamenti:  dbzero/pagamenti/index.md
-          - Script:     dbzero/script/index.md
-          - Storico:    dbzero/storico/index.md
-          - Public:    dbzero/public/index.md
           - Vendite: dbzero/vendite/index.md
+          - Acquisti: dbzero/acquisti/index.md
+          - Pagamenti:  dbzero/pagamenti/index.md
+          - Storico:    dbzero/storico/index.md
+          - Script:     dbzero/script/index.md
+          - Maintenance: dbzero/maintenance/index.md
+          - Public:    dbzero/public/index.md
+          
   - Strumenti:
         - Generatore Documentazione: dbzero/tools/gen_db_docs.md
   - Sviluppatori:

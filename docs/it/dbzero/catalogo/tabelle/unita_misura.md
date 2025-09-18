@@ -30,12 +30,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_block_deact_unita_misura_fatture_righe | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_righe', 'uom_id')` |
-| trg_block_deact_unita_misura_ordini_righe | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini_righe', 'uom_id')` |
-| trg_soft_del_unita_misura__articoli__fk_articoli_unita_misura | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli', 'uom_id')` |
-| trg_soft_del_unita_misura_articoli_fk_articoli_unita_misura | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('catalogo', 'articoli', 'uom_id')` |
-| trg_soft_del_unita_misura_preventivi_righe_fk_prevrighe__562e4f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade('vendite', 'preventivi_righe', 'unita_misura_id')` |
 | trg_upd_unita_misura_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_upd_unita_misura_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

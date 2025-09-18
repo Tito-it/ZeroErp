@@ -39,8 +39,6 @@
 | Nome | Definizione |
 |------|-------------|
 | dati_catastali_pkey | `CREATE UNIQUE INDEX dati_catastali_pkey ON anagrafiche.dati_catastali USING btree (id)` |
-| ix_dati_catastali_indirizzo_dettaglio_id | `CREATE INDEX ix_dati_catastali_indirizzo_dettaglio_id ON anagrafiche.dati_catastali USING btree (indirizzo_dettaglio_id)` |
-| ix_dati_catastali_istanza_utility_id | `CREATE INDEX ix_dati_catastali_istanza_utility_id ON anagrafiche.dati_catastali USING btree (istanza_utility_id)` |
 | uq_dati_catastali_indirizzo_istanza | `CREATE UNIQUE INDEX uq_dati_catastali_indirizzo_istanza ON anagrafiche.dati_catastali USING btree (indirizzo_dettaglio_id, istanza_utility_id)` |
 
 ## 🚨 Trigger

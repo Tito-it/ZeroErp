@@ -13,9 +13,9 @@
 | valid_from | date | YES | CURRENT_DATE |
 | valid_to | date | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | character varying | NO | 'CURRENT_USER'::character varying |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | NO | CURRENT_USER |
+| user_update | character varying | NO | 'CURRENT_USER'::character varying |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
 
@@ -28,15 +28,15 @@
 | FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
 | PRIMARY KEY | pk_billing_account | id |
 | UNIQUE | uq_billing_account_codice | codice |
-| UNIQUE | uq_billing_instance_utility | istanza_utility_id, utility_id |
+| UNIQUE | uq_billing_instance_utility | utility_id, istanza_utility_id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_billing_account_istanza_utility_id | `CREATE INDEX ix_billing_account_istanza_utility_id ON anagrafiche.billing_account USING btree (istanza_utility_id)` |
-| ix_billing_account_parent_account_id | `CREATE INDEX ix_billing_account_parent_account_id ON anagrafiche.billing_account USING btree (parent_account_id)` |
-| ix_billing_account_soggetto_ruolo_id | `CREATE INDEX ix_billing_account_soggetto_ruolo_id ON anagrafiche.billing_account USING btree (soggetto_ruolo_id)` |
-| ix_billing_account_utility_id | `CREATE INDEX ix_billing_account_utility_id ON anagrafiche.billing_account USING btree (utility_id)` |
+| ix_anagrafiche_billing_account_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_billing_account_soggetto_ruolo_id ON anagrafiche.billing_account USING btree (soggetto_ruolo_id)` |
+| ix_anagrafiche_billing_account_utility_id | `CREATE INDEX ix_anagrafiche_billing_account_utility_id ON anagrafiche.billing_account USING btree (utility_id)` |
+| ix_billing_account_istanza | `CREATE INDEX ix_billing_account_istanza ON anagrafiche.billing_account USING btree (istanza_utility_id)` |
+| ix_billing_account_parent | `CREATE INDEX ix_billing_account_parent ON anagrafiche.billing_account USING btree (parent_account_id)` |
 | pk_billing_account | `CREATE UNIQUE INDEX pk_billing_account ON anagrafiche.billing_account USING btree (id)` |
 | uq_billing_account_codice | `CREATE UNIQUE INDEX uq_billing_account_codice ON anagrafiche.billing_account USING btree (codice)` |
 | uq_billing_instance_utility | `CREATE UNIQUE INDEX uq_billing_instance_utility ON anagrafiche.billing_account USING btree (istanza_utility_id, utility_id)` |
@@ -45,13 +45,11 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_a10_billing_account_upd_protect_account_code | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_upd_protect_account_code()` |
-| trg_billing_account_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_billing_account_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_billing_account_ins_upd_guard_normalize | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_guard_normalize()` |
+| trg_billing_account_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_billing_account_ins_upd_guard_normalize | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_guard_normalize()` |
+| trg_billing_account_ins_upd_guard_normalize | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_guard_normalize()` |
 | trg_upd_billing_account_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
-| trg_z90_billing_account_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('billing_account_id')` |
-| trg_z90_billing_account_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('billing_account_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

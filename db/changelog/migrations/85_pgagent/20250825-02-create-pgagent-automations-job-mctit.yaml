@@ -7,28 +7,6 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 
-databaseChangeLog:
-  - changeSet:
-      id: 20250825-02-create-pgagent-automations-job
-      author: mctit
-      runOnChange: true
-      validCheckSums:
-        - ANY
-      comments: >
-        Crea/aggiorna 5 job pgAgent (TX_ID, AUDIT_UPDATE, STORICO_PROVISION, STORICO, ATTIVO)
-        schedulati ogni giorno alle 21:00 che invocano le procedure wrapper in maintenance.*
-      
-      preConditions:
-        onFail: CONTINUE
-        onError: CONTINUE
-        tableExists:
-            schemaName: pgagent
-            tableName: pga_job
-      changes:
-        - sql:
-            splitStatements: false
-            stripComments: false
-            sql: |
 # ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
 # pgAgent jobs per automations – run daily @ 21:00
@@ -36,7 +14,7 @@ databaseChangeLog:
 # ------------------------------------------------------------
 databaseChangeLog:
   - changeSet:
-      id: 20250822-41-create-pgagent-jobs-automations-daily-21
+      id: 20250825-02-create-pgagent-automations-job
       author: mctit
       runOnChange: true
       validCheckSums: [ "ANY" ]
@@ -44,11 +22,11 @@ databaseChangeLog:
         Crea/aggiorna 5 job pgAgent (TX_ID, AUDIT_UPDATE, STORICO_PROVISION, STORICO, ATTIVO)
         schedulati ogni giorno alle 21:00 che invocano le procedure wrapper in maintenance.*
       preConditions:
-        onFail: CONTINUE
-        onError: CONTINUE
-        tableExists:
-          schemaName: pgagent
-          tableName: pga_job
+        - onFail: CONTINUE
+          onError: CONTINUE
+          tableExists:
+            schemaName: pgagent
+            tableName: pga_job
       changes:
         - sql:
             splitStatements: false
@@ -65,15 +43,17 @@ databaseChangeLog:
                 v_months    boolean[] := array_fill(TRUE, ARRAY[12])::boolean[];                                  -- tutti i mesi
               BEGIN
                 -- 1) Classe 'Routine Maintenance'
-                SELECT jclid
-                  INTO v_classid
-                  FROM pgagent.pga_jobclass
-                 WHERE jclname = 'Routine Maintenance'
-                 LIMIT 1;
 
-                IF v_classid IS NULL THEN
-                  RAISE EXCEPTION 'Job class "Routine Maintenance" non trovata';
-                END IF;
+                    SELECT jclid INTO v_classid
+                      FROM pgagent.pga_jobclass
+                      WHERE jclname = 'Routine Maintenance'
+                      LIMIT 1;
+
+                      IF v_classid IS NULL THEN
+                        INSERT INTO pgagent.pga_jobclass (jclname, jcldesc)
+                        VALUES ('Routine Maintenance', 'Default job class')
+                        RETURNING jclid INTO v_classid;
+                      END IF;
 
                 -- helper locale per creare un job "da zero"
                 PERFORM 1;  -- no-op per chiarezza

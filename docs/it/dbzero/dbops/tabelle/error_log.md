@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | bigint | NO |  |
+| id | bigint | NO | nextval('dbops.error_log_id_seq'::regclass) |
 | occurred_at | timestamp with time zone | NO | now() |
 | area | text | NO |  |
 | function_name | text | NO |  |
@@ -22,7 +22,7 @@
 | Nome | Definizione |
 |------|-------------|
 | error_log_pkey | `CREATE UNIQUE INDEX error_log_pkey ON dbops.error_log USING btree (id)` |
-| ix_error_log_messaggio_errore_id | `CREATE INDEX ix_error_log_messaggio_errore_id ON dbops.error_log USING btree (messaggio_errore_id)` |
+| ix_dbops_error_log_messaggio_errore_id | `CREATE INDEX ix_dbops_error_log_messaggio_errore_id ON dbops.error_log USING btree (messaggio_errore_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

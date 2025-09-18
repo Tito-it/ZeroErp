@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - changeSet:
+      id: 20250917-09-vendite-contratti-add-stato-doc-contratto
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        - onError: CONTINUE
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: stato_doc_contratto_id
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: contratti
+            columns:
+              - column:
+                  name: stato_doc_contratto_id
+                  type: BIGINT                  
+                  constraints:
+                    nullable: false
+                  remarks: "Stato documento contratto _id FK - stati_doc_contratti DRAFT|ATTIVO|SOSPESO|CESSATO"
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: contratti
+            baseColumnNames: stato_doc_contratto_id
+            constraintName: fk_v_contratti_stato_ddt
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_contratti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - dropColumn:
+            schemaName: vendite
+            tableName: contratti
+            columnName: stato
+
+  - changeSet:
+      id: 20250917-09a-vendite-contratti-add-stato-doc-contratto
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN     # se la colonna esiste, il changeSet viene saltato
+        - onError: CONTINUE
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: data
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: contratti
+            columns:
+             - column: { name: data, type: DATE, defaultValueComputed: CURRENT_DATE, constraints: { nullable: false }, remarks: "Data contratto" }
+
+  
+
+  - changeSet:
+      id: 20250917-90-vendite-contratti-add-stato-doc-contratto
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250917-09-vendite-contratti-add-stato-doc-contratto

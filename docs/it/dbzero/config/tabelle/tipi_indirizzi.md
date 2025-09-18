@@ -7,16 +7,15 @@
 | id | integer | NO |  |
 | codice_interno | character varying | NO |  |
 | descrizione | text | NO |  |
-| data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_insert | text | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_update | text | NO | CURRENT_USER |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | 'CURRENT_USER'::text |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | 'CURRENT_USER'::text |
 | codice | character varying | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_cod_int_tipo_indirizzo |  |
 | PRIMARY KEY | pk_tipi_indirizzi | id |
 | UNIQUE | uq_tipi_indirizzi_codice_interno | codice_interno |
 
@@ -30,7 +29,6 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_tipi_indirizzi_upd_lock_cod_interno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
-| trg_tipi_indirizzi_upd_lock_codice_interno | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('cod_int_tipo_indirizzo', 'CODICE_NON_MODIFICABILE')` |
 | trg_upd_tipi_indirizzi_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---

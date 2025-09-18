@@ -7,78 +7,77 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 databaseChangeLog:
-# 2.a) Partizione ACQUISTI: note_ordini (crea se parent c'è; FKs solo se esistono le tabelle)
+# 2.b) Partizione ACQUISTI: note_ddt (analogamente)
   - changeSet:
-      id: 20250916-21-acquisti-note-ordini
+      id: 20250916-04-acquisti-note-ddt
       author: mctit
       preConditions:
         - onFail: MARK_RAN
         - tableExists: { schemaName: acquisti, tableName: note }
         - not:
-            - tableExists: { schemaName: acquisti, tableName: note_ordini }
+            - tableExists: { schemaName: acquisti, tableName: note_ddt }
       changes:
         - sql:
             splitStatements: false
             sql: |
-              CREATE TABLE acquisti.note_ordini
-              PARTITION OF acquisti.note FOR VALUES IN ('ORDINE');
-              COMMENT ON TABLE acquisti.note_ordini
-                IS 'Partizione note per ordini di acquisto.';
+              CREATE TABLE acquisti.note_ddt
+              PARTITION OF acquisti.note FOR VALUES IN ('DDT');
+              COMMENT ON TABLE acquisti.note_ddt
+                IS 'Partizione note per DDT/ricezioni fornitore.';
         - preConditions:
             - onFail: CONTINUE
-            - tableExists: { schemaName: acquisti, tableName: ordini }
+            - tableExists: { schemaName: acquisti, tableName: ddt }
           changes:
             - addForeignKeyConstraint:
                 baseTableSchemaName: acquisti
-                baseTableName: note_ordini
+                baseTableName: note_ddt
                 baseColumnNames: target_id
                 referencedTableSchemaName: acquisti
-                referencedTableName: ordini
+                referencedTableName: ddt
                 referencedColumnNames: id
-                constraintName: fk_acq_ordini_note_testata
+                constraintName: fk_acq_ddt_note_testata
                 onUpdate: CASCADE
                 onDelete: CASCADE
         - preConditions:
             - onFail: CONTINUE
-            - tableExists: { schemaName: acquisti, tableName: ordini_righe }
+            - tableExists: { schemaName: acquisti, tableName: ddt_righe }
           changes:
             - addForeignKeyConstraint:
                 baseTableSchemaName: acquisti
-                baseTableName: note_ordini
+                baseTableName: note_ddt
                 baseColumnNames: target_riga_id
                 referencedTableSchemaName: acquisti
-                referencedTableName: ordini_righe
+                referencedTableName: ddt_righe
                 referencedColumnNames: id
-                constraintName: fk_acq_ordini_note_riga
+                constraintName: fk_acq_ddt_note_riga
                 onUpdate: CASCADE
                 onDelete: CASCADE
         - sql:
             splitStatements: false
             sql: |
-              ALTER TABLE acquisti.note_ordini
-              ADD CONSTRAINT chk_acq_ordini_note_anchor
+              ALTER TABLE acquisti.note_ddt
+              ADD CONSTRAINT chk_acq_ddt_note_anchor
               CHECK (
                 (anchor_tipo = 'DOCUMENTO' AND target_riga_id IS NULL AND posizione IN ('HEADER','FOOTER','SEZIONE'))
                 OR
                 (anchor_tipo = 'RIGA'      AND target_riga_id IS NOT NULL AND posizione IN ('BEFORE','AFTER'))
               );
-              COMMENT ON CONSTRAINT chk_acq_ordini_note_anchor ON acquisti.note_ordini
-                IS 'Coerenza tra anchor_tipo, riga e posizione (ordini acquisto).';
+              COMMENT ON CONSTRAINT chk_acq_ddt_note_anchor ON acquisti.note_ddt
+                IS 'Coerenza tra anchor_tipo, riga e posizione (DDT acquisto).';
         - createIndex:
             schemaName: acquisti
-            tableName: note_ordini
-            indexName: ix_acq_ordini_note_render
+            tableName: note_ddt
+            indexName: ix_acq_ddt_note_render
             columns:
               - column: { name: target_id }
               - column: { name: anchor_tipo }
               - column: { name: target_riga_id }
               - column: { name: posizione }
               - column: { name: seq }
-
 # Metto un  tag fine modifiche
   - changeSet:
-      id: 20250916-90-acquisti-note-ordini
+      id: 20250917-90-acquisti-note-ddt
       author: mctit
       changes:
         - tagDatabase:
-            tag: 20250916-21-acquisti-note-ordini
+            tag: 20250917-04-acquisti-note-ddt

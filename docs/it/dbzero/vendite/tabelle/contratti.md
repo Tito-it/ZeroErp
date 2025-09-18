@@ -11,23 +11,23 @@
 | ambito | character varying | YES | 'COMMODITY'::character varying |
 | valid_from | date | NO | CURRENT_DATE |
 | valid_to | date | YES |  |
-| stato | character varying | YES | 'BOZZA'::character varying |
 | parent_contratto_id | bigint | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
-| note | text | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
+| stato_doc_contratto_id | bigint | NO |  |
+| data | date | NO | CURRENT_DATE |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_contratti_stato |  |
 | FOREIGN KEY | fk_contratti_billing_account | billing_account_id |
 | FOREIGN KEY | fk_contratti_istanza | istanza_utility_id |
 | FOREIGN KEY | fk_contratti_parent | parent_contratto_id |
 | FOREIGN KEY | fk_contratti_utility | utility_id |
+| FOREIGN KEY | fk_v_contratti_stato_ddt | stato_doc_contratto_id |
 | PRIMARY KEY | pk_contratti | id |
 | UNIQUE | uq_contratti_numero | numero_contratto |
 
@@ -43,7 +43,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_upd_contratti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_a10_v_contratti_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_v_contratti_protect_num()` |
 
 ---
 {% include-markdown "signature-core.md" %}

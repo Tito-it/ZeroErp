@@ -23,7 +23,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_dati_societari_dati_societari_id | `CREATE INDEX ix_dati_societari_dati_societari_id ON storico.dati_societari USING btree (dati_societari_id)` |
 | pk_storico_dati_societari | `CREATE UNIQUE INDEX pk_storico_dati_societari ON storico.dati_societari USING btree (id)` |
 
 ## 🚨 Trigger

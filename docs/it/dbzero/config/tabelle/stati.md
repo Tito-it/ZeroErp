@@ -11,10 +11,10 @@
 | codice_iso3 | character | YES |  |
 | codice_telefonico | character varying | YES |  |
 | continente | character varying | YES |  |
-| data_insert | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_insert | character varying | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | CURRENT_TIMESTAMP |
-| user_update | character varying | NO | CURRENT_USER |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | character varying | NO | 'CURRENT_USER'::character varying |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying | NO | 'CURRENT_USER'::character varying |
 | extra_country | jsonb | YES |  |
 
 ## 🔒 Vincoli
