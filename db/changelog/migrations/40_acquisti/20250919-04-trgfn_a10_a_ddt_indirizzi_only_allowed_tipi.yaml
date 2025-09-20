@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------       
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — acquisti.ddt_indirizzi: validazione tipi indirizzo
+# ------------------------------------------------------------
+databaseChangeLog:
+  # 1) Correggi comment refuso su FK tipo
+  - changeSet:
+      id: 20250919-04-ddt_indirizzi-fix-comment
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON CONSTRAINT fk_ddt_indirizzo_tipo ON acquisti.ddt_indirizzi
+                IS 'FK → config.tipi_indirizzi(id)';
+
+  - changeSet:
+      id: 20250919-05-trgfn_a10_a_ddt_indirizzi_only_allowed_tipi
+      author: mctit
+      runOnChange: true
+      validCheckSums: ["ANY"]  
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE OR REPLACE FUNCTION acquisti.trgfn_ddt_indirizzi_only_allowed_tipi()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_codice text;
+              BEGIN
+                -- Ricavo il codice_interno del tipo collegato
+                SELECT t.codice_interno
+                  INTO v_codice
+                  FROM config.tipi_indirizzi t
+                 WHERE t.id = NEW.tipo_indirizzo_id;
+
+                IF v_codice IS NULL OR v_codice NOT IN ('CON','SPED') THEN
+                 
+                   PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_TIPO_INDIRIZZO',
+                      jsonb_build_object('table', 'acquisti.ddt_indirizzi',
+                      'ddt_id', NEW.ddt_id,
+                      'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                      'codice_interno', v_codice),
+                      NULL::uuid,  NEW.tipo_indirizzo_id::text, v_codice, 'ddt' , 'CON, SPED'
+                    );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $$;
+
+  - changeSet:
+      id: 20250919-06-trgfn_a10_a_ddt_indirizzi_only_allowed_tipi
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DROP TRIGGER IF EXISTS trg_a10_ins_upd_ddt_indirizzi_only_allowed_tipi ON acquisti.ddt_indirizzi;
+
+              CREATE TRIGGER trg_a10_ins_upd_ddt_indirizzi_only_allowed_tipi
+              BEFORE INSERT OR UPDATE OF tipo_indirizzo_id
+              ON acquisti.ddt_indirizzi
+              FOR EACH ROW
+              EXECUTE FUNCTION acquisti.trgfn_ddt_indirizzi_only_allowed_tipi();
+
+  # Metto un tag fine modifiche
+  - changeSet:
+      id: 220250919-90-trgfn_a10_a_ddt_indirizzi_only_allowed_tipi
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250919-04-trgfn_a10_a_ddt_indirizzi_only_allowed_tipi

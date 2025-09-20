@@ -2,9 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> * Orchestratori: `dbops.fn_run_automations`, `dbops.run_automations_tx_id`, `dbops.run_automations_audit_update`, `dbops.run_automations_storico`, `dbops.fn_run_automations_attivo`
-> * Tabelle di supporto: `dbops.automation_overrides_cols`, `dbops.automation_fk_exclusions`
-> * Trigger functions: `dbops.trgfn_tx_id_managed`, `script.trgfn_upd_audit_data_user_generic`, `dbops.trgfn_soft_delete_cascade`, `dbops.trgfn_child_requires_active_parent`, `dbops.trgfn_prevent_deactivate_if_children`, `script.trgfn_upd_dlt_storico_generic`
+> ApprofondimeNto tabelle
+> 
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)      
+> * [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)      
+> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)      >
+>
+> Approfondimento funzioni:  
+>  * Regola **ATTIVO / soft-delete** [dbops.trgfn_soft_delete_cascade](/dbzero/dbops/funzioni/trgfn_soft_delete_cascade)      
+> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)      
+> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)      
+> 
+> * Orchestratori: 
+> 
+> [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations), [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id), [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update), [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico), [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
 
 ### 🎯 Scopo Principale
 

@@ -70,6 +70,7 @@ nav:
       - Database:
           - Liquibase Setup & Workflow: it/liquibase-setup-workflow.md
           - Linee Guida SQL: it/linee-guida-sql.md
+          - Linee Guida Trigger: it/linee-guida-trigger.md
           - Db PostgresSQL: 
               - Panoramica: it/postgresql/intro.md
               - Parmetri personalizzati (GUC): it/postgresql/parametri-personalizzati-(GUC).md
@@ -114,3 +115,5 @@ nav:
           - Generazione di un cliente : guide/generazione-cliente.md
           - Gestione conti bancari: guide/gestione-conti-bancari.md
           - Gestione degli indirizzi : guide/gestione-degli-indirizzi.md
+
+  - Glossario: it/glossario.md

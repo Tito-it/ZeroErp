@@ -3,9 +3,10 @@
 > 👀 **Vedi anche**
 >
 > Approfondimento funzioni: 
-> * Helper: `dbops.fn_get_override_col(schema, table, key, default)`
 > * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
 > * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)
+
+> * Esempio Helper: [dbops.fn_get_override_col(schema, table, key, default)]
 
 
 ### 🎯 Scopo Principale
