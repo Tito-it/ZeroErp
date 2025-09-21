@@ -15,6 +15,10 @@
 | meta | jsonb | YES | '{}'::jsonb |
 | ordine | smallint | YES | 0 |
 | attivo | boolean | YES | true |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | character varying | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying | YES | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

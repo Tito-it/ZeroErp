@@ -7,6 +7,10 @@
 | ordine_id | bigint | NO |  |
 | tipo_indirizzo_id | bigint | NO |  |
 | snapshot | jsonb | NO | '{}'::jsonb |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | character varying | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying | YES | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -22,6 +26,12 @@
 | ix_ordini_indir_ordine | `CREATE INDEX ix_ordini_indir_ordine ON vendite.ordini_indirizzi USING btree (ordine_id)` |
 | pk_ordini_indirizzi | `CREATE UNIQUE INDEX pk_ordini_indirizzi ON vendite.ordini_indirizzi USING btree (id)` |
 | uq_ordini_indirizzi_uno_per_tipo | `CREATE UNIQUE INDEX uq_ordini_indirizzi_uno_per_tipo ON vendite.ordini_indirizzi USING btree (ordine_id, tipo_indirizzo_id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_a10_ins_upd_ordini_indirizzi_only_allowed_tipi | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_indirizzi_only_allowed_tipi()` |
+| trg_a10_ins_upd_ordini_indirizzi_only_allowed_tipi | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_indirizzi_only_allowed_tipi()` |
 
 ---
 {% include-markdown "signature-core.md" %}

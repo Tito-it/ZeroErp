@@ -21,7 +21,7 @@ BEGIN
 
   -- dopo CONSEGNATO/RESO/ANNULLATO blocco numerazione/data (adatta la lista se ti serve SPEDITO)
   IF v_codice_stato <> 'DRAFT' THEN
-    IF NEW.numero_preventivo IS DISTINCT FROM OLD.numero_preventivo
+    IF NEW.numero IS DISTINCT FROM OLD.numero
        OR NEW.data  IS DISTINCT FROM OLD.data THEN
       PERFORM script.fn_log_and_raise_error(
         'database', TG_NAME, 'E_NUMERAZIONE_IMMUTABILE',

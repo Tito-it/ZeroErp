@@ -18,7 +18,7 @@
 | modalita_pagamento_id | integer | YES |  |
 | giorni_pagamento | smallint | YES |  |
 | fine_mese | boolean | YES |  |
-| indirizzo_consegna_id | integer | YES |  |
+| indirizzo_consegna_id | integer | NO |  |
 | indirizzo_cons_snapshot | jsonb | NO | '{}'::jsonb |
 | causale_trasporto_id | bigint | YES |  |
 | aspetto_bene_id | bigint | YES |  |
@@ -70,6 +70,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_a10_ins_upd_ao_only_consegna_tipo_con | BEFORE | INSERT | `EXECUTE FUNCTION acquisti.trgfn_a10_ao_only_consegna_tipo_con()` |
+| trg_a10_ins_upd_ao_only_consegna_tipo_con | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_a10_ao_only_consegna_tipo_con()` |
 | trg_a10_ordini_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_a10_ordini_protect_num()` |
 
 ---
