@@ -44,8 +44,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_prevnote_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_prevnote_validate()` |
-| trg_prevnote_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_prevnote_validate()` |
+| trg_note_preventivo_ins_upd_prevnote_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_prevnote_validate()` |
+| trg_note_preventivo_ins_upd_prevnote_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_prevnote_validate()` |
 
 ---
 {% include-markdown "signature-core.md" %}

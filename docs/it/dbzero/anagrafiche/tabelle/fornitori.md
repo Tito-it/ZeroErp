@@ -48,8 +48,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_fornitori_attivo_stato | `CREATE INDEX ix_fornitori_attivo_stato ON anagrafiche.fornitori USING btree (attivo, stato_operativo)` |
-| ix_fornitori_codice | `CREATE INDEX ix_fornitori_codice ON anagrafiche.fornitori USING btree (codice)` |
-| ix_fornitori_soggetto_ruolo_id | `CREATE INDEX ix_fornitori_soggetto_ruolo_id ON anagrafiche.fornitori USING btree (soggetto_ruolo_id)` |
 | pk_fornitori | `CREATE UNIQUE INDEX pk_fornitori ON anagrafiche.fornitori USING btree (id)` |
 | uq_fornitori_codice | `CREATE UNIQUE INDEX uq_fornitori_codice ON anagrafiche.fornitori USING btree (codice)` |
 | uq_fornitori_soggetto_ruolo_id | `CREATE UNIQUE INDEX uq_fornitori_soggetto_ruolo_id ON anagrafiche.fornitori USING btree (soggetto_ruolo_id)` |
@@ -57,7 +55,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_a10_fornitori_upd_protect_account_code | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_upd_protect_account_code()` |
+| trg_fornitori_a10_upd_protect_account_code | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_upd_protect_account_code()` |
 | trg_fornitori_ins_upd_check_ruolo_fornitore | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_ins_upd_check_ruolo_fornitore()` |
 | trg_fornitori_ins_upd_check_ruolo_fornitore | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_ins_upd_check_ruolo_fornitore()` |
 | trg_fornitori_ins_upd_guard_normalize | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()` |

@@ -47,7 +47,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_a10_emittenti_fiscali_upd_protect_codice | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_a10_emittenti_fiscali_protect_codice()` |
+| trg_emittenti_fiscali_a10_upd_protect_codice | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_a10_emittenti_fiscali_protect_codice()` |
 | trg_emittenti_fiscali_ins_upd_check_ruolo_emi_fis | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis()` |
 | trg_emittenti_fiscali_ins_upd_check_ruolo_emi_fis | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis()` |
 | trg_emittenti_fiscali_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_norm()` |

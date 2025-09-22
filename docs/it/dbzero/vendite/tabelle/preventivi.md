@@ -42,7 +42,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_preventivi_numero | `CREATE INDEX ix_preventivi_numero ON vendite.preventivi USING btree (numero)` |
 | pk_preventivi | `CREATE UNIQUE INDEX pk_preventivi ON vendite.preventivi USING btree (id)` |
 | uq_preventivi_numero_rev | `CREATE UNIQUE INDEX uq_preventivi_numero_rev ON vendite.preventivi USING btree (numero, rev)` |
 | ux_preventivi_numero_attiva | `CREATE UNIQUE INDEX ux_preventivi_numero_attiva ON vendite.preventivi USING btree (numero) WHERE (is_revision_attiva = true)` |
@@ -50,7 +49,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_a10_v_preventivi_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_v_preventivi_protect_num()` |
+| trg_preventivi_a10_upd_v_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_v_preventivi_protect_num()` |
 | trg_preventivi_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_preventivi_norm()` |
 | trg_preventivi_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_preventivi_norm()` |
 

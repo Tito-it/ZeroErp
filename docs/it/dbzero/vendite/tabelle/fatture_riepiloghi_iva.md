@@ -29,7 +29,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_fatture_r_iva_fattura | `CREATE INDEX ix_fatture_r_iva_fattura ON vendite.fatture_riepiloghi_iva USING btree (fattura_id)` |
 | pk_fatture_r_iva | `CREATE UNIQUE INDEX pk_fatture_r_iva ON vendite.fatture_riepiloghi_iva USING btree (id)` |
 | uq_fatture_r_iva_key | `CREATE UNIQUE INDEX uq_fatture_r_iva_key ON vendite.fatture_riepiloghi_iva USING btree (fattura_id, COALESCE(natura_id, 0), COALESCE(esigibilita, 'I'::bpchar), COALESCE(split_payment, false), COALESCE(iva_id, 0))` |
 

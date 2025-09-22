@@ -44,8 +44,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_contnote_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contnote_validate()` |
-| trg_contnote_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contnote_validate()` |
+| trg_note_contratto_ins_upd_contnote_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contnote_validate()` |
+| trg_note_contratto_ins_upd_contnote_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contnote_validate()` |
 
 ---
 {% include-markdown "signature-core.md" %}

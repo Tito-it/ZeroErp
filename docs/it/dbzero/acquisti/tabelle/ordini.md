@@ -59,7 +59,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_ao_fornitore_stato_data | `CREATE INDEX ix_ao_fornitore_stato_data ON acquisti.ordini USING btree (soggetto_ruolo_id, stato_doc_ordine_id, data)` |
 | ix_ao_stato_doc_ordine | `CREATE INDEX ix_ao_stato_doc_ordine ON acquisti.ordini USING btree (stato_doc_ordine_id)` |
 | ix_ordini_ao_fornitore_stato_data | `CREATE INDEX ix_ordini_ao_fornitore_stato_data ON acquisti.ordini USING btree (soggetto_ruolo_id, stato_doc_ordine_id, data)` |
 | pk_ordini_a | `CREATE UNIQUE INDEX pk_ordini_a ON acquisti.ordini USING btree (id)` |
@@ -70,9 +69,9 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_a10_ins_upd_ao_only_consegna_tipo_con | BEFORE | INSERT | `EXECUTE FUNCTION acquisti.trgfn_a10_ao_only_consegna_tipo_con()` |
-| trg_a10_ins_upd_ao_only_consegna_tipo_con | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_a10_ao_only_consegna_tipo_con()` |
-| trg_a10_ordini_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_a10_ordini_protect_num()` |
+| trg_ordini_a10_ins_upd_ao_only_consegna_tipo_con | BEFORE | INSERT | `EXECUTE FUNCTION acquisti.trgfn_a10_ao_only_consegna_tipo_con()` |
+| trg_ordini_a10_ins_upd_ao_only_consegna_tipo_con | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_a10_ao_only_consegna_tipo_con()` |
+| trg_ordini_a10_upd_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_a10_ordini_protect_num()` |
 
 ---
 {% include-markdown "signature-core.md" %}
