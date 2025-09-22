@@ -40,7 +40,7 @@ databaseChangeLog:
                     BEGIN
                         
 
-                        -- Se p_soggetto_ruolo_id IS NULL o = 0:
+                        -- Se p_soggetto_ruolo_id IS NULL o = 0: 
                         --   - Recupera il ruolo_id corrispondente acodice_interno
                         --   - Inserisce in anagrafiche.soggetti_ruoli un nuovo record:
                         --       (soggetto_id = p_soggetto_id, ruolo_id = <quello trovato>, user_insert = current_user)

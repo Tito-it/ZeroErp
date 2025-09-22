@@ -20,7 +20,6 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
             comment: "Ritorna gli indirizzi di un soggetto_ruolo formattato"
-            splitStatements: false
             sql: |     
                     CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_ruolo(
                       p_soggetto_ruolo_id integer)

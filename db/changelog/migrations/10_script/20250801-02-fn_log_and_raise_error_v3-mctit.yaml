@@ -19,7 +19,6 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
             comment: "Funzione di log e rilancio eccezione con messaggio custom"
-            splitStatements: false
             sql: |
               CREATE OR REPLACE FUNCTION script.fn_log_and_raise_error(
                       p_area           TEXT,

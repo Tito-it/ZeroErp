@@ -63,7 +63,7 @@ trg_<fase>_<schema_opzionale>_<tabella>_<descrizione_breve>_<eventi>
 * **`_z90`**: azioni finali “a valle” (es. storico).
 * **`OF colonna`** quando possibile per performance.
 * Nomi **brevi e descrittivi**.
-* Usare la funzione progetto per errori: `dbops.fn_raise_and_log_error(...)`.
+* Usare la funzione progetto per errori: `script.fn_log_and_raise_error(...)`.
 
 ---
 
@@ -71,6 +71,6 @@ trg_<fase>_<schema_opzionale>_<tabella>_<descrizione_breve>_<eventi>
 
 * [ ] Nome con prefisso `trg_` e fase corretta (`_a10_` / `_z90_`).
 * [ ] Eventi coerenti (`_ins/_upd/_dlt`); usare `UPDATE OF colonna` quando possibile.
-* [ ] In `_a10_` usata `dbops.fn_raise_and_log_error(...)`.
+* [ ] In `_a10_` usata `script.fn_log_and_raise_error(...)`.
 * [ ] Ordine lessicografico rispettato (niente prefissi “casuali”).
 * [ ] Commenti/descrizioni chiari in SQL o Liquibase.

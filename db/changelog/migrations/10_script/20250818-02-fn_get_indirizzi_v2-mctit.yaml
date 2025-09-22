@@ -20,7 +20,6 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
             comment: "Restituisce un singolo indirizzo per soggetto_ruolo e tipo"
-            splitStatements: false
             sql: |     
                     CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(
                       p_soggetto_ruolo_id integer,

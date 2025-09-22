@@ -1,0 +1,42 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+
+  - changeSet:
+      id: 20250922-04-rename-lock-trigger
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+               
+                ALTER TRIGGER trg_sorgenti_upd_lock_categoria
+                ON config.sorgenti
+                RENAME TO trg_a10_upd_sorgenti_lock_categoria;
+
+                ALTER TRIGGER trg_sorgenti_upd_lock_cod_interno
+                ON config.sorgenti
+                RENAME TO trg_a10_upd_sorgenti_lock_codice_interno;
+
+                ALTER TRIGGER trg_tipi_indirizzi_upd_lock_cod_interno
+                ON config.tipi_indirizzi
+                RENAME TO trg_a10_upd_tipi_indirizzi_lock_codice_interno;
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250922-90-rename-lock-trigger
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250922-04-rename-lock-trigger
+
+
+  
