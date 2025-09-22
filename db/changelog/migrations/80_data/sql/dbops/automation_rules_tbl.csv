@@ -1,6 +1,6 @@
 id,enabled,rule_type,target_schema,target_table,exec_mode,name_template,existence_strategy,params,priority,note
-1,t,TX_ID   ,*all,,AUTO,trg_{table}_ins_upd_gen_tx_id,BY_NAME,{},100,txid
-2,t,AUDIT_UPDATE  ,*all,,AUTO,trg_upd_{table}_audit_data_user,BY_NAME,"{""audit_ts"": ""data_update"", ""audit_user"": ""user_update""}",100,audit
-4,t,ATTIVO  ,*all,,AUTO,"{""block"": ""trg_block_deact_{parent}_{child}_{fkhash6_if_long}"", ""cascade"": ""trg_soft_del_{parent}_{child}_{fk}_{fkhash6_if_long}"", ""require"": ""trg_chk_{child}_parent_{fk}_{fkhash6_if_long}""}",BY_NAME,"{""mode"": ""auto"", ""cascade_children"": true, ""include_no_action"": true, ""require_active_parent"": true, ""block_if_child_no_attivo"": true}",100,lab attivo
-6,t,STORICO_PROVISION  ,*all,,AUTO,,BY_NAME,"{""create_gin_index"": false}",100,storico: provisioning
-7,t,STORICO ,*all,,AUTO,trg_z90_{table}_upd_dlt_storico,BY_NAME,"{""apply_triggers"": true}",100,storico: trigger UPDATE/DELETE
+1,t,TX_ID   ,*all,"",AUTO,trg_{table}_ins_upd_gen_tx_id,BY_NAME,{},100,txid
+4,t,ATTIVO  ,*all,"",AUTO,"{""block"": ""trg_block_deact_{parent}_{child}_{fkhash6_if_long}"", ""cascade"": ""trg_soft_del_{parent}_{child}_{fk}_{fkhash6_if_long}"", ""require"": ""trg_chk_{child}_parent_{fk}_{fkhash6_if_long}""}",BY_NAME,"{""mode"": ""auto"", ""cascade_children"": true, ""include_no_action"": true, ""require_active_parent"": true, ""block_if_child_no_attivo"": true}",100,lab attivo
+6,t,STORICO_PROVISION  ,*all,"",AUTO,"",BY_NAME,"{""create_gin_index"": false}",100,storico: provisioning
+2,t,AUDIT_UPDATE  ,*all,"",AUTO,trg_{table}_upd_audit_data_user,BY_NAME,"{""audit_ts"": ""data_update"", ""audit_user"": ""user_update""}",100,audit
+7,t,STORICO ,*all,"",AUTO,trg_{table}_z90_upd_dlt_storico,BY_NAME,"{""apply_triggers"": true}",100,storico: trigger UPDATE/DELETE
