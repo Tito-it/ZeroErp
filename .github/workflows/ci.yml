@@ -118,7 +118,7 @@ jobs:
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff" \
             --username=zeroerp \
             --password=secret \
-            --changeLogFile=db/changelog/changelog-master.yaml \
+            --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts="!test"
         # Attenzione si può usare solo una negazione context (non una lista di context negati)
 
@@ -130,7 +130,7 @@ jobs:
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff%20-c%20app.env%3Dci" \
             --username=zeroerp \
             --password=secret \
-            --changeLogFile=db/changelog/changelog-master.yaml \
+            --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts=ci_apply
 
         # attendiamo che pgAgent legga le nuove definizioni e lanci il job di test
