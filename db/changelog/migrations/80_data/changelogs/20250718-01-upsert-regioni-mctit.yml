@@ -6,8 +6,10 @@
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+ 
 databaseChangeLog:
-  - changeSet:
+
+  - changeSet: 
       id: 20250718-01A-upsert-regioni
       author: mctit
       runOnChange: true
@@ -32,8 +34,7 @@ databaseChangeLog:
           encoding: UTF-8
           # nullValue: ""
           nullValue: "NULL"
-          primaryKey:
-            - id
+          primaryKey: "id"
           columns:
             - column: { name: id,            type: STRING }
             - column: { name: descrizione,   type: STRING }

@@ -26,7 +26,7 @@ databaseChangeLog:
             splitStatements: false
             stripComments: true
             sql: >
-              ALTER TABLE config.tipi_soggetto_dettaglio DISABLE TRIGGER trg_tipi_soggetto_dettaglio_upd_lock_codiceinterno;
+              ALTER TABLE config.tipi_soggetto_dettaglio DISABLE TRIGGER trg_tipi_soggetto_dettaglio_a10_upd_lock_columns;
 
         # 2) Upsert di tutte le colonne, 
         - loadUpdateData:
@@ -37,8 +37,7 @@ databaseChangeLog:
             separator: ","
             encoding: UTF-8
             nullValue: ""
-            primaryKey:
-              - id
+            primaryKey: "id"
             
             columns:
               - column: { name: id,          type: STRING }
@@ -62,7 +61,7 @@ databaseChangeLog:
             splitStatements: false
             stripComments: true
             sql: >
-              ALTER TABLE config.tipi_soggetto_dettaglio ENABLE TRIGGER trg_tipi_soggetto_dettaglio_upd_lock_codiceinterno;
+              ALTER TABLE config.tipi_soggetto_dettaglio ENABLE TRIGGER trg_tipi_soggetto_dettaglio_a10_upd_lock_columns;
 
   - changeSet:
       id: 20250717-90-upsert-tipi_soggetto_dettaglio
