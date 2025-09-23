@@ -8,6 +8,7 @@
 # ------------------------------------------------------------
 
 databaseChangeLog:
+  - logicalFilePath: changelog/migrations/90_end/20250626-31-apply_pr_apply__fk_index_policy-mctit.yml
   - changeSet:
       id: 20250626-31-apply_pr_apply_fk_index_policy
       author: mctit
