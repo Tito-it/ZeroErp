@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - property:
+      name: zeroerp_app_user
+      value: zeroerp_app
+
+  - preConditions:
+      - dbms: 
+         type: postgresql
+      - onFail: HALT
+  - changeSet:
+      id: 20250924-01-init-django-schema
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: >
+              CREATE SCHEMA IF NOT EXISTS django;
+              REVOKE ALL ON SCHEMA django FROM PUBLIC;
+              GRANT USAGE, CREATE ON SCHEMA django TO ${zeroerp_app_user};
+              
+              
+              -- DO $$
+              --  DECLARE dbname text := current_database();
+              --  BEGIN
+              --   EXECUTE format(
+              --     'ALTER ROLE %I IN DATABASE %I SET search_path = django, public, dbops, script, config, anagrafiche, vendite, acquisti',
+              --   '${zeroerp_app_user}', dbname
+              --    );
+              --  END $$;
+
+              REVOKE CREATE ON SCHEMA public FROM ${zeroerp_app_user};
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |  
+                  "GRANT CREATE ON SCHEMA public TO ${zeroerp_app_user};"
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE dbname text := current_database();
+              BEGIN
+                EXECUTE format('ALTER ROLE %I IN DATABASE %I RESET search_path',
+                               '${zeroerp_app_user}', dbname);
+              END $$;
