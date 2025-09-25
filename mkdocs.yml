@@ -100,7 +100,20 @@ nav:
   - Strumenti:
         - Generatore Documentazione: dbzero/tools/gen_db_docs.md
   - Sviluppatori:
-        - API: dev/api.md
+      - API: dev/api.md
+      - Backend:
+          - Guida backend-dev: dev/backend/backend-dev.md
+      #    - (Opz) Celery & Beat: dev/backend/backend-celery.md
+      #    - (Opz) Produzione: dev/backend/backend-prod.md
+      - Database:
+          - VM dbdev (PostgreSQL): dev/db/dbdev.md
+      #    - (Opz) Produzione: dev/db/db-prod.md
+      - Infrastruttura:
+          - Proxmox: dev/infra/proxmox.md
+      #    - (Opz) Tailscale: dev/infra/tailscale.md
+      - Frontend:
+          - Setup frontend-dev: dev/frontend/frontend-dev.md
+          - Build & Deploy: dev/frontend/frontend-build-deploy.md
 
   - Guide tecniche:
       
