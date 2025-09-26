@@ -111,9 +111,9 @@ nav:
       - Infrastruttura:
           - Proxmox: dev/infra/proxmox.md
       #    - (Opz) Tailscale: dev/infra/tailscale.md
-      - Frontend:
-          - Setup frontend-dev: dev/frontend/frontend-dev.md
-          - Build & Deploy: dev/frontend/frontend-build-deploy.md
+      #- Frontend:
+      #    - Setup frontend-dev: dev/frontend/frontend-dev.md
+      #    - Build & Deploy: dev/frontend/frontend-build-deploy.md
 
   - Guide tecniche:
       
