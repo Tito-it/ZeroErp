@@ -26,6 +26,25 @@ databaseChangeLog:
       path: migrations_v2/00_schema/config
       relativeToChangelogFile: true
   - includeAll:
+      path: migrations_v2/00_schema/catalogo
+      relativeToChangelogFile: true    
+  - includeAll:
+      path: migrations_v2/00_schema/acquisti
+      relativeToChangelogFile: true    
+  - includeAll:
+      path: migrations_v2/00_schema/contabilita
+      relativeToChangelogFile: true
+  - includeAll:
+      path: migrations_v2/00_schema/magazzino
+      relativeToChangelogFile: true
+  - includeAll:
+      path: migrations_v2/00_schema/maintenance
+      relativeToChangelogFile: true
+  - includeAll:
+      path: migrations_v2/00_schema/pagamenti
+      relativeToChangelogFile: true
+  
+  - includeAll:
       path: migrations_v2/00_schema/dbops
       relativeToChangelogFile: true
   - includeAll:
@@ -41,6 +60,24 @@ databaseChangeLog:
       relativeToChangelogFile: true
   - includeAll:
       path: migrations_v2/20_code/config
+      relativeToChangelogFile: true
+  - includeAll:
+      path: migrations_v2/20_code/catalogo
+      relativeToChangelogFile: true    
+  - includeAll:
+      path: migrations_v2/20_code/acquisti
+      relativeToChangelogFile: true    
+  - includeAll:
+      path: migrations_v2/20_code/contabilita
+      relativeToChangelogFile: true
+  - includeAll:
+      path: migrations_v2/20_code/magazzino
+      relativeToChangelogFile: true
+  - includeAll:
+      path: migrations_v2/20_code/maintenance
+      relativeToChangelogFile: true
+  - includeAll:
+      path: migrations_v2/20_code/pagamenti
       relativeToChangelogFile: true
   - includeAll:
       path: migrations_v2/20_code/dbops

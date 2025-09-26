@@ -32,7 +32,7 @@
 | CHECK | chk_ordini_note_anchor |  |
 | FOREIGN KEY | fk_ordini_note_riga | target_riga_id |
 | FOREIGN KEY | fk_ordini_note_testata | target_id |
-| PRIMARY KEY | note_ordini_pkey | id, target_tipo |
+| PRIMARY KEY | note_ordini_pkey | target_tipo, id |
 
 ## 📑 Indici
 | Nome | Definizione |

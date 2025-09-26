@@ -20,7 +20,7 @@
 | FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id, soggetto_id, soggetto_id, soggetto_id |
 | FOREIGN KEY | fk_tipi_ruoli_config | ruolo_id |
 | PRIMARY KEY | pk_soggetti_ruoli | id |
-| UNIQUE | uq_soggetto_ruolo | ruolo_id, soggetto_id |
+| UNIQUE | uq_soggetto_ruolo | soggetto_id, ruolo_id |
 
 ## 📑 Indici
 | Nome | Definizione |

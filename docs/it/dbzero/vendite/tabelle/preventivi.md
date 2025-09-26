@@ -37,7 +37,7 @@
 | FOREIGN KEY | fk_preventivi_valuta | valuta_id |
 | FOREIGN KEY | fk_v_preventivi_stato_ddt | stato_doc_preventivo_id |
 | PRIMARY KEY | pk_preventivi | id |
-| UNIQUE | uq_preventivi_numero_rev | rev, numero |
+| UNIQUE | uq_preventivi_numero_rev | numero, rev |
 
 ## 📑 Indici
 | Nome | Definizione |

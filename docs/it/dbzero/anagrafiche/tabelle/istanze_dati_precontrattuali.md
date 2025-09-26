@@ -29,7 +29,7 @@
 | FOREIGN KEY | fk_idp_tipi_utenze | tipo_utenza_id |
 | FOREIGN KEY | fk_idp_utilities | utility_id |
 | PRIMARY KEY | pk_istanze_dati_precontrattuali | id |
-| UNIQUE | uq_istanze_dati_precontrattuali_id_utility_id | utility_id, istanza_utility_id |
+| UNIQUE | uq_istanze_dati_precontrattuali_id_utility_id | istanza_utility_id, utility_id |
 
 ## 📑 Indici
 | Nome | Definizione |
