@@ -9,9 +9,17 @@
 
 name: CI
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [Tito-dev]
+    paths:
+      - docs/**
+      - mkdocs.yml
+      - scripts/*
   pull_request:
     branches: [main]
 
@@ -172,6 +180,10 @@ jobs:
         with:
           name: docs-site
           path: site/
+          if-no-files-found: error
+          retention-days: 1 # artefatto effimero
+          overwrite: true # <— chiave: non accumula più
+          compression-level: 6
 
   # Nuovo job per Docker
   docker:
