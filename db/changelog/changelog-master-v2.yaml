@@ -53,6 +53,9 @@ databaseChangeLog:
 
   # 3) Codice DB (funzioni/trigger) per schema
   - includeAll:
+      path: migrations_v2/20_code/script
+      relativeToChangelogFile: true
+  - includeAll:
       path: migrations_v2/20_code/anagrafiche
       relativeToChangelogFile: true
   - includeAll:
