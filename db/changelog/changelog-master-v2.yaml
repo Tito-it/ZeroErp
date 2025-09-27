@@ -1,21 +1,19 @@
 ﻿# ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Liquibase changelog per Zero ERP
-# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
 #
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 
-
 databaseChangeLog:
-
   # Vecchia storia INALTERATA (baseline + migrations esistenti)
   - include:
-      file: changelog-master.yaml   # il tuo master attuale
+      file: changelog-master.yaml # il tuo master attuale
       relativeToChangelogFile: true
 
-  # 2) Nuove migrazioni DDL (per schema)
+  # 2)  Nuove migrazioni DDL (per schema)
   - includeAll:
       path: migrations_v2/00_schema/anagrafiche
       relativeToChangelogFile: true
@@ -27,10 +25,10 @@ databaseChangeLog:
       relativeToChangelogFile: true
   - includeAll:
       path: migrations_v2/00_schema/catalogo
-      relativeToChangelogFile: true    
+      relativeToChangelogFile: true
   - includeAll:
       path: migrations_v2/00_schema/acquisti
-      relativeToChangelogFile: true    
+      relativeToChangelogFile: true
   - includeAll:
       path: migrations_v2/00_schema/contabilita
       relativeToChangelogFile: true
@@ -43,7 +41,7 @@ databaseChangeLog:
   - includeAll:
       path: migrations_v2/00_schema/pagamenti
       relativeToChangelogFile: true
-  
+
   - includeAll:
       path: migrations_v2/00_schema/dbops
       relativeToChangelogFile: true
@@ -66,10 +64,10 @@ databaseChangeLog:
       relativeToChangelogFile: true
   - includeAll:
       path: migrations_v2/20_code/catalogo
-      relativeToChangelogFile: true    
+      relativeToChangelogFile: true
   - includeAll:
       path: migrations_v2/20_code/acquisti
-      relativeToChangelogFile: true    
+      relativeToChangelogFile: true
   - includeAll:
       path: migrations_v2/20_code/contabilita
       relativeToChangelogFile: true
@@ -88,7 +86,6 @@ databaseChangeLog:
   - includeAll:
       path: migrations_v2/20_code/storico
       relativeToChangelogFile: true
-
 
   # 4) Dati/config + job + step finali
   - includeAll:
