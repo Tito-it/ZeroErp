@@ -4,7 +4,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| numero_contratto | character varying | NO |  |
+| numero | character varying | NO |  |
 | billing_account_id | integer | NO |  |
 | istanza_utility_id | integer | NO |  |
 | utility_id | integer | NO |  |
@@ -29,7 +29,7 @@
 | FOREIGN KEY | fk_contratti_utility | utility_id |
 | FOREIGN KEY | fk_v_contratti_stato_ddt | stato_doc_contratto_id |
 | PRIMARY KEY | pk_contratti | id |
-| UNIQUE | uq_contratti_numero | numero_contratto |
+| UNIQUE | uq_contratti_numero | numero |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -38,12 +38,12 @@
 | ix_contratti_ambito | `CREATE INDEX ix_contratti_ambito ON vendite.contratti USING btree (ambito)` |
 | ix_contratti_ba_istanza | `CREATE INDEX ix_contratti_ba_istanza ON vendite.contratti USING btree (billing_account_id, istanza_utility_id)` |
 | pk_contratti | `CREATE UNIQUE INDEX pk_contratti ON vendite.contratti USING btree (id)` |
-| uq_contratti_numero | `CREATE UNIQUE INDEX uq_contratti_numero ON vendite.contratti USING btree (numero_contratto)` |
+| uq_contratti_numero | `CREATE UNIQUE INDEX uq_contratti_numero ON vendite.contratti USING btree (numero)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_a10_v_contratti_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_v_contratti_protect_num()` |
+| trg_contratti_a10_upd_v_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_v_contratti_protect_num()` |
 
 ---
 {% include-markdown "signature-core.md" %}

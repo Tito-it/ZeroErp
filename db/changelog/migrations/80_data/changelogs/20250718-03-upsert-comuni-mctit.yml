@@ -23,35 +23,34 @@ databaseChangeLog:
       
 
       # 2) Carico CSV: mappa geoloc -> geoloc_txt come STRING          
-      - loadUpdateData:
-          relativeToChangelogFile: true
-          file: ../sql/config/comuni.csv
-          tableName: comuni
-          schemaName: config
-          separator: ","
-          encoding: UTF-8
-          # nullValue: ""
-          nullValue: "NULL"
-          primaryKey:
-            - id
-          columns:
-            - column: { name: id,            type: STRING }
-            - column: { name: descrizione,   type: STRING }
-            - column: { name: provincia_id,   type: STRING }
-            - column: { name: data_insert,   type: STRING }
-            - column: { name: user_insert,   type: STRING }
-            - column:
-                    name: data_update
-                    type: STRING
-                    defaultValue: "NOW()"
-            - column: { name: user_update,      type: STRING }
-            - column:
-                name: extra_country
-                type: JSON
-                # se il CSV ha valore vuoto, usa {} come JSON valido
-                defaultValue: "{}" 
-            - column: { name: storicizza,      type: STRING }
-            - column: { name: tx_id,    type: uuid  }
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/comuni.csv
+            tableName: comuni
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            # nullValue: ""
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id,            type: STRING }
+              - column: { name: descrizione,   type: STRING }
+              - column: { name: provincia_id,   type: STRING }
+              - column: { name: data_insert,   type: STRING }
+              - column: { name: user_insert,   type: STRING }
+              - column:
+                      name: data_update
+                      type: STRING
+                      defaultValue: "NOW()"
+              - column: { name: user_update,      type: STRING }
+              - column:
+                  name: extra_country
+                  type: JSON
+                  # se il CSV ha valore vuoto, usa {} come JSON valido
+                  defaultValue: "{}" 
+              - column: { name: storicizza,      type: STRING }
+              - column: { name: tx_id,    type: uuid  }
              
     
   - changeSet:

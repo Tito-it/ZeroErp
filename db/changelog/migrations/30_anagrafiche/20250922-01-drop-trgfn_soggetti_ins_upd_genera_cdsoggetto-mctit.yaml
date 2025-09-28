@@ -8,14 +8,23 @@
 # ------------------------------------------------------------
 
 databaseChangeLog:
+  
+
   - changeSet:
-      id: 20250626-31-apply_pr_apply_fk_index_policy
+      id: 20250922-01-drop-trgfn_soggetti_ins_upd_genera_cdsoggetto
       author: mctit
-      comments: "esegue la procedure apply_fk_index_policy nello schema dbops"
-      runAlways: true
       changes:
-        
         - sql:
             splitStatements: false
             sql: |
-              CALL dbops.apply_fk_index_policy();
+               
+               DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_ins_upd_genera_cdsoggetto();
+
+
+# Metto un  tag fine modifiche
+  - changeSet:
+      id: 20250922-90-drop-trgfn_soggetti_ins_upd_genera_cdsoggetto
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250922-01-drop-trgfn_soggetti_ins_upd_genera_cdsoggetto

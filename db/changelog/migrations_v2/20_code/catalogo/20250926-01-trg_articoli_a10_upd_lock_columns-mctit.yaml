@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/catalogo/20250926-01-trg_articoli_a10_upd_lock_columns.yaml
+
+  - changeSet:
+      id: 20250926-01-trg_articoli_a10_upd_lock_columns
+      author: mctit
+      comments: >
+         Protegge il codice articolo in modo che non possa essere modificato dopo essere stato valorizzato.
+      changes:
+        - sql:
+            splitStatements: false  
+            sql: |
+
+                  DROP TRIGGER IF EXISTS trg_articoli_a10_upd_protect_codice
+                    ON catalogo.articoli;
+                  
+                  -- Cancella vecchia funzione se esiste
+                  DROP FUNCTION IF EXISTS catalogo.trgfn_articoli_upd_protect_codice();
+
+                
+                  -- 1) Creo/aggiorno il trigger che blocca modifiche al codice interno
+                    CREATE OR REPLACE TRIGGER trg_articoli_a10_upd_protect_codice
+                      BEFORE UPDATE of codice
+                      ON catalogo.articoli 
+                      FOR EACH ROW
+                      WHEN (old.codice::text IS DISTINCT FROM 
+                      new.codice::text)
+                    EXECUTE FUNCTION script.trgfn_lock_columns(
+                      'codice', 
+                      'CODICE_NON_MODIFICABILE'
+                    );
+
+
+                  COMMENT ON TRIGGER trg_articoli_a10_upd_protect_codice
+                    ON catalogo.articoli
+                    IS $comment$
+                      Trigger per proteggere il campo codice (articolo) da modifiche dopo la prima valorizzazione.
+                    $comment$;
+

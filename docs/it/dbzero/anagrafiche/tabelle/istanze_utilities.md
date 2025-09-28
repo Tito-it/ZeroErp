@@ -27,7 +27,7 @@
 | FOREIGN KEY | fk_istanze_utilities_indirizzo_dettaglio | indirizzo_dettaglio_id |
 | FOREIGN KEY | fk_istanze_utilities_parent_istanza | parent_istanza_id |
 | FOREIGN KEY | fk_istanze_utilities_soggetto | soggetto_id |
-| FOREIGN KEY | fk_iu_pdp_id_addr | indirizzo_dettaglio_id, pdp_id |
+| FOREIGN KEY | fk_iu_pdp_id_addr | pdp_id, indirizzo_dettaglio_id |
 | PRIMARY KEY | pk_istanze_utilities | id |
 | UNIQUE | uq_istanze_utilities_codice | codice |
 
@@ -44,10 +44,10 @@
 |------|--------|--------|--------|
 | trg_istanze_utilities_ins_upd_clean_fields | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields()` |
 | trg_istanze_utilities_ins_upd_clean_fields | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields()` |
-| trg_istanze_utilities_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_istanze_utilities_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_istanze_utilities_ins_upd_tx_id_managed | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_istanze_utilities_ins_upd_tx_id_managed | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_istanze_utilities_upd_audit_data_user_generic | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 | trg_istanze_utilities_upd_protect_codice | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_upd_protect_codice()` |
-| trg_upd_istanze_utilities_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

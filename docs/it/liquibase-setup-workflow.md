@@ -1,327 +1,212 @@
-**Documento di Avvio e Struttura di Liquibase**
+# **Documento di Avvio e Struttura di Liquibase (v2)**
 
-> 👀 **Vedi anche**    
-> Approfondimento SQL     
+> 👀 **Vedi anche**
+> Approfondimento SQL
 >
-> Tutte le attività SQL generate tramite Liquibase devono rispettare le convenzioni definite nel documento: 
->    
-> * [Linee Guida SQL](linee-guida-sql.md).
-
-
----
-> ⚠️ **Importante**  
->Tutti i file di changelog devono avere estensione **`.yaml`** (non `.yml`).  
->Entrambe le estensioni sono valide per Liquibase, ma si adotta `.yaml` come standard unico per Zero ERP per garantire consistenza e compatibilità con gli strumenti di CI/CD e la documentazione.
-
-> ⚠️ **Importante (Visione Futura)**   
-> Data la scelta di utilizzare `includeAll` nel master changelog e la struttura a cartelle, **tutti gli sviluppi di oggetti che precedono altri (es. tabelle)** devono essere inseriti **nella cartella `00_bootstrap`**.
-> In questo modo le trigger e le trigger function verranno applicate **dopo** la creazione delle tabelle, garantendo coerenza e permettendo future evoluzioni senza conflitti.
+> Tutte le attività SQL generate tramite Liquibase devono rispettare le convenzioni definite nel documento:
+> *[Linee Guida SQL](linee-guida-sql.md)*
+>
+> *Verisone iniziale  [liquibase-setup-and-workflow_v1](../liquibase-setup-workflow_v1.md)*
 
 ---
 
-#### 1. Obiettivo
-
-Descrivere la configurazione iniziale e il workflow di Liquibase per il progetto **ZeroErp**:
-
-* Avviare Liquibase su PostgreSQL
-* Definire struttura dei changelog (baseline vs migrations)
-* Eseguire le operazioni di base (`validate`, `changelogSync`, `update`)
-* Gestire evoluzioni future con nuovi changeSet
+> ⚠️ **Importante**
+> Tutti i file di changelog devono avere estensione **`.yaml`** (non `.yml`).
+> Entrambe le estensioni sono valide per Liquibase, ma in **ZeroErp** si adotta **`.yaml`** come standard unico per consistenza con CI/CD e documentazione.
 
 ---
 
-#### 2. Prerequisiti
+## 1. Obiettivo
 
-* Java 11+ installato
-* Liquibase 4.31.1 (o superiore) scaricato e configurato
-* Driver JDBC PostgreSQL (`postgresql-<version>.jar`) disponibile
-* Accesso a un DB di sviluppo/test e a quello esistente (Zero)
+Descrivere configurazione e workflow di **Liquibase** per **ZeroErp**:
+
+* Avvio su PostgreSQL
+* Struttura dei changelog (**master v2** e cartelle `migrations_v2/…`)
+* Esecuzione comandi base (`validate`, `update`)
+* Gestione evoluzioni con nuovi changeSet (`00_schema`, `20_code`, …)
 
 ---
 
-#### 3. Struttura dei Changelog e delle Cartelle
+## 2. Prerequisiti
+
+* Java 11+
+* Liquibase 4.33.x (o superiore)
+* Driver JDBC PostgreSQL presente nel classpath
+* Accesso a un DB di sviluppo/test
+
+---
+
+## 3. Struttura dei Changelog e delle Cartelle
 
 ```
 ZeroErp/db/changelog/
-├─ changelog-master.yaml         # master changelog
-├─ baseline/                     # snapshot iniziale (punto 0)
-│   ├─ 000-tables-config.yaml    # schema config
-│   ├─ 001-tables-anagrafiche.yaml
-│   └─ sql/<schema>/…            # script SQL originali
-└─ migrations/                   # step 00–99 (changelog generici)
-    ├─ 00_bootstrap/            ← primi steps (script di base)
-    │   ├─ 20250514-01-fn-trigger-audit-generic.yaml
-    │   └─ sql/<schema>/…        # script SQL di quel changeSet
-    ├─ 10_scripts/              # script di utilità e trigger
-    │   ├─ 20250507-01-trgfn-blocco-colonna-mctit.yaml
-    │   └─ sql/<schema>/…        # script SQL di quel changeSet
-    ├─ 20_config/               # configurazioni iniziali personalizzate
-    │   └─ sql/<schema>/…        # script SQL di configurazione
-    ├─ 30_anagrafiche/          # evoluzioni anagrafiche
-    │   └─ sql/<schema>/…        
-    ├─ 40_storico/              # evoluzioni storico
-    │   └─ sql/<schema>/…        
-    ├─ 50_dbops/                # evoluzioni DBOps
-    │   └─ sql/<schema>/…        
-    ├─ 55_maintenance/          # evoluzioni per schedule job
-    │   
-    ├─ 80_data/                 # import dati schema config
-    │   ├─ sql/
-    │   │  └─ config/
-    │   │     ├─ stati.csv      # dump CI per loadUpdateData
-    │   │     └─ utilities.csv
-    │   └─ changelogs/
-    │       ├─ YYYYMMDD-01-upsert-stati.yaml
-    │       └─ YYYYMMDD-02-upsert-utilities.yaml
-    ├─ 85_pgagent/              # evoluzioni pgagent (job schedule)
-    └─ 90_end/                  # script finali da eseguire sempre per ultimi
-        └─ apply-fk-index-policy.yaml
+├─ changelog-master-v2.yaml     # NUOVO master (in uso)
+├─ changelog-master.yaml        # master storico (v1) — incluso da v2
+│
+├─ migrations_v2/               # nuove migrazioni da oggi in poi
+│  ├─ 00_schema/                # DDL: tabelle/indici/FK/VIEW ecc.
+│  │  ├─ anagrafiche/
+│  │  ├─ vendite/
+│  │  └─ … (acquisti, catalogo, contabilita, internal, magazzino, maintenance, pagamenti)
+│  ├─ 20_code/                  # codice DB: funzioni/trigger/procedure
+│  │  ├─ anagrafiche/
+│  │  ├─ vendite/
+│  │  └─ … (stessi schemi)
+│  ├─ 80_data/                  # import dati/config (CSV + loadUpdateData)
+│  │  └─ config/
+│  ├─ 85_pgagent/               # job di scheduling (pgAgent)
+│  └─ 90_end/                   # step finali (runAlways / operazioni di chiusura)
+│
+├─ migrations/                  # **LEGACY v1** (non modificare)
+├─ baseline/                    # **LEGACY v1** (non modificare)
+└─ legacy/                      # archivio eventuali file dismessi/spostati
 ```
 
-* **Baseline**: snapshot iniziale; `changelogSync` li marca eseguiti e non saranno riapplicati automaticamente.
-* **Migrations**: file numerati definiscono le modifiche incrementalmente. Ogni folder numerato "10–55…" contiene YAML e script SQL. I nomi fanno riferimento ad uno schema specifico.
-* **80_data**: dedicata all’importazione dei dati di configurazione (test e funzionali). Contiene CSV prodotti dal CI e changelog YAML con `loadUpdateData`.
-* **85_pgagent**: dedicata ai changeSet che definiscono Job per pgAgent.
-* **90_end***: dedicata ai changeSet che devono **sempre** essere eseguiti **per ultimi**, indipendentemente dalle date. Qui si collocano:
+**Regole operative (v2):**
 
-  * changeSet con `runAlways: true` o `runAlways: false` per operazioni di chiusura
-  * richiamo di procedure/funzioni di popolamento o aggiornamento di tabelle (es. `CALL dbops.apply_fk_index_policy();`)
-  * eventuali cleanup o sync finali delle policy
-
-> 🔔 *Consiglio*:   
-> Nomina il file con prefisso la data iniziale seguito da descrizione, es. `20250630-01-end-apply-fk-policy.yaml`. In questo modo l’ordine alfabetico di Liquibase garantisce la priorità d’esecuzione. Nel caso sia necessario far eseguire un changelog prima di uno esistente immettere la data precedente. Possibilmente far coincidere la parte descrittiva con il nome della funzione, tabella ecc.. (utilizzando gli stessi prefissi  fn, table, etc.)
+* **Nuovo lavoro** solo in `migrations_v2/…`.
+* La **storia precedente** rimane dove si trova (migrations/baseline) e viene **inclusa** dal master v2: utile per nuovi ambienti e per consultazione.
 
 ---
 
-#### 4. Master Changelog (`changelog-master.yaml`)
+## 4. Master Changelog (v2)
 
 ```yaml
 databaseChangeLog:
-  - includeAll:
-      path: baseline
+  # 1) Storia esistente (v1): lasciata com'è, semplicemente inclusa
+  - include:
+      file: changelog-master.yaml
       relativeToChangelogFile: true
-      errorIfMissingOrEmpty: true
+
+  # 2) Nuove migrazioni (v2): ordine garantito
   - includeAll:
-      path: migrations
+      path: migrations_v2/00_schema
       relativeToChangelogFile: true
-      errorIfMissingOrEmpty: false
+  - includeAll:
+      path: migrations_v2/20_code
+      relativeToChangelogFile: true
+  - includeAll:
+      path: migrations_v2/80_data
+      relativeToChangelogFile: true
+  - includeAll:
+      path: migrations_v2/85_pgagent
+      relativeToChangelogFile: true
+  - includeAll:
+      path: migrations_v2/90_end
+      relativeToChangelogFile: true
 ```
 
-* Caricamento in ordine alfabetico.
-* Usare `include` per eccezioni di ordine specifico.
+**Ordine d’esecuzione**: `00_schema` → `20_code` → `80_data` → `85_pgagent` → `90_end`.
 
 ---
 
-#### 5. File `liquibase.properties`
+## 5. File `liquibase.properties` (esempio)
 
 ```properties
 # Connessione PostgreSQL
 driver=org.postgresql.Driver
-classpath=/path/to/postgresql-42.x.jar
-url=jdbc:postgresql://localhost:5432/Zero
-username=<utente>
-password=<password>
+# classpath=<path>/postgresql-<version>.jar   # se serve
 
-# Changelog principale
-changeLogFile=db/changelog/changelog-master.yaml
+url=jdbc:postgresql://localhost:5432/zeroerp
+username=titodb
 
-# Schema per DATABASECHANGELOG*
-defaultSchemaName=config
-liquibaseSchemaName=config
+# Master in uso
+changeLogFile=db/changelog/changelog-master-v2.yaml
 ```
 
-* **Suggerimento**: script shell/batch per caricare credenziali a runtime.
+> **Nota**: il master v2 include il master storico v1. Non è necessario modificare/traslocare la storia precedente.
 
 ---
 
-#### 6. Importazione Dati Schema `config`
+## 6. `80_data` (schema `config`) — import dati
 
-Lo schema `config` ospita tabelle di configurazione, sia di setup che di utilizzo in produzione, oltre a dati di test utili in ambienti di sviluppo.
+* CSV prodotti dalla pipeline in `migrations_v2/80_data/config/…`
+* Changelog YAML con `loadUpdateData` (uno per tabella)
+* Esempi già presenti (stati/utilities) restano validi
 
-**Struttura `80_data`:**
-
-* `sql/config/`: contiene i CSV generati dalla pipeline CI (`
-  COPY … TO stati.csv, utilities.csv…`).
-* `changelogs/`: file YAML uno-per-tabella con `loadUpdateData`, eseguito via `includeAll`.
-
-**Esempio `loadUpdateData` per `stati`:**
-
-```yaml
-- changeSet:
-    id: 20250716-01-upsert-stati
-    author: mctit
-    runOnChange: true
-    validCheckSums:
-      - ANY
-    failOnError: true
-    preConditions:
-      - onFail: HALT
-      - tableExists:
-          tableName: stati
-          schemaName: config
-    loadUpdateData:
-      relativeToChangelogFile: true
-      file: ../sql/config/stati.csv
-      tableName: stati
-      schemaName: config
-      separator: ","
-      encoding: UTF-8
-      schemaName: config
-      primaryKey:
-        - id
-      columns:
-        - column: { name: id,            type: STRING }
-        - column: { name: sigla_stato,   type: STRING }
-        - column: { name: descrizione,   type: STRING }
-        - column: { name: codice_iso2,   type: STRING }
-        - column: { name: codice_iso3,   type: STRING }
-        - column: { name: codice_telefonico, type: STRING }
-        - column: { name: continente,    type: STRING }
-        - column: { name: data_insert,   type: STRING }
-        - column: { name: user_insert,   type: STRING }
-        - column:
-                  name: data_update
-                  type: STRING
-                  defaultValue: "NOW()"
-        - column: { name: user_update,   type: STRING }
-        - column: { name: extra_country, type: JSON, defaultValue: "{}" }
-```
-
-**Esempio `loadUpdateData` per `utilities` (escludendo temporaneamente `cd_int_utility` dal load, ma lasciandone l'INSERT manuale se necessario tramite trigger):**
-
-```yaml
-- changeSet:
-    id: 20250716-02-upsert-utilities
-    author: mctit
-    runOnChange: true
-    validCheckSums:
-      - ANY
-    failOnError: true
-    preConditions:
-      - onFail: HALT
-      - tableExists:
-          tableName: utilities
-          schemaName: config
-    loadUpdateData:
-      relativeToChangelogFile: true
-      file: ../sql/config/utilities.csv
-      tableName: utilities
-      schemaName: config
-      separator: ","
-      encoding: UTF-8
-      schemaName: config
-      primaryKey:
-        - id
-      columns:
-        - column: { name: id,          type: STRING }
-        - column: { name: cod_utility, type: STRING }
-        - column: { name: descrizione, type: STRING }
-        - column: { name: data_insert, type: STRING }
-        - column: { name: user_insert, type: STRING }
-        - column:
-                  name: data_update
-                  type: STRING
-                  defaultValue: "NOW()"
-        - column: { name: user_update, type: STRING }
-```
-
-*Nota: se è necessario caricare anche `cd_int_utility`, si può disabilitare temporaneamente il trigger con SQL prefase.*
-
+> **Suggerimenti**: usare `runOnChange: true`, `validCheckSums: [ANY]`, e `preConditions` con `tableExists`.
 
 ---
 
-#### 7. Workflow Iniziale
+## 7. Workflow Iniziale
 
-1. **Validate**: `liquibase validate`
-2. **Sync Baseline**: `liquibase changelogSync`
-3. **Update su DB Vuoto**: `liquibase update`
+* **Validazione**: `liquibase validate`
+* **Update** su nuovi o esistenti:
 
----
+  ```bash
+  liquibase --defaults-file=db/liquibase.properties \
+            --changelog-file=db/changelog/changelog-master-v2.yaml \
+            update
+  ```
 
-#### 8. Evoluzioni Future (Migrations)
-
-1. **Creare YAML** in `migrations/<area>/YYYYMMDD-XX-descrizione.yaml`
-2. **Utilizzare changeSet Liquibase** o `sqlFile`
-3. **Rollback**: opzionale o esplicito
-4. **Script SQL**: in `migrations/<area>/sql/`
-5. **Eseguire**: `validate` → `update`
+  *Gli ambienti già aggiornati con v1 non rieseguono i changeSet storici, perché sono gli stessi file (stessi checksum).*
 
 ---
 
-#### 9. Comandi Principali
+## 8. Evoluzioni Future (v2)
+
+* **Nuovi file**:
+
+  * `migrations_v2/00_schema/<schema>/YYYYMMDD-NN-<tipo>-<desc>.yaml` (DDL)
+  * `migrations_v2/20_code/<schema>/YYYYMMDD-NN-<tipo>-<desc>.yaml` (fn/trg/proc)
+  * `migrations_v2/90_end/…` per step finali
+* **Header obbligatorio** in ogni file:
+
+  ```yaml
+  databaseChangeLog:
+    logicalFilePath: db/changelog/migrations_v2/<subpath>/<filename>.yaml
+  ```
+* **Pattern sicuro per rinomine**: **Expand → Align (20\_code) → Contract**
+
+  * Expand (00\_schema): aggiungi il nuovo senza rimuovere il vecchio
+  * Align (20\_code): `CREATE OR REPLACE` funzioni/trigger compatibili col nuovo
+  * Contract (00\_schema): rimuovi il vecchio quando sei certo (release successiva)
+
+---
+
+## 9. Comandi Principali
 
 * `liquibase validate`
-* `liquibase changelogSync`
 * `liquibase update`
 * `liquibase updateSql`
-* `liquibase rollback`
+* `liquibase rollback` / `rollbackCount` / `rollbackToDate` / `rollbackOneChangeSet`
 
 ---
 
-#### 10. Rollback e Reverse
+## 10. Convenzioni e Best Practice
 
-* Rollback automatico per change types nativi
-* `rollback` esplicito con blocco `rollback`
-* `rollbackToDate`, `rollbackCount`, `rollback tag`
-
----
-
-#### 11. Convenzioni e Best Practice
-
-* Utilizzo cartella `00_bootstrap` (esempio generazione tabelle)
-* Numerazione progressiva
-* ID univoci con autore
-* Contexts/Labels
-* CI/CD: `validate` e `updateSql` in pipeline
-* Versioning: excl. credenziali
+* **Naming**: `YYYYMMDD-NN-<tipo>-<feature>.yaml` (`tipo`: `tbl/col/fk/idx/view/fn/trg/proc/data/end`)
+* **Un changeSet coeso** per oggetto/funzionalità
+* **`logicalFilePath`**: sempre impostato; consente spostamenti futuri senza invalidare checksum
+* **`includeAll`** + prefisso data garantiscono l’ordine
+* **Contexts/Labels** se servono per ambienti diversi
+* **`90_end`**: step finali (es. `CALL dbops.apply_fk_index_policy()`), eventualmente `runAlways: true`
 
 ---
 
-#### 7. Workflow Iniziale
+## 11. Struttura **Legacy** (solo riferimento)
 
-1. `liquibase validate`
-2. `liquibase changelogSync`
-3. `liquibase update`
+La precedente organizzazione rimane nel repository per **compatibilità e consultazione**:
 
----
+```
+ZeroErp/db/changelog/
+├─ changelog-master.yaml         # master storico (v1)
+├─ baseline/                     # snapshot iniziale v1
+└─ migrations/                   # vecchie migrazioni
+   ├─ 00_bootstrap/              # DDL iniziali (storico)
+   ├─ 10_scripts/
+   ├─ 20_config/
+   ├─ 30_anagrafiche/
+   ├─ 40_storico/
+   ├─ 50_dbops/
+   ├─ 55_maintenance/
+   ├─ 80_data/
+   ├─ 85_pgagent/
+   └─ 90_end/
+```
 
-#### 8. Evoluzioni Future
-
-* Nuovi YAML in `migrations/<area>/YYYYMMDD-XX-descrizione.yaml`
-* `changeSet` o `sqlFile`
-* `validate` → `update`
-
----
-
-#### 9. Comandi Principali
-
-* `liquibase validate`
-* `liquibase changelogSync`
-* `liquibase update`
-* `liquibase updateSql`
-* `liquibase rollback`
-
----
-
-#### 10. Rollback e Reverse
-
-* Rollback automatico per change types nativi
-* `rollback` esplicito
-* `rollbackToDate`, `rollbackCount`, `rollback tag`
+> **Uso pratico**: Il **master v2** include il **master storico v1**; quindi i nuovi cloni possono partire direttamente da `changelog-master-v2.yaml`. In caso di necessità, è sempre possibile **recuperare** changeSet o script dal percorso legacy senza modificarlo.
 
 ---
 
-#### 11. Convenzioni e Best Practice
-
-* One changeSet per oggetto/tabella
-* ID univoci con autore
-* Contexts/Labels
-* CI/CD: `validate` e `updateSql` in pipeline
-* Escludere credenziali da VCS
-
----
-
-*Documento redatto e condiviso con il team ZeroErp.*
-
----
-{% include-markdown "signature-core.md" %}
+*Documento redatto per il progetto ZeroErp (struttura v2).*

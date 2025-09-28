@@ -31,8 +31,7 @@ databaseChangeLog:
             separator: ","
             encoding: UTF-8
             nullValue: ""
-            primaryKey:
-              - id
+            primaryKey: "id"
             
             columns:
               - column: { name: codice,  type: STRING }

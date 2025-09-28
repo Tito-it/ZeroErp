@@ -50,7 +50,10 @@
 - [trgfn_attivita_guard_fonte](funzioni/trgfn_attivita_guard_fonte.md)
 - [trgfn_attivita_norm_competenza_mese](funzioni/trgfn_attivita_norm_competenza_mese.md)
 - [trgfn_contnote_validate](funzioni/trgfn_contnote_validate.md)
+- [trgfn_ddt_indirizzi_only_allowed_tipi](funzioni/trgfn_ddt_indirizzi_only_allowed_tipi.md)
+- [trgfn_fatture_indirizzi_only_allowed_tipi](funzioni/trgfn_fatture_indirizzi_only_allowed_tipi.md)
 - [trgfn_fatture_righe_norm_guard](funzioni/trgfn_fatture_righe_norm_guard.md)
+- [trgfn_ordini_indirizzi_only_allowed_tipi](funzioni/trgfn_ordini_indirizzi_only_allowed_tipi.md)
 - [trgfn_preventivi_norm](funzioni/trgfn_preventivi_norm.md)
 - [trgfn_prevnote_validate](funzioni/trgfn_prevnote_validate.md)
 

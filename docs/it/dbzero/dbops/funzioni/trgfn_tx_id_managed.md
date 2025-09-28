@@ -143,8 +143,17 @@ BEGIN
       -- --------------------------------------
     -- 5. Assegna tx_id al record
       -- --------------------------------------
-    NEW.tx_id := v_new_tx_id;
-    RETURN NEW;
+      IF NEW.tx_id IS NOT NULL THEN
+        RETURN NEW;
+      END IF;
+
+      NEW.tx_id := COALESCE(
+        v_new_tx_id,
+        current_setting('dbops.tx_id', true)::uuid,
+        gen_random_uuid()              -- ultima ancora
+      );
+      RETURN NEW;
+
 
 END;
 $function$

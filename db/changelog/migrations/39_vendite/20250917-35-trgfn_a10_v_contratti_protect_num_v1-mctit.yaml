@@ -57,3 +57,47 @@ databaseChangeLog:
       changes:
         - tagDatabase:
             tag: 20250917-34-trgfn_a10_ordini_v_contratti_protect_num_v1
+
+
+
+  - changeSet:
+      id: 20250920-05-trgfn_a10_v_contratti_protect_num
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: contratti }
+      changes:
+        # Trigger protect (blocca numero/serie/anno/data dopo determinati stati)
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_a10_v_contratti_protect_num()
+              RETURNS trigger
+              LANGUAGE plpgsql AS $$
+              DECLARE
+                v_codice_stato text;
+              BEGIN
+                SELECT s.codice_interno
+                  INTO v_codice_stato
+                  FROM config.stati_doc_contratti s
+                 WHERE s.id = OLD.stato_doc_contratti_id;
+
+                -- dopo CONSEGNATO/RESO/ANNULLATO blocco numerazione/data (adatta la lista se ti serve SPEDITO)
+                IF v_codice_stato <> 'DRAFT' THEN
+                  IF NEW.numero IS DISTINCT FROM OLD.numero
+                     OR NEW.data  IS DISTINCT FROM OLD.data THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_NUMERAZIONE_IMMUTABILE',
+                      jsonb_build_object('contratti_id', OLD.id, 'stato', v_codice_stato),
+                      NULL::uuid, 'vendite.contratti' , OLD.id::text
+                    );
+                  END IF;
+                END IF;
+                RETURN NEW;
+              END$$;
+
+              DROP TRIGGER IF EXISTS trg_a10_v_contratti_protect_num ON vendite.contratti;
+              CREATE TRIGGER trg_a10_v_contratti_protect_num
+              BEFORE UPDATE ON vendite.contratti
+              FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_a10_v_contratti_protect_num();
+       

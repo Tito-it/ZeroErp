@@ -12,6 +12,10 @@
 | imponibile | numeric | NO | 0 |
 | imposta | numeric | NO | 0 |
 | arrotondamento | numeric | NO | 0 |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | character varying | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying | YES | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -25,7 +29,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_fatture_r_iva_fattura | `CREATE INDEX ix_fatture_r_iva_fattura ON vendite.fatture_riepiloghi_iva USING btree (fattura_id)` |
 | pk_fatture_r_iva | `CREATE UNIQUE INDEX pk_fatture_r_iva ON vendite.fatture_riepiloghi_iva USING btree (id)` |
 | uq_fatture_r_iva_key | `CREATE UNIQUE INDEX uq_fatture_r_iva_key ON vendite.fatture_riepiloghi_iva USING btree (fattura_id, COALESCE(natura_id, 0), COALESCE(esigibilita, 'I'::bpchar), COALESCE(split_payment, false), COALESCE(iva_id, 0))` |
 

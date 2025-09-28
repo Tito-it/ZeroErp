@@ -20,7 +20,7 @@
 | FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id, soggetto_id, soggetto_id, soggetto_id |
 | FOREIGN KEY | fk_tipi_ruoli_config | ruolo_id |
 | PRIMARY KEY | pk_soggetti_ruoli | id |
-| UNIQUE | uq_soggetto_ruolo | ruolo_id, soggetto_id |
+| UNIQUE | uq_soggetto_ruolo | soggetto_id, ruolo_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -33,9 +33,9 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_soggetti_ruoli_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_soggetti_ruoli_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_upd_soggetti_ruoli_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_soggetti_ruoli_ins_upd_tx_id_managed | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_soggetti_ruoli_ins_upd_tx_id_managed | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_soggetti_ruoli_upd_audit_data_user_generic | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

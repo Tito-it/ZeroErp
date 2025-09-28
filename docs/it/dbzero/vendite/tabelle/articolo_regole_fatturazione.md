@@ -35,14 +35,13 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_articolo_regole_fatturazione_articolo | `CREATE INDEX ix_articolo_regole_fatturazione_articolo ON vendite.articolo_regole_fatturazione USING btree (articolo_id)` |
 | pk_articolo_regole_fatturazione | `CREATE UNIQUE INDEX pk_articolo_regole_fatturazione ON vendite.articolo_regole_fatturazione USING btree (id)` |
 | uq_articolo_regole_fatturazione_articolo | `CREATE UNIQUE INDEX uq_articolo_regole_fatturazione_articolo ON vendite.articolo_regole_fatturazione USING btree (articolo_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_upd_articolo_regole_fatturazione_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_articolo_regole_fatturazione_upd_audit_data_user_generic | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

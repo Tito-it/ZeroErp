@@ -8,6 +8,8 @@
 # ------------------------------------------------------------
 
 databaseChangeLog:
+  - logicalFilePath: changelog/migrations/90_end/ci_apply/20250627-31-apply_apply_run_automation_all-mctit.yaml 
+
   - changeSet:
       id: 220250627-31-apply_apply_run_automation_all
       author: mctit

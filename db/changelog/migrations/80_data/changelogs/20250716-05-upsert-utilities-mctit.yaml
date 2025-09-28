@@ -26,7 +26,7 @@ databaseChangeLog:
             splitStatements: false
             stripComments: true
             sql: >
-              ALTER TABLE config.utilities DISABLE TRIGGER trg_utilities_upd_lock_codiceinterno;
+              ALTER TABLE config.utilities DISABLE TRIGGER trg_utilities_a10_upd_lock_columns;
 
         # 2) Upsert di tutte le colonne, incluso cd_int_utility
         - loadUpdateData:
@@ -37,8 +37,7 @@ databaseChangeLog:
             separator: ","
             encoding: UTF-8
             nullValue: ""
-            primaryKey:
-              - id
+            primaryKey: "id"
             # elenco esplicito di TUTTE le colonne,
             # inclusa cd_int_utility per l'INSERT
             columns:
@@ -59,7 +58,7 @@ databaseChangeLog:
             splitStatements: false
             stripComments: true
             sql: >
-              ALTER TABLE config.utilities ENABLE TRIGGER trg_utilities_upd_lock_codiceinterno;
+              ALTER TABLE config.utilities ENABLE TRIGGER trg_utilities_a10_upd_lock_columns;
 
   - changeSet:
       id: 20250716-90-upsert-utilities

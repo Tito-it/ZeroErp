@@ -69,7 +69,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_a10_ordini_v_upd_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_ordini_v_protect_num()` |
+| trg_ordini_a10_upd_v_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_ordini_v_protect_num()` |
 
 ---
 {% include-markdown "signature-core.md" %}

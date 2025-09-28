@@ -32,7 +32,7 @@
 | CHECK | chk_prevnote_anchor |  |
 | FOREIGN KEY | fk_prevnote_riga | target_riga_id |
 | FOREIGN KEY | fk_prevnote_testata | target_id |
-| PRIMARY KEY | note_preventivo_pkey | id, target_tipo |
+| PRIMARY KEY | note_preventivo_pkey | target_tipo, id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -44,8 +44,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_prevnote_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_prevnote_validate()` |
-| trg_prevnote_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_prevnote_validate()` |
+| trg_note_preventivo_ins_upd_prevnote_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_prevnote_validate()` |
+| trg_note_preventivo_ins_upd_prevnote_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_prevnote_validate()` |
 
 ---
 {% include-markdown "signature-core.md" %}

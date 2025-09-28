@@ -25,9 +25,9 @@
 | FOREIGN KEY | fk_pdp_indirizzi_dettaglio | indirizzo_dettaglio_id |
 | FOREIGN KEY | fk_pdp_utilities | utilities_id |
 | PRIMARY KEY | pk_pdp | id |
-| UNIQUE | uq_pdp_addr_utility | utilities_id, indirizzo_dettaglio_id |
+| UNIQUE | uq_pdp_addr_utility | indirizzo_dettaglio_id, utilities_id |
 | UNIQUE | uq_pdp_codice | pdp |
-| UNIQUE | uq_pdp_id_addr | indirizzo_dettaglio_id, id |
+| UNIQUE | uq_pdp_id_addr | id, indirizzo_dettaglio_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -43,11 +43,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_pdp_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_pdp_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_pdp_ins_upd_tx_id_managed | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_pdp_ins_upd_tx_id_managed | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_pdp_upd_protect_cols | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_pdp_protect_cols()` |
-| trg_z90_pdp_upd_dlt_storico | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('pdp_id')` |
-| trg_z90_pdp_upd_dlt_storico | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('pdp_id')` |
+| trg_pdp_z90_upd_dlt_storico_generic | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('pdp_id')` |
+| trg_pdp_z90_upd_dlt_storico_generic | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('pdp_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

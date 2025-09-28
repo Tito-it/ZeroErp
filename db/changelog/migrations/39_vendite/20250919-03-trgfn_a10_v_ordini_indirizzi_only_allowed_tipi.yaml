@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+       
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — vendite.ordini_indirizzi: validazione tipi indirizzo
+# ------------------------------------------------------------
+databaseChangeLog:
+ 
+
+  - changeSet:
+      id: 20250919-03-trgfn_a10_v_ordini_indirizzi_only_allowed_tipi
+      author: mctit
+      runOnChange: true
+      validCheckSums: ["ANY"]  
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_indirizzi_only_allowed_tipi()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_codice text;
+              BEGIN
+                -- Ricavo il codice_interno del tipo collegato
+                SELECT t.codice_interno
+                  INTO v_codice
+                  FROM config.tipi_indirizzi t
+                 WHERE t.id = NEW.tipo_indirizzo_id;
+
+                IF v_codice IS NULL OR v_codice NOT IN ('CON','FATT') THEN
+                 
+                   PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_TIPO_INDIRIZZO',
+                      jsonb_build_object('table', 'vendite.ordini_indirizzi',
+                      'ordine_id', NEW.ordine_id,
+                      'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                      'codice_interno', v_codice),
+                      NULL::uuid,  NEW.tipo_indirizzo_id::text, v_codice, 'ordini' , 'CON, FATT'
+                    );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $$;
+
+  - changeSet:
+      id: 20250919-04-trgfn_a10_v_ordini_indirizzi_only_allowed_tipi
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DROP TRIGGER IF EXISTS trg_a10_ins_upd_ordini_indirizzi_only_allowed_tipi ON vendite.ordini_indirizzi;
+
+              CREATE TRIGGER trg_a10_ins_upd_ordini_indirizzi_only_allowed_tipi
+              BEFORE INSERT OR UPDATE OF tipo_indirizzo_id
+              ON vendite.ordini_indirizzi
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_ordini_indirizzi_only_allowed_tipi();
+
+
+  
+
+  # Metto un tag fine modifiche
+  - changeSet:
+      id: 220250919-90-trgfn_a10_v_ordini_indirizzi_only_allowed_tipi
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250919-03-trgfn_a10_v_ordini_indirizzi_only_allowed_tipi

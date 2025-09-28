@@ -58,12 +58,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_a10_attivita_fatturabili_ins_upd_guard_ba_coerenza | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()` |
-| trg_a10_attivita_fatturabili_ins_upd_guard_ba_coerenza | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()` |
-| trg_a10_attivita_fatturabili_ins_upd_guard_fonte | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte()` |
-| trg_a10_attivita_fatturabili_ins_upd_guard_fonte | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte()` |
-| trg_a10_attivita_fatturabili_upd_dlt_guard_fatturato | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_attivita_fatturabili_guard_fatturato()` |
-| trg_a10_attivita_fatturabili_upd_dlt_guard_fatturato | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_a10_attivita_fatturabili_guard_fatturato()` |
+| trg_attivita_fatturabili_a10_ins_upd_guard_ba_coerenza | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()` |
+| trg_attivita_fatturabili_a10_ins_upd_guard_ba_coerenza | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()` |
+| trg_attivita_fatturabili_a10_ins_upd_guard_fonte | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte()` |
+| trg_attivita_fatturabili_a10_ins_upd_guard_fonte | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte()` |
+| trg_attivita_fatturabili_a10_upd_dlt_guard_fatturato | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_attivita_fatturabili_guard_fatturato()` |
+| trg_attivita_fatturabili_a10_upd_dlt_guard_fatturato | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_a10_attivita_fatturabili_guard_fatturato()` |
 | trg_attivita_fatturabili_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_norm()` |
 | trg_attivita_fatturabili_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_norm()` |
 

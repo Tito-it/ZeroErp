@@ -33,7 +33,7 @@
 | FOREIGN KEY | fk_titoli_cortesia_config | titolo_cortesia_id, titolo_cortesia_id |
 | FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
 | PRIMARY KEY | pk_contatti | id |
-| UNIQUE | uq_contatti_multilevel | tipo_contatto_id, soggetto_ruolo_id, soggetto_id, utility_id |
+| UNIQUE | uq_contatti_multilevel | soggetto_id, soggetto_ruolo_id, utility_id, tipo_contatto_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -48,11 +48,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_contatti_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_contatti_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_contatti_ins_upd_set_default_contatto | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contatto()` |
 | trg_contatti_ins_upd_set_default_contatto | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contatto()` |
-| trg_upd_contatti_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_contatti_ins_upd_tx_id_managed | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_contatti_ins_upd_tx_id_managed | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_contatti_upd_audit_data_user_generic | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

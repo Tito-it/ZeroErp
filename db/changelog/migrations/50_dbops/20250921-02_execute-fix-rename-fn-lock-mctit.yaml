@@ -1,0 +1,34 @@
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+# 1) Crea la sequenza per la PK
+  - changeSet:
+      id: 20250921-02_execute-fix-rename-fn-lock
+      author: mctit
+      runOnChange: true
+      validCheckSums: ["ANY"]  
+      
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                  -- Anteprima -- SELECT * FROM dbops.fn_fix_lock_codice_interno_triggers('config', true, true); 
+                  -- Esecuzione reale   NULL esegue tutti (primo parametro) oppure  indicare lo schema
+                    SELECT * FROM dbops.fn_fix_lock_codice_interno_triggers(NULL, false, true);   
+                
+              
+  
+  - changeSet:
+      id: 20250921-90_execute-fix-rename-fn-lock
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20250921-02_execute-fix-rename-fn-lock

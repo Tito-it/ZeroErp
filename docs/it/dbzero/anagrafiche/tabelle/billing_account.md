@@ -28,7 +28,7 @@
 | FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
 | PRIMARY KEY | pk_billing_account | id |
 | UNIQUE | uq_billing_account_codice | codice |
-| UNIQUE | uq_billing_instance_utility | utility_id, istanza_utility_id |
+| UNIQUE | uq_billing_instance_utility | istanza_utility_id, utility_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -44,12 +44,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_a10_billing_account_upd_protect_account_code | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_upd_protect_account_code()` |
-| trg_billing_account_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_billing_account_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_billing_account_a10_upd_protect_account_code | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_upd_protect_account_code()` |
 | trg_billing_account_ins_upd_guard_normalize | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_guard_normalize()` |
 | trg_billing_account_ins_upd_guard_normalize | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_guard_normalize()` |
-| trg_upd_billing_account_audit_data_user | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_billing_account_ins_upd_tx_id_managed | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_billing_account_ins_upd_tx_id_managed | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_billing_account_upd_audit_data_user_generic | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}
