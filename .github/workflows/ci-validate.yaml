@@ -61,7 +61,7 @@ jobs:
       - name: Install base requirements (backend)
         run: |
           source .venv/bin/activate
-          pip install -r  requirements/base.txt
+          pip install -r  requirements/backbase.txt
 
       - name: Django migrate (schema django, DB effimero)
         working-directory: ./zeroerp/zeroerp_backend
