@@ -1,7 +1,7 @@
 # Zero ERP – Vendite: Preventivi, Ordini, DDT, Fatture, Contratti
 
 **Sintesi architetturale e stato lavori** — aggiornato al 16/09/2025
- 
+  
 ---
 
 ## 1) Panoramica

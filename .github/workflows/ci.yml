@@ -17,7 +17,7 @@ on:
   push:
     branches: [Tito-dev]
     paths:
-      #- db/** # <— aggiunto: migrazioni Liquibase
+      - db/** # <— aggiunto: migrazioni Liquibase
       #- zeroerp/zeroerp_backend/** # Django backend
       #- zeroerp/requirements/** # requirements
       - docs/**
