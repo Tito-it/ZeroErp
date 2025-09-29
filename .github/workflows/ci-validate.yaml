@@ -64,7 +64,7 @@ jobs:
           pip install -r  zeroerp/requirements/base.txt
 
       - name: Django migrate (schema django, DB effimero)
-        working-directory: ./ zeroerp/zeroerp_backend
+        working-directory: ./zeroerp/zeroerp_backend
         env:
           DB_HOST: localhost
           DB_PORT: "5432"
