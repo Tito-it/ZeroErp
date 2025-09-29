@@ -5,8 +5,8 @@ on:
     branches: [Tito-dev]
     paths:
       - db/**
-      - ZeroErp/zeroerp_backend/**
-      - ZeroErp/requirements/**
+      - zeroerp/zeroerp_backend/**
+      - zeroerp/requirements/**
   pull_request:
     branches: [main]
 
@@ -61,10 +61,10 @@ jobs:
       - name: Install base requirements (backend)
         run: |
           source .venv/bin/activate
-          pip install -r ZeroErp/requirements/base.txt
+          pip install -r  zeroerp/requirements/base.txt
 
       - name: Django migrate (schema django, DB effimero)
-        working-directory: ./ZeroErp/zeroerp_backend
+        working-directory: ./ zeroerp/zeroerp_backend
         env:
           DB_HOST: localhost
           DB_PORT: "5432"
