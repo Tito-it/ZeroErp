@@ -24,6 +24,10 @@ databaseChangeLog:
         - tableExists:
             schemaName: django
             tableName: auth_group
+        - columnExists:
+            schemaName: config
+            tableName: parameter_overrides
+            columnName: user_id
 
       changes:
         # 1) Nuove colonne per scope applicativo
