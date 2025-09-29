@@ -202,6 +202,8 @@ databaseChangeLog:
       author: mctit
       preConditions:
         - onFail: MARK_RAN
+        - columnExists: { schemaName: config, tableName: parameter_overrides, columnName: user_id }
+
         - not:
           - columnExists:
               schemaName: config
