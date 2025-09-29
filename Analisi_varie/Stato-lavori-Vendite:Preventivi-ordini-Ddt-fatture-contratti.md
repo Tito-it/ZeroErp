@@ -1,10 +1,10 @@
 # Zero ERP – Vendite: Preventivi, Ordini, DDT, Fatture, Contratti
 
 **Sintesi architetturale e stato lavori** — aggiornato al 16/09/2025
- 
+  
 ---
 
-## 1) Panoramica
+## 1) Panoramica aa
 
 Questo documento raccoglie quanto implementato e definito in chat per l’area **Vendite**:
 

@@ -98,3 +98,16 @@ databaseChangeLog:
 
               COMMENT ON FUNCTION script.fn_get_parameter_full(text, integer, integer, integer[], text, text)
                 IS 'Risoluzione parametro con precedenza: user → group → tenant → session → function → default. Usa config.parameter_overrides (django_user_id/django_group_id).';
+
+
+# Elimmina vecchia funzione
+  - changeSet:
+      id: 20250927-02-update-fn-get-parameter-full
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+
+                DROP FUNCTION IF EXISTS script.fn_get_parameter_full(text, integer, integer, text, text);

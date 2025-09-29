@@ -10,10 +10,12 @@ databaseChangeLog:
   - logicalFilePath: /migrations_v2/00_schema/config/20250926-01-parameter-overrides-link-django.yaml
   
   - changeSet:
-      id: 20250926-01-parameter-overrides-link-django
+      id: 20250926-01-parameter-overrides-link-django 
       author: mctit
+      context: with_django
       preConditions:
-        - onFail: HALT
+        - onFail: MARK_RAN
+        - onError: MARK_RAN
         - tableExists:
             schemaName: config
             tableName: parameter_overrides
@@ -23,6 +25,10 @@ databaseChangeLog:
         - tableExists:
             schemaName: django
             tableName: auth_group
+        - columnExists:
+            schemaName: config
+            tableName: parameter_overrides
+            columnName: user_id
 
       changes:
         # 1) Nuove colonne per scope applicativo
@@ -161,6 +167,164 @@ databaseChangeLog:
  # CANCELLA LA COLONNA user_id ormai LEGACY 
   - changeSet:
       id: 20250926-03-parameter-overrides-drop-legacy-user-id
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+               schemaName: config
+               tableName: parameter_overrides
+               columnName: attivo
+
+      changes:
+        - addColumn:
+            schemaName: config
+            tableName: parameter_overrides
+            columns:
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  remarks: "Attivo = true , false = disabilitato (override non più valido)"
+            
+
+
+
+
+
+
+# ------------------------------------------------------------
+# Aggiunto changeset per fare in modo che venga applicato su CI
+# ------------------------------------------------------------
+  
+  - changeSet:
+      id: 20250929-01-parameter-overrides-link-django
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists: { schemaName: config, tableName: parameter_overrides, columnName: user_id }
+
+        - not:
+          - columnExists:
+              schemaName: config
+              tableName: parameter_overrides
+              columnName: django_user_id
+               
+      changes:
+        # 1) Nuove colonne per scope applicativo
+        - addColumn:
+            schemaName: config
+            tableName: parameter_overrides
+            columns:
+              - column:
+                  name: django_user_id
+                  type: INTEGER
+                  remarks: "FK a django.auth_user(id); override per utente"
+                  constraints:
+                    nullable: true
+              - column:
+                  name: django_group_id
+                  type: INTEGER
+                  remarks: "FK a django.auth_group(id); override per gruppo"
+                  constraints:
+                    nullable: true
+
+
+        # 3) (opz) Backfill da vecchio user_id se presente/compatibile
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              UPDATE config.parameter_overrides
+              SET django_user_id = user_id
+              WHERE django_user_id IS NULL AND user_id IS NOT NULL;
+
+        # 4) Sostituisci la UNIQUE per includere i nuovi campi
+        - dropUniqueConstraint:
+            schemaName: config
+            tableName: parameter_overrides
+            constraintName: uq_overrides_full_scope
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: parameter_overrides
+            columnNames: parameter_id, tenant_id, django_user_id, django_group_id, session_key, function_name
+            constraintName: uq_overrides_full_scope_v2
+            deferrable: false
+            initiallyDeferred: false
+            validate: true
+
+        # 5) (opz) Vincolo: almeno uno scope oltre a parameter_id
+        # Check
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE config.parameter_overrides
+              ADD CONSTRAINT chk_overrides_has_scope
+              CHECK (tenant_id IS NOT NULL
+               OR django_user_id IS NOT NULL
+               OR django_group_id IS NOT NULL
+               OR session_key IS NOT NULL
+               OR function_name IS NOT NULL);
+      
+
+        # 6) Indici utili per lookups
+        - createIndex:
+            schemaName: config
+            tableName: parameter_overrides
+            indexName: ix_overrides_param_user
+            columns:
+              - column: { name: parameter_id }
+              - column: { name: django_user_id }
+
+        - createIndex:
+            schemaName: config
+            tableName: parameter_overrides
+            indexName: ix_overrides_param_group
+            columns:
+              - column: { name: parameter_id }
+              - column: { name: django_group_id }
+
+        - createIndex:
+            schemaName: config
+            tableName: parameter_overrides
+            indexName: ix_overrides_param_tenant
+            columns:
+              - column: { name: parameter_id }
+              - column: { name: tenant_id }
+
+        # 7) Commenti sulle nuove colonne
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON COLUMN config.parameter_overrides.django_user_id
+                IS 'FK a django.auth_user(id): override specifico utente Django';
+              COMMENT ON COLUMN config.parameter_overrides.django_group_id
+                IS 'FK a django.auth_group(id): override per gruppo Django';
+
+
+   # CANCELLA LA COLONNA user_id ormai LEGACY 
+  - changeSet:
+      id: 20250929-02-parameter-overrides-drop-legacy-user-id
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: config
+            tableName: parameter_overrides
+            columnName: user_id
+      changes:
+        - dropColumn:
+            schemaName: config
+            tableName: parameter_overrides
+            columnName: user_id
+
+
+ # CANCELLA LA COLONNA user_id ormai LEGACY 
+  - changeSet:
+      id: 20250929-03-parameter-overrides-drop-legacy-user-id
       author: mctit
       preConditions:
         - onFail: MARK_RAN

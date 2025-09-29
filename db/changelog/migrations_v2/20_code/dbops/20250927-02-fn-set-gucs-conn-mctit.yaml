@@ -1,0 +1,42 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# Zero ERP — Fn: script.fn_get_default_by_param (fix dollar-quote, STABLE, PK lookup)
+# ------------------------------------------------------------
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/dbops/20250927-01-fn_set_gucs_conn-mctit.yaml
+
+  - changeSet:
+      id: 20250927-01-fn_set_gucs_conn
+      author: mctit
+     
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+
+                CREATE OR REPLACE FUNCTION dbops.fn_set_gucs_conn(
+                    p_user_id      integer DEFAULT NULL,
+                    p_session_key  text    DEFAULT NULL,
+                    p_group_ids    integer[] DEFAULT NULL
+                )
+                RETURNS void
+                LANGUAGE plpgsql
+                AS $$
+                BEGIN
+                    PERFORM set_config('app.user_id', p_user_id::text, false);
+                    PERFORM set_config('app.session_key', p_session_key, false);
+                    PERFORM set_config('app.group_ids', array_to_string(p_group_ids, ','), false);
+                END;
+                $$;
+
+                COMMENT ON FUNCTION dbops.fn_set_gucs_conn(integer, text, integer[])
+                    IS 'Imposta le GUC app.* per audit, RLS e override parametri (user_id, session_key, group_ids).';
+
