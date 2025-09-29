@@ -81,7 +81,7 @@ nav:
                       - pgcrypto: it/postgresql/pgcrypto.md
 
 
-  - DB Zero:
+  - DB Zero:  
       - Panoramica: dbzero/index.md
       - Schemi:
           - Anagrafiche: dbzero/anagrafiche/index.md

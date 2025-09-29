@@ -1,5 +1,10 @@
 # Guida operativa Proxmox — Stack DEV
 
+> 👀 **Vedi anche**    
+>    
+> * [Comandi utili/Run book](comandi-utili-run-book.md).
+
+
 **Target**: ambiente di sviluppo con almeno tre macchine su **Proxmox VE**:
 
 * **VM `dbdev`** (PostgreSQL 17 + Liquibase) — *già operativo*
