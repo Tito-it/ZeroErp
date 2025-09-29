@@ -15,6 +15,7 @@ databaseChangeLog:
       context: with_django
       preConditions:
         - onFail: MARK_RAN
+        - onError: MARK_RAN
         - tableExists:
             schemaName: config
             tableName: parameter_overrides
