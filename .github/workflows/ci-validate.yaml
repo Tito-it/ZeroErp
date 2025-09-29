@@ -5,8 +5,8 @@ on:
     branches: [Tito-dev]
     paths:
       - db/**
-      - zeroerp/zeroerp_backend/**
-      - zeroerp/requirements/**
+      - ZeroErp/zeroerp_backend/**
+      - ZeroErp/requirements/**
   pull_request:
     branches: [main]
 
@@ -20,7 +20,7 @@ jobs:
           POSTGRES_DB: zeroerp
           POSTGRES_USER: zeroerp
           POSTGRES_PASSWORD: secret
-        ports: [ "5432:5432" ]
+        ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U zeroerp"
           --health-interval 10s --health-timeout 5s --health-retries 5
@@ -61,10 +61,10 @@ jobs:
       - name: Install base requirements (backend)
         run: |
           source .venv/bin/activate
-          pip install -r zeroerp/requirements/base.txt
+          pip install -r ZeroErp/requirements/base.txt
 
       - name: Django migrate (schema django, DB effimero)
-        working-directory: ./zeroerp/zeroerp_backend
+        working-directory: ./ZeroErp/zeroerp_backend
         env:
           DB_HOST: localhost
           DB_PORT: "5432"
