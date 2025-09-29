@@ -4,7 +4,7 @@
   
 ---
 
-## 1) Panoramica
+## 1) Panoramica aa
 
 Questo documento raccoglie quanto implementato e definito in chat per l’area **Vendite**:
 
