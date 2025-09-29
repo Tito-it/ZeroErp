@@ -10,11 +10,11 @@ databaseChangeLog:
   - logicalFilePath: /migrations_v2/00_schema/config/20250926-01-parameter-overrides-link-django.yaml
   
   - changeSet:
-      id: 20250926-01-parameter-overrides-link-django
+      id: 20250926-01-parameter-overrides-link-django 
       author: mctit
       context: with_django
       preConditions:
-        - onFail: HALT
+        - onFail: MARK_RAN
         - tableExists:
             schemaName: config
             tableName: parameter_overrides
