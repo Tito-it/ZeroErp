@@ -5,8 +5,8 @@ on:
     branches: [Tito-dev]
     paths:
       - db/**
-      - zeroerp/zeroerp_backend/**
-      - zeroerp/requirements/**
+      - zeroerp_backend/**
+      - requirements/**
   pull_request:
     branches: [main]
 
