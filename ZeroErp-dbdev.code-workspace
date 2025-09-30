@@ -1,36 +1,19 @@
 {
   "folders": [
     {
-      "path": "/home/tid/software/ZeroErp"
+      "name": "DB-Dev",
+       "uri": "vscode-remote://ssh-remote+dbdev/home/tid/software/ZeroErp"
     },
-    {
-      "path": "/etc/postgresql"
-    },
-    {
-      "path": "/var/log/postgresql"
-    },
-    {
-      "path": "/home/tid/.ssh"
-    },
-    {
-      "path": "db/changelog/migrations"
-    },
-    {
-      "path": "docs"
-    },
-    {
-      "path": "db/changelog/migrations/80_data"
-    },
-    {
-      "path": "db/changelog/baseline"
-    },
-    {
-      "path": "scripts"
+    
+   {
+      "name": "Backend-Dev",
+      "uri": "vscode-remote://ssh-remote+backend-dev/home/tid/apps/ZeroErp/backend"
     }
+
   ],
-  "settings": {
-    "python.defaultInterpreterPath": "/home/tid/software/ZeroErp/.venv/bin/python",
-    "python.terminal.activateEnvironment": true,
-    "liquibase.java.home": "/usr/lib/jvm/java-17-openjdk-amd64"
+  //"settings": {
+  //  "python.defaultInterpreterPath": "/home/tid/software/ZeroErp/.venv/bin/python",
+  //  "python.terminal.activateEnvironment": true,
+  //  "liquibase.java.home": "/usr/lib/jvm/java-17-openjdk-amd64"
   }
 }
