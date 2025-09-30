@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+extend-exclude = ["migrations"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "DJ", "UP"]
+ignore = ["E203", "E266", "E501", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/migrations/*.py" = ["E501", "E261", "E262", "E265", "E302", "E303", "DJ001"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-single-line = false
+known-first-party = ["zeroerp_backend","config","anagrafiche","vendite","acquisti","catalogo","magazzino","storico"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "zeroerp_backend.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+addopts = "-q -ra"
