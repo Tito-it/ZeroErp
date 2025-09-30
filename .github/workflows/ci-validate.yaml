@@ -71,11 +71,8 @@ jobs:
 
       # migrazioni Django dalla cartella del progetto
       - name: Django migrate (schema django, DB effimero)
-<<<<<<< HEAD
+
         working-directory: ./backend 
-=======
-        working-directory: ./backend
->>>>>>> ed5f34c5 (aggiornamenti)
         env:
           DB_HOST: localhost
           DB_PORT: "5432"
@@ -87,8 +84,5 @@ jobs:
           DJANGO_DEBUG: "0"
         run: |
           source .venv/bin/activate               # venv è ./backend/.venv
-<<<<<<< HEAD
           python manage.py migrate --noinput
-=======
           python manage.py migrate --noinput
->>>>>>> ed5f34c5 (aggiornamenti)
