@@ -189,17 +189,26 @@ jobs:
           publish_dir: ./site
 
       # (Opzionale) Deploy anche su S3 nello stesso job
-      - name: Configura credenziali AWS
-        if: ${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_SECRET_ACCESS_KEY != '' }}
+      - name: Configura credenziali AWS (best-effort)
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-central-1
+        continue-on-error: true # se i secret mancano, non fallire il job
 
-      - name: Sincronizza su S3
-        if: ${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_SECRET_ACCESS_KEY != '' }}
-        run: aws s3 sync site/ s3://zeroerp-docs-tid/ --delete
+      - name: Sincronizza su S3 (se credenziali presenti)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: eu-central-1
+        shell: bash
+        run: |
+          if [[ -n "$AWS_ACCESS_KEY_ID" && -n "$AWS_SECRET_ACCESS_KEY" ]]; then
+            aws s3 sync site/ s3://zeroerp-docs-tid/ --delete
+          else
+            echo "No AWS creds → skipping S3 sync."
+          fi
 
       # - name: Upload generated site as artifact
       #   uses: actions/upload-artifact@v4
@@ -255,3 +264,42 @@ jobs:
           echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
           docker tag zeroerp:${{ github.sha }} your-dockerhub-user/zeroerp:latest
           docker push your-dockerhub-user/zeroerp:latest
+
+  #publish-docs:
+  #  needs: build
+  #  runs-on: ubuntu-latest
+
+  #  steps:
+  #    - name: Download generated site artifact
+  #      uses: actions/download-artifact@v4
+  #      with:
+  #        name: docs-site
+  #        path: site/
+
+  # ----------------------------
+  # Pubblica su GitHub Pages
+  # ----------------------------
+  #    - name: Deploy to GitHub Pages
+  #      uses: peaceiris/actions-gh-pages@v3
+  #      with:
+  #        deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+  # il repo di destinazione (case-sensitive)
+  #        external_repository: Tito-it/ZeroERP-Docs
+  #        publish_branch: gh-pages
+  #        publish_dir:
+  #          ./site
+  # opzionali:
+  # user_name: GitHub Actions
+  # user_name: GitHub Actions
+  # user_email: actions@github.com
+
+  # eventualmente mantieni anche l’S3 sync se ti serve
+  #    - name: Configura credenziali AWS
+  #      uses: aws-actions/configure-aws-credentials@v2
+  #      with:
+  #        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #        aws-region: eu-central-1
+
+  #    - name: Sincronizza su S3
+  #      run: aws s3 sync site/ s3://zeroerp-docs-tid/ --delete
