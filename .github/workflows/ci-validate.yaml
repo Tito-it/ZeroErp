@@ -71,7 +71,7 @@ jobs:
 
       # migrazioni Django dalla cartella del progetto
       - name: Django migrate (schema django, DB effimero)
-        working-directory: ./backend/zeroerp_backend 
+        working-directory: ./backend 
         env:
           DB_HOST: localhost
           DB_PORT: "5432"
@@ -82,5 +82,5 @@ jobs:
           DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
           DJANGO_DEBUG: "0"
         run: |
-          source ../.venv/bin/activate     # <-- relativo a backend/zeroerp_backend
+          source .venv/bin/activate               # venv è ./backend/.venv
           python manage.py migrate --noinput
