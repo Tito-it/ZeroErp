@@ -5,7 +5,7 @@ on:
     branches: [Tito-dev]
     paths:
       - db/**
-      - zeroerp_backend/**
+      - backend/**
       - requirements/**
   pull_request:
     branches: [main]
@@ -24,6 +24,9 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U zeroerp"
           --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      # scegli qui quale requirements usare
+      REQ_FILE: backbase.txt # oppure: backdev.txt
 
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +34,9 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.13" }
 
-      - name: venv + pip
+      # crea la venv in backend/.venv
+      - name: venv + pip (backend/.venv)
+        working-directory: ./backend
         run: |
           python -m venv .venv
           source .venv/bin/activate
@@ -58,11 +63,13 @@ jobs:
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts="!test"
 
-      - name: Install base requirements (backend)
+      # installa i requirements selezionati usando la venv in backend/.venv
+      - name: Install requirements (backend venv)
         run: |
-          source .venv/bin/activate
-          pip install -r requirements/backbase.txt
+          source backend/.venv/bin/activate
+          pip install -r requirements/${REQ_FILE}
 
+      # migrazioni Django dalla cartella del progetto
       - name: Django migrate (schema django, DB effimero)
         working-directory: ./zeroerp_backend
         env:
@@ -75,5 +82,5 @@ jobs:
           DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
           DJANGO_DEBUG: "0"
         run: |
-          source ../../.venv/bin/activate
+          source ../.venv/bin/activate     # <-- relativo a backend/zeroerp_backend
           python manage.py migrate --noinput
