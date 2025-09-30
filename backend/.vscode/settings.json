@@ -1,5 +1,5 @@
 {
-  "python.defaultInterpreterPath": "/home/tid/apps/zeroerp/.venv/bin/python3",
+  "python.defaultInterpreterPath": "${workspaceFolder}/../.venv/bin/python",
   "python.terminal.activateEnvironment": true,
   "python.envFile": "${workspaceFolder}/.env",
   "python.analysis.typeCheckingMode": "basic",
