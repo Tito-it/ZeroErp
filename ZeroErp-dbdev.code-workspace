@@ -15,5 +15,5 @@
   //  "python.defaultInterpreterPath": "/home/tid/software/ZeroErp/.venv/bin/python",
   //  "python.terminal.activateEnvironment": true,
   //  "liquibase.java.home": "/usr/lib/jvm/java-17-openjdk-amd64"
-  }
+  //}
 }

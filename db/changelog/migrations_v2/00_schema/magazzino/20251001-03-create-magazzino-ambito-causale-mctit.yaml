@@ -1,0 +1,46 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Magazzino: tabella AMBITO_CAUSALE
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20251001-03-create-magazzino-ambito-causale
+      author: mctit
+      logicalFilePath: migrations_v2/10_schema/20251001-03-create-magazzino-ambito-causale.yaml
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE SCHEMA IF NOT EXISTS magazzino;
+
+        - createTable:
+            schemaName: magazzino
+            tableName: ambito_causale
+            remarks: "Vocabolario degli ambiti delle causali di magazzino"
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT, constraints: { primaryKey: true, primaryKeyName: pk_mag_ambito_causale, nullable: false }, remarks: "PK" }
+              - column: { name: codice, type: VARCHAR(32), constraints: { nullable: false }, remarks: "Codice univoco (es. VENDITE, ACQUISTI, ODL, TRASF, INVENTARIO, GENERICO)" }
+              - column: { name: codice_interno, type: VARCHAR(64), constraints: { nullable: false }, remarks: "Codice tecnico interno per binding con altre logiche" }
+              - column: { name: descrizione, type: VARCHAR(255), constraints: { nullable: false }, remarks: "Descrizione" }
+              - column: { name: ordine, type: SMALLINT, defaultValueNumeric: 0, constraints: { nullable: false }, remarks: "Ordinamento" }
+              - column: { name: attivo, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Flag attivo" }
+              - column: { name: extra_info, type: JSONB, defaultValueComputed: "'{}'::jsonb", remarks: "Dati extra" }
+              - column: { name: tx_id, type: UUID, remarks: "TX applicativo" }
+              - column: { name: user_insert, type: VARCHAR(64) }
+              - column: { name: user_update, type: VARCHAR(64) }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: "CURRENT_TIMESTAMP", constraints: { nullable: false } }
+              - column: { name: data_update, type: TIMESTAMPTZ }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false } }
+
+        - addUniqueConstraint: { schemaName: magazzino, tableName: ambito_causale, columnNames: codice, constraintName: uq_mag_ambito_causale_codice }
+        - addUniqueConstraint: { schemaName: magazzino, tableName: ambito_causale, columnNames: codice_interno, constraintName: uq_mag_ambito_causale_codice_interno }
