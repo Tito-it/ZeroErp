@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  - changeSet:
+      id: 20251002-02-create-magazzino-reservations
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/20251002-02-create-magazzino-reservations.yaml
+      changes:
+        - createTable:
+            schemaName: magazzino
+            tableName: reservations
+            remarks: "Prenotazioni stock per ordini e ODL"
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT,
+                          constraints: { primaryKey: true, primaryKeyName: pk_mag_reservations, nullable: false } }
+
+              - column: { name: articolo_id, type: UUID, constraints: { nullable: false }, remarks: "FK → catalogo.articoli(id)" }
+              - column: { name: magazzino_id, type: BIGINT, remarks: "FK → magazzino.magazzini(id)" }
+
+              - column: { name: qta, type: "NUMERIC(18,6)", constraints: { nullable: false } }
+              - column: { name: stato_reservation, type: VARCHAR(16), defaultValue: "planned", constraints: { nullable: false },
+                          remarks: "planned|picked|fulfilled|cancelled" }
+              - column: { name: data_prevista, type: TIMESTAMPTZ, remarks: "ETA opzionale" }
+
+              # legame alla sorgente (idempotenza)
+              - column: { name: sorgente_schema, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: sorgente_tabella, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: sorgente_id, type: BIGINT, constraints: { nullable: false } }
+              - column: { name: sorgente_riga_id, type: BIGINT }
+
+              # meta/audit
+              - column: { name: attivo, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: meta, type: JSONB, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: "CURRENT_USER" }
+              - column: { name: tx_id, type: UUID, remarks: "Transaction id applicativo (se disponibile)" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false } }
+
+        - addUniqueConstraint:
+            schemaName: magazzino
+            tableName: reservations
+            columnNames: sorgente_schema, sorgente_tabella, sorgente_id, sorgente_riga_id
+            constraintName: uq_mag_reservations_sorgente
+
+        # Check
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE magazzino.reservations
+                ADD CONSTRAINT chk_mag_res_qta_pos
+                CHECK ((qta IS NOT NULL) AND (qta > 0));
+
+              ALTER TABLE magazzino.reservations
+                ADD CONSTRAINT chk_mag_res_stato
+                CHECK (stato_reservation IN ('planned','picked','fulfilled','cancelled'));
+
+
+
+  - changeSet:
+      id: 20251002-03-fks-indexes-magazzino-reservations
+      author: mctit
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: reservations
+            baseColumnNames: articolo_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            constraintName: fk_mag_reservations_articolo
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: reservations
+            baseColumnNames: magazzino_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: magazzini
+            referencedColumnNames: id
+            constraintName: fk_mag_reservations_magazzino
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - createIndex: { schemaName: magazzino, tableName: reservations, indexName: ix_mag_res_articolo, columns: [ { name: articolo_id } ] }
+        - createIndex: { schemaName: magazzino, tableName: reservations, indexName: ix_mag_res_magazzino, columns: [ { name: magazzino_id } ] }
+        - createIndex: { schemaName: magazzino, tableName: reservations, indexName: ix_mag_res_stato, columns: [ { name: stato_reservation } ] }
+        - createIndex:
+            schemaName: magazzino
+            tableName: reservations
+            indexName: ix_mag_res_sorgente
+            columns:
+              - column: { name: sorgente_schema }
+              - column: { name: sorgente_tabella }
+              - column: { name: sorgente_id }
+              - column: { name: sorgente_riga_id }

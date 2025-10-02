@@ -14,9 +14,18 @@
 databaseChangeLog:
   
   - changeSet:
-      id: 20251001-13-alter-magazzino-eventi-assets-use-tipo-evento-id
+      id: 20251001-15-alter-magazzino-eventi-assets-use-tipo-evento-id
       author: mctit
-      logicalFilePath: migrations_v2/10_schema/20251001-13-alter-magazzino-eventi-assets-use-tipo-evento-id.yaml
+      logicalFilePath: migrations_v2/10_schema/20251001-15-alter-magazzino-eventi-assets-use-tipo-evento-id.yaml
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: MARK_RAN
+        - not:
+          - columnExists:
+              schemaName: magazzino
+              tableName: eventi_assets
+              columnName: tipo_evento_id
+
       changes:
         # 0) Drop  dell'indice su tipo_evento
         - dropIndex:

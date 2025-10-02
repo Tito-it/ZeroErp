@@ -33,3 +33,31 @@ databaseChangeLog:
 
         # 4) Drop colonna legacy
         - dropColumn: { schemaName: magazzino, tableName: assets, columnName: stato }
+
+  - changeSet:
+      id: 20251001-10-alter-magazzino-assets-use-stato-id
+      author: mctit
+      changes:
+      
+        - sql:
+            splitStatements: false
+            sql: |
+              -- 
+              ALTER TABLE 
+              IF EXISTS magazzino.assets 
+              DROP CONSTRAINT 
+              IF EXISTS fk_mag_assets_stato;
+
+      
+      
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: assets
+            baseColumnNames: stato_id
+            referencedTableSchemaName: config
+            referencedTableName: stati_assets
+            referencedColumnNames: id
+            constraintName: fk_mag_assets_stato
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+        

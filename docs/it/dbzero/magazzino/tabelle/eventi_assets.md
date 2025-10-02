@@ -6,8 +6,6 @@
 | id | bigint | NO |  |
 | asset_id | bigint | NO |  |
 | data_evento | timestamp with time zone | NO | now() |
-| stato_da | character varying | YES |  |
-| stato_a | character varying | YES |  |
 | magazzino_id_from | bigint | YES |  |
 | magazzino_id_to | bigint | YES |  |
 | sorgente_schema | character varying | YES |  |
@@ -24,6 +22,8 @@
 | data_update | timestamp with time zone | YES |  |
 | storicizza | boolean | NO | false |
 | tipo_evento_id | bigint | NO |  |
+| stato_da_id | bigint | YES |  |
+| stato_a_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -39,6 +39,8 @@
 |------|-------------|
 | ix_mag_eventi_assets_asset | `CREATE INDEX ix_mag_eventi_assets_asset ON magazzino.eventi_assets USING btree (asset_id)` |
 | ix_mag_eventi_assets_data | `CREATE INDEX ix_mag_eventi_assets_data ON magazzino.eventi_assets USING btree (data_evento)` |
+| ix_mag_eventi_assets_stato_a_id | `CREATE INDEX ix_mag_eventi_assets_stato_a_id ON magazzino.eventi_assets USING btree (stato_a_id)` |
+| ix_mag_eventi_assets_stato_da_id | `CREATE INDEX ix_mag_eventi_assets_stato_da_id ON magazzino.eventi_assets USING btree (stato_da_id)` |
 | ix_mag_eventi_assets_tipo_evento_id | `CREATE INDEX ix_mag_eventi_assets_tipo_evento_id ON magazzino.eventi_assets USING btree (tipo_evento_id)` |
 | pk_mag_eventi_assets | `CREATE UNIQUE INDEX pk_mag_eventi_assets ON magazzino.eventi_assets USING btree (id)` |
 
