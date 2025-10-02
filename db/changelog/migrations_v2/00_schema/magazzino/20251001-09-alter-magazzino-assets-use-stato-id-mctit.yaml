@@ -1,0 +1,35 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Magazzino: refactor ASSETS → FK stato_id
+# ------------------------------------------------------------
+databaseChangeLog:
+  
+  - changeSet:
+      id: 20251001-09-alter-magazzino-assets-use-stato-id
+      author: mctit
+      logicalFilePath: migrations_v2/10_schema/20251001-09-alter-magazzino-assets-use-stato-id.yaml
+      changes:
+        # 1) Aggiungi colonna FK (temporaneamente nullable per migrazione dati)
+        - addColumn:
+            schemaName: magazzino
+            tableName: assets
+            columns:
+              - column: { name: stato_id, type: BIGINT, remarks: "FK → config.stati_assets(id)" }
+
+  
+        # 3) Vincolo NOT NULL + FK + indice
+        - addNotNullConstraint: { schemaName: magazzino, tableName: assets, columnName: stato_id, columnDataType: BIGINT }
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: assets
+            baseColumnNames: stato_id
+            referencedTableSchemaName: config
+            referencedTableName: stati_assets
+            referencedColumnNames: id
+            constraintName: fk_mag_assets_stato
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+        - createIndex: { schemaName: magazzino, tableName: assets, indexName: ix_mag_assets_stato_id, columns: [ { name: stato_id } ] }
+
+        # 4) Drop colonna legacy
+        - dropColumn: { schemaName: magazzino, tableName: assets, columnName: stato }

@@ -1,0 +1,7 @@
+codice,codice_interno,descrizione,ordine,attivo
+VENDITE,MAG_AMB_VENDITE,Movimenti connessi a vendite,10,True
+ACQUISTI,MAG_AMB_ACQUISTI,Movimenti connessi ad acquisti,20,True
+ODL,MAG_AMB_ODL,Movimenti da Ordini di Lavoro,30,True
+TRASF,MAG_AMB_TRASF,Trasferimenti interni,40,True
+INVENTARIO,MAG_AMB_INV,Rettifiche/Inventari,50,True
+GENERICO,MAG_AMB_GEN,Ambito generico,90,True

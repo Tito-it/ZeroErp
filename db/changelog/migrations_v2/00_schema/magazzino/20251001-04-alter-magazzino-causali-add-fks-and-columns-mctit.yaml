@@ -56,3 +56,28 @@ databaseChangeLog:
             onUpdate: NO ACTION
 
         - createIndex: { schemaName: magazzino, tableName: causali, indexName: ix_mag_causali_ambito_id, columns: [ { name: ambito_causale_id } ] }
+
+
+  - changeSet:
+      id: 20251001-05-alter-magazzino-causali-add-fks-and-columns
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE 
+              IF EXISTS magazzino.causali 
+              DROP CONSTRAINT 
+              IF EXISTS fk_mag_causali_ambito;
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: causali
+            baseColumnNames: ambito_causale_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: ambito_causale
+            referencedColumnNames: id
+            constraintName: fk_mag_causali_ambito
+            onDelete: NO ACTION
+            onUpdate: RESTRICT

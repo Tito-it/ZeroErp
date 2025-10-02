@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Magazzino: tabella ASSETS (istanze serializzate)
+# ------------------------------------------------------------
+databaseChangeLog:
+  
+  - changeSet:
+      id: 20251001-06-create-magazzino-assets
+      author: mctit
+      logicalFilePath: migrations_v2/10_schema/20251001-06-create-magazzino-assets.yaml
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE SCHEMA IF NOT EXISTS magazzino;
+
+        - createTable:
+            schemaName: magazzino
+            tableName: assets
+            remarks: "Istanza fisica di bene durevole (contatore/PC/stampante ecc.) serializzato"
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT, constraints: { primaryKey: true, primaryKeyName: pk_mag_assets, nullable: false }, remarks: "PK" }
+              - column: { name: articolo_id, type: UUID, constraints: { nullable: false }, remarks: "FK → catalogo.articoli(id) (UUID)" }
+              - column: { name: seriale, type: VARCHAR(64), constraints: { nullable: false }, remarks: "Serial number / matricola" }
+              - column: { name: stato, type: VARCHAR(24), defaultValue: "in_stock", constraints: { nullable: false }, remarks: "in_stock|assegnato|installato|rientrato|guasto|dismissed" }
+              - column: { name: ownership, type: VARCHAR(16), defaultValue: "owned", constraints: { nullable: false }, remarks: "owned|consignment|customer" }
+              - column: { name: billing_account_id, type: BIGINT, remarks: "FK → anagrafiche.billing_account(id) " }
+              - column: { name: contratto_id, type: BIGINT, remarks: "FK opzionale verso contratto/noleggio" }
+              - column: { name: magazzino_id, type: BIGINT, remarks: "FK → magazzino.magazzini(id), se parcheggiato" }
+              - column: { name: ubicazione, type: VARCHAR(255), remarks: "Testo libero o codice impianto/sede (in attesa di modello impianti)" }
+              - column: { name: data_stato, type: TIMESTAMPTZ, defaultValueComputed: "CURRENT_TIMESTAMP", constraints: { nullable: false }, remarks: "Ultimo cambio stato" }
+              - column: { name: note, type: TEXT, remarks: "Note tecniche / configurazioni" }
+
+              # Meta/Audit
+              - column: { name: attivo, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: extra_info, type: JSONB, defaultValueComputed: "'{}'::jsonb" }
+              - column: { name: tx_id, type: UUID }
+              - column: { name: user_insert, type: VARCHAR(64) }
+              - column: { name: user_update, type: VARCHAR(64) }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: "CURRENT_TIMESTAMP", constraints: { nullable: false } }
+              - column: { name: data_update, type: TIMESTAMPTZ }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false } }
+
+        - addUniqueConstraint: { schemaName: magazzino, tableName: assets, columnNames: seriale, constraintName: uq_mag_assets_seriale }
+        - createIndex: { schemaName: magazzino, tableName: assets, indexName: ix_mag_assets_articolo, columns: [ { name: articolo_id } ] }
+        - createIndex: { schemaName: magazzino, tableName: assets, indexName: ix_mag_assets_stato, columns: [ { name: stato } ] }
+        - createIndex: { schemaName: magazzino, tableName: assets, indexName: ix_mag_assets_magazzino, columns: [ { name: magazzino_id } ] }
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: assets
+            baseColumnNames: billing_account_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            constraintName: fk_mag_assets_billing_account
+            onDelete: RESTRICT
+            onUpdate: NO ACTION
+        
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: assets
+            baseColumnNames: contratto_id
+            referencedTableSchemaName: vendite
+            referencedTableName: contratti
+            referencedColumnNames: id
+            constraintName: fk_mag_assets_contratto
+            onDelete: RESTRICT
+            onUpdate: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: assets
+            baseColumnNames: magazzino_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: magazzini
+            referencedColumnNames: id
+            constraintName: fk_mag_assets_magazzino
+            onDelete: RESTRICT
+            onUpdate: NO ACTION
+
+  # FKs opzionali con precondizioni (per evitare fallimenti se i target non esistono ancora)
+  - changeSet:
+      id: 20251001-06-fk-magazzino-assets
+      author: mctit
+      logicalFilePath: migrations_v2/10_schema/20251001-06-create-magazzino-assets.yaml
+      
+      preConditions:
+        - tableExists: { schemaName: catalogo, tableName: articoli }
+        - onFail: CONTINUE
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: assets
+            baseColumnNames: articolo_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            constraintName: fk_mag_assets_articolo
+            onDelete: RESTRICT
+            onUpdate: NO ACTION
+
+
+  - changeSet:
+      id: 20251001-07-create-magazzino-assets
+      author: mctit
+      logicalFilePath: migrations_v2/10_schema/20251001-06-create-magazzino-assets.yaml
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Drop FK errata (se esiste)
+              ALTER TABLE 
+                IF EXISTS magazzino.assets 
+                DROP CONSTRAINT 
+                IF EXISTS fk_mag_assets_billing_account;
+              ALTER TABLE 
+                IF EXISTS magazzino.assets 
+                DROP CONSTRAINT 
+                IF EXISTS fk_mag_assets_contratto;
+              ALTER TABLE 
+                IF EXISTS magazzino.assets 
+                DROP CONSTRAINT 
+                IF EXISTS fk_mag_assets_magazzino;
+              ALTER TABLE 
+                IF EXISTS magazzino.assets 
+                DROP CONSTRAINT 
+                IF EXISTS fk_mag_assets_articolo;
+
+
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: assets
+            baseColumnNames: billing_account_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            constraintName: fk_mag_assets_billing_account
+            onDelete: NO ACTION
+            onUpdate: RESTRICT
+        
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: assets
+            baseColumnNames: contratto_id
+            referencedTableSchemaName: vendite
+            referencedTableName: contratti
+            referencedColumnNames: id
+            constraintName: fk_mag_assets_contratto
+            onDelete: NO ACTION
+            onUpdate: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: assets
+            baseColumnNames: magazzino_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: magazzini
+            referencedColumnNames: id
+            constraintName: fk_mag_assets_magazzino
+            onDelete: NO ACTION
+            onUpdate: RESTRICT
+
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: assets
+            baseColumnNames: articolo_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            constraintName: fk_mag_assets_articolo
+            onDelete: NO ACTION
+            onUpdate: RESTRICT

@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Magazzino: tabella EVENTI_ASSETS (storico eventi/stato)
+# ------------------------------------------------------------
+databaseChangeLog:
+ 
+
+  - changeSet:
+      id: 20251001-07-create-magazzino-eventi-assets
+      author: mctit
+      logicalFilePath: migrations_v2/10_schema/20251001-07-create-magazzino-eventi-assets.yaml
+     
+      changes:
+        - createTable:
+            schemaName: magazzino
+            tableName: eventi_assets
+            remarks: "Eventi di vita asset: installazione, rientro, swap, manutenzione, ecc."
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT, constraints: { primaryKey: true, primaryKeyName: pk_mag_eventi_assets, nullable: false } }
+              - column: { name: asset_id, type: BIGINT, constraints: { nullable: false }, remarks: "FK → magazzino.assets(id)" }
+              - column: { name: tipo_evento, type: VARCHAR(24), constraints: { nullable: false }, remarks: "INSTALL|RIENTRO|SWAP|MANUT|GUASTO|DISMISSIONE|ASSEGNAZIONE" }
+              - column: { name: data_evento, type: TIMESTAMPTZ, defaultValueComputed: "CURRENT_TIMESTAMP", constraints: { nullable: false } }
+              - column: { name: stato_da, type: VARCHAR(24), remarks: "Stato precedente (se applicabile)" }
+              - column: { name: stato_a, type: VARCHAR(24), remarks: "Nuovo stato (se applicabile)" }
+              - column: { name: magazzino_id_from, type: BIGINT, remarks: "Magazzino origine (se rilevante)" }
+              - column: { name: magazzino_id_to, type: BIGINT, remarks: "Magazzino destinazione (se rilevante)" }
+              - column: { name: sorgente_schema, type: VARCHAR(64), remarks: "Documento sorgente (es. vendite, acquisti, odl)" }
+              - column: { name: sorgente_tabella, type: VARCHAR(64) }
+              - column: { name: sorgente_id, type: BIGINT }
+              - column: { name: sorgente_riga_id, type: BIGINT }
+              - column: { name: note, type: TEXT }
+
+              # Meta/Audit
+              - column: { name: attivo, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: extra_info, type: JSONB, defaultValueComputed: "'{}'::jsonb" }
+              - column: { name: tx_id, type: UUID }
+              - column: { name: user_insert, type: VARCHAR(64) }
+              - column: { name: user_update, type: VARCHAR(64) }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: "CURRENT_TIMESTAMP", constraints: { nullable: false } }
+              - column: { name: data_update, type: TIMESTAMPTZ }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false } }
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: eventi_assets
+            baseColumnNames: asset_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: assets
+            referencedColumnNames: id
+            constraintName: fk_mag_eventi_assets_asset
+            onDelete: CASCADE
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: eventi_assets
+            baseColumnNames: magazzino_id_from
+            referencedTableSchemaName: magazzino
+            referencedTableName: magazzini
+            referencedColumnNames: id
+            constraintName: fk_mag_eventi_assets_magazzino_from
+            onDelete: NO ACTION
+            onUpdate: RESTRICT
+            
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: eventi_assets
+            baseColumnNames: magazzino_id_to
+            referencedTableSchemaName: magazzino
+            referencedTableName: magazzini
+            referencedColumnNames: id
+            constraintName: fk_mag_eventi_assets_magazzino_to
+            onDelete: NO ACTION
+            onUpdate: RESTRICT
+
+        - createIndex: { schemaName: magazzino, tableName: eventi_assets, indexName: ix_mag_eventi_assets_asset, columns: [ { name: asset_id } ] }
+        - createIndex: { schemaName: magazzino, tableName: eventi_assets, indexName: ix_mag_eventi_assets_tipo, columns: [ { name: tipo_evento } ] }
+        - createIndex: { schemaName: magazzino, tableName: eventi_assets, indexName: ix_mag_eventi_assets_data, columns: [ { name: data_evento } ] }
+
+  
