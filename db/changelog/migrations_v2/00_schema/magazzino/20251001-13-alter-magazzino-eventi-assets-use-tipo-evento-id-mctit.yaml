@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Magazzino: refactor EVENTI_ASSETS → FK tipo_evento_id
+# ------------------------------------------------------------
+databaseChangeLog:
+  
+  - changeSet:
+      id: 20251001-13-alter-magazzino-eventi-assets-use-tipo-evento-id
+      author: mctit
+      logicalFilePath: migrations_v2/10_schema/20251001-13-alter-magazzino-eventi-assets-use-tipo-evento-id.yaml
+      changes:
+        # 0) Drop  dell'indice su tipo_evento
+        - dropIndex:
+            indexName: ix_mag_eventi_assets_tipo
+            schemaName: magazzino
+            tableName: eventi_assets
+            ifExists: true
+
+        # 1) Aggiungi colonna FK (temporaneamente nullable per migrazione dati)
+        - addColumn:
+            schemaName: magazzino
+            tableName: eventi_assets
+            columns:
+              - column: { name: tipo_evento_id, type: BIGINT, remarks: "FK → config.tipi_evento_assets(id)" }
+
+        # 2) Migrazione dati: mappa i valori esistenti della colonna 'tipo_evento' sulla tabella di dominio
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              UPDATE magazzino.eventi_assets e
+              SET tipo_evento_id = t.id
+              FROM config.tipi_evento_assets t
+              WHERE UPPER(e.tipo_evento) = t.codice;
+
+        # 3) Vincolo NOT NULL + FK + indice
+        - addNotNullConstraint: { schemaName: magazzino, tableName: eventi_assets, columnName: tipo_evento_id, columnDataType: BIGINT }
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: eventi_assets
+            baseColumnNames: tipo_evento_id
+            referencedTableSchemaName: config
+            referencedTableName: tipi_evento_assets
+            referencedColumnNames: id
+            constraintName: fk_mag_eventi_assets_tipo_evento
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+        - createIndex: { schemaName: magazzino, tableName: eventi_assets, indexName: ix_mag_eventi_assets_tipo_evento_id, columns: [ { name: tipo_evento_id } ] }
+
+        # 4) Drop colonna legacy
+        - dropColumn: { schemaName: magazzino, tableName: eventi_assets, columnName: tipo_evento }

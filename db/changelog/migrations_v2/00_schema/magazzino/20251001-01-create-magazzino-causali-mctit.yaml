@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Magazzino: tabella CAUSALI
+# ------------------------------------------------------------
+databaseChangeLog:
+  
+  - changeSet:
+      id: 20251001-01-create-magazzino-causali
+      author: mctit
+      logicalFilePath: migrations_v2/10_schema/20251001-01-create-magazzino-causali.yaml
+      changes:
+        # Crea schema magazzino se non esiste
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE SCHEMA IF NOT EXISTS magazzino;
+
+        # Tabella di lookup/regole causali di magazzino
+        - createTable:
+            schemaName: magazzino
+            tableName: causali
+            remarks: "Lookup e regole operative per i movimenti di magazzino"
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_magazzino_causali
+                    nullable: false
+                  remarks: "PK"
+              - column:
+                  name: codice
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+                  remarks: "Codice univoco causale (es. CAR_ACQ, SCAR_VEN, USC_ODL)"
+              - column:
+                  name: descrizione
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+                  remarks: "Descrizione causale"
+              - column:
+                  name: segno
+                  type: SMALLINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+                  remarks: "Impatto su giacenza: -1 scarico, +1 carico, 0 neutra (es. rettifica definita da qta)"
+              - column:
+                  name: ambito
+                  type: VARCHAR(24)
+                  defaultValue: "generico"
+                  constraints:
+                    nullable: false
+                  remarks: "Dominio prevalente: vendite|acquisti|odl|trasferimento|inventario|generico"
+              - column:
+                  name: richiede_lotto
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+                  remarks: "Se true, la causale richiede lotto"
+              - column:
+                  name: richiede_seriale
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+                  remarks: "Se true, la causale richiede seriale"
+              - column:
+                  name: richiede_magazzino_dest
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+                  remarks: "Se true, obbliga a indicare un magazzino di destinazione (trasferimenti)"
+              - column:
+                  name: abilita_billing
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+                  remarks: "Se true, i movimenti con questa causale possono generare attività fatturabili"
+              - column:
+                  name: impatto_valorizzazione
+                  type: VARCHAR(16)
+                  defaultValue: "cmp"
+                  constraints:
+                    nullable: false
+                  remarks: "Regola valorizzazione: cmp|fifo|none (fase 1: cmp)"
+              - column:
+                  name: ordine
+                  type: SMALLINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+                  remarks: "Ordinamento UI/logic"
+
+              # Meta/Audit coerenti con il progetto
+              - column: { name: attivo, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Flag attivo" }
+              - column: { name: extra_info, type: JSONB, defaultValueComputed: "'{}'::jsonb", remarks: "Dati extra estendibili" }
+              - column: { name: tx_id, type: UUID, remarks: "Transaction id applicativo (se disponibile)" }
+              - column: { name: user_insert, type: VARCHAR(64), remarks: "Utente inserimento" }
+              - column: { name: user_update, type: VARCHAR(64), remarks: "Utente aggiornamento" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: "CURRENT_TIMESTAMP", constraints: { nullable: false }, remarks: "Timestamp inserimento" }
+              - column: { name: data_update, type: TIMESTAMPTZ, remarks: "Timestamp ultimo aggiornamento" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false }, remarks: "Se true, abilita snapshotting storico" }
+
+        - addUniqueConstraint:
+            schemaName: magazzino
+            tableName: causali
+            columnNames: codice
+            constraintName: uq_magazzino_causali_codice
+
+        # Check
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE magazzino.causali
+              ADD CONSTRAINT chk_magazzino_causali_segno
+              CHECK (segno IN (-1, 0, 1));
+
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE magazzino.causali
+              ADD CONSTRAINT chk_magazzino_causali_imp_val
+              CHECK (impatto_valorizzazione IN ('cmp','fifo','none'));
+
+
+        - createIndex:
+            schemaName: magazzino
+            tableName: causali
+            indexName: ix_magazzino_causali_ambito
+            columns:
+              - column: { name: ambito }
+
+        - createIndex:
+            schemaName: magazzino
+            tableName: causali
+            indexName: ix_magazzino_causali_attivo
+            columns:
+              - column: { name: attivo }

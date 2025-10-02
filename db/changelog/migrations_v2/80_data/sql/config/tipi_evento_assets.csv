@@ -1,0 +1,8 @@
+codice_interno,codice,descrizione,attivo,ordine,meta
+ASSET_EVT_INSTALL,INSTALL,Installazione presso cliente/impianto,True,10,{}
+ASSET_EVT_RIENTRO,RIENTRO,Rientro in magazzino,True,20,{}
+ASSET_EVT_SWAP,SWAP,Sostituzione (swap),True,30,{}
+ASSET_EVT_MANUT,MANUT,Manutenzione / revisione,True,40,{}
+ASSET_EVT_GUASTO,GUASTO,Guasto / fuori servizio,True,50,{}
+ASSET_EVT_DISMISSIONE,DISMISSIONE,Dismissione / rottamazione,True,90,{}
+ASSET_EVT_ASSEGNAZIONE,ASSEGNAZIONE,Assegnazione a tecnico/ODL/cliente,True,15,{}

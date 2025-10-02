@@ -89,7 +89,7 @@ databaseChangeLog:
 
   # 4) Dati/config + job + step finali
   - includeAll:
-      path: migrations_v2/80_data/config
+      path: migrations_v2/80_data
       relativeToChangelogFile: true
   - includeAll:
       path: migrations_v2/85_pgagent

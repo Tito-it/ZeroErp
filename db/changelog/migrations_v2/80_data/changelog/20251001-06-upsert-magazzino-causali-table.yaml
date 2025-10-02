@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20251001-06-upsert-magazzino-causali
+      logicalFilePath: migrations_v2/80_data/20251001-06-upsert-magazzino-causali-table.yaml
+      author: mctit
+      #runOnChange: true
+      #validCheckSums:
+      #  - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: magazzino
+            tableName: causali
+      changes:
+        # Upsert dei dati nella tabella causali
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/magazzino/causali.csv
+            tableName: causali
+            schemaName: magazzino
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,           type: STRING }
+              - column: { name: codice,  type: STRING }
+              - column: { name: codice_interno,    type: STRING }              
+              - column: { name: descrizione,  type: STRING }
+              - column: { name: segno,  type: STRING }
+              - column: { name: richiede_lotto,  type: BOOLEAN }
+              - column: { name: richiede_seriale,  type: BOOLEAN }
+              - column: { name: richiede_magazzino_dest,  type: BOOLEAN }
+              - column: { name: abilita_billing,  type: BOOLEAN }
+              - column: { name: impatto_valorizzazione,  type: STRING }
+              - column: { name: ordine,  type: STRING }
+              - column: { name: attivo,  type: BOOLEAN }
+              - column:
+                  name: extra_info
+                  type: JSON
+                  # se il CSV ha valore vuoto, usa {} come JSON valido
+                  defaultValue: "{}"
+              - column: { name: tx_id,    type: uuid  }           
+              - column: { name: user_insert,  type: STRING }
+              - column: { name: user_update,  type: STRING }  
+              - column: { name: data_insert,  type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING 
+                  defaultValue: "NOW()"
+              - column: { name: storicizza,  type: BOOLEAN }
+              - column: { name: ambito_causale_id,  type: STRING }
+              - column: { name: is_installazione_asset,  type: BOOLEAN }
+              - column: { name: is_rettifica,  type: BOOLEAN }
+              - column: { name: consente_stock_negativo,  type: BOOLEAN }
+              - column: { name: richiede_odl,  type: BOOLEAN }
+              - column: { name: contabilizza_cdc,  type: BOOLEAN }

@@ -22,6 +22,7 @@
 - [sistema_codici](tabelle/sistema_codici.md) — * **Definizione del formato codice**   Consente di specificare per ogni tipo di codice (`codice_tipo`) un **prefisso**, un **separatore** e la **lunghezza numerica** totale, rendendo parametrica la struttura dei codici generati. * **Configurazione del meccanismo di sequenza**   Tramite il flag `usa_sequenza` e l’attributo `nome_sequenza`, si abilita o meno l’utilizzo di una progressione automatica basata su sequenza di database, a garanzia di unicità e ordinarietà. * **Attivazione o disattivazione**   Il campo `attivo` permette di abilitare o disabilitare temporaneamente il sistema di generazione per un tipo di codice, senza cancellare la configurazione.
 - [sorgenti](tabelle/sorgenti.md)
 - [stati](tabelle/stati.md) — * **Elenco degli stati/paesi**   Contiene tutte le nazioni riconosciute, con sigle e codici ISO standard (ISO 3166-1 alpha-2 e alpha-3) e prefisso telefonico internazionale.
+- [stati_assets](tabelle/stati_assets.md)
 - [stati_cliente](tabelle/stati_cliente.md) — La tabella `config.stati_cliente` definisce i possibili **stati funzionali** di un cliente all’interno di Zero ERP, utilizzati sia per il controllo dei processi (letture, fatturazione) sia per la logica di avanzamento (precontrattuale, attivo, sospeso, chiuso, ecc.).
 - [stati_doc_contratti](tabelle/stati_doc_contratti.md)
 - [stati_doc_ddt](tabelle/stati_doc_ddt.md)
@@ -36,6 +37,7 @@
 - [tipi_contatti](tabelle/tipi_contatti.md) — La tabella **`config.tipi_contatti`** definisce le categorie di contatto utilizzabili nell’anagrafica dei soggetti, fornendo un codice interno non modificabile e una descrizione estesa.
 - [tipi_doc_fiscale](tabelle/tipi_doc_fiscale.md)
 - [tipi_documenti](tabelle/tipi_documenti.md)
+- [tipi_evento_assets](tabelle/tipi_evento_assets.md)
 - [tipi_indirizzi](tabelle/tipi_indirizzi.md) — La tabella **`config.tipi_indirizzi`** centralizza i **tipi di indirizzo** utilizzabili in Zero ERP, come ad esempio Residenza, Domicilio Fiscale, Sede Legale, Sede Operativa, Corrispondenza Postale, Indirizzo di Fornitura, ecc. 
 - [tipi_ruoli](tabelle/tipi_ruoli.md) — * **Distinzione dei ruoli**: consente di assegnare a ogni record della tabella `soggetti` uno o più ruoli funzionali (es. cliente, fornitore, gestore). * **Flessibilità operativa**: un soggetto può assumere ruoli differenti in contesti diversi (ad esempio un fornitore che può diventare cliente in altre transazioni). * **Ruolo "gestore"**: l’azienda stessa che utilizza il software viene registrata in `soggetti` e associata al ruolo interno “gestore” per identificare i dati dell’utente principale o amministratore del sistema.
 - [tipi_soggetto](tabelle/tipi_soggetto.md) — * Definire le **macro-tipologie** di soggetto (es. Persona Fisica, Persona Giuridica, Ente, ecc.) * Separare la classificazione di alto livello dalla gestione dettagliata dei tipi soggetto (internazionale) tramite la tabella di dettaglio.

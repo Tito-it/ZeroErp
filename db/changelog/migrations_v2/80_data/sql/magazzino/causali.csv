@@ -1,0 +1,10 @@
+codice,descrizione,segno,ambito_causale_id,richiede_lotto,richiede_seriale,richiede_magazzino_dest,abilita_billing,impatto_valorizzazione,ordine,attivo
+CAR_ACQ,Carico da acquisti,1,2,False,False,False,False,cmp,10,True
+SCAR_VEN,Scarico per vendite,-1,1,False,False,False,True,cmp,20,True
+USC_ODL,Uscita per Ordine di Lavoro,-1,3,False,False,False,True,cmp,30,True
+TRASF_OUT,Trasferimento uscita,-1,4,False,False,True,False,cmp,40,True
+TRASF_IN,Trasferimento entrata,1,4,False,False,False,False,cmp,41,True
+RETT_POS,Rettifica positiva,1,5,False,False,False,False,cmp,50,True
+RETT_NEG,Rettifica negativa,-1,5,False,False,False,False,cmp,51,True
+INST_ASSET,Installazione asset (contatore),-1,3,False,True,False,True,cmp,60,True
+RIENT_ASSET,Rientro asset (contatore),1,3,False,True,False,False,cmp,61,True

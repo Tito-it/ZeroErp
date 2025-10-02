@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Magazzino: tabella AMBITO_CAUSALE
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20251001-04-alter-magazzino-causali-add-fks-and-columns
+      logicalFilePath: migrations_v2/00_schema/20251001-04-alter-magazzino-causali-add-fks-and-columns.yaml
+      author: mctit
+      changes:
+        # 1) Aggiunge colonne
+        - addColumn:
+            schemaName: magazzino
+            tableName: causali
+            columns:
+             # - column: { name: codice_interno, type: VARCHAR(64), remarks: "Codice tecnico interno per binding con attività collegate" }
+              - column: { name: ambito_causale_id, type: BIGINT, remarks: "FK verso magazzino.ambito_causale" }
+
+              # Colonne di comportamento (esplicite in tabella, niente lookup)
+              - column: { name: is_installazione_asset, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false }, remarks: "Se true, movimento legato a installazione di asset/contatore (richiede seriale)" }
+              - column: { name: is_rettifica, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false }, remarks: "Se true, è una rettifica inventariale" }
+              - column: { name: consente_stock_negativo, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false }, remarks: "Se true, permette stock negativo per questa causale (da usare con cautela)" }
+              - column: { name: richiede_odl, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false }, remarks: "Richiede riferimento ODL/Work Order" }
+              - column: { name: contabilizza_cdc, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false }, remarks: "Se true, obbliga centro di costo/impianto" }
+
+        - dropColumn:
+            schemaName: magazzino
+            tableName: causali
+            columnName: ambito
+
+        # 2) Vincoli e indici
+        #- addUniqueConstraint:
+        #    schemaName: magazzino
+        #    tableName: causali
+        #    columnNames: codice_interno
+        #    constraintName: uq_mag_causali_codice_interno
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: causali
+            baseColumnNames: ambito_causale_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: ambito_causale
+            referencedColumnNames: id
+            constraintName: fk_mag_causali_ambito
+            onDelete: RESTRICT
+            onUpdate: NO ACTION
+
+        - createIndex: { schemaName: magazzino, tableName: causali, indexName: ix_mag_causali_ambito_id, columns: [ { name: ambito_causale_id } ] }
+
+
+  - changeSet:
+      id: 20251001-05-alter-magazzino-causali-add-fks-and-columns
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE 
+              IF EXISTS magazzino.causali 
+              DROP CONSTRAINT 
+              IF EXISTS fk_mag_causali_ambito;
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: causali
+            baseColumnNames: ambito_causale_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: ambito_causale
+            referencedColumnNames: id
+            constraintName: fk_mag_causali_ambito
+            onDelete: NO ACTION
+            onUpdate: RESTRICT

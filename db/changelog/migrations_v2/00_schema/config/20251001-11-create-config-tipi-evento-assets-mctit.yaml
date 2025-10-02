@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Config: tabella TIPI_EVENTO_ASSETS
+# ------------------------------------------------------------
+databaseChangeLog:
+  
+  - changeSet:
+      id: 20251001-11-create-config-tipi-evento-assets
+      author: mctit
+      logicalFilePath: migrations_v2/10_schema/20251001-11-create-config-tipi-evento-assets.yaml
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE SCHEMA IF NOT EXISTS config;
+
+        - createTable:
+            schemaName: config
+            tableName: tipi_evento_assets
+            remarks: "Dominio tipi evento per asset (codici stabili; descrizioni multilingua via meta)"
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT, constraints: { primaryKey: true, primaryKeyName: pk_tipi_evento_assets, nullable: false }, remarks: "PK" }
+              - column: { name: codice_interno, type: VARCHAR(32), constraints: { nullable: false }, remarks: "Codice interno immutabile" }
+              - column: { name: codice, type: VARCHAR(32), constraints: { nullable: false }, remarks: "Codice stabile (es. INSTALL, RIENTRO, SWAP, MANUT, GUASTO, DISMISSIONE, ASSEGNAZIONE)" }
+              - column: { name: descrizione, type: VARCHAR(120), remarks: "Descrizione" }
+              - column: { name: attivo, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: ordine, type: SMALLINT, remarks: "Ordinamento" }
+              - column: { name: meta, type: JSONB, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false }, remarks: "Dizionari multilingua, alias, icone" }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: "now()", constraints: { nullable: false }, remarks: "Audit: inserimento" }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: "CURRENT_USER", constraints: { nullable: false }, remarks: "Audit: utente inserimento" }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: "now()", constraints: { nullable: false }, remarks: "Audit: aggiornamento" }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: "CURRENT_USER", remarks: "Audit: utente aggiornamento" }
+
+        - addUniqueConstraint: { schemaName: config, tableName: tipi_evento_assets, columnNames: codice, constraintName: uq_tipi_evento_assets_codice }
+        - addUniqueConstraint: { schemaName: config, tableName: tipi_evento_assets, columnNames: codice_interno, constraintName: uq_tipi_evento_assets_codice_interno }
+
+        - createIndex:
+            schemaName: config
+            tableName: tipi_evento_assets
+            indexName: ix_tipi_evento_assets_attivo
+            columns: [ { name: attivo } ]
+
+        - createIndex:
+            schemaName: config
+            tableName: tipi_evento_assets
+            indexName: ix_tipi_evento_assets_codice_upper
+            columns:
+              - column:
+                  name: "upper(codice)"
+                  descending: false
+
+        - createIndex:
+            schemaName: config
+            tableName: tipi_evento_assets
+            indexName: ix_tipi_evento_assets_codice_interno_upper
+            columns:
+              - column:
+                  name: "upper(codice_interno)"
+                  descending: false
+
+        - createIndex:
+            schemaName: config
+            tableName: tipi_evento_assets
+            indexName: ix_tipi_evento_assets_descrizione_upper
+            columns:
+              - column:
+                  name: "upper(descrizione)"
+                  descending: false
