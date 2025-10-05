@@ -59,7 +59,7 @@ databaseChangeLog:
                   type: STRING 
                   defaultValue: "NOW()"
               - column: { name: storicizza,  type: BOOLEAN }
-              - column: { name: ambito_causale_id,  type: STRING }
+              - column: { name: ambito_causale_id,  type: BIGINT }
               - column: { name: is_installazione_asset,  type: BOOLEAN }
               - column: { name: is_rettifica,  type: BOOLEAN }
               - column: { name: consente_stock_negativo,  type: BOOLEAN }

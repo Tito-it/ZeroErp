@@ -1,11 +1,11 @@
-codice,descrizione,segno,richiede_lotto,richiede_seriale,richiede_magazzino_dest,abilita_billing,impatto_valorizzazione,ordine,attivo,extra_info,tx_id,user_insert,user_update,data_insert,data_update,storicizza,ambito_causale_id,is_installazione_asset,is_rettifica,consente_stock_negativo,richiede_odl,contabilizza_cdc
-CARICO_ACQ,Carico da DDT acquisto,1,False,False,False,False,cmp,10,True,{},,,,,,False,2,False,False,False,False,False
-SCARICO_VEN,Scarico per DDT vendita,-1,False,False,False,True,cmp,20,True,{},,,,,,False,1,False,False,False,False,False
-TRASF_OUT,Trasferimento uscita (da A),-1,False,False,True,False,none,30,True,{},,,,,,False,4,False,False,False,False,False
-TRASF_IN,Trasferimento entrata (a B),1,False,False,False,False,none,31,True,{},,,,,,False,4,False,False,False,False,False
-RETT_POS,Rettifica positiva (allineamento +),1,False,False,False,False,cmp,40,True,"{""motivi_suggeriti"": [""INVENTARIO_DIFF"", ""ALLINEAMENTO_INIZIALE"", ""ROTTURA_STORNATA""]}",,,,,,False,5,False,True,False,False,False
-RETT_NEG,Rettifica negativa (allineamento -),-1,False,False,False,False,cmp,41,True,"{""motivi_suggeriti"": [""ROTTURA"", ""SMARRIMENTO"", ""INVENTARIO_DIFF""]}",,,,,,False,5,False,True,False,False,False
-ODL_USCITA_MAT,Uscita materiali per ODL,-1,False,False,False,True,cmp,50,True,{},,,,,,False,3,False,False,False,True,True
-ODL_ENTRATA_MAT,Rientro materiali da ODL,1,False,False,False,False,cmp,51,True,{},,,,,,False,3,False,False,False,True,True
-ASSET_INSTALL,Installazione asset presso cliente,-1,False,True,False,True,cmp,60,True,{},,,,,,False,6,True,False,False,False,True
-ASSET_RIENTRO,Rientro asset da cliente,1,False,True,False,False,cmp,61,True,{},,,,,,False,6,False,False,False,False,True
+codice,descrizione,segno,richiede_lotto,richiede_seriale,richiede_magazzino_dest,abilita_billing,impatto_valorizzazione,ordine,attivo,extra_info,storicizza,ambito_causale_id,is_installazione_asset,is_rettifica,consente_stock_negativo,richiede_odl,contabilizza_cdc
+CARICO_ACQ,Carico da DDT acquisto,1,False,False,False,False,cmp,10,True,{},False,,False,False,False,False,False
+SCARICO_VEN,Scarico per DDT vendita,-1,False,False,False,True,cmp,20,True,{},False,,False,False,False,False,False
+TRASF_OUT,Trasferimento uscita (da A),-1,False,False,True,False,none,30,True,{},False,,False,False,False,False,False
+TRASF_IN,Trasferimento entrata (a B),1,False,False,False,False,none,31,True,{},False,,False,False,False,False,False
+RETT_POS,Rettifica positiva (allineamento +),1,False,False,False,False,cmp,40,True,"{""motivi_suggeriti"": [""INVENTARIO_DIFF"", ""ALLINEAMENTO_INIZIALE"", ""ROTTURA_STORNATA""]}",False,,False,True,False,False,False
+RETT_NEG,Rettifica negativa (allineamento -),-1,False,False,False,False,cmp,41,True,"{""motivi_suggeriti"": [""ROTTURA"", ""SMARRIMENTO"", ""INVENTARIO_DIFF""]}",False,,False,True,False,False,False
+ODL_USCITA_MAT,Uscita materiali per ODL,-1,False,False,False,True,cmp,50,True,{},False,,False,False,False,True,True
+ODL_ENTRATA_MAT,Rientro materiali da ODL,1,False,False,False,False,cmp,51,True,{},False,,False,False,False,True,True
+ASSET_INSTALL,Installazione asset presso cliente,-1,False,True,False,True,cmp,60,True,{},False,,True,False,False,False,True
+ASSET_RIENTRO,Rientro asset da cliente,1,False,True,False,False,cmp,61,True,{},False,,False,False,False,False,True
