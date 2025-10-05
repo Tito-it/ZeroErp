@@ -39,6 +39,7 @@
 | ix_note_evento_asset_render | `CREATE INDEX ix_note_evento_asset_render ON magazzino.note_evento_asset USING btree (target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
 | note_evento_asset_pkey | `CREATE UNIQUE INDEX note_evento_asset_pkey ON magazzino.note_evento_asset USING btree (target_tipo, id)` |
 | note_evento_asset_target_tipo_target_id_anchor_tipo_posizio_idx | `CREATE INDEX note_evento_asset_target_tipo_target_id_anchor_tipo_posizio_idx ON magazzino.note_evento_asset USING btree (target_tipo, target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
+| note_evento_asset_target_tipo_target_id_target_riga_id_anch_idx | `CREATE INDEX note_evento_asset_target_tipo_target_id_target_riga_id_anch_idx ON magazzino.note_evento_asset USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 
 ---
 {% include-markdown "signature-core.md" %}

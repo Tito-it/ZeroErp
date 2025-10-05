@@ -12,7 +12,6 @@
 | data | date | NO | CURRENT_DATE |
 | stato_doc_ordine_id | bigint | NO |  |
 | sorgente_tipo_id | bigint | YES |  |
-| sorgente_id | uuid | YES |  |
 | valuta_id | integer | YES |  |
 | tasso_cambio | numeric | NO | 1 |
 | modalita_pagamento_id | integer | YES |  |
@@ -40,6 +39,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
 | hash_contenuto | character varying | YES |  |
+| sorgente_uid | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -62,9 +62,9 @@
 | ix_ao_stato_doc_ordine | `CREATE INDEX ix_ao_stato_doc_ordine ON acquisti.ordini USING btree (stato_doc_ordine_id)` |
 | ix_ordini_ao_fornitore_stato_data | `CREATE INDEX ix_ordini_ao_fornitore_stato_data ON acquisti.ordini USING btree (soggetto_ruolo_id, stato_doc_ordine_id, data)` |
 | pk_ordini_a | `CREATE UNIQUE INDEX pk_ordini_a ON acquisti.ordini USING btree (id)` |
-| uq_ao_sorgente | `CREATE UNIQUE INDEX uq_ao_sorgente ON acquisti.ordini USING btree (sorgente_tipo_id, sorgente_id)` |
 | uq_ordini_ao_anno_serie_numero | `CREATE UNIQUE INDEX uq_ordini_ao_anno_serie_numero ON acquisti.ordini USING btree (anno, serie, numero) WHERE (numero IS NOT NULL)` |
 | uq_ordini_ao_uid | `CREATE UNIQUE INDEX uq_ordini_ao_uid ON acquisti.ordini USING btree (uid)` |
+| uq_ordini_v_sorgente_fk | `CREATE UNIQUE INDEX uq_ordini_v_sorgente_fk ON acquisti.ordini USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

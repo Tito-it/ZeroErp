@@ -35,6 +35,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_note_render_order | `CREATE INDEX ix_note_render_order ON ONLY vendite.note USING btree (target_tipo, target_id, anchor_tipo, posizione, seq)` |
+| ix_vendite_note_by_riga | `CREATE INDEX ix_vendite_note_by_riga ON ONLY vendite.note USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 | pk_note | `CREATE UNIQUE INDEX pk_note ON ONLY vendite.note USING btree (target_tipo, id)` |
 
 ---

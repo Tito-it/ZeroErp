@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# Rinomina source in sorgente
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20251005-08-rename-ordini-sorgente-id-to-sorgente-uid-mctit.yaml
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/acquisti/20251005-08-rename-ordini-sorgente-id-to-sorgente-uid-mctit.yaml
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- Elimino i vecchi riferimenti alle colonne "source" che ora sono "sorgente_id"
+
+              DROP INDEX IF EXISTS acquisti.uq_ordini_v_sorgente_fk;
+
+              
+
+        - dropColumn:
+            schemaName: acquisti
+            tableName: ordini 
+            columnName: sorgente_id
+        
+             
+        # 1) Aggiungi colonna FK (temporaneamente nullable per migrazione dati)
+        - addColumn:
+            schemaName: acquisti
+            tableName: ordini
+            columns:
+             
+              - column: { name: sorgente_uid, type: UUID }
+       
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- Rigenero per usare i nuovi campi sorgente
+              COMMENT ON COLUMN acquisti.ordini.sorgente_uid
+                 IS 'Origine import (uid)';
+
+
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_ordini_v_sorgente_fk
+                ON acquisti.ordini USING btree
+                (sorgente_tipo_id ASC NULLS LAST, sorgente_uid ASC NULLS LAST)
+                WITH (fillfactor=100, deduplicate_items=True)
+                TABLESPACE pg_default
+                WHERE sorgente_tipo_id IS NOT NULL;
+
+              COMMENT ON INDEX acquisti.uq_ordini_v_sorgente_fk
+                  IS 'Idempotenza import (sorgente_tipo_id, sorgente_uid).';

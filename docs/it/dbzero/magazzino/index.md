@@ -28,6 +28,7 @@
 - [trasferimenti_righe](tabelle/trasferimenti_righe.md)
 
 ## ⚙️ Funzioni
+- [fn_get_magazzino_note](funzioni/fn_get_magazzino_note.md)
 - [trgfn_a10_magazzini_protect_codice](funzioni/trgfn_a10_magazzini_protect_codice.md)
 - [trgfn_magazzini_norm](funzioni/trgfn_magazzini_norm.md)
 

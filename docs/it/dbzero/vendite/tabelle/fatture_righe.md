@@ -27,10 +27,10 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
 | sorgente_tipo_id | bigint | YES |  |
-| sorgente_id | uuid | YES |  |
 | sorgente_riga | bigint | YES | 0 |
 | iva_perc | numeric | YES |  |
 | iva_natura | character varying | YES |  |
+| sorgente_uid | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -53,7 +53,7 @@
 | ix_fatture_righe_iva | `CREATE INDEX ix_fatture_righe_iva ON vendite.fatture_righe USING btree (iva_id)` |
 | pk_fatture_righe | `CREATE UNIQUE INDEX pk_fatture_righe ON vendite.fatture_righe USING btree (id)` |
 | uq_fatture_righe_riga_nr | `CREATE UNIQUE INDEX uq_fatture_righe_riga_nr ON vendite.fatture_righe USING btree (fattura_id, riga_nr)` |
-| uq_fatture_righe_sorgente_fk | `CREATE UNIQUE INDEX uq_fatture_righe_sorgente_fk ON vendite.fatture_righe USING btree (sorgente_tipo_id, sorgente_id, sorgente_riga)` |
+| uq_fatture_righe_v_sorgente_fk | `CREATE UNIQUE INDEX uq_fatture_righe_v_sorgente_fk ON vendite.fatture_righe USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

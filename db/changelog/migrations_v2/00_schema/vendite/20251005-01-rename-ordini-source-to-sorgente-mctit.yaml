@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+#  Rinomina source in sorgente
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20251005-01-rename-ordini-source-to-sorgente
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/vendite/20251005-01-rename-ordini-source-to-sorgente-mctit.yaml
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- Elimino i vecchi riferimenti alle colonne "source" che ora sono "sorgente"
+
+              DROP INDEX IF EXISTS vendite.uq_ordini_v_source_fk;
+
+              ALTER TABLE IF EXISTS vendite.ordini DROP CONSTRAINT IF EXISTS fk_ordini_v_source_tipo;
+
+        - dropColumn:
+            schemaName: vendite
+            tableName: ordini
+            columnName: source_id
+        - dropColumn:
+            schemaName: vendite
+            tableName: ordini
+            columnName: source_tipo_id
+             
+        # 1) Aggiungi colonna FK (temporaneamente nullable per migrazione dati)
+        - addColumn:
+            schemaName: vendite
+            tableName: ordini
+            columns:
+              - column: { name: sorgente_tipo_id, type: BIGINT }
+              - column: { name: sorgente_uid, type: UUID }
+       
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- Rigenero per usare i nuovi campi sorgente
+              ALTER TABLE IF EXISTS vendite.ordini
+                ADD CONSTRAINT fk_ordini_v_sorgente_tipo FOREIGN KEY (sorgente_tipo_id)
+                REFERENCES config.sorgenti (id) MATCH SIMPLE
+                ON UPDATE CASCADE
+                ON DELETE NO ACTION;
+                
+              COMMENT ON COLUMN vendite.ordini.sorgente_tipo_id
+                IS 'FK → config.sorgenti.id (tipo sorgente import)';
+              COMMENT ON COLUMN vendite.ordini.sorgente_uid
+                 IS 'Origine import (uid)';
+
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_ordini_v_sorgente_fk
+                ON vendite.ordini USING btree
+                (sorgente_tipo_id ASC NULLS LAST, sorgente_uid ASC NULLS LAST)
+                WITH (fillfactor=100, deduplicate_items=True)
+                TABLESPACE pg_default
+                WHERE sorgente_tipo_id IS NOT NULL;
+
+              COMMENT ON INDEX vendite.uq_ordini_v_sorgente_fk
+                  IS 'Idempotenza import (sorgente_tipo_id, sorgente_uid).';

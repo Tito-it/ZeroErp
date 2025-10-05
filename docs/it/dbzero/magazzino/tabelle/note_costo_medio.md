@@ -39,6 +39,7 @@
 | ix_note_costo_medio_render | `CREATE INDEX ix_note_costo_medio_render ON magazzino.note_costo_medio USING btree (target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
 | note_costo_medio_pkey | `CREATE UNIQUE INDEX note_costo_medio_pkey ON magazzino.note_costo_medio USING btree (target_tipo, id)` |
 | note_costo_medio_target_tipo_target_id_anchor_tipo_posizion_idx | `CREATE INDEX note_costo_medio_target_tipo_target_id_anchor_tipo_posizion_idx ON magazzino.note_costo_medio USING btree (target_tipo, target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
+| note_costo_medio_target_tipo_target_id_target_riga_id_ancho_idx | `CREATE INDEX note_costo_medio_target_tipo_target_id_target_riga_id_ancho_idx ON magazzino.note_costo_medio USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 
 ---
 {% include-markdown "signature-core.md" %}

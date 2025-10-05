@@ -39,6 +39,7 @@
 | ix_note_movimento_render | `CREATE INDEX ix_note_movimento_render ON magazzino.note_movimento USING btree (target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
 | note_movimento_pkey | `CREATE UNIQUE INDEX note_movimento_pkey ON magazzino.note_movimento USING btree (target_tipo, id)` |
 | note_movimento_target_tipo_target_id_anchor_tipo_posizione__idx | `CREATE INDEX note_movimento_target_tipo_target_id_anchor_tipo_posizione__idx ON magazzino.note_movimento USING btree (target_tipo, target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
+| note_movimento_target_tipo_target_id_target_riga_id_anchor__idx | `CREATE INDEX note_movimento_target_tipo_target_id_target_riga_id_anchor__idx ON magazzino.note_movimento USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 
 ---
 {% include-markdown "signature-core.md" %}

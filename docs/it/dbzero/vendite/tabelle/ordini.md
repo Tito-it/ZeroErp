@@ -12,8 +12,6 @@
 | anno | smallint | YES |  |
 | data | date | NO | CURRENT_DATE |
 | stato_doc_ordine_id | bigint | NO |  |
-| source_tipo_id | bigint | YES |  |
-| source_id | uuid | YES |  |
 | valuta_id | integer | YES |  |
 | tasso_cambio | numeric | NO | 1 |
 | modalita_pagamento_id | integer | YES |  |
@@ -41,6 +39,8 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
+| sorgente_tipo_id | bigint | YES |  |
+| sorgente_uid | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -51,7 +51,7 @@
 | FOREIGN KEY | fk_ordini_v_cliente_ruolo | soggetto_ruolo_id |
 | FOREIGN KEY | fk_ordini_v_mod_add_trasporto | modalita_addebito_trasporto_id |
 | FOREIGN KEY | fk_ordini_v_modpag | modalita_pagamento_id |
-| FOREIGN KEY | fk_ordini_v_source_tipo | source_tipo_id |
+| FOREIGN KEY | fk_ordini_v_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_ordini_v_stato_ordine | stato_doc_ordine_id |
 | FOREIGN KEY | fk_ordini_v_valute | valuta_id |
 | PRIMARY KEY | pk_ordini | id |
@@ -63,7 +63,7 @@
 | ix_ordini_v_statoid | `CREATE INDEX ix_ordini_v_statoid ON vendite.ordini USING btree (stato_doc_ordine_id)` |
 | pk_ordini | `CREATE UNIQUE INDEX pk_ordini ON vendite.ordini USING btree (id)` |
 | uq_ordini_v_anno_serie_numero | `CREATE UNIQUE INDEX uq_ordini_v_anno_serie_numero ON vendite.ordini USING btree (anno, serie, numero) WHERE (numero IS NOT NULL)` |
-| uq_ordini_v_source_fk | `CREATE UNIQUE INDEX uq_ordini_v_source_fk ON vendite.ordini USING btree (source_tipo_id, source_id) WHERE (source_tipo_id IS NOT NULL)` |
+| uq_ordini_v_sorgente_fk | `CREATE UNIQUE INDEX uq_ordini_v_sorgente_fk ON vendite.ordini USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |
 | uq_ordini_v_uid | `CREATE UNIQUE INDEX uq_ordini_v_uid ON vendite.ordini USING btree (uid)` |
 
 ## 🚨 Trigger

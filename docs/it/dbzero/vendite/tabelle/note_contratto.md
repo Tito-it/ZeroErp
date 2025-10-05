@@ -40,6 +40,7 @@
 | ix_contnote_render | `CREATE INDEX ix_contnote_render ON vendite.note_contratto USING btree (target_id, anchor_tipo, target_riga_id, posizione, seq)` |
 | note_contratto_pkey | `CREATE UNIQUE INDEX note_contratto_pkey ON vendite.note_contratto USING btree (target_tipo, id)` |
 | note_contratto_target_tipo_target_id_anchor_tipo_posizione__idx | `CREATE INDEX note_contratto_target_tipo_target_id_anchor_tipo_posizione__idx ON vendite.note_contratto USING btree (target_tipo, target_id, anchor_tipo, posizione, seq)` |
+| note_contratto_target_tipo_target_id_target_riga_id_anchor__idx | `CREATE INDEX note_contratto_target_tipo_target_id_target_riga_id_anchor__idx ON vendite.note_contratto USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

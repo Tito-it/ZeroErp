@@ -34,6 +34,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_mag_note_by_riga | `CREATE INDEX ix_mag_note_by_riga ON ONLY magazzino.note USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 | ix_mag_note_render_order | `CREATE INDEX ix_mag_note_render_order ON ONLY magazzino.note USING btree (target_tipo, target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
 | pk_magazzino_note | `CREATE UNIQUE INDEX pk_magazzino_note ON ONLY magazzino.note USING btree (target_tipo, id)` |
 

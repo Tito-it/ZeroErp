@@ -40,6 +40,7 @@
 | ix_note_trasf_riga_render | `CREATE INDEX ix_note_trasf_riga_render ON magazzino.note_trasferimento_riga USING btree (target_id, anchor_tipo, target_riga_id, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
 | note_trasferimento_riga_pkey | `CREATE UNIQUE INDEX note_trasferimento_riga_pkey ON magazzino.note_trasferimento_riga USING btree (target_tipo, id)` |
 | note_trasferimento_riga_target_tipo_target_id_anchor_tipo_p_idx | `CREATE INDEX note_trasferimento_riga_target_tipo_target_id_anchor_tipo_p_idx ON magazzino.note_trasferimento_riga USING btree (target_tipo, target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
+| note_trasferimento_riga_target_tipo_target_id_target_riga_i_idx | `CREATE INDEX note_trasferimento_riga_target_tipo_target_id_target_riga_i_idx ON magazzino.note_trasferimento_riga USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 
 ---
 {% include-markdown "signature-core.md" %}

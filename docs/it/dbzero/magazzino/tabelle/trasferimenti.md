@@ -18,12 +18,16 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
+| sorgente_tipo_id | bigint | YES |  |
+| sorgente_uid | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_mag_trasferimenti_da_a_distinti |  |
 | CHECK | chk_mag_trasferimenti_stato |  |
 | FOREIGN KEY | fk_mag_rettifiche_sorgenti_tipo | sorgenti_tipo_id |
+| FOREIGN KEY | fk_mag_trasf_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_mag_trasferimenti_magazzino_from | magazzino_id_from |
 | FOREIGN KEY | fk_mag_trasferimenti_magazzino_to | magazzino_id_to |
 | FOREIGN KEY | fk_mag_trasferimenti_sorgenti_tipo | sorgenti_tipo_id |
@@ -36,6 +40,7 @@
 | ix_mag_trasferimenti_from_to | `CREATE INDEX ix_mag_trasferimenti_from_to ON magazzino.trasferimenti USING btree (magazzino_id_from, magazzino_id_to)` |
 | ix_mag_trasferimenti_stato | `CREATE INDEX ix_mag_trasferimenti_stato ON magazzino.trasferimenti USING btree (stato_trasferimento)` |
 | pk_mag_trasferimenti | `CREATE UNIQUE INDEX pk_mag_trasferimenti ON magazzino.trasferimenti USING btree (id)` |
+| uq_mag_trasf_sorgente_fk | `CREATE UNIQUE INDEX uq_mag_trasf_sorgente_fk ON magazzino.trasferimenti USING btree (sorgente_tipo_id, sorgente_uid) WHERE (sorgente_tipo_id IS NOT NULL)` |
 | uq_mag_trasferimenti_sorgenti_fk | `CREATE UNIQUE INDEX uq_mag_trasferimenti_sorgenti_fk ON magazzino.trasferimenti USING btree (sorgenti_tipo_id, sorgenti_uid) WHERE ((sorgenti_tipo_id IS NOT NULL) AND (sorgenti_uid IS NOT NULL))` |
 
 ---

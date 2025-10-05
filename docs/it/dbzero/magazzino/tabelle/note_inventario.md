@@ -39,6 +39,7 @@
 | ix_note_inventario_render | `CREATE INDEX ix_note_inventario_render ON magazzino.note_inventario USING btree (target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
 | note_inventario_pkey | `CREATE UNIQUE INDEX note_inventario_pkey ON magazzino.note_inventario USING btree (target_tipo, id)` |
 | note_inventario_target_tipo_target_id_anchor_tipo_posizione_idx | `CREATE INDEX note_inventario_target_tipo_target_id_anchor_tipo_posizione_idx ON magazzino.note_inventario USING btree (target_tipo, target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
+| note_inventario_target_tipo_target_id_target_riga_id_anchor_idx | `CREATE INDEX note_inventario_target_tipo_target_id_target_riga_id_anchor_idx ON magazzino.note_inventario USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 
 ---
 {% include-markdown "signature-core.md" %}
