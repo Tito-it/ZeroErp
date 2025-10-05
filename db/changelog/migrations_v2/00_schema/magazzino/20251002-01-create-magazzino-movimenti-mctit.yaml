@@ -170,3 +170,15 @@ databaseChangeLog:
               - column: { name: sorgente_tabella }
               - column: { name: sorgente_id }
               - column: { name: sorgente_riga_id }
+  - changeSet:
+      id: 20251004-03-fk-mag-movimenti
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                  
+                  ALTER TABLE magazzino.movimenti
+                    ADD CONSTRAINT chk_mag_movimenti_da_destinazione_distinti
+                    CHECK (magazzino_id <> magazzino_id_dest and magazzino_id IS NOT NULL AND magazzino_id_dest IS NOT NULL);  

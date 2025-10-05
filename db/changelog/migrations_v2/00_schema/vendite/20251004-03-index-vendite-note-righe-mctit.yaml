@@ -1,0 +1,25 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# Drop dei vecchi campi "note" nello schema vendite
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20251004-03-index-vendite-note-righe
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/vendite/20251004-03-index-vendite-note-righe.yaml
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_vendite_note_by_riga
+              ON vendite.note (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq)
+              WHERE target_riga_id IS NOT NULL;

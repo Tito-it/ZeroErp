@@ -18,7 +18,6 @@
 | sorgente_tabella | character varying | YES |  |
 | sorgente_id | bigint | YES |  |
 | sorgente_riga_id | bigint | YES |  |
-| note | text | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
@@ -27,6 +26,7 @@
 | user_update | character varying | YES | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | false |
+| transfer_uid | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -43,6 +43,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_mag_mov_transfer_uid | `CREATE INDEX ix_mag_mov_transfer_uid ON magazzino.movimenti USING btree (transfer_uid)` |
 | ix_mag_movimenti_articolo | `CREATE INDEX ix_mag_movimenti_articolo ON magazzino.movimenti USING btree (articolo_id)` |
 | ix_mag_movimenti_causale | `CREATE INDEX ix_mag_movimenti_causale ON magazzino.movimenti USING btree (causale_id)` |
 | ix_mag_movimenti_data | `CREATE INDEX ix_mag_movimenti_data ON magazzino.movimenti USING btree (data_mov)` |

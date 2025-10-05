@@ -12,7 +12,6 @@
 | sorgente_tabella | character varying | YES |  |
 | sorgente_id | bigint | YES |  |
 | sorgente_riga_id | bigint | YES |  |
-| note | text | YES |  |
 | attivo | boolean | NO | true |
 | extra_info | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |

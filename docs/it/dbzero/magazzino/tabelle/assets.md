@@ -12,7 +12,6 @@
 | magazzino_id | bigint | YES |  |
 | ubicazione | character varying | YES |  |
 | data_stato | timestamp with time zone | NO | now() |
-| note | text | YES |  |
 | attivo | boolean | NO | true |
 | extra_info | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |

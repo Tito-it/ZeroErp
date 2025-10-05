@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# Funzione generica per estrarre note per target_tipo/target_id
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20251004-12-create-fn-get-vendite-note
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/vendite/20251004-12-create-fn-get-vendite-note.sql.yaml
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_vendite_note(
+                _target_tipo      text,     --(es. 'ASSET', 'TRASFERIMENTO', ...)
+                _target_id        bigint,   -- id della testata (o del movimento/asset)
+                _target_riga_id   bigint DEFAULT NULL,    -- se valorizzato, filtra le note di *quella* riga
+                _include_doc      boolean DEFAULT true,   -- include le note DOCUMENTO (default true)
+                _include_righe    boolean DEFAULT true,   -- include le note RIGA      (default true)
+                _only_visible     boolean DEFAULT true    -- filtra su visibile=true (default true
+              )
+              RETURNS TABLE (
+                target_tipo     text,
+                target_id       bigint,
+                target_riga_id  bigint,
+                anchor_tipo     text,
+                posizione       text,
+                seq             integer,
+                testo           text,
+                testo_md        text,
+                stile           text,
+                lingua          char(5),
+                visibile        boolean,
+                solo_stampa     boolean,
+                meta            jsonb,
+                data_insert     timestamptz,
+                user_insert     text,
+                data_update     timestamptz,
+                user_update     text
+              )
+              LANGUAGE sql
+              STABLE
+              AS $$
+               ------------------------------------------------------
+               -- Funzione generica per estrarre note per target_tipo/target_id
+               ------------------------------------------------------
+                SELECT
+                  n.target_tipo,
+                  n.target_id,
+                  n.target_riga_id,
+                  n.anchor_tipo,
+                  n.posizione,
+                  n.seq,
+                  n.testo,
+                  n.testo_md,
+                  n.stile,
+                  n.lingua,
+                  n.visibile,
+                  n.solo_stampa,
+                  n.meta,
+                  n.data_insert,
+                  n.user_insert,
+                  n.data_update,
+                  n.user_update
+                FROM vendite.note AS n
+                WHERE n.target_tipo = upper(_target_tipo)
+                  AND n.target_id   = _target_id
+                  AND (_target_riga_id IS NULL OR n.target_riga_id = _target_riga_id)
+                  AND (
+                        (_include_doc   AND n.anchor_tipo = 'DOCUMENTO')
+                     OR (_include_righe AND n.anchor_tipo = 'RIGA')
+                  )
+                  AND (_only_visible IS FALSE OR n.visibile IS TRUE)
+                ORDER BY
+                  -- ordina prima DOCUMENTO poi RIGA, mantenendo il rendering naturale
+                  CASE n.anchor_tipo WHEN 'DOCUMENTO' THEN 1 ELSE 2 END,
+                  n.posizione,
+                  n.seq,
+                  n.id;  -- id come tie-breaker
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_get_vendite_note(text,bigint,bigint,boolean,boolean,boolean)
+              IS 'Estrae note per target_tipo/target_id (opz. riga), con filtri per DOCUMENTO/RIGA e visibilità.';

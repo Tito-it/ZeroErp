@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+ 
+  - changeSet:
+      id: 20251002-06-create-magazzino-rettifiche
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/20251002-06-create-magazzino-rettifiche.yaml
+      
+      changes:
+        - createTable:
+            schemaName: magazzino
+            tableName: rettifiche
+            remarks: "Documento interno di rettifica inventariale"
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT,
+                          constraints: { primaryKey: true, primaryKeyName: pk_mag_rettifiche, nullable: false } }
+              - column: { name: uid, type: UUID, defaultValueComputed: "gen_random_uuid()", constraints: { nullable: false } }
+              - column: { name: data, type: DATE, defaultValueComputed: "CURRENT_DATE", constraints: { nullable: false } }
+              - column: { name: stato_mag_rettifiche, type: VARCHAR(16), defaultValue: "DRAFT", constraints: { nullable: false },
+                          remarks: "DRAFT|CONFIRM|POSTED|CANCEL" }
+              - column: { name: magazzino_id, type: BIGINT, constraints: { nullable: false }, remarks: "FK → magazzino.magazzini(id)" }
+              - column: { name: note, type: TEXT }
+
+              # opzionale: provenienza esterna
+              - column: { name: sorgente_tipo_id, type: BIGINT }
+              - column: { name: sorgente_uid, type: UUID }
+
+              # meta/audit
+              - column: { name: meta, type: JSONB, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: tx_id, type: UUID }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: "CURRENT_USER" }
+
+
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE magazzino.rettifiche
+                ADD CONSTRAINT chk_mag_rettifiche_stato
+                CHECK (stato_mag_rettifiche IN ('DRAFT','CONFIRM','POSTED','CANCEL'));
+
+        - createIndex: { schemaName: magazzino, tableName: rettifiche, indexName: ix_mag_rettifiche_data, columns: [ { name: data } ] }
+        - createIndex: { schemaName: magazzino, tableName: rettifiche, indexName: ix_mag_rettifiche_stato, columns: [ { name: stato_mag_rettifiche } ] }
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                CREATE UNIQUE INDEX uq_mag_rettifiche_source_fk
+                  ON magazzino.rettifiche (sorgente_tipo_id, sorgente_uid)
+                  WHERE sorgente_tipo_id IS NOT NULL AND sorgente_uid IS NOT NULL;
+
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: rettifiche
+            baseColumnNames: magazzino_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: magazzini
+            referencedColumnNames: id
+            constraintName: fk_mag_rettifiche_magazzino
+            onDelete: NO ACTION
+            onUpdate: RESTRICT
+       
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: trasferimenti
+            baseColumnNames: sorgenti_tipo_id
+            referencedTableSchemaName: config
+            referencedTableName: sorgenti
+            referencedColumnNames: id
+            constraintName: fk_mag_rettifiche_sorgenti_tipo
+            onDelete: NO ACTION
+            onUpdate: RESTRICT
