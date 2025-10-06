@@ -15,7 +15,6 @@
 | iva_id | integer | YES |  |
 | stato_doc_ordine_id | bigint | YES |  |
 | sorgente_tipo_id | bigint | YES |  |
-| sorgente_id | uuid | YES |  |
 | sorgente_riga | bigint | YES | 0 |
 | meta | jsonb | NO | '{}'::jsonb |
 | tx_id | uuid | YES |  |
@@ -25,6 +24,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
 | hash_contenuto | character varying | YES |  |
+| sorgente_uid | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -48,7 +48,7 @@
 | ix_ao_r_testata | `CREATE INDEX ix_ao_r_testata ON acquisti.ordini_righe USING btree (ordine_id)` |
 | pk_ao_righe | `CREATE UNIQUE INDEX pk_ao_righe ON acquisti.ordini_righe USING btree (id)` |
 | uq_ao_r_riga_nr | `CREATE UNIQUE INDEX uq_ao_r_riga_nr ON acquisti.ordini_righe USING btree (ordine_id, riga_nr)` |
-| uq_ao_r_sorgente | `CREATE UNIQUE INDEX uq_ao_r_sorgente ON acquisti.ordini_righe USING btree (sorgente_tipo_id, sorgente_id, sorgente_riga)` |
+| uq_ordini_righe_v_sorgente_fk | `CREATE UNIQUE INDEX uq_ordini_righe_v_sorgente_fk ON acquisti.ordini_righe USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |
 
 ---
 {% include-markdown "signature-core.md" %}

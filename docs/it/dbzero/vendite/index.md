@@ -5,18 +5,18 @@
 - [articoli_gruppi](tabelle/articoli_gruppi.md) — * Consentire la **classificazione gerarchica** degli articoli in gruppi omogenei. * Facilitare **statistiche e analisi di vendita** per categoria. * Supportare **criteri di stampa e raggruppamento** nei documenti fiscali e gestionali. * Offrire un **meccanismo di attivazione/disattivazione** senza perdere lo storico.
 - [articoli_spesa](tabelle/articoli_spesa.md) — * Definire un **catalogo centralizzato** delle voci di spesa utilizzabili in fatturazione. * Abilitare **riepiloghi e totalizzazioni** per voce di spesa nei documenti (es. bolletta, fattura). * Offrire un **testo di stampa** specifico per la voce di spesa, distinto dalla descrizione interna.
 - [articoli_tipologie](tabelle/articoli_tipologie.md) — * Classificare gli articoli secondo **tipologie funzionali** (es. materia prima, servizi, accessori). * Distinguere tra **descrizione estesa** e **descrizione breve**, per gestire contesti documentali differenti. * Fornire uno strumento di aggregazione per reportistica e controlli gestionali.
-- [articolo_regole_fatturazione](tabelle/articolo_regole_fatturazione.md)
-- [attivita_fatturabili](tabelle/attivita_fatturabili.md)
+- [articolo_regole_fatturazione](tabelle/articolo_regole_fatturazione.md) — Questa tabella definisce, **per ciascun articolo**, le regole di business che governano:
+- [attivita_fatturabili](tabelle/attivita_fatturabili.md) — `vendite.attivita_fatturabili` è il **registro centrale delle prestazioni/attività da fatturare** (time & material, canoni, una‑tantum, letture/consumi valorizzati, import batch, ecc.). Ogni riga rappresenta **una voce fatturabile** riferita a un *articolo/servizio*, a una *istanza tecnica/utility* e, opzionalmente, a un *billing account*. Queste righe sono **pre‑documentali**: quando il ciclo di fatturazione le preleva, diventano **righe di fattura** (`vendite.fatture_righe`).
 - [contratti](tabelle/contratti.md)
 - [contratti_righe](tabelle/contratti_righe.md)
 - [ddt](tabelle/ddt.md)
 - [ddt_indirizzi](tabelle/ddt_indirizzi.md)
 - [ddt_righe](tabelle/ddt_righe.md)
-- [fatture](tabelle/fatture.md)
+- [fatture](tabelle/fatture.md) — `vendite.fatture` rappresenta la **testata del documento fiscale di vendita**. Gestisce **identità fiscale (registro/anno/serie/numero)**, **stato e tipo documento**, **intestatari economici** (BA, emittente, reseller), **valuta e pagamento**, **totali** e **metadati**. È il **punto di aggregazione** delle righe (`vendite.fatture_righe`) e dei riepiloghi IVA.
 - [fatture_indirizzi](tabelle/fatture_indirizzi.md)
 - [fatture_rettifiche](tabelle/fatture_rettifiche.md)
-- [fatture_riepiloghi_iva](tabelle/fatture_riepiloghi_iva.md)
-- [fatture_righe](tabelle/fatture_righe.md)
+- [fatture_riepiloghi_iva](tabelle/fatture_riepiloghi_iva.md) — `vendite.fatture_riepiloghi_iva` è lo **specchietto fiscale** della fattura: aggrega le righe per **combinazione fiscale** e ne memorizza i totali. Serve per:
+- [fatture_righe](tabelle/fatture_righe.md) — `vendite.fatture_righe` contiene le **righe economiche** di una fattura: descrizione, articolo (opzionale), UoM, quantità, prezzo, sconti, IVA e **importi congelati** (*snapshot*) al momento della generazione. Ogni riga è ordinata tramite `riga_nr` ed è collegata a una testata `vendite.fatture` (FK `fattura_id`). Supporta la **destinazione a BA diverso** dalla testata e l’idempotenza di import riga‑per‑riga.
 - [fatture_scadenze](tabelle/fatture_scadenze.md)
 - [note](tabelle/note.md)
 - [note_contratto](tabelle/note_contratto.md)
@@ -35,6 +35,7 @@
 - [regole_fatturazione_articolo](tabelle/regole_fatturazione_articolo.md) — * Definire le **policy di calcolo** per ogni articolo. * Stabilire la **visibilità** dei componenti di un articolo complesso (solo padre, padre+componenti, solo componenti). * Impostare la logica di **calcolo della quantità del padre** (fissa o somma di componenti flaggati). * Definire regole di **arrotondamento** per importi e quantità. * Consentire estensioni tramite il campo JSONB `meta`.
 
 ## ⚙️ Funzioni
+- [fn_get_vendite_note](funzioni/fn_get_vendite_note.md)
 - [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md)
 - [trgfn_a10_attivita_fatturabili_guard_fatturato](funzioni/trgfn_a10_attivita_fatturabili_guard_fatturato.md)
 - [trgfn_a10_fatture_protect_num](funzioni/trgfn_a10_fatture_protect_num.md)

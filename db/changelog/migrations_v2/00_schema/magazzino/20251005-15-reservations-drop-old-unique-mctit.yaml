@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+ 
+
+  # Drop UNIQUE vecchia su sorgente_* (se presente)
+  - changeSet:
+      id: 20251005-15-reservations-drop-old-unique
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/magazzino/20251005-15-reservations-doc-refactor.yaml
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: MARK_RAN      
+        - not :
+          - columnExists:
+              schemaName: magazzino
+              tableName: reservations
+              columnName: doc_schema
+
+      changes:
+        - dropUniqueConstraint:
+            schemaName: magazzino
+            tableName: reservations
+            constraintName: uq_mag_reservations_sorgente
+
+  # Rinomina colonne
+  - changeSet:
+      id: 20251005-16-reservations-rename-sorgente-to-doc
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: MARK_RAN      
+        - not :
+          - columnExists:
+              schemaName: magazzino
+              tableName: reservations
+              columnName: doc_schema
+
+      changes:
+        - renameColumn:
+            schemaName: magazzino
+            tableName: reservations
+            oldColumnName: sorgente_schema
+            newColumnName: doc_schema
+            columnDataType: VARCHAR(64)
+        - renameColumn:
+            schemaName: magazzino
+            tableName: reservations
+            oldColumnName: sorgente_tabella
+            newColumnName: doc_table
+            columnDataType: VARCHAR(64)
+        - renameColumn:
+            schemaName: magazzino
+            tableName: reservations
+            oldColumnName: sorgente_id
+            newColumnName: doc_id
+            columnDataType: BIGINT
+        - renameColumn:
+            schemaName: magazzino
+            tableName: reservations
+            oldColumnName: sorgente_riga_id
+            newColumnName: doc_riga_id
+            columnDataType: BIGINT
+
+  # NOT NULL (rimuovi se vuoi tenerli opzionali)
+  - changeSet:
+      id: 20251005-17-reservations-doc-not-null
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: MARK_RAN      
+        - not :
+          - columnExists:
+              schemaName: magazzino
+              tableName: reservations
+              columnName: doc_schema
+
+      changes:
+        - addNotNullConstraint: { schemaName: magazzino, tableName: reservations, columnName: doc_schema,  columnDataType: VARCHAR(64) }
+        - addNotNullConstraint: { schemaName: magazzino, tableName: reservations, columnName: doc_table,   columnDataType: VARCHAR(64) }
+        - addNotNullConstraint: { schemaName: magazzino, tableName: reservations, columnName: doc_id,      columnDataType: BIGINT }
+
+  # UNIQUE nuova su doc_*
+  - changeSet:
+      id: 20251005-18-reservations-add-unique-docref
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: MARK_RAN      
+        - not :
+          - columnExists:
+              schemaName: magazzino
+              tableName: reservations
+              columnName: doc_schema
+
+      changes:
+        - addUniqueConstraint:
+            schemaName: magazzino
+            tableName: reservations
+            columnNames: doc_schema, doc_table, doc_id, doc_riga_id
+            constraintName: uq_mag_reservations_docref

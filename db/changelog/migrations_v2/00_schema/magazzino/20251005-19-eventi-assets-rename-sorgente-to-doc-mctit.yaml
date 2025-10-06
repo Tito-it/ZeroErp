@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+ 
+  - changeSet:
+      id: 20251005-19-eventi-assets-rename-sorgente-to-doc
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/magazzino/20251005-19-eventi-assets-doc-refactor.yaml
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: MARK_RAN    
+        - not: 
+          - columnExists:
+              schemaName: magazzino
+              tableName: eventi_assets
+              columnName: doc_schema
+      changes:
+        - renameColumn:
+            schemaName: magazzino
+            tableName: eventi_assets
+            oldColumnName: sorgente_schema
+            newColumnName: doc_schema
+            columnDataType: VARCHAR(64)
+        - renameColumn:
+            schemaName: magazzino
+            tableName: eventi_assets
+            oldColumnName: sorgente_tabella
+            newColumnName: doc_table
+            columnDataType: VARCHAR(64)
+        - renameColumn:
+            schemaName: magazzino
+            tableName: eventi_assets
+            oldColumnName: sorgente_id
+            newColumnName: doc_id
+            columnDataType: BIGINT
+        - renameColumn:
+            schemaName: magazzino
+            tableName: eventi_assets
+            oldColumnName: sorgente_riga_id
+            newColumnName: doc_riga_id
+            columnDataType: BIGINT

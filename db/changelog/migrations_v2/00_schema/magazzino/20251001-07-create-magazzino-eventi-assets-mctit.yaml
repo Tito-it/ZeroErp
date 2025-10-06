@@ -77,4 +77,32 @@ databaseChangeLog:
         - createIndex: { schemaName: magazzino, tableName: eventi_assets, indexName: ix_mag_eventi_assets_tipo, columns: [ { name: tipo_evento } ] }
         - createIndex: { schemaName: magazzino, tableName: eventi_assets, indexName: ix_mag_eventi_assets_data, columns: [ { name: data_evento } ] }
 
-  
+  - changeSet:
+      id: 20251004-01-create-magazzino-eventi-assets
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                  ALTER TABLE magazzino.eventi_assets
+                    ADD CONSTRAINT chk_mag_eventi_assets_da_a_distinti
+                    CHECK (magazzino_id_from <> magazzino_id_to  and magazzino_id_from IS NOT NULL AND magazzino_id_to IS NOT NULL);  
+
+  - changeSet:
+      id: 20251005-40-create-magazzino-eventi-assets
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                  ALTER TABLE   magazzino.eventi_assets 
+                  DROP CONSTRAINT IF EXISTS chk_mag_eventi_assets_da_a_distinti;
+
+
+                  ALTER TABLE magazzino.eventi_assets
+                    ADD CONSTRAINT chk_mag_eventi_assets_da_a_distinti
+                    CHECK (magazzino_id_from <> magazzino_id_to  or magazzino_id_from IS NOT NULL or magazzino_id_to IS NOT NULL);  

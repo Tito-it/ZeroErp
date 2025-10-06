@@ -22,7 +22,6 @@
 | data_ora_consegna_eff | timestamp with time zone | YES |  |
 | ordine_id | bigint | YES |  |
 | sorgente_tipo_id | bigint | YES |  |
-| sorgente_id | uuid | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
@@ -31,6 +30,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
 | hash_contenuto | character varying | YES |  |
+| sorgente_uid | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -51,8 +51,8 @@
 | ix_a_ddt_mittente_stato_data | `CREATE INDEX ix_a_ddt_mittente_stato_data ON acquisti.ddt USING btree (mittente_soggetto_ruolo_id, stato_doc_ddt_id, data)` |
 | pk_ddta | `CREATE UNIQUE INDEX pk_ddta ON acquisti.ddt USING btree (id)` |
 | uq_a_ddt_anno_serie_numero | `CREATE UNIQUE INDEX uq_a_ddt_anno_serie_numero ON acquisti.ddt USING btree (anno, serie, numero)` |
-| uq_a_ddt_sorgente | `CREATE UNIQUE INDEX uq_a_ddt_sorgente ON acquisti.ddt USING btree (sorgente_tipo_id, sorgente_id)` |
 | uq_a_ddt_uid | `CREATE UNIQUE INDEX uq_a_ddt_uid ON acquisti.ddt USING btree (uid)` |
+| uq_ddt_v_sorgente_fk | `CREATE UNIQUE INDEX uq_ddt_v_sorgente_fk ON acquisti.ddt USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

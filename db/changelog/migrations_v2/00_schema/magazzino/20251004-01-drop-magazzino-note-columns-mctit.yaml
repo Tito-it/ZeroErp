@@ -1,0 +1,32 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# Drop dei vecchi campi "note" nello schema magazzino
+# ------------------------------------------------------------
+databaseChangeLog:
+
+  - changeSet:
+      id: 20251004-01-drop-magazzino-note-columns
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/magazzino/20251004-01-drop-magazzino-note-columns.yaml
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER TABLE magazzino.assets                DROP COLUMN IF EXISTS note;
+              ALTER TABLE magazzino.eventi_assets         DROP COLUMN IF EXISTS note;
+              ALTER TABLE magazzino.inventari             DROP COLUMN IF EXISTS note;
+              ALTER TABLE magazzino.inventari_righe       DROP COLUMN IF EXISTS note;
+              ALTER TABLE magazzino.movimenti             DROP COLUMN IF EXISTS note;
+              ALTER TABLE magazzino.rettifiche            DROP COLUMN IF EXISTS note;
+              ALTER TABLE magazzino.rettifiche_righe      DROP COLUMN IF EXISTS note;
+              ALTER TABLE magazzino.trasferimenti         DROP COLUMN IF EXISTS note;
+              ALTER TABLE magazzino.trasferimenti_righe   DROP COLUMN IF EXISTS note;
+              ALTER TABLE magazzino.costo_medio           DROP COLUMN IF EXISTS note;

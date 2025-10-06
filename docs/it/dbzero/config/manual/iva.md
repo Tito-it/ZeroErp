@@ -4,6 +4,7 @@
 >
 > Approfondimento tabelle:    
 >
+> * [config.iva_assoggetamenti](/dbzero/config/tabelle/iva_assoggettamenti)    
 > * [config.iva_natura](/dbzero/config/tabelle/iva_natura)    
 > * [config.conti_contabili](/dbzero/config/tabelle/conti_contabili)    
 >
@@ -34,16 +35,8 @@ La tabella **`config.iva`** fornisce il catalogo dei codici IVA, includendo desc
 ### 🔒 Vincoli e Logiche Aziendali
 
 * **Unicità**: `codice` deve essere univoco.
-* **Assoggettamento**: il campo `assoggettamento_iva` può assumere solo i valori {`NS`, `NI`, `ND`, `ES`, `RC`, `ED`, `NP`, `T`, `IM`, \`\`}.
-  **Esempi**:
-
-  * `NS` (Non Soggetto)
-  * `NI` (Non Imponibile)
-  * `ES` (Esente)
-  * `RC` (Reverse Charge)
-  * `ED` (Esigibilità Differita)
   * …
-* **Aliquota vs. assoggettamento**: se `assoggettamento_iva` è diverso da vuoto, **l’`aliquota_iva` non può essere valorizzata** (dev’essere zero o lasciata al default).
+* **Aliquota vs. assoggettamento**: se `assoggettamento_iva_id` è diverso da vuoto, **l’`aliquota_iva` non può essere valorizzata** (dev’essere zero o lasciata al default).
 * **Split payment**: `id_iva_split` può essere valorizzato per indicare che il codice IVA segue la normativa di split payment. In questo caso punta ricorsivamente a un codice “reale” in `config.iva`, definendo a quale aliquota reale si collega il meccanismo di split.
 * **Natura IVA per SDI**: `natura_iva_id` fa riferimento a `config.iva_natura(id)`, fornendo il codice natura necessario per la trasmissione al SDI.
 * **Conti contabili**:

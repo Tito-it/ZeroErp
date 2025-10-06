@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/articolo_regole_fatturazione.md" %}
 # 📚 Tabella `articolo_regole_fatturazione`
 
 ## 🗂️ Campi principali

@@ -1,0 +1,93 @@
+## 📘 Documentazione Concettuale – Tabella `config.iva_assoggettamenti`
+
+> 👀 **Vedi anche**
+>
+> **Approfondimento tabelle:**
+>
+> • [config.iva](/dbzero/config/tabelle/iva)    
+> • [config.iva_stati](/dbzero/config/tabelle/iva_stati)   
+> • [config.iva_natura](/dbzero/config/tabelle/iva_natura)    
+
+---
+
+### 🎯 Scopo Principale
+
+`config.iva_assoggettamenti` è il **dominio** degli assoggettamenti IVA (causali/fattispecie: esente, non imponibile, reverse charge, fuori campo, ecc.).
+Viene referenziato da `config.iva.assoggettamento_id` e, opzionalmente, da `config.iva_stati.assoggettamento_id_override`, consentendo di separare la **motivazione fiscale** dall’aliquota e dalla natura.
+
+Obiettivi:
+
+* Definire un **catalogo univoco e governato** di assoggettamenti.
+* Evitare codici liberi nelle tabelle transazionali.
+* Abilitare reporting/filtri per assoggettamento.
+
+---
+
+### 🧭 Collocazione nel flusso
+
+1. **Configurazione**: si censiscono i codici di assoggettamento (campo `codice`) con descrizione e stato `attivo`.
+2. **Associazione**: `config.iva` collega un assoggettamento **di default**; `config.iva_stati` può definire un **override** per Paese.
+3. **Utilizzo nei documenti**: i documenti **non** duplicano l’assoggettamento; fanno riferimento all’IVA (immutabile su aliquota/assoggettamento) e snapshot- tano **solo la natura** in riga.
+
+---
+
+### 🔑 Campi chiave (semantica)
+
+* `codice` (UNIQUE) → identificatore breve e stabile (es. `ES_ART10`, `NI_ART8`, `RC_ART17`, `FC`).
+* `descrizione` → descrizione estesa del regime.
+* `attivo` → abilita/disabilita in selezione.
+* `note` → annotazioni operative/normative.
+* **Audit/Governance**: `data_*`, `user_*`, `storicizza`.
+
+---
+
+### 🔒 Vincoli e indici
+
+* **PK**: `id` (identity).
+* **UNIQUE**: `uq_cfg_iva_assoggettamenti_codice` su `codice`.
+* **Indici**:
+
+  * `ix_cfg_iva_assoggettamenti_attivo` → filtri per stato attivo.
+  * `ix_iva_assoggettamenti_codice_upper` → ricerche case-insensitive su codice.
+  * `ix_iva_assoggettamenti_descrizione_upper` → ricerche case-insensitive su descrizione.
+
+---
+
+### 🧪 Esempi d’uso (query applicative)
+
+```sql
+-- Ricerca per codice (case-insensitive)
+SELECT *
+FROM config.iva_assoggettamenti a
+WHERE upper(a.codice) = upper(:codice);
+
+-- Elenco attivi per UI
+SELECT id, codice, descrizione
+FROM config.iva_assoggettamenti
+WHERE attivo
+ORDER BY codice;
+```
+
+---
+
+### ✅ Best practice operative
+
+* **Codice breve e stabile**: usare sigle significative e non dipendenti dal linguaggio di stampa (che vive in `descrizione`).
+* **Immutabilità logica**: se cambia la semantica di un assoggettamento, **inserire un nuovo codice** e disattivare il precedente (evita effetti retroattivi).
+* **Allineamento con IVA**: tenere coerente l’uso:
+
+  * `config.iva` con `aliquota_iva = 0` ⇒ richiede almeno **natura** o **assoggettamento**.
+  * `config.iva` con `aliquota_iva > 0` ⇒ **nessun** assoggettamento (campo NULL).
+
+---
+
+### 📘 Note progettuali
+
+* Il **dominio** degli assoggettamenti è **indipendente** dalla **natura**: nessun vincolo many-to-many obbligatorio. Se serve coerenza forte, può essere realizzata **a livello regola** (trigger/validazioni) o tramite una colonna facoltativa di “natura suggerita” nel dominio (non presente al momento).
+* Gli utenti finali vedono il `codice` in selezione e la `descrizione` in tooltips/stampe; le regole applicative usano l’`id` per le FK.
+
+---
+
+### 👓 Ruolo nel sistema
+
+`config.iva_assoggettamenti` fornisce una base solida per governare gli assoggettamenti IVA, riducendo la ridondanza e aumentando la **consistenza fiscale** tra configurazione, calcolo e documenti.

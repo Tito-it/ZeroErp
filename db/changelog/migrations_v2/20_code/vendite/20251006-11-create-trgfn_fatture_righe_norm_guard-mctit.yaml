@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+
+  - changeSet:
+      id: 20251006-11-create-trgfn_fatture_righe_norm_guard
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/vendite/20251006-11-create-trgfn_fatture_righe_norm_guard-mctit.yaml
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                 CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_righe_norm_guard()
+                  RETURNS trigger
+                  LANGUAGE plpgsql
+                  AS $$
+
+                  /*
+                    vendite.trgfn_fatture_righe_norm_guard()
+
+                    Scopo:
+                      - Eredita BA di destinazione dalla testata fattura se non valorizzato.
+                      - Normalizza SOLO la natura IVA "snapshot" (campo riga: iva_natura)
+                        in base a config.iva.natura_iva_id -> config.iva_natura.codice.
+                      - NON gestisce più aliquota (iva_perc) né assoggettamento.
+
+                    Note:
+                      - Se l'IVA master ha aliquota > 0, per design natura_iva_id è NULL: lo snapshot risulterà NULL.
+                      - Se l'IVA master ha aliquota = 0, natura_iva_id può essere presente e verrà copiato il codice corrispondente.
+                  */
+                  DECLARE
+                    v_parent_ba   integer;
+                    v_natura_code varchar(10);
+                  BEGIN
+                    -- 1) Eredita BA dalla testata se non fornito
+                    IF NEW.dest_billing_account_id IS NULL THEN
+                      SELECT f.billing_account_id
+                        INTO v_parent_ba
+                      FROM vendite.fatture f
+                      WHERE f.id = NEW.fattura_id;
+
+                      NEW.dest_billing_account_id := v_parent_ba;
+                    END IF;
+
+                    -- 2) Normalizzazione snapshot NATURA IVA
+                    --    Se è indicato iva_id, copia SEMPRE in riga il "codice" di natura associato all'IVA master.
+                    IF NEW.iva_id IS NOT NULL THEN
+                      SELECT n.codice
+                        INTO v_natura_code
+                      FROM config.iva i
+                      LEFT JOIN config.iva_natura n
+                            ON n.id = i.natura_iva_id
+                      WHERE i.id = NEW.iva_id;
+
+                      -- Se la natura in master è NULL (es. aliquota > 0 o non definita), lo snapshot resta NULL
+                      NEW.iva_natura := v_natura_code;
+                    ELSE
+                      -- Nessuna IVA associata: non forziamo alcuna natura (resta com'è)
+                      NULL;
+                    END IF;
+
+                    -- 3) Protezione soft su UPDATE:
+                    --    Se l'aliquota/assoggettamento non sono più gestiti in riga, non si fa nulla.
+                    --    Se qualcuno cambia solo iva_natura manualmente lasciando invariato iva_id,
+                    --    riallineiamo comunque allo snapshot da master per evitare derive manuali.
+                    IF TG_OP = 'UPDATE'
+                      AND NEW.iva_id IS NOT NULL
+                      AND OLD.iva_id = NEW.iva_id
+                      AND NEW.iva_natura IS DISTINCT FROM OLD.iva_natura
+                    THEN
+                      SELECT n.codice
+                        INTO v_natura_code
+                      FROM config.iva i
+                      LEFT JOIN config.iva_natura n
+                            ON n.id = i.natura_iva_id
+                      WHERE i.id = NEW.iva_id;
+
+                      NEW.iva_natura := v_natura_code;
+                    END IF;
+
+                    RETURN NEW;
+                  END
+                  $$;

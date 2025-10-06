@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+ 
+databaseChangeLog:
+
+
+  # 20251005-27 — CREATE magazzino.ubicazioni
+  - changeSet:
+      id: 20251005-29-create-magazzino-ubicazioni
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/magazzino/20251005-29-create-magazzino-ubicazioni.yaml
+     
+      changes:
+        - createTable:
+            schemaName: magazzino
+            tableName: ubicazioni
+            remarks: "Anagrafica ubicazioni/bin per magazzini (PICK/STORAGE/STAGING/IN_TRANSIT/…)"
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT,
+                          constraints: { primaryKey: true, primaryKeyName: pk_mag_ubicazioni, nullable: false } }
+
+              - column: { name: magazzino_id, type: BIGINT, constraints: { nullable: false }, remarks: "FK → magazzino.magazzini(id)" }
+
+              - column: { name: codice, type: VARCHAR(64), constraints: { nullable: false }, remarks: "Codice bin (es. A01-B-03)" }
+              - column: { name: descrizione, type: VARCHAR(120) }
+
+              - column: { name: tipo_id, type: BIGINT,  constraints: { nullable: false },
+                          remarks: "STORAGE|PICK|STAGING|IN_TRANSIT|BUFFER|DAMAGED" }
+
+              - column: { name: parent_id, type: BIGINT, remarks: "Gerarchia opzionale (zona/area → bin)" }
+
+              # opzionali ‘assist’ per filtri/ricerche, NON obbligatori
+              - column: { name: area, type: VARCHAR(32) }
+              - column: { name: corsia, type: VARCHAR(32) }
+              - column: { name: scaffale, type: VARCHAR(32) }
+              - column: { name: piano, type: VARCHAR(32) }
+              - column: { name: posizione, type: VARCHAR(32) }
+
+              # meta/audit
+              - column: { name: attivo, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: meta, type: JSONB, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: "CURRENT_USER" }
+
+        - addUniqueConstraint:
+            schemaName: magazzino
+            tableName: ubicazioni
+            columnNames: magazzino_id, codice
+            constraintName: uq_mag_ubicazioni_mag_codice
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: ubicazioni
+            baseColumnNames: magazzino_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: magazzini
+            referencedColumnNames: id
+            constraintName: fk_mag_ubicazioni_magazzino
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: ubicazioni
+            baseColumnNames: parent_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: ubicazioni
+            referencedColumnNames: id
+            constraintName: fk_mag_ubicazioni_parent
+            onDelete: SET NULL
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: ubicazioni
+            baseColumnNames: tipo_id
+            referencedTableSchemaName: config
+            referencedTableName: tipi_ubicazione
+            referencedColumnNames: id
+            constraintName: fk_mag_tipi_ubicazione_magazzino
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+
+        - createIndex: { schemaName: magazzino, tableName: ubicazioni, indexName: ix_mag_ubicazioni_magazzino, columns: [ { name: magazzino_id } ] }
+        - createIndex: { schemaName: magazzino, tableName: ubicazioni, indexName: ix_mag_ubicazioni_tipo, columns: [ { name: tipo_id } ] }
+        - createIndex: { schemaName: magazzino, tableName: ubicazioni, indexName: ix_mag_ubicazioni_parent, columns: [ { name: parent_id } ] }
+
+        

@@ -35,6 +35,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_acq_note_render_order | `CREATE INDEX ix_acq_note_render_order ON ONLY acquisti.note USING btree (target_tipo, target_id, anchor_tipo, posizione, seq)` |
+| ix_acquisti_note_by_riga | `CREATE INDEX ix_acquisti_note_by_riga ON ONLY acquisti.note USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 | pk_note_acq | `CREATE UNIQUE INDEX pk_note_acq ON ONLY acquisti.note USING btree (target_tipo, id)` |
 
 ---

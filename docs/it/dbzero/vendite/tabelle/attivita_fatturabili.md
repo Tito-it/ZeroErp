@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/attivita_fatturabili.md" %}
 # 📚 Tabella `attivita_fatturabili`
 
 ## 🗂️ Campi principali
@@ -21,7 +22,6 @@
 | user_update | character varying | YES | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
-| sorgente_id | uuid | YES |  |
 | sorgente_riga | bigint | YES | 0 |
 | posticipa_al | date | YES |  |
 | sospesa | boolean | YES | false |
@@ -30,6 +30,7 @@
 | lock_batch_id | uuid | YES |  |
 | fattura_riga_id | bigint | YES |  |
 | sorgente_tipo_id | bigint | YES |  |
+| sorgente_uid | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -53,7 +54,7 @@
 | ix_attivita_fatturabili_posticipa_sospesa | `CREATE INDEX ix_attivita_fatturabili_posticipa_sospesa ON vendite.attivita_fatturabili USING btree (posticipa_al, sospesa)` |
 | ix_attivita_istanza_data | `CREATE INDEX ix_attivita_istanza_data ON vendite.attivita_fatturabili USING btree (istanza_utility_id, data_attivita)` |
 | pk_attivita_fatturabili | `CREATE UNIQUE INDEX pk_attivita_fatturabili ON vendite.attivita_fatturabili USING btree (id)` |
-| uq_attivita_fatturabili_sorgente_fk | `CREATE UNIQUE INDEX uq_attivita_fatturabili_sorgente_fk ON vendite.attivita_fatturabili USING btree (sorgente_tipo_id, sorgente_id, sorgente_riga)` |
+| uq_attivita_fatturabili_v_sorgente_fk | `CREATE UNIQUE INDEX uq_attivita_fatturabili_v_sorgente_fk ON vendite.attivita_fatturabili USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

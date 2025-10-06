@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+ 
+databaseChangeLog:
+ 
+
+  # 20251005-30 — magazzino.movimenti: aggiunta ubicazione FROM/TO + FK + indici
+  - changeSet:
+      id: 20251005-30-alter-magazzino-movimenti-add-ubicazioni
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/magazzino/20251005-30-alter-magazzino-movimenti-add-ubicazioni.yaml
+      
+      changes:
+        - addColumn:
+            schemaName: magazzino
+            tableName: movimenti
+            columns:
+              - column:
+                  name: ubicazione_id_from
+                  type: BIGINT
+                  remarks: "FK → magazzino.ubicazioni(id) (bin di origine, opzionale)"
+              - column:
+                  name: ubicazione_id_to
+                  type: BIGINT
+                  remarks: "FK → magazzino.ubicazioni(id) (bin di destinazione, opzionale)"
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: movimenti
+            baseColumnNames: ubicazione_id_from
+            referencedTableSchemaName: magazzino
+            referencedTableName: ubicazioni
+            referencedColumnNames: id
+            constraintName: fk_mag_movimenti_ubicazione_from
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: movimenti
+            baseColumnNames: ubicazione_id_to
+            referencedTableSchemaName: magazzino
+            referencedTableName: ubicazioni
+            referencedColumnNames: id
+            constraintName: fk_mag_movimenti_ubicazione_to
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - createIndex:
+            schemaName: magazzino
+            tableName: movimenti
+            indexName: ix_mag_movimenti_ubicazione_from
+            columns:
+              - column: { name: ubicazione_id_from }
+
+        - createIndex:
+            schemaName: magazzino
+            tableName: movimenti
+            indexName: ix_mag_movimenti_ubicazione_to
+            columns:
+              - column: { name: ubicazione_id_to }
+        
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE magazzino.movimenti
+                ADD CONSTRAINT chk_mag_movimenti_ubi_from_to_diff
+                 CHECK (
+                             ubicazione_id_from IS NULL
+                             OR ubicazione_id_to IS NULL
+                             OR ubicazione_id_from <> ubicazione_id_to
+                            );
+ 
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON COLUMN magazzino.movimenti.ubicazione_id_from IS 'Ubicazione/bin di origine (se noto); utile per putaway, relocation, prelievo.';
+              COMMENT ON COLUMN magazzino.movimenti.ubicazione_id_to   IS 'Ubicazione/bin di destinazione (se noto); es. putaway, replenishment, staging.';
+
+       

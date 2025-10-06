@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+
+  - changeSet:
+      id: 20251002-01-create-magazzino-movimenti
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/20251002-01-create-magazzino-movimenti.yaml
+      
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: "CREATE SCHEMA IF NOT EXISTS magazzino;"
+
+        - createTable:
+            schemaName: magazzino
+            tableName: movimenti
+            remarks: "Ledger ufficiale movimenti di magazzino"
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT,
+                          constraints: { primaryKey: true, primaryKeyName: pk_mag_movimenti, nullable: false } }
+
+              # riferimenti operativi
+              - column: { name: articolo_id, type: UUID, constraints: { nullable: false }, remarks: "FK → catalogo.articoli(id)" }
+              - column: { name: magazzino_id, type: BIGINT, constraints: { nullable: false }, remarks: "FK → magazzino.magazzini(id) origine o unico" }
+              - column: { name: magazzino_id_dest, type: BIGINT, remarks: "FK → magazzino.magazzini(id) per trasferimenti " }
+              - column: { name: uom_id, type: BIGINT, remarks: "FK → catalogo.unita_misura(id) " }
+
+              # quantità/valorizzazione
+              - column: { name: qta, type: "NUMERIC(18,6)", constraints: { nullable: false }, remarks: "positiva o negativa" }
+              - column: { name: costo_unitario, type: "NUMERIC(18,6)", remarks: "valorizzazione al momento del movimento" }
+              - column: { name: data_mov, type: TIMESTAMPTZ, defaultValueComputed: "now()", constraints: { nullable: false } }
+
+              # tracciabilità
+              - column: { name: lotto, type: VARCHAR(64) }
+              - column: { name: seriale, type: VARCHAR(64) }
+              - column: { name: causale_id, type: BIGINT, constraints: { nullable: false }, remarks: "FK → magazzino.causali(id)" }
+
+              # idempotenza (sorgente evento)
+              - column: { name: sorgente_schema, type: VARCHAR(64) }
+              - column: { name: sorgente_tabella, type: VARCHAR(64) }
+              - column: { name: sorgente_id, type: BIGINT }
+              - column: { name: sorgente_riga_id, type: BIGINT }
+
+              # info amministrative
+              - column: { name: note, type: TEXT }
+
+              # meta/audit
+              - column: { name: attivo, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: meta, type: JSONB, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: "CURRENT_USER" }
+              - column: { name: tx_id, type: UUID, remarks: "Transaction id applicativo (se disponibile)" }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false } }
+
+        # vincoli base
+        - addUniqueConstraint:
+            schemaName: magazzino
+            tableName: movimenti
+            columnNames: sorgente_schema, sorgente_tabella, sorgente_id, sorgente_riga_id
+            constraintName: uq_mag_movimenti_sorgente
+
+         # Check
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE magazzino.movimenti
+              ADD CONSTRAINT chk_mag_movimenti_qta_non_zero
+              CHECK ((qta IS NOT NULL) AND (qta <> 0));
+
+
+  - changeSet:
+      id: 20251002-02-fks-magazzino-movimenti
+      author: mctit
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: movimenti
+            baseColumnNames: articolo_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            constraintName: fk_mag_movimenti_articolo
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: movimenti
+            baseColumnNames: magazzino_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: magazzini
+            referencedColumnNames: id
+            constraintName: fk_mag_movimenti_magazzino
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: movimenti
+            baseColumnNames: magazzino_id_dest
+            referencedTableSchemaName: magazzino
+            referencedTableName: magazzini
+            referencedColumnNames: id
+            constraintName: fk_mag_movimenti_magazzino_dest
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: movimenti
+            baseColumnNames: uom_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            constraintName: fk_mag_movimenti_uom
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: movimenti
+            baseColumnNames: causale_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: causali
+            referencedColumnNames: id
+            constraintName: fk_mag_movimenti_causale
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+
+
+
+  - changeSet:
+      id: 20251002-03-indexes-magazzino-movimenti
+      author: mctit
+      changes:
+        - createIndex: { schemaName: magazzino, tableName: movimenti, indexName: ix_mag_movimenti_articolo, columns: [ { name: articolo_id } ] }
+        - createIndex: { schemaName: magazzino, tableName: movimenti, indexName: ix_mag_movimenti_magazzino, columns: [ { name: magazzino_id } ] }
+        - createIndex: { schemaName: magazzino, tableName: movimenti, indexName: ix_mag_movimenti_magazzino_dest, columns: [ { name: magazzino_id_dest } ] }
+        - createIndex: { schemaName: magazzino, tableName: movimenti, indexName: ix_mag_movimenti_causale, columns: [ { name: causale_id } ] }
+        - createIndex: { schemaName: magazzino, tableName: movimenti, indexName: ix_mag_movimenti_data, columns: [ { name: data_mov } ] }
+        - createIndex:
+            schemaName: magazzino
+            tableName: movimenti
+            indexName: ix_mag_movimenti_seriale_upper
+            columns: [ { name: "upper(seriale)" } ]
+        - createIndex:
+            schemaName: magazzino
+            tableName: movimenti
+            indexName: ix_mag_movimenti_lotto_upper
+            columns: [ { name: "upper(lotto)" } ]
+        - createIndex:
+            schemaName: magazzino
+            tableName: movimenti
+            indexName: ix_mag_movimenti_sorgente
+            columns:
+              - column: { name: sorgente_schema }
+              - column: { name: sorgente_tabella }
+              - column: { name: sorgente_id }
+              - column: { name: sorgente_riga_id }
+  - changeSet:
+      id: 20251004-03-fk-mag-movimenti
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                  
+                  ALTER TABLE magazzino.movimenti
+                    ADD CONSTRAINT chk_mag_movimenti_da_destinazione_distinti
+                    CHECK (magazzino_id <> magazzino_id_dest and magazzino_id IS NOT NULL AND magazzino_id_dest IS NOT NULL);  

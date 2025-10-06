@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+
+  - changeSet:
+      id: 20251002-04-create-magazzino-trasferimenti
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/20251002-04-create-magazzino-trasferimenti.yaml
+      changes:
+        - createTable:
+            schemaName: magazzino
+            tableName: trasferimenti
+            remarks: "Documento interno di trasferimento tra magazzini"
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT,
+                          constraints: { primaryKey: true, primaryKeyName: pk_mag_trasferimenti, nullable: false } }
+              - column: { name: uid, type: UUID, defaultValueComputed: "gen_random_uuid()", constraints: { nullable: false }, remarks: "Identificatore esterno/API" }
+              - column: { name: data, type: DATE, defaultValueComputed: "CURRENT_DATE", constraints: { nullable: false } }
+              - column: { name: stato_trasferimento, type: VARCHAR(16), defaultValue: "DRAFT", constraints: { nullable: false },
+                          remarks: "DRAFT|CONFIRM|POSTED|CANCEL" }
+              - column: { name: magazzino_id_from, type: BIGINT, constraints: { nullable: false }, remarks: "FK → magazzino.magazzini(id)" }
+              - column: { name: magazzino_id_to, type: BIGINT, constraints: { nullable: false }, remarks: "FK → magazzino.magazzini(id)" }
+
+              # opzionale: provenienza import esterna
+              - column: { name: sorgenti_tipo_id, type: BIGINT, remarks: "FK → config.sorgenti(id)" }
+              - column: { name: sorgenti_uid, type: UUID, remarks: "Identificatore esterno sorgente" }
+
+              - column: { name: note, type: TEXT }
+
+              # meta/audit
+              - column: { name: meta, type: JSONB, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: tx_id, type: UUID }
+              - column: { name: data_insert, type: TIMESTAMPTZ, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: VARCHAR(80), defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: TIMESTAMPTZ, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: VARCHAR(80), defaultValueComputed: "CURRENT_USER" }
+
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE magazzino.trasferimenti
+                ADD CONSTRAINT chk_mag_trasferimenti_stato
+                CHECK (stato_trasferimento IN ('DRAFT','CONFIRM','POSTED','CANCEL'));
+
+        - createIndex:
+            schemaName: magazzino
+            tableName: trasferimenti
+            indexName: ix_mag_trasferimenti_data
+            columns:
+              - column:
+                  name: data
+
+        - createIndex:
+            schemaName: magazzino
+            tableName: trasferimenti
+            indexName: ix_mag_trasferimenti_stato
+            columns:
+              - column:
+                  name: stato_trasferimento
+
+        - createIndex:
+            schemaName: magazzino
+            tableName: trasferimenti
+            indexName: ix_mag_trasferimenti_from_to
+            columns:
+              - column:
+                  name: magazzino_id_from
+              - column:
+                  name: magazzino_id_to
+
+        - createIndex:
+            schemaName: magazzino
+            tableName: trasferimenti
+            indexName: uq_mag_trasferimenti_sorgenti_fk
+            unique: true
+            columns:
+              - column:
+                  name: sorgenti_tipo_id
+              - column:
+                  name: sorgenti_uid
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: trasferimenti 
+            baseColumnNames: magazzino_id_from
+            referencedTableSchemaName: magazzino
+            referencedTableName: magazzini
+            referencedColumnNames: id
+            constraintName: fk_mag_trasferimenti_magazzino_from
+            onDelete: NO ACTION
+            onUpdate: RESTRICT
+            
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: trasferimenti
+            baseColumnNames: magazzino_id_to
+            referencedTableSchemaName: magazzino
+            referencedTableName: magazzini
+            referencedColumnNames: id
+            constraintName: fk_mag_trasferimenti_magazzino_to
+            onDelete: NO ACTION
+            onUpdate: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: trasferimenti
+            baseColumnNames: sorgenti_tipo_id
+            referencedTableSchemaName: config
+            referencedTableName: sorgenti
+            referencedColumnNames: id
+            constraintName: fk_mag_trasferimenti_sorgenti_tipo
+            onDelete: NO ACTION
+            onUpdate: RESTRICT
+
+
+
+  - changeSet:
+      id: 20251002-05-fk-mag-trasferimenti
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                DROP INDEX 
+                  IF EXISTS magazzino.uq_mag_trasferimenti_sorgenti_fk;
+
+                CREATE UNIQUE INDEX uq_mag_trasferimenti_sorgenti_fk
+                  ON magazzino.trasferimenti (sorgenti_tipo_id, sorgenti_uid)
+                  WHERE sorgenti_tipo_id IS NOT NULL AND sorgenti_uid IS NOT NULL;
+
+
+  - changeSet:
+      id: 20251004-01-fk-mag-trasferimenti
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                  ALTER TABLE magazzino.trasferimenti
+                    ADD CONSTRAINT chk_mag_trasferimenti_da_a_distinti
+                    CHECK (magazzino_id_from <> magazzino_id_to);  
+
+  - changeSet:
+      id: 20251004-02-fk-mag-trasferimenti
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                  ALTER TABLE  magazzino.trasferimenti 
+                  DROP CONSTRAINT IF EXISTS chk_mag_trasferimenti_da_a_distinti;
+
+                  ALTER TABLE magazzino.trasferimenti
+                    ADD CONSTRAINT chk_mag_trasferimenti_da_a_distinti
+                    CHECK (magazzino_id_from <> magazzino_id_to and magazzino_id_from IS NOT NULL AND magazzino_id_to IS NOT NULL);  
+
+  - changeSet:
+      id: 20251005-41-fk-mag-trasferimenti
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                  ALTER TABLE  magazzino.trasferimenti 
+                  DROP CONSTRAINT IF EXISTS chk_mag_trasferimenti_da_a_distinti;
+
+                  ALTER TABLE magazzino.trasferimenti
+                    ADD CONSTRAINT chk_mag_trasferimenti_da_a_distinti
+                    CHECK (magazzino_id_from <> magazzino_id_to OR magazzino_id_from IS NOT NULL OR magazzino_id_to IS NOT NULL);  

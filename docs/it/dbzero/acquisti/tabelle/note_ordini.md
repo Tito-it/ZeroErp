@@ -40,6 +40,7 @@
 | ix_acq_ordini_note_render | `CREATE INDEX ix_acq_ordini_note_render ON acquisti.note_ordini USING btree (target_id, anchor_tipo, target_riga_id, posizione, seq)` |
 | note_ordini_pkey | `CREATE UNIQUE INDEX note_ordini_pkey ON acquisti.note_ordini USING btree (target_tipo, id)` |
 | note_ordini_target_tipo_target_id_anchor_tipo_posizione_seq_idx | `CREATE INDEX note_ordini_target_tipo_target_id_anchor_tipo_posizione_seq_idx ON acquisti.note_ordini USING btree (target_tipo, target_id, anchor_tipo, posizione, seq)` |
+| note_ordini_target_tipo_target_id_target_riga_id_anchor_tip_idx | `CREATE INDEX note_ordini_target_tipo_target_id_target_riga_id_anchor_tip_idx ON acquisti.note_ordini USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 
 ---
 {% include-markdown "signature-core.md" %}

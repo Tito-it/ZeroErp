@@ -1,0 +1,42 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+ 
+databaseChangeLog:
+  
+  # 20251005-37 — magazzino.inventari_righe: aggiungi ubicazione_id (+FK+indice)
+  - changeSet:
+      id: 20251005-37-alter-magazzino-inventari-righe-add-ubicazione
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/magazzino/20251005-37-alter-magazzino-inventari-righe-add-ubicazione.yaml
+      changes:
+        - addColumn:
+            schemaName: magazzino
+            tableName: inventari_righe
+            columns:
+              - column:
+                  name: ubicazione_id
+                  type: BIGINT
+                  remarks: "FK → magazzino.ubicazioni(id), opzionale"
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: inventari_righe
+            baseColumnNames: ubicazione_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: ubicazioni
+            referencedColumnNames: id
+            constraintName: fk_mag_inventari_righe_ubicazione
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+        - createIndex:
+            schemaName: magazzino
+            tableName: inventari_righe
+            indexName: ix_mag_inventari_righe_ubicazione
+            columns:
+              - column: { name: ubicazione_id }
