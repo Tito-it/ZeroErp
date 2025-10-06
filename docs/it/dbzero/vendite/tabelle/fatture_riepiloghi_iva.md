@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fatture_riepiloghi_iva.md" %}
 # 📚 Tabella `fatture_riepiloghi_iva`
 
 ## 🗂️ Campi principali

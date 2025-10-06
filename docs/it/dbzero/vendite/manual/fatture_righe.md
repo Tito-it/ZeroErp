@@ -100,7 +100,7 @@ WHERE r.sorgente_tipo_id = :src_tipo
 
 ### ✅ Best practice operative
 
-* **Snapshot completo**: valorizzare sempre `iva_perc`, `iva_natura`, `imponibile_riga`, `imposta_riga`, `totale_riga` al termine del calcolo riga.
+* **Snapshot completo**: valorizzare sempre  `iva_natura`, `imponibile_riga`, `imposta_riga`, `totale_riga` al termine del calcolo riga.
 * **Progressivo riga**: assegnare `riga_nr` in modo **contiguo** e consolidato prima della numerazione della fattura.
 * **Override BA**: usare `dest_billing_account_id` solo quando necessario (es. ripartizioni o refatturazioni intra‑BA).
 * **Validazioni**: bloccare quantità negative e prezzi negativi a livello applicativo (qui sono consentiti `≥ 0`).
@@ -110,8 +110,7 @@ WHERE r.sorgente_tipo_id = :src_tipo
 
 ### ⚠️ Osservazioni & possibili migliorie
 
-1. **Coerenza IVA**: aggiungere trigger che imponga coerenza tra `iva_id` e `iva_perc`/`iva_natura` snapshot.
-2. **Calcolo automatico importi**: opzionale trigger `BEFORE INSERT/UPDATE` per calcolare e arrotondare `imponibile_riga`, `imposta_riga`, `totale_riga` se non forniti.
+1. **Calcolo automatico importi**: opzionale trigger `BEFORE INSERT/UPDATE` per calcolare e arrotondare `imponibile_riga`, `imposta_riga`, `totale_riga` se non forniti.
 3. **Gestione bundle/kit**: se servono righe descrittive non valorizzate, usare `qta = 0` e `totali = 0` con tipo riga in `meta`.
 
 ---

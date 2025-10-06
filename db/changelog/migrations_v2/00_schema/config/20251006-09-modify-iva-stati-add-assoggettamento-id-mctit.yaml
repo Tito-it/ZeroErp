@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  
+  # 20251005-28 — CREATE config.iva_assoggettamenti
+  - changeSet:
+      id: 20251006-09-modify-iva-stati-add-assoggettamento-id
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/config/20251006-09-modify-iva-stati-add-assoggettamento-id-mctit.yaml
+    
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+          - columnExists:
+             schemaName: config
+             tableName: iva_stati
+             columnName: assoggettamento_id_override
+      changes:
+        - addColumn:
+            schemaName: config
+            tableName: iva_stati
+            columns:
+              - column:
+                  name: assoggettamento_id_override
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+
+      
+  - changeSet:
+      id: 20251006-10-modify-iva-stati-add-assoggettamento-id
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+             schemaName: config
+             tableName: iva_stati
+             columnName: assoggettamento_id_override
+      
+      changes:
+         - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: iva_stati
+            baseColumnNames: assoggettamento_id_override
+            referencedTableSchemaName: config
+            referencedTableName: iva_assoggettamenti
+            referencedColumnNames: id
+            constraintName: fk_iva_stati_assoggettamento_override
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+ 
+     # Sostituisci il vecchio CHECK con due nuovi vincoli chiari
+  - changeSet:
+      id: 20251006-11-modify-iva-stati-add-assoggettamento-id
+      author: mctit
+      changes:
+      
+        # Drop del vecchio check se esiste
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint
+                  WHERE conname = 'chk_iva_assoggettamento_aliquota_iva_stati'
+                ) THEN
+                  ALTER TABLE config.iva_stati DROP CONSTRAINT chk_iva_assoggettamento_aliquota_iva_stati;
+                END IF;
+              END$$;
+
+        # Check 1: aliquota > 0 ⇒  niente assoggettamento
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE config.iva_stati
+              ADD CONSTRAINT chk_iva_aliquota_pos_no_assogg
+              CHECK ( (aliquota_override > 0 AND  assoggettamento_id_override IS NULL)
+              OR (aliquota_override = 0) );
+        
+        # Check 2: aliquota = 0 ⇒ almeno uno tra natura o assoggettamento
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE config.iva_stati
+              ADD CONSTRAINT chk_iva_stati_zero_requires_assogg
+              CHECK ( (aliquota_override > 0)
+              OR (aliquota_override = 0 AND assoggettamento_id_override IS NOT NULL) );
+
+  # (Opzionale) Depreca la colonna legacy testuale
+  - changeSet:
+      id: 20251006-12-modify-iva-stati-add-assoggettamento-id
+      author: mctit
+      preConditions:
+      -  onFail: CONTINUE
+      -  columnExists:
+          schemaName: config
+          tableName: iva_stati
+          columnName: assoggettamento_override
+      changes:
+        - dropColumn:
+            schemaName: config
+            tableName: iva_stati
+            columnName: assoggettamento_override

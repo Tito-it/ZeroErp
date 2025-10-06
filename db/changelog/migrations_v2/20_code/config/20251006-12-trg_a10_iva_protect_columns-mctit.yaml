@@ -26,3 +26,22 @@ databaseChangeLog:
                   'perc_iva',   'E_PERC_IVA_NO_MOD',
                   'assoggettamento_id',  'E_ASSOGGETTAMENTO_NO_MOD'
                 );
+
+  - changeSet:
+      id: 20251006-13-trg_a10_iva_protect_columns
+      author: mctit
+      changes:
+        # Trigger protect (blocca numero/serie/anno/data dopo determinati stati)
+        - sql:
+            splitStatements: false
+            sql: |
+      
+              DROP TRIGGER IF EXISTS trg_a10_config_iva_protect_columns ON config.iva;
+              
+              CREATE TRIGGER trg_config_iva_a10_upd_protect_columns
+              BEFORE UPDATE ON config.iva
+              FOR EACH ROW EXECUTE 
+                FUNCTION script.trgfn_lock_columns(
+                  'aliquota_iva',   'E_PERC_IVA_NO_MOD',
+                  'assoggettamento_id',  'E_ASSOGGETTAMENTO_NO_MOD'
+                );
