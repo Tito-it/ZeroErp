@@ -167,3 +167,18 @@ databaseChangeLog:
                   ALTER TABLE magazzino.trasferimenti
                     ADD CONSTRAINT chk_mag_trasferimenti_da_a_distinti
                     CHECK (magazzino_id_from <> magazzino_id_to and magazzino_id_from IS NOT NULL AND magazzino_id_to IS NOT NULL);  
+
+  - changeSet:
+      id: 20251005-41-fk-mag-trasferimenti
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                  ALTER TABLE  magazzino.trasferimenti 
+                  DROP CONSTRAINT IF EXISTS chk_mag_trasferimenti_da_a_distinti;
+
+                  ALTER TABLE magazzino.trasferimenti
+                    ADD CONSTRAINT chk_mag_trasferimenti_da_a_distinti
+                    CHECK (magazzino_id_from <> magazzino_id_to OR magazzino_id_from IS NOT NULL OR magazzino_id_to IS NOT NULL);  

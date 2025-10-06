@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fatture_righe.md" %}
 # 📚 Tabella `fatture_righe`
 
 ## 🗂️ Campi principali
@@ -28,14 +29,12 @@
 | user_update | character varying | YES | CURRENT_USER |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_riga | bigint | YES | 0 |
-| iva_perc | numeric | YES |  |
 | iva_natura | character varying | YES |  |
 | sorgente_uid | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_fatr_iva_perc |  |
 | CHECK | chk_fatture_righe_sconto_perc |  |
 | FOREIGN KEY | fk_fatture_righe_art | articolo_id |
 | FOREIGN KEY | fk_fatture_righe_ba_dest | dest_billing_account_id |

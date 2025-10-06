@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/attivita_fatturabili.md" %}
 # 📚 Tabella `attivita_fatturabili`
 
 ## 🗂️ Campi principali

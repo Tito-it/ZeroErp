@@ -26,6 +26,7 @@
 - [rettifiche_righe](tabelle/rettifiche_righe.md)
 - [trasferimenti](tabelle/trasferimenti.md)
 - [trasferimenti_righe](tabelle/trasferimenti_righe.md)
+- [ubicazioni](tabelle/ubicazioni.md)
 
 ## ⚙️ Funzioni
 - [fn_get_magazzino_note](funzioni/fn_get_magazzino_note.md)

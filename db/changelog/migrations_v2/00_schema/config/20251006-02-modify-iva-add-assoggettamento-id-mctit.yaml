@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  
+  # 20251005-28 — CREATE config.iva_assoggettamenti
+  - changeSet:
+      id: 20251006-02-modify-iva-add-assoggettamento-id
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/config/20251006-02-modify-iva-add-assoggettamento-id-mctit.yaml
+    
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+          - columnExists:
+             schemaName: config
+             tableName: iva
+             columnName: assoggettamento_id
+      changes:
+        - addColumn:
+            schemaName: config
+            tableName: iva
+            columns:
+              - column:
+                  name: assoggettamento_id
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+
+      # aggiorna tabella iva assegna assoggettamenti_id
+        - sql:
+            splitStatements: false
+            sql: |
+              UPDATE config.iva i
+              SET assoggettamento_id = a.id
+              FROM config.iva_assoggettamenti a
+              WHERE TRIM(i.assoggettamento_iva) = a.codice
+                AND (i.assoggettamento_iva IS NOT NULL AND TRIM(i.assoggettamento_iva) <> '')
+                AND i.assoggettamento_id IS NULL;
+  
+  - changeSet:
+      id: 20251006-03-create-iva-assoggettamenti
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+             schemaName: config
+             tableName: iva
+             columnName: assoggettamento_id
+      
+      changes:
+         - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: iva
+            baseColumnNames: assoggettamento_id
+            referencedTableSchemaName: config
+            referencedTableName: iva_assoggettamenti
+            referencedColumnNames: id
+            constraintName: fk_iva_assoggettamento
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+ 
+ 
+  - changeSet:
+      id: 20251006-04-correct-iva-audit-defaults
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              ALTER TABLE config.iva
+                ALTER COLUMN user_insert SET DEFAULT CURRENT_USER,
+                ALTER COLUMN user_update SET DEFAULT CURRENT_USER;
+
+
+     # Sostituisci il vecchio CHECK con due nuovi vincoli chiari
+  - changeSet:
+      id: 20251006-05-create-iva-assoggettamenti
+      author: mctit
+      changes:
+      
+        # Drop del vecchio check se esiste
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint
+                  WHERE conname = 'chk_iva_assoggettamento_aliquota'
+                ) THEN
+                  ALTER TABLE config.iva DROP CONSTRAINT chk_iva_assoggettamento_aliquota;
+                END IF;
+              END$$;
+
+        # Check 1: aliquota > 0 ⇒ niente natura, niente assoggettamento
+        
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE config.iva
+              ADD CONSTRAINT chk_iva_aliquota_pos_no_natura_assogg
+              CHECK ( (aliquota_iva > 0 AND natura_iva_id IS NULL AND assoggettamento_id IS NULL)
+              OR (aliquota_iva = 0) );
+        
+        # Check 2: aliquota = 0 ⇒ almeno uno tra natura o assoggettamento
+       
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE config.iva
+              ADD CONSTRAINT chk_iva_zero_requires_natura_or_assogg
+              CHECK ( (aliquota_iva > 0)
+              OR (aliquota_iva = 0 AND (natura_iva_id IS NOT NULL OR assoggettamento_id IS NOT NULL)) );
+
+  # (Opzionale) Depreca la colonna legacy testuale
+  - changeSet:
+      id: 20251006-06-create-iva-assoggettamenti
+      author: mctit
+      preConditions:
+      -  onFail: CONTINUE
+      -  columnExists:
+          schemaName: config
+          tableName: iva
+          columnName: assoggettamento_iva
+      changes:
+        - dropColumn:
+            schemaName: config
+            tableName: iva
+            columnName: assoggettamento_iva
+      

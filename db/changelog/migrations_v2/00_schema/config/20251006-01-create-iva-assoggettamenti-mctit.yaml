@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  
+  # 20251005-28 — CREATE config.iva_assoggettamenti
+  - changeSet:
+      id: 20251006-01-create-iva-assoggettamenti
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/config/20251006-01-create-iva-assoggettamenti.yaml
+    
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: iva_assoggettamenti
+            remarks: "Dominio tipi assoggettamenti"
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT,
+                          constraints: { primaryKey: true, primaryKeyName: pk_config_iva_assoggettamenti, nullable: false } }
+              - column:
+                  name: codice
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione
+                  type: VARCHAR(120)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: note
+                  type: TEXT
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: TEXT
+                  defaultValueComputed: CURRENT_USER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: TEXT
+                  defaultValueComputed: CURRENT_USER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: storicizza
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+
+  # Migrazione: carica i codici legacy DISTINCT da config.iva.assoggettamento_iva
+        
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: iva_assoggettamenti
+            columnNames: codice
+            constraintName: uq_cfg_iva_assoggettamenti_codice
+
+        - createIndex: { schemaName: config, tableName: iva_assoggettamenti, indexName: ix_cfg_iva_assoggettamenti_attivo, columns: [ { name: attivo } ] }
+        
+        - createIndex:
+            schemaName: config
+            tableName: iva_assoggettamenti
+            indexName: ix_iva_assoggettamenti_codice_upper
+            columns:
+              - column:
+                  name: "upper(codice)"
+                  descending: false
+
+        
+        - createIndex:
+            schemaName: config
+            tableName: iva_assoggettamenti
+            indexName: ix_iva_assoggettamenti_descrizione_upper
+            columns:
+              - column:
+                  name: "upper(descrizione)"
+                  descending: false
+
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON TABLE config.iva_assoggettamenti IS 'Dominio tipi assoggettamenti iva .';
+
+  - changeSet:
+      id: 20251006-02-create-iva-assoggettamenti
+      author: mctit
+      preConditions:
+        - onFail: CONTINUE
+          and:
+          - tableExists:
+              schemaName: config
+              tableName: iva
+          - tableExists:
+              schemaName: config
+              tableName: iva_assoggettamenti
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              INSERT INTO config.iva_assoggettamenti (codice, descrizione)
+              SELECT  TRIM(assoggettamento_iva) AS codice,
+                              TRIM(min(descrizione)) AS descrizione
+              FROM config.iva
+              WHERE assoggettamento_iva IS NOT NULL
+                AND TRIM(assoggettamento_iva) <> ''
+              group by assoggettamento_iva,descrizione 
+              ON CONFLICT (codice) DO NOTHING;

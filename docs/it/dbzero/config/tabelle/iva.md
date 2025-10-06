@@ -9,22 +9,24 @@
 | descrizione | character varying | NO |  |
 | descrizione_breve | character varying | NO |  |
 | aliquota_iva | numeric | NO | 0 |
-| assoggettamento_iva | character | NO | ''::bpchar |
 | natura_iva_id | integer | YES |  |
 | conto_iva_acquisti_id | integer | YES |  |
 | conto_iva_vendita_id | integer | YES |  |
 | id_iva_split | integer | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | text | NO | 'CURRENT_USER'::text |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | NO | 'CURRENT_USER'::text |
+| user_update | text | NO | CURRENT_USER |
 | attivo | boolean | NO | true |
 | storicizza | boolean | YES | true |
+| assoggettamento_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_iva_assoggettamento_aliquota |  |
+| CHECK | chk_iva_aliquota_pos_no_natura_assogg |  |
+| CHECK | chk_iva_zero_requires_natura_or_assogg |  |
+| FOREIGN KEY | fk_iva_assoggettamento | assoggettamento_id |
 | FOREIGN KEY | fk_iva_conto_acq | conto_iva_acquisti_id |
 | FOREIGN KEY | fk_iva_conto_ven | conto_iva_vendita_id |
 | FOREIGN KEY | fk_iva_natura | natura_iva_id |
@@ -42,6 +44,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_a10_config_iva_protect_columns | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('perc_iva', 'E_PERC_IVA_NO_MOD', 'assoggettamento_id', 'E_ASSOGGETTAMENTO_NO_MOD')` |
 | trg_iva_ins_upd_check_conti | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_iva_ins_upd_check_conti_iva()` |
 | trg_iva_ins_upd_check_conti | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_iva_ins_upd_check_conti_iva()` |
 | trg_iva_upd_audit_data_user_generic | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |

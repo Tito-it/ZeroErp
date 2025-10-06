@@ -21,6 +21,7 @@
 | data_update | timestamp with time zone | YES |  |
 | storicizza | boolean | NO | false |
 | stato_id | bigint | NO |  |
+| ubicazione_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -30,6 +31,7 @@
 | FOREIGN KEY | fk_mag_assets_contratto | contratto_id |
 | FOREIGN KEY | fk_mag_assets_magazzino | magazzino_id |
 | FOREIGN KEY | fk_mag_assets_stato | stato_id |
+| FOREIGN KEY | fk_mag_assets_ubicazione | ubicazione_id |
 | PRIMARY KEY | pk_mag_assets | id |
 | UNIQUE | uq_mag_assets_seriale | seriale |
 
@@ -39,6 +41,7 @@
 | ix_mag_assets_articolo | `CREATE INDEX ix_mag_assets_articolo ON magazzino.assets USING btree (articolo_id)` |
 | ix_mag_assets_magazzino | `CREATE INDEX ix_mag_assets_magazzino ON magazzino.assets USING btree (magazzino_id)` |
 | ix_mag_assets_stato_id | `CREATE INDEX ix_mag_assets_stato_id ON magazzino.assets USING btree (stato_id)` |
+| ix_mag_assets_ubicazione | `CREATE INDEX ix_mag_assets_ubicazione ON magazzino.assets USING btree (ubicazione_id)` |
 | pk_mag_assets | `CREATE UNIQUE INDEX pk_mag_assets ON magazzino.assets USING btree (id)` |
 | uq_mag_assets_seriale | `CREATE UNIQUE INDEX uq_mag_assets_seriale ON magazzino.assets USING btree (seriale)` |
 

@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+ 
+databaseChangeLog:
+ 
+  # 20251005-34 — magazzino.reservations: aggiunta ubicazione + FK + indice
+  - changeSet:
+      id: 20251005-34-alter-magazzino-reservations-add-ubicazione
+      author: mctit
+      logicalFilePath: migrations_v2/00_schema/magazzino/20251005-34-alter-magazzino-reservations-add-ubicazione.yaml
+      changes:
+        - addColumn:
+            schemaName: magazzino
+            tableName: reservations
+            columns:
+              - column:
+                  name: ubicazione_id
+                  type: BIGINT
+                  remarks: "FK → magazzino.ubicazioni(id), opzionale (prenoto su un bin specifico)"
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: magazzino
+            baseTableName: reservations
+            baseColumnNames: ubicazione_id
+            referencedTableSchemaName: magazzino
+            referencedTableName: ubicazioni
+            referencedColumnNames: id
+            constraintName: fk_mag_reservations_ubicazione
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - createIndex:
+            schemaName: magazzino
+            tableName: reservations
+            indexName: ix_mag_reservations_ubicazione
+            columns:
+              - column: { name: ubicazione_id }
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON COLUMN magazzino.reservations.ubicazione_id IS 'Ubicazione/bin della prenotazione (se noto: picking, staging, ecc.).';

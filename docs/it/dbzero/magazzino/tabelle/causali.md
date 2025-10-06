@@ -27,14 +27,17 @@
 | consente_stock_negativo | boolean | NO | false |
 | richiede_odl | boolean | NO | false |
 | contabilizza_cdc | boolean | NO | false |
+| codice_interno | character varying | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_mag_causali_codice_interno_nonvuoto |  |
 | CHECK | chk_magazzino_causali_imp_val |  |
 | CHECK | chk_magazzino_causali_segno |  |
 | FOREIGN KEY | fk_mag_causali_ambito | ambito_causale_id |
 | PRIMARY KEY | pk_magazzino_causali | id |
+| UNIQUE | uq_mag_causali_codice_interno | codice_interno |
 | UNIQUE | uq_magazzino_causali_codice | codice |
 
 ## 📑 Indici
@@ -43,6 +46,7 @@
 | ix_mag_causali_ambito_id | `CREATE INDEX ix_mag_causali_ambito_id ON magazzino.causali USING btree (ambito_causale_id)` |
 | ix_magazzino_causali_attivo | `CREATE INDEX ix_magazzino_causali_attivo ON magazzino.causali USING btree (attivo)` |
 | pk_magazzino_causali | `CREATE UNIQUE INDEX pk_magazzino_causali ON magazzino.causali USING btree (id)` |
+| uq_mag_causali_codice_interno | `CREATE UNIQUE INDEX uq_mag_causali_codice_interno ON magazzino.causali USING btree (codice_interno)` |
 | uq_magazzino_causali_codice | `CREATE UNIQUE INDEX uq_magazzino_causali_codice ON magazzino.causali USING btree (codice)` |
 
 ---

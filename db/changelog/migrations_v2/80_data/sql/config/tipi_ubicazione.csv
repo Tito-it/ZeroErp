@@ -1,0 +1,7 @@
+codice_interno,codice,descrizione,attivo,ordine,meta
+TIPO_UBI_STORAGE,STORAGE,Stoccaggio (bulk/scorta),True,10,{}
+TIPO_UBI_PICK,PICK,Picking (prelievo),True,20,{}
+TIPO_UBI_STAGING,STAGING,Staging (baia/area di preparazione),True,30,{}
+TIPO_UBI_IN_TRANSIT,IN_TRANSIT,In transito (trasferimenti tra magazzini),True,40,{}
+TIPO_UBI_BUFFER,BUFFER,Buffer (polmone),True,50,{}
+TIPO_UBI_DAMAGED,DAMAGED,Danneggiata (merce non conforme),True,60,{}
