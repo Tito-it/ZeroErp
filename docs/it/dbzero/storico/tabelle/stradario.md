@@ -10,7 +10,7 @@
 | valid_to | date | YES |  |
 | change_type | character | YES | 'A'::bpchar |
 | data_insert | timestamp without time zone | YES | now() |
-| user_insert | character varying | YES | 'CURRENT_USER'::character varying |
+| user_insert | character varying | YES | CURRENT_USER |
 | stradario_id | integer | YES |  |
 | geoloc | USER-DEFINED | YES |  |
 | extra_info | jsonb | YES |  |

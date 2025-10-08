@@ -14,9 +14,9 @@
 | nome_sequenza | text | YES |  |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | YES | now() |
-| user_insert | text | YES | 'CURRENT_USER'::text |
+| user_insert | text | YES | CURRENT_USER |
 | data_update | timestamp with time zone | YES | now() |
-| user_update | text | YES | 'CURRENT_USER'::text |
+| user_update | text | YES | CURRENT_USER |
 | tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli

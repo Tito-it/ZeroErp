@@ -8,9 +8,9 @@
 | descrizione | text | NO |  |
 | codice_interno | character varying | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | text | NO | 'CURRENT_USER'::text |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | NO | 'CURRENT_USER'::text |
+| user_update | text | NO | CURRENT_USER |
 | codice | character varying | NO |  |
 
 ## 🔒 Vincoli

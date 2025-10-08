@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/dbops/20251008-01-utility-correct-user-default-value-mctit.yaml
+
+  - changeSet:
+      id: 20251008-01-utility-correct-user-default-value
+      author: mctit
+     
+      preConditions:
+      - onFail: MARK_RAN
+      - not:
+        - tableExists:
+            schemaName: dbops
+            tableName: _defaults_backup_usercols
+      
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: _defaults_backup_usercols
+            columns:
+              - column:
+                  name: id
+                  type: BIGSERIAL
+                  constraints: { primaryKey: true }
+              - column: { name: schema_name, type: TEXT, constraints: { nullable: false } }
+              - column: { name: table_name,  type: TEXT, constraints: { nullable: false } }
+              - column: { name: column_name, type: TEXT, constraints: { nullable: false } }
+              - column: { name: old_default_expr, type: TEXT, constraints: { nullable: false } }
+              - column: { name: captured_at, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false } }
+      rollback:
+        - dropTable: { schemaName: dbops, tableName: _defaults_backup_usercols }
+
+  # 2) Cattura default da correggere (solo user_insert/user_update)
+  - changeSet:
+      id: 20251008-02-utility-correct-user-default-value
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              INSERT INTO dbops._defaults_backup_usercols(schema_name, table_name, column_name, old_default_expr)
+              SELECT
+                n.nspname,
+                c.relname,
+                a.attname,
+                pg_get_expr(d.adbin, d.adrelid) AS old_default_expr
+              FROM pg_attribute a
+              JOIN pg_class c       ON a.attrelid = c.oid
+              JOIN pg_namespace n   ON c.relnamespace = n.oid
+              JOIN pg_attrdef d     ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+              WHERE a.attnum > 0
+                AND NOT a.attisdropped
+                AND c.relkind = 'r'
+                AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+                AND a.attname IN ('user_insert','user_update')
+                AND (
+                  -- 'CURRENT_USER' o 'current_user', con o senza cast ::text/::varchar/::bpchar
+                  pg_get_expr(d.adbin, d.adrelid) ~* $$^'current_user'(::(text|character varying|varchar|bpchar))?$$
+                )
+              ON CONFLICT DO NOTHING;
+      rollback:
+        - sql: { sql: "DELETE FROM dbops._defaults_backup_usercols;" }
+
+  # 3) Allineamento default -> CURRENT_USER (senza apici)
+  - changeSet:
+      id: 20251008-03-utility-correct-user-default-value
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE r record;
+              BEGIN
+                FOR r IN
+                  SELECT DISTINCT schema_name, table_name, column_name
+                  FROM dbops._defaults_backup_usercols
+                LOOP
+                  EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN %I SET DEFAULT CURRENT_USER',
+                                 r.schema_name, r.table_name, r.column_name);
+                END LOOP;
+              END$$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE r record;
+              BEGIN
+                FOR r IN
+                  SELECT *
+                  FROM dbops._defaults_backup_usercols
+                  ORDER BY id
+                LOOP
+                  EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN %I SET DEFAULT %s',
+                                 r.schema_name, r.table_name, r.column_name, r.old_default_expr);
+                END LOOP;
+              END$$;
