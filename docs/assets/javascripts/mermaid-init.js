@@ -8,26 +8,48 @@
 # ------------------------------------------------------------
 */
 
+// docs/assets/javascripts/mermaid-init.js
 
-document$.subscribe(() => {
-  const config = {
-    startOnLoad: false,
-    theme: 'default',
-    er: { 
-      layoutDirection: 'TB',
-      diagramPadding: 15
+function renderMermaid() {
+  // 1) se per qualche motivo i blocchi sono ancora <pre><code class="language-mermaid">, wrappali
+  document.querySelectorAll('pre code.language-mermaid').forEach(code => {
+    const pre = code.parentElement;
+    const div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = code.textContent;
+    pre.replaceWith(div);
+  });
+
+  if (!window.mermaid) {
+    console.warn('Mermaid not loaded');
+    return;
+  }
+
+  try {
+    // inizializza una volta sola: v10/v11 tollerano reinits, ma evitiamo warning
+    if (!window.__mermaidInitialized) {
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'loose'
+        // il tuo %%{init: ...}%% dentro al blocco può sovrascrivere opzioni come 'er.layoutDirection'
+      });
+      window.__mermaidInitialized = true;
     }
-  };
-  
-  mermaid.initialize(config);
-  
-  document.querySelectorAll('.mermaid').forEach((el) => {
-    el.style.display = 'block';
-    el.style.textAlign = 'center';
-  });
-  
-  mermaid.run({
-    querySelector: '.language-mermaid, .mermaid',
-    nodes: document.querySelectorAll('.language-mermaid, .mermaid')
-  });
-});
+
+    // v11: mermaid.run();  v10: mermaid.init(undefined, ".mermaid");
+    if (typeof mermaid.run === 'function') {
+      mermaid.run();
+    } else if (typeof mermaid.init === 'function') {
+      mermaid.init(undefined, '.mermaid');
+    }
+  } catch (e) {
+    console.error('Mermaid render error:', e);
+  }
+}
+
+// Supporto SPA di MkDocs Material
+if (window.document$) {
+  document$.subscribe(renderMermaid);
+} else {
+  document.addEventListener('DOMContentLoaded', renderMermaid);
+}

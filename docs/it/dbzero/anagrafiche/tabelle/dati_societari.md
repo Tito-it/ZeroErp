@@ -17,9 +17,9 @@
 | codice_sdi | character varying | YES |  |
 | data_costituzione | date | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | text | NO | 'CURRENT_USER'::text |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | NO | 'CURRENT_USER'::text |
+| user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | false |
 

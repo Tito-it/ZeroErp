@@ -17,9 +17,9 @@
 | data_nascita | date | YES |  |
 | comune_id | integer | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | text | NO | 'CURRENT_USER'::text |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | NO | 'CURRENT_USER'::text |
+| user_update | text | NO | CURRENT_USER |
 | titolo_cortesia_id | integer | YES |  |
 | identificativo_old | character varying | YES |  |
 | ragione_sociale_completa | text | YES |  |

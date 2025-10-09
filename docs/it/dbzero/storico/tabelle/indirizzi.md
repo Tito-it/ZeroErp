@@ -8,7 +8,7 @@
 | valid_from | timestamp with time zone | NO | CURRENT_DATE |
 | valid_to | timestamp with time zone | YES |  |
 | data_insert | timestamp with time zone | YES | now() |
-| user_insert | character varying | YES | 'CURRENT_USER'::character varying |
+| user_insert | character varying | YES | CURRENT_USER |
 | indirizzo_id | integer | YES |  |
 | snapshot | jsonb | NO |  |
 | tipo_operazione | smallint | NO |  |

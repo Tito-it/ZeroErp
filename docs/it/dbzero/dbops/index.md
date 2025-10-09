@@ -1,6 +1,7 @@
 # Schema `dbops`
 
 ## 📚 Tabelle
+- [_defaults_backup_usercols](tabelle/_defaults_backup_usercols.md)
 - [audit_log](tabelle/audit_log.md) — * Monitorare e storicizzare ogni chiamata a funzioni, job e API interne. * Fornire dettagli su utente, parametri e performance di esecuzione. * Collegare gli eventi di audit agli errori e ad altri log tramite `tx_id` gestito dal trigger.
 - [automation_fk_exclusions](tabelle/automation_fk_exclusions.md) — `dbops.automation_fk_exclusions` elenca le **coppie Padre/Figlio** (schema/tabella) da **escludere** dalla regola automatica **ATTIVO** (soft-delete):
 - [automation_overrides_cols](tabelle/automation_overrides_cols.md) — Centralizzare le **eccezioni di naming delle colonne** usate dagli automatismi (audit, soft‑delete, storico, ecc.). Quando il tuo schema usa nomi diversi dagli standard (es. `attivo` → `is_enabled`, `data_update` → `modified_at`), qui definisci l’override **per tabella**.

@@ -10,8 +10,8 @@
 | iso_num_code | smallint | YES |  |
 | descrizione | character varying | NO |  |
 | simbolo | character varying | NO |  |
-| user_insert | character varying | NO | 'CURRENT_USER'::character varying |
-| user_update | character varying | YES | 'CURRENT_USER'::character varying |
+| user_insert | character varying | NO | CURRENT_USER |
+| user_update | character varying | YES | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 

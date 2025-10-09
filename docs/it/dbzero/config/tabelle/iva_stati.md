@@ -8,9 +8,9 @@
 | stato_id | integer | NO |  |
 | aliquota_override | numeric | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | text | NO | 'CURRENT_USER'::text |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | NO | 'CURRENT_USER'::text |
+| user_update | text | NO | CURRENT_USER |
 | assoggettamento_id_override | bigint | YES |  |
 
 ## 🔒 Vincoli

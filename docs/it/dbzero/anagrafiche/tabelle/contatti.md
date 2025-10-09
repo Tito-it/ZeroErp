@@ -15,8 +15,8 @@
 | cellulare | character varying | YES |  |
 | pec | character varying | YES |  |
 | note | text | YES |  |
-| user_insert | text | NO | 'CURRENT_USER'::text |
-| user_update | text | NO | 'CURRENT_USER'::text |
+| user_insert | text | NO | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | is_default | boolean | NO | false |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |

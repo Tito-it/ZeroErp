@@ -8,9 +8,9 @@
 | descrizione | character varying | NO | ''::character varying |
 | provincia_id | integer | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | 'CURRENT_USER'::character varying |
+| user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | NO | 'CURRENT_USER'::character varying |
+| user_update | character varying | NO | CURRENT_USER |
 | extra_country | jsonb | YES |  |
 | storicizza | boolean | NO | false |
 | tx_id | uuid | YES |  |

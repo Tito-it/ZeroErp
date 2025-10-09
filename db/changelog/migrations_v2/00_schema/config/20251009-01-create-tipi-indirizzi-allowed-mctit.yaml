@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - logicalFilePath: 20251009-01-create-tipi-indirizzi-allowed-mctit.yaml
+
+  - changeSet:
+      id: 20251009-01-create-tipi-indirizzi-allowed-mctit.yaml
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: tipi_indirizzi_allowed
+            columns:
+              - column:
+                  name: ambito
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tipo_indirizzo_id
+                  type: integer
+                  constraints:
+                    nullable: false
+              - column:
+                  name: obbligatorio
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: TEXT
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: TEXT
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+        - addPrimaryKey:
+            schemaName: config
+            tableName: tipi_indirizzi_allowed
+            columnNames: ambito, tipo_indirizzo_id
+            constraintName: pk_tipi_indirizzi_allowed
+        
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+               
+                ALTER TABLE config.tipi_indirizzi_allowed
+                    ADD CONSTRAINT chk_tipi_indirizzi_ambito
+                    CHECK (ambito IN ('FATTURE','ORDINI','DDT','PREVENTVI'));  
+
+        # indice per lookup rapidi per ambito
+        - createIndex:
+            schemaName: config
+            tableName: tipi_indirizzi_allowed
+            indexName: ix_tipi_indirizzi_allowed_ambito_attivi
+            columns:
+              - column:
+                  name: ambito
+            where: "attivo = true"
+
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: tipi_indirizzi_allowed
+            baseColumnNames: tipo_indirizzo_id
+            referencedTableSchemaName: config
+            referencedTableName: tipi_indirizzi
+            referencedColumnNames: id
+            constraintName: fk_config_tipi_indirizzi
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+          
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: tipi_indirizzi_allowed
