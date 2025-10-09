@@ -27,7 +27,7 @@ plugins:
       #fail_on_missing: false
   - abs-to-rel          # per i link relativi
   - search
-  
+  #- mermaid2
   
   - i18n:
       docs_structure: folder
@@ -46,17 +46,21 @@ markdown_extensions:
       permalink: true
   - admonition
   - codehilite
-  #- pymdownx.superfences:
-  #    custom_fences:
-  #      - name: mermaid
-  #        class: mermaid
-  #        format: !!python/name:pymdownx.superfences.fence_code_format
-
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  #- pymdownx.superfences
+  
 extra_javascript:
-  - https://unpkg.com/mermaid@11.9.0/dist/mermaid.min.js
-  #- assets/javascripts/mermaid-init.js
-  - assets/javascripts/custom-mermaid.js
+  #- https://unpkg.com/mermaid@11.9.0/dist/mermaid.min.js
+  
+  - assets/javascripts/mermaid.min.js
+  - assets/javascripts/mermaid-init.js
 
+  #- assets/javascripts/custom-mermaid.js
+  
 nav:
   - Home: index.md
   - Introduzione:
