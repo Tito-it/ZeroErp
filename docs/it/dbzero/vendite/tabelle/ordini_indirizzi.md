@@ -11,12 +11,16 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
+| origine_indirizzo_id | bigint | YES |  |
+| origine_soggetto_ruolo_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_ordini_indir_ordine | ordine_id |
 | FOREIGN KEY | fk_ordini_indir_tipo | tipo_indirizzo_id |
+| FOREIGN KEY | fk_ordini_indirizzi_origine_indirizzo | origine_indirizzo_id |
+| FOREIGN KEY | fk_ordini_indirizzi_origine_sog_ruolo | origine_soggetto_ruolo_id |
 | PRIMARY KEY | pk_ordini_indirizzi | id |
 | UNIQUE | uq_ordini_indirizzi_uno_per_tipo | ordine_id, tipo_indirizzo_id |
 
@@ -24,14 +28,16 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_ordini_indir_ordine | `CREATE INDEX ix_ordini_indir_ordine ON vendite.ordini_indirizzi USING btree (ordine_id)` |
+| ix_ordini_indirizzi_origine_indirizzo | `CREATE INDEX ix_ordini_indirizzi_origine_indirizzo ON vendite.ordini_indirizzi USING btree (origine_indirizzo_id)` |
+| ix_ordini_indirizzi_origine_sog_ruolo | `CREATE INDEX ix_ordini_indirizzi_origine_sog_ruolo ON vendite.ordini_indirizzi USING btree (origine_soggetto_ruolo_id)` |
 | pk_ordini_indirizzi | `CREATE UNIQUE INDEX pk_ordini_indirizzi ON vendite.ordini_indirizzi USING btree (id)` |
 | uq_ordini_indirizzi_uno_per_tipo | `CREATE UNIQUE INDEX uq_ordini_indirizzi_uno_per_tipo ON vendite.ordini_indirizzi USING btree (ordine_id, tipo_indirizzo_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ordini_indirizzi_a10_ins_upd_only_allowed_tipi | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_indirizzi_only_allowed_tipi()` |
-| trg_ordini_indirizzi_a10_ins_upd_only_allowed_tipi | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_indirizzi_only_allowed_tipi()` |
+| trg_ordini_indirizzi_a10_ins_upd_only_allowed_tipi | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('ORDINI')` |
+| trg_ordini_indirizzi_a10_ins_upd_only_allowed_tipi | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed('ORDINI')` |
 
 ---
 {% include-markdown "signature-core.md" %}

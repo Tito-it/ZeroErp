@@ -40,6 +40,8 @@
 | user_update | character varying | YES | CURRENT_USER |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
+| termine_pagamento_id | bigint | YES |  |
+| termine_pagamento_snapshot | jsonb | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -51,6 +53,7 @@
 | FOREIGN KEY | fk_fatture_reseller | reseller_soggetto_ruolo_id |
 | FOREIGN KEY | fk_fatture_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_fatture_stato_doc_fiscale | stato_doc_fiscale_id |
+| FOREIGN KEY | fk_fatture_termini_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_fatture_tipo_doc_fiscale | tipo_doc_fiscale_id |
 | FOREIGN KEY | fk_fatture_valuta | valuta_id |
 | PRIMARY KEY | pk_fatture | id |

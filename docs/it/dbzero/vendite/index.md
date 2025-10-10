@@ -29,6 +29,7 @@
 - [ordini_righe](tabelle/ordini_righe.md)
 - [ordini_righe_fulfillment](tabelle/ordini_righe_fulfillment.md)
 - [preventivi](tabelle/preventivi.md)
+- [preventivi_indirizzi](tabelle/preventivi_indirizzi.md)
 - [preventivi_righe](tabelle/preventivi_righe.md)
 - [registri_fatturazione](tabelle/registri_fatturazione.md)
 - [registri_fatturazione_progressivi](tabelle/registri_fatturazione_progressivi.md)
@@ -57,5 +58,6 @@
 - [trgfn_ordini_indirizzi_only_allowed_tipi](funzioni/trgfn_ordini_indirizzi_only_allowed_tipi.md)
 - [trgfn_preventivi_norm](funzioni/trgfn_preventivi_norm.md)
 - [trgfn_prevnote_validate](funzioni/trgfn_prevnote_validate.md)
+- [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md)
 
 ## 🔍 Views

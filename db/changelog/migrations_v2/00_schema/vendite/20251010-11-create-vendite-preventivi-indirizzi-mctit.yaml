@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20251010-11-create-vendite-preventivi-indirizzi-mctit.yaml
+
+  - changeSet:
+      id: 20251010-11-create-vendite-preventivi-indirizzi
+      author: mctit
+      
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: preventivi_indirizzi
+            remarks: "Snapshot indirizzi collegati al preventivo; uno per tipo (fatturazione, spedizione, fornitura, residenza). Includere nello snapshot la mail."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_preventivi_indirizzi
+                    nullable: false
+              - column: { name: preventivo_id,           type: BIGINT,   constraints: { nullable: false } }
+              - column: { name: tipo_indirizzo_id,    type: BIGINT,   constraints: { nullable: false } }
+              - column:
+                  name: snapshot
+                  type: JSONB
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints: { nullable: false }
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: "now()"
+                  constraints: { nullable: false }
+              - column:
+                  name: user_insert
+                  type: VARCHAR(80)
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints: { nullable: false }
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: "now()"
+                  constraints: { nullable: false }
+              - column:
+                  name: user_update
+                  type: VARCHAR(80)
+                  defaultValueComputed: "CURRENT_USER"
+              - column: { name: origine_indirizzo_id,       type: BIGINT }
+              - column: { name: origine_soggetto_ruolo_id,  type: BIGINT }
+
+        # Unique preventivo_id + tipo_indirizzo_id
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: preventivi_indirizzi
+            columnNames: preventivo_id, tipo_indirizzo_id
+            constraintName: uq_preventivi_indirizzi_uno_per_tipo_
+
+  - changeSet:
+      id: 20251010-12-fk-vendite-preventivi-indirizzi
+      author: mctit
+      changes:
+        - addForeignKeyConstraint:
+            constraintName: fk_preventivi_indir_preventivo
+            baseTableSchemaName: vendite
+            baseTableName: preventivi_indirizzi
+            baseColumnNames: preventivo_id
+            referencedTableSchemaName: vendite
+            referencedTableName: preventivi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            constraintName: fk_preventivi_indir_tipo
+            baseTableSchemaName: vendite
+            baseTableName: preventivi_indirizzi
+            baseColumnNames: tipo_indirizzo_id
+            referencedTableSchemaName: config
+            referencedTableName: tipi_indirizzi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            constraintName: fk_preventivi_indirizzi_origine_indirizzo
+            baseTableSchemaName: vendite
+            baseTableName: preventivi_indirizzi
+            baseColumnNames: origine_indirizzo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: indirizzi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: SET NULL
+
+        - addForeignKeyConstraint:
+            constraintName: fk_preventivi_indirizzi_origine_sog_ruolo
+            baseTableSchemaName: vendite
+            baseTableName: preventivi_indirizzi
+            baseColumnNames: origine_soggetto_ruolo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: SET NULL
+
+  - changeSet:
+      id: 20251010-13-comments-vendite-preventivi-indirizzi
+      author: mctit
+      changes:
+        # Table & columns remarks già impostati dove possibile; aggiungo i commenti col SQL per coprire tutti i casi (inclusi i vincoli).
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON TABLE vendite.preventivi_indirizzi IS
+              'Snapshot indirizzi collegati alla preventivo; uno per tipo (preventivozione, spedizione, fornitura, residenza). Includere nello snapshot la mail.';
+
+              COMMENT ON COLUMN vendite.preventivi_indirizzi.id IS 'PK';
+              COMMENT ON COLUMN vendite.preventivi_indirizzi.preventivo_id IS 'FK → vendite.preventivi(id).';
+              COMMENT ON COLUMN vendite.preventivi_indirizzi.tipo_indirizzo_id IS 'FK → config.tipi_indirizzi(id). Sostituisce preventivi_indirizzi.tipo_indirizzo (string).';
+              COMMENT ON COLUMN vendite.preventivi_indirizzi.snapshot IS 'Snapshot completo dell''indirizzo al momento dell''emissione.';
+              COMMENT ON COLUMN vendite.preventivi_indirizzi.data_insert IS 'Audit: data inserimento';
+              COMMENT ON COLUMN vendite.preventivi_indirizzi.user_insert IS 'Audit: utente inserimento';
+              COMMENT ON COLUMN vendite.preventivi_indirizzi.data_update IS 'Audit: data aggiornamento';
+              COMMENT ON COLUMN vendite.preventivi_indirizzi.user_update IS 'Audit: utente aggiornamento';
+              COMMENT ON COLUMN vendite.preventivi_indirizzi.origine_indirizzo_id IS 'FK soft → anagrafiche.indirizzi(id). Provenienza snapshot.';
+              COMMENT ON COLUMN vendite.preventivi_indirizzi.origine_soggetto_ruolo_id IS 'FK → anagrafiche.soggetti_ruoli(id). Provenienza snapshot.';
+
+              COMMENT ON CONSTRAINT fk_preventivi_indir_preventivo ON vendite.preventivi_indirizzi IS 'FK → vendite.preventivi(id)';
+              COMMENT ON CONSTRAINT fk_preventivi_indir_tipo    ON vendite.preventivi_indirizzi IS 'FK → config.tipi_indirizzi(id)';
+
+  - changeSet:
+      id: 20251010-14-indexes-vendite-preventivi-indirizzi
+      author: mctit
+      changes:
+        # Uso SQL per opzioni WITH (fillfactor, deduplicate_items)
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_preventivi_indir_preventivo
+                ON vendite.preventivi_indirizzi USING btree (preventivo_id ASC NULLS LAST);
+               
+
+              CREATE INDEX IF NOT EXISTS ix_preventivi_indirizzi_origine_indirizzo
+                ON vendite.preventivi_indirizzi USING btree (origine_indirizzo_id ASC NULLS LAST);
+               
+              CREATE INDEX IF NOT EXISTS ix_preventivi_indirizzi_origine_sog_ruolo
+                ON vendite.preventivi_indirizzi USING btree (origine_soggetto_ruolo_id ASC NULLS LAST);
+               

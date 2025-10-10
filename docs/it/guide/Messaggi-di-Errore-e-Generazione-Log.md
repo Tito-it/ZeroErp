@@ -8,12 +8,12 @@
 
 Zero ERP adotta un modello unificato per la **centralizzazione**, il **logging** e la **gestione** dei messaggi di errore, basato su:
 
-* **Tabella messaggi**: `config.messaggi_errore` – definisce template, cause e suggerimenti per ogni codice di errore.
-* **Tabella log**: `dbops.error_log` – archivia ogni occorrenza di errore con contesto e transazione.
+* **Tabella messaggi**: [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore) – definisce template, cause e suggerimenti per ogni codice di errore.
+* **Tabella log**: [dbops.error_log](/dbzero/dbops/tabelle/error_log) – archivia ogni occorrenza di errore con contesto e transazione.
 * **Funzioni PL/pgSQL**:
 
-  * `script.fn_get_messaggio` per recuperare e formattare il testo del messaggio con internazionalizzazione e placeholder.
-  * `script.fn_log_and_raise_error` per eseguire il logging remoto e sollevare l’eccezione.
+  * [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio) per recuperare e formattare il testo del messaggio con internazionalizzazione e placeholder.
+  * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) per eseguire il logging remoto e sollevare l’eccezione.
 
 Questa guida illustra come utilizzare e estendere la struttura di errore, garantendo **consistenza**, **audit** e **facilità di manutenzione**.
 
