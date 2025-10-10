@@ -1,0 +1,42 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20251010-23-modify-ordini-add-termini-pagamenti-mctit.yaml
+
+  - changeSet:
+      id: 20251010-23-modify-ordini-add-termini-pagamenti
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: MARK_RAN
+        - not:
+          -  columnExists:
+              schemaName: vendite
+              tableName: ordini
+              columnName: termine_pagamento_id
+
+
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: ordini
+            columns:
+              - column: { name: termine_pagamento_id, type: BIGINT }
+        
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini
+            baseColumnNames: termine_pagamento_id
+            referencedTableSchemaName: config
+            referencedTableName: termini_pagamento
+            referencedColumnNames: id
+            constraintName: fk_ordini_termini_pagamento
+            onDelete: SET NULL
+            onUpdate: CASCADE        

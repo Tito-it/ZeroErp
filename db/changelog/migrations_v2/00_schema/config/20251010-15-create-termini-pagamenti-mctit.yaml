@@ -8,12 +8,19 @@
 # ------------------------------------------------------------
 
 databaseChangeLog:
-  - logicalFilePath: 20251010-15-create-termini-pagamenti-mctit.yaml
+  - logicalFilePath: migrations_v2/00_schema/config/20251010-15-create-termini-pagamenti-mctit.yaml
 
   - changeSet:
       id: 20251010-15-create-termini-pagamenti
       author: mctit
-
+      preConditions:
+      - onFail: MARK_RAN
+      - onError: MARK_RAN
+      - not:
+        -  tableExists:
+            schemaName: config
+            tableName: termini_pagamento
+            
       changes:
         - createTable:
             schemaName: config
@@ -144,6 +151,14 @@ databaseChangeLog:
               
               ALTER TABLE IF EXISTS config.termini_pagamento 
               DROP CONSTRAINT IF EXISTS 
+              chk_termini_pagamento_intervallo_uso; 
+              
+              ALTER TABLE IF EXISTS config.termini_pagamento 
+              DROP CONSTRAINT IF EXISTS 
+              chk_termini_pagamento_intervallo_range;
+
+              ALTER TABLE IF EXISTS config.termini_pagamento 
+              DROP CONSTRAINT IF EXISTS 
               chk_clienti_tipo_offset;
 
               ALTER TABLE IF EXISTS config.termini_pagamento 
@@ -156,18 +171,19 @@ databaseChangeLog:
               
               -- Check validità e valori ammessi
                ALTER TABLE config.termini_pagamento
-                ADD CONSTRAINT 
+                ADD CONSTRAINT  
                 chk_termini_pagamento_tipo_offset 
                 CHECK (tipo_offset in ('G', 'M', 'F', 'N'));
 
               ALTER TABLE config.termini_pagamento
-                ADD CONSTRAINT
+                ADD CONSTRAINT  
                 chk_termini_pagamento_intervallo_uso 
                 CHECK ((tipo_offset in  ('G', 'F') AND intervallo IS NOT NULL) OR (tipo_offset in ('M', 'N') AND intervallo IS NULL));
 
                ALTER TABLE config.termini_pagamento
-                ADD CONSTRAINT
-                 chk_termini_pagamento_intervallo_range CHECK (intervallo IS NULL OR intervallo >= 0 AND intervallo <= 365);
+                ADD CONSTRAINT  
+                 chk_termini_pagamento_intervallo_range 
+                 CHECK (intervallo IS NULL OR intervallo >= 0 AND intervallo <= 365);
     
   - changeSet:
       id: 220251010-17-create-termini-pagamenti
@@ -180,8 +196,17 @@ databaseChangeLog:
               -- 1) Rendere intervallo NULLABLE (coerente coi CHECK)
                 ALTER TABLE config.termini_pagamento ALTER COLUMN intervallo DROP NOT NULL;
 
+              ALTER TABLE IF EXISTS config.termini_pagamento 
+              DROP CONSTRAINT IF EXISTS 
+              chk_termini_pag_numero_rate_pos;
+                
+              ALTER TABLE IF EXISTS config.termini_pagamento 
+              DROP CONSTRAINT IF EXISTS 
+              chk_termini_pag_arrotond_dec;
+              
+
 
               -- 2) Range min/max
               ALTER TABLE config.termini_pagamento
-              ADD CONSTRAINT chk_termini_pag_numero_rate_pos CHECK (numero_rate >= 1),
-              ADD CONSTRAINT chk_termini_pag_arrotond_dec CHECK (arrotondamento_decimali BETWEEN 0 AND 6);
+              ADD CONSTRAINT  chk_termini_pag_numero_rate_pos CHECK (numero_rate >= 1),
+              ADD CONSTRAINT  chk_termini_pag_arrotond_dec CHECK (arrotondamento_decimali BETWEEN 0 AND 6);

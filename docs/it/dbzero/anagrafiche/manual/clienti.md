@@ -101,7 +101,7 @@ erDiagram
     stati_cliente       { int id PK }
     iva                 { int id PK }
     modalita_pagamento  { int id PK }
-    termine_pagamento  { int id PK }
+    termine_pagamento   { int id PK }
     clienti             { int id PK }
 ```
 

@@ -1,0 +1,42 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20251010-24-modify-preventivi-add-termini-pagamenti-mctit.yaml
+
+  - changeSet:
+      id: 20251010-24-modify-preventivi-add-termini-pagamenti
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: MARK_RAN
+        - not:
+          -  columnExists:
+              schemaName: vendite
+              tableName: preventivi
+              columnName: termine_pagamento_id
+
+
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: preventivi
+            columns:
+              - column: { name: termine_pagamento_id, type: BIGINT }
+        
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: preventivi
+            baseColumnNames: termine_pagamento_id
+            referencedTableSchemaName: config
+            referencedTableName: termini_pagamento
+            referencedColumnNames: id
+            constraintName: fk_preventivi_termini_pagamento
+            onDelete: SET NULL
+            onUpdate: CASCADE        
