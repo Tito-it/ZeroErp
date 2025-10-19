@@ -12,9 +12,9 @@ databaseChangeLog:
       id: 20251002-21-upsert-config-sorgenti-table
       logicalFilePath: migrations_v2/80_data/20251002-21-upsert-config-sorgenti-table.yaml
       author: mctit
-      #runOnChange: true
-      #validCheckSums:
-      #  - ANY
+      runOnChange: true
+      validCheckSums:
+        - ANY
       failOnError: true
       preConditions:
         - onFail: HALT

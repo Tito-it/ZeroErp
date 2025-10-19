@@ -10,6 +10,7 @@
 site_name: Zero ERP Documentation
 repo_url: https://github.com/Tito-it/ZeroErp
 repo_name: Tito-it/ZeroErp
+dev_addr: 127.0.0.1:8010
 
 docs_dir: docs
 site_dir: site

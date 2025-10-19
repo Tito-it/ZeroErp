@@ -1,0 +1,4 @@
+id,codice,codice_interno,descrizione,numero_rate,unita_intervallo,intervallo,primo_offset_giorni,tipo_offset,ripartizione,arrotondamento_metodo,arrotondamento_decimali,attivo,data_insert,user_insert,data_update,user_update
+1,30G,TP_30G_1R,30 gg data fattura (1 rata),1,G,0,30,G,UGUALI,HALF_UP,2,t,2025-10-19 18:51:08.690117+02,titodb,2025-10-19 18:51:08.690117+02,titodb
+2,30G_EOM,TP_30G_EOM_1R,30 gg data fattura con spostamento a fine mese (1 rata),1,G,0,30,F,UGUALI,HALF_UP,2,t,2025-10-19 18:51:08.690117+02,titodb,2025-10-19 18:51:08.690117+02,titodb
+3,30_60_EOM,TP_30_60_EOM_2R,Rate a 30/60 giorni con spostamento a fine mese (2 rate),2,G,30,30,F,UGUALI,HALF_UP,2,t,2025-10-19 18:51:08.690117+02,titodb,2025-10-19 18:51:08.690117+02,titodb

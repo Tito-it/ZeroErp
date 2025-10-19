@@ -25,6 +25,7 @@
 | fatturazione_immediata | boolean | YES | false |
 | stato_doc_preventivo_id | bigint | NO |  |
 | data | date | NO | CURRENT_DATE |
+| termine_pagamento_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -33,6 +34,7 @@
 | CHECK | chk_preventivi_validita |  |
 | FOREIGN KEY | fk_preventivi_billing_account | billing_account_id |
 | FOREIGN KEY | fk_preventivi_istanza | istanza_utility_id |
+| FOREIGN KEY | fk_preventivi_termini_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_preventivi_utility | utility_id |
 | FOREIGN KEY | fk_preventivi_valuta | valuta_id |
 | FOREIGN KEY | fk_v_preventivi_stato_ddt | stato_doc_preventivo_id |
