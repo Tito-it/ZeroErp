@@ -13,7 +13,7 @@ set -euo pipefail
 
 # -----------------------------------------------------------------------------
 # Genera CSV da PostgreSQL usando psql e salva in:
-#   db/changelog/migrations/80_data/sql/<schema>/
+#   db/changelog/migrations_v2/80_data/sql/<schema>/
 #
 # Usa un file env stile KEY=VALUE (default: ../internal.env) per:
 #   POSTGRESQL_USER, POSTGRESQL_PWD, DB_HOST, DB_PORT, DB_NAME
@@ -113,7 +113,7 @@ export PGOPTIONS="-c search_path=${SCHEMA}"
 command -v psql >/dev/null 2>&1 || { echo "Errore: 'psql' non trovato nel PATH"; exit 1; }
 
 # --- Directory di output
-OUT_DIR="$REPO_ROOT/db/changelog/migrations/80_data/sql/$SCHEMA"
+OUT_DIR="$REPO_ROOT/db/changelog/migrations_v2/80_data/sql/$SCHEMA"
 mkdir -p "$OUT_DIR"
 
 # --- Se richiesto, auto-scopri tutte le tabelle BASE dello schema

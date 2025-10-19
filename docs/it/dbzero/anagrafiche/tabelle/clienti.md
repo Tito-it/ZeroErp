@@ -31,11 +31,10 @@
 | data_sospensione | date | YES |  |
 | data_riattivazione | date | YES |  |
 | data_chiusura | date | YES |  |
-| tipo_giorni_scadenza | character | YES | 'N'::bpchar |
-| numero_giorni | smallint | YES |  |
 | garanzia_tipo | character | YES | 'D'::bpchar |
 | garanzia_importo | numeric | YES | 0 |
 | periodo | daterange | YES |  |
+| termine_pagamento_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -43,11 +42,9 @@
 | CHECK | chk_clienti_date_coerenti |  |
 | CHECK | chk_clienti_garanzia_importo_nonneg |  |
 | CHECK | chk_clienti_garanzia_tipo |  |
-| CHECK | chk_clienti_numero_giorni_range |  |
-| CHECK | chk_clienti_numero_giorni_uso |  |
-| CHECK | chk_clienti_tipo_giorni_scadenza |  |
 | FOREIGN KEY | fk_clienti_istanze_utilities | istanza_utility_id |
 | FOREIGN KEY | fk_clienti_pdp | pdp_id |
+| FOREIGN KEY | fk_clienti_termini_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_iva_config | iva_id |
 | FOREIGN KEY | fk_modalita_pagamento_config | modalita_pagamento_id |
 | FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |

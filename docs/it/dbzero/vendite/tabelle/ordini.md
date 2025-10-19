@@ -41,10 +41,12 @@
 | user_update | character varying | YES | CURRENT_USER |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
+| termine_pagamento_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_ordini_termini_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_ordini_v_aspetto_bene | aspetto_bene_id |
 | FOREIGN KEY | fk_ordini_v_billing_account | billing_account_id |
 | FOREIGN KEY | fk_ordini_v_causale_trasporto | causale_trasporto_id |

@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20251010-03-ordini-indirizzi-add-origine-mctit.yaml
+
+  - changeSet:
+      id: 20251010-03-ordini-indirizzi-add-origine
+      author: mctit
+      
+      preConditions:
+      - onFail: MARK_RAN
+      - onError: MARK_RAN
+      - not:
+        -  columnExists:
+            schemaName: vendite
+            tableName: ordini_indirizzi
+            columnName: origine_indirizzo_id
+  
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: ordini_indirizzi
+            columns:
+              - column:
+                  name: origine_indirizzo_id
+                  type: BIGINT
+                  remarks: "Riferimento (soft) all'indirizzo anagrafico usato per lo snapshot"
+              - column:
+                  name: origine_soggetto_ruolo_id
+                  type: BIGINT
+                  remarks: "Soggetto/Ruolo origine dello snapshot (audit/provenienza)"
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini_indirizzi
+            baseColumnNames: origine_indirizzo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: indirizzi
+            referencedColumnNames: id
+            constraintName: fk_ordini_indirizzi_origine_indirizzo
+            onDelete: SET NULL
+            onUpdate: CASCADE
+            deferrable: false
+            initiallyDeferred: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini_indirizzi
+            baseColumnNames: origine_soggetto_ruolo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            constraintName: fk_ordini_indirizzi_origine_sog_ruolo
+            onDelete: SET NULL
+            onUpdate: CASCADE
+            deferrable: false
+            initiallyDeferred: false
+
+        - createIndex:
+            schemaName: vendite
+            tableName: ordini_indirizzi
+            indexName: ix_ordini_indirizzi_origine_indirizzo
+            columns:
+              - column: { name: origine_indirizzo_id }
+
+        - createIndex:
+            schemaName: vendite
+            tableName: ordini_indirizzi
+            indexName: ix_ordini_indirizzi_origine_sog_ruolo
+            columns:
+              - column: { name: origine_soggetto_ruolo_id }
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN vendite.ordini_indirizzi.origine_indirizzo_id
+                IS 'FK soft → anagrafiche.indirizzi(id). Provenienza snapshot.';
+              COMMENT ON COLUMN vendite.ordini_indirizzi.origine_soggetto_ruolo_id
+                IS 'FK → anagrafiche.soggetti_ruoli(id). Provenienza snapshot.';
+
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini_indirizzi
+            constraintName: fk_ordini_indirizzi_origine_indirizzo
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini_indirizzi
+            constraintName: fk_ordini_indirizzi_origine_sog_ruolo
+        - dropIndex:
+            schemaName: vendite
+            tableName: ordini_indirizzi
+            indexName: ix_ordini_indirizzi_origine_indirizzo
+        - dropIndex:
+            schemaName: vendite
+            tableName: ordini_indirizzi
+            indexName: ix_ordini_indirizzi_origine_sog_ruolo
+        - dropColumn:
+            schemaName: vendite
+            tableName: ordini_indirizzi
+            columns:
+              - column:
+                  name: origine_indirizzo_id
+              - column:
+                  name: origine_soggetto_ruolo_id

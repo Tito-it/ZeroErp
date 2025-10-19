@@ -12,7 +12,7 @@ Esempi:
 
 Note:
 - internal.env deve contenere: POSTGRESQL_USER, POSTGRESQL_PWD, DB_HOST, DB_PORT, DB_NAME
-- I CSV sono letti da: <repo_root>/db/changelog/migrations/80_data/sql/<schema>/
+- I CSV sono letti da: <repo_root>/db/changelog/migrations_v2/80_data/sql/<schema>/
 EOF
 }
 
@@ -80,7 +80,7 @@ export PGCLIENTENCODING=UTF8
 export PGOPTIONS="-c search_path=${SCHEMA}"
 
 # --- Base CSV
-BASE_DIR="$REPO_ROOT/db/changelog/migrations/80_data/sql/$SCHEMA"
+BASE_DIR="$REPO_ROOT/db/changelog/migrations_v2/80_data/sql/$SCHEMA"
 if [[ ! -d "$BASE_DIR" ]]; then
   echo "Errore: directory CSV non trovata: $BASE_DIR" >&2
   exit 1
