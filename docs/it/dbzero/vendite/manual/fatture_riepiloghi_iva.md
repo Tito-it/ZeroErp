@@ -1,10 +1,10 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.fatture_riepiloghi_iva`
 
-> 👀 **Vedi anche**
+> 👀 **Vedi anche**  
 >
-> **Approfondimento tabelle:**
+> **Approfondimento tabelle:**  
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
 > • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)   
 > • [config.iva](/dbzero/config/tabelle/iva)    
 > • [config.iva_natura](/dbzero/config/tabelle/iva_natura)   

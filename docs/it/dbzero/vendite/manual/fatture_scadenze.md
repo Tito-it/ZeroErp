@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimenti tabelle:**
+> **Approfondimenti tabelle:**  
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)
-> • [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)
+> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
+> • [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)   
 
 ---
 
