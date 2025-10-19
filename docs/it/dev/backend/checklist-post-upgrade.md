@@ -88,11 +88,11 @@ sudo journalctl --vacuum-time=10d
 
 * Aggiorna pacchetti Python nel venv:
 
-  ```bash
-  source ~/apps/ZeroErp/backend/.venv/bin/activate
-  pip install -U pip django gunicorn psycopg[binary] redis djangorestframework
-  deactivate
-  ```
+```bash
+source ~/apps/ZeroErp/backend/.venv/bin/activate
+pip install -U pip django gunicorn psycopg[binary] redis djangorestframework
+deactivate
+```
 
 * Se rinomini directory (es. `ZeroErp` → `zeroerp`):
 
@@ -102,10 +102,10 @@ sudo journalctl --vacuum-time=10d
 
 * Controlli periodici:
 
-  ```bash
-  tailscale status
-  sudo systemctl list-units --failed
-  ```
+```bash
+tailscale status
+sudo systemctl list-units --failed
+```
 
 ---
 
