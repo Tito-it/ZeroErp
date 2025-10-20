@@ -108,7 +108,7 @@ nav:
       - API: dev/api.md
       - Backend:
           - Guida backend-dev: dev/backend/backend-dev.md
-          - Checklist post upgrade: dev/backend/checklist-post-upgrade
+          - Checklist post upgrade: dev/backend/checklist-post-upgrade.md
       #    - (Opz) Celery & Beat: dev/backend/backend-celery.md
       #    - (Opz) Produzione: dev/backend/backend-prod.md
       - Database:
