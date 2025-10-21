@@ -45,8 +45,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_note_preventivo_ins_upd_prevnote_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_prevnote_validate()` |
-| trg_note_preventivo_ins_upd_prevnote_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_prevnote_validate()` |
+| trg_note_preventivo_ins_upd_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_note_validate_generic('vendite.preventivi_righe', 'preventivo_id', 'PREVENTIVO')` |
+| trg_note_preventivo_ins_upd_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_note_validate_generic('vendite.preventivi_righe', 'preventivo_id', 'PREVENTIVO')` |
 
 ---
 {% include-markdown "signature-core.md" %}

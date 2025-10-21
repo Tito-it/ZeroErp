@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fatture_rettifiche.md" %}
 # 📚 Tabella `fatture_rettifiche`
 
 ## 🗂️ Campi principali

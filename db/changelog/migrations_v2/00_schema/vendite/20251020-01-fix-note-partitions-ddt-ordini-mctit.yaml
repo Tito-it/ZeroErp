@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
+# Correzione bound partizioni vendite.note (DDT/ORDINE)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20251020-01-fix-note-partitions-ddt-ordini-mctit.yaml
+
+  - changeSet:
+      id: 20251020-01-fix-note-partitions-ddt-ordini
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: note
+        - tableExists:
+            schemaName: vendite
+            tableName: note_ddt
+        - tableExists:
+            schemaName: vendite
+            tableName: note_ordini
+
+      changes:
+        # 1) Normalizza i dati nelle partizioni (minuscolo -> maiuscolo)
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              UPDATE vendite.note_ddt
+                 SET target_tipo = 'DDT'
+               WHERE target_tipo IS DISTINCT FROM 'DDT';
+
+              UPDATE vendite.note_ordini
+                 SET target_tipo = 'ORDINE'
+               WHERE target_tipo IS DISTINCT FROM 'ORDINE';
+
+        # 2) Detach partizioni esistenti
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_ddt;
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_ordini;
+
+        # 3) Re-attach con i nuovi bound corretti (maiuscoli)
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              ALTER TABLE vendite.note
+                ATTACH PARTITION vendite.note_ddt
+                FOR VALUES IN ('DDT');
+
+              ALTER TABLE vendite.note
+                ATTACH PARTITION vendite.note_ordini
+                FOR VALUES IN ('ORDINE');
+
+      rollback:
+        # In rollback: riporta i bound e i dati allo stato precedente
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- Detach dai bound corretti
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_ddt;
+              ALTER TABLE vendite.note DETACH PARTITION vendite.note_ordini;
+
+              -- Ri-attacca con i vecchi bound (minuscoli)
+              ALTER TABLE vendite.note
+                ATTACH PARTITION vendite.note_ddt
+                FOR VALUES IN ('ddt');
+
+              ALTER TABLE vendite.note
+                ATTACH PARTITION vendite.note_ordini
+                FOR VALUES IN ('ordine');
+
+              -- Revert dati nelle partizioni (maiuscolo -> minuscolo)
+              UPDATE vendite.note_ddt
+                 SET target_tipo = 'ddt'
+               WHERE target_tipo IS DISTINCT FROM 'ddt';
+
+              UPDATE vendite.note_ordini
+                 SET target_tipo = 'ordine'
+               WHERE target_tipo IS DISTINCT FROM 'ordine';

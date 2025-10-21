@@ -42,5 +42,11 @@
 | note_fatture_target_tipo_target_id_anchor_tipo_posizione_se_idx | `CREATE INDEX note_fatture_target_tipo_target_id_anchor_tipo_posizione_se_idx ON vendite.note_fatture USING btree (target_tipo, target_id, anchor_tipo, posizione, seq)` |
 | note_fatture_target_tipo_target_id_target_riga_id_anchor_ti_idx | `CREATE INDEX note_fatture_target_tipo_target_id_target_riga_id_anchor_ti_idx ON vendite.note_fatture USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_note_fatture_ins_upd_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_note_validate_generic('vendite.fatture_righe', 'fattura_id', 'FATTURA')` |
+| trg_note_fatture_ins_upd_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_note_validate_generic('vendite.fatture_righe', 'fattura_id', 'FATTURA')` |
+
 ---
 {% include-markdown "signature-core.md" %}

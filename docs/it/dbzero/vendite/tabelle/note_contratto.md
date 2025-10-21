@@ -45,8 +45,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_note_contratto_ins_upd_contnote_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contnote_validate()` |
-| trg_note_contratto_ins_upd_contnote_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contnote_validate()` |
+| trg_note_contratto_ins_upd_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_note_validate_generic('vendite.contratti_righe', 'contratto_id', 'CONTRATTO')` |
+| trg_note_contratto_ins_upd_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_note_validate_generic('vendite.contratti_righe', 'contratto_id', 'CONTRATTO')` |
 
 ---
 {% include-markdown "signature-core.md" %}
