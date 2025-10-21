@@ -12,8 +12,6 @@
 | seq | integer | NO | 10 |
 | testo | text | YES |  |
 | testo_md | text | YES |  |
-| stile | character varying | NO | 'NORMALE'::character varying |
-| lingua | character | YES |  |
 | visibile | boolean | NO | true |
 | solo_stampa | boolean | NO | false |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -21,6 +19,8 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
+| id_stile | bigint | NO |  |
+| id_lingua | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -30,6 +30,10 @@
 | CHECK | chk_acq_note_seq_pos |  |
 | CHECK | chk_acq_note_target_tipo |  |
 | CHECK | chk_acq_ordini_note_anchor |  |
+| CHECK | chk_note_testo_non_vuoto |  |
+| CHECK | chk_ordnote_testo_non_vuoto |  |
+| FOREIGN KEY | fk_acq_note_id_lingua | id_lingua, id_lingua, id_lingua |
+| FOREIGN KEY | fk_acq_note_id_stile | id_stile, id_stile, id_stile |
 | FOREIGN KEY | fk_acq_ordini_note_riga | target_riga_id |
 | FOREIGN KEY | fk_acq_ordini_note_testata | target_id |
 | PRIMARY KEY | note_ordini_pkey | target_tipo, id |
@@ -41,6 +45,12 @@
 | note_ordini_pkey | `CREATE UNIQUE INDEX note_ordini_pkey ON acquisti.note_ordini USING btree (target_tipo, id)` |
 | note_ordini_target_tipo_target_id_anchor_tipo_posizione_seq_idx | `CREATE INDEX note_ordini_target_tipo_target_id_anchor_tipo_posizione_seq_idx ON acquisti.note_ordini USING btree (target_tipo, target_id, anchor_tipo, posizione, seq)` |
 | note_ordini_target_tipo_target_id_target_riga_id_anchor_tip_idx | `CREATE INDEX note_ordini_target_tipo_target_id_target_riga_id_anchor_tip_idx ON acquisti.note_ordini USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_note_ordini_ins_upd_validate | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('acquisti.ordini_righe', 'ordine_id', 'ORDINE')` |
+| trg_note_ordini_ins_upd_validate | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('acquisti.ordini_righe', 'ordine_id', 'ORDINE')` |
 
 ---
 {% include-markdown "signature-core.md" %}

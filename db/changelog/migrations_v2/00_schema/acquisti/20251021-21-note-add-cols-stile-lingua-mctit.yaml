@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/acquisti/20251021-21-note-add-cols-stile-lingua-mctit.yaml
+
+
+  # 20251021-21 — Aggiunge colonne id_stile / id_lingua su acquisti.note
+  - changeSet:
+      id: 20251021-21-acq-note-add-cols-stile-lingua
+      author: mctit
+      
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: acquisti
+            tableName: note
+        - tableExists:
+            schemaName: config
+            tableName: note_stili
+        - tableExists:
+            schemaName: config
+            tableName: lingue
+      changes:
+        - addColumn:
+            schemaName: acquisti
+            tableName: note
+            columns:
+              - column:
+                  name: id_stile
+                  type: BIGINT
+                  remarks: "Stile della nota, normalizzato su config.note_stili(id)."
+              - column:
+                  name: id_lingua
+                  type: BIGINT
+                  remarks: "Lingua della nota, normalizzata su config.lingue(id)."
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON COLUMN acquisti.note.id_stile IS 'Stile della nota: FK a config.note_stili(id).';
+              COMMENT ON COLUMN acquisti.note.id_lingua IS 'Lingua della nota: FK a config.lingue(id).';
+
+
+
+  # 20251021-22 — Impone NOT NULL e default dove opportuno, poi crea FK
+  - changeSet:
+      id: 20251021-22-note-constraints-and-fk
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: acquisti
+            tableName: note
+        - tableExists:
+            schemaName: config
+            tableName: note_stili
+        - tableExists:
+            schemaName: config
+            tableName: lingue
+      changes:
+        # id_stile: obbligatorio (lo stile era prima NOT NULL con default 'NORMALE')
+        - addNotNullConstraint:
+            schemaName: acquisti
+            tableName: note
+            columnName: id_stile
+            columnDataType: BIGINT
+
+        # id_lingua: lasciamo opzionale (prima lingua era nullable)
+        # FK verso domini
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: note
+            baseColumnNames: id_stile
+            referencedTableSchemaName: config
+            referencedTableName: note_stili
+            referencedColumnNames: id
+            constraintName: fk_acq_note_id_stile
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: acquisti
+            baseTableName: note
+            baseColumnNames: id_lingua
+            referencedTableSchemaName: config
+            referencedTableName: lingue
+            referencedColumnNames: id
+            constraintName: fk_acq_note_id_lingua
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+
+  # 20251021-23 — Drop colonne legacy stile / lingua (dopo migrazione)
+  - changeSet:
+      id: 20251021-23-acq-note-drop-legacy-cols
+      author: mctit
+      
+      preConditions:
+        - onFail: CONTINUE
+        - tableExists:
+            schemaName: acquisti
+            tableName: note
+      changes:
+        - dropColumn:
+            schemaName: acquisti
+            tableName: note
+            columns:
+              - column:
+                  name: stile
+                  remarks: "Campo legacy testuale sostituito da id_stile (FK)."
+              - column:
+                  name: lingua
+                  remarks: "Campo legacy testuale sostituito da id_lingua (FK)."

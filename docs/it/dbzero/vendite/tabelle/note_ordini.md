@@ -12,8 +12,6 @@
 | seq | integer | NO | 10 |
 | testo | text | YES |  |
 | testo_md | text | YES |  |
-| stile | character varying | NO | 'NORMALE'::character varying |
-| lingua | character | YES |  |
 | visibile | boolean | NO | true |
 | solo_stampa | boolean | NO | false |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -21,6 +19,8 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
+| id_stile | bigint | NO |  |
+| id_lingua | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -29,9 +29,13 @@
 | CHECK | chk_note_posizione |  |
 | CHECK | chk_note_seq_pos |  |
 | CHECK | chk_note_target_tipo |  |
+| CHECK | chk_note_testo_non_vuoto |  |
 | CHECK | chk_ordini_note_anchor |  |
+| CHECK | chk_ordnote_testo_non_vuoto |  |
 | FOREIGN KEY | fk_ordini_note_riga | target_riga_id |
 | FOREIGN KEY | fk_ordini_note_testata | target_id |
+| FOREIGN KEY | fk_vendite_note_id_lingua | id_lingua, id_lingua, id_lingua, id_lingua, id_lingua, id_lingua |
+| FOREIGN KEY | fk_vendite_note_id_stile | id_stile, id_stile, id_stile, id_stile, id_stile, id_stile |
 | PRIMARY KEY | note_ordini_pkey | target_tipo, id |
 
 ## 📑 Indici
@@ -45,8 +49,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_note_ordini_ins_upd_validate | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_note_validate_generic('vendite.ordini_righe', 'ordine_id', 'ORDINE')` |
-| trg_note_ordini_ins_upd_validate | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_note_validate_generic('vendite.ordini_righe', 'ordine_id', 'ORDINE')` |
+| trg_note_ordini_ins_upd_validate | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.ordini_righe', 'ordine_id', 'ORDINE')` |
+| trg_note_ordini_ins_upd_validate | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.ordini_righe', 'ordine_id', 'ORDINE')` |
 
 ---
 {% include-markdown "signature-core.md" %}

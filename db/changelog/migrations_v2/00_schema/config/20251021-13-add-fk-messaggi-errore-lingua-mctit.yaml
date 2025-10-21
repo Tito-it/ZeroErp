@@ -1,0 +1,43 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20251021-13-add-fk-messaggi-errore-lingua-mctit.yaml
+
+  # 20251021-13 — FK messaggi_errore.lingua → config.lingue.codice_iso
+  - changeSet:
+      id: 20251021-13-add-fk-messaggi-errore-lingua
+      author: mctit
+      
+      preConditions:
+        - onFail: CONTINUE
+        - tableExists:
+            schemaName: config
+            tableName: messaggi_errore
+        - tableExists:
+            schemaName: config
+            tableName: lingue
+
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: messaggi_errore
+            baseColumnNames: lingua
+            referencedTableSchemaName: config
+            referencedTableName: lingue
+            referencedColumnNames: codice_iso
+            constraintName: fk_cfg_messaggi_errore_lingua
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON CONSTRAINT fk_cfg_messaggi_errore_lingua ON config.messaggi_errore IS
+              'Collega il campo lingua di messaggi_errore al codice ISO in config.lingue per garantire coerenza dei messaggi localizzati.';

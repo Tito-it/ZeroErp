@@ -88,18 +88,10 @@ Ogni partizione applica **FK** coerenti con il dominio e un **CHECK combinato** 
 ### 🔧 Migliorie / anomalie riscontrate
 
 
-2. **Dominio `stile`**
-   Attualmente libero (`VARCHAR(16)` con default `NORMALE`).
-   ▶ Consigliato un CHECK (es. `IN ('NORMALE','EVIDENZA','AVVISO','PICCOLO')`) o una tabella `config.note_stili`.
-
-3. **Lingua**
-   `CHAR(5)` è corretto, ma conviene un CHECK sul pattern `^[a-z]{2}-[A-Z]{2}$` o una lookup table `config.lingue` per evitare valori incoerenti.
-   ▶ In PostgreSQL, il pattern si può validare in trigger (`SIMILAR TO`/regex) se necessario.
-
-4. **Indici addizionali**
+1. **Indici addizionali**
    Selezione frequente per **testata**: aggiungi indice dedicato `(target_tipo, target_id)` (senza altre colonne) per lookup rapidi.
 
-5. **Policy di update**
+2. **Policy di update**
    Se le note devono essere **immutabili** dopo emissione/numerazione (es. su FATTURA), valuta un trigger *fail‑fast* condizionato allo stato documento.
 
 ---
