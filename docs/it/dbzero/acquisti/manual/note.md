@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimetno tabelle:**
+> **Approfondimento tabelle:**
 >
 > • [acquisti.ordini](/dbzero/acquisti/tabelle/ordini)   
 > • [acquisti.ddt](/dbzero/acquisti/tabelle/ddt)    
