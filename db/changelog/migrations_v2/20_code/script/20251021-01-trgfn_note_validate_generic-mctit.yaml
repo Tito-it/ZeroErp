@@ -12,6 +12,9 @@ databaseChangeLog:
   - changeSet:
       id: 20251021-01-trgfn_note_validate_generic-mctit.yaml
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
       changes:
         - sql:
             splitStatements: false
@@ -87,7 +90,7 @@ databaseChangeLog:
                     END
                     $$;
 
-                    ALTER FUNCTION script.trgfn_note_validate_generic() OWNER TO titodb;
+                   
 
                     COMMENT ON FUNCTION script.trgfn_note_validate_generic() IS
                     'Validazione generica per note ancorate a RIGA: verifica appartenenza target_riga_id→target_id via tabella righe (schema.qualificata) e FK passate in TG_ARGV.';

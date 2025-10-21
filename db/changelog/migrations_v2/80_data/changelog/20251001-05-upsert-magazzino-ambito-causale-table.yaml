@@ -12,9 +12,9 @@ databaseChangeLog:
       id: 20251001-05-upsert-magazzino-ambito-causale-table
       logicalFilePath: migrations_v2/80_data/20251001-05-upsert-magazzino-ambito-causale-table.yaml
       author: mctit
-      #runOnChange: true
-      #validCheckSums:
-      #  - ANY
+      runOnChange: true
+      validCheckSums:
+        - ANY
       failOnError: true
       preConditions:
         - onFail: HALT

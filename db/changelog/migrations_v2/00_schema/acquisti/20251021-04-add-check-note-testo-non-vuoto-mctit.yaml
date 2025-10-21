@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
+# Aggiunta CHECK: almeno uno tra testo / testo_md non NULL
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/acquisti/20251021-04-add-check-note-testo-non-vuoto-mctit.yaml
+
+  - changeSet:
+      id: 20251021-04-add-check-note-testo-non-vuoto
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: acquisti, tableName: note_ordini }
+        - tableExists: { schemaName: acquisti, tableName: note_ddt }
+
+      changes:
+        
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                  ALTER TABLE acquisti.note
+                    ADD CONSTRAINT chk_note_testo_non_vuoto
+                    CHECK (testo IS NOT NULL OR testo_md IS NOT NULL)
+
+        
+          
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                  ALTER TABLE acquisti.note_ordini
+                    ADD CONSTRAINT chk_ordnote_testo_non_vuoto
+                    CHECK (testo IS NOT NULL OR testo_md IS NOT NULL)
+
+         
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                  ALTER TABLE acquisti.note_ddt
+                    ADD CONSTRAINT chk_ddtnote_testo_non_vuoto
+                    CHECK (testo IS NOT NULL OR testo_md IS NOT NULL)
+
+      rollback:
+        - dropCheckConstraint:
+            schemaName: acquisti
+            tableName: note
+            constraintName: chk_note_testo_non_vuoto
+        - dropCheckConstraint:
+            schemaName: acquisti
+            tableName: note_ordini
+            constraintName: chk_ordnote_testo_non_vuoto
+        - dropCheckConstraint:
+            schemaName: acquisti
+            tableName: note_ddt
+            constraintName: chk_ddtnote_testo_non_vuoto
