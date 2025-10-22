@@ -17,9 +17,10 @@ databaseChangeLog:
       logicalFilePath: migrations_v2/00_schema/acquisti/20251004-13-create-fn-get-acquisti-note.sql.yaml
       preConditions:
      # non deve essere più creata fatta funzione generica 22/10/22  
-        - not:
+        
           - onFail: CONTINUE
-          - tableExists: { schemaName: vendite, tableName: note }
+          - not:
+            - tableExists: { schemaName: vendite, tableName: note }
 
       changes:
         - sql:
