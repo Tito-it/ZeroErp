@@ -12,42 +12,9 @@ CREATE OR REPLACE FUNCTION acquisti.fn_get_acquisti_note(_target_tipo text, _tar
  LANGUAGE sql
  STABLE
 AS $function$
- ------------------------------------------------------
- -- Funzione generica per estrarre note per target_tipo/target_id
- ------------------------------------------------------
-  SELECT
-    n.target_tipo,
-    n.target_id,
-    n.target_riga_id,
-    n.anchor_tipo,
-    n.posizione,
-    n.seq,
-    n.testo,
-    n.testo_md,
-    n.stile,
-    n.lingua,
-    n.visibile,
-    n.solo_stampa,
-    n.meta,
-    n.data_insert,
-    n.user_insert,
-    n.data_update,
-    n.user_update
-  FROM acquisti.note AS n
-  WHERE n.target_tipo = upper(_target_tipo)
-    AND n.target_id   = _target_id
-    AND (_target_riga_id IS NULL OR n.target_riga_id = _target_riga_id)
-    AND (
-          (_include_doc   AND n.anchor_tipo = 'DOCUMENTO')
-       OR (_include_righe AND n.anchor_tipo = 'RIGA')
-    )
-    AND (_only_visible IS FALSE OR n.visibile IS TRUE)
-  ORDER BY
-    -- ordina prima DOCUMENTO poi RIGA, mantenendo il rendering naturale
-    CASE n.anchor_tipo WHEN 'DOCUMENTO' THEN 1 ELSE 2 END,
-    n.posizione,
-    n.seq,
-    n.id;  -- id come tie-breaker
+  SELECT * FROM script.fn_get_note('acquisti.note'::regclass,
+                                   _target_tipo, _target_id, _target_riga_id,
+                                   _include_doc, _include_righe, _only_visible);
 $function$
 ```
 

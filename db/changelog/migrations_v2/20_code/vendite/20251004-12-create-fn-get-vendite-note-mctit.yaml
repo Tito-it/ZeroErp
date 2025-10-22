@@ -15,6 +15,12 @@ databaseChangeLog:
       id: 20251004-12-create-fn-get-vendite-note
       author: mctit
       logicalFilePath: migrations_v2/00_schema/vendite/20251004-12-create-fn-get-vendite-note.sql.yaml
+      preConditions:
+     # non deve essere più creata fatta funzione generica 22/10/22  
+        - not:
+          - onFail: CONTINUE
+          - tableExists: { schemaName: vendite, tableName: note }
+      
       changes:
         - sql:
             splitStatements: false
