@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/note_ddt.md" %}
 # 📚 Tabella `note_ddt`
 
 ## 🗂️ Campi principali

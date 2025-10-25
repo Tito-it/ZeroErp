@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/note_fatture.md" %}
 # 📚 Tabella `note_fatture`
 
 ## 🗂️ Campi principali
