@@ -1,0 +1,8 @@
+id,codice_interno,codice,descrizione,attivo,ordine,meta
+2,CONFERMATO,CONFERMATO,Confermato,t,20,{}
+3,ALLOCATO,ALLOCATO,Allocato a magazzino,t,30,{}
+4,SPEDITO,SPEDITO,Spedito,t,40,{}
+5,CONSEGNATO,CONSEGNATO,Consegnato,t,50,{}
+6,ANNULLATO,ANNULLATO,Annullato,t,60,{}
+7,FATTURATO,FATTURATO,Fatturato,t,70,{}
+1,DRAFT,DRAFT,Bozza,t,10,{}

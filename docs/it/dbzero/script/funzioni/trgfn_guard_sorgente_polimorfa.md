@@ -1,0 +1,133 @@
+# ⚙️ Funzione `trgfn_guard_sorgente_polimorfa`
+
+```sql
+CREATE FUNCTION trgfn_guard_sorgente_polimorfa()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.trgfn_guard_sorgente_polimorfa()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_area          text := TG_TABLE_SCHEMA;
+  v_tbl           regclass;
+  v_selector      text;
+  v_exists        boolean;
+  v_src_id        bigint;
+  v_src_uid       uuid;
+  v_target_id     text;
+BEGIN
+  -- Se non è valorizzata la sorgente, nessuna verifica
+  IF NEW.sorgente_tipo_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- Recupero configurazione sorgente attiva
+  SELECT s.target_table, s.key_selector
+    INTO v_tbl, v_selector
+    FROM config.sorgenti s
+   WHERE s.id = NEW.sorgente_tipo_id
+     AND s.attivo = true;
+
+  IF v_tbl IS NULL OR v_selector IS NULL THEN
+   -- Configurazoione mancante o errata
+    PERFORM script.fn_log_and_raise_error(
+      v_area, TG_TABLE_NAME, 'E_SORG_CONF',
+      jsonb_build_object(
+        'detail','Configurazione sorgente mancante/errata',
+        'sorgente_tipo_id', NEW.sorgente_tipo_id,
+        'target_table', COALESCE(v_tbl::text,'<NULL>'),
+        'key_selector', COALESCE(v_selector,'<NULL>')
+      ),
+      NULL::uuid,
+      NEW.sorgente_tipo_id::text
+    );
+  END IF;
+
+  -- Selezione per tipo chiave
+  IF v_selector = 'id' THEN
+    v_src_id := NEW.sorgente_riga;
+    IF v_src_id IS NULL THEN
+      PERFORM script.fn_log_and_raise_error(
+        v_area, TG_TABLE_NAME, 'E_SORG_KEY_MISSING',
+        jsonb_build_object(
+          'detail','Chiave sorgente mancante: atteso sorgente_riga (id)',
+          'sorgente_tipo_id', NEW.sorgente_tipo_id,
+          'key_selector', v_selector
+        ),
+        NULL::uuid,
+        'id' ,
+        NEW.sorgente_tipo_id::text
+      );
+    END IF;
+
+    EXECUTE format('SELECT true FROM %s WHERE id = $1', v_tbl::text)
+      INTO v_exists
+      USING v_src_id;
+
+  ELSIF v_selector = 'uid' THEN
+    v_src_uid := NEW.sorgente_uid;
+    IF v_src_uid IS NULL THEN
+      PERFORM script.fn_log_and_raise_error(
+        v_area, TG_TABLE_NAME, 'E_SORG_KEY_MISSING',
+        jsonb_build_object(
+          'detail','Chiave sorgente mancante: atteso sorgente_uid (uuid)',
+          'sorgente_tipo_id', NEW.sorgente_tipo_id,
+          'key_selector', v_selector
+        ),
+        NULL::uuid,
+        'uid',
+        NEW.sorgente_tipo_id::text
+      );
+    END IF;
+
+    EXECUTE format('SELECT true FROM %s WHERE uid = $1', v_tbl::text)
+      INTO v_exists
+      USING v_src_uid;
+
+  ELSE
+    -- Valore non consentito: la tabella config.sorgenti dovrebbe impedirlo con CHECK
+    PERFORM script.fn_log_and_raise_error(
+      v_area, TG_TABLE_NAME, 'E_SORG_KEYSEL',
+      jsonb_build_object(
+        'detail','key_selector non supportato',
+        'sorgente_tipo_id', NEW.sorgente_tipo_id,
+        'key_selector', v_selector
+      ),
+      NULL::uuid,
+      NEW.sorgente_tipo_id::text
+    );
+  END IF;
+
+  IF v_selector = 'id' THEN 
+    v_target_id := v_src_id::text;
+  ELSE
+    v_target_id := v_src_uid::text;
+  END IF;
+
+  IF NOT COALESCE(v_exists,false) THEN
+    PERFORM script.fn_log_and_raise_error(
+      v_area, TG_TABLE_NAME, 'E_SORG_NOT_FOUND',
+      jsonb_build_object(
+        'detail','Riferimento sorgente non trovato nella tabella target',
+        'sorgente_tipo_id', NEW.sorgente_tipo_id,
+        'target_table', v_tbl::text,
+        'key_selector', v_selector,
+        'sorgente_riga', NEW.sorgente_riga,
+        'sorgente_uid', NEW.sorgente_uid
+      ),
+      NULL::uuid,
+      v_target_id 
+    );
+  END IF;
+
+  RETURN NEW;
+END
+$function$
+```
+
+---
+{% include-markdown "signature-core.md" %}

@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20251025-01-alter-sorgenti-add-target-and-keyselector.yaml
+
+      
+  
+  
+  # 20251025-01 — ALTER config.sorgenti: add target_table (regclass) & key_selector (default 'id')
+  - changeSet:
+      id: 20251025-01-alter-sorgenti-add-target-and-keyselector
+      author: mctit
+      preConditions:
+        - onFail: CONTINUE
+        - not:
+          - columnExists:
+              schemaName: config
+              tableName: sorgenti
+              columnName: key_selector
+
+      changes:
+        - addColumn:
+            schemaName: config
+            tableName: sorgenti
+            columns:
+              - column:
+                  name: target_table
+                  type: REGCLASS
+                  remarks: "Tabella di destinazione (schema.tabella) come regclass. Es.: 'vendite.ordini_righe'::regclass."
+                  # Intenzionalmente senza NOT NULL nella prima fase: verrà popolata gradualmente.
+              - column:
+                  name: key_selector
+                  type: TEXT
+                  defaultValue: "id"
+                  remarks: "Selettore chiave della sorgente: 'id' (PK numerico) oppure 'uid' (UUID)."
+
+        
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON COLUMN config.sorgenti.target_table IS
+              'Tabella target come regclass, risolve schema+tabella per validazioni polimorfe (esistenza riga sorgente).';
+              COMMENT ON COLUMN config.sorgenti.key_selector IS
+              'Selettore chiave: id (bigint) o uid (uuid). Usato dai trigger per determinare quale campo usare.';
+
+
+  # 20251025-02 — Backfill key_selector = 'id' per righe esistenti e NOT NULL constraint
+  - changeSet:
+      id: 20251025-02-backfill-sorgenti-keyselector-and-notnull
+      author: mctit
+      preConditions:
+        - onFail: CONTINUE
+        - columnExists:
+            schemaName: config
+            tableName: sorgenti
+            columnName: key_selector
+
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              UPDATE config.sorgenti
+                 SET key_selector = 'id'
+               WHERE key_selector IS NULL;
+
+        - addNotNullConstraint:
+            schemaName: config
+            tableName: sorgenti
+            columnName: key_selector
+            columnDataType: TEXT
+
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Check validità e valori ammessi
+              ALTER TABLE config.sorgenti
+              ADD CONSTRAINT chk_sorgenti_key_selector_values
+              CHECK ( key_selector IN ('id','uid') );

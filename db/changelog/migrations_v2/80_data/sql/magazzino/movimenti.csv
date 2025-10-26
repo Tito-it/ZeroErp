@@ -1,0 +1,1 @@
+id,articolo_id,magazzino_id,magazzino_id_dest,uom_id,qta,costo_unitario,data_mov,lotto,seriale,causale_id,doc_schema,doc_table,doc_id,doc_riga_id,attivo,meta,data_insert,user_insert,data_update,user_update,tx_id,storicizza,transfer_uid,ubicazione_id_from,ubicazione_id_to

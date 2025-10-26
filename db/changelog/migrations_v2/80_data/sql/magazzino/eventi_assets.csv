@@ -1,0 +1,1 @@
+id,asset_id,data_evento,magazzino_id_from,magazzino_id_to,doc_schema,doc_table,doc_id,doc_riga_id,attivo,extra_info,tx_id,user_insert,user_update,data_insert,data_update,storicizza,tipo_evento_id,stato_da_id,stato_a_id,sorgente_tipo_id,sorgente_uid

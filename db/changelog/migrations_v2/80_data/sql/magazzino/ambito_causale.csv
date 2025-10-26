@@ -1,7 +1,7 @@
-codice,codice_interno,descrizione,ordine,attivo
-VENDITE,MAG_AMB_VENDITE,Movimenti connessi a vendite,10,True
-ACQUISTI,MAG_AMB_ACQUISTI,Movimenti connessi ad acquisti,20,True
-ODL,MAG_AMB_ODL,Movimenti da Ordini di Lavoro,30,True
-TRASF,MAG_AMB_TRASF,Trasferimenti interni,40,True
-INVENTARIO,MAG_AMB_INV,Rettifiche/Inventari,50,True
-GENERICO,MAG_AMB_GEN,Ambito generico,90,True
+id,codice,codice_interno,descrizione,ordine,attivo,extra_info,tx_id,user_insert,user_update,data_insert,data_update,storicizza
+1,VENDITE,MAG_AMB_VENDITE,Movimenti connessi a vendite,10,t,{},,,,2025-10-01 17:33:32.892458+02,,f
+2,ACQUISTI,MAG_AMB_ACQUISTI,Movimenti connessi ad acquisti,20,t,{},,,,2025-10-01 17:33:32.892458+02,,f
+3,ODL,MAG_AMB_ODL,Movimenti da Ordini di Lavoro,30,t,{},,,,2025-10-01 17:33:32.892458+02,,f
+4,TRASF,MAG_AMB_TRASF,Trasferimenti interni,40,t,{},,,,2025-10-01 17:33:32.892458+02,,f
+5,INVENTARIO,MAG_AMB_INV,Rettifiche/Inventari,50,t,{},,,,2025-10-01 17:33:32.892458+02,,f
+6,GENERICO,MAG_AMB_GEN,Ambito generico,90,t,{},,,,2025-10-01 17:33:32.892458+02,,f

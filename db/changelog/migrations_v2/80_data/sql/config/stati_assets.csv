@@ -1,7 +1,7 @@
-codice_interno,codice,descrizione,attivo,ordine,meta
-ASSET_ST_IN_STOCK,IN_STOCK,Disponibile a magazzino,True,10,{}
-ASSET_ST_ASSEGNATO,ASSEGNATO,Assegnato (in carico a tecnico/ODL/cliente),True,20,{}
-ASSET_ST_INSTALLATO,INSTALLATO,Installato presso cliente/impianto,True,30,{}
-ASSET_ST_RIENTRATO,RIENTRATO,Rientrato a magazzino,True,40,{}
-ASSET_ST_GUASTO,GUASTO,Guasto / fuori servizio,True,50,{}
-ASSET_ST_DISMISSED,DISMISSED,Dismesso / rottamato,True,90,{}
+id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update
+1,ASSET_ST_IN_STOCK,IN_STOCK,Disponibile a magazzino,t,10,{},2025-10-02 11:45:49.448793+02,titodb,2025-10-02 11:45:49.448793+02,titodb
+2,ASSET_ST_ASSEGNATO,ASSEGNATO,Assegnato (in carico a tecnico/ODL/cliente),t,20,{},2025-10-02 11:45:49.448793+02,titodb,2025-10-02 11:45:49.448793+02,titodb
+3,ASSET_ST_INSTALLATO,INSTALLATO,Installato presso cliente/impianto,t,30,{},2025-10-02 11:45:49.448793+02,titodb,2025-10-02 11:45:49.448793+02,titodb
+4,ASSET_ST_RIENTRATO,RIENTRATO,Rientrato a magazzino,t,40,{},2025-10-02 11:45:49.448793+02,titodb,2025-10-02 11:45:49.448793+02,titodb
+5,ASSET_ST_GUASTO,GUASTO,Guasto / fuori servizio,t,50,{},2025-10-02 11:45:49.448793+02,titodb,2025-10-02 11:45:49.448793+02,titodb
+6,ASSET_ST_DISMISSED,DISMISSED,Dismesso / rottamato,t,90,{},2025-10-02 11:45:49.448793+02,titodb,2025-10-02 11:45:49.448793+02,titodb
