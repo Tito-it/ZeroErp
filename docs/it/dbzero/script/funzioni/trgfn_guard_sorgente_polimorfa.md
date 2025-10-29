@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/trgfn_guard_sorgente_polimorfa.md" %}
 # ⚙️ Funzione `trgfn_guard_sorgente_polimorfa`
 
 ```sql

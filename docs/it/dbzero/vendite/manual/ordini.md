@@ -6,14 +6,14 @@
 >
 > • [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)  
 > • [config.stati_doc_ordini](/dbzero/config/tabelle/stati_doc_ordini)  
-> • [config.modalita_pagamento](/dbzero/config/tabelle/modalita_pagamento)  
+> • [config.modalita_pagamento](/dbzero/config/tabelle/modalita_pagamento)   
 > • [config.valute](/dbzero/config/tabelle/valute)  
 > • [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)  
 > • [config.causali_trasporto](/dbzero/config/tabelle/causali_trasporto)  
 > • [config.aspetti_beni](/dbzero/config/tabelle/aspetti_beni)  
 > • [config.modalita_addebito_trasporto](/dbzero/config/tabelle/modalita_addebito_trasporto)  
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
-> • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
+> • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)    
 
 ---
 
@@ -113,16 +113,6 @@ I campi di sintesi (`imponibile_tot`, `sconto_tot`, `iva_tot`, `totale_doc`) rap
 
 ---
 
-### ⚠️ Osservazioni e migliorie consigliate
-
-1. **Campo `numero`** – aggiungere `CHECK (numero <> '')` per evitare numeri vuoti nei documenti numerati.  
-2. **Gestione `vettore_soggetto_ruolo_id`** – attualmente non referenziata con `ON DELETE SET NULL`; potrebbe essere utile aggiungerla per coerenza logistica.  
-3. **Campi peso/volume** – valutare default = 0 o `CHECK (>= 0)` per validazione quantitativa.  
-4. **Indice composito cliente + data** – utile per cruscotti di analisi ordini per periodo.  
-5. **Campo `uid`** – raccomandato `NOT NULL` con generazione automatica per garantire tracciabilità anche offline.  
-6. **Evoluzione futura** – possibile estensione verso `vendite.ordini_righe_evasi` e `vendite.ordini_righe_fatturate` per tracciamento stato di avanzamento.
-
----
 
 ### 👓 Ruolo nel sistema
 

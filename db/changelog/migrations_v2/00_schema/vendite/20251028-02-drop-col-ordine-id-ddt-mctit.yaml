@@ -1,0 +1,34 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  - logicalFilePath: migrations_v2/00_schema/vendite/db/changelog/migrations_v2/00_schema/20251028-02-drop-col-ordine-id-ddt-mctit.yaml
+
+  # 20251026-21 — DROP colonna note da vendite.attivita_fatturabili
+  - changeSet:
+      id: 20251028-02-drop-col-ordine-id-ddt-mctit
+      author: mctit
+      preConditions:
+        - onFail: CONTINUE
+        - tableExists:
+            schemaName: vendite
+            tableName: ddt
+        - columnExists:
+            schemaName: vendite
+            tableName: ddt
+            columnName: ordine_id
+
+      changes:
+        - dropColumn:
+            schemaName: vendite
+            tableName: ddt
+            columns:
+              - column:
+                  name: ordine_id

@@ -1,0 +1,44 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20251026-03-create-trgfn-ordini-norm-mctit.yaml
+
+  - changeSet:
+      id: 20251026-03-create-trgfn-ordini-norm
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Function coerente con tabella vendite.ordini
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_norm()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                ----------------------------------------------------------------
+                -- Generazione codice/anno/data SOLO in INSERT e SOLO se numero mancante
+                IF TG_OP = 'INSERT' AND (NEW.numero IS NULL OR btrim(NEW.numero) = '') THEN
+                  NEW.numero := script.fn_generate_codice('ordine');
+                 
+                  -- imposta anno e data ai valori correnti di sistema
+                  NEW.anno := EXTRACT(YEAR FROM CURRENT_DATE)::smallint;
+                  NEW.data := CURRENT_DATE;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ordini_norm() IS
+              'Normalizza vendite.ordini in INSERT: se numero è NULL/blank, genera numero e imposta anno/data correnti. Nessuna modifica in UPDATE.';
+
+              -- Allineo il trigger alla function corretta (schema vendite)
+              DROP TRIGGER IF EXISTS trg_ordini_ins_upd_norm ON vendite.ordini;
+
+              CREATE TRIGGER trg_ordini_ins_upd_norm
+                BEFORE INSERT OR UPDATE ON vendite.ordini
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_ordini_norm();
+
+              COMMENT ON TRIGGER trg_ordini_ins_upd_norm ON vendite.ordini IS
+              'Normalizza numero/anno/data in INSERT quando numero è mancante.';

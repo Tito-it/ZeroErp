@@ -34,7 +34,7 @@
 - [trgfn_conti_bancari_ins_upd_normalize](funzioni/trgfn_conti_bancari_ins_upd_normalize.md)
 - [trgfn_conti_ins_upd_normalize](funzioni/trgfn_conti_ins_upd_normalize.md)
 - [trgfn_fornitori_guard](funzioni/trgfn_fornitori_guard.md)
-- [trgfn_guard_sorgente_polimorfa](funzioni/trgfn_guard_sorgente_polimorfa.md)
+- [trgfn_guard_sorgente_polimorfa](funzioni/trgfn_guard_sorgente_polimorfa.md) — `script.trgfn_guard_sorgente_polimorfa()` fornisce un **controllo unificato e riusabile** sulla **coerenza dei riferimenti di sorgente** (origine dati) per tabelle applicative che adottano il pattern:
 - [trgfn_lock_columns](funzioni/trgfn_lock_columns.md) — -  Trigger function generica per **bloccare modifiche non autorizzate** su colonne specificate, integrando:
 - [trgfn_note_validate_generic](funzioni/trgfn_note_validate_generic.md)
 - [trgfn_prevent_modification_generic](funzioni/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.

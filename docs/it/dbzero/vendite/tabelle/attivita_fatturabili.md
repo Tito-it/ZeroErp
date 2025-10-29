@@ -14,7 +14,6 @@
 | competenza_data | date | YES |  |
 | approvato | boolean | YES | false |
 | fatturato | boolean | YES | false |
-| note | character varying | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |

@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  - logicalFilePath: migrations_v2/00_schema/vendite/20251026-11-create-note-part-attivita-mctit.yaml
+
+
+  # 20251026-11 — CREATE PARTITION vendite.note_attivita_fatturabili (FOR VALUES IN 'ATTIVITAFT')
+  - changeSet:
+      id: 20251026-11-create-vendite-note-part-attivita
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:   { schemaName: vendite, tableName: note }
+        - tableExists:   { schemaName: vendite, tableName: attivita_fatturabili }
+
+      changes:
+        # Partizione per target_tipo = 'ATTIVITAFT'
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE TABLE IF NOT EXISTS vendite.note_attivita_fatturabili
+              PARTITION OF vendite.note
+              FOR VALUES IN ('ATTIVITAFT');
+
+              COMMENT ON TABLE vendite.note_attivita_fatturabili IS
+              'Partizione note per vendite.attivita_fatturabili. Solo ancoraggio RIGA (target_riga_id obbligatoria).';
+
+        # Vincoli referenziali: sia target_id che target_riga_id puntano alla riga attività
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: note_attivita_fatturabili
+            baseColumnNames: target_riga_id
+            referencedTableSchemaName: vendite
+            referencedTableName: attivita_fatturabili
+            referencedColumnNames: id
+            constraintName: fk_ven_note_att_riga
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: note_attivita_fatturabili
+            baseColumnNames: target_id
+            referencedTableSchemaName: vendite
+            referencedTableName: attivita_fatturabili
+            referencedColumnNames: id
+            constraintName: fk_ven_note_att_testata
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        # Check semantico: solo note di RIGA, posizioni BEFORE/AFTER e target_riga_id NOT NULL
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                  ALTER TABLE vendite.note_attivita_fatturabili
+                    ADD CONSTRAINT chk_ven_note_att_anchor
+                    CHECK ((anchor_tipo::text = 'RIGA'::text) AND (target_riga_id IS NOT NULL) AND (posizione::text = ANY (ARRAY['BEFORE'::varchar,'AFTER'::varchar]::text[])));
+
+        # Indice di rendering per la partizione (come gli altri)
+        - createIndex:
+            schemaName: vendite
+            tableName: note_attivita_fatturabili
+            indexName: ix_ven_note_att_render
+            columns:
+              - column: { name: target_id }
+              - column: { name: anchor_tipo }
+              - column: { name: target_riga_id }
+              - column: { name: posizione }
+              - column: { name: seq }
+
+        # Commenti colonne (facoltativi, per chiarezza d'uso nella partizione)
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON CONSTRAINT fk_ven_note_att_riga ON vendite.note_attivita_fatturabili IS
+              'FK → vendite.attivita_fatturabili(id): riga attività referenziata dalla nota (ancoraggio RIGA).';
+
+              COMMENT ON CONSTRAINT fk_ven_note_att_testata ON vendite.note_attivita_fatturabili IS
+              'FK → vendite.attivita_fatturabili(id): per coerenza, target_id = id riga attività.';

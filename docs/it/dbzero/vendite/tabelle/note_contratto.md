@@ -35,8 +35,8 @@
 | CHECK | chk_note_testo_non_vuoto |  |
 | FOREIGN KEY | fk_contnote_riga | target_riga_id |
 | FOREIGN KEY | fk_contnote_testata | target_id |
-| FOREIGN KEY | fk_vendite_note_id_lingua | id_lingua, id_lingua, id_lingua, id_lingua, id_lingua, id_lingua |
-| FOREIGN KEY | fk_vendite_note_id_stile | id_stile, id_stile, id_stile, id_stile, id_stile, id_stile |
+| FOREIGN KEY | fk_vendite_note_id_lingua | id_lingua, id_lingua, id_lingua, id_lingua, id_lingua, id_lingua, id_lingua |
+| FOREIGN KEY | fk_vendite_note_id_stile | id_stile, id_stile, id_stile, id_stile, id_stile, id_stile, id_stile |
 | PRIMARY KEY | note_contratto_pkey | target_tipo, id |
 
 ## 📑 Indici
