@@ -14,17 +14,18 @@
 - [ddt_righe](tabelle/ddt_righe.md)
 - [fatture](tabelle/fatture.md) — `vendite.fatture` rappresenta la **testata del documento fiscale di vendita**. Gestisce **identità fiscale (registro/anno/serie/numero)**, **stato e tipo documento**, **intestatari economici** (BA, emittente, reseller), **valuta e pagamento**, **totali** e **metadati**. È il **punto di aggregazione** delle righe (`vendite.fatture_righe`) e dei riepiloghi IVA.
 - [fatture_indirizzi](tabelle/fatture_indirizzi.md) — `vendite.fatture_indirizzi` **semplifica la gestione degli indirizzi di fattura** e garantisce la **ristampa conforme** nel tempo tramite **snapshot** JSON dell’indirizzo al momento dell’emissione.
-- [fatture_rettifiche](tabelle/fatture_rettifiche.md)
+- [fatture_rettifiche](tabelle/fatture_rettifiche.md) — `vendite.fatture_rettifiche` modella il **legame N:N** fra **documenti rettificanti** (es. note di credito/debito) e **documenti rettificati** (fatture originarie).
 - [fatture_riepiloghi_iva](tabelle/fatture_riepiloghi_iva.md) — `vendite.fatture_riepiloghi_iva` è lo **specchietto fiscale** della fattura: aggrega le righe per **combinazione fiscale** e ne memorizza i totali. Serve per:
 - [fatture_righe](tabelle/fatture_righe.md) — `vendite.fatture_righe` contiene le **righe economiche** di una fattura: descrizione, articolo (opzionale), UoM, quantità, prezzo, sconti, IVA e **importi congelati** (*snapshot*) al momento della generazione. Ogni riga è ordinata tramite `riga_nr` ed è collegata a una testata `vendite.fatture` (FK `fattura_id`). Supporta la **destinazione a BA diverso** dalla testata e l’idempotenza di import riga‑per‑riga.
 - [fatture_scadenze](tabelle/fatture_scadenze.md) — `vendite.fatture_scadenze` memorizza lo **schedule di pagamento** (rate/scadenze) della fattura come **snapshot** al momento dell’emissione, così da:
-- [note](tabelle/note.md)
-- [note_contratto](tabelle/note_contratto.md)
-- [note_ddt](tabelle/note_ddt.md)
-- [note_fatture](tabelle/note_fatture.md)
-- [note_ordini](tabelle/note_ordini.md)
-- [note_preventivo](tabelle/note_preventivo.md)
-- [ordini](tabelle/ordini.md)
+- [note](tabelle/note.md) — `vendite.note` gestisce **note testuali** ancorabili sia alla **testata** del documento sia alla **riga**, con controllo di posizionamento e ordinamento di rendering. È una tabella **partizionata per `target_tipo`** per garantire prestazioni e manutenzione più semplici, con **FK forti** verso le rispettive testate/righe nelle singole partizioni.
+- [note_attivita_fatturabili](tabelle/note_attivita_fatturabili.md) — `vendite.note_attivita_fatturabili` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
+- [note_contratto](tabelle/note_contratto.md) — `vendite.note_contratto` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
+- [note_ddt](tabelle/note_ddt.md) — `vendite.note_ddt` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
+- [note_fatture](tabelle/note_fatture.md) — `vendite.note_fatture` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
+- [note_ordini](tabelle/note_ordini.md) — `vendite.note_ordini` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
+- [note_preventivo](tabelle/note_preventivo.md) — `vendite.note_preventivo` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
+- [ordini](tabelle/ordini.md) — La tabella **`vendite.ordini`** rappresenta la **testata dell’ordine di vendita**, documento commerciale preliminare che raccoglie le condizioni di vendita, spedizione e pagamento concordate con il cliente.   È il punto di partenza del ciclo attivo, destinato a generare documenti successivi (DDT, fatture, contratti di fornitura).
 - [ordini_indirizzi](tabelle/ordini_indirizzi.md)
 - [ordini_righe](tabelle/ordini_righe.md)
 - [ordini_righe_fulfillment](tabelle/ordini_righe_fulfillment.md)
@@ -38,8 +39,10 @@
 ## ⚙️ Funzioni
 - [fn_get_vendite_note](funzioni/fn_get_vendite_note.md)
 - [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md)
+- [fn_resolve_termini_pagamento](funzioni/fn_resolve_termini_pagamento.md)
 - [trgfn_a10_attivita_fatturabili_guard_fatturato](funzioni/trgfn_a10_attivita_fatturabili_guard_fatturato.md)
 - [trgfn_a10_fatture_protect_num](funzioni/trgfn_a10_fatture_protect_num.md)
+- [trgfn_a10_ins_upd_ordini_ful_guard_consistenza](funzioni/trgfn_a10_ins_upd_ordini_ful_guard_consistenza.md)
 - [trgfn_a10_ordini_v_protect_num](funzioni/trgfn_a10_ordini_v_protect_num.md)
 - [trgfn_a10_v_contratti_protect_num](funzioni/trgfn_a10_v_contratti_protect_num.md)
 - [trgfn_a10_v_ddt_protect_num](funzioni/trgfn_a10_v_ddt_protect_num.md)
@@ -51,13 +54,13 @@
 - [trgfn_attivita_guard_ba_coerenza](funzioni/trgfn_attivita_guard_ba_coerenza.md)
 - [trgfn_attivita_guard_fonte](funzioni/trgfn_attivita_guard_fonte.md)
 - [trgfn_attivita_norm_competenza_mese](funzioni/trgfn_attivita_norm_competenza_mese.md)
-- [trgfn_contnote_validate](funzioni/trgfn_contnote_validate.md)
 - [trgfn_ddt_indirizzi_only_allowed_tipi](funzioni/trgfn_ddt_indirizzi_only_allowed_tipi.md)
 - [trgfn_fatture_indirizzi_only_allowed_tipi](funzioni/trgfn_fatture_indirizzi_only_allowed_tipi.md)
 - [trgfn_fatture_righe_norm_guard](funzioni/trgfn_fatture_righe_norm_guard.md)
+- [trgfn_note_validate_generic](funzioni/trgfn_note_validate_generic.md)
 - [trgfn_ordini_indirizzi_only_allowed_tipi](funzioni/trgfn_ordini_indirizzi_only_allowed_tipi.md)
+- [trgfn_ordini_norm](funzioni/trgfn_ordini_norm.md)
 - [trgfn_preventivi_norm](funzioni/trgfn_preventivi_norm.md)
-- [trgfn_prevnote_validate](funzioni/trgfn_prevnote_validate.md)
 - [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md)
 
 ## 🔍 Views

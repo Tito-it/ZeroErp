@@ -31,5 +31,11 @@
 | pk_fulv | `CREATE UNIQUE INDEX pk_fulv ON vendite.ordini_righe_fulfillment USING btree (id)` |
 | uq_ordini_r_ful_v_pair | `CREATE UNIQUE INDEX uq_ordini_r_ful_v_pair ON vendite.ordini_righe_fulfillment USING btree (ordine_riga_id, ddt_riga_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_ordini_a10_ins_upd_ful_guard_consistenza | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_a10_ins_upd_ordini_ful_guard_consistenza()` |
+| trg_ordini_a10_ins_upd_ful_guard_consistenza | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_ins_upd_ordini_ful_guard_consistenza()` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -51,3 +51,5 @@ databaseChangeLog:
                   type: STRING 
                   defaultValue: "NOW()"
               - column: { name: user_update,  type: STRING }  
+              - column: { name: target_table,  type: STRING } 
+              - column: { name: key_selector,  type: STRING } 

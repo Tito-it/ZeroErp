@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/note.md" %}
 # 📚 Tabella `note`
 
 ## 🗂️ Campi principali
@@ -12,8 +13,6 @@
 | seq | integer | NO | 10 |
 | testo | text | YES |  |
 | testo_md | text | YES |  |
-| stile | character varying | NO | 'NORMALE'::character varying |
-| lingua | character | YES |  |
 | visibile | boolean | NO | true |
 | solo_stampa | boolean | NO | false |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -21,6 +20,8 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
+| id_stile | bigint | NO |  |
+| id_lingua | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -29,6 +30,9 @@
 | CHECK | chk_note_posizione |  |
 | CHECK | chk_note_seq_pos |  |
 | CHECK | chk_note_target_tipo |  |
+| CHECK | chk_note_testo_non_vuoto |  |
+| FOREIGN KEY | fk_vendite_note_id_lingua | id_lingua, id_lingua, id_lingua, id_lingua, id_lingua, id_lingua, id_lingua |
+| FOREIGN KEY | fk_vendite_note_id_stile | id_stile, id_stile, id_stile, id_stile, id_stile, id_stile, id_stile |
 | PRIMARY KEY | pk_note | target_tipo, id |
 
 ## 📑 Indici

@@ -14,11 +14,14 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
+| target_table | regclass | YES |  |
+| key_selector | text | NO | 'id'::text |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_sorgenti_codice_interno_non_vuoto |  |
+| CHECK | chk_sorgenti_key_selector_values |  |
 | PRIMARY KEY | sorgenti_pkey | id |
 | UNIQUE | uq_sorgenti_codice | codice |
 | UNIQUE | uq_sorgenti_codice_interno | codice_interno |

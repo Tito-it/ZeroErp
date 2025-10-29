@@ -1,0 +1,8 @@
+id,codice,descrizione,attivo,ordine,meta,codice_interno
+1,DRAFT,Bozza,t,10,{},DRAFT
+2,EMESSA,Emessa,t,20,{},EMESSA
+3,INVIATA,Inviata,t,30,{},INVIATA
+4,CONSEGNATA,Consegnata,t,40,{},CONSEGNATA
+5,SCARTATA,Scartata,t,50,{},SCARTATA
+6,REGISTRATA,Registrata,t,60,{},REGISTRATA
+7,ANNULLATA,Annullata,t,70,{},ANNULLATA

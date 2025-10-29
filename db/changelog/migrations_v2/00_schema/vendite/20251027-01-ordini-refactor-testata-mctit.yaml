@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  - logicalFilePath: migrations_v2/00_schema/vendite/20251027-01-ordini-refactor-testata-mctit.yaml
+
+  - changeSet:
+      id: 20251027-01-ordini-refactor-testata
+      author: mctit
+      context: "vendite"
+      labels: "ordini,refactor,ddt-separation"
+
+      preConditions:
+        - onFail: MARK_RAN
+        
+        - tableExists:
+            schemaName: vendite
+            tableName: ordini
+
+      changes:
+
+        # --- 1) Drop FK legate ai campi logistici ---
+        - preConditions:
+          - onFail: CONTINUE
+          - foreignKeyConstraintExists:
+                foreignKeyName: fk_ordini_v_causale_trasporto
+                schemaName: vendite
+                tableName: ordini
+          dropForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini
+            constraintName: fk_ordini_v_causale_trasporto
+
+        - preConditions:
+          - onFail: CONTINUE
+          - foreignKeyConstraintExists:
+                foreignKeyName: fk_ordini_v_aspetto_bene
+                schemaName: vendite
+                tableName: ordini
+          dropForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini
+            constraintName: fk_ordini_v_aspetto_bene
+
+        - preConditions:
+          - onFail: CONTINUE
+          - foreignKeyConstraintExists:
+                foreignKeyName: fk_ordini_v_mod_add_trasporto
+                schemaName: vendite
+                tableName: ordini
+          dropForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini
+            constraintName: fk_ordini_v_mod_add_trasporto
+
+        # --- 2) Drop colonne logistiche dalla testata Ordini ---
+        - dropColumn: { schemaName: vendite, tableName: ordini, columnName: vettore_soggetto_ruolo_id }
+        - dropColumn: { schemaName: vendite, tableName: ordini, columnName: causale_trasporto_id }
+        - dropColumn: { schemaName: vendite, tableName: ordini, columnName: aspetto_bene_id }
+        - dropColumn: { schemaName: vendite, tableName: ordini, columnName: modalita_addebito_trasporto_id }
+        - dropColumn: { schemaName: vendite, tableName: ordini, columnName: num_colli }
+        - dropColumn: { schemaName: vendite, tableName: ordini, columnName: peso_lordo }
+        - dropColumn: { schemaName: vendite, tableName: ordini, columnName: peso_netto }
+        - dropColumn: { schemaName: vendite, tableName: ordini, columnName: volume }
+        - dropColumn: { schemaName: vendite, tableName: ordini, columnName: targa }
+        - dropColumn: { schemaName: vendite, tableName: ordini, columnName: data_ora_partenza }
+        - dropColumn: { schemaName: vendite, tableName: ordini, columnName: data_ora_consegna_prev }
+        - dropColumn: { schemaName: vendite, tableName: ordini, columnName: giorni_pagamento }
+        - dropColumn: { schemaName: vendite, tableName: ordini, columnName: fine_mese }
+
+        # --- 3) Imporre UID NOT NULL + (facoltativo) unique constraint ---
+        # NB: non ci sono dati pregressi; l'alter è sicuro.
+        - addNotNullConstraint:
+            schemaName: vendite
+            tableName: ordini
+            columnName: uid
+            columnDataType: uuid
+
+        
+      rollback:
+        # --- rollback dei drop colonne ---
+        - addColumn:
+            schemaName: vendite
+            tableName: ordini
+            columns:
+              - column: { name: vettore_soggetto_ruolo_id, type: bigint }
+              - column: { name: causale_trasporto_id, type: bigint }
+              - column: { name: aspetto_bene_id, type: bigint }
+              - column: { name: modalita_addebito_trasporto_id, type: bigint }
+              - column: { name: num_colli, type: integer }
+              - column: { name: peso_lordo, type: "numeric(18,3)" }
+              - column: { name: peso_netto, type: "numeric(18,3)" }
+              - column: { name: volume, type: "numeric(18,3)" }
+              - column: { name: targa, type: varchar(20) }
+              - column: { name: data_ora_partenza, type: timestamp with time zone }
+              - column: { name: data_ora_consegna_prev, type: timestamp with time zone }
+
+        # --- rollback FK rimosse ---
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini
+            baseColumnNames: causale_trasporto_id
+            referencedTableSchemaName: config
+            referencedTableName: causali_trasporto
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+            constraintName: fk_ordini_v_causale_trasporto
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini
+            baseColumnNames: aspetto_bene_id
+            referencedTableSchemaName: config
+            referencedTableName: aspetti_beni
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+            constraintName: fk_ordini_v_aspetto_bene
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini
+            baseColumnNames: modalita_addebito_trasporto_id
+            referencedTableSchemaName: config
+            referencedTableName: modalita_addebito_trasporto
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+            constraintName: fk_ordini_v_mod_add_trasporto
+
+        # --- rollback uid NOT NULL ---
+        - dropNotNullConstraint:
+            schemaName: vendite
+            tableName: ordini
+            columnName: uid
+            columnDataType: uuid

@@ -1,7 +1,7 @@
-codice_interno,codice,descrizione,attivo,ordine,meta
-TIPO_UBI_STORAGE,STORAGE,Stoccaggio (bulk/scorta),True,10,{}
-TIPO_UBI_PICK,PICK,Picking (prelievo),True,20,{}
-TIPO_UBI_STAGING,STAGING,Staging (baia/area di preparazione),True,30,{}
-TIPO_UBI_IN_TRANSIT,IN_TRANSIT,In transito (trasferimenti tra magazzini),True,40,{}
-TIPO_UBI_BUFFER,BUFFER,Buffer (polmone),True,50,{}
-TIPO_UBI_DAMAGED,DAMAGED,Danneggiata (merce non conforme),True,60,{}
+id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update
+1,TIPO_UBI_STORAGE,STORAGE,Stoccaggio (bulk/scorta),t,10,{},2025-10-05 17:13:24.870214+02,titodb,2025-10-05 17:13:24.870214+02,titodb
+2,TIPO_UBI_PICK,PICK,Picking (prelievo),t,20,{},2025-10-05 17:13:24.870214+02,titodb,2025-10-05 17:13:24.870214+02,titodb
+3,TIPO_UBI_STAGING,STAGING,Staging (baia/area di preparazione),t,30,{},2025-10-05 17:13:24.870214+02,titodb,2025-10-05 17:13:24.870214+02,titodb
+4,TIPO_UBI_IN_TRANSIT,IN_TRANSIT,In transito (trasferimenti tra magazzini),t,40,{},2025-10-05 17:13:24.870214+02,titodb,2025-10-05 17:13:24.870214+02,titodb
+5,TIPO_UBI_BUFFER,BUFFER,Buffer (polmone),t,50,{},2025-10-05 17:13:24.870214+02,titodb,2025-10-05 17:13:24.870214+02,titodb
+6,TIPO_UBI_DAMAGED,DAMAGED,Danneggiata (merce non conforme),t,60,{},2025-10-05 17:13:24.870214+02,titodb,2025-10-05 17:13:24.870214+02,titodb

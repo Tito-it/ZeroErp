@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/acquisti/20251022-03-create-wrapper-fn-get-note.yaml
+# 20251022-02 — Wrapper acquisti (opzionale): acquisti.fn_get_acquisti_note → script.fn_get_note('acquisti.note')
+  - changeSet:
+      id: 20251022-03-create-wrapper-acquisti-fn-get-note
+      author: mctit
+      
+      preConditions:
+        - onFail: CONTINUE
+        - tableExists: { schemaName: acquisti, tableName: note }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              DROP FUNCTION IF EXISTS acquisti.fn_get_acquisti_note(text, bigint, bigint, boolean, boolean, boolean);
+
+              CREATE OR REPLACE FUNCTION acquisti.fn_get_acquisti_note(
+                _target_tipo      text,
+                _target_id        bigint,
+                _target_riga_id   bigint DEFAULT NULL,
+                _include_doc      boolean DEFAULT true,
+                _include_righe    boolean DEFAULT true,
+                _only_visible     boolean DEFAULT true
+              )
+              RETURNS TABLE (
+                target_tipo     text,
+                target_id       bigint,
+                target_riga_id  bigint,
+                anchor_tipo     text,
+                posizione       text,
+                seq             integer,
+                testo           text,
+                testo_md        text,
+                stile           text,
+                lingua          char(5),
+                visibile        boolean,
+                solo_stampa     boolean,
+                meta            jsonb,
+                data_insert     timestamptz,
+                user_insert     text,
+                data_update     timestamptz,
+                user_update     text
+              )
+              LANGUAGE sql
+              STABLE
+              AS $$
+                SELECT * FROM script.fn_get_note('acquisti.note'::regclass,
+                                                 _target_tipo, _target_id, _target_riga_id,
+                                                 _include_doc, _include_righe, _only_visible);
+              $$;
+
+              COMMENT ON FUNCTION acquisti.fn_get_acquisti_note(text,bigint,bigint,boolean,boolean,boolean)
+              IS 'Wrapper su script.fn_get_note per la tabella acquisti.note.';

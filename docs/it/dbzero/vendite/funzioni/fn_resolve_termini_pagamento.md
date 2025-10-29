@@ -1,0 +1,110 @@
+# ⚙️ Funzione `fn_resolve_termini_pagamento`
+
+```sql
+CREATE FUNCTION fn_resolve_termini_pagamento(p_fattura_id bigint, p_billing_account_id integer, p_attivita_ids bigint[])
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_resolve_termini_pagamento(p_fattura_id bigint DEFAULT NULL::bigint, p_billing_account_id integer DEFAULT NULL::integer, p_attivita_ids bigint[] DEFAULT NULL::bigint[])
+ RETURNS TABLE(termini_pagamento_id bigint, termini_distinti bigint[])
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_tp_fattura BIGINT;
+  v_tp_cliente BIGINT;
+BEGIN
+-- Determina il termini_pagamento_id da usare per una fattura/insieme attività.
+-- Priorità:
+-- 1) fatture.termini_pagamento_id (se già valorizzato)
+-- 2) sorgenti delle attività: ORDINE_VENDITA / PREVENTIVO / CONTRATTO (tutte uguali)
+--    - se più valori diversi → il caller deve SPLITTARE (vedi funzione 2)
+-- 3) cliente (via BA) -> anagrafiche.clienti.termini_pagamento_id
+-- 4) default 'TP_1RATA' su config.termini_pagamento
+
+  -- 1) Se la fattura ha già il termine, usa quello
+  IF p_fattura_id IS NOT NULL THEN
+    SELECT f.termini_pagamento_id
+      INTO v_tp_fattura
+    FROM vendite.fatture f
+    WHERE f.id = p_fattura_id;
+
+    IF v_tp_fattura IS NOT NULL THEN
+      RETURN QUERY SELECT v_tp_fattura, ARRAY[v_tp_fattura]::BIGINT[];
+      RETURN;
+    END IF;
+  END IF;
+
+  -- 2) Se passo attività, risalgo alla testata sorgente (no righe)
+  IF p_attivita_ids IS NOT NULL AND array_length(p_attivita_ids,1) > 0 THEN
+    RETURN QUERY
+    WITH sorg AS (
+      SELECT a.id,
+            s.codice_interno AS src_code,
+            a.sorgente_uid
+      FROM vendite.attivita_fatturabili a
+      JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
+      WHERE a.id = ANY(p_attivita_ids)
+    ),
+    terms AS (
+      SELECT DISTINCT
+        CASE
+          WHEN src.src_code = 'ORDINE_VENDITA' THEN o.termini_pagamento_id
+          WHEN src.src_code = 'PREVENTIVO'     THEN p.termini_pagamento_id
+          WHEN src.src_code = 'CONTRATTO'      THEN c.termini_pagamento_id
+          -- tutti gli altri (ATTIVITA, MANUALE, TICKET, DDT*, FATTURA*, …) non portano termini → NULL
+          ELSE NULL
+        END AS tp_id
+      FROM sorg src
+      LEFT JOIN vendite.ordini     o ON (src.src_code='ORDINE_VENDITA' AND src.sorgente_uid = o.uid)
+      LEFT JOIN vendite.preventivi p ON (src.src_code='PREVENTIVO'     AND src.sorgente_uid = p.uid)
+      LEFT JOIN vendite.contratti  c ON (src.src_code='CONTRATTO'      AND src.sorgente_uid = c.uid)
+    ),
+    agg AS (
+      SELECT ARRAY_REMOVE(ARRAY_AGG(DISTINCT tp_id), NULL) AS termini
+      FROM terms
+    )
+    SELECT
+      CASE WHEN array_length(termini,1) = 1 THEN termini[1] ELSE NULL END AS termini_pagamento_id,
+      COALESCE(termini, ARRAY[]::BIGINT[]) AS termini_distinti
+    FROM agg;
+
+    -- Se qui ho restituito un array con >1 valori, il chiamante deve fare split.
+    -- Se array vuoto, procederemo con il fallback cliente/default sotto.
+    IF FOUND THEN
+      -- se un solo valore → già ritornato sopra; se più di uno → già ritornato (caller splitta);
+      -- se lista vuota (tutte NULL) → continuo con i fallback sotto.
+      -- Per il caso "lista vuota" aggiungo un ulteriore RETURN solo se trovo un fallback.
+      -- quindi non EXIT qui.
+    END IF;
+  END IF;
+
+  -- 3) Fallback su cliente via BA
+  IF p_billing_account_id IS NOT NULL THEN
+    SELECT c.termini_pagamento_id
+      INTO v_tp_cliente
+    FROM anagrafiche.clienti c
+    JOIN anagrafiche.billing_account ba ON ba.cliente_id = c.id
+    WHERE ba.id = p_billing_account_id;
+
+    IF v_tp_cliente IS NOT NULL THEN
+      RETURN QUERY SELECT v_tp_cliente, ARRAY[v_tp_cliente]::BIGINT[];
+      RETURN;
+    END IF;
+  END IF;
+
+  -- 4) Default 'TP_1RATA'
+  RETURN QUERY
+  SELECT tp.id, ARRAY[tp.id]::BIGINT[]
+  FROM config.termini_pagamento tp
+  WHERE tp.codice_interno = 'TP_1RATA' AND tp.attivo = true
+  LIMIT 1;
+
+  -- Se non esiste 'TP_1RATA', la funzione non ritorna righe → il caller deve gestire l'errore.
+END
+$function$
+```
+
+---
+{% include-markdown "signature-core.md" %}

@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
+# Aggiunta CHECK: almeno uno tra testo / testo_md non NULL
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20251020-04-add-check-note-testo-non-vuoto-mctit.yaml
+
+  - changeSet:
+      id: 20251020-04-add-check-note-testo-non-vuoto
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: note }
+        - tableExists: { schemaName: vendite, tableName: note_contratto }
+        - tableExists: { schemaName: vendite, tableName: note_preventivo }
+        - tableExists: { schemaName: vendite, tableName: note_fatture }
+        - tableExists: { schemaName: vendite, tableName: note_ordini }
+        - tableExists: { schemaName: vendite, tableName: note_ddt }
+
+      changes:
+        
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                  ALTER TABLE vendite.note
+                    ADD CONSTRAINT chk_note_testo_non_vuoto
+                    CHECK (testo IS NOT NULL OR testo_md IS NOT NULL)
+
+        # Partizioni (meglio ripetere anche qui per enforcement diretto)
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                  ALTER TABLE vendite.note_contratto
+                    ADD CONSTRAINT chk_contnote_testo_non_vuoto
+                    CHECK (testo IS NOT NULL OR testo_md IS NOT NULL)
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                  ALTER TABLE vendite.note_preventivo
+                    ADD CONSTRAINT chk_prevnote_testo_non_vuoto
+                    CHECK (testo IS NOT NULL OR testo_md IS NOT NULL)
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                  ALTER TABLE vendite.note_fatture
+                    ADD CONSTRAINT chk_fatnote_testo_non_vuoto
+                    CHECK (testo IS NOT NULL OR testo_md IS NOT NULL)
+
+          
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                  ALTER TABLE vendite.note_ordini
+                    ADD CONSTRAINT chk_ordnote_testo_non_vuoto
+                    CHECK (testo IS NOT NULL OR testo_md IS NOT NULL)
+
+         
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                
+                  ALTER TABLE vendite.note_ddt
+                    ADD CONSTRAINT chk_ddtnote_testo_non_vuoto
+                    CHECK (testo IS NOT NULL OR testo_md IS NOT NULL)
+
+      rollback:
+        - dropCheckConstraint:
+            schemaName: vendite
+            tableName: note
+            constraintName: chk_note_testo_non_vuoto
+        - dropCheckConstraint:
+            schemaName: vendite
+            tableName: note_contratto
+            constraintName: chk_contnote_testo_non_vuoto
+        - dropCheckConstraint:
+            schemaName: vendite
+            tableName: note_preventivo
+            constraintName: chk_prevnote_testo_non_vuoto
+        - dropCheckConstraint:
+            schemaName: vendite
+            tableName: note_fatture
+            constraintName: chk_fatnote_testo_non_vuoto
+        - dropCheckConstraint:
+            schemaName: vendite
+            tableName: note_ordini
+            constraintName: chk_ordnote_testo_non_vuoto
+        - dropCheckConstraint:
+            schemaName: vendite
+            tableName: note_ddt
+            constraintName: chk_ddtnote_testo_non_vuoto

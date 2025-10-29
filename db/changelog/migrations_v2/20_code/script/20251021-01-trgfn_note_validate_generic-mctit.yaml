@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/30_code/script/20251021-01-trgfn_note_validate_generic-mctit.yaml
+  
+  - changeSet:
+      id: 20251021-01-trgfn_note_validate_generic-mctit.yaml
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+                   
+                    CREATE OR REPLACE FUNCTION script.trgfn_note_validate_generic()
+                    RETURNS trigger
+                    LANGUAGE plpgsql
+                    AS $$
+                    DECLARE
+                      v_child_table text := TG_ARGV[0];   -- es. 'vendite.contratti_righe' (obbl.)
+                      v_child_fk    text := TG_ARGV[1];   -- es. 'contratto_id'           (obbl.)
+                      -- opzionale: dominio (altrimenti default a 'schema.tabella' della nota)
+                      v_domain      text := COALESCE(TG_ARGV[2], TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME);
+
+                      v_found_parent_id bigint;
+                      v_reg regclass;
+                      v_area text := TG_TABLE_SCHEMA;     -- 'vendite' / 'acquisti' ecc.
+                    BEGIN
+                      -- Se non è ancorata a RIGA, nessun controllo
+                      IF NEW.anchor_tipo <> 'RIGA' THEN
+                        RETURN NEW;
+                      END IF;
+
+                      -- target_riga_id obbligatorio
+                      IF NEW.target_riga_id IS NULL THEN
+                        PERFORM script.fn_log_and_raise_error(
+                          v_area, TG_TABLE_NAME, 'E_NOTE_TARGET_ID',
+                          jsonb_build_object('anchor_tipo', NEW.anchor_tipo,
+                                            'target_id', NEW.target_id,
+                                            'target_riga_id', NEW.target_riga_id,
+                                            'detail','target_riga_id mancante'),
+                          NULL::uuid,
+                          NEW.anchor_tipo, NEW.target_id::text
+                        );
+                      END IF;
+
+                      -- Tabella righe deve esistere
+                      v_reg := to_regclass(v_child_table);
+                      IF v_reg IS NULL THEN
+                        PERFORM script.fn_log_and_raise_error(
+                          v_area, TG_TABLE_NAME, 'E_NOTE_CONFIG',
+                          jsonb_build_object('child_table', v_child_table,
+                                            'child_fk', v_child_fk,
+                                            'detail','tabella righe non trovata'),
+                          NULL::uuid,
+                          v_child_table
+                        );
+                      END IF;
+
+                      -- Recupera FK della riga verso la testata
+                      EXECUTE format('SELECT %I FROM %s WHERE id = $1', v_child_fk, v_reg)
+                        INTO v_found_parent_id
+                        USING NEW.target_riga_id;
+
+                      -- Deve combaciare con NEW.target_id
+                      IF v_found_parent_id IS NULL OR v_found_parent_id IS DISTINCT FROM NEW.target_id THEN
+                        PERFORM script.fn_log_and_raise_error(
+                          v_area, TG_TABLE_NAME, 'E_NOTE_RIGA_MISMATCH',
+                          jsonb_build_object('dominio', v_domain,
+                                            'target_id', NEW.target_id,
+                                            'target_riga_id', NEW.target_riga_id,
+                                            'child_table', v_child_table,
+                                            'child_fk', v_child_fk,
+                                            'fk_value', v_found_parent_id),
+                          NULL::uuid,
+                          NEW.target_riga_id, v_domain, NEW.target_id::text
+                        );
+                      END IF;
+
+                      RETURN NEW;
+                    END
+                    $$;
+
+                   
+
+                    COMMENT ON FUNCTION script.trgfn_note_validate_generic() IS
+                    'Validazione generica per note ancorate a RIGA: verifica appartenenza target_riga_id→target_id via tabella righe (schema.qualificata) e FK passate in TG_ARGV.';

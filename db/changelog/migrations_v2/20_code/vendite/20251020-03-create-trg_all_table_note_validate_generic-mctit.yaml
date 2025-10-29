@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20251020-03-create-trg_all_table_note_validate_generic-mctit.yaml
+  - changeSet:
+      id: 20251020-03-create-trg_all_table_note_validate_generic-mctit.yaml
+    
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: note_contratto }
+        - tableExists: { schemaName: vendite, tableName: note_preventivo }
+        - tableExists: { schemaName: vendite, tableName: note_fatture }
+        - tableExists: { schemaName: vendite, tableName: note_ordini }
+        - tableExists: { schemaName: vendite, tableName: note_ddt }
+
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                    -- CONTRATTO
+                    DROP TRIGGER IF EXISTS trg_note_contratto_ins_upd_contnote_validate ON vendite.note_contratto;
+                    CREATE TRIGGER trg_note_contratto_ins_upd_validate
+                    BEFORE INSERT OR UPDATE ON vendite.note_contratto
+                    FOR EACH ROW
+                    EXECUTE FUNCTION vendite.trgfn_note_validate_generic('vendite.contratti_righe','contratto_id','CONTRATTO');
+                    -- cancella precedente funzione
+                    DROP FUNCTION IF EXISTS vendite.trgfn_contnote_validate();
+
+                    -- PREVENTIVO
+                    DROP TRIGGER IF EXISTS trg_note_preventivo_ins_upd_prevnote_validate ON vendite.note_preventivo;
+                    CREATE TRIGGER trg_note_preventivo_ins_upd_validate
+                    BEFORE INSERT OR UPDATE ON vendite.note_preventivo
+                    FOR EACH ROW
+                    EXECUTE FUNCTION vendite.trgfn_note_validate_generic('vendite.preventivi_righe','preventivo_id','PREVENTIVO');
+                    -- cancella precedente funzione
+                    DROP FUNCTION IF EXISTS vendite.trgfn_prevnote_validate();
+
+                    -- FATTURA
+                    DROP TRIGGER IF EXISTS trg_note_fatture_ins_upd_validate ON vendite.note_fatture;
+                    CREATE TRIGGER trg_note_fatture_ins_upd_validate
+                    BEFORE INSERT OR UPDATE ON vendite.note_fatture
+                    FOR EACH ROW
+                    EXECUTE FUNCTION vendite.trgfn_note_validate_generic('vendite.fatture_righe','fattura_id','FATTURA');
+
+                    -- ORDINE
+                    DROP TRIGGER IF EXISTS trg_note_ordini_ins_upd_validate ON vendite.note_ordini;
+                    CREATE TRIGGER trg_note_ordini_ins_upd_validate
+                    BEFORE INSERT OR UPDATE ON vendite.note_ordini
+                    FOR EACH ROW
+                    EXECUTE FUNCTION vendite.trgfn_note_validate_generic('vendite.ordini_righe','ordine_id','ORDINE');
+
+                    -- DDT
+                    DROP TRIGGER IF EXISTS trg_note_ddt_ins_upd_validate ON vendite.note_ddt;
+                    CREATE TRIGGER trg_note_ddt_ins_upd_validate
+                    BEFORE INSERT OR UPDATE ON vendite.note_ddt
+                    FOR EACH ROW
+                    EXECUTE FUNCTION vendite.trgfn_note_validate_generic('vendite.ddt_righe','ddt_id','DDT');

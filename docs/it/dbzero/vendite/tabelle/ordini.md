@@ -1,10 +1,11 @@
+{% include-markdown "it/dbzero/vendite/manual/ordini.md" %}
 # 📚 Tabella `ordini`
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| uid | uuid | YES | gen_random_uuid() |
+| uid | uuid | NO | gen_random_uuid() |
 | soggetto_ruolo_id | bigint | NO |  |
 | billing_account_id | integer | YES |  |
 | serie | character varying | YES |  |
@@ -15,19 +16,6 @@
 | valuta_id | integer | YES |  |
 | tasso_cambio | numeric | NO | 1 |
 | modalita_pagamento_id | integer | YES |  |
-| giorni_pagamento | smallint | YES |  |
-| fine_mese | boolean | YES |  |
-| causale_trasporto_id | bigint | YES |  |
-| aspetto_bene_id | bigint | YES |  |
-| vettore_soggetto_ruolo_id | bigint | YES |  |
-| num_colli | integer | YES |  |
-| peso_lordo | numeric | YES |  |
-| peso_netto | numeric | YES |  |
-| volume | numeric | YES |  |
-| modalita_addebito_trasporto_id | bigint | YES |  |
-| targa | character varying | YES |  |
-| data_ora_partenza | timestamp with time zone | YES |  |
-| data_ora_consegna_prev | timestamp with time zone | YES |  |
 | imponibile_tot | numeric | YES |  |
 | sconto_tot | numeric | YES |  |
 | iva_tot | numeric | YES |  |
@@ -47,11 +35,8 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_ordini_termini_pagamento | termine_pagamento_id |
-| FOREIGN KEY | fk_ordini_v_aspetto_bene | aspetto_bene_id |
 | FOREIGN KEY | fk_ordini_v_billing_account | billing_account_id |
-| FOREIGN KEY | fk_ordini_v_causale_trasporto | causale_trasporto_id |
 | FOREIGN KEY | fk_ordini_v_cliente_ruolo | soggetto_ruolo_id |
-| FOREIGN KEY | fk_ordini_v_mod_add_trasporto | modalita_addebito_trasporto_id |
 | FOREIGN KEY | fk_ordini_v_modpag | modalita_pagamento_id |
 | FOREIGN KEY | fk_ordini_v_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_ordini_v_stato_ordine | stato_doc_ordine_id |
@@ -72,6 +57,8 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_ordini_a10_upd_v_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_ordini_v_protect_num()` |
+| trg_ordini_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_norm()` |
+| trg_ordini_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_norm()` |
 
 ---
 {% include-markdown "signature-core.md" %}

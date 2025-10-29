@@ -25,7 +25,6 @@
 | data_ora_partenza | timestamp with time zone | YES |  |
 | data_ora_consegna_prev | timestamp with time zone | YES |  |
 | tracking_code | character varying | YES |  |
-| ordine_id | bigint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
@@ -46,7 +45,6 @@
 | FOREIGN KEY | fk_ddt_v_stato_ddt | stato_doc_ddt_id |
 | FOREIGN KEY | fk_ddt_vendita_destinatario_ruolo | destinatario_soggetto_ruolo_id |
 | FOREIGN KEY | fk_ddt_vendita_mittente_ruolo | mittente_soggetto_ruolo_id |
-| FOREIGN KEY | fk_ddt_vendita_ordine | ordine_id |
 | FOREIGN KEY | fk_ddt_vendita_vettore_ruolo | vettore_soggetto_ruolo_id |
 | PRIMARY KEY | pk_ddtv | id |
 

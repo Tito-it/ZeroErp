@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  - logicalFilePath: migrations_v2/30_vendite/20251028-01-create-ddt-ordini-link-mctit.yaml
+
+  - changeSet:
+      id: 20251028-01-create-ddt-ordini-link
+      author: mctit
+      context: "vendite"
+      labels: "ddt,ordini,link,bridge"
+
+      preConditions:
+        - onFail: CONTINUE
+        - not:
+            - tableExists:
+                schemaName: vendite
+                tableName: ddt_ordini
+
+      changes:
+        # 1) Creazione tabella ponte
+        - createTable:
+            schemaName: vendite
+            tableName: ddt_ordini
+            remarks: "Ponte N–N tra testate DDT e testate Ordini (tracciabilità). La coerenza quantitativa resta a livello riga."
+            columns:
+              
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT,
+                          constraints: { primaryKey: true, primaryKeyName: pk_ddt_ordini, nullable: false } }
+              
+              - column:
+                  name: ddt_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                  remarks: "FK → vendite.ddt(id)"
+              - column:
+                  name: ordine_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                  remarks: "FK → vendite.ordini(id)"
+              - column:
+                  name: meta
+                  type: JSONB
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Estensioni/attributi opzionali di collegamento"
+              - column:
+                  name: data_insert
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+                  remarks: "Audit: data inserimento"
+              - column:
+                  name: user_insert
+                  type: VARCHAR(80)
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+                  remarks: "Audit: utente inserimento"
+              - column:
+                  name: data_update
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+                  remarks: "Audit: data aggiornamento"
+              - column:
+                  name: user_update
+                  type: VARCHAR(80)
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente aggiornamento"
+
+        # 2) Vincoli di chiave esterna (CASCADE su delete per pulizia automatica dei link)
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ddt_ordini
+            baseColumnNames: ddt_id
+            referencedTableSchemaName: vendite
+            referencedTableName: ddt
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+            constraintName: fk_ddt_ordini_ddt
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ddt_ordini
+            baseColumnNames: ordine_id
+            referencedTableSchemaName: vendite
+            referencedTableName: ordini
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+            constraintName: fk_ddt_ordini_ordini
+
+        # 3) Unicità coppia (ddt_id, ordine_id)
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: ddt_ordini
+            columnNames: ddt_id, ordine_id
+            constraintName: uq_ddt_ordini_pair
+            deferrable: false
+            initiallyDeferred: false
+            validate: true
+
+        # 4) Indici di comodo per ricerche
+        - createIndex:
+            schemaName: vendite
+            tableName: ddt_ordini
+            indexName: ix_ddt_ordini_ddt
+            columns:
+              - column:
+                  name: ddt_id
+        - createIndex:
+            schemaName: vendite
+            tableName: ddt_ordini
+            indexName: ix_ddt_ordini_ordine
+            columns:
+              - column:
+                  name: ordine_id
+
+        # 5) Commenti esplicativi (facoltativi)
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE vendite.ddt_ordini IS
+              'Tabella ponte tra testate DDT e testate Ordini. Evita duplicati con uq_ddt_ordini_pair. Pulizia automatica via ON DELETE CASCADE.';
+              COMMENT ON COLUMN vendite.ddt_ordini.meta IS
+              'Estensioni JSON per attributi di collegamento (es. note operative).';
+
+      rollback:
+        - dropTable:
+            schemaName: vendite
+            tableName: ddt_ordini
+            cascadeConstraints: true

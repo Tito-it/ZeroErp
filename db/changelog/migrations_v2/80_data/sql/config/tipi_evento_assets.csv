@@ -1,8 +1,8 @@
-codice_interno,codice,descrizione,attivo,ordine,meta
-ASSET_EVT_INSTALL,INSTALL,Installazione presso cliente/impianto,True,10,{}
-ASSET_EVT_RIENTRO,RIENTRO,Rientro in magazzino,True,20,{}
-ASSET_EVT_SWAP,SWAP,Sostituzione (swap),True,30,{}
-ASSET_EVT_MANUT,MANUT,Manutenzione / revisione,True,40,{}
-ASSET_EVT_GUASTO,GUASTO,Guasto / fuori servizio,True,50,{}
-ASSET_EVT_DISMISSIONE,DISMISSIONE,Dismissione / rottamazione,True,90,{}
-ASSET_EVT_ASSEGNAZIONE,ASSEGNAZIONE,Assegnazione a tecnico/ODL/cliente,True,15,{}
+id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update
+1,ASSET_EVT_INSTALL,INSTALL,Installazione presso cliente/impianto,t,10,{},2025-10-02 11:49:38.58713+02,titodb,2025-10-02 11:49:38.58713+02,titodb
+2,ASSET_EVT_RIENTRO,RIENTRO,Rientro in magazzino,t,20,{},2025-10-02 11:49:38.58713+02,titodb,2025-10-02 11:49:38.58713+02,titodb
+3,ASSET_EVT_SWAP,SWAP,Sostituzione (swap),t,30,{},2025-10-02 11:49:38.58713+02,titodb,2025-10-02 11:49:38.58713+02,titodb
+4,ASSET_EVT_MANUT,MANUT,Manutenzione / revisione,t,40,{},2025-10-02 11:49:38.58713+02,titodb,2025-10-02 11:49:38.58713+02,titodb
+5,ASSET_EVT_GUASTO,GUASTO,Guasto / fuori servizio,t,50,{},2025-10-02 11:49:38.58713+02,titodb,2025-10-02 11:49:38.58713+02,titodb
+6,ASSET_EVT_DISMISSIONE,DISMISSIONE,Dismissione / rottamazione,t,90,{},2025-10-02 11:49:38.58713+02,titodb,2025-10-02 11:49:38.58713+02,titodb
+7,ASSET_EVT_ASSEGNAZIONE,ASSEGNAZIONE,Assegnazione a tecnico/ODL/cliente,t,15,{},2025-10-02 11:49:38.58713+02,titodb,2025-10-02 11:49:38.58713+02,titodb

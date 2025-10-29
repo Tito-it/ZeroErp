@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20251021-11-create-lingue-mctit.yaml
+
+  # 20251021-11 — CREATE config.lingue
+  - changeSet:
+      id: 20251021-11-create-lingue
+      author: mctit
+      
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: lingue
+            remarks: "Dominio delle lingue (ISO 639-1 / 3166-1) per messaggi, documenti e localizzazioni di sistema."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_config_lingue
+                    nullable: false
+
+              - column:
+                  name: codice_iso
+                  type: VARCHAR(5)
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: TEXT
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione_locale
+                  type: TEXT
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attiva
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: TEXT
+                  defaultValueComputed: CURRENT_USER
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: TEXT
+                  defaultValueComputed: CURRENT_USER
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: lingue
+            columnNames: codice_iso
+            constraintName: uq_cfg_lingue_codice_iso
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+               
+                ALTER TABLE config.lingue
+                    ADD CONSTRAINT chk_cfg_lingue_codice_iso_len
+                    CHECK (char_length(codice_iso) BETWEEN 2 AND 5);  
+
+
+        - createIndex:
+            schemaName: config
+            tableName: lingue
+            indexName: ix_cfg_lingue_attiva
+            columns:
+              - column:
+                  name: attiva
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON TABLE config.lingue IS 'Dominio centralizzato delle lingue (ISO 639-1 / 3166-1). Usato per messaggi, note e localizzazioni di sistema.';
+              COMMENT ON COLUMN config.lingue.codice_iso IS 'Codice standard ISO della lingua (es. it, en, de, fr, es, it-IT, en-US).';
+              COMMENT ON COLUMN config.lingue.descrizione IS 'Nome della lingua in italiano.';
+              COMMENT ON COLUMN config.lingue.descrizione_locale IS 'Nome della lingua nella lingua stessa (es. English, Deutsch).';
+
+  # 20251021-12 — INSERT bootstrap lingue base
+  - changeSet:
+      id: 20251021-12-insert-lingue-bootstrap
+      author: mctit
+      preConditions:
+        - onFail: CONTINUE
+        - tableIsEmpty:
+              schemaName: config
+              tableName: lingue
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              INSERT INTO config.lingue (codice_iso, descrizione, descrizione_locale)
+              VALUES
+                ('it', 'Italiano', 'Italiano'),
+                ('en', 'Inglese', 'English'),
+                ('fr', 'Francese', 'Français'),
+                ('de', 'Tedesco', 'Deutsch'),
+                ('es', 'Spagnolo', 'Español')
+              ON CONFLICT (codice_iso) DO NOTHING;
