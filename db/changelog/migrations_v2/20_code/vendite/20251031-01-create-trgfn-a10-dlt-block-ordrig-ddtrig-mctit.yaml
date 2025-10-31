@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20251031-01-create-trgfn-a10-dlt-block-ordrig-ddtrig-mctit.yaml
+
+  - changeSet:
+      id: 20251031-01-create-trgfn-a10-dlt-block-ordrig-ddtrig
+      author: mctit
+      runOnChange: true
+      preConditions:
+        - onFail: HALT
+          and:
+            - tableExists: { schemaName: vendite, tableName: ordini_righe }
+            - tableExists: { schemaName: vendite, tableName: ddt_righe }
+            - tableExists: { schemaName: vendite, tableName: ordini_righe_fulfillment }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_a10_dlt_block_ordrig_ddtrig()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_cnt bigint := 0;
+              BEGIN
+              
+              -- Funzione: blocca sempre la DELETE su ordini_righe e ddt_righe.
+              -- Se esiste fulfillment collegato, usa errore dedicato DELETE_BLOCKED_FUL.
+              -- Altrimenti, errore generale DELETE_NOT_ALLOWED (policy ZeroERP: no hard delete).
+              
+                IF TG_TABLE_NAME = 'ordini_righe' THEN
+                  SELECT COUNT(*) INTO v_cnt
+                    FROM vendite.ordini_righe_fulfillment f
+                   WHERE f.ordine_riga_id = OLD.id;
+
+                  IF v_cnt > 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_dlt_block_ordrig_ddtrig','E_DELETE_BLOCKED_FUL',
+                      jsonb_build_object('table','ordini_righe','id',OLD.id),
+                      NULL::uuid,
+                      'ordini_righe',
+                      OLD.id::text
+                    );
+                  ELSE
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_dlt_block_ordrig_ddtrig','E_DELETE_NOT_ALLOWED',
+                      jsonb_build_object('table','ordini_righe','id',OLD.id),
+                    NULL::uuid,
+                    'ordini_righe',
+                    OLD.id::text
+                    );
+                  END IF;
+
+                ELSIF TG_TABLE_NAME = 'ddt_righe' THEN
+                  SELECT COUNT(*) INTO v_cnt
+                    FROM vendite.ordini_righe_fulfillment f
+                   WHERE f.ddt_riga_id = OLD.id;
+
+                  IF v_cnt > 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_dlt_block_ordrig_ddtrig','E_DELETE_BLOCKED_FUL',
+                      jsonb_build_object('table','ddt_righe','id',OLD.id,'ddt_id',OLD.ddt_id),
+                      NULL::uuid,
+                     'ddt_righe',
+                     OLD.id::text
+                    
+                    );
+                  ELSE
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_dlt_block_ordrig_ddtrig','E_DELETE_NOT_ALLOWED',
+                      jsonb_build_object('table','ddt_righe','id',OLD.id,'ddt_id',OLD.ddt_id),
+                     NULL::uuid,
+                     'ddt_righe',
+                     OLD.id::text
+                    
+                    );
+                  END IF;
+
+                ELSE
+                  -- Per sicurezza, blocca comunque
+                  PERFORM script.fn_log_and_raise_error(
+                    'database','trgfn_dlt_block_ordrig_ddtrig','E_DELETE_NOT_ALLOWED',
+                    jsonb_build_object('table',TG_TABLE_NAME,'id',OLD.id),
+                     NULL::uuid,
+                     TG_TABLE_NAME,
+                     OLD.id::text
+                  );
+                END IF;
+
+                RETURN OLD; -- non raggiunto: fn_log_and_raise_error solleva eccezione
+              END;
+              $$;
+
+              -- Trigger sulle tabelle: BEFORE DELETE
+              DROP TRIGGER IF EXISTS trg_a10_dlt_block ON vendite.ordini_righe;
+              CREATE TRIGGER trg_a10_dlt_block
+              BEFORE DELETE ON vendite.ordini_righe
+              FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_a10_dlt_block_ordrig_ddtrig();
+
+              DROP TRIGGER IF EXISTS trg_a10_dlt_block_ddt ON vendite.ddt_righe;
+              CREATE TRIGGER trg_a10_dlt_block_ddt
+              BEFORE DELETE ON vendite.ddt_righe
+              FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_a10_dlt_block_ordrig_ddtrig();
+
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              DROP TRIGGER IF EXISTS trg_a10_dlt_block ON vendite.ordini_righe;
+              DROP TRIGGER IF EXISTS trg_a10_dlt_block_ddt ON vendite.ddt_righe;
+              DROP FUNCTION IF EXISTS vendite.trgfn_a10_dlt_block_ordrig_ddtrig();

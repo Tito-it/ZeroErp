@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  - logicalFilePath: migrations_v2/00_schema/vendite/20251031-02-fk-fulfillment-restrict-drop-mctit.yaml
+
+  - changeSet:
+      id: 20251031-02-fk-fulfillment-restrict-drop
+      author: mctit
+      preConditions:
+        - onFail: HALT
+          and:
+            - tableExists: { schemaName: vendite, tableName: ordini_righe_fulfillment }
+            - tableExists: { schemaName: vendite, tableName: ordini_righe }
+            - tableExists: { schemaName: vendite, tableName: ddt_righe }
+
+      changes:
+
+        # Drop FKs esistenti (nomi come da tua definizione)
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini_righe_fulfillment
+            constraintName: fk_ordini_r_ful_v_ordine_riga
+
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini_righe_fulfillment
+            constraintName: fk_ordini_r_ful_v_ddt_riga
+
+
+        # Ricreo i FK con RESTRICT (policy: no hard delete)
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini_righe_fulfillment
+            baseColumnNames: ordine_riga_id
+            constraintName: fk_ordini_r_ful_v_ordine_riga
+            referencedTableSchemaName: vendite
+            referencedTableName: ordini_righe
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini_righe_fulfillment
+            baseColumnNames: ddt_riga_id
+            constraintName: fk_ordini_r_ful_v_ddt_riga
+            referencedTableSchemaName: vendite
+            referencedTableName: ddt_righe
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+      rollback:
+        # Torno a CASCADE se mai servisse ripristinare la configurazione precedente
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini_righe_fulfillment
+            constraintName: fk_ordini_r_ful_v_ordine_riga
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini_righe_fulfillment
+            constraintName: fk_ordini_r_ful_v_ddt_riga
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini_righe_fulfillment
+            baseColumnNames: ordine_riga_id
+            constraintName: fk_ordini_r_ful_v_ordine_riga
+            referencedTableSchemaName: vendite
+            referencedTableName: ordini_righe
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ordini_righe_fulfillment
+            baseColumnNames: ddt_riga_id
+            constraintName: fk_ordini_r_ful_v_ddt_riga
+            referencedTableSchemaName: vendite
+            referencedTableName: ddt_righe
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE

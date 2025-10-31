@@ -35,5 +35,10 @@
 | pk_ddtvr | `CREATE UNIQUE INDEX pk_ddtvr ON vendite.ddt_righe USING btree (id)` |
 | uq_ddt_vendita_r_riga_nr | `CREATE UNIQUE INDEX uq_ddt_vendita_r_riga_nr ON vendite.ddt_righe USING btree (ddt_id, riga_nr)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_a10_dlt_block_ddt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_a10_dlt_block_ordrig_ddtrig()` |
+
 ---
 {% include-markdown "signature-core.md" %}

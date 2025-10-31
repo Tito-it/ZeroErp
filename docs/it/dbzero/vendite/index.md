@@ -41,6 +41,7 @@
 - [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md)
 - [fn_resolve_termini_pagamento](funzioni/fn_resolve_termini_pagamento.md)
 - [trgfn_a10_attivita_fatturabili_guard_fatturato](funzioni/trgfn_a10_attivita_fatturabili_guard_fatturato.md)
+- [trgfn_a10_dlt_block_ordrig_ddtrig](funzioni/trgfn_a10_dlt_block_ordrig_ddtrig.md)
 - [trgfn_a10_fatture_protect_num](funzioni/trgfn_a10_fatture_protect_num.md)
 - [trgfn_a10_ins_upd_ordini_ful_guard_consistenza](funzioni/trgfn_a10_ins_upd_ordini_ful_guard_consistenza.md)
 - [trgfn_a10_ordini_v_protect_num](funzioni/trgfn_a10_ordini_v_protect_num.md)
