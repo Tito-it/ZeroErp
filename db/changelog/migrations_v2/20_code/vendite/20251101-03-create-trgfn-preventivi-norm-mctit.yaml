@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20251101-03-create-trgfn-preventivi-norm-mctit.yaml
+
+  - changeSet:
+      id: 20251101-03-create-trgfn-preventivi-norm
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Function coerente con tabella vendite.preventivi
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_norm()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                ----------------------------------------------------------------
+                -- Generazione codice/anno/data SOLO in INSERT e SOLO se numero mancante
+                IF TG_OP = 'INSERT' AND (NEW.numero IS NULL OR btrim(NEW.numero) = '') THEN
+                  NEW.numero := script.fn_generate_codice('preventivo');
+                 
+                  -- imposta data ai valori correnti di sistema
+                  if NEW.data IS NULL or NEW.data =0 THEN
+                    NEW.data := CURRENT_DATE;
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.trgfn_preventivi_norm() IS
+              'Normalizza vendite.preventivi in INSERT: se numero è NULL/blank, genera numero e imposta anno/data correnti. Nessuna modifica in UPDATE.';
+
+              -- Allineo il trigger alla function corretta (schema vendite)
+              DROP TRIGGER IF EXISTS trg_preventivi_ins_upd_norm ON vendite.preventivi;
+
+              CREATE TRIGGER trg_preventivi_ins_upd_norm
+                BEFORE INSERT OR UPDATE ON vendite.preventivi
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_preventivi_norm();
+
+              COMMENT ON TRIGGER trg_preventivi_ins_upd_norm ON vendite.preventivi IS
+              'Normalizza numero/anno/data in INSERT quando numero è mancante.';

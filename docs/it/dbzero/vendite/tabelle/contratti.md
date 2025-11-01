@@ -44,6 +44,8 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_contratti_a10_upd_v_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_v_contratti_protect_num()` |
+| trg_contratti_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_norm()` |
+| trg_contratti_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_norm()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -74,6 +74,8 @@
 |------|--------|--------|--------|
 | trg_fatture_a10_upd_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_fatture_protect_num()` |
 | trg_fatture_a11_upd_numerata_non_annulabile | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a11_fatture_numerata_non_annulabile()` |
+| trg_fatture_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fatture_norm()` |
+| trg_fatture_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_norm()` |
 
 ---
 {% include-markdown "signature-core.md" %}
