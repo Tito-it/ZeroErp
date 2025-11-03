@@ -12,7 +12,9 @@ databaseChangeLog:
   - changeSet:
       id: 20251031-11-trgfn_tx_id_managed
       author: mctit
-      
+      runOnChange: true
+      validCheckSums: [ANY]
+
       changes:
         - sql:
             splitStatements: false
@@ -181,8 +183,7 @@ databaseChangeLog:
                 END;
                 $BODY$;
 
-                ALTER FUNCTION dbops.trgfn_tx_id_managed()
-                    OWNER TO titodb;
+                
 
                 COMMENT ON FUNCTION dbops.trgfn_tx_id_managed()
                     IS 'Trigger function che assegna e verifica transaction ID con log centralizzato';
