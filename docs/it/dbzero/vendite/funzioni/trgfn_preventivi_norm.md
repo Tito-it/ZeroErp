@@ -12,12 +12,20 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_norm()
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-  -- Normalizzazione automatica al 1° del mese ---
-  IF NEW.competenza_mese IS NOT NULL THEN
-    NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
+  ----------------------------------------------------------------
+  -- Generazione codice/anno/data SOLO in INSERT e SOLO se numero mancante
+  IF TG_OP = 'INSERT' AND (NEW.numero IS NULL OR btrim(NEW.numero) = '') THEN
+    NEW.numero := script.fn_generate_codice('preventivo');
+   
+    -- imposta data ai valori correnti di sistema
+    if NEW.data IS NULL or NEW.data =0 THEN
+      NEW.data := CURRENT_DATE;
+    END IF;
   END IF;
+
   RETURN NEW;
-END$function$
+END;
+$function$
 ```
 
 ---
