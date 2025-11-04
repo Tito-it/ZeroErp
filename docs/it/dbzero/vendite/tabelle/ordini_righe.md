@@ -8,7 +8,6 @@
 | riga_nr | integer | NO |  |
 | articolo_id | uuid | NO |  |
 | descrizione | character varying | NO |  |
-| uom_id | bigint | YES |  |
 | qta | numeric | NO |  |
 | prezzo_unitario | numeric | NO |  |
 | sconto_perc | numeric | YES |  |
@@ -25,19 +24,22 @@
 | sorgente_riga | bigint | YES | 0 |
 | stato_doc_ordine_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
+| qta_operativa | numeric | YES |  |
+| uom_operativa_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | check_ordini_righe_qta_operativa_pos |  |
 | CHECK | chk_ordini_v_r_prezzo_pos |  |
 | CHECK | chk_ordini_v_r_qta_pos |  |
 | CHECK | chk_ordini_v_r_sconto_perc |  |
+| FOREIGN KEY | fk_ordini_vendita_r_uom_operativa | uom_operativa_id |
 | FOREIGN KEY | fk_ordrig_articolo | articolo_id |
 | FOREIGN KEY | fk_ordrig_iva | iva_id |
 | FOREIGN KEY | fk_ordrig_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_ordrig_stato_doc_ordine | stato_doc_ordine_id |
 | FOREIGN KEY | fk_ordrig_testata | ordine_id |
-| FOREIGN KEY | fk_ordrig_uom | uom_id |
 | PRIMARY KEY | pk_ordrig | id |
 
 ## 📑 Indici
