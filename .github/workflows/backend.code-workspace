@@ -1,0 +1,21 @@
+{
+	"folders": [
+		{
+			"path": "../../backend"
+		},
+		{
+			"path": "../../.."
+		},
+		{
+			"path": "../../.git/info"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"**/templates/**/*.html": "django-html"
+		},
+		"emmet.includeLanguages": {
+			"django-html": "html"
+		}
+	}
+}
