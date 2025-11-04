@@ -1,0 +1,232 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20251102-05-create-articoli_uom_operativa-mctit.yaml
+
+  # 1) Creazione tabella
+  - changeSet:
+      id: 20251102-05-create-articoli_uom_operativa
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: catalogo
+            tableName: articoli_uom_operativa
+            columns:
+            
+              - column: { name: id, type: BIGINT, autoIncrement: true, generationType: BY DEFAULT,
+                          constraints: { primaryKey: true, primaryKeyName: pk_articoli_uom_operativa, nullable: false } }
+              - column:
+                  name: articolo_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: uom_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: is_base
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: factor_to_base
+                  type: numeric(18,6)
+                  defaultValueNumeric: 1
+                  constraints:
+                    nullable: false
+              - column:
+                  name: is_sell_uom
+                  type: boolean
+                  defaultValueBoolean: false
+              - column:
+                  name: is_purchase_uom
+                  type: boolean
+                  defaultValueBoolean: false
+              - column:
+                  name: is_logistic_uom
+                  type: boolean
+                  defaultValueBoolean: false
+              - column:
+                  name: qty_step
+                  type: numeric(18,6)
+                  defaultValueNumeric: 1
+              - column:
+                  name: rounding_mode
+                  type: varchar(16)
+                  defaultValue: "HALF_UP"
+              - column:
+                  name: max_decimals
+                  type: int
+                  defaultValueNumeric: 6
+              - column:
+                  name: forbid_fraction
+                  type: boolean
+                  defaultValueBoolean: false
+              - column:
+                  name: require_lot
+                  type: boolean
+                  defaultValueBoolean: false
+              - column:
+                  name: gtin
+                  type: varchar(32)
+              - column:
+                  name: valido_dal
+                  type: date
+              - column:
+                  name: valido_al
+                  type: date
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+              - column:
+                  name: data_insert
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: varchar(80)
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: varchar(80)
+                  defaultValueComputed: "CURRENT_USER"
+
+        - addForeignKeyConstraint:
+            constraintName: fk_artuomop_articolo
+            baseTableSchemaName: catalogo
+            baseTableName: articoli_uom_operativa
+            baseColumnNames: articolo_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+  
+        - addForeignKeyConstraint:
+            constraintName: fk_artuomop_uom
+            baseTableSchemaName: catalogo
+            baseTableName: articoli_uom_operativa
+            baseColumnNames: uom_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+  # 3) Unicità articolo + uom
+        - addUniqueConstraint:
+            schemaName: catalogo
+            tableName: articoli_uom_operativa
+            columnNames: articolo_id, uom_id
+            constraintName: uq_artuomop_articolo_uom
+
+  # 4) Commenti su tabella e colonne (COMMENT ON ...)
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE catalogo.articoli_uom_operativa IS
+              'Mappa le UoM operative ammesse per ciascun articolo e il fattore di conversione verso la UoM base (stock).';
+
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.id               IS 'PK';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.articolo_id      IS 'Articolo (catalogo.articoli.id) a cui si riferisce la UoM operativa.';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.uom_id           IS 'Unità di misura operativa (catalogo.unita_misura.id).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.is_base          IS 'TRUE per la UoM base dell''articolo (una sola per articolo).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.factor_to_base   IS 'Fattore di conversione UoM operativa → UoM base (per la base = 1).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.is_sell_uom      IS 'Flag: UoM usabile nelle vendite (listini/documenti).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.is_purchase_uom  IS 'Flag: UoM usabile negli acquisti.';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.is_logistic_uom  IS 'Flag: UoM logistica (picking/packing/movimentazione).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.qty_step         IS 'Granularità minima consentita per qta_operativa (es. 0.5 m).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.rounding_mode    IS 'Modalità di arrotondamento (UP, DOWN, HALF_UP, HALF_DOWN, HALF_EVEN).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.max_decimals     IS 'Numero massimo di decimali ammessi per qta_operativa.';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.forbid_fraction  IS 'Se TRUE vieta frazioni (qta_operativa deve essere intera).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.require_lot      IS 'Se TRUE richiede lotto nei documenti per questa UoM/articolo.';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.gtin             IS 'GTIN/barcode associato alla confezione/UoM operativa.';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.valido_dal       IS 'Validità dal (inclusivo).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.valido_al        IS 'Validità al (inclusivo).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.attivo           IS 'Abilitazione della riga di mapping.';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.meta             IS 'Estensioni JSONB (attributi extra specifici).';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.data_insert      IS 'Audit: data inserimento.';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.user_insert      IS 'Audit: utente inserimento.';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.data_update      IS 'Audit: data aggiornamento.';
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.user_update      IS 'Audit: utente aggiornamento.';
+
+  # 5) Unique parziale: una sola base per articolo (partial unique index)
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE UNIQUE INDEX IF NOT EXISTS uqidx_artuomop_one_base
+              ON catalogo.articoli_uom_operativa(articolo_id)
+              WHERE is_base IS TRUE;
+
+  # 6) Check constraints (via SQL) e indici operativi aggiuntivi
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Fattore > 0
+              ALTER TABLE catalogo.articoli_uom_operativa
+              ADD CONSTRAINT ck_artuomop_factor_pos
+              CHECK (factor_to_base > 0);
+
+              -- qty_step > 0
+              ALTER TABLE catalogo.articoli_uom_operativa
+              ADD CONSTRAINT ck_artuomop_qty_step_pos
+              CHECK (qty_step IS NULL OR qty_step > 0);
+
+              -- rounding_mode in elenco ammesso
+              ALTER TABLE catalogo.articoli_uom_operativa
+              ADD CONSTRAINT ck_artuomop_rounding_mode
+              CHECK (rounding_mode IN ('UP','DOWN','HALF_UP','HALF_DOWN','HALF_EVEN'));
+
+              -- max_decimals coerente (0..6 di default)
+              ALTER TABLE catalogo.articoli_uom_operativa
+              ADD CONSTRAINT ck_artuomop_max_decimals_range
+              CHECK (max_decimals IS NULL OR (max_decimals >= 0 AND max_decimals <= 6));
+
+              -- Se forbid_fraction = TRUE ⇒ decimali non ammessi e step intero
+              ALTER TABLE catalogo.articoli_uom_operativa
+              ADD CONSTRAINT ck_artuomop_forbid_fraction_rules
+              CHECK (
+                forbid_fraction IS NOT TRUE OR
+                (
+                  COALESCE(max_decimals,0) = 0
+                  AND COALESCE(qty_step,1) = 1
+                )
+              );
+
+              -- Indice per ricerche base/attive
+              CREATE INDEX IF NOT EXISTS ix_artuomop_art_isbase
+              ON catalogo.articoli_uom_operativa(articolo_id, is_base);
+
+              -- Indice GIN su meta per eventuali query semantiche
+              CREATE INDEX IF NOT EXISTS ix_artuomop_meta_gin
+              ON catalogo.articoli_uom_operativa USING GIN (meta);

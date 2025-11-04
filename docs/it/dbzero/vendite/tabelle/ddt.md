@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/ddt.md" %}
 # 📚 Tabella `ddt`
 
 ## 🗂️ Campi principali
@@ -62,6 +63,8 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_ddt_a10_upd_v_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_v_ddt_protect_num()` |
+| trg_ddt_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ddt_norm()` |
+| trg_ddt_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ddt_norm()` |
 
 ---
 {% include-markdown "signature-core.md" %}

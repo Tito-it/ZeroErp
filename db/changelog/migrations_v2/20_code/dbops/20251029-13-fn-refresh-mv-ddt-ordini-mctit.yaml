@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/dbops/20251029-13-fn-refresh-mv-ddt-ordini-mctit.yaml
+
+  - changeSet:
+      id: 20251029-13-fn-refresh-mv-ddt-ordini
+      author: mctit
+      
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- Funzione: dbops.fn_refresh_mv_ddt_ordini(concurrent bool default true, max_retries int default 3)
+              -- Scopo: eseguire REFRESH (preferibilmente CONCURRENTLY) con lock advisory e retry.
+              CREATE OR REPLACE FUNCTION dbops.fn_refresh_mv_ddt_ordini(
+                  p_concurrent  boolean DEFAULT true,
+                  p_max_retries integer DEFAULT 3
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_locked boolean;
+                v_try    integer := 0;
+              BEGIN
+                -- Advisory lock per serializzare i refresh della stessa MV
+                v_locked := pg_try_advisory_lock(hashtext('vendite.mv_ddt_ordini'));
+                IF NOT v_locked THEN
+                  -- Se non riesco a lockare, riprovo fino a p_max_retries
+                  WHILE v_try < p_max_retries AND NOT v_locked LOOP
+                    v_try := v_try + 1;
+                    PERFORM pg_sleep(1);
+                    v_locked := pg_try_advisory_lock(hashtext('vendite.mv_ddt_ordini'));
+                  END LOOP;
+                  IF NOT v_locked THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','fn_refresh_mv_ddt_ordini','E_REFRESH_LOCK_TIMEOUT',
+                      jsonb_build_object('mv','vendite.mv_ddt_ordini','retries',p_max_retries),
+                      NULL::uuid,
+                      'MV : vendite.mv_ddt_ordini' , p_max_retries);
+                  END IF;
+                END IF;
+
+                BEGIN
+                  IF p_concurrent THEN
+                    EXECUTE 'REFRESH MATERIALIZED VIEW CONCURRENTLY vendite.mv_ddt_ordini';
+                  ELSE
+                    EXECUTE 'REFRESH MATERIALIZED VIEW vendite.mv_ddt_ordini';
+                  END IF;
+                EXCEPTION WHEN others THEN
+                  -- fallback: se concurrently fallisce (es. manca unique index), riprovo senza concurrently
+                  IF p_concurrent THEN
+                    EXECUTE 'REFRESH MATERIALIZED VIEW vendite.mv_ddt_ordini';
+                  ELSE
+                    RAISE;
+                  END IF;
+                END;
+
+                PERFORM pg_advisory_unlock(hashtext('vendite.mv_ddt_ordini'));
+              END;
+              $$;
+      rollback:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_refresh_mv_ddt_ordini(boolean, integer);

@@ -1,0 +1,170 @@
+# ⚙️ Funzione `trgfn_qta_from_operativa`
+
+```sql
+CREATE FUNCTION trgfn_qta_from_operativa()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.trgfn_qta_from_operativa()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_factor         numeric;
+  v_forbid_frac    boolean;
+  v_qty_step       numeric;
+  v_max_dec        int;
+  v_uom_base_id    bigint;
+  v_fallback_used  boolean := false;
+BEGIN
+  --------------------------------------------------------------------
+  -- 1️⃣  Determinazione UoM operativa: se mancante → fallback alla base
+  --------------------------------------------------------------------
+  IF NEW.uom_operativa_id IS NULL THEN
+    SELECT a.uom_id
+      INTO v_uom_base_id
+      FROM catalogo.articoli a
+    WHERE a.id = NEW.articolo_id;
+
+    IF v_uom_base_id IS NULL THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database',
+        'vendite.trgfn_ddt_righe_qta_compute',
+        'E_UOM_MISSING',
+        jsonb_build_object('articolo_id', NEW.articolo_id),
+        NULL::uuid,
+        'articolo_id',
+        NEW.articolo_id::text
+      );
+    END IF;
+
+    NEW.uom_operativa_id := v_uom_base_id;
+    v_factor := 1;
+    v_fallback_used := true;
+  END IF;
+
+  --------------------------------------------------------------------
+  -- 2️⃣  Lettura fattore e policy da catalogo.articoli_uom_operativa
+  --------------------------------------------------------------------
+  IF NOT v_fallback_used THEN
+    SELECT factor_to_base, forbid_fraction, qty_step, COALESCE(max_decimals,6)
+      INTO v_factor, v_forbid_frac, v_qty_step, v_max_dec
+    FROM catalogo.articoli_uom_operativa
+    WHERE articolo_id = NEW.articolo_id
+      AND uom_id = NEW.uom_operativa_id
+      AND attivo = TRUE
+      AND (valido_dal IS NULL OR valido_dal <= CURRENT_DATE)
+      AND (valido_al  IS NULL OR valido_al  >= CURRENT_DATE)
+    LIMIT 1;
+
+    -- se non trovata → fallback alla UoM base dell’articolo
+    IF v_factor IS NULL THEN
+      SELECT a.uom_id
+        INTO v_uom_base_id
+        FROM catalogo.articoli a
+      WHERE a.id = NEW.articolo_id;
+
+      IF v_uom_base_id IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+          'database',
+          'vendite.trgfn_ddt_righe_qta_compute',
+          'E_UOM_MISSING',
+          jsonb_build_object('articolo_id', NEW.articolo_id),
+        NULL::uuid,
+        'articolo_id',
+        NEW.articolo_id::text
+        );
+      END IF;
+
+      NEW.uom_operativa_id := v_uom_base_id;
+      v_factor := 1;
+      v_fallback_used := true;
+    END IF;
+  END IF;
+
+  --------------------------------------------------------------------
+  -- 3️⃣  Validazioni su quantità operativa
+  --------------------------------------------------------------------
+  IF v_forbid_frac IS TRUE
+    AND NEW.qta_operativa IS DISTINCT FROM NULL
+    AND NEW.qta_operativa <> TRUNC(NEW.qta_operativa) THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'vendite.trgfn_ddt_righe_qta_compute',
+      'E_QTA_OPERATIVA_NON_INTERA',
+      jsonb_build_object(
+        'articolo_id', NEW.articolo_id,
+        'uom_operativa_id', NEW.uom_operativa_id,
+        'qta_operativa', NEW.qta_operativa
+      ),
+      NULL::uuid,
+        'articolo_id',
+        NEW.articolo_id::text,
+        'uom_operativa_id',
+        NEW.uom_operativa_id::text,
+        'qta_operativa', NEW.qta_operativa::text
+    );
+  END IF;
+
+  IF v_qty_step IS NOT NULL
+    AND v_qty_step > 0
+    AND NEW.qta_operativa IS NOT NULL THEN
+    IF abs(NEW.qta_operativa / v_qty_step - ROUND(NEW.qta_operativa / v_qty_step)) > 1e-9 THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database',
+        'vendite.trgfn_ddt_righe_qta_compute',
+        'E_QTA_OPER_STEP_INVALIDO',
+        jsonb_build_object(
+          'articolo_id', NEW.articolo_id,
+          'uom_operativa_id', NEW.uom_operativa_id,
+          'qta_operativa', NEW.qta_operativa,
+          'qty_step', v_qty_step
+        ),
+        NULL::uuid,
+        'articolo_id', NEW.articolo_id,
+          'uom_operativa_id', NEW.uom_operativa_id,
+          'qta_operativa', NEW.qta_operativa,
+          'qty_step', v_qty_step
+      );
+    END IF;
+  END IF;
+
+  --------------------------------------------------------------------
+  -- 4️⃣  Calcolo quantità in base (qta)
+  --------------------------------------------------------------------
+  IF NEW.qta_operativa IS NOT NULL THEN
+    NEW.qta := ROUND(NEW.qta_operativa * v_factor, 6);
+  ELSE
+    -- caso inverso: arriva solo qta, calcolo qta_operativa
+    IF NEW.qta IS NOT NULL AND v_factor IS NOT NULL THEN
+      NEW.qta_operativa := ROUND(NEW.qta / v_factor, COALESCE(v_max_dec,6));
+    END IF;
+  END IF;
+
+  --------------------------------------------------------------------
+  -- 5️⃣  Logica finale: sanity check
+  --------------------------------------------------------------------
+-- Preferisco che l'errore quantita non positiva venga gestito con i constraint a livello di tabella.
+
+/*  IF NEW.qta <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'vendite.trgfn_ddt_righe_qta_compute',
+      'QTA_NON_POSITIVA',
+      jsonb_build_object(
+        'articolo_id', NEW.articolo_id,
+        'qta', NEW.qta,
+        'qta_operativa', NEW.qta_operativa
+      )
+    );
+  END IF;  */
+
+  RETURN NEW;
+END;
+$function$
+```
+
+---
+{% include-markdown "signature-core.md" %}

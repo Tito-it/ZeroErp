@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  
+  - logicalFilePath: migrations_v2/00_schema/vendite/20251029-12-mv-ddt-ordini-mctit.yaml
+
+  - changeSet:
+      id: 20251029-12-mv-ddt-ordini
+      author: mctit
+      runOnChange: true
+      preConditions:
+        - onFail: HALT
+          and:
+            - tableExists: { schemaName: vendite, tableName: ordini_righe_fulfillment }
+            - tableExists: { schemaName: vendite, tableName: ddt_righe }
+            - tableExists: { schemaName: vendite, tableName: ordini_righe }
+      changes:
+        # Nota: Liquibase non ha un costrutto nativo per MV → uso SQL.
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DROP MATERIALIZED VIEW IF EXISTS vendite.mv_ddt_ordini;
+              CREATE MATERIALIZED VIEW vendite.mv_ddt_ordini AS
+              SELECT DISTINCT
+                     dr.ddt_id,
+                     orr.ordine_id
+              FROM vendite.ordini_righe_fulfillment f
+              JOIN vendite.ddt_righe    dr  ON dr.id  = f.ddt_riga_id
+              JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id;
+
+              -- Indice UNIQUE obbligatorio per REFRESH CONCURRENTLY
+              CREATE UNIQUE INDEX uq_mv_ddt_ordini
+                ON vendite.mv_ddt_ordini (ddt_id, ordine_id);
+
+              COMMENT ON MATERIALIZED VIEW vendite.mv_ddt_ordini
+                IS 'Vista materializzata: coppie testate DDT↔Ordini derivate dal fulfillment riga↔riga.';
+              COMMENT ON COLUMN vendite.mv_ddt_ordini.ddt_id
+                IS 'ID testata DDT (vendite.ddt.id)';
+              COMMENT ON COLUMN vendite.mv_ddt_ordini.ordine_id
+                IS 'ID testata Ordine (vendite.ordini.id)';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS uq_mv_ddt_ordini;
+              DROP MATERIALIZED VIEW IF EXISTS vendite.mv_ddt_ordini;

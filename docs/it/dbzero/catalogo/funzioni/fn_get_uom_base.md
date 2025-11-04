@@ -1,0 +1,33 @@
+# ⚙️ Funzione `fn_get_uom_base`
+
+```sql
+CREATE FUNCTION fn_get_uom_base(p_articolo_id uuid)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION catalogo.fn_get_uom_base(p_articolo_id uuid)
+ RETURNS bigint
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+DECLARE
+  v_uom_base_id bigint;
+BEGIN
+  -- Ritorna la UoM BASE dell’articolo da catalogo.articoli.uom_id
+
+  SELECT a.uom_id
+    INTO v_uom_base_id
+  FROM catalogo.articoli a
+  WHERE a.id = p_articolo_id
+  LIMIT 1;
+
+  -- Se non presente, ritorna NULL; il chiamante decide se bloccare/loggare
+  RETURN v_uom_base_id;
+END;
+$function$
+```
+
+---
+{% include-markdown "signature-core.md" %}

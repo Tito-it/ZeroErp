@@ -9,7 +9,7 @@
 - [attivita_fatturabili](tabelle/attivita_fatturabili.md) — `vendite.attivita_fatturabili` è il **registro centrale delle prestazioni/attività da fatturare** (time & material, canoni, una‑tantum, letture/consumi valorizzati, import batch, ecc.). Ogni riga rappresenta **una voce fatturabile** riferita a un *articolo/servizio*, a una *istanza tecnica/utility* e, opzionalmente, a un *billing account*. Queste righe sono **pre‑documentali**: quando il ciclo di fatturazione le preleva, diventano **righe di fattura** (`vendite.fatture_righe`).
 - [contratti](tabelle/contratti.md)
 - [contratti_righe](tabelle/contratti_righe.md)
-- [ddt](tabelle/ddt.md)
+- [ddt](tabelle/ddt.md) — La tabella **`vendite.ddt`** rappresenta la **testata** dei Documenti di Trasporto. È il fulcro del ciclo logistico tra **Ordini** (evasione/spedizione) e **Fatture** (conto vendita / accompagnatoria).
 - [ddt_indirizzi](tabelle/ddt_indirizzi.md)
 - [ddt_righe](tabelle/ddt_righe.md)
 - [fatture](tabelle/fatture.md) — `vendite.fatture` rappresenta la **testata del documento fiscale di vendita**. Gestisce **identità fiscale (registro/anno/serie/numero)**, **stato e tipo documento**, **intestatari economici** (BA, emittente, reseller), **valuta e pagamento**, **totali** e **metadati**. È il **punto di aggregazione** delle righe (`vendite.fatture_righe`) e dei riepiloghi IVA.
@@ -41,6 +41,7 @@
 - [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md)
 - [fn_resolve_termini_pagamento](funzioni/fn_resolve_termini_pagamento.md)
 - [trgfn_a10_attivita_fatturabili_guard_fatturato](funzioni/trgfn_a10_attivita_fatturabili_guard_fatturato.md)
+- [trgfn_a10_dlt_block_ordrig_ddtrig](funzioni/trgfn_a10_dlt_block_ordrig_ddtrig.md)
 - [trgfn_a10_fatture_protect_num](funzioni/trgfn_a10_fatture_protect_num.md)
 - [trgfn_a10_ins_upd_ordini_ful_guard_consistenza](funzioni/trgfn_a10_ins_upd_ordini_ful_guard_consistenza.md)
 - [trgfn_a10_ordini_v_protect_num](funzioni/trgfn_a10_ordini_v_protect_num.md)
@@ -54,11 +55,10 @@
 - [trgfn_attivita_guard_ba_coerenza](funzioni/trgfn_attivita_guard_ba_coerenza.md)
 - [trgfn_attivita_guard_fonte](funzioni/trgfn_attivita_guard_fonte.md)
 - [trgfn_attivita_norm_competenza_mese](funzioni/trgfn_attivita_norm_competenza_mese.md)
-- [trgfn_ddt_indirizzi_only_allowed_tipi](funzioni/trgfn_ddt_indirizzi_only_allowed_tipi.md)
-- [trgfn_fatture_indirizzi_only_allowed_tipi](funzioni/trgfn_fatture_indirizzi_only_allowed_tipi.md)
+- [trgfn_contratti_norm](funzioni/trgfn_contratti_norm.md)
+- [trgfn_ddt_norm](funzioni/trgfn_ddt_norm.md)
 - [trgfn_fatture_righe_norm_guard](funzioni/trgfn_fatture_righe_norm_guard.md)
 - [trgfn_note_validate_generic](funzioni/trgfn_note_validate_generic.md)
-- [trgfn_ordini_indirizzi_only_allowed_tipi](funzioni/trgfn_ordini_indirizzi_only_allowed_tipi.md)
 - [trgfn_ordini_norm](funzioni/trgfn_ordini_norm.md)
 - [trgfn_preventivi_norm](funzioni/trgfn_preventivi_norm.md)
 - [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md)
