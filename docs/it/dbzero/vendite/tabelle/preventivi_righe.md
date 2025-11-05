@@ -7,7 +7,6 @@
 | preventivo_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
 | descrizione | character varying | YES |  |
-| unita_misura_id | integer | YES |  |
 | quantita | numeric | NO |  |
 | prezzo_unitario | numeric | NO |  |
 | sconto_percentuale | numeric | YES | 0 |
@@ -19,16 +18,18 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
+| qta_operativa | numeric | YES |  |
+| uom_operativa_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_prevrighe_quantita_prezzo |  |
 | CHECK | chk_prevrighe_sconto |  |
+| FOREIGN KEY | fk_preventivi_vendita_r_uom_operativa | uom_operativa_id |
 | FOREIGN KEY | fk_prevrighe_articoli | articolo_id |
 | FOREIGN KEY | fk_prevrighe_iva | iva_id |
 | FOREIGN KEY | fk_prevrighe_preventivi | preventivo_id |
-| FOREIGN KEY | fk_prevrighe_unita_misura | unita_misura_id |
 | PRIMARY KEY | pk_preventivi_righe | id |
 
 ## 📑 Indici
