@@ -129,9 +129,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'it-it'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Europe/Rome'
 
 USE_I18N = True
 
@@ -155,12 +155,21 @@ MEDIA_URL   = "/media/"
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- Proxy HTTPS/Nginx + cookie sicuri ---
-
-CSRF_TRUSTED_ORIGINS = [
-    "https://backend-dev.tailXXXX.ts.net",
-    "http://backend-dev.tailXXXX.ts.net",
-]
-
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # fidati dell'header di Nginx
-SESSION_COOKIE_SECURE = True   # invia il cookie di sessione solo su HTTPS
-CSRF_COOKIE_SECURE = True      # invia il cookie CSRF solo su HTTPS
+
+if DEBUG:
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+
+    CSRF_TRUSTED_ORIGINS = [
+        "https://backend-dev.tailXXXX.ts.net",
+        "http://backend-dev.tailXXXX.ts.net",
+    ]
+
+else:
+    SESSION_COOKIE_SECURE = True   # invia il cookie di sessione solo su HTTPS
+    CSRF_COOKIE_SECURE = True      # invia il cookie CSRF solo su HTTPS
+    CSRF_TRUSTED_ORIGINS = [
+            "https://backend-dev.tailXXXX.ts.net",
+        ]
+
