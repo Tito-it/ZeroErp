@@ -30,6 +30,10 @@
 | fattura_riga_id | bigint | YES |  |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
+| uom_id | bigint | YES |  |
+| qta_operativa | numeric | YES |  |
+| uom_operativa_id | bigint | YES |  |
+| factor_to_base | numeric | NO | 1 |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -41,6 +45,8 @@
 | FOREIGN KEY | fk_attivita_fatturabili_billing_account | billing_account_id |
 | FOREIGN KEY | fk_attivita_fatturabili_istanze_utilities | istanza_utility_id |
 | FOREIGN KEY | fk_attivita_fatturabili_sorgente_tipo | sorgente_tipo_id |
+| FOREIGN KEY | fk_attivita_fatturabili_uom_id | uom_id |
+| FOREIGN KEY | fk_attivita_fatturabili_uom_operativa_id | uom_operativa_id |
 | PRIMARY KEY | pk_attivita_fatturabili | id |
 
 ## 📑 Indici

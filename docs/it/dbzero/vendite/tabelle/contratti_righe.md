@@ -20,6 +20,9 @@
 | user_insert | character varying | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | YES | CURRENT_USER |
+| qta_operativa | numeric | YES |  |
+| uom_operativa_id | bigint | YES |  |
+| factor_to_base | numeric | NO | 1 |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -27,6 +30,7 @@
 | CHECK | chk_contrighe_coerenza_canone |  |
 | CHECK | chk_contrighe_fonte_qta |  |
 | CHECK | chk_contrighe_tipo_erog |  |
+| FOREIGN KEY | fk_contratti_righe_uom_operativa_id | uom_operativa_id |
 | FOREIGN KEY | fk_contrighe_articoli | articolo_id |
 | FOREIGN KEY | fk_contrighe_contratti | contratto_id |
 | PRIMARY KEY | pk_contratti_righe | id |
@@ -37,6 +41,12 @@
 | ix_contrighe_articolo | `CREATE INDEX ix_contrighe_articolo ON vendite.contratti_righe USING btree (articolo_id)` |
 | ix_contrighe_contratto | `CREATE INDEX ix_contrighe_contratto ON vendite.contratti_righe USING btree (contratto_id)` |
 | pk_contratti_righe | `CREATE UNIQUE INDEX pk_contratti_righe ON vendite.contratti_righe USING btree (id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_a10_ins_upd_contratti_righe_qta_from_operativa | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false')` |
+| trg_a10_ins_upd_contratti_righe_qta_from_operativa | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false')` |
 
 ---
 {% include-markdown "signature-core.md" %}

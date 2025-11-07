@@ -1,0 +1,26 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20251106-04-trg_a10_ins_upd_preventivi_righe_qta_from_operativa-mctit.yaml
+
+  - changeSet:
+      id: 20251106-04-trg_a10_ins_upd_preventivi_righe_qta_from_operativa
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                  DROP TRIGGER IF EXISTS trg_a10_ins_upd_preventivi_righe_qta_from_operativa ON vendite.preventivi_righe;
+
+                  CREATE TRIGGER trg_a10_ins_upd_preventivi_righe_qta_from_operativa
+                  BEFORE INSERT OR UPDATE ON vendite.preventivi_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false');

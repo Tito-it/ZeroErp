@@ -21,6 +21,7 @@
 | user_update | character varying | YES | CURRENT_USER |
 | qta_operativa | numeric | YES |  |
 | uom_operativa_id | bigint | YES |  |
+| factor_to_base | numeric | NO | 1 |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -43,8 +44,8 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_a10_dlt_block_ddt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_a10_dlt_block_ordrig_ddtrig()` |
-| trg_a10_ins_upd_ddt_righe_qta_from_operativa | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa()` |
-| trg_a10_ins_upd_ddt_righe_qta_from_operativa | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa()` |
+| trg_a10_ins_upd_ddt_righe_qta_from_operativa | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false')` |
+| trg_a10_ins_upd_ddt_righe_qta_from_operativa | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false')` |
 
 ---
 {% include-markdown "signature-core.md" %}

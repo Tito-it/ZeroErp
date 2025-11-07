@@ -20,6 +20,7 @@
 | user_update | character varying | YES | CURRENT_USER |
 | qta_operativa | numeric | YES |  |
 | uom_operativa_id | bigint | YES |  |
+| factor_to_base | numeric | NO | 1 |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -38,6 +39,12 @@
 | ix_prevrighe_articolo | `CREATE INDEX ix_prevrighe_articolo ON vendite.preventivi_righe USING btree (articolo_id)` |
 | ix_prevrighe_preventivo | `CREATE INDEX ix_prevrighe_preventivo ON vendite.preventivi_righe USING btree (preventivo_id)` |
 | pk_preventivi_righe | `CREATE UNIQUE INDEX pk_preventivi_righe ON vendite.preventivi_righe USING btree (id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_a10_ins_upd_preventivi_righe_qta_from_operativa | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false')` |
+| trg_a10_ins_upd_preventivi_righe_qta_from_operativa | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false')` |
 
 ---
 {% include-markdown "signature-core.md" %}
