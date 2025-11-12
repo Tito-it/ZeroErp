@@ -1,0 +1,44 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_catalogo/20251105-02-articoli_uom_operativa-add-storicizza-tx-id-mctit.yaml
+
+  - changeSet:
+      id: 20251105-02-articoli_uom_operativa-add-storicizza-tx-id
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli_uom_operativa
+                columnName: storicizza
+
+      changes:
+        # Aggiungo il fattore di conversione snapshot usato al momento della riga DDT
+        - addColumn:
+            schemaName: catalogo
+            tableName: articoli_uom_operativa
+            columns:
+              - column: { name: storicizza, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Snapshot su UPDATE/DELETE" }
+              - column: { name: tx_id, type: UUID, remarks: "Id transazione" }
+              
+        
+        # Commento esplicativo sulla colonna
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.tx_id
+              IS 'Id transazione';
+
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.storicizza
+              IS 'Snapshot su UPDATE/DELETE';

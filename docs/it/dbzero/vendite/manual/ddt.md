@@ -6,7 +6,7 @@
 >
 > * [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)   
 > * [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)   
-> * [vendite.mv_ddt_ordini] – **vista materializzata** delle coppie Testata DDT ↔ Testata Ordine  
+> * [vendite.mv_ddt_ordini] – **vista materializzata** delle coppie Testata DDT ↔ Testata Ordine      
 > * [config.stati_doc_ddt](/dbzero/config/tabelle/stati_doc_ddt)   
 
 ---

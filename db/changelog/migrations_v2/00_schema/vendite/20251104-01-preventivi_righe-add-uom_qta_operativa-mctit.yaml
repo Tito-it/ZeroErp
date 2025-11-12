@@ -77,3 +77,34 @@ databaseChangeLog:
                 - column:
                     name: unita_misura_id
           
+
+  - changeSet:
+      id: 20251105-03-preventivi_righe-add-uom_id
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: MARK_RAN
+        - not:
+          -  columnExists:
+              schemaName: vendite
+              tableName: preventivi_righe
+              columnName: uom_id  
+
+      changes:
+        - addColumn:
+           schemaName: vendite
+           tableName: preventivi_righe
+           columns:
+             - column: { name: uom_id, type: BIGINT, remarks: "Unità di misura base riferita a qta (catalogo.unita_misura.id)" }
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: preventivi_righe
+            baseColumnNames: uom_id
+            constraintName: fk_preventivi_vendita_r_uom_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+      

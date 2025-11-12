@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/ddt_indirizzi.md" %}
 # 📚 Tabella `ddt_indirizzi`
 
 ## 🗂️ Campi principali
@@ -17,9 +18,9 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_ddt_indirizzi_ddt | ddt_id |
 | FOREIGN KEY | fk_ddt_indirizzi_origine_indirizzo | origine_indirizzo_id |
 | FOREIGN KEY | fk_ddt_indirizzi_origine_sog_ruolo | origine_soggetto_ruolo_id |
-| FOREIGN KEY | fk_ddt_indirizzo_ordine | ddt_id |
 | FOREIGN KEY | fk_ddt_indirizzo_tipo | tipo_indirizzo_id |
 | PRIMARY KEY | pk_ddt_indirizzi | id |
 | UNIQUE | uq_ddt_indirizzi_uno_per_tipo | ddt_id, tipo_indirizzo_id |
@@ -27,9 +28,9 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_ddt_indirizzi_ddt | `CREATE INDEX ix_ddt_indirizzi_ddt ON vendite.ddt_indirizzi USING btree (ddt_id)` |
 | ix_ddt_indirizzi_origine_indirizzo | `CREATE INDEX ix_ddt_indirizzi_origine_indirizzo ON vendite.ddt_indirizzi USING btree (origine_indirizzo_id)` |
 | ix_ddt_indirizzi_origine_sog_ruolo | `CREATE INDEX ix_ddt_indirizzi_origine_sog_ruolo ON vendite.ddt_indirizzi USING btree (origine_soggetto_ruolo_id)` |
-| ix_ddt_indirizzo_ordine | `CREATE INDEX ix_ddt_indirizzo_ordine ON vendite.ddt_indirizzi USING btree (ddt_id)` |
 | pk_ddt_indirizzi | `CREATE UNIQUE INDEX pk_ddt_indirizzi ON vendite.ddt_indirizzi USING btree (id)` |
 | uq_ddt_indirizzi_uno_per_tipo | `CREATE UNIQUE INDEX uq_ddt_indirizzi_uno_per_tipo ON vendite.ddt_indirizzi USING btree (ddt_id, tipo_indirizzo_id)` |
 

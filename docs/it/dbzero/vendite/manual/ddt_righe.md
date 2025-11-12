@@ -4,15 +4,20 @@
 >
 > **Approfondimento tabelle:**
 >
-> • [vendite.ddt](/dbzero/vendite/tabelle/ddt)
-> • [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)
-> • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)
-> • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)
-> • [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)
+> • [vendite.ddt](/dbzero/vendite/tabelle/ddt)     
+> • [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)    
+> • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)    
+> • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)    
+> • [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)   
+
+> **Approfondimento funzioni:**
+> 
+> • [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa)
 
 ---
 
-### 🎯 Scopo principale
+
+### 🎯 Scopo Principale
 
 `vendite.ddt_righe` rappresenta le **righe dei Documenti di Trasporto di vendita**. Ogni record corrisponde a una **voce di spedizione** associata a una testata DDT (`vendite.ddt`), identificando articolo, quantità, unità di misura e dettagli di tracciabilità (lotto, seriale).
 
@@ -64,11 +69,22 @@ Le righe DDT sono utilizzate in molteplici processi del ciclo vendite:
 ### ⚙️ Trigger e automazioni
 
 * `trg_a10_dlt_block_ddt` → impedisce la cancellazione di righe DDT se collegate a processi successivi (fatture, storici, fulfillment).
-* **Trigger standard ZeroERP consigliati:**
 
-  * `dbops.trgfn_tx_id_managed` → propaga il `tx_id` logico.
-  * `dbops.trgfn_audit_columns` → aggiorna audit di inserimento/modifica.
-  * `dbops.trgfn_storicizza` → snapshot su update/delete.
+* `trg_a10_ins_upd_ddt_righe_qta_from_operativa`
+
+Chiama script.trgfn_qta_from_operativa('true','false').
+
+Logica attesa (in base alla versione condivisa):
+
+Se uom_operativa_id e qta_operativa sono valorizzati ⇒ calcola qta in UoM base usando il conversion factor articolo/UoM (es. 1 scatola = 50 pezzi).
+
+Se manca uno dei due ⇒ ricompone i dati operativi a partire dalla UoM base articolo e dalla qta (se presente).
+
+Argomento fill_factor_to_base = true ⇒ forza (o valida) fattore di conversione verso la base.
+
+Argomento fill_uom_id_base = false ⇒ non forza il popolamento di uom_id se già presente; in caso di NULL può valorizzarlo dallo snapshot articolo.
+
+Garantisce coerenza decimali (step, max_dec) rispetto alla policy UoM dell’articolo; in caso contrario → fn_log_and_raise_error.
 
 ---
 
@@ -82,6 +98,30 @@ Le righe DDT sono utilizzate in molteplici processi del ciclo vendite:
   * `lotto IS NOT NULL` per articoli che richiedono tracciabilità lotto.
 
 ---
+🧭 Flussi tipici
+
+Evasione da ordine
+
+L’utente seleziona righe d’ordine → il sistema propone uom_operativa_id e qta_operativa coerenti (es. 2 scatole).
+
+Il trigger calcola qta in UoM base (es. 100 pezzi).
+
+Si memorizzano eventuali lotto/seriale.
+
+Si registra il collegamento di evasione (ordine→DDT) a livello riga.
+
+DDT libero (senza ordine)
+
+L’operatore inserisce manualmente articolo, uom_operativa_id, qta_operativa (o direttamente qta), più lotto/seriale quando richiesti.
+
+Il trigger assicura coerenza con la UoM base e le policy articolo.
+
+Fatturazione da DDT
+
+Le righe DDT diventano sorgente per vendite.attivita_fatturabili; si trasferiscono articolo_id, descrizione, uom_id base e qta, oltre a eventuali metadati utili (lotto/seriale) per il corpo documento o per il trace log.
+
+---
+
 
 ### 📊 Esempi di utilizzo applicativo
 
@@ -99,21 +139,6 @@ JOIN vendite.ddt_righe dr ON dr.ddt_id = d.id
 WHERE dr.lotto = :lotto OR dr.seriale = :seriale;
 ```
 
----
-
-### 🧩 Esempio di utilizzo applicativo (DRF)
-
-```python
-class DdtRigaSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DdtRiga
-        fields = '__all__'
-
-    def validate_qta(self, value):
-        if value <= 0:
-            raise serializers.ValidationError('La quantità deve essere maggiore di zero.')
-        return value
-```
 
 ---
 
@@ -134,7 +159,6 @@ SELECT ok((SELECT count(*) FROM vendite.ddt_righe dr JOIN catalogo.articoli a ON
 2. **Gestione lotto/seriale** → introdurre trigger di validazione collegati alle policy articolo (evita incoerenze tra catalogo e righe DDT).
 3. **Indicizzazione** → possibile aggiunta indice `(ddt_id)` per ottimizzare le join frequenti.
 4. **Performance JSONB** → valutare un indice GIN su `meta` per query semantiche.
-5. **Validazione UoM** → utile un controllo di compatibilità con la UoM base dell’articolo tramite funzione.
 
 ---
 
