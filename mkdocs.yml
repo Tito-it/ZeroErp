@@ -1,7 +1,7 @@
 # ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Liquibase changelog per Zero ERP
-# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
 #
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
@@ -15,128 +15,128 @@ dev_addr: 127.0.0.1:8010
 docs_dir: docs
 site_dir: site
 
-
 theme:
-  name: material
-  language: it            # lingua di default: Italiano
-  features:
-    - navigation.sections
-    - navigation.expand
+    name: material
+    language: it # lingua di default: Italiano
+    features:
+        - navigation.sections
+        - navigation.expand
 plugins:
-  - include-markdown
-      #base_path: docs     
+    - include-markdown
+      #base_path: docs
       #fail_on_missing: false
-  - abs-to-rel          # per i link relativi
-  - search
-  #- mermaid2
-  
-  - i18n:
-      docs_structure: folder
-      
-      languages:
-        - locale: it
-          name: Italiano
-          default: true
-          build: true
-        - locale: en
-          name: English
-          build: true
+    - abs-to-rel # per i link relativi
+    - search
+    #- mermaid2
+
+    - i18n:
+          docs_structure: folder
+
+          languages:
+              - locale: it
+                name: Italiano
+                default: true
+                build: true
+              - locale: en
+                name: English
+                build: true
 
 markdown_extensions:
-  - toc:
-      permalink: true
-  - admonition
-  - codehilite
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_code_format
-  #- pymdownx.superfences
-  
+    - toc:
+          permalink: true
+    - admonition
+    - codehilite
+    - pymdownx.superfences:
+          custom_fences:
+              - name: mermaid
+                class: mermaid
+                format:
+                    !!python/name:pymdownx.superfences.fence_code_format #- pymdownx.superfences
+
+
 extra_javascript:
-  #- https://unpkg.com/mermaid@11.9.0/dist/mermaid.min.js
-  
-  - assets/javascripts/mermaid.min.js
-  - assets/javascripts/mermaid-init.js
+    #- https://unpkg.com/mermaid@11.9.0/dist/mermaid.min.js
 
-  #- assets/javascripts/custom-mermaid.js
-  
+    - assets/javascripts/mermaid.min.js
+    - assets/javascripts/mermaid-init.js
+
+    #- assets/javascripts/custom-mermaid.js
+
 nav:
-  - Home: index.md
-  - Introduzione:
-      - Cos’è Zero ERP: it/introduzione.md
-      - Manifesto: it/manifesto.md
-      - Licenza: it/LICENSE.md
-  - Installazione:
-      - Prerequisiti: it/installazione.md
-  - Architettura:
-      - Panoramica: it/architettura.md
-      - Database:
-          - Liquibase Setup & Workflow: it/liquibase-setup-workflow.md
-          - Linee Guida SQL: it/linee-guida-sql.md
-          - Linee Guida Trigger: it/linee-guida-trigger.md
-          - Db PostgresSQL: 
-              - Panoramica: it/postgresql/intro.md
-              - Parmetri personalizzati (GUC): it/postgresql/parametri-personalizzati-(GUC).md
-              - Estensioni:
-                      - Utilizzate: it/postgresql/estensioni-utilizzate.md
-                      - dblink: it/postgresql/dblink.md
-                      - pgAgent: it/postgresql/pgAgent.md
-                      - pgcrypto: it/postgresql/pgcrypto.md
+    - Home: index.md
+    - Introduzione:
+          - Cos’è Zero ERP: it/introduzione.md
+          - Manifesto: it/manifesto.md
+          - Licenza: it/LICENSE.md
+    - Installazione:
+          - Prerequisiti: it/installazione.md
+    - Architettura:
+          - Panoramica: it/architettura.md
+          - Database:
+                - Liquibase Setup & Workflow: it/liquibase-setup-workflow.md
+                - Linee Guida SQL: it/linee-guida-sql.md
+                - Linee Guida Trigger: it/linee-guida-trigger.md
+                - Db PostgresSQL:
+                      - Panoramica: it/postgresql/intro.md
+                      - Parmetri personalizzati (GUC): it/postgresql/parametri-personalizzati-(GUC).md
+                      - Estensioni:
+                            - Utilizzate: it/postgresql/estensioni-utilizzate.md
+                            - dblink: it/postgresql/dblink.md
+                            - pgAgent: it/postgresql/pgAgent.md
+                            - pgcrypto: it/postgresql/pgcrypto.md
 
+    - DB Zero:
+          - Panoramica: dbzero/index.md
+          - Schemi:
+                - Anagrafiche: dbzero/anagrafiche/index.md
+                - Catalogo: dbzero/catalogo/index.md
+                - Config: dbzero/config/index.md
+                - Dbops: dbzero/dbops/index.md
+                - Magazzino: dbzero/magazzino/index.md
+                - Vendite: dbzero/vendite/index.md
+                - Acquisti: dbzero/acquisti/index.md
+                - Pagamenti: dbzero/pagamenti/index.md
+                - Storico: dbzero/storico/index.md
+                - Script: dbzero/script/index.md
+                - Maintenance: dbzero/maintenance/index.md
+                - Public: dbzero/public/index.md
 
-  - DB Zero:  
-      - Panoramica: dbzero/index.md
-      - Schemi:
-          - Anagrafiche: dbzero/anagrafiche/index.md
-          - Catalogo: dbzero/catalogo/index.md
-          - Config:     dbzero/config/index.md
-          - Dbops:      dbzero/dbops/index.md
-          - Magazzino:  dbzero/magazzino/index.md
-          - Vendite: dbzero/vendite/index.md
-          - Acquisti: dbzero/acquisti/index.md
-          - Pagamenti:  dbzero/pagamenti/index.md
-          - Storico:    dbzero/storico/index.md
-          - Script:     dbzero/script/index.md
-          - Maintenance: dbzero/maintenance/index.md
-          - Public:    dbzero/public/index.md
-          
-  - Strumenti:
-        - Generatore Documentazione: dbzero/tools/gen_db_docs.md
-  - Sviluppatori:
-      - API: dev/api.md
-      - Backend:
-          - Guida backend-dev: dev/backend/backend-dev.md
-          - Checklist post upgrade: dev/backend/checklist-post-upgrade.md
-          - Configurazione Django:  dev/backend/configurazione-django.md
-      #    - (Opz) Celery & Beat: dev/backend/backend-celery.md
-      #    - (Opz) Produzione: dev/backend/backend-prod.md
-      - Database:
-          - VM dbdev (PostgreSQL): dev/db/dbdev.md
-      #    - (Opz) Produzione: dev/db/db-prod.md
-      - Infrastruttura:
-          - Proxmox: dev/infra/proxmox.md
-      - Workstation:
-          - Vm wrk1-dev (ubuntu): dev/workstation-dev/configurazione.md  
-      - GitHub:
-          - Documentazione: dev/github/configurazione.md
-      #- Frontend:
-      #    - Setup frontend-dev: dev/frontend/frontend-dev.md
-      #    - Build & Deploy: dev/frontend/frontend-build-deploy.md
+    - Strumenti:
+          - Generatore Documentazione: dbzero/tools/gen_db_docs.md
+    - Sviluppatori:
+          - API: dev/api.md
+          - Backend:
+                - Guida backend-dev: dev/backend/backend-dev.md
+                - Checklist post upgrade: dev/backend/checklist-post-upgrade.md
+                - Configurazione Django: dev/backend/configurazione-django.md
+          #    - (Opz) Celery & Beat: dev/backend/backend-celery.md
+          #    - (Opz) Produzione: dev/backend/backend-prod.md
+          - Database:
+                - VM dbdev (PostgreSQL): dev/db/dbdev.md
+          #    - (Opz) Produzione: dev/db/db-prod.md
+          - Infrastruttura:
+                - Proxmox: dev/infra/proxmox.md
+          - Workstation:
+                - Vm wrk1-dev (ubuntu): dev/workstation-dev/configurazione.md
+          - GitHub:
+                - Documentazione: dev/github/configurazione.md
+          #- Frontend:
+          #    - Setup frontend-dev: dev/frontend/frontend-dev.md
+          #    - Build & Deploy: dev/frontend/frontend-build-deploy.md
 
-  - Guide tecniche:
-      
+    - Guide tecniche:
           - Implementazione Transaction ID: guide/tx_id_implementation_guide.md
           - Storicizzazione Tabelle: guide/storicizzazione-tabelle.md
           - Configurazione e gestione parametri: guide/configurazione-e-gestione-parametri.md
           - Automazione DB: guide/automazione-db.md
-          - Log :
-              - Messaggi di Errore : guide/Messaggi-di-Errore-e-Generazione-Log.md
-              - Messaggi di Audit : guide/messaggi-audit.md
-              - Processi e Job : guide/Analisi-tracciamento-processi-e-job.md
-          - Generazione di un cliente : guide/generazione-cliente.md
+          - Log:
+                - Messaggi di Errore: guide/Messaggi-di-Errore-e-Generazione-Log.md
+                - Messaggi di Audit: guide/messaggi-audit.md
+                - Processi e Job: guide/Analisi-tracciamento-processi-e-job.md
+          - Generazione di un cliente: guide/generazione-cliente.md
           - Gestione conti bancari: guide/gestione-conti-bancari.md
-          - Gestione degli indirizzi : guide/gestione-degli-indirizzi.md
+          - Gestione degli indirizzi: guide/gestione-degli-indirizzi.md
 
-  - Glossario: it/glossario.md
+    - Glossario:
+          - Dev&Ops: it/glossario/devops&db.md
+          - Process Analysis: it/glossario/process-analysis.md

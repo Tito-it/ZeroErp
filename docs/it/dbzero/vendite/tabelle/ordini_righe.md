@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/ordini_righe.md" %}
 # 📚 Tabella `ordini_righe`
 
 ## 🗂️ Campi principali

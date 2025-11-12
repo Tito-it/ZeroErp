@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/catalogo/manual/articoli_uom_operativa.md" %}
 # 📚 Tabella `articoli_uom_operativa`
 
 ## 🗂️ Campi principali

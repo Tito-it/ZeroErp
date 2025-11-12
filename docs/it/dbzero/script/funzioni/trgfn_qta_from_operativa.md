@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/trgfn_qta_from_operativa.md" %}
 # ⚙️ Funzione `trgfn_qta_from_operativa`
 
 ```sql
