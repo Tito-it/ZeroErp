@@ -23,7 +23,7 @@
 | FOREIGN KEY | fk_ddt_indirizzi_origine_sog_ruolo | origine_soggetto_ruolo_id |
 | FOREIGN KEY | fk_ddt_indirizzo_tipo | tipo_indirizzo_id |
 | PRIMARY KEY | pk_ddt_indirizzi | id |
-| UNIQUE | uq_ddt_indirizzi_uno_per_tipo | ddt_id, tipo_indirizzo_id |
+| UNIQUE | uq_ddt_indirizzi_uno_per_tipo | tipo_indirizzo_id, ddt_id |
 
 ## 📑 Indici
 | Nome | Definizione |

@@ -10,7 +10,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| PRIMARY KEY | pk_automation_scope | schema_name, table_like |
+| PRIMARY KEY | pk_automation_scope | table_like, schema_name |
 
 ## 📑 Indici
 | Nome | Definizione |

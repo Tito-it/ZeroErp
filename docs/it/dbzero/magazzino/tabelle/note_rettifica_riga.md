@@ -32,7 +32,7 @@
 | CHECK | chk_note_target_tipo |  |
 | FOREIGN KEY | fk_note_rettifica_riga_riga | target_riga_id |
 | FOREIGN KEY | fk_note_rettifica_riga_testata | target_id |
-| PRIMARY KEY | note_rettifica_riga_pkey | target_tipo, id |
+| PRIMARY KEY | note_rettifica_riga_pkey | id, target_tipo |
 
 ## 📑 Indici
 | Nome | Definizione |

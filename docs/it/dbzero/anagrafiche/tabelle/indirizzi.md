@@ -34,7 +34,7 @@
 | FOREIGN KEY | fk_stati_config | stato_id, stato_id |
 | FOREIGN KEY | fk_tipi_indirizzo_config | tipo_indirizzo_id |
 | PRIMARY KEY | pk_indirizzi | id |
-| UNIQUE | uq_indirizzi_ruolo_tipo | soggetto_ruolo_id, tipo_indirizzo_id |
+| UNIQUE | uq_indirizzi_ruolo_tipo | tipo_indirizzo_id, soggetto_ruolo_id |
 
 ## 📑 Indici
 | Nome | Definizione |

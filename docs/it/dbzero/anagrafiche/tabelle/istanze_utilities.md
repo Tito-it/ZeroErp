@@ -27,7 +27,7 @@
 | FOREIGN KEY | fk_istanze_utilities_indirizzo_dettaglio | indirizzo_dettaglio_id |
 | FOREIGN KEY | fk_istanze_utilities_parent_istanza | parent_istanza_id |
 | FOREIGN KEY | fk_istanze_utilities_soggetto | soggetto_id |
-| FOREIGN KEY | fk_iu_pdp_id_addr | pdp_id, indirizzo_dettaglio_id |
+| FOREIGN KEY | fk_iu_pdp_id_addr | indirizzo_dettaglio_id, pdp_id |
 | PRIMARY KEY | pk_istanze_utilities | id |
 | UNIQUE | uq_istanze_utilities_codice | codice |
 

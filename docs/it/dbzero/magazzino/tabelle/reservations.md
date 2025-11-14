@@ -32,7 +32,7 @@
 | FOREIGN KEY | fk_mag_reservations_magazzino | magazzino_id |
 | FOREIGN KEY | fk_mag_reservations_ubicazione | ubicazione_id |
 | PRIMARY KEY | pk_mag_reservations | id |
-| UNIQUE | uq_mag_reservations_docref | doc_schema, doc_table, doc_id, doc_riga_id |
+| UNIQUE | uq_mag_reservations_docref | doc_riga_id, doc_id, doc_table, doc_schema |
 
 ## 📑 Indici
 | Nome | Definizione |

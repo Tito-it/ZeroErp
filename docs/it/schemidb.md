@@ -18,12 +18,72 @@
       </td>
     </tr>
     <tr>
+      <td><strong><a href="dbzero/acquisti/index.md">acquisti</a></strong></td>
+      <td>
+        Processi di approvvigionamento e ciclo passivo.
+        <ul>
+          <li>Esempi: <code>richieste_offerta</code>, <code>ordini_acquisto</code>, <code>ddt_acquisto</code>, <code>fatture_acquisto</code></li>
+          <li>Integrazione con <em>listini fornitori</em> e condizioni d’acquisto</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td><strong><a href="dbzero/catalogo/index.md">catalogo</a></strong></td>
+      <td>
+        Anagrafica articoli, attributi, UoM, listini e distinte base.
+        <ul>
+          <li>Esempi: <code>articoli</code>, <code>unita_misura</code>, <code>articoli_uom_operativa</code>, <code>listini</code>, <code>distinte_base</code></li>
+          <li>Base dati per vendite, acquisti e magazzino</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
       <td><strong>config</strong></td>
       <td>
         Contiene tabelle di configurazione parametrica e lookup.
         <ul>
           <li>Esempi: <code>stati</code>, <code>nazioni</code>, <code>contatti_ruoli</code></li>
           <li>Normalizzazione forte, spesso referenziate da altri schemi</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td><strong><a href="dbzero/contabilita/index.md">contabilita</a></strong></td>
+      <td>
+        Contabilità generale/IVA e prima nota.
+        <ul>
+          <li>Esempi: <code>piano_conti</code>, <code>registrazioni</code>, <code>liquidazioni_iva</code>, <code>partite</code></li>
+          <li>Coerenza con vendite/acquisti per scritture automatiche</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td><strong><a href="dbzero/magazzino/index.md">magazzino</a></strong></td>
+      <td>
+        Logistica, ubicazioni e movimentazione fisica.
+        <ul>
+          <li>Esempi: <code>magazzini</code>, <code>ubicazioni</code>, <code>movimenti</code>, <code>giacenze</code>, <code>lotti</code>, <code>seriali</code></li>
+          <li>Tracciabilità e valorizzazione su UoM base</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td><strong><a href="dbzero/pagamenti/index.md">pagamenti</a></strong></td>
+      <td>
+        Termini, metodi, scadenze e riconciliazioni.
+        <ul>
+          <li>Esempi: <code>termini_pagamento</code>, <code>metodi_pagamento</code>, <code>scadenze</code>, <code>riconciliazioni</code></li>
+          <li>Supporto a incassi/pagamenti, effetti e matching</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td><strong><a href="dbzero/vendite/index.md">vendite</a></strong></td>
+      <td>
+        Ciclo attivo: preventivi, ordini, DDT, fatture e resi.
+        <ul>
+          <li>Esempi: <code>preventivi</code>, <code>ordini</code>, <code>ddt</code>, <code>fatture</code>, <code>attivita_fatturabili</code></li>
+          <li>Integrazione con pricing, fulfillment e contabilizzazione IVA</li>
         </ul>
       </td>
     </tr>
@@ -80,24 +140,32 @@
         </ul>
       </td>
     </tr>
-
   </tbody>
 </table>
 
+
+
 >
-
-## Navigazione per schema
-
+>
+>## Navigazione per schema
+>
 - [anagrafiche](dbzero/anagrafiche/index.md)  
+- [acquisti](dbzero/acquisti/index.md)  
+- [catalogo](dbzero/catalogo/index.md)  
 - [config](dbzero/config/index.md)  
+- [contabilita](dbzero/contabilita/index.md)
+- [magazzino](dbzero/magazzino/index.md)
+- [pagamenti](dbzero/pagamenti/index.md)   
+- [vendite](dbzero/vendite/index.md) 
 - [script](dbzero/script/index.md)  
 - [dbops](dbzero/dbops/index.md)  
 - [storico](dbzero/storico/index.md) 
 - [maintenance](dbzero/maintenance/index.md)   
 
+>
 > In ciascuna pagina di schema troverai un unico indice con le tabelle, le funzioni e le view corrispondenti.
+> 
 ---
-
 
 ---
 {% include-markdown "signature-core.md" %}

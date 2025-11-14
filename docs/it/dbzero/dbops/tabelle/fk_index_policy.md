@@ -18,7 +18,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| PRIMARY KEY | fk_index_policy_pkey | schema_name, table_name, constraint_name |
+| PRIMARY KEY | fk_index_policy_pkey | constraint_name, table_name, schema_name |
 
 ## 📑 Indici
 | Nome | Definizione |

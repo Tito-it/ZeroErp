@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+      - logicalFilePath: migrations_v2/00_schema/vendite/20251114-02-contratti-modify-uid-mctit.yaml
+
+      - changeSet:
+              id: 20251114-02-contratti-modify-uid
+              author: mctit
+
+              preConditions:
+                    - onFail: HALT
+                    - onError: HALT
+                    - tableExists:
+                            schemaName: vendite
+                            tableName: contratti
+              changes:
+                    # Aggiunge uid con default uuidv7() e NOT NULL
+                    # Su PostgreSQL questo genera: ADD COLUMN uid uuid DEFAULT uuidv7() NOT NULL
+                    # e valorizza automaticamente le righe esistenti.
+                    - addColumn:
+                            schemaName: vendite
+                            tableName: contratti
+                            columns:
+                                  - column:
+                                          name: uid
+                                          type: uuid
+                                          defaultValueComputed: uuidv7()
+                                          remarks: "Identificativo esterno/id contratto (UUIDv7)."
+                                          constraints:
+                                                nullable: false
+
+                    # Garantisce unicità dell'identificativo esterno
+                    - createIndex:
+                            schemaName: vendite
+                            tableName: contratti
+                            indexName: uq_contratti_uid
+                            unique: true
+                            columns:
+                                  - column:
+                                          name: uid
+
+                    # Comment esplicito in stile ZeroERP (se vuoi separare da remarks)
+                    - sql:
+                            splitStatements: false
+                            stripComments: true
+                            sql: >
+                                  COMMENT ON COLUMN vendite.contratti.uid
+                                  IS 'Identificativo esterno/id contratto (UUIDv7).';

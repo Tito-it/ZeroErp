@@ -17,7 +17,7 @@
 |------|------|---------|
 | CHECK | chk_tipi_indirizzi_ambito |  |
 | FOREIGN KEY | fk_config_tipi_indirizzi | tipo_indirizzo_id |
-| PRIMARY KEY | pk_tipi_indirizzi_allowed | ambito, tipo_indirizzo_id |
+| PRIMARY KEY | pk_tipi_indirizzi_allowed | tipo_indirizzo_id, ambito |
 
 ## 📑 Indici
 | Nome | Definizione |
