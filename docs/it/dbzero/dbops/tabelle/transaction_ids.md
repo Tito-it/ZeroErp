@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | uuid | NO | gen_random_uuid() |
+| id | uuid | NO | uuidv7() |
 | user_insert | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | user_update | text | YES |  |

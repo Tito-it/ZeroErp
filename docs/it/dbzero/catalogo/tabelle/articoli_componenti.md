@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | uuid | NO | gen_random_uuid() |
+| id | uuid | NO | uuidv7() |
 | prodotto_id | uuid | NO |  |
 | componente_id | uuid | NO |  |
 | coeff_qta | numeric | NO | 1 |

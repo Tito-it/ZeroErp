@@ -4,7 +4,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| uid | uuid | NO | gen_random_uuid() |
+| uid | uuid | NO | uuidv7() |
 | codice | character varying | NO |  |
 | descrizione | character varying | NO |  |
 | emittente_soggetto_ruolo_id | bigint | NO |  |

@@ -13,23 +13,24 @@ CREATE OR REPLACE FUNCTION dbops.fn_generate_tx_id(p_generating_function text, p
  LANGUAGE plpgsql
  SECURITY DEFINER
 AS $function$
-DECLARE
-    v_tx UUID := gen_random_uuid();
-BEGIN
-    -- Genera un nuovo UUID e lo inserisce in dbops.transaction_ids
-    INSERT INTO dbops.transaction_ids (
-        id,
-        generating_function,
-        session_info
-    ) VALUES (
-        v_tx,
-        p_generating_function,
-        p_session_info
-    );
+  DECLARE
+      
+      v_tx UUID := uuidv7();
+  BEGIN
+      
+      INSERT INTO dbops.transaction_ids (
+          id,
+          generating_function,
+          session_info
+      ) VALUES (
+          v_tx,
+          p_generating_function,
+          p_session_info
+      );
 
-    RETURN v_tx;
-END;
-$function$
+      RETURN v_tx;
+  END;
+  $function$
 ```
 
 ---

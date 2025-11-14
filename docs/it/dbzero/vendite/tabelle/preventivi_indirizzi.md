@@ -22,7 +22,7 @@
 | FOREIGN KEY | fk_preventivi_indirizzi_origine_indirizzo | origine_indirizzo_id |
 | FOREIGN KEY | fk_preventivi_indirizzi_origine_sog_ruolo | origine_soggetto_ruolo_id |
 | PRIMARY KEY | pk_preventivi_indirizzi | id |
-| UNIQUE | uq_preventivi_indirizzi_uno_per_tipo_ | preventivo_id, tipo_indirizzo_id |
+| UNIQUE | uq_preventivi_indirizzi_uno_per_tipo_ | tipo_indirizzo_id, preventivo_id |
 
 ## 📑 Indici
 | Nome | Definizione |

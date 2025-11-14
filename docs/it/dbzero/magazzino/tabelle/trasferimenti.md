@@ -4,7 +4,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| uid | uuid | NO | gen_random_uuid() |
+| uid | uuid | NO | uuidv7() |
 | data | date | NO | CURRENT_DATE |
 | stato_trasferimento | character varying | NO | 'DRAFT'::character varying |
 | magazzino_id_from | bigint | NO |  |

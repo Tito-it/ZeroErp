@@ -19,6 +19,7 @@
 | user_update | character varying | YES | CURRENT_USER |
 | stato_doc_contratto_id | bigint | NO |  |
 | data | date | NO | CURRENT_DATE |
+| uid | uuid | NO | uuidv7() |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -39,6 +40,7 @@
 | ix_contratti_ba_istanza | `CREATE INDEX ix_contratti_ba_istanza ON vendite.contratti USING btree (billing_account_id, istanza_utility_id)` |
 | pk_contratti | `CREATE UNIQUE INDEX pk_contratti ON vendite.contratti USING btree (id)` |
 | uq_contratti_numero | `CREATE UNIQUE INDEX uq_contratti_numero ON vendite.contratti USING btree (numero)` |
+| uq_contratti_uid | `CREATE UNIQUE INDEX uq_contratti_uid ON vendite.contratti USING btree (uid)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

@@ -15,7 +15,7 @@
 | error_code | text | YES |  |
 | error_detail | text | YES |  |
 | agent_host | text | YES | (inet_client_addr())::text |
-| run_uuid | uuid | NO | gen_random_uuid() |
+| run_uuid | uuid | NO | uuidv7() |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

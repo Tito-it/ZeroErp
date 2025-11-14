@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| uid | uuid | NO | gen_random_uuid() |
+| uid | uuid | NO | uuidv7() |
 | registro_id | bigint | NO |  |
 | anno | smallint | YES |  |
 | serie | character varying | YES |  |
@@ -67,6 +67,7 @@
 | ix_fatture_stato_doc | `CREATE INDEX ix_fatture_stato_doc ON vendite.fatture USING btree (stato_doc_fiscale_id)` |
 | pk_fatture | `CREATE UNIQUE INDEX pk_fatture ON vendite.fatture USING btree (id)` |
 | uq_fatture_numero | `CREATE UNIQUE INDEX uq_fatture_numero ON vendite.fatture USING btree (registro_id, anno, COALESCE(serie, ''::character varying), numero) WHERE (numero IS NOT NULL)` |
+| uq_fatture_uid | `CREATE UNIQUE INDEX uq_fatture_uid ON vendite.fatture USING btree (uid)` |
 | uq_fatture_v_sorgente_fk | `CREATE UNIQUE INDEX uq_fatture_v_sorgente_fk ON vendite.fatture USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |
 
 ## 🚨 Trigger
