@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/lingue.md" %}
 # 📚 Tabella `lingue`
 
 ## 🗂️ Campi principali

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/modalita_addebito_trasporto.md" %}
 # 📚 Tabella `modalita_addebito_trasporto`
 
 ## 🗂️ Campi principali

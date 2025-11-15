@@ -66,7 +66,7 @@ In caso di più varianti sullo stesso concetto, usare un suffisso chiaro e funzi
 
    ```sql
    id UUID PRIMARY KEY
-     DEFAULT gen_random_uuid()
+     DEFAULT uuidv7()
    ```
 2. **Serial/Identity** per tabelle tecniche e di relazione:
 
