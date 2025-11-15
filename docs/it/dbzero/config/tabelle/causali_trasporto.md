@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/causali_trasporto.md" %}
 # 📚 Tabella `causali_trasporto`
 
 ## 🗂️ Campi principali

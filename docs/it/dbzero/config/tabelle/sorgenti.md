@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/sorgenti.md" %}
 # 📚 Tabella `sorgenti`
 
 ## 🗂️ Campi principali

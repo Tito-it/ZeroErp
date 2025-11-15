@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | uuid | NO | gen_random_uuid() |
+| id | uuid | NO | uuidv7() |
 | codice | text | YES |  |
 | ragione_sociale | text | YES |  |
 | cognome | text | YES |  |
@@ -40,7 +40,7 @@
 | FOREIGN KEY | fk_titoli_cortesia_config | titolo_cortesia_id, titolo_cortesia_id |
 | PRIMARY KEY | pk_soggetto | id |
 | UNIQUE | uq_soggetto_codice | codice |
-| UNIQUE | uq_soggetto_idstato_id_fiscale_univoco | stato_id, id_fiscale_univoco_cf_piva |
+| UNIQUE | uq_soggetto_idstato_id_fiscale_univoco | id_fiscale_univoco_cf_piva, stato_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -58,8 +58,8 @@
 |------|--------|--------|--------|
 | trg_soggetti_ins_upd_check_soggetto_contatti | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |
 | trg_soggetti_ins_upd_check_soggetto_contatti | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()` |
-| trg_soggetti_ins_upd_clean_fields | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_clean_fields()` |
 | trg_soggetti_ins_upd_clean_fields | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_clean_fields()` |
+| trg_soggetti_ins_upd_clean_fields | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_clean_fields()` |
 | trg_soggetti_ins_upd_tx_id_managed | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_soggetti_ins_upd_tx_id_managed | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_soggetti_ins_upd_valida_cf_piva_dispatch | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()` |

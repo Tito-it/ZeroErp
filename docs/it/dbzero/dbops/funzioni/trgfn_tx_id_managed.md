@@ -161,7 +161,7 @@ BEGIN
   NEW.tx_id := COALESCE(
     v_new_tx_id,
     NULLIF(current_setting('dbops.tx_id', true), '')::uuid,
-    gen_random_uuid()  
+    uuidv7()  
   );
   
   RETURN NEW;

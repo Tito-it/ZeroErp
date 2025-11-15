@@ -28,7 +28,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_ordini_indir_ordine | `CREATE INDEX ix_ordini_indir_ordine ON vendite.ordini_indirizzi USING btree (ordine_id)` |
+| ix_ordini_indirizzi_ordine | `CREATE INDEX ix_ordini_indirizzi_ordine ON vendite.ordini_indirizzi USING btree (ordine_id)` |
 | ix_ordini_indirizzi_origine_indirizzo | `CREATE INDEX ix_ordini_indirizzi_origine_indirizzo ON vendite.ordini_indirizzi USING btree (origine_indirizzo_id)` |
 | ix_ordini_indirizzi_origine_sog_ruolo | `CREATE INDEX ix_ordini_indirizzi_origine_sog_ruolo ON vendite.ordini_indirizzi USING btree (origine_soggetto_ruolo_id)` |
 | pk_ordini_indirizzi | `CREATE UNIQUE INDEX pk_ordini_indirizzi ON vendite.ordini_indirizzi USING btree (id)` |

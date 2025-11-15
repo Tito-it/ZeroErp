@@ -41,7 +41,7 @@ La funzione **`dbops.fn_generate_tx_id(p_generating_function TEXT, p_session_inf
 1. **Generazione UUID**
 
    ```plpgsql
-   v_tx := gen_random_uuid();
+   v_tx := uuidv7();
    ```
 2. **Inserimento record**
    Inserisce in `dbops.transaction_ids` un nuovo rigo con:

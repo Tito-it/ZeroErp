@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | uuid | NO | gen_random_uuid() |
+| id | uuid | NO | uuidv7() |
 | codice | character varying | NO |  |
 | descrizione | character varying | NO |  |
 | descrizione_breve | character varying | YES |  |

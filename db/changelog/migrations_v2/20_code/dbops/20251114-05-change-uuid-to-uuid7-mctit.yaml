@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/dbops/20251114-05-change-uuid-to-uuid7-mctit.yaml
+
+  - changeSet:
+      id: 20251114-05-change-uuid-to-uuid7-mctit
+      author: mctit
+
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        # Verifica che esista la funzione uuidv7() (PostgreSQL 17/18+)
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT 1
+                WHERE EXISTS (
+                  SELECT 1
+                  FROM pg_proc
+                  WHERE proname = 'uuidv7'
+                );
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              DECLARE
+                  r record;
+              BEGIN
+                  /*
+                    Seleziona tutte le colonne:
+                    - tipo uuid
+                    - con un default che contiene gen_random_uuid()
+                  */
+                  FOR r IN
+                      SELECT
+                          n.nspname      AS schema_name,
+                          c.relname      AS table_name,
+                          a.attname      AS column_name,
+                          pg_get_expr(d.adbin, d.adrelid) AS default_expr
+                      FROM pg_attribute a
+                      JOIN pg_class     c ON c.oid = a.attrelid
+                      JOIN pg_namespace n ON n.oid = c.relnamespace
+                      JOIN pg_attrdef   d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+                      WHERE a.attnum > 0
+                        AND NOT a.attisdropped
+                        AND a.atttypid = 'uuid'::regtype
+                        AND pg_get_expr(d.adbin, d.adrelid) ILIKE '%gen_random_uuid%'
+                      ORDER BY n.nspname, c.relname, a.attname
+                  LOOP
+                      RAISE NOTICE
+                          '[uuidv7-migration] ALTER TABLE %.% ALTER COLUMN % SET DEFAULT uuidv7(); -- default precedente: %',
+                          r.schema_name,
+                          r.table_name,
+                          r.column_name,
+                          r.default_expr;
+
+                      EXECUTE format(
+                          'ALTER TABLE %I.%I ALTER COLUMN %I SET DEFAULT uuidv7()',
+                          r.schema_name,
+                          r.table_name,
+                          r.column_name
+                      );
+                  END LOOP;
+              END;
+              $$;

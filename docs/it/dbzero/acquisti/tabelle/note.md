@@ -33,7 +33,7 @@
 | CHECK | chk_note_testo_non_vuoto |  |
 | FOREIGN KEY | fk_acq_note_id_lingua | id_lingua, id_lingua, id_lingua |
 | FOREIGN KEY | fk_acq_note_id_stile | id_stile, id_stile, id_stile |
-| PRIMARY KEY | pk_note_acq | target_tipo, id |
+| PRIMARY KEY | pk_note_acq | id, target_tipo |
 
 ## 📑 Indici
 | Nome | Definizione |

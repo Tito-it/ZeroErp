@@ -31,7 +31,7 @@
 | CHECK | chk_note_seq_pos |  |
 | CHECK | chk_note_target_tipo |  |
 | FOREIGN KEY | fk_note_costo_medio_testata | target_id |
-| PRIMARY KEY | note_costo_medio_pkey | target_tipo, id |
+| PRIMARY KEY | note_costo_medio_pkey | id, target_tipo |
 
 ## 📑 Indici
 | Nome | Definizione |

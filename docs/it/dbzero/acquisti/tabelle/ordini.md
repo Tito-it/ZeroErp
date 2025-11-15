@@ -4,7 +4,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| uid | uuid | YES | gen_random_uuid() |
+| uid | uuid | YES | uuidv7() |
 | soggetto_ruolo_id | bigint | NO |  |
 | serie | character varying | YES |  |
 | numero | character varying | YES |  |

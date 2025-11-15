@@ -37,7 +37,7 @@
 | FOREIGN KEY | fk_ddt_note_testata | target_id |
 | FOREIGN KEY | fk_vendite_note_id_lingua | id_lingua, id_lingua, id_lingua, id_lingua, id_lingua, id_lingua, id_lingua |
 | FOREIGN KEY | fk_vendite_note_id_stile | id_stile, id_stile, id_stile, id_stile, id_stile, id_stile, id_stile |
-| PRIMARY KEY | note_ddt_pkey | target_tipo, id |
+| PRIMARY KEY | note_ddt_pkey | id, target_tipo |
 
 ## 📑 Indici
 | Nome | Definizione |

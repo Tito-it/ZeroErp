@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| uid | uuid | NO | gen_random_uuid() |
+| uid | uuid | NO | uuidv7() |
 | soggetto_ruolo_id | bigint | NO |  |
 | billing_account_id | integer | YES |  |
 | serie | character varying | YES |  |

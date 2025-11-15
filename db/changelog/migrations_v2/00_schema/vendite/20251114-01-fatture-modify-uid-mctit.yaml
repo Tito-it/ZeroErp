@@ -1,0 +1,49 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+      - logicalFilePath: migrations_v2/00_schema/vendite/20251114-01-fatture-modify-uid-mctit.yaml
+
+      - changeSet:
+              id: 20251114-01-fatture-modify-uid
+              author: mctit
+
+              preConditions:
+                    - onFail: HALT
+                    - onError: HALT
+                    - columnExists:
+                            schemaName: vendite
+                            tableName: fatture
+                            columnName: uid
+
+              changes:
+                    # Cambia il default di uid da gen_random_uuid() a uuidv7()
+                    - addDefaultValue:
+                            schemaName: vendite
+                            tableName: fatture
+                            columnName: uid
+                            defaultValueComputed: uuidv7()
+
+                      # (Opzionale ma consigliato) Unicità dell'identificativo esterno
+                    - createIndex:
+                            schemaName: vendite
+                            tableName: fatture
+                            indexName: uq_fatture_uid
+                            unique: true
+                            columns:
+                                  - column:
+                                          name: uid
+
+                      # Aggiorna il commento della colonna (facoltativo ma utile)
+                    - sql:
+                            splitStatements: false
+                            stripComments: true
+                            sql: >
+                                  COMMENT ON COLUMN vendite.fatture.uid
+                                  IS 'Identificativo esterno/idempotenza applicativa (UUIDv4 storico, UUIDv7 per le nuove fatture).';

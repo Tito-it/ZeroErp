@@ -50,10 +50,10 @@ databaseChangeLog:
 
 ## 🧰 Funzioni più usate
 
-### UUID & Random
+###  Random
 
 ```sql
-SELECT gen_random_uuid();                -- uuid v4
+
 SELECT gen_random_bytes(32);             -- bytea
 ```
 
@@ -116,7 +116,7 @@ SELECT pgp_pub_decrypt(payload_enc, dearmor(privkey_text), 'passphrase') FROM in
 
 ```sql
 ALTER TABLE app.orders
-  ADD COLUMN id uuid PRIMARY KEY DEFAULT gen_random_uuid();
+  ADD COLUMN id uuid PRIMARY KEY DEFAULT uuidv7();
 ```
 
 ### Indice su digest (ricerca rapida per hash)
@@ -192,7 +192,7 @@ Esegui il changeset **prima** delle migrazioni che richiedono `pgcrypto`:
 
 * [ ] `CREATE EXTENSION pgcrypto;` nel DB target
 * [ ] Password -> `crypt()` + `gen_salt('bf')`
-* [ ] UUID -> `gen_random_uuid()`
+* [ ] UUID -> `uuidv7()`
 * [ ] Chiavi/Passphrase via **GUC** o segreti applicativi
 * [ ] Indici su hash se usati per ricerca
 * [ ] Liquibase: changeset dedicato e ordinato prima dei consumatori

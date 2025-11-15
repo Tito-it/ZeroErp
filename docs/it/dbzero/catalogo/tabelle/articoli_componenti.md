@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | uuid | NO | gen_random_uuid() |
+| id | uuid | NO | uuidv7() |
 | prodotto_id | uuid | NO |  |
 | componente_id | uuid | NO |  |
 | coeff_qta | numeric | NO | 1 |
@@ -31,7 +31,7 @@
 | FOREIGN KEY | fk_articoli_componenti_articoli_componente | componente_id |
 | FOREIGN KEY | fk_articoli_componenti_articoli_prodotto | prodotto_id |
 | PRIMARY KEY | pk_articoli_componenti | id |
-| UNIQUE | uq_articoli_componenti_prodotto_componente_from | prodotto_id, componente_id, valid_from |
+| UNIQUE | uq_articoli_componenti_prodotto_componente_from | componente_id, valid_from, prodotto_id |
 
 ## 📑 Indici
 | Nome | Definizione |

@@ -44,7 +44,7 @@
 | FOREIGN KEY | fk_mag_movimenti_ubicazione_to | ubicazione_id_to |
 | FOREIGN KEY | fk_mag_movimenti_uom | uom_id |
 | PRIMARY KEY | pk_mag_movimenti | id |
-| UNIQUE | uq_mag_movimenti_docref | doc_schema, doc_table, doc_id, doc_riga_id |
+| UNIQUE | uq_mag_movimenti_docref | doc_riga_id, doc_table, doc_schema, doc_id |
 
 ## 📑 Indici
 | Nome | Definizione |

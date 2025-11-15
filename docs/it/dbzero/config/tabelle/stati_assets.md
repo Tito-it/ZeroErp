@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/stati_assets.md" %}
 # 📚 Tabella `stati_assets`
 
 ## 🗂️ Campi principali

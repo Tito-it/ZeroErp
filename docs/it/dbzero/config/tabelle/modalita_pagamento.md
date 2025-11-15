@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/modalita_pagamento.md" %}
 # 📚 Tabella `modalita_pagamento`
 
 ## 🗂️ Campi principali

@@ -19,7 +19,7 @@
 |------|------|---------|
 | FOREIGN KEY | fk_stradario_generale_toponomastica_id | toponomastica_id |
 | PRIMARY KEY | pk_stradario_generale | id |
-| UNIQUE | uq_toponomastica_descr | toponomastica_id, descrizione |
+| UNIQUE | uq_toponomastica_descr | descrizione, toponomastica_id |
 
 ## 📑 Indici
 | Nome | Definizione |
