@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251118-01-trgfn_soggetti_check_soggetto_contatti-mctit.yaml
+
+  - changeSet:
+      id: 20251118-01-trgfn_soggetti_check_soggetto_contatti
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+
+              -- 0) Droppo il trigger esistente
+               DROP TRIGGER IF EXISTS trg_soggetti_ins_upd_check_soggetto_contatti
+               ON anagrafiche.soggetti;
+
+
+              -- 1) Droppo il trigger function esistente
+               DROP FUNCTION IF EXISTS 
+               anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti();
+
+              -- 2) Creo un constraint trigger differibile
+               CREATE OR REPLACE FUNCTION 
+               anagrafiche.trgfn_soggetti_check_soggetto_contatti()
+               
+                    RETURNS trigger
+                    LANGUAGE 'plpgsql'
+                    COST 100
+                    VOLATILE NOT LEAKPROOF
+                AS $BODY$
+                DECLARE
+                  v_count INTEGER;
+                  
+                BEGIN
+                  
+                  -- ====================================================================
+                  -- Verifica che il soggetto abbia almeno:
+                  --   • un contatto di default (is_default = TRUE), oppure
+                  --   • un contatto con almeno un canale non nullo 
+                  -- ====================================================================
+                  SELECT COUNT(*) INTO v_count
+                    FROM anagrafiche.contatti c
+                  WHERE c.soggetto_id = NEW.id
+                    AND (
+                      c.is_default
+                      OR c.email      IS NOT NULL
+                      OR c.telefono   IS NOT NULL
+                      OR c.cellulare  IS NOT NULL
+                      OR c.pec        IS NOT NULL
+                    );
+
+                  IF v_count = 0 THEN
+                    -- Logga e solleva errore usando il wrapper centralizzato
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      TG_NAME,                               -- nome del trigger
+                      'E_SOGGETTO_NO_CONTATTI',              -- codice messaggio
+                      jsonb_build_object('soggetto_id', NEW.id),  -- contesto JSON
+                      NULL::uuid,                                    
+                      VARIADIC ARRAY[]::text[]                -- argomenti variabili
+                    );
+                    -- fn_log_and_raise_error darà RAISE EXCEPTION internamente
+                  END IF;
+
+                  RETURN NEW;
+                END;
+                $BODY$;
+
+
+                COMMENT ON FUNCTION 
+                anagrafiche.trgfn_soggetti_check_soggetto_contatti()
+                    IS 'Trigger che verifica al commit che un soggetto abbia almeno un contatto valido;utilizza fn_log_and_raise_error per log e exception.';
+
+  - changeSet:
+      id: 20251118-02-trg_soggetti_def_check_soggetto_contatti_ins_upd
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+
+              -- 2) Creo un constraint trigger differibile
+              CREATE CONSTRAINT TRIGGER trg_soggetti_def_check_soggetto_contatti_ins_upd
+                  AFTER INSERT OR UPDATE
+                  ON anagrafiche.soggetti
+                  DEFERRABLE INITIALLY DEFERRED
+                  FOR EACH ROW
+                  EXECUTE FUNCTION 
+                  anagrafiche.trgfn_soggetti_check_soggetto_contatti();

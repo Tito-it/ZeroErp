@@ -24,7 +24,7 @@
 | FOREIGN KEY | fk_stradario_comune_id | comune_id |
 | FOREIGN KEY | fk_stradario_stradario_generale_id | stradario_generale_id |
 | PRIMARY KEY | pk_stradario | id |
-| UNIQUE | uq_stradario_comune_stradario_gen_cp | codice_postale_id, stradario_generale_id, comune_id |
+| UNIQUE | uq_stradario_comune_stradario_gen_cp | stradario_generale_id, comune_id, codice_postale_id |
 
 ## 📑 Indici
 | Nome | Definizione |
