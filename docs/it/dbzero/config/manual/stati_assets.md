@@ -4,17 +4,17 @@
 >
 > Approfondimenti tabelle:
 >
-> * [assets.assets](/dbzero/assets/tabelle/assets) *(quando disponibile)*
-> * [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) *(per stati legati al ciclo fisico)*
+> * [magazzino.assets](/dbzero/magazzino/tabelle/assets)      
+> * [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) *(per stati legati al ciclo fisico)*     
 >
 > Approfondimenti domini collegati:
 >
-> * [config.lingue](/dbzero/config/tabelle/lingue)
-> * [config.sorgenti](/dbzero/config/tabelle/sorgenti)
+> * [config.lingue](/dbzero/config/tabelle/lingue)     
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti)    
 >
 > Approfondimenti funzioni/trigger generici:
 >
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
 
 ---
 

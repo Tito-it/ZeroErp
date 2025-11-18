@@ -52,7 +52,7 @@
 - [trgfn_resellers_norm](funzioni/trgfn_resellers_norm.md)
 - [trgfn_sepa_mandati_guard](funzioni/trgfn_sepa_mandati_guard.md)
 - [trgfn_soggetti_conti_bancari_guard](funzioni/trgfn_soggetti_conti_bancari_guard.md)
-- [trgfn_soggetti_ins_upd_check_soggetto_contatti](funzioni/trgfn_soggetti_ins_upd_check_soggetto_contatti.md) — * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
+- [trgfn_soggetti_guard_soggetto_contatti](funzioni/trgfn_soggetti_guard_soggetto_contatti.md) — * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
 - [trgfn_soggetti_ins_upd_clean_fields](funzioni/trgfn_soggetti_ins_upd_clean_fields.md) — * **Impostare valori di default** per campi mancanti in `anagrafiche.soggetti` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_soggetti_ins_upd_genera_cdsoggetto](funzioni/trgfn_soggetti_ins_upd_genera_cdsoggetto.md)
 - [trgfn_soggetti_ruoli_conti_bancari_guard](funzioni/trgfn_soggetti_ruoli_conti_bancari_guard.md)

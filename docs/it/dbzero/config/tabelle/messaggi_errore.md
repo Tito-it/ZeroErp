@@ -16,7 +16,7 @@
 |------|------|---------|
 | FOREIGN KEY | fk_cfg_messaggi_errore_lingua | lingua |
 | PRIMARY KEY | pk_messaggi_errore | id |
-| UNIQUE | uq_messaggi_errore_codice_lingua | lingua, codice |
+| UNIQUE | uq_messaggi_errore_codice_lingua | codice, lingua |
 
 ## 📑 Indici
 | Nome | Definizione |

@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/magazzino/20251115-02-alter-assets-mctit.yaml
+
+    - changeSet:
+          id: 20251115-02-alter-assets
+          author: mctit
+          preConditions:
+              - onFail: HALT
+              - onError: HALT
+              - not:
+                    - columnExists:
+                          schemaName: magazzino
+                          tableName: assets
+                          columnName: ownership_id
+
+          changes:
+              - addColumn:
+                    schemaName: magazzino
+                    tableName: assets
+                    columns:
+                        - column:
+                              name: ownership_id
+                              type: BIGINT
+                              remarks: "Riferimento a config.assets_ownership.id"
+                              constraints:
+                                  nullable: False
+
+              - dropColumn:
+                    schemaName: magazzino
+                    tableName: assets
+                    columnName: ownership
+
+              # 2) Imposto i default di audit (user_insert, user_update, data_update)
+              - addDefaultValue:
+                    schemaName: magazzino
+                    tableName: assets
+                    columnName: user_insert
+                    defaultValueComputed: "CURRENT_USER"
+
+              - addDefaultValue:
+                    schemaName: magazzino
+                    tableName: assets
+                    columnName: user_update
+                    defaultValueComputed: "CURRENT_USER"
+
+              - addDefaultValue:
+                    schemaName: magazzino
+                    tableName: assets
+                    columnName: data_update
+                    defaultValueComputed: "now()"
+
+              # 3) Rinomino extra_info -> meta e allineo default/not null
+              - renameColumn:
+                    schemaName: magazzino
+                    tableName: assets
+                    oldColumnName: extra_info
+                    newColumnName: meta
+                    columnDataType: JSONB
+
+              - addDefaultValue:
+                    schemaName: magazzino
+                    tableName: assets
+                    columnName: meta
+                    defaultValueComputed: "'{}'::jsonb"
+
+              # 4) Foreign key da ownership -> config.assets_ownership(codice)
+              - addForeignKeyConstraint:
+                    baseTableSchemaName: magazzino
+                    baseTableName: assets
+                    baseColumnNames: ownership_id
+                    referencedTableSchemaName: config
+                    referencedTableName: assets_ownership
+                    referencedColumnNames: id
+                    constraintName: fk_mag_assets_ownership_id
+                    onDelete: NO ACTION
+                    onUpdate: CASCADE
+
+              # 5) (Opzionale ma consigliato) indice su ownership per join col dominio
+              - createIndex:
+                    schemaName: magazzino
+                    tableName: assets
+                    indexName: ix_mag_assets_ownership_id
+                    columns:
+                        - column:
+                              name: ownership_id

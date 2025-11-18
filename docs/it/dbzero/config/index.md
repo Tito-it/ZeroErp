@@ -3,6 +3,7 @@
 ## 📚 Tabelle
 - [ambiti](tabelle/ambiti.md)
 - [aspetti_beni](tabelle/aspetti_beni.md)
+- [assets_ownership](tabelle/assets_ownership.md) — * Definire un **catalogo univoco e governato** delle modalità di proprietà degli asset. * Assicurare coerenza tra domini diversi (magazzino, installazioni, contratti, fatturazione, manutenzione). * Abilitare logiche avanzate, tra cui:
 - [categoria_accisa](tabelle/categoria_accisa.md)
 - [causali_trasporto](tabelle/causali_trasporto.md) — * Fornire un **catalogo centralizzato** delle causali di trasporto utilizzabili nei DDT. * Supportare la **classificazione omogenea** dei flussi di movimentazione in base alla motivazione dell’invio/ritiro dei beni. * Costituire la base per **regole di processo** (es. fatturazione automatica, valorizzazione, contabilizzazione, statistiche) dipendenti dalla causale utilizzata.
 - [classi_utenze](tabelle/classi_utenze.md)

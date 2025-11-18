@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP — Config: tabella TIPI_EVENTO_ASSETS
+# ------------------------------------------------------------
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20251115-01-create-assets-ownership-mctit.yaml
+
+  # 20251005-28 — CREATE config.assets_ownership
+  - changeSet:
+      id: 20251115-01-create-assets-ownership
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: assets_ownership
+            remarks: "Dominio proprietario asset"
+            columns:
+              - column:
+                  {
+                    name: id,
+                    type: BIGINT,
+                    autoIncrement: true,
+                    generationType: BY DEFAULT,
+                    constraints:
+                      {
+                        primaryKey: true,
+                        primaryKeyName: pk_cfg_assets_ownership,
+                        nullable: false,
+                      },
+                  }
+
+              - column:
+                  {
+                    name: codice_interno,
+                    type: VARCHAR(32),
+                    constraints: { nullable: false },
+                    remarks: "Codice interno immutabile",
+                  }
+              - column:
+                  {
+                    name: codice,
+                    type: VARCHAR(32),
+                    constraints: { nullable: false },
+                    remarks: "Codice stabile (es. owned, consignment, customer)",
+                  }
+              - column:
+                  {
+                    name: descrizione,
+                    type: VARCHAR(120),
+                    remarks: "Descrizione (IT)",
+                  }
+
+              - column:
+                  {
+                    name: attivo,
+                    type: BOOLEAN,
+                    defaultValueBoolean: true,
+                    constraints: { nullable: false },
+                  }
+              - column:
+                  {
+                    name: meta,
+                    type: JSONB,
+                    defaultValueComputed: "'{}'::jsonb",
+                    constraints: { nullable: false },
+                  }
+
+              # Audit
+              - column:
+                  {
+                    name: data_insert,
+                    type: TIMESTAMPTZ,
+                    defaultValueComputed: "now()",
+                    constraints: { nullable: false },
+                  }
+              - column:
+                  {
+                    name: user_insert,
+                    type: VARCHAR(80),
+                    defaultValueComputed: "CURRENT_USER",
+                    constraints: { nullable: false },
+                  }
+              - column:
+                  {
+                    name: data_update,
+                    type: TIMESTAMPTZ,
+                    defaultValueComputed: "now()",
+                    constraints: { nullable: false },
+                  }
+              - column:
+                  {
+                    name: user_update,
+                    type: VARCHAR(80),
+                    defaultValueComputed: "CURRENT_USER",
+                  }
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: assets_ownership
+            columnNames: codice_interno
+            constraintName: uq_cfg_assets_ownership_codice_interno
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: assets_ownership
+            columnNames: codice
+            constraintName: uq_cfg_assets_ownership_codice
+
+        - createIndex:
+            {
+              schemaName: config,
+              tableName: assets_ownership,
+              indexName: ix_cfg_assets_ownership_attivo,
+              columns: [{ name: attivo }],
+            }
+
+        - createIndex:
+            schemaName: config
+            tableName: assets_ownership
+            indexName: ix_assets_ownership_codice_upper
+            columns:
+              - column:
+                  name: "upper(codice)"
+                  descending: false
+
+        - createIndex:
+            schemaName: config
+            tableName: assets_ownership
+            indexName: ix_assets_ownership_codice_interno_upper
+            columns:
+              - column:
+                  name: "upper(codice_interno)"
+                  descending: false
+
+        - createIndex:
+            schemaName: config
+            tableName: assets_ownership
+            indexName: ix_assets_ownership_descrizione_upper
+            columns:
+              - column:
+                  name: "upper(descrizione)"
+                  descending: false
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON TABLE config.assets_ownership IS 'Dominio proprietario asset.';
+              COMMENT ON COLUMN config.assets_ownership.codice_interno IS 'Codice interno immutabile.';
+              COMMENT ON COLUMN config.assets_ownership.codice IS 'Codice stabile (es. owned, consignment, customer).';

@@ -17,6 +17,12 @@ Definire **convenzioni univoche** per:
 
 * Tutti i trigger iniziano con **`trg_`**.
 
+### Nome_tabella
+
+* seguono con  **`_schema_`** opzionale nel caso di tabelle con nome identico su schema diverso, 
+* **`_nome_tabella_`** .
+
+
 ### Fasi / priorità
 
 Usiamo suffissi alfabetici per imporre l’**ordine di esecuzione** (i trigger sono eseguiti in ordine lessicografico):
@@ -25,6 +31,8 @@ Usiamo suffissi alfabetici per imporre l’**ordine di esecuzione** (i trigger s
 * **`_z90_`** → **trigger finali** (effetti collaterali “terminali”), es. duplicazione su schema storico, audit finali.
 
 Se servono step intermedi (facoltativo in futuro): riserviamo `_mXX_` (es. `_m50_`).
+
+* **`_z90_`**  Usare per trigger defferrable.
 
 ### Eventi (segmento finale)
 
@@ -36,7 +44,7 @@ Se servono step intermedi (facoltativo in futuro): riserviamo `_mXX_` (es. `_m50
 ### Pattern completo consigliato
 
 ```
-trg_<fase>_<schema_opzionale>_<tabella>_<descrizione_breve>_<eventi>
+trg_<schema_opzionale>_<tabella>_<fase>_<descrizione_breve>_<eventi>
 ```
 
 * **fase**: `a10` o `z90`
@@ -69,8 +77,12 @@ trg_<fase>_<schema_opzionale>_<tabella>_<descrizione_breve>_<eventi>
 
 ## 📋 Checklist rapida (da usare nei PR)
 
-* [ ] Nome con prefisso `trg_` e fase corretta (`_a10_` / `_z90_`).
+* [ ] Nome con prefisso `trg_`, `_schema(opzionale)_tabella_` e fase corretta (`_a10_` / `_z90_`).
 * [ ] Eventi coerenti (`_ins/_upd/_dlt`); usare `UPDATE OF colonna` quando possibile.
 * [ ] In `_a10_` usata `script.fn_log_and_raise_error(...)`.
 * [ ] Ordine lessicografico rispettato (niente prefissi “casuali”).
 * [ ] Commenti/descrizioni chiari in SQL o Liquibase.
+
+
+
+**Documento rettificato il 18/11/2025**

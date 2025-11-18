@@ -2,7 +2,7 @@
 
 ## 📚 Tabelle
 - [ambito_causale](tabelle/ambito_causale.md)
-- [assets](tabelle/assets.md)
+- [assets](tabelle/assets.md) — * Tracciare a livello puntuale **tutti gli asset fisici** gestiti da Zero ERP. * Collegare l’asset a:
 - [causali](tabelle/causali.md)
 - [costo_medio](tabelle/costo_medio.md)
 - [eventi_assets](tabelle/eventi_assets.md)

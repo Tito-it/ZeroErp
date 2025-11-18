@@ -93,52 +93,65 @@ In caso di più varianti sullo stesso concetto, usare un suffisso chiaro e funzi
 
 ### 5. Trigger e Funzioni
 
-* **Trigger Functions** (PL/pgSQL, `schema.trgfn_<table>_<descr>`):
+* **Trigger Functions** :
 
-  * Esempio: `CREATE OR REPLACE FUNCTION anagrafiche.trgfn_contatti_set_default()`
-* **Trigger** (DDL):
+>
+> Vedi il documento:
+>
+> * [Linee Guida Trigger](linee-guida-trigger.md)   
+>
 
-  ```sql
-  CREATE TRIGGER trg_contatti_set_default
-    BEFORE INSERT OR UPDATE
-    ON anagrafiche.contatti
-    FOR EACH ROW
-    EXECUTE FUNCTION anagrafiche.trgfn_contatti_set_default();
-  ```
-* **Nomi**:
+**Naming delle trigger function:**
 
-  * Funzioni: `trgfn_<table>_<action>`
-  * Trigger: `trg_<table>_<action>`
-* **Best practice**:
+Qui la scelta migliore è NON mettere né fase né eventi nel nome della funzione.
 
-  * Mettere funzioni e trigger nello stesso schema della tabella (se dedicate), o in `script`/`dbops` per utilizzabilità multipla.
-  * Documentare sempre parametri e comportamento
+Quindi:
 
-* **Funzioni di Cleanup** (PL/pgSQL, `schema.trgfn_<table>_ins_upd_clean_fields`):
-  * Usate per pulire, normalizzare o impostare valori di default sui campi mancanti prima di `INSERT` o `UPDATE`.
-  * Convenzione di naming:
-    - Funzione: `trgfn_<table>_ins_upd_clean_fields`
-    - Trigger:   `trg_<table>_ins_upd_clean_fields`
-  * Esempio:
-    ```sql
-    CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_clean_fields()
-      RETURNS trigger LANGUAGE plpgsql AS $$
-    BEGIN
-      IF NEW.stato_id IS NULL THEN
-        NEW.stato_id := script.fn_get_default_by_param(
-          'config', 'stati', 'codice_iso3', 'state_code_iso3', TG_NAME
-        )::integer;
-      END IF;
-      RETURN NEW;
-    END;
-    $$;
+**trgfn_<schema_opzionale>_<tabella>_<descrizione_breve>**
+```
+Esempi:
 
-    CREATE TRIGGER trg_soggetti_ins_upd_clean_fields
-      BEFORE INSERT OR UPDATE ON anagrafiche.soggetti
-      FOR EACH ROW
-      EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_clean_fields();
-    ```
+trgfn_anagrafiche_soggetti_tx_id_managed
 
+trgfn_vendite_ddt_righe_qta_from_operativa
+
+trgfn_config_stati_prevent_delete_if_used
+
+```
+**Utilizzo di check o guard**
+
+* A. Usa check per funzioni “pure” che verificano
+
+  Funzioni che:
+  prendono input restituiscono boolean (o un codice)
+  non fanno RAISE EXCEPTION da sole
+
+  Esempi:
+  fn_check_codice_fiscale(formato text) RETURNS boolean
+  fn_check_piva(formato text, stato text) RETURNS boolean
+
+  Queste le usi dentro altre funzioni/trigger per decidere cosa fare.
+
+* B. Usa guard per funzioni che bloccano (fail-fast)
+
+Funzioni che:
+  chiamano eventualmente fn_log_and_raise_error(...)
+  fanno da “sentinella”: se la condizione non è rispettata → alzano errore
+  normalmente restituiscono void o al massimo un boolean che quasi non guardi mai
+
+  Esempi:
+
+  fn_guard_codice_fiscale(formato text)
+  fn_guard_piva(formato text, stato text)
+
+**Cosa non fare:**
+
+Mescolare i nomi a caso:
+
+  una volta fn_check_* che fa RAISE
+  una volta fn_guard_* che torna boolean
+
+  Diventa impossibile capire dal nome se la funzione lancia o verifica soltanto.
 
 ---
 
