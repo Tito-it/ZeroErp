@@ -47,7 +47,6 @@
 - [trgfn_istanze_utilities_protect_codice](funzioni/trgfn_istanze_utilities_protect_codice.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_upd_protect_codice`, eseguito **prima di ogni UPDATE** su `anagrafiche.istanze_utilities`, impedisce modifiche non autorizzate al campo **`codice (istanza)`** una volta impostato.
 - [trgfn_pdp_protect_cols](funzioni/trgfn_pdp_protect_cols.md)
 - [trgfn_resellers_check_ruolo_reseller](funzioni/trgfn_resellers_check_ruolo_reseller.md)
-- [trgfn_resellers_norm](funzioni/trgfn_resellers_norm.md)
 - [trgfn_resellers_normalize](funzioni/trgfn_resellers_normalize.md)
 - [trgfn_resellers_protect_codice](funzioni/trgfn_resellers_protect_codice.md)
 - [trgfn_sepa_mandati_guard](funzioni/trgfn_sepa_mandati_guard.md)

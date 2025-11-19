@@ -46,8 +46,8 @@
 | trg_pdp_protect_cols_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_pdp_protect_cols()` |
 | trg_pdp_tx_id_managed_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_pdp_tx_id_managed_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_pdp_z90_storico_generic_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('pdp_id')` |
-| trg_pdp_z90_storico_generic_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('pdp_id')` |
+| trg_pdp_z90_storico_generic_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('pdp_id')` |
+| trg_pdp_z90_storico_generic_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('pdp_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

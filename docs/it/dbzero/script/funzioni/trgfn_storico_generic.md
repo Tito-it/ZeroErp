@@ -1,14 +1,14 @@
-{% include-markdown "it/dbzero/script/manual/trgfn_upd_dlt_storico_generic.md" %}
-# ⚙️ Funzione `trgfn_upd_dlt_storico_generic`
+{% include-markdown "it/dbzero/script/manual/trgfn_storico_generic.md" %}
+# ⚙️ Funzione `trgfn_storico_generic`
 
 ```sql
-CREATE FUNCTION trgfn_upd_dlt_storico_generic()
+CREATE FUNCTION trgfn_storico_generic()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.trgfn_upd_dlt_storico_generic()
+CREATE OR REPLACE FUNCTION script.trgfn_storico_generic()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

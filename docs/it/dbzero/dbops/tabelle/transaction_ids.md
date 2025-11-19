@@ -25,7 +25,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_transaction_ids_upd_audit_data_user_generic | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_transaction_ids_upd_audit_data_user_generic | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_transaction_ids_upd_dlt_prevent_modification_generic | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_prevent_modification_generic()` |
 | trg_transaction_ids_upd_dlt_prevent_modification_generic | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_prevent_modification_generic()` |
 

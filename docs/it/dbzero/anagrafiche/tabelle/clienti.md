@@ -69,7 +69,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_clienti_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()` |
+| trg_clienti_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_clienti_check_ruolo_cliente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_check_ruolo_cliente()` |
 | trg_clienti_check_ruolo_cliente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_check_ruolo_cliente()` |
 | trg_clienti_set_periodo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_periodo()` |
@@ -78,8 +78,8 @@
 | trg_clienti_sync_pdp_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_pdp()` |
 | trg_clienti_tx_id_managed_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_clienti_tx_id_managed_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_clienti_z90_storico_generic_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('cliente_id')` |
-| trg_clienti_z90_storico_generic_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('cliente_id')` |
+| trg_clienti_z90_storico_generic_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('cliente_id')` |
+| trg_clienti_z90_storico_generic_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('cliente_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

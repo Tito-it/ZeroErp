@@ -31,6 +31,7 @@
 - [fn_valida_partita_iva](funzioni/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
 - [fn_validate_cf_piva_it](funzioni/fn_validate_cf_piva_it.md) — * **Centralizzazione Validazioni**: Unico punto per verificare CF e P.IVA in accordo ai formati configurati. * **Dinamicità**: I formati (alfanumerico, numerico, lunghezza) sono letti da `config.tipi_soggetto_dettaglio` e possono variare per Stato. * **Estendibilità**: Aggiunta futura di funzioni con suffissi di Stato, es. `_FR`, `_DE`, `_UK`.
 - [log](funzioni/log.md)
+- [trgfn_audit_data_user_generic](funzioni/trgfn_audit_data_user_generic.md) — * **Audit automatico**   Assicurare che ogni modifica a una riga di tabella sia registrata con timestamp (`data_update`) e utente (`user_update`) correnti. * **Centralizzare la logica di update audit**   Evitare di replicare manualmente la medesima assegnazione in ogni trigger `BEFORE UPDATE` delle varie tabelle.
 - [trgfn_conti_bancari_ins_upd_normalize](funzioni/trgfn_conti_bancari_ins_upd_normalize.md)
 - [trgfn_conti_ins_upd_normalize](funzioni/trgfn_conti_ins_upd_normalize.md)
 - [trgfn_fornitori_guard](funzioni/trgfn_fornitori_guard.md)
@@ -42,9 +43,8 @@
 - [trgfn_sepa_mandati_guard](funzioni/trgfn_sepa_mandati_guard.md)
 - [trgfn_soggetti_conti_bancari_guard](funzioni/trgfn_soggetti_conti_bancari_guard.md)
 - [trgfn_soggetti_ruoli_conti_bancari_guard](funzioni/trgfn_soggetti_ruoli_conti_bancari_guard.md)
+- [trgfn_storico_generic](funzioni/trgfn_storico_generic.md) — * **Unificazione logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 - [trgfn_sync_stato_iso2](funzioni/trgfn_sync_stato_iso2.md) — * **Sincronizzazione automatica** del campo `stato_iso2` all’interno delle tabelle che lo richiedono. * **Garantire coerenza** tra il campo `stato_id` e il relativo `codice_iso2`, estraendolo dinamicamente da `config.stati`.
-- [trgfn_upd_audit_data_user_generic](funzioni/trgfn_upd_audit_data_user_generic.md) — * **Audit automatico**   Assicurare che ogni modifica a una riga di tabella sia registrata con timestamp (`data_update`) e utente (`user_update`) correnti. * **Centralizzare la logica di update audit**   Evitare di replicare manualmente la medesima assegnazione in ogni trigger `BEFORE UPDATE` delle varie tabelle.
-- [trgfn_upd_dlt_storico_generic](funzioni/trgfn_upd_dlt_storico_generic.md) — * **Unificazione logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 - [uuid_nil](funzioni/uuid_nil.md) — * Fornire un valore UUID costante, composto interamente da zeri. * Usato come **fallback** o **default** quando non è possibile generare o recuperare un UUID valido.
 
 ## 🔍 Views
