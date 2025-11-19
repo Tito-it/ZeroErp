@@ -55,11 +55,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_fornitori_a10_upd_protect_account_code | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_upd_protect_account_code()` |
-| trg_fornitori_ins_upd_check_ruolo_fornitore | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_ins_upd_check_ruolo_fornitore()` |
-| trg_fornitori_ins_upd_check_ruolo_fornitore | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_ins_upd_check_ruolo_fornitore()` |
-| trg_fornitori_ins_upd_guard_normalize | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()` |
-| trg_fornitori_ins_upd_guard_normalize | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()` |
+| trg_fornitori_a10_protect_account_code_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_protect_account_code()` |
+| trg_fornitori_check_ruolo_fornitore_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_check_ruolo_fornitore()` |
+| trg_fornitori_check_ruolo_fornitore_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_check_ruolo_fornitore()` |
+| trg_fornitori_guard_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()` |
+| trg_fornitori_guard_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -25,41 +25,41 @@
 
 ## ⚙️ Funzioni
 - [fn_get_conto_bancario_predefinito](funzioni/fn_get_conto_bancario_predefinito.md)
-- [trgfn_a10_emittenti_fiscali_protect_codice](funzioni/trgfn_a10_emittenti_fiscali_protect_codice.md)
-- [trgfn_a10_resellers_protect_codice](funzioni/trgfn_a10_resellers_protect_codice.md)
-- [trgfn_a10_vettori_protect_codice](funzioni/trgfn_a10_vettori_protect_codice.md)
-- [trgfn_billing_account_ins_upd_guard_normalize](funzioni/trgfn_billing_account_ins_upd_guard_normalize.md) — Il trigger `anagrafiche.trgfn_billing_account_ins_upd_guard_normalize` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
-- [trgfn_billing_account_upd_protect_account_code](funzioni/trgfn_billing_account_upd_protect_account_code.md) — Il trigger `anagrafiche.trgfn_billing_account_upd_protect_account_code`, invocato **prima di ogni UPDATE** su `anagrafiche.billing_account`, impedisce modifiche improprie al campo **`codice (account)`** una volta assegnato.
-- [trgfn_clienti_ins_upd_check_ruolo_cliente](funzioni/trgfn_clienti_ins_upd_check_ruolo_cliente.md)
+- [trgfn_billing_account_guard_normalize](funzioni/trgfn_billing_account_guard_normalize.md) — Il trigger `anagrafiche.trgfn_billing_account_ins_upd_guard_normalize` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
+- [trgfn_billing_account_protect_account_code](funzioni/trgfn_billing_account_protect_account_code.md) — Il trigger `anagrafiche.trgfn_billing_account_upd_protect_account_code`, invocato **prima di ogni UPDATE** su `anagrafiche.billing_account`, impedisce modifiche improprie al campo **`codice (account)`** una volta assegnato.
+- [trgfn_clienti_check_ruolo_cliente](funzioni/trgfn_clienti_check_ruolo_cliente.md)
 - [trgfn_clienti_set_periodo](funzioni/trgfn_clienti_set_periodo.md)
 - [trgfn_clienti_sync_pdp](funzioni/trgfn_clienti_sync_pdp.md)
-- [trgfn_contatti_ins_upd_set_default_contatto](funzioni/trgfn_contatti_ins_upd_set_default_contatto.md) — * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
-- [trgfn_conti_bancari_ins_upd_normalize](funzioni/trgfn_conti_bancari_ins_upd_normalize.md)
-- [trgfn_dati_societari_ins_upd_check_tipo_soggetto](funzioni/trgfn_dati_societari_ins_upd_check_tipo_soggetto.md) — Verificare che il soggetto associato ai dati societari ( `new.soggetto_id` in `anagrafiche.dati_societari` ) abbia un `codice_interno` ammesso (solo **`SC`** o **`SP`**). In caso contrario, viene lanciato un errore tramite `script.fn_log_and_raise_error`.
-- [trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis](funzioni/trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis.md)
-- [trgfn_emittenti_fiscali_norm](funzioni/trgfn_emittenti_fiscali_norm.md)
+- [trgfn_contatti_set_default_contatto](funzioni/trgfn_contatti_set_default_contatto.md) — * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
+- [trgfn_conti_bancari_normalize](funzioni/trgfn_conti_bancari_normalize.md)
+- [trgfn_dati_societari_guard_tipo_soggetto](funzioni/trgfn_dati_societari_guard_tipo_soggetto.md) — Verificare che il soggetto associato ai dati societari ( `new.soggetto_id` in `anagrafiche.dati_societari` ) abbia un `codice_interno` ammesso (solo **`SC`** o **`SP`**). In caso contrario, viene lanciato un errore tramite `script.fn_log_and_raise_error`.
+- [trgfn_emittenti_fiscali_check_ruolo_emi_fis](funzioni/trgfn_emittenti_fiscali_check_ruolo_emi_fis.md)
+- [trgfn_emittenti_fiscali_normalize](funzioni/trgfn_emittenti_fiscali_normalize.md)
+- [trgfn_emittenti_fiscali_protect_codice](funzioni/trgfn_emittenti_fiscali_protect_codice.md)
+- [trgfn_fornitori_check_ruolo_fornitore](funzioni/trgfn_fornitori_check_ruolo_fornitore.md)
 - [trgfn_fornitori_guard_normalize](funzioni/trgfn_fornitori_guard_normalize.md)
-- [trgfn_fornitori_ins_upd_check_ruolo_fornitore](funzioni/trgfn_fornitori_ins_upd_check_ruolo_fornitore.md)
-- [trgfn_fornitori_upd_protect_account_code](funzioni/trgfn_fornitori_upd_protect_account_code.md)
-- [trgfn_gestori_ins_upd_check_ruolo_gestore](funzioni/trgfn_gestori_ins_upd_check_ruolo_gestore.md) — - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_check_ins_soggetto_ruolo` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
-- [trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio](funzioni/trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio.md) — * **Uniformità dei dati**: garantire che i campi relativi all’indirizzo (`via_norm`, `civico_norm`, `indirizzo_normalizzato`) rispettino regole di maiuscole, spaziatura e formattazione. * **Preparazione per ricerche e comparazioni**: offrire valori normalizzati che migliorano le performance di query basate su stringhe (es. ricerche full-text, join su via). * **Affidabilità**: centralizzare la logica di normalizzazione nel database, evitando differenze tra applicazioni diverse.
-- [trgfn_indirizzi_ins_upd_clean_fields](funzioni/trgfn_indirizzi_ins_upd_clean_fields.md) — Assicura che, in modalità **indirizzo normalizzato**, tutti i campi alternativi utilizzati per gli **indirizzi liberi** siano resettati a `NULL`. In questo modo si evita la coesistenza di dati incongruenti tra indirizzo normalizzato e indirizzo libero.
-- [trgfn_indirizzi_ins_upd_sync_geoloc](funzioni/trgfn_indirizzi_ins_upd_sync_geoloc.md) — Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`. In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.
-- [trgfn_istanze_utilities_ins_upd_clean_fields](funzioni/trgfn_istanze_utilities_ins_upd_clean_fields.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
-- [trgfn_istanze_utilities_upd_protect_codice](funzioni/trgfn_istanze_utilities_upd_protect_codice.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_upd_protect_codice`, eseguito **prima di ogni UPDATE** su `anagrafiche.istanze_utilities`, impedisce modifiche non autorizzate al campo **`codice (istanza)`** una volta impostato.
+- [trgfn_fornitori_protect_account_code](funzioni/trgfn_fornitori_protect_account_code.md)
+- [trgfn_gestori_check_ruolo_gestore](funzioni/trgfn_gestori_check_ruolo_gestore.md) — - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_check_ins_soggetto_ruolo` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
+- [trgfn_indirizzi_dettaglio_normalize](funzioni/trgfn_indirizzi_dettaglio_normalize.md) — * **Uniformità dei dati**: garantire che i campi relativi all’indirizzo (`via_norm`, `civico_norm`, `indirizzo_normalizzato`) rispettino regole di maiuscole, spaziatura e formattazione. * **Preparazione per ricerche e comparazioni**: offrire valori normalizzati che migliorano le performance di query basate su stringhe (es. ricerche full-text, join su via). * **Affidabilità**: centralizzare la logica di normalizzazione nel database, evitando differenze tra applicazioni diverse.
+- [trgfn_indirizzi_normalize](funzioni/trgfn_indirizzi_normalize.md) — Assicura che, in modalità **indirizzo normalizzato**, tutti i campi alternativi utilizzati per gli **indirizzi liberi** siano resettati a `NULL`. In questo modo si evita la coesistenza di dati incongruenti tra indirizzo normalizzato e indirizzo libero.
+- [trgfn_indirizzi_sync_geoloc](funzioni/trgfn_indirizzi_sync_geoloc.md) — Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`. In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.
+- [trgfn_istanze_utilities_normalize](funzioni/trgfn_istanze_utilities_normalize.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
+- [trgfn_istanze_utilities_protect_codice](funzioni/trgfn_istanze_utilities_protect_codice.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_upd_protect_codice`, eseguito **prima di ogni UPDATE** su `anagrafiche.istanze_utilities`, impedisce modifiche non autorizzate al campo **`codice (istanza)`** una volta impostato.
 - [trgfn_pdp_protect_cols](funzioni/trgfn_pdp_protect_cols.md)
-- [trgfn_resellers_ins_upd_check_ruolo_reseller](funzioni/trgfn_resellers_ins_upd_check_ruolo_reseller.md)
+- [trgfn_resellers_check_ruolo_reseller](funzioni/trgfn_resellers_check_ruolo_reseller.md)
 - [trgfn_resellers_norm](funzioni/trgfn_resellers_norm.md)
+- [trgfn_resellers_normalize](funzioni/trgfn_resellers_normalize.md)
+- [trgfn_resellers_protect_codice](funzioni/trgfn_resellers_protect_codice.md)
 - [trgfn_sepa_mandati_guard](funzioni/trgfn_sepa_mandati_guard.md)
 - [trgfn_soggetti_conti_bancari_guard](funzioni/trgfn_soggetti_conti_bancari_guard.md)
 - [trgfn_soggetti_guard_soggetto_contatti](funzioni/trgfn_soggetti_guard_soggetto_contatti.md) — * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
-- [trgfn_soggetti_ins_upd_clean_fields](funzioni/trgfn_soggetti_ins_upd_clean_fields.md) — * **Impostare valori di default** per campi mancanti in `anagrafiche.soggetti` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
-- [trgfn_soggetti_ins_upd_genera_cdsoggetto](funzioni/trgfn_soggetti_ins_upd_genera_cdsoggetto.md)
+- [trgfn_soggetti_normalize](funzioni/trgfn_soggetti_normalize.md) — * **Impostare valori di default** per campi mancanti in `anagrafiche.soggetti` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
+- [trgfn_soggetti_protect_codice_soggetto](funzioni/trgfn_soggetti_protect_codice_soggetto.md) — Il trigger `anagrafiche.trgfn_soggetti_upd_protect_codice_soggetto`, esploso **prima di ogni UPDATE** sulla tabella `anagrafiche.soggetti`, garantisce che il campo **`codice(soggetto)`** non possa essere modificato una volta assegnato.
 - [trgfn_soggetti_ruoli_conti_bancari_guard](funzioni/trgfn_soggetti_ruoli_conti_bancari_guard.md)
-- [trgfn_soggetti_upd_protect_codice_soggetto](funzioni/trgfn_soggetti_upd_protect_codice_soggetto.md) — Il trigger `anagrafiche.trgfn_soggetti_upd_protect_codice_soggetto`, esploso **prima di ogni UPDATE** sulla tabella `anagrafiche.soggetti`, garantisce che il campo **`codice(soggetto)`** non possa essere modificato una volta assegnato.
 - [trgfn_soggetti_valida_cf_piva_dispatch](funzioni/trgfn_soggetti_valida_cf_piva_dispatch.md) — La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** viene eseguita **`BEFORE INSERT OR UPDATE`** sulla tabella **`anagrafiche.soggetti`** e instrada la validazione di codice fiscale e partita IVA in base allo Stato e al dettaglio di soggetto.
-- [trgfn_vettori_ins_upd_check_ruolo_vettore](funzioni/trgfn_vettori_ins_upd_check_ruolo_vettore.md)
-- [trgfn_vettori_norm](funzioni/trgfn_vettori_norm.md)
+- [trgfn_vettori_check_ruolo_vettore](funzioni/trgfn_vettori_check_ruolo_vettore.md)
+- [trgfn_vettori_normalize](funzioni/trgfn_vettori_normalize.md)
+- [trgfn_vettori_protect_codice](funzioni/trgfn_vettori_protect_codice.md)
 
 ## 🔍 Views
 - [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md)

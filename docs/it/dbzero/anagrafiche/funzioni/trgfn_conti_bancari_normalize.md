@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_conti_bancari_ins_upd_normalize`
+# ⚙️ Funzione `trgfn_conti_bancari_normalize`
 
 ```sql
-CREATE FUNCTION trgfn_conti_bancari_ins_upd_normalize()
+CREATE FUNCTION trgfn_conti_bancari_normalize()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_conti_bancari_ins_upd_normalize()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_conti_bancari_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

@@ -1,14 +1,14 @@
-{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_indirizzi_ins_upd_clean_fields.md" %}
-# ⚙️ Funzione `trgfn_indirizzi_ins_upd_clean_fields`
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_indirizzi_normalize.md" %}
+# ⚙️ Funzione `trgfn_indirizzi_normalize`
 
 ```sql
-CREATE FUNCTION trgfn_indirizzi_ins_upd_clean_fields()
+CREATE FUNCTION trgfn_indirizzi_normalize()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_clean_fields()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

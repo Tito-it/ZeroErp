@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_emittenti_fiscali_norm`
+# ⚙️ Funzione `trgfn_emittenti_fiscali_normalize`
 
 ```sql
-CREATE FUNCTION trgfn_emittenti_fiscali_norm()
+CREATE FUNCTION trgfn_emittenti_fiscali_normalize()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_norm()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

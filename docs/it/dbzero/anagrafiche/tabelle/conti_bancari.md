@@ -39,8 +39,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_conti_bancari_ins_upd_normalize | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_ins_upd_normalize()` |
-| trg_conti_bancari_ins_upd_normalize | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_ins_upd_normalize()` |
+| trg_conti_bancari_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_normalize()` |
+| trg_conti_bancari_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_normalize()` |
 
 ---
 {% include-markdown "signature-core.md" %}

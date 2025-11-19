@@ -1,14 +1,14 @@
-{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_billing_account_ins_upd_guard_normalize.md" %}
-# ⚙️ Funzione `trgfn_billing_account_ins_upd_guard_normalize`
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_billing_account_guard_normalize.md" %}
+# ⚙️ Funzione `trgfn_billing_account_guard_normalize`
 
 ```sql
-CREATE FUNCTION trgfn_billing_account_ins_upd_guard_normalize()
+CREATE FUNCTION trgfn_billing_account_guard_normalize()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_ins_upd_guard_normalize()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

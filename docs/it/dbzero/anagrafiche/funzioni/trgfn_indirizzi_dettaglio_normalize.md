@@ -1,14 +1,14 @@
-{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio.md" %}
-# ⚙️ Funzione `trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio`
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_indirizzi_dettaglio_normalize.md" %}
+# ⚙️ Funzione `trgfn_indirizzi_dettaglio_normalize`
 
 ```sql
-CREATE FUNCTION trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio()
+CREATE FUNCTION trgfn_indirizzi_dettaglio_normalize()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

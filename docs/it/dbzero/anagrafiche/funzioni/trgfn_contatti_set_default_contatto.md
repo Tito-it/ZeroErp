@@ -1,14 +1,14 @@
-{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_contatti_ins_upd_set_default_contatto.md" %}
-# ⚙️ Funzione `trgfn_contatti_ins_upd_set_default_contatto`
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_contatti_set_default_contatto.md" %}
+# ⚙️ Funzione `trgfn_contatti_set_default_contatto`
 
 ```sql
-CREATE FUNCTION trgfn_contatti_ins_upd_set_default_contatto()
+CREATE FUNCTION trgfn_contatti_set_default_contatto()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contatto()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_contatti_set_default_contatto()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

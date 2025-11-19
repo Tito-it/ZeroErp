@@ -1,14 +1,14 @@
-{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_istanze_utilities_upd_protect_codice.md" %}
-# ⚙️ Funzione `trgfn_istanze_utilities_upd_protect_codice`
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_protect_codice_soggetto.md" %}
+# ⚙️ Funzione `trgfn_soggetti_protect_codice_soggetto`
 
 ```sql
-CREATE FUNCTION trgfn_istanze_utilities_upd_protect_codice()
+CREATE FUNCTION trgfn_soggetti_protect_codice_soggetto()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_istanze_utilities_upd_protect_codice()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_protect_codice_soggetto()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
@@ -22,9 +22,9 @@ AS $function$
           'database',
           TG_NAME,
           'E_COLONNA_NON_MODIFICABILE',
-          jsonb_build_object('column','codice (istanza)','id',OLD.id),
+          jsonb_build_object('column','codice','id',OLD.id),
           NULL::uuid,
-          'codice (istanza)'
+          'codice soggetto'
         );
       END IF;
       RETURN NEW;

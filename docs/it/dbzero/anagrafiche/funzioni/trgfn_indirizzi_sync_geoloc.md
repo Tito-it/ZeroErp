@@ -1,14 +1,14 @@
-{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_indirizzi_ins_upd_sync_geoloc.md" %}
-# ⚙️ Funzione `trgfn_indirizzi_ins_upd_sync_geoloc`
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_indirizzi_sync_geoloc.md" %}
+# ⚙️ Funzione `trgfn_indirizzi_sync_geoloc`
 
 ```sql
-CREATE FUNCTION trgfn_indirizzi_ins_upd_sync_geoloc()
+CREATE FUNCTION trgfn_indirizzi_sync_geoloc()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_sync_geoloc()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_sync_geoloc()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

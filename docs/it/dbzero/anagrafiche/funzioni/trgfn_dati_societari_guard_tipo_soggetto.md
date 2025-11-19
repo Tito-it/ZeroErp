@@ -1,14 +1,14 @@
-{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_dati_societari_ins_upd_check_tipo_soggetto.md" %}
-# ⚙️ Funzione `trgfn_dati_societari_ins_upd_check_tipo_soggetto`
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_dati_societari_guard_tipo_soggetto.md" %}
+# ⚙️ Funzione `trgfn_dati_societari_guard_tipo_soggetto`
 
 ```sql
-CREATE FUNCTION trgfn_dati_societari_ins_upd_check_tipo_soggetto()
+CREATE FUNCTION trgfn_dati_societari_guard_tipo_soggetto()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

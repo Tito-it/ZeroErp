@@ -1,19 +1,20 @@
-# ⚙️ Funzione `trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis`
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_gestori_check_ruolo_gestore.md" %}
+# ⚙️ Funzione `trgfn_gestori_check_ruolo_gestore`
 
 ```sql
-CREATE FUNCTION trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis()
+CREATE FUNCTION trgfn_gestori_check_ruolo_gestore()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_gestori_check_ruolo_gestore()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
  BEGIN
        -- FUNCTION: 
-       --   Ogni volta che inserisco/aggiorno in emittenti_fiscali, gestisco la
+       --   Ogni volta che inserisco/aggiorno in gestori, gestisco la
        --   creazione/verifica della riga corrispondente in soggetti_ruoli
        --   alimentando poi in NEW.soggetto_ruolo_id il record finale.
 
@@ -22,7 +23,7 @@ AS $function$
      NEW.soggetto_ruolo_id := script.fn_check_ins_soggetto_ruolo(
                                p_soggetto_id       := NEW.soggetto_id,
                                p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
-                               p_cd_int_ruolo      := 'EMIT-IS'
+                               p_cd_int_ruolo      := 'GE'
                              );
      RETURN NEW;
  END;
