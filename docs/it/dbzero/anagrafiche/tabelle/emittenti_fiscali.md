@@ -47,11 +47,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_emittenti_fiscali_a10_upd_protect_codice | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_a10_emittenti_fiscali_protect_codice()` |
-| trg_emittenti_fiscali_ins_upd_check_ruolo_emi_fis | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis()` |
-| trg_emittenti_fiscali_ins_upd_check_ruolo_emi_fis | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis()` |
-| trg_emittenti_fiscali_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_norm()` |
-| trg_emittenti_fiscali_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_norm()` |
+| trg_emittenti_fiscali_a10_protect_codice_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_protect_codice()` |
+| trg_emittenti_fiscali_check_ruolo_emi_fis_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_check_ruolo_emi_fis()` |
+| trg_emittenti_fiscali_check_ruolo_emi_fis_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_check_ruolo_emi_fis()` |
+| trg_emittenti_fiscali_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()` |
+| trg_emittenti_fiscali_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()` |
 
 ---
 {% include-markdown "signature-core.md" %}

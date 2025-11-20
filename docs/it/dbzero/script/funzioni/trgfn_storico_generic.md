@@ -1,0 +1,187 @@
+{% include-markdown "it/dbzero/script/manual/trgfn_storico_generic.md" %}
+# ⚙️ Funzione `trgfn_storico_generic`
+
+```sql
+CREATE FUNCTION trgfn_storico_generic()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.trgfn_storico_generic()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+      DECLARE
+        id_col_hist     TEXT          := TG_ARGV[0];  -- Nome colonna FK nella tabella storica (es: 'indirizzo_dettaglio_id')
+        id_col_orig     TEXT          := 'id';        -- Nome colonna PK nella tabella originale (default 'id')
+        hist_schema     CONSTANT TEXT := 'storico';   -- Schema destinazione per i dati storici
+        orig_schema     TEXT          := TG_TABLE_SCHEMA; -- Schema della tabella sorgente
+        orig_table      TEXT          := TG_TABLE_NAME;   -- Nome tabella sorgente
+        hist_table      TEXT          := orig_table;      -- Nome tabella storica (stesso nome)
+        v_current_date  CONSTANT DATE := CURRENT_DATE; -- Data corrente per chiusura snapshot
+        v_fixed_date    CONSTANT DATE := '1950-01-01'; -- Data fissa per nuovi record storici
+        v_rowcount      INTEGER;      -- Contatore righe per operazioni UPDATE
+        v_snapshot_open BOOLEAN := FALSE; -- Flag snapshot aperti
+        snapshot_data   JSONB;        -- Dati serializzati del record
+        op_type         SMALLINT;     -- 1=creazione, 2=modifica, 3=eliminazione
+        v_id_value      TEXT;       -- Valore ID del record originale
+        v_id_col_type  TEXT; -- Tipo della colonna ID nella tabella originale
+       -- v_skip_reset    BOOLEAN := TG_TABLE_NAME = ANY (
+       --                     ARRAY[
+       --                       'parameters',
+       --                       'parameter_overrides',
+       --                       'soggetti',
+       --                       'clienti'
+       --                     ]
+       --                   ); -- Definire le tabelle che non devono essere resettate
+          v_should_reset  BOOLEAN;  -- = NOT v_skip_reset, valorizzata in BEGIN
+          v_skip_reset    BOOLEAN;
+      BEGIN
+        -- 0) Controllo da tabella di configurazione
+          SELECT EXISTS (
+            SELECT 1 
+              FROM config.storico_set_storicizza s
+            WHERE s.table_name = TG_TABLE_NAME
+          ) INTO v_skip_reset;
+
+        -- Inizializziamo il flag una sola volta
+         v_should_reset := NOT v_skip_reset;
+         
+      -- 0.1) Trova il tipo della colonna PK (id) nella tabella origine
+        SELECT format_type(a.atttypid, a.atttypmod)
+          INTO v_id_col_type
+        FROM pg_attribute a
+        JOIN pg_class   c ON a.attrelid = c.oid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = orig_schema
+          AND c.relname = orig_table
+          AND a.attname = id_col_orig
+          AND NOT a.attisdropped;	
+      
+        --0) Se la colonna storicizza esiste e vale FALSE, non storicizzo
+        IF TG_OP = 'UPDATE' AND NOT NEW.storicizza THEN
+          RETURN NEW;
+        ELSIF TG_OP = 'DELETE' AND NOT OLD.storicizza THEN
+          RETURN OLD;
+        END IF;
+        
+        -- [Sezione 1] Recupero ID record originale ---------------------------------
+        -- Ottiene l'ID del record dalla tabella sorgente (OLD per DELETE, NEW per UPDATE)
+        -- Gestisce eventuali errori di colonna mancante
+        BEGIN
+          IF TG_OP = 'DELETE' THEN
+            v_id_value := OLD.id::text; -- Per operazioni DELETE usa OLD
+          ELSE
+            v_id_value := NEW.id::text; -- Per operazioni UPDATE usa NEW
+          END IF;
+        EXCEPTION WHEN OTHERS THEN
+          -- Gestione errore: logga e solleva eccezione tramite funzione dedicata
+          PERFORM script.fn_log_and_raise_error(
+            'database', TG_NAME, 'E_SNAPSHOT_ID_NOT_FOUND',
+            jsonb_build_object('error', SQLERRM, 'schema', hist_schema, 'table', hist_table),
+            NULL::uuid, SQLERRM::text
+          );    
+        END;
+
+        -- [Sezione 2] Creazione snapshot -------------------------------------------
+        -- Serializza i dati del record in formato JSONB
+        -- Assegna il tipo di operazione (2=UPDATE, 3=DELETE)
+        IF TG_OP = 'UPDATE' THEN
+          op_type := 2; 
+          snapshot_data := to_jsonb(NEW); -- Snapshot dello stato nuovo
+        ELSIF TG_OP = 'DELETE' THEN
+          op_type := 3; 
+          snapshot_data := to_jsonb(OLD); -- Snapshot dello stato vecchio
+        ELSE
+          RETURN COALESCE(NEW,OLD); -- Caso non gestito (non dovrebbe verificarsi)
+        END IF;
+
+        -- [Sezione 3] Chiusura snapshot aperti ------------------------------------
+        -- Cerca e chiude eventuali snapshot precedenti ancora aperti (valid_to IS NULL)
+        -- per lo stesso record (stesso ID)
+        BEGIN
+        /* EXECUTE format(
+            'UPDATE %I.%I SET valid_to = $1 WHERE %I = $2 AND valid_to IS NULL',
+            hist_schema, hist_table, id_col_hist
+          ) USING v_current_date, v_id_value;  */
+          EXECUTE format(
+        'UPDATE %I.%I
+            SET valid_to = $1
+          WHERE %I = $2::%s AND valid_to IS NULL',
+        hist_schema, hist_table, id_col_hist, v_id_col_type
+      )
+  USING v_current_date, v_id_value;
+  
+  GET DIAGNOSTICS v_rowcount = ROW_COUNT; -- Controlla se ha chiuso record
+          v_snapshot_open := (v_rowcount > 0);    -- Imposta flag se trovati snapshot
+        EXCEPTION WHEN OTHERS THEN
+          -- Gestione errore chiusura snapshot
+          PERFORM script.fn_log_and_raise_error(
+            'database', TG_NAME, 'E_SNAPSHOT_CLOSE_ERROR',
+            jsonb_build_object('error', SQLERRM, 'schema', hist_schema, 'table', hist_table),
+            NULL::uuid, SQLERRM::text, SQLSTATE::text
+          );
+        END;
+
+        -- [Sezione 4] Inserimento dati storici -------------------------------------
+        BEGIN
+          -- [4.1] Inserimento storico INIZIALE (solo se non c'erano snapshot aperti)
+          -- Crea un record storico con intervallo di validità fisso (1950-01-01 -> CURRENT_DATE)
+          -- per mantenere traccia dello stato precedente all'operazione corrente
+          IF NOT v_snapshot_open THEN
+            BEGIN
+            
+              EXECUTE format(
+                'INSERT INTO %I.%I (%I, valid_from, valid_to, data_insert, user_insert, snapshot, tipo_operazione)
+                VALUES ($1::%s, $2, $3, now(), current_user, $4, 1)',
+                hist_schema, hist_table, id_col_hist, v_id_col_type
+              )
+              USING v_id_value, v_fixed_date, v_current_date, to_jsonb(OLD);
+
+            EXCEPTION WHEN OTHERS THEN
+              -- Gestione errore inserimento storico iniziale
+              PERFORM script.fn_log_and_raise_error(
+                'database', TG_NAME, 'E_SNAPSHOT_INIT_INSERT_ERROR',
+                jsonb_build_object('error', SQLERRM, 'schema', hist_schema, 'table', hist_table),
+                NULL::uuid, SQLERRM::text, SQLSTATE::text
+              );
+            END;
+          END IF;
+
+          -- [4.2] Inserimento storico FINALE (sempre)
+          -- Crea un record storico con valid_from = CURRENT_DATE e valid_to = NULL
+          -- per registrare il nuovo stato del record
+          BEGIN
+          
+          EXECUTE format(
+        'INSERT INTO %I.%I (%I, valid_from, data_insert, user_insert, snapshot, tipo_operazione)
+          VALUES ($1::%s, $2, now(), current_user, $3, $4)',
+        hist_schema, hist_table, id_col_hist, v_id_col_type
+      )
+      USING v_id_value, v_current_date, snapshot_data, op_type;    
+        
+          EXCEPTION WHEN OTHERS THEN
+            -- Gestione errore inserimento storico finale
+            PERFORM script.fn_log_and_raise_error(
+              'database', TG_NAME, 'E_SNAPSHOT_FINAL_INSERT_ERROR',
+              jsonb_build_object('error', SQLERRM, 'schema', hist_schema, 'table', hist_table),
+              NULL::uuid, SQLERRM::text, SQLSTATE::text
+            );
+          END;
+        END;
+
+        -- [Sezione 5] Gestione reset storico per tabelle specifiche vedi elenco in Array
+        IF TG_OP = 'UPDATE' AND v_should_reset THEN
+          NEW.storicizza := FALSE;
+        END IF;
+        
+        -- Restituisce il record appropriato (OLD per DELETE, NEW per UPDATE)
+        RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+      END;
+      
+  $function$
+```
+
+---
+{% include-markdown "signature-core.md" %}

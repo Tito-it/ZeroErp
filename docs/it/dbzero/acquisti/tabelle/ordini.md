@@ -69,9 +69,9 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ordini_a10_ins_upd_ao_only_consegna_tipo_con | BEFORE | INSERT | `EXECUTE FUNCTION acquisti.trgfn_a10_ao_only_consegna_tipo_con()` |
-| trg_ordini_a10_ins_upd_ao_only_consegna_tipo_con | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_a10_ao_only_consegna_tipo_con()` |
-| trg_ordini_a10_upd_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_a10_ordini_protect_num()` |
+| trg_ordini_a10_ao_only_consegna_tipo_con_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION acquisti.trgfn_acq_ordini_only_consegna_tipo_con()` |
+| trg_ordini_a10_ao_only_consegna_tipo_con_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_acq_ordini_only_consegna_tipo_con()` |
+| trg_ordini_a10_protect_num_upd | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_acq_ordini_protect_num()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,0 +1,36 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/catalogo/db/changelog/20251119-51-catalogo-rename-function-mctit.yaml
+
+    - changeSet:
+          id: 20251119-51-catalogo-rename-trigger
+          author: mctit
+          comment: "Rinomina trigger  schema catalogo secondo convenzione trgfn_<tabella>_<descrizione>"
+          changes:
+              - sql:
+                    splitStatements: true
+                    stripComments: true
+                    sql: |
+                        ALTER TRIGGER trg_articoli_a10_upd_protect_codice
+                            ON catalogo.articoli
+                        RENAME TO trg_articoli_a10_protect_codice_upd;
+
+                        ALTER TRIGGER trg_articoli_upd_audit_data_user_generic
+                            ON catalogo.articoli
+                        RENAME TO trg_articoli_audit_data_user_generic_upd;
+
+                        ALTER TRIGGER trg_articoli_componenti_upd_audit_data_user_generic
+                            ON catalogo.articoli_componenti
+                        RENAME TO trg_articoli_componenti_audit_data_user_generic_upd;
+
+                        ALTER TRIGGER trg_unita_misura_upd_audit_data_user_generic
+                            ON catalogo.unita_misura
+                        RENAME TO trg_unita_misura_audit_data_user_generic_upd;

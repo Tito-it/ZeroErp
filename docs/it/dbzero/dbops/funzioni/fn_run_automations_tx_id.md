@@ -55,7 +55,7 @@ BEGIN
       ) INTO has_txid;
 
       IF has_txid THEN
-        tmpl     := COALESCE(rrule.name_template,'trg_{table}_ins_upd_gen_tx_id');
+        tmpl     := COALESCE(rrule.name_template,'trg_{table}_gen_tx_id_ins_upd');
         trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL,NULL);
 
         IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
@@ -75,7 +75,7 @@ BEGIN
                   p_params        => jsonb_build_object(
                                       'table', rtab.schema_name||'.'||rtab.table_name,
                                       'trigger', trg_name,
-                                      'action', 'DRYRUN_CREATE_TRIGGER'   -- opzionale
+                                      'action', 'DRYRUN_CREATE_TRIGGER'   
                                     ),
                   p_message       => 'Trigger would be created'
                 );
@@ -99,7 +99,6 @@ BEGIN
                     'error', SQLERRM
                   ) , NULL::uuid, SQLERRM
                 );
-
 
             END;
           END IF;

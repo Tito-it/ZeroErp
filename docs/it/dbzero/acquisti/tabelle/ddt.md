@@ -57,7 +57,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ddt_a10_upd_a_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_a10_a_ddt_protect_num()` |
+| trg_ddt_a10_a_protect_num_upd | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_acq_ddt_protect_num()` |
 
 ---
 {% include-markdown "signature-core.md" %}

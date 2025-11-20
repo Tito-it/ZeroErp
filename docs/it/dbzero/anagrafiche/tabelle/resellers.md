@@ -40,11 +40,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_resellers_a10_upd_protect_codice | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_a10_resellers_protect_codice()` |
-| trg_resellers_ins_upd_check_ruolo_reseller | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_ins_upd_check_ruolo_reseller()` |
-| trg_resellers_ins_upd_check_ruolo_reseller | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_ins_upd_check_ruolo_reseller()` |
-| trg_resellers_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_norm()` |
-| trg_resellers_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_norm()` |
+| trg_resellers_a10_protect_codice_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_protect_codice()` |
+| trg_resellers_check_ruolo_reseller_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_check_ruolo_reseller()` |
+| trg_resellers_check_ruolo_reseller_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_check_ruolo_reseller()` |
+| trg_resellers_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_normalize()` |
+| trg_resellers_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_normalize()` |
 
 ---
 {% include-markdown "signature-core.md" %}

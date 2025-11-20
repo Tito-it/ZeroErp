@@ -30,8 +30,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ddt_indirizzi_a10_ins_upd_only_allowed_tipi | BEFORE | INSERT | `EXECUTE FUNCTION acquisti.trgfn_ddt_indirizzi_only_allowed_tipi()` |
-| trg_ddt_indirizzi_a10_ins_upd_only_allowed_tipi | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_ddt_indirizzi_only_allowed_tipi()` |
+| trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION acquisti.trgfn_ddt_indirizzi_only_allowed_tipi()` |
+| trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_ddt_indirizzi_only_allowed_tipi()` |
 
 ---
 {% include-markdown "signature-core.md" %}

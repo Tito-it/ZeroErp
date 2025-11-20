@@ -58,7 +58,7 @@ AS $function$
             INTO has_du, has_uu;
 
           IF has_du AND has_uu THEN
-            tmpl     := COALESCE(rrule.name_template,'trg_{table}_upd_audit_data_user');
+            tmpl     := COALESCE(rrule.name_template,'trg_{table}_audit_data_user_upd');
             trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL,NULL);
 
             IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
@@ -78,7 +78,7 @@ AS $function$
                   p_params        => jsonb_build_object(
                                       'table', rtab.schema_name||'.'||rtab.table_name,
                                       'trigger', trg_name,
-                                      'action', 'DRYRUN_CREATE_TRIGGER'   -- opzionale
+                                      'action', 'DRYRUN_CREATE_TRIGGER'   
                                     ),
                   p_message       => 'Trigger would be created'
                 );
@@ -89,10 +89,10 @@ AS $function$
                     CREATE TRIGGER %I
                     BEFORE UPDATE ON %I.%I
                     FOR EACH ROW
-                    EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()
+                    EXECUTE FUNCTION script.trgfn_audit_data_user_generic()
                   $f$, trg_name, rtab.schema_name, rtab.table_name);
                 EXCEPTION WHEN others THEN
-                 
+                
                     PERFORM script.fn_log_and_raise_error(
                       'dbops',
                       'run_automations',
@@ -110,7 +110,8 @@ AS $function$
         END LOOP;
       END LOOP;
     END;
-    $function$
+    
+$function$
 ```
 
 ---

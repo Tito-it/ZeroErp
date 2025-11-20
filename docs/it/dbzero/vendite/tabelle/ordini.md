@@ -56,9 +56,9 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ordini_a10_upd_v_protect_num | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_ordini_v_protect_num()` |
-| trg_ordini_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_norm()` |
-| trg_ordini_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_norm()` |
+| trg_ordini_a10_v_protect_num_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_v_protect_num()` |
+| trg_ordini_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_normalize()` |
+| trg_ordini_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_normalize()` |
 
 ---
 {% include-markdown "signature-core.md" %}

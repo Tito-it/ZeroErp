@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/storico/20251119-66-storico-rename-function-mctit.yaml
+
+    - changeSet:
+          id: 20251119-66-storico-rename-function
+          author: mctit
+          comment: "Rinomina trigger  schema storico secondo convenzione trgfn_<tabella>_<descrizione>"
+          changes:
+              - sql:
+                    splitStatements: true
+                    stripComments: true
+                    sql: |
+
+
+                        ALTER TRIGGER trg_comuni_ins_upd_tx_id_managed
+                            ON storico.comuni
+                        RENAME TO trg_comuni_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_dati_catastali_ins_upd_tx_id_managed
+                            ON storico.dati_catastali
+                        RENAME TO trg_dati_catastali_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_dati_societari_ins_upd_tx_id_managed
+                            ON storico.dati_societari
+                        RENAME TO trg_dati_societari_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_indirizzi_dettaglio_ins_upd_tx_id_managed
+                            ON storico.indirizzi_dettaglio
+                        RENAME TO trg_indirizzi_dettaglio_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_parameter_overrides_ins_upd_tx_id_managed
+                            ON storico.parameter_overrides
+                        RENAME TO trg_parameter_overrides_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_parameters_ins_upd_tx_id_managed
+                            ON storico.parameters
+                        RENAME TO trg_parameters_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_pdp_ins_upd_tx_id_managed
+                            ON storico.pdp
+                        RENAME TO trg_pdp_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_soggetti_ins_upd_tx_id_managed
+                            ON storico.soggetti
+                        RENAME TO trg_soggetti_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_stradario_ins_upd_tx_id_managed
+                            ON storico.stradario
+                        RENAME TO trg_stradario_tx_id_managed_ins_upd;

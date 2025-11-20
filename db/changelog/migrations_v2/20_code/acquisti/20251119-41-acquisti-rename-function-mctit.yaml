@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/acquisti/20251119-41-acquisti-rename-function-mctit.yaml
+
+    - changeSet:
+          id: 20251119-41-acquisti-rename-function
+          author: mctit
+          comment: "Rinomina trigger function schema acquisti secondo convenzione trgfn_<tabella>_<descrizione>"
+          changes:
+              - sql:
+                    splitStatements: true
+                    stripComments: true
+                    sql: |
+                        ALTER FUNCTION acquisti.trgfn_a10_a_ddt_protect_num()
+                         RENAME TO trgfn_acq_ddt_protect_num;
+
+                        ALTER FUNCTION acquisti.trgfn_a10_ao_only_consegna_tipo_con()
+                         RENAME TO trgfn_acq_ordini_only_consegna_tipo_con;
+
+                        ALTER FUNCTION acquisti.trgfn_a10_ordini_protect_num()
+                         RENAME TO trgfn_acq_ordini_protect_num;
+
+    - changeSet:
+          id: 20251119-42-acquisti-rename-trigger
+          author: mctit
+          comment: "Rinomina trigger  schema acquisti secondo convenzione trgfn_<tabella>_<descrizione>"
+          changes:
+              - sql:
+                    splitStatements: true
+                    stripComments: true
+                    sql: |
+
+
+                        ALTER TRIGGER trg_ddt_a10_upd_a_protect_num
+                                ON acquisti.ddt
+                            RENAME TO trg_ddt_a10_a_protect_num_upd;
+
+                            ALTER TRIGGER trg_ddt_indirizzi_a10_ins_upd_only_allowed_tipi
+                                ON acquisti.ddt_indirizzi
+                            RENAME TO trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd;
+
+                            ALTER TRIGGER trg_note_ddt_ins_upd_validate
+                                ON acquisti.note_ddt
+                            RENAME TO trg_note_ddt_validate_ins_upd;
+
+                            ALTER TRIGGER trg_note_ordini_ins_upd_validate
+                                ON acquisti.note_ordini
+                            RENAME TO trg_note_ordini_validate_ins_upd;
+
+                            ALTER TRIGGER trg_ordini_a10_ins_upd_ao_only_consegna_tipo_con
+                                ON acquisti.ordini
+                            RENAME TO trg_ordini_a10_ao_only_consegna_tipo_con_ins_upd;
+
+                            ALTER TRIGGER trg_ordini_a10_upd_protect_num
+                                ON acquisti.ordini
+                            RENAME TO trg_ordini_a10_protect_num_upd;
