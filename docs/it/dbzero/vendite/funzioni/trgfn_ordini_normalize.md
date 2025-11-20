@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_ordini_norm`
+# ⚙️ Funzione `trgfn_ordini_normalize`
 
 ```sql
-CREATE FUNCTION trgfn_ordini_norm()
+CREATE FUNCTION trgfn_ordini_normalize()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_norm()
+CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

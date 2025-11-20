@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_a10_attivita_fatturabili_guard_fatturato`
+# ⚙️ Funzione `trgfn_attivita_fatturabili_guard_fatturato`
 
 ```sql
-CREATE FUNCTION trgfn_a10_attivita_fatturabili_guard_fatturato()
+CREATE FUNCTION trgfn_attivita_fatturabili_guard_fatturato()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.trgfn_a10_attivita_fatturabili_guard_fatturato()
+CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

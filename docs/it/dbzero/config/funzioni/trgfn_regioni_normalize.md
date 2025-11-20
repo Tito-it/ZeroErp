@@ -1,14 +1,14 @@
-{% include-markdown "it/dbzero/config/manual/trgfn_regioni_ins_upd_clean_fields.md" %}
-# ⚙️ Funzione `trgfn_regioni_ins_upd_clean_fields`
+{% include-markdown "it/dbzero/config/manual/trgfn_regioni_normalize.md" %}
+# ⚙️ Funzione `trgfn_regioni_normalize`
 
 ```sql
-CREATE FUNCTION trgfn_regioni_ins_upd_clean_fields()
+CREATE FUNCTION trgfn_regioni_normalize()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION config.trgfn_regioni_ins_upd_clean_fields()
+CREATE OR REPLACE FUNCTION config.trgfn_regioni_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

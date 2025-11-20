@@ -1,14 +1,14 @@
-{% include-markdown "it/dbzero/config/manual/trgfn_stradario_generale_upd_non_permesso.md" %}
-# ⚙️ Funzione `trgfn_stradario_generale_upd_non_permesso`
+{% include-markdown "it/dbzero/config/manual/trgfn_stradario_generale_protect_update.md" %}
+# ⚙️ Funzione `trgfn_stradario_generale_protect_update`
 
 ```sql
-CREATE FUNCTION trgfn_stradario_generale_upd_non_permesso()
+CREATE FUNCTION trgfn_stradario_generale_protect_update()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION config.trgfn_stradario_generale_upd_non_permesso()
+CREATE OR REPLACE FUNCTION config.trgfn_stradario_generale_protect_update()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

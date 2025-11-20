@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_a11_fatture_numerata_non_annulabile`
+# ⚙️ Funzione `trgfn_fatture_numerata_non_annulabile`
 
 ```sql
-CREATE FUNCTION trgfn_a11_fatture_numerata_non_annulabile()
+CREATE FUNCTION trgfn_fatture_numerata_non_annulabile()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.trgfn_a11_fatture_numerata_non_annulabile()
+CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_numerata_non_annulabile()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

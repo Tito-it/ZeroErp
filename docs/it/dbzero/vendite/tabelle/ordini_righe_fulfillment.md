@@ -35,8 +35,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ordini_a10_ins_upd_ful_guard_consistenza | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_a10_ins_upd_ordini_ful_guard_consistenza()` |
-| trg_ordini_a10_ins_upd_ful_guard_consistenza | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_a10_ins_upd_ordini_ful_guard_consistenza()` |
+| trg_ordini_righe_fulfillment_a10_guard_consistenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()` |
+| trg_ordini_righe_fulfillment_a10_guard_consistenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()` |
 
 ---
 {% include-markdown "signature-core.md" %}

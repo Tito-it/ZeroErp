@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_a10_dlt_block_ordrig_ddtrig`
+# ⚙️ Funzione `trgfn_dlt_block_ordrig_ddtrig`
 
 ```sql
-CREATE FUNCTION trgfn_a10_dlt_block_ordrig_ddtrig()
+CREATE FUNCTION trgfn_dlt_block_ordrig_ddtrig()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.trgfn_a10_dlt_block_ordrig_ddtrig()
+CREATE OR REPLACE FUNCTION vendite.trgfn_dlt_block_ordrig_ddtrig()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

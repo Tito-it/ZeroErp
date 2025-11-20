@@ -1,0 +1,230 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20251119-31-vendite-rename-function-mctit.yaml
+
+  - changeSet:
+      id: 20251119-31-vendite-rename-function
+      author: mctit
+      comment: "Rinomina trigger function schema vendite secondo convenzione trgfn_<tabella>_<descrizione>"
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+
+              ALTER FUNCTION vendite.trgfn_a10_attivita_fatturabili_guard_fatturato()
+              RENAME TO trgfn_attivita_fatturabili_guard_fatturato;
+
+              ALTER FUNCTION vendite.trgfn_a10_dlt_block_ordrig_ddtrig()
+              RENAME TO trgfn_dlt_block_ordrig_ddtrig;
+
+              ALTER FUNCTION vendite.trgfn_a10_fatture_protect_num()
+              RENAME TO trgfn_fatture_protect_num;
+
+              ALTER FUNCTION vendite.trgfn_a10_ins_upd_ordini_ful_guard_consistenza()
+              RENAME TO trgfn_ordini_ful_guard_consistenza;
+
+              ALTER FUNCTION vendite.trgfn_a10_ordini_v_protect_num()
+              RENAME TO trgfn_ordini_v_protect_num;
+
+              ALTER FUNCTION vendite.trgfn_a10_v_contratti_protect_num()
+              RENAME TO trgfn_v_contratti_protect_num;
+
+              ALTER FUNCTION vendite.trgfn_a10_v_ddt_protect_num()
+              RENAME TO trgfn_v_ddt_protect_num;
+
+              ALTER FUNCTION vendite.trgfn_a10_v_preventivi_protect_num()
+              RENAME TO trgfn_v_preventivi_protect_num;
+
+              ALTER FUNCTION vendite.trgfn_a11_fatture_numerata_non_annulabile()
+              RENAME TO trgfn_fatture_numerata_non_annulabile;
+
+              --ALTER FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()
+              --RENAME TO trgfn_attivita_fatturabili_guard_ba_coerenza;
+
+              --ALTER FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte()
+              --RENAME TO trgfn_attivita_fatturabili_guard_fonte;
+
+              ALTER FUNCTION vendite.trgfn_attivita_fatturabili_norm()
+              RENAME TO trgfn_attivita_fatturabili_normalize;
+
+              ALTER FUNCTION vendite.trgfn_contratti_norm()
+              RENAME TO trgfn_contratti_normalize;
+
+              ALTER FUNCTION vendite.trgfn_ddt_norm()
+              RENAME TO trgfn_ddt_normalize;
+
+              ALTER FUNCTION vendite.trgfn_fatture_righe_norm_guard()
+              RENAME TO trgfn_fatture_righe_guard_normalize;
+
+              ALTER FUNCTION vendite.trgfn_ordini_norm()
+              RENAME TO trgfn_ordini_normalize;
+
+              ALTER FUNCTION vendite.trgfn_preventivi_norm()
+              RENAME TO trgfn_preventivi_normalize;
+
+              --ALTER FUNCTION vendite.trgfn_a10_tipi_indirizzi_only_allowed()
+              --RENAME TO trgfn_tipi_indirizzi_only_allowed;
+
+  - changeSet:
+      id: 20251119-32-vendite-rename-trigger
+      author: mctit
+      comment: "Rinomina trigger  schema vendite secondo convenzione trgfn_<tabella>_<descrizione>"
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+
+
+              ALTER TRIGGER trg_articoli_descrizioni_aggiuntive_upd_audit_data_user_generic
+                  ON vendite.articoli_descrizioni_aggiuntive
+              RENAME TO trg_articoli_descrizioni_aggiuntive_audit_data_user_generic_upd;
+
+              ALTER TRIGGER trg_articoli_gruppi_upd_audit_data_user_generic
+                  ON vendite.articoli_gruppi
+              RENAME TO trg_articoli_gruppi_audit_data_user_generic_upd;
+
+              ALTER TRIGGER trg_articoli_spesa_upd_audit_data_user_generic
+                  ON vendite.articoli_spesa
+              RENAME TO trg_articoli_spesa_audit_data_user_generic_upd;
+
+              ALTER TRIGGER trg_articoli_tipologie_upd_audit_data_user_generic
+                  ON vendite.articoli_tipologie
+              RENAME TO trg_articoli_tipologie_audit_data_user_generic_upd;
+
+              ALTER TRIGGER trg_articolo_regole_fatturazione_upd_audit_data_user_generic
+                  ON vendite.articolo_regole_fatturazione
+              RENAME TO trg_articolo_regole_fatturazione_audit_data_user_generic_upd;
+
+              ALTER TRIGGER trg_attivita_fatturabili_a10_ins_upd_guard_ba_coerenza
+                  ON vendite.attivita_fatturabili
+              RENAME TO trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd;
+
+              ALTER TRIGGER trg_attivita_fatturabili_a10_ins_upd_guard_fonte
+                  ON vendite.attivita_fatturabili
+              RENAME TO trg_attivita_fatturabili_a10_guard_fonte_ins_upd;
+
+              ALTER TRIGGER trg_attivita_fatturabili_a10_upd_dlt_guard_fatturato
+                  ON vendite.attivita_fatturabili
+              RENAME TO trg_attivita_fatturabili_a10_guard_fatturato_upd_dlt;
+
+              ALTER TRIGGER trg_attivita_fatturabili_ins_upd_norm
+                  ON vendite.attivita_fatturabili
+              RENAME TO trg_attivita_fatturabili_normalize_ins_upd;
+
+              ALTER TRIGGER trg_contratti_a10_upd_v_protect_num
+                  ON vendite.contratti
+              RENAME TO trg_contratti_a10_v_protect_num_upd;
+
+              ALTER TRIGGER trg_contratti_ins_upd_norm
+                  ON vendite.contratti
+              RENAME TO trg_contratti_normalize_ins_upd;
+
+              ALTER TRIGGER trg_a10_ins_upd_contratti_righe_qta_from_operativa
+                  ON vendite.contratti_righe
+              RENAME TO trg_contratti_righe_a10_qta_from_operativa_ins_upd;
+
+              ALTER TRIGGER trg_ddt_a10_upd_v_protect_num
+                  ON vendite.ddt
+              RENAME TO trg_ddt_a10_v_protect_num_upd;
+
+              ALTER TRIGGER trg_ddt_ins_upd_norm
+                  ON vendite.ddt
+              RENAME TO trg_ddt_normalize_ins_upd;
+
+              ALTER TRIGGER trg_ddt_indirizzi_a10_ins_upd_only_allowed_tipi
+                  ON vendite.ddt_indirizzi
+              RENAME TO trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd;
+
+              ALTER TRIGGER trg_a10_dlt_block_ddt
+                  ON vendite.ddt_righe
+              RENAME TO trg_ddt_righe_a10_block_ddt_dlt;
+
+              ALTER TRIGGER trg_a10_ins_upd_ddt_righe_qta_from_operativa
+                  ON vendite.ddt_righe
+              RENAME TO trg_ddt_righe_a10_qta_from_operativa_ins_upd;
+
+              ALTER TRIGGER trg_fatture_a10_upd_protect_num
+                  ON vendite.fatture
+              RENAME TO trg_fatture_a10_protect_num_upd;
+
+              ALTER TRIGGER trg_fatture_a11_upd_numerata_non_annulabile
+                  ON vendite.fatture
+              RENAME TO trg_fatture_a11_numerata_non_annulabile_upd;
+
+              ALTER TRIGGER trg_fatture_indirizzi_a10_ins_upd_only_allowed_tipi
+                  ON vendite.fatture_indirizzi
+              RENAME TO trg_fatture_indirizzi_a10_only_allowed_tipi_ins_upd;
+
+              ALTER TRIGGER trg_fatture_righe_ins_upd_norm_guard
+                  ON vendite.fatture_righe
+              RENAME TO trg_fatture_righe_guard_normalize_ins_upd;
+
+              ALTER TRIGGER trg_note_contratto_ins_upd_validate
+                  ON vendite.note_contratto
+              RENAME TO trg_note_contratto_validate_ins_upd;
+
+              ALTER TRIGGER trg_note_ddt_ins_upd_validate
+                  ON vendite.note_ddt
+              RENAME TO trg_note_ddt_validate_ins_upd;
+
+              ALTER TRIGGER trg_note_fatture_ins_upd_validate
+                  ON vendite.note_fatture
+              RENAME TO trg_note_fatture_validate_ins_upd;
+
+              ALTER TRIGGER trg_note_ordini_ins_upd_validate
+                  ON vendite.note_ordini
+              RENAME TO trg_note_ordini_validate_ins_upd;
+
+              ALTER TRIGGER trg_note_preventivo_ins_upd_validate
+                  ON vendite.note_preventivo
+              RENAME TO trg_note_preventivo_validate_ins_upd;
+
+              ALTER TRIGGER trg_ordini_a10_upd_v_protect_num
+                  ON vendite.ordini
+              RENAME TO trg_ordini_a10_v_protect_num_upd;
+
+              ALTER TRIGGER trg_ordini_ins_upd_norm
+                  ON vendite.ordini
+              RENAME TO trg_ordini_normalize_ins_upd;
+
+              ALTER TRIGGER trg_ordini_indirizzi_a10_ins_upd_only_allowed_tipi
+                  ON vendite.ordini_indirizzi
+              RENAME TO trg_ordini_indirizzi_a10_only_allowed_tipi_ins_upd;
+
+              ALTER TRIGGER trg_a10_dlt_block
+                  ON vendite.ordini_righe
+              RENAME TO trg_ordini_righe_a10_block_dlt;
+
+              ALTER TRIGGER trg_a10_ins_upd_ordini_righe_qta_from_operativa
+                  ON vendite.ordini_righe
+              RENAME TO trg_ordini_righe_a10_qta_from_operativa_ins_upd;
+
+              ALTER TRIGGER trg_ordini_a10_ins_upd_ful_guard_consistenza
+                  ON vendite.ordini_righe_fulfillment
+              RENAME TO trg_ordini_righe_fulfillment_a10_guard_consistenza_ins_upd;
+
+              ALTER TRIGGER trg_preventivi_a10_upd_v_protect_num
+                  ON vendite.preventivi
+              RENAME TO trg_preventivi_a10_v_protect_num_upd;
+
+              ALTER TRIGGER trg_preventivi_ins_upd_norm
+                  ON vendite.preventivi
+              RENAME TO trg_preventivi_normalize_ins_upd;
+
+              ALTER TRIGGER trg_preventivi_indirizzi_a10_ins_upd_only_allowed_tipi
+                  ON vendite.preventivi_indirizzi
+              RENAME TO trg_preventivi_indirizzi_a10_only_allowed_tipi_ins_upd;
+
+              ALTER TRIGGER trg_a10_ins_upd_preventivi_righe_qta_from_operativa
+                  ON vendite.preventivi_righe
+              RENAME TO trg_preventivi_righe_a10_qta_from_operativa_ins_upd;

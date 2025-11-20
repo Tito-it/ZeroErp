@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_attivita_fatturabili_norm`
+# ⚙️ Funzione `trgfn_attivita_fatturabili_normalize`
 
 ```sql
-CREATE FUNCTION trgfn_attivita_fatturabili_norm()
+CREATE FUNCTION trgfn_attivita_fatturabili_normalize()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_norm()
+CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

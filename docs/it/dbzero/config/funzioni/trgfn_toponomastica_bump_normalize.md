@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_toponomastica_bump_norm`
+# ⚙️ Funzione `trgfn_toponomastica_bump_normalize`
 
 ```sql
-CREATE FUNCTION trgfn_toponomastica_bump_norm()
+CREATE FUNCTION trgfn_toponomastica_bump_normalize()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION config.trgfn_toponomastica_bump_norm()
+CREATE OR REPLACE FUNCTION config.trgfn_toponomastica_bump_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

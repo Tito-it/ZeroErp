@@ -34,7 +34,7 @@ FOR rtab IN
   JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE c.relkind='r'
     AND n.nspname = ANY(v_schemas)
-    AND n.nspname <> 'storico'                  -- <— esclude lo schema storico
+    AND n.nspname <> 'storico'                  
     AND dbops.fn_table_in_scope(n.nspname, c.relname)
 LOOP
   FOR rrule IN
@@ -46,27 +46,27 @@ LOOP
       AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
       AND (r.target_table IS NULL OR rtab.table_name LIKE r.target_table)
 
-       ORDER BY r.priority, r.id
+      ORDER BY r.priority, r.id
     LOOP
       exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
 
       SELECT EXISTS(
         SELECT 1 FROM pg_class c2
         JOIN pg_namespace n2 ON n2.oid=c2.relnamespace
-       WHERE n2.nspname='storico'
-         AND c2.relkind='r'
-         AND c2.relname=rtab.table_name
+      WHERE n2.nspname='storico'
+        AND c2.relkind='r'
+        AND c2.relname=rtab.table_name
       ) INTO has_sto;
 
       IF has_sto THEN
         fk_col := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'STORICO_FK', rtab.table_name||'_id');
 
-        -- naming (nuovo default: unico trigger UPD+DLT)
-        tmpl     := COALESCE(rrule.name_template, 'trg_z90_{table}_upd_dlt_storico');
+        
+        tmpl     := COALESCE(rrule.name_template, 'trg_z90_{table}_storico_upd_dlt');
         trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL, 'upd_dlt');
         exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
 
-        -- crea 1 trigger per UPDATE OR DELETE
+        
         IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rtab.rel, trg_name))
         OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rtab.rel,'script','trgfn_upd_dlt_storico_generic'))
         OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rtab.rel, trg_name)
@@ -85,7 +85,7 @@ LOOP
                 CREATE TRIGGER %I
                 BEFORE UPDATE OR DELETE ON %I.%I
                 FOR EACH ROW
-                EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic(%L)
+                EXECUTE FUNCTION script.trgfn_storico_generic(%L)
               $f$, trg_name, rtab.schema_name, rtab.table_name, fk_col);
             EXCEPTION WHEN duplicate_object THEN
               PERFORM dbops.fn_audit_log_once('fn_run_automations_storico','SKIP_EXISTS','STORICO',
@@ -97,7 +97,7 @@ LOOP
           END IF;
         END IF;
 
-        -- (opzionale) pulizia vecchi nomi separati, se richiesto
+        
         IF COALESCE((rrule.params->>'drop_legacy_ud')::boolean,false) THEN
           EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', dbops.fn_name_from_template('trg_{table}_upd_storico',rtab.schema_name,rtab.table_name,NULL,NULL,NULL,NULL), rtab.schema_name, rtab.table_name);
           EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', dbops.fn_name_from_template('trg_{table}_dlt_storico',rtab.schema_name,rtab.table_name,NULL,NULL,NULL,NULL), rtab.schema_name, rtab.table_name);

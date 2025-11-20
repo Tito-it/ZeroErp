@@ -29,9 +29,9 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_toponomastica_upd_aft_bump_norm | AFTER | UPDATE | `EXECUTE FUNCTION config.trgfn_toponomastica_bump_norm()` |
-| trg_toponomastica_upd_audit_data_user_generic | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_toponomastica_upd_non_permesso | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_toponomastica_upd_non_permesso()` |
+| trg_toponomastica_aft_bump_normalize_upd | AFTER | UPDATE | `EXECUTE FUNCTION config.trgfn_toponomastica_bump_normalize()` |
+| trg_toponomastica_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_toponomastica_protect_update_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_toponomastica_protect_update()` |
 
 ---
 {% include-markdown "signature-core.md" %}

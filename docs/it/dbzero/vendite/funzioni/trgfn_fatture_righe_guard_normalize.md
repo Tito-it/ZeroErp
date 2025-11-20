@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_fatture_righe_norm_guard`
+# ⚙️ Funzione `trgfn_fatture_righe_guard_normalize`
 
 ```sql
-CREATE FUNCTION trgfn_fatture_righe_norm_guard()
+CREATE FUNCTION trgfn_fatture_righe_guard_normalize()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_righe_norm_guard()
+CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_righe_guard_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

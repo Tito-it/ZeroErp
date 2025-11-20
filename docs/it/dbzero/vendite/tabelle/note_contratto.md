@@ -50,8 +50,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_note_contratto_ins_upd_validate | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.contratti_righe', 'contratto_id', 'CONTRATTO')` |
-| trg_note_contratto_ins_upd_validate | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.contratti_righe', 'contratto_id', 'CONTRATTO')` |
+| trg_note_contratto_validate_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.contratti_righe', 'contratto_id', 'CONTRATTO')` |
+| trg_note_contratto_validate_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.contratti_righe', 'contratto_id', 'CONTRATTO')` |
 
 ---
 {% include-markdown "signature-core.md" %}

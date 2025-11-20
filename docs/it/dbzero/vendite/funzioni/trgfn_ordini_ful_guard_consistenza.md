@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_a10_ins_upd_ordini_ful_guard_consistenza`
+# ⚙️ Funzione `trgfn_ordini_ful_guard_consistenza`
 
 ```sql
-CREATE FUNCTION trgfn_a10_ins_upd_ordini_ful_guard_consistenza()
+CREATE FUNCTION trgfn_ordini_ful_guard_consistenza()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.trgfn_a10_ins_upd_ordini_ful_guard_consistenza()
+CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

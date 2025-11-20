@@ -1,14 +1,14 @@
-{% include-markdown "it/dbzero/config/manual/trgfn_iva_ins_upd_check_conti_iva.md" %}
-# ⚙️ Funzione `trgfn_iva_ins_upd_check_conti_iva`
+{% include-markdown "it/dbzero/config/manual/trgfn_iva_guard_conti_iva.md" %}
+# ⚙️ Funzione `trgfn_iva_guard_conti_iva`
 
 ```sql
-CREATE FUNCTION trgfn_iva_ins_upd_check_conti_iva()
+CREATE FUNCTION trgfn_iva_guard_conti_iva()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION config.trgfn_iva_ins_upd_check_conti_iva()
+CREATE OR REPLACE FUNCTION config.trgfn_iva_guard_conti_iva()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

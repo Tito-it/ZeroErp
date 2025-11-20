@@ -57,8 +57,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_fatture_righe_ins_upd_norm_guard | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fatture_righe_norm_guard()` |
-| trg_fatture_righe_ins_upd_norm_guard | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_righe_norm_guard()` |
+| trg_fatture_righe_guard_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fatture_righe_guard_normalize()` |
+| trg_fatture_righe_guard_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_righe_guard_normalize()` |
 
 ---
 {% include-markdown "signature-core.md" %}

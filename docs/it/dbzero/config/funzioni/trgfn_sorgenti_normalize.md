@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_sorgenti_norm`
+# ⚙️ Funzione `trgfn_sorgenti_normalize`
 
 ```sql
-CREATE FUNCTION trgfn_sorgenti_norm()
+CREATE FUNCTION trgfn_sorgenti_normalize()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION config.trgfn_sorgenti_norm()
+CREATE OR REPLACE FUNCTION config.trgfn_sorgenti_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

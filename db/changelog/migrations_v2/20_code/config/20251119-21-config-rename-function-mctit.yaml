@@ -1,0 +1,329 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20251119-21-config-rename-function-mctit.yaml
+
+  - changeSet:
+      id: 20251119-21-config-rename-function
+      author: mctit
+      comment: "Rinomina trigger function schema config secondo convenzione trgfn_<tabella>_<descrizione>"
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER FUNCTION config.trgfn_iva_ins_upd_check_conti_iva()
+                 RENAME TO trgfn_iva_guard_conti_iva;
+
+               ALTER FUNCTION config.trgfn_iva_stati_ins_upd_clean_fields()
+                 RENAME TO trgfn_iva_stati_normalize;
+
+               ALTER FUNCTION config.trgfn_regioni_ins_upd_clean_fields()
+                 RENAME TO trgfn_regioni_normalize;
+
+               ALTER FUNCTION config.trgfn_sorgenti_norm()
+                 RENAME TO trgfn_sorgenti_normalize;
+
+               ALTER FUNCTION config.trgfn_stradario_generale_norm()
+                 RENAME TO trgfn_stradario_generale_normalize;
+
+               ALTER FUNCTION config.trgfn_stradario_generale_upd_non_permesso()
+                 RENAME TO trgfn_stradario_generale_protect_update;
+
+               ALTER FUNCTION config.trgfn_toponomastica_bump_norm()
+                 RENAME TO trgfn_toponomastica_bump_normalize;
+
+               ALTER FUNCTION config.trgfn_toponomastica_upd_non_permesso()
+                 RENAME TO trgfn_toponomastica_protect_update;
+
+  - changeSet:
+      id: 20251119-22-config-rename-trigger
+      author: mctit
+      comment: "Rinomina trigger  schema config secondo convenzione trgfn_<tabella>_<descrizione>"
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- ambiti
+              ALTER TRIGGER trg_ambiti_upd_audit_data_user_generic
+              ON config.ambiti
+              RENAME TO trg_ambiti_audit_data_user_generic_upd;
+
+              -- codici_postali
+              ALTER TRIGGER trg_codici_postali_upd_audit_data_user_generic
+              ON config.codici_postali
+              RENAME TO trg_codici_postali_audit_data_user_generic_upd;
+
+              -- comuni
+              ALTER TRIGGER trg_comuni_ins_upd_tx_id_managed
+              ON config.comuni
+              RENAME TO trg_comuni_tx_id_managed_ins_upd;
+
+              ALTER TRIGGER trg_comuni_upd_audit_data_user_generic
+              ON config.comuni
+              RENAME TO trg_comuni_audit_data_user_generic_upd;
+
+              ALTER TRIGGER trg_comuni_z90_upd_dlt_storico_generic
+              ON config.comuni
+              RENAME TO trg_comuni_z90_storico_generic_upd_dlt;
+
+              -- conti_contabili
+              ALTER TRIGGER trg_conti_contabili_upd_audit_data_user_generic
+              ON config.conti_contabili
+              RENAME TO trg_conti_contabili_audit_data_user_generic_upd;
+
+              -- iva
+              ALTER TRIGGER trg_config_iva_a10_upd_protect_columns
+              ON config.iva
+              RENAME TO trg_iva_a10_protect_columns_upd;
+
+              ALTER TRIGGER trg_iva_ins_upd_check_conti
+              ON config.iva
+              RENAME TO trg_iva_guard_conti_iva_ins_upd;
+
+              ALTER TRIGGER trg_iva_upd_audit_data_user_generic
+              ON config.iva
+              RENAME TO trg_iva_audit_data_user_generic_upd;
+
+              -- iva_natura
+              ALTER TRIGGER trg_iva_natura_upd_audit_data_user_generic
+              ON config.iva_natura
+              RENAME TO trg_iva_natura_audit_data_user_generic_upd;
+
+              -- iva_stati
+              ALTER TRIGGER trg_config_iva_a10_upd_stati_protect_columns
+              ON config.iva_stati
+              RENAME TO trg_iva_stati_a10_protect_columns_upd;
+
+              ALTER TRIGGER trg_iva_stati_ins_upd_clean_fields
+              ON config.iva_stati
+              RENAME TO trg_iva_stati_normalize_ins_upd;
+
+              ALTER TRIGGER trg_iva_stati_upd_audit_data_user_generic
+              ON config.iva_stati
+              RENAME TO trg_iva_stati_audit_data_user_generic_upd;
+
+              -- modalita_pagamento
+              ALTER TRIGGER trg_modalita_pagamento_upd_audit_data_user_generic
+              ON config.modalita_pagamento
+              RENAME TO trg_modalita_pagamento_audit_data_user_generic_upd;
+
+              -- parameter_overrides
+              ALTER TRIGGER trg_parameter_overrides_ins_upd_tx_id_managed
+              ON config.parameter_overrides
+              RENAME TO trg_parameter_overrides_tx_id_managed_ins_upd;
+
+              ALTER TRIGGER trg_parameter_overrides_upd_audit_data_user_generic
+              ON config.parameter_overrides
+              RENAME TO trg_parameter_overrides_audit_data_user_generic_upd;
+
+              ALTER TRIGGER trg_parameter_overrides_z90_upd_dlt_storico_generic
+              ON config.parameter_overrides
+              RENAME TO trg_parameter_overrides_z90_storico_generic_upd_dlt;
+
+              -- parameters
+              ALTER TRIGGER trg_parameters_ins_upd_tx_id_managed
+              ON config.parameters
+              RENAME TO trg_parameters_tx_id_managed_ins_upd;
+
+              ALTER TRIGGER trg_parameters_upd_audit_data_user_generic
+              ON config.parameters
+              RENAME TO trg_parameters_audit_data_user_generic_upd;
+
+              ALTER TRIGGER trg_parameters_z90_upd_dlt_storico_generic
+              ON config.parameters
+              RENAME TO trg_parameters_z90_storico_generic_upd_dlt;
+
+              -- province
+              ALTER TRIGGER trg_province_upd_audit_data_user_generic
+              ON config.province
+              RENAME TO trg_province_audit_data_user_generic_upd;
+
+              -- regioni
+              ALTER TRIGGER trg_regioni_ins_upd_clean_fields
+              ON config.regioni
+              RENAME TO trg_regioni_normalize_ins_upd;
+
+              ALTER TRIGGER trg_regioni_upd_audit_data_user_generic
+              ON config.regioni
+              RENAME TO trg_regioni_audit_data_user_generic_upd;
+
+              -- sistema_codici
+              ALTER TRIGGER trg_sistema_codici_ins_upd_tx_id_managed
+              ON config.sistema_codici
+              RENAME TO trg_sistema_codici_tx_id_managed_ins_upd;
+
+              ALTER TRIGGER trg_sistema_codici_upd_audit_data_user_generic
+              ON config.sistema_codici
+              RENAME TO trg_sistema_codici_audit_data_user_generic_upd;
+
+              -- sorgenti
+              ALTER TRIGGER trg_sorgenti_a10_upd_lock_columns
+              ON config.sorgenti
+              RENAME TO trg_sorgenti_a10_lock_columns_upd;
+
+              ALTER TRIGGER trg_sorgenti_ins_upd_norm
+              ON config.sorgenti
+              RENAME TO trg_sorgenti_normalize_ins_upd;
+
+              -- stati
+              ALTER TRIGGER trg_stati_upd_audit_data_user_generic
+              ON config.stati
+              RENAME TO trg_stati_audit_data_user_generic_upd;
+
+              -- stati_cliente
+              ALTER TRIGGER trg_stati_cliente_a10_upd_lock_columns
+              ON config.stati_cliente
+              RENAME TO trg_stati_cliente_a10_lock_columns_upd;
+
+              ALTER TRIGGER trg_stati_cliente_upd_audit_data_user_generic
+              ON config.stati_cliente
+              RENAME TO trg_stati_cliente_audit_data_user_generic_upd;
+
+              -- stati_doc_contratti
+              ALTER TRIGGER trg_stati_doc_contratti_a10_upd_lock_columns
+              ON config.stati_doc_contratti
+              RENAME TO trg_stati_doc_contratti_a10_lock_columns_upd;
+
+              -- stati_doc_fiscale
+              ALTER TRIGGER trg_stati_doc_fiscale_a10_upd_lock_columns
+              ON config.stati_doc_fiscale
+              RENAME TO trg_stati_doc_fiscale_a10_lock_columns_upd;
+
+              -- stati_doc_preventivi
+              ALTER TRIGGER trg_stati_doc_preventivi_a10_upd_lock_columns
+              ON config.stati_doc_preventivi
+              RENAME TO trg_stati_doc_preventivi_a10_lock_columns_upd;
+
+              -- stati_pratiche
+              ALTER TRIGGER trg_stati_pratiche_a10_upd_lock_columns
+              ON config.stati_pratiche
+              RENAME TO trg_stati_pratiche_a10_lock_columns_upd;
+
+              ALTER TRIGGER trg_stati_pratiche_upd_audit_data_user_generic
+              ON config.stati_pratiche
+              RENAME TO trg_stati_pratiche_audit_data_user_generic_upd;
+
+              -- stradario
+              ALTER TRIGGER trg_stradario_ins_upd_tx_id_managed
+              ON config.stradario
+              RENAME TO trg_stradario_tx_id_managed_ins_upd;
+
+              ALTER TRIGGER trg_stradario_upd_audit_data_user_generic
+              ON config.stradario
+              RENAME TO trg_stradario_audit_data_user_generic_upd;
+
+              ALTER TRIGGER trg_stradario_z90_upd_dlt_storico_generic
+              ON config.stradario
+              RENAME TO trg_stradario_z90_storico_generic_upd_dlt;
+
+              -- stradario_generale
+              ALTER TRIGGER trg_stradario_generale_ins_upd_norm
+              ON config.stradario_generale
+              RENAME TO trg_stradario_generale_normalize_ins_upd;
+
+              ALTER TRIGGER trg_stradario_generale_upd_audit_data_user_generic
+              ON config.stradario_generale
+              RENAME TO trg_stradario_generale_audit_data_user_generic_upd;
+
+              ALTER TRIGGER trg_stradario_generale_upd_non_permesso
+              ON config.stradario_generale
+              RENAME TO trg_stradario_generale_protect_update_upd;
+
+              -- tipi_attivita
+              ALTER TRIGGER trg_tipi_attivita_a10_upd_lock_columns
+              ON config.tipi_attivita
+              RENAME TO trg_tipi_attivita_a10_lock_columns_upd;
+
+              ALTER TRIGGER trg_tipi_attivita_upd_audit_data_user_generic
+              ON config.tipi_attivita
+              RENAME TO trg_tipi_attivita_audit_data_user_generic_upd;
+
+              -- tipi_contatti
+              ALTER TRIGGER trg_tipi_contatti_a10_upd_lock_columns
+              ON config.tipi_contatti
+              RENAME TO trg_tipi_contatti_a10_lock_columns_upd;
+
+              ALTER TRIGGER trg_tipi_contatti_upd_audit_data_user_generic
+              ON config.tipi_contatti
+              RENAME TO trg_tipi_contatti_audit_data_user_generic_upd;
+
+              -- tipi_documenti
+              ALTER TRIGGER trg_tipi_documenti_a10_upd_lock_columns
+              ON config.tipi_documenti
+              RENAME TO trg_tipi_documenti_a10_lock_columns_upd;
+
+              ALTER TRIGGER trg_tipi_documenti_upd_audit_data_user_generic
+              ON config.tipi_documenti
+              RENAME TO trg_tipi_documenti_audit_data_user_generic_upd;
+
+              -- tipi_indirizzi
+              ALTER TRIGGER trg_tipi_indirizzi_a10_upd_lock_columns
+              ON config.tipi_indirizzi
+              RENAME TO trg_tipi_indirizzi_a10_lock_columns_upd;
+
+              ALTER TRIGGER trg_tipi_indirizzi_upd_audit_data_user_generic
+              ON config.tipi_indirizzi
+              RENAME TO trg_tipi_indirizzi_audit_data_user_generic_upd;
+
+              -- tipi_ruoli
+              ALTER TRIGGER trg_tipi_ruoli_a10_upd_lock_columns
+              ON config.tipi_ruoli
+              RENAME TO trg_tipi_ruoli_a10_lock_columns_upd;
+
+              ALTER TRIGGER trg_tipi_ruoli_upd_audit_data_user_generic
+              ON config.tipi_ruoli
+              RENAME TO trg_tipi_ruoli_audit_data_user_generic_upd;
+
+              -- tipi_soggetto
+              ALTER TRIGGER trg_tipi_soggetto_upd_audit_data_user_generic
+              ON config.tipi_soggetto
+              RENAME TO trg_tipi_soggetto_audit_data_user_generic_upd;
+
+              -- tipi_soggetto_dettaglio
+              ALTER TRIGGER trg_tipi_soggetto_dettaglio_a10_upd_lock_columns
+              ON config.tipi_soggetto_dettaglio
+              RENAME TO trg_tipi_soggetto_dettaglio_a10_lock_columns_upd;
+
+              ALTER TRIGGER trg_tipi_soggetto_dettaglio_ins_upd_sync_stato_iso2
+              ON config.tipi_soggetto_dettaglio
+              RENAME TO trg_tipi_soggetto_dettaglio_sync_stato_iso2_ins_upd;
+
+              ALTER TRIGGER trg_tipi_soggetto_dettaglio_upd_audit_data_user_generic
+              ON config.tipi_soggetto_dettaglio
+              RENAME TO trg_tipi_soggetto_dettaglio_audit_data_user_generic_upd;
+
+              -- toponomastica
+              ALTER TRIGGER trg_toponomastica_upd_aft_bump_norm
+              ON config.toponomastica
+              RENAME TO trg_toponomastica_aft_bump_normalize_upd;
+
+              ALTER TRIGGER trg_toponomastica_upd_audit_data_user_generic
+              ON config.toponomastica
+              RENAME TO trg_toponomastica_audit_data_user_generic_upd;
+
+              ALTER TRIGGER trg_toponomastica_upd_non_permesso
+              ON config.toponomastica
+              RENAME TO trg_toponomastica_protect_update_upd;
+
+              -- utilities
+              ALTER TRIGGER trg_utilities_a10_upd_lock_columns
+              ON config.utilities
+              RENAME TO trg_utilities_a10_lock_columns_upd;
+
+              ALTER TRIGGER trg_utilities_upd_audit_data_user_generic
+              ON config.utilities
+              RENAME TO trg_utilities_audit_data_user_generic_upd;
+
+              -- valute
+              ALTER TRIGGER trg_valute_upd_audit_data_user_generic
+              ON config.valute
+              RENAME TO trg_valute_audit_data_user_generic_upd;

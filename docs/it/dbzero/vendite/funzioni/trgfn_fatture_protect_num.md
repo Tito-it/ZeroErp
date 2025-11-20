@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_a10_fatture_protect_num`
+# ⚙️ Funzione `trgfn_fatture_protect_num`
 
 ```sql
-CREATE FUNCTION trgfn_a10_fatture_protect_num()
+CREATE FUNCTION trgfn_fatture_protect_num()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.trgfn_a10_fatture_protect_num()
+CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_protect_num()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

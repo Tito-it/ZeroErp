@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_stradario_generale_norm`
+# ⚙️ Funzione `trgfn_stradario_generale_normalize`
 
 ```sql
-CREATE FUNCTION trgfn_stradario_generale_norm()
+CREATE FUNCTION trgfn_stradario_generale_normalize()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION config.trgfn_stradario_generale_norm()
+CREATE OR REPLACE FUNCTION config.trgfn_stradario_generale_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

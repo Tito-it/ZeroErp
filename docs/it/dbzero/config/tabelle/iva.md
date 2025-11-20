@@ -44,10 +44,10 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_config_iva_a10_upd_protect_columns | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('aliquota_iva', 'E_PERC_IVA_NO_MOD', 'assoggettamento_id', 'E_ASSOGGETTAMENTO_NO_MOD')` |
-| trg_iva_ins_upd_check_conti | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_iva_ins_upd_check_conti_iva()` |
-| trg_iva_ins_upd_check_conti | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_iva_ins_upd_check_conti_iva()` |
-| trg_iva_upd_audit_data_user_generic | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_iva_a10_protect_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('aliquota_iva', 'E_PERC_IVA_NO_MOD', 'assoggettamento_id', 'E_ASSOGGETTAMENTO_NO_MOD')` |
+| trg_iva_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_iva_guard_conti_iva_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_iva_guard_conti_iva()` |
+| trg_iva_guard_conti_iva_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_iva_guard_conti_iva()` |
 
 ---
 {% include-markdown "signature-core.md" %}
