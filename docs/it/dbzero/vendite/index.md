@@ -44,8 +44,6 @@
 - [trgfn_attivita_fatturabili_guard_fatturato](funzioni/trgfn_attivita_fatturabili_guard_fatturato.md)
 - [trgfn_attivita_fatturabili_guard_fonte](funzioni/trgfn_attivita_fatturabili_guard_fonte.md)
 - [trgfn_attivita_fatturabili_normalize](funzioni/trgfn_attivita_fatturabili_normalize.md)
-- [trgfn_attivita_guard_ba_coerenza](funzioni/trgfn_attivita_guard_ba_coerenza.md)
-- [trgfn_attivita_guard_fonte](funzioni/trgfn_attivita_guard_fonte.md)
 - [trgfn_attivita_norm_competenza_mese](funzioni/trgfn_attivita_norm_competenza_mese.md)
 - [trgfn_contratti_normalize](funzioni/trgfn_contratti_normalize.md)
 - [trgfn_ddt_normalize](funzioni/trgfn_ddt_normalize.md)

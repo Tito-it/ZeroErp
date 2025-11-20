@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_magazzini_norm`
+# ⚙️ Funzione `trgfn_magazzini_normalize`
 
 ```sql
-CREATE FUNCTION trgfn_magazzini_norm()
+CREATE FUNCTION trgfn_magazzini_normalize()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION magazzino.trgfn_magazzini_norm()
+CREATE OR REPLACE FUNCTION magazzino.trgfn_magazzini_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

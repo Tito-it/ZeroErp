@@ -1,0 +1,26 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/pagamenti/20251119-61-pagamenti-rename-function-mctit.yaml
+
+    - changeSet:
+          id: 20251119-61-pagamenti-rename-function
+          author: mctit
+          comment: "Rinomina trigger  schema pagamenti secondo convenzione trgfn_<tabella>_<descrizione>"
+          changes:
+              - sql:
+                    splitStatements: true
+                    stripComments: true
+                    sql: |
+
+
+                        ALTER TRIGGER trg_sepa_mandati_ins_upd_guard
+                                ON pagamenti.sepa_mandati
+                            RENAME TO trg_sepa_mandati_guard_ins_upd;

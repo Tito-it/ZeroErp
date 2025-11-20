@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_a10_a_ddt_protect_num`
+# ⚙️ Funzione `trgfn_acq_ddt_protect_num`
 
 ```sql
-CREATE FUNCTION trgfn_a10_a_ddt_protect_num()
+CREATE FUNCTION trgfn_acq_ddt_protect_num()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION acquisti.trgfn_a10_a_ddt_protect_num()
+CREATE OR REPLACE FUNCTION acquisti.trgfn_acq_ddt_protect_num()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

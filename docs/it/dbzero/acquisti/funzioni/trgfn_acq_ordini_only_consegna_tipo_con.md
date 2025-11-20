@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_a10_ao_only_consegna_tipo_con`
+# ⚙️ Funzione `trgfn_acq_ordini_only_consegna_tipo_con`
 
 ```sql
-CREATE FUNCTION trgfn_a10_ao_only_consegna_tipo_con()
+CREATE FUNCTION trgfn_acq_ordini_only_consegna_tipo_con()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION acquisti.trgfn_a10_ao_only_consegna_tipo_con()
+CREATE OR REPLACE FUNCTION acquisti.trgfn_acq_ordini_only_consegna_tipo_con()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

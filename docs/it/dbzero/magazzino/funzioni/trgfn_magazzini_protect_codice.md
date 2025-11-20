@@ -1,13 +1,13 @@
-# ⚙️ Funzione `trgfn_a10_magazzini_protect_codice`
+# ⚙️ Funzione `trgfn_magazzini_protect_codice`
 
 ```sql
-CREATE FUNCTION trgfn_a10_magazzini_protect_codice()
+CREATE FUNCTION trgfn_magazzini_protect_codice()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION magazzino.trgfn_a10_magazzini_protect_codice()
+CREATE OR REPLACE FUNCTION magazzino.trgfn_magazzini_protect_codice()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$

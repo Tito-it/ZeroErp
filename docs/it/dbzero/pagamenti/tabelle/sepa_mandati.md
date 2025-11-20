@@ -50,8 +50,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_sepa_mandati_ins_upd_guard | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_sepa_mandati_guard()` |
-| trg_sepa_mandati_ins_upd_guard | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_sepa_mandati_guard()` |
+| trg_sepa_mandati_guard_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_sepa_mandati_guard()` |
+| trg_sepa_mandati_guard_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_sepa_mandati_guard()` |
 
 ---
 {% include-markdown "signature-core.md" %}
