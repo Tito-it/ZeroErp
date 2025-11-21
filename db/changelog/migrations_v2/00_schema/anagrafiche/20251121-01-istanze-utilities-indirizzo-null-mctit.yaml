@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20251121-01-istanze-utilities-indirizzo-null-mctit.yaml
+
+  - changeSet:
+      id: 20251121-01-istanze-utilities-indirizzo-null
+      author: mctit
+      comment: "Consenti indirizzo_dettaglio_id NULL solo per istanze fittizie (allineamento con chk_istanza_fittizia_indirizzo)."
+      changes:
+        - dropNotNullConstraint:
+            schemaName: anagrafiche
+            tableName: istanze_utilities
+            columnName: indirizzo_dettaglio_id
+            columnDataType: integer
+
+  - changeSet:
+      id: 20251121-02-istanze-utilities-parent-null-fk
+      author: mctit
+      comment: "Rende nullable parent_istanza_id e imposta ON DELETE NO ACTION sulla FK self-reference anagrafiche.istanze_utilities → anagrafiche.istanze_utilities."
+      changes:
+        # 1) parent_istanza_id può essere NULL (istanze radice senza genitore)
+        - dropNotNullConstraint:
+            schemaName: anagrafiche
+            tableName: istanze_utilities
+            columnName: parent_istanza_id
+            columnDataType: integer
+
+        # 2) Ricrea la FK con ON DELETE NO ACTION
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: istanze_utilities
+            constraintName: fk_istanze_utilities_parent_istanza
+
+        - addForeignKeyConstraint:
+            constraintName: fk_istanze_utilities_parent_istanza
+            baseTableSchemaName: anagrafiche
+            baseTableName: istanze_utilities
+            baseColumnNames: parent_istanza_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION

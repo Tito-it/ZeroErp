@@ -13,9 +13,9 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying | NO | CURRENT_USER |
 | soggetto_id | uuid | NO |  |
-| indirizzo_dettaglio_id | integer | NO |  |
+| indirizzo_dettaglio_id | integer | YES |  |
 | tx_id | uuid | YES |  |
-| parent_istanza_id | integer | NO |  |
+| parent_istanza_id | integer | YES |  |
 | pdp_id | bigint | YES |  |
 
 ## 🔒 Vincoli

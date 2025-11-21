@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20251120-02-fn-generate-codice-mctit.yaml
+
+  - changeSet:
+      id: 20251120-02-fn-generate-codice
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+
+              CREATE OR REPLACE FUNCTION script.fn_generate_codice(
+                tipo text)
+                  RETURNS text
+                  LANGUAGE 'plpgsql'
+                  COST 100
+                  VOLATILE PARALLEL UNSAFE
+              AS $BODY$
+              DECLARE
+                seq_val    BIGINT;
+                prefix     TEXT;
+                sep        TEXT;
+                len        INT;
+                seq_name   TEXT;
+                risultato  TEXT;
+                v_context_name text := 'script.fn_generate_codice';
+              BEGIN
+                /*	Crea la funzione generica script.fn_generate_codice(tipo TEXT) che:
+                      - legge da config.sistema_codici i parametri per quel tipo
+                      - invoca nextval sul nome di sequenza
+                      - concatena prefisso, separatore e numero formattato
+                */
+                SELECT prefisso, separatore, lunghezza_numero, nome_sequenza
+                  INTO prefix, sep, len, seq_name
+                  FROM config.sistema_codici
+                WHERE codice_tipo = tipo
+                  AND attivo = TRUE;
+
+                IF seq_name IS NOT NULL THEN
+                  EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
+                  risultato := prefix || sep || lpad(seq_val::TEXT, len, '0');
+                  RETURN risultato;
+                ELSE
+                  -- Se non esiste una sequenza per questo tipo, lancia un errore
+                    PERFORM script.fn_log_and_raise_error(
+                        'database',
+                        v_context_name,
+                        'SEQUENZA_NON_CONFIGURATA',
+                        jsonb_build_object('codice_tipo',tipo),
+                        NULL::uuid,
+                        tipo::TEXT
+                      );
+                END IF;
+              END;
+              $BODY$;
+
+
+              COMMENT ON FUNCTION script.fn_generate_codice(text)
+                  IS 'Genera un codice basato su un tipo specifico, utilizzando i parametri
+                definiti in config.sistema_codici. Restituisce il codice formattato 
+                (concatena prefisso, separatore e numero formattato).';

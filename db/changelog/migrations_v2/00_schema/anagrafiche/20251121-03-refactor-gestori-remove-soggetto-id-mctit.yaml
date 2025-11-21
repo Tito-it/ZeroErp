@@ -1,0 +1,49 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025
+#
+# Refactor tabella anagrafiche.gestori:
+# - Rimozione colonna soggetto_id (non più ammessa nel modello ruoli)
+# - Eliminazione FK e indice associato
+# - Coerenza con nuovo approccio: gestione legame soggetto ↔ ruolo esclusivamente in soggetti_ruoli
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20251121-03-refactor-gestori-remove-soggetto-id-mctit.yaml
+
+  - changeSet:
+      id: 20251121-03-refactor-gestori-remove-soggetto-id
+      author: mctit
+      comment: >
+        Refactor tabella anagrafiche.gestori:
+        - Rimozione colonna soggetto_id (gestione legame soggetto↔ruolo centralizzata in soggetti_ruoli)
+        - Eliminazione FK e indice correlati
+        - Allineamento al modello ruoli definito (ogni tabella ruolo deve avere solo soggetto_ruolo_id)
+
+      changes:
+        # 1) Rimozione FK su soggetto_id
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: gestori
+            constraintName: fk_soggetti_anagrafiche
+
+        # 2) Rimozione indice su soggetto_id
+        - dropIndex:
+            schemaName: anagrafiche
+            indexName: ix_anagrafiche_gestori_soggetto_id
+
+        # 3) Rimozione colonna soggetto_id
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: gestori
+            columnName: soggetto_id
+
+        # 4) Commento tabella aggiornato (opzionale)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE anagrafiche.gestori IS
+              'Società gestore del Sistema Informativo. Referenziata esclusivamente tramite soggetto_ruolo_id (legame soggetto↔ruolo gestito in anagrafiche.soggetti_ruoli).';

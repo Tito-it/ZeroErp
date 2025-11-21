@@ -40,7 +40,7 @@
 | FOREIGN KEY | fk_artuomop_articolo | articolo_id |
 | FOREIGN KEY | fk_artuomop_uom | uom_id |
 | PRIMARY KEY | pk_articoli_uom_operativa | id |
-| UNIQUE | uq_artuomop_articolo_uom | articolo_id, uom_id |
+| UNIQUE | uq_artuomop_articolo_uom | uom_id, articolo_id |
 
 ## 📑 Indici
 | Nome | Definizione |

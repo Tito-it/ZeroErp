@@ -16,8 +16,6 @@ La funzione **`script.fn_check_ins_soggetto_ruolo(p_soggetto_id, p_soggetto_ruol
 - **Verifica esistenza**  
   Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 
-- **Inserimento automatico**  
-  Quando `p_soggetto_ruolo_id` è `NULL` o `0`, crea un nuovo record in `anagrafiche.soggetti_ruoli` con `soggetto_id`, `ruolo_id` e `user_insert = current_user`.
 
 - **Ritorno dell’ID**  
   Restituisce sempre l’ID valido della relazione soggetto–ruolo, sia esso appena creato o già esistente.
@@ -31,7 +29,7 @@ La funzione **`script.fn_check_ins_soggetto_ruolo(p_soggetto_id, p_soggetto_ruol
 
 | Nome                  | Tipo      | Descrizione
 |-----------------------|-----------|---------------------------------------------------------------------------|
-| `p_soggetto_id`       | `UUID`    | ID del soggetto in `anagrafiche.oggetti`.                                                  |
+| `p_soggetto_id`       | `UUID`    | ID del soggetto in `anagrafiche.oggetti` ---> Opzionale.                                                  |
 | `p_soggetto_ruolo_id` | `INTEGER` | ID esistente della relazione in `anagrafiche.soggetti_ruoli`; se `NULL` o 0`,
                                       verrà      creato un nuovo record. 
 | `p_cd_int_ruolo`      | `VARCHAR` | Codice interno del ruolo (`codice_interno` in `config.tipi_ruoli`) da associare al 
@@ -44,15 +42,8 @@ La funzione **`script.fn_check_ins_soggetto_ruolo(p_soggetto_id, p_soggetto_ruol
 1. **Recupero ID ruolo**  
    Cerca in `config.tipi_ruoli` il record con `codice_interno = p_cd_int_ruolo`. Se non trovato, solleva eccezione `E_COD_INT_RUOLO`.
 
-2. **Inserimento condizionale**  
-   Se `p_soggetto_ruolo_id` è `NULL` o `0`:
-   - Inserisce in `anagrafiche.soggetti_ruoli` un nuovo record con:
-     - `soggetto_id = p_soggetto_id`
-     - `ruolo_id = <id recuperato>`
-     - `user_insert = current_user`
-   - Restituisce l’`id` del nuovo record.
 
-3. **Verifica esistenza**  
+2. **Verifica esistenza**  
    Altrimenti:
    - Controlla che esista un record in `anagrafiche.soggetti_ruoli` con:
      - `id = p_soggetto_ruolo_id`
@@ -80,9 +71,9 @@ Utilizzare all’interno di trigger `BEFORE INSERT` o `BEFORE UPDATE` sulle tabe
 
 ```plpgsql
 NEW.soggetto_ruolo_id := script.fn_check_ins_soggetto_ruolo(
-  NEW.soggetto_id,
+  NULL,
   NEW.soggetto_ruolo_id,
-  'CLIENTE'            -- o altro codice interno di ruolo
+  'CL'            -- o altro codice interno di ruolo
 );
 ```
 
@@ -99,10 +90,12 @@ NEW.soggetto_ruolo_id := script.fn_check_ins_soggetto_ruolo(
  -   Audit automatico
       Ogni inserimento registra user_insert = current_user, facilitando tracciabilità e debugging.
 
- -   Flessibilità futura
-      Per aggiungere nuovi ruoli, basta inserire record in config.tipi_ruoli; la funzione li gestirà 
 
 ### 🚧 Nota di sviluppo
     Questa  la funzione generica costituisce il nucleo metodologico per la gestione dei ruoli in Zero ERP: sarà estese e replicate per ogni nuovo tipo di ruolo oggetto di implementazione.
 
 ---
+
+
+
+Versione aggiornata il 21/11/2025. Da completare.

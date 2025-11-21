@@ -19,6 +19,7 @@ DECLARE
   len        INT;
   seq_name   TEXT;
   risultato  TEXT;
+  v_context_name text := 'script.fn_generate_codice';
 BEGIN
   /*	Crea la funzione generica script.fn_generate_codice(tipo TEXT) che:
         - legge da config.sistema_codici i parametri per quel tipo
@@ -28,8 +29,8 @@ BEGIN
   SELECT prefisso, separatore, lunghezza_numero, nome_sequenza
     INTO prefix, sep, len, seq_name
     FROM config.sistema_codici
-   WHERE codice_tipo = tipo
-     AND attivo = TRUE;
+  WHERE codice_tipo = tipo
+    AND attivo = TRUE;
 
   IF seq_name IS NOT NULL THEN
     EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
@@ -37,9 +38,9 @@ BEGIN
     RETURN risultato;
   ELSE
     -- Se non esiste una sequenza per questo tipo, lancia un errore
-       PERFORM script.fn_log_and_raise_error(
+      PERFORM script.fn_log_and_raise_error(
           'database',
-          TG_NAME,
+          v_context_name,
           'SEQUENZA_NON_CONFIGURATA',
           jsonb_build_object('codice_tipo',tipo),
           NULL::uuid,
