@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Codice: trigger function + trigger per allineare
+#   clienti.utility_id ← billing_account.utility_id
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251121-17-trgfn-clienti-sync-utility-from-ba-mctit.yaml
+
+    - changeSet:
+          id: 20251121-17-trgfn-clienti-sync-utility-from-ba
+          author: mctit
+          comment: >
+              Crea la funzione anagrafiche.trgfn_clienti_sync_utility_from_ba e il trigger
+              su anagrafiche.clienti per garantire che utility_id sia coerente con il billing_account.
+
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba()
+                            RETURNS trigger
+                            LANGUAGE plpgsql
+                            COST 100
+                            VOLATILE NOT LEAKPROOF
+                        AS $BODY$
+                        DECLARE
+                            v_utility_id integer;
+                        BEGIN
+                            -- Se non è valorizzato il billing_account, non facciamo nulla
+                            IF NEW.billing_account_id IS NULL THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- Recupero utility_id dal billing_account
+                            SELECT ba.utility_id
+                              INTO v_utility_id
+                            FROM anagrafiche.billing_account ba
+                            WHERE ba.id = NEW.billing_account_id;
+
+                            IF v_utility_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'trgfn_clienti_sync_utility_from_ba',
+                                    'E_BILLING_ACCOUNT_UTILITY_NULL',
+                                    jsonb_build_object(
+                                        'billing_account_id', NEW.billing_account_id
+                                    ),
+                                    NEW.tx_id,
+                                    coalesce(NEW.billing_account_id::text, 'NULL')
+                                );
+                                --RAISE EXCEPTION 'Billing account % senza utility associata.', NEW.billing_account_id
+                                --    USING ERRCODE = 'P0001';
+                            END IF;
+
+                            -- Se il cliente non ha ancora utility, la eredita dal billing_account
+                            IF NEW.utility_id IS NULL THEN
+                                NEW.utility_id := v_utility_id;
+                            ELSIF NEW.utility_id <> v_utility_id THEN
+                                -- Coerenza violata: utility del cliente diversa da quella del BA
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'trgfn_clienti_sync_utility_from_ba',
+                                    'E_CLIENTE_UTILITY_MISMATCH_BA',
+                                    jsonb_build_object(
+                                        'billing_account_id', NEW.billing_account_id,
+                                        'utility_da_cliente', NEW.utility_id,
+                                        'utility_da_billing', v_utility_id
+                                    ),
+                                    NEW.tx_id,
+                                    coalesce(NEW.billing_account_id::text, 'NULL'),
+                                    coalesce(NEW.utility_id::text, 'NULL'),
+                                    coalesce(v_utility_id::text, 'NULL')
+                                );
+                               /* RAISE EXCEPTION
+                                    'Utility del cliente (%) diversa da quella del billing_account (%).',
+                                    NEW.utility_id, v_utility_id
+                                    USING ERRCODE = 'P0001';  */
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $BODY$;
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba()
+                            IS 'Trigger function che garantisce la coerenza tra clienti.utility_id e billing_account.utility_id.
+                               - Se utility_id è NULL, viene ereditata dal billing_account.
+                               - Se valorizzata ma diversa, viene sollevato un errore applicativo.';
+
+
+                        DROP TRIGGER IF EXISTS trg_clienti_sync_utility_from_ba_ins_upd
+                            ON anagrafiche.clienti;
+
+                        CREATE TRIGGER trg_clienti_sync_utility_from_ba_ins_upd
+                            BEFORE INSERT OR UPDATE
+                            ON anagrafiche.clienti
+                            FOR EACH ROW
+                            EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba();
+
+                        COMMENT ON TRIGGER trg_clienti_sync_utility_from_ba_ins_upd ON anagrafiche.clienti
+                            IS 'Garantisce che clienti.utility_id sia coerente con billing_account.utility_id:
+                                se NULL la imposta, se diversa solleva errore.';

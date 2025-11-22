@@ -11,8 +11,8 @@
 
 
 -- Numero di test
-SELECT plan(7);
-
+SELECT plan(8);
+ 
 -- =========================================================
 -- Costanti di test
 -- =========================================================
@@ -86,7 +86,7 @@ USING anagrafiche.soggetti s,
       config.tipi_ruoli tr,
       costanti k
 WHERE sr.soggetto_id = s.id
-  AND sr.ruolo_id = tr.id
+  AND sr.tipo_ruolo_id = tr.id
     AND s.codice_fiscale = k.cf_test
   AND tr.codice_interno = k.codice_ruolo_cliente;
 
@@ -99,6 +99,7 @@ WITH costanti AS (
         'CL'::varchar              AS codice_ruolo_cliente,
         'GAS'::varchar             AS codice_utility_test
 )
+/*
 -- Cleanup: CONTATTI
 DELETE FROM anagrafiche.contatti c
 USING anagrafiche.soggetti s,
@@ -115,6 +116,8 @@ WITH costanti AS (
         'CL'::varchar              AS codice_ruolo_cliente,
         'GAS'::varchar             AS codice_utility_test
 )
+
+*/
 -- Cleanup: SOGGETTI
 DELETE FROM anagrafiche.soggetti s
 USING costanti k
@@ -240,38 +243,42 @@ INSERT INTO anagrafiche.contatti (
 VALUES (
     1,  -- TODO: tipo_contatto_id valido da config.tipi_contatti
     (SELECT id FROM tmp_soggetto),
-    'Referente Cliente Test pgTAP',
-    'cliente.happypath@example.com',
+    'Referente Titini Test pgTAP',
+    'cliente.titini@example.com',
     TRUE,
     'soggetto'
 );
 
 
--- 4) Assegnazione ruolo CLIENTE (soggetti_ruoli)
-WITH ins_soggetto_ruolo AS (
-    INSERT INTO anagrafiche.soggetti_ruoli (
-        soggetto_id,
-        ruolo_id,
-        extra
-    )
+
+-- 4) Assegnazione ruolo CLIENTE (soggetti_ruoli) tramite fn_get_or_create_soggetto_ruolo
+WITH costanti AS (
     SELECT
-        s.id,
-        rc.id,
-        '{}'::jsonb
+        '01677080440'::text        AS piva_test,
+        'TTNMHL68E07D042Z'::text   AS cf_test,
+        NULL  AS codice_istanza_test,
+        NULL  AS codice_ba_test,
+        'CL'::varchar              AS codice_ruolo_cliente,
+        'GAS'::varchar             AS codice_utility_test
+),
+soggetto_ruolo AS (
+    SELECT
+        script.fn_get_or_create_soggetto_ruolo(
+            p_soggetto_id   := s.id,
+            p_cd_int_ruolo  := k.codice_ruolo_cliente
+        ) AS id
     FROM tmp_soggetto s,
-         tmp_ruolo_cliente rc
-    RETURNING id
+         costanti k
 )
 SELECT id
 INTO TEMP TABLE tmp_soggetto_ruolo
-FROM ins_soggetto_ruolo;
+FROM soggetto_ruolo;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_soggetto_ruolo),
     1,
-    'Assegnato esattamente 1 ruolo cliente al soggetto di test'
+    'Assegnato esattamente 1 ruolo cliente al soggetto di test tramite fn_get_or_create_soggetto_ruolo'
 );
-
 
 
 -- ---------------------------------------------------------
@@ -319,6 +326,7 @@ SELECT is(
     'Inserita esattamente 1 istanza_utility di test'
 );
 
+
 -- ---------------------------------------------------------
 -- 6) Creazione billing_account per l’istanza
 -- ---------------------------------------------------------
@@ -331,25 +339,27 @@ WITH costanti AS (
         'CL'::varchar              AS codice_ruolo_cliente,
         'GAS'::varchar             AS codice_utility_test
 ), 
-tmp_billing_account AS (
-INSERT INTO anagrafiche.billing_account (
-    istanza_utility_id,
-    soggetto_ruolo_id,
-    utility_id,
-    codice
+ins_billing_account AS (
+    INSERT INTO anagrafiche.billing_account (
+        istanza_utility_id,
+        soggetto_ruolo_id,
+        utility_id,
+        codice
+    )
+    SELECT
+        i.id,
+        sr.id,
+        u.id,
+        k.codice_ba_test
+    FROM tmp_istanza i,
+         tmp_soggetto_ruolo sr,
+         tmp_utility u,
+         costanti k
+    RETURNING id
 )
-SELECT
-    i.id,
-    sr.id,
-    u.id,
-    k.codice_ba_test
-FROM tmp_istanza i,
-     tmp_soggetto_ruolo sr,
-     tmp_utility u,
-     costanti k
-RETURNING id
--- INTO TEMP TABLE tmp_billing_account;
-)
+SELECT id
+INTO TEMP TABLE tmp_billing_account
+FROM ins_billing_account;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_billing_account),
@@ -357,21 +367,46 @@ SELECT is(
     'Inserito esattamente 1 billing_account per l’istanza di test'
 );
 
+
 -- ---------------------------------------------------------
 -- 7) Creazione cliente (clienti)
 -- ---------------------------------------------------------
-WITH ins AS (
+
+WITH stato AS (
+    -- prendi uno stato cliente "di default", adatta il filtro al tuo dominio
+    SELECT id
+    FROM config.stati_cliente
+    WHERE codice_interno = 'PR'   -- oppure il tuo codice reale
+    LIMIT 1
+),
+iva AS (
+    -- prendi un codice IVA valido (es. 22%)
+    SELECT id
+    FROM config.iva
+    WHERE codice = '22'            -- adatta al tuo codice reale
+    LIMIT 1
+),
+ins AS (
     INSERT INTO anagrafiche.clienti (
         soggetto_ruolo_id,
-        istanza_utility_id
+        istanza_utility_id,
+        stato_cliente_id,
+        iva_id,
+        billing_account_id
         -- tipo_gg_scadenza_ft, nr_giorni_scadenza, cliente_pa
         -- hanno default, usiamo quelli
     )
     SELECT
         sr.id,
-        i.id
-    FROM tmp_soggetto_ruolo sr,
-         tmp_istanza i
+        i.id,
+        sc.id,
+        v.id,
+        ba.id
+    FROM tmp_soggetto_ruolo   sr,
+         tmp_istanza          i,
+         stato                sc,
+         iva                  v,
+         tmp_billing_account  ba
     RETURNING id
 )
 SELECT id
@@ -381,14 +416,38 @@ FROM ins;
 SELECT is(
     (SELECT count(*)::int FROM tmp_cliente),
     1,
-    'Inserito esattamente 1 cliente collegato all’istanza e al ruolo cliente'
+    'Inserito esattamente 1 cliente collegato all’istanza, al ruolo cliente e al billing_account'
 );
+
+
+-- 
+-- ---------------------------------------------------------
+-- 8) Verifica che il cliente di test abbia tutti i legami coerenti con il billing_account
+-- ---------------------------------------------------------
+
+
+
+SELECT is(
+    (SELECT count(*)::int
+     FROM dbops.diag_v_clienti_links v
+     WHERE v.cliente_id IN (SELECT id FROM tmp_cliente)
+       AND v.ba_match_istanza
+       AND v.ba_match_soggetto_ruolo
+       AND v.ba_match_utility),
+    1,
+    'Il cliente di test ha legami coerenti con billing_account (istanza, soggetto_ruolo, utility).'
+);
+
+
+
 
 -- Forzo valutazione dei constraint deferrable
 SET CONSTRAINTS ALL IMMEDIATE;
 
 COMMIT;
 
+
+/*
 -- =========================================================
 -- Cleanup finale (idempotenza)
 -- =========================================================
@@ -407,7 +466,8 @@ USING anagrafiche.soggetti_ruoli sr,
       costanti k
 WHERE cli.soggetto_ruolo_id = sr.id
   AND sr.soggetto_id = s.id
-  AND s.partita_iva = k.piva_test;
+   AND s.codice_fiscale = k.cf_test;
+
 
 WITH costanti AS (
     SELECT
@@ -426,7 +486,7 @@ USING anagrafiche.istanze_utilities iu,
 WHERE ba.istanza_utility_id = iu.id
   AND ba.soggetto_ruolo_id = sr.id
   AND sr.soggetto_id = s.id
-  AND s.partita_iva = k.piva_test;
+  AND s.codice_fiscale = k.cf_test;
 
 WITH costanti AS (
     SELECT
@@ -441,7 +501,7 @@ DELETE FROM anagrafiche.istanze_utilities iu
 USING anagrafiche.soggetti s,
       costanti k
 WHERE iu.soggetto_id = s.id
-  AND s.partita_iva = k.piva_test;
+  AND s.codice_fiscale = k.cf_test;
 
 WITH costanti AS (
     SELECT
@@ -457,9 +517,25 @@ USING anagrafiche.soggetti s,
       config.tipi_ruoli tr,
       costanti k
 WHERE sr.soggetto_id = s.id
-  AND sr.ruolo_id = tr.id
-  AND s.partita_iva = k.piva_test
+  AND sr.tipo_ruolo_id = tr.id
+  AND s.codice_fiscale = k.cf_test
   AND tr.codice_interno = k.codice_ruolo_cliente;
+
+
+
+WITH costanti AS (
+    SELECT
+        '01677080440'::text   AS piva_test,
+        'TTNMHL68E07D042Z'::text  AS cf_test,
+        NULL  AS codice_istanza_test,
+        NULL   AS codice_ba_test,
+        'CL'::varchar              AS codice_ruolo_cliente,
+        'GAS'::varchar             AS codice_utility_test
+)
+DELETE FROM anagrafiche.soggetti s
+USING costanti k
+WHERE s.codice_fiscale = k.cf_test;
+
 
 WITH costanti AS (
     SELECT
@@ -474,20 +550,9 @@ DELETE FROM anagrafiche.contatti c
 USING anagrafiche.soggetti s,
       costanti k
 WHERE c.soggetto_id = s.id
-  AND s.partita_iva = k.piva_test;
+ AND s.codice_fiscale = k.cf_test;
 
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-)
-DELETE FROM anagrafiche.soggetti s
-USING costanti k
-WHERE s.partita_iva = k.piva_test;
 
+*/
 -- Fine test
 SELECT * FROM finish();

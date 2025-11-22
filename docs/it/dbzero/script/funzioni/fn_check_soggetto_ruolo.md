@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION script.fn_check_soggetto_ruolo(p_soggetto_id uuid, p_
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_ruolo_id  integer;
+    v_tipo_ruolo_id  integer;
     v_count     integer;
 
 BEGIN
@@ -48,12 +48,12 @@ BEGIN
 
     -- 2) Risolvo l'ID del ruolo da config.tipi_ruoli
     SELECT r.id
-      INTO v_ruolo_id
+      INTO v_tipo_ruolo_id
       FROM config.tipi_ruoli r
     WHERE r.codice_interno = p_cd_int_ruolo
     LIMIT 1;
 
-    IF v_ruolo_id IS NULL THEN
+    IF v_tipo_ruolo_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'database',
             'fn_check_soggetto_ruolo',
@@ -74,14 +74,14 @@ BEGIN
           INTO v_count
           FROM anagrafiche.soggetti_ruoli sr
         WHERE sr.id       = p_soggetto_ruolo_id
-          AND sr.ruolo_id = v_ruolo_id;
+          AND sr.tipo_ruolo_id = v_tipo_ruolo_id;
     ELSE
         -- Controllo anche soggetto_id
         SELECT COUNT(*)
           INTO v_count
           FROM anagrafiche.soggetti_ruoli sr
         WHERE sr.id          = p_soggetto_ruolo_id
-          AND sr.ruolo_id    = v_ruolo_id
+          AND sr.tipo_ruolo_id    = v_tipo_ruolo_id
           AND sr.soggetto_id = p_soggetto_id;
     END IF;
 
@@ -93,17 +93,17 @@ BEGIN
             jsonb_build_object(
                 'soggetto_ruolo_id', p_soggetto_ruolo_id,
                 'soggetto_id',       p_soggetto_id,
-                'ruolo_id',          v_ruolo_id,
+                'ruolo_id',          v_tipo_ruolo_id,
                 'codice_interno',    p_cd_int_ruolo
             ),
             NULL::uuid,
             coalesce(p_soggetto_ruolo_id::text, 'NULL'),
             coalesce(p_soggetto_id::text, 'NULL'),
-            coalesce(v_ruolo_id::text, 'NULL'),
+            coalesce(v_tipo_ruolo_id::text, 'NULL'),
             coalesce(p_cd_int_ruolo::text, 'NULL')
         );
          -- RAISE EXCEPTION 'Nessun legame soggetto_ruolo coerente trovato (id %, ruolo %, soggetto %).',
-         --   p_soggetto_ruolo_id, v_ruolo_id, p_soggetto_id
+         --   p_soggetto_ruolo_id, v_tipo_ruolo_id, p_soggetto_id
           --    USING ERRCODE = 'P0001';
     END IF;
 
