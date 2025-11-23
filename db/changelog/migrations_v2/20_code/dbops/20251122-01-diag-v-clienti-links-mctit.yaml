@@ -21,6 +21,7 @@ databaseChangeLog:
             splitStatements: true
             stripComments: true
             sql: |
+              DROP VIEW IF EXISTS dbops.diag_v_clienti_links;
               CREATE OR REPLACE VIEW dbops.diag_v_clienti_links AS
               SELECT
                   c.id                       AS cliente_id,
@@ -83,6 +84,7 @@ databaseChangeLog:
             splitStatements: true
             stripComments: true
             sql: |
+              DROP VIEW IF EXISTS dbops.diag_v_clienti_links;
               CREATE OR REPLACE VIEW dbops.diag_v_clienti_links AS
               ------------------------------------------------------------
               -- View di diagnostica per verificare coerenza tra clienti e billing_account
