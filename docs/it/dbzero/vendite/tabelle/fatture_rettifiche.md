@@ -18,7 +18,7 @@
 | FOREIGN KEY | fk_fatture_ret_fattura | fattura_id |
 | FOREIGN KEY | fk_fatture_ret_rettificata | rettificata_id |
 | PRIMARY KEY | pk_fatture_rettifiche | id |
-| UNIQUE | uq_fatture_rettifiche_pair | rettificata_id, fattura_id |
+| UNIQUE | uq_fatture_rettifiche_pair | fattura_id, rettificata_id |
 
 ## 📑 Indici
 | Nome | Definizione |

@@ -16,17 +16,18 @@ SELECT plan(3);
 
 -- Costanti per il test (CF/P.IVA di  riservati ai test)
 -- Cambiale se ti servono valori diversi
-WITH costanti AS (
-    SELECT
-        '01677080440'::text  AS piva_test,
-        'TTNMHL68E07D042Z'::text   AS cf_test
-)
+
 -- Pulizia preventiva di eventuali residui
-DELETE FROM anagrafiche.contatti c
-USING anagrafiche.soggetti s, costanti k
-WHERE c.soggetto_id = s.id
-  AND s.partita_iva = k.piva_test
-  AND s.codice_fiscale = k.cf_test;
+--WITH costanti AS (
+--    SELECT
+--        '01677080440'::text  AS piva_test,
+--        'TTNMHL68E07D042Z'::text   AS cf_test
+--)
+--DELETE FROM anagrafiche.contatti c
+--USING anagrafiche.soggetti s, costanti k
+--WHERE c.soggetto_id = s.id
+--  AND s.partita_iva = k.piva_test;
+ -- AND s.codice_fiscale = k.cf_test;
 
 WITH costanti AS (
     SELECT
@@ -35,8 +36,8 @@ WITH costanti AS (
 )
 DELETE FROM anagrafiche.soggetti s
 USING costanti k
-WHERE s.partita_iva = k.piva_test
-  AND s.codice_fiscale = k.cf_test;
+WHERE s.partita_iva = k.piva_test;
+ --AND s.codice_fiscale = k.cf_test;
 
 -- Inizio transazione “applicativa”
 BEGIN;

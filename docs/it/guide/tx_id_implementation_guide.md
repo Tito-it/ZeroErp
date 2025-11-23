@@ -4,6 +4,8 @@
 > 📋 ***Destinatari***: sviluppatori database, sviluppatori backend
 
 > 👀 **Vedi anche**
+> 
+>  - Documento configurazione fondamentale per [`Dblink`](/postgresql/dblink.md)
 >
 > Approfondimento Tabelle:   
 > - [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      

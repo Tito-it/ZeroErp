@@ -23,7 +23,7 @@
 | FOREIGN KEY | fk_fatture_indirizzi_origine_indirizzo | origine_indirizzo_id |
 | FOREIGN KEY | fk_fatture_indirizzi_origine_sog_ruolo | origine_soggetto_ruolo_id |
 | PRIMARY KEY | pk_fatture_indirizzi | id |
-| UNIQUE | uq_fatture_indirizzi_uno_per_tipo_ | tipo_indirizzo_id, fattura_id |
+| UNIQUE | uq_fatture_indirizzi_uno_per_tipo_ | fattura_id, tipo_indirizzo_id |
 
 ## 📑 Indici
 | Nome | Definizione |

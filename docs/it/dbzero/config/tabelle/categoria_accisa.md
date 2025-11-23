@@ -13,7 +13,7 @@
 |------|------|---------|
 | FOREIGN KEY | fk_categoria_accisa_utility | utility_id |
 | PRIMARY KEY | pk_categoria_accisa | id |
-| UNIQUE | uq_categoria_accisa_codice_utility | utility_id, codice |
+| UNIQUE | uq_categoria_accisa_codice_utility | codice, utility_id |
 
 ## 📑 Indici
 | Nome | Definizione |

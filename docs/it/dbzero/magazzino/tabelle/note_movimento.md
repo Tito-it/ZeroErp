@@ -31,7 +31,7 @@
 | CHECK | chk_note_seq_pos |  |
 | CHECK | chk_note_target_tipo |  |
 | FOREIGN KEY | fk_note_movimento_testata | target_id |
-| PRIMARY KEY | note_movimento_pkey | id, target_tipo |
+| PRIMARY KEY | note_movimento_pkey | target_tipo, id |
 
 ## 📑 Indici
 | Nome | Definizione |

@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20251120-01-fix-user-columns-anagrafiche-gestori-soggetti-ruoli-mctit.yaml
+
+  - changeSet:
+      id: 20251120-01-fix-user-columns-anagrafiche-gestori-soggetti-ruoli
+      author: mctit
+
+      changes:
+        # 1) Normalizza eventuali NULL su user_update: uso user_insert come fallback
+        - update:
+            schemaName: anagrafiche
+            tableName: gestori
+            columns:
+              - column:
+                  name: user_update
+                  valueComputed: "COALESCE(user_update, user_insert)"
+
+        - update:
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli
+            columns:
+              - column:
+                  name: user_update
+                  valueComputed: "COALESCE(user_update, user_insert)"
+
+        # 2) Allinea definizione colonne su anagrafiche.gestori
+        - modifyDataType:
+            schemaName: anagrafiche
+            tableName: gestori
+            columnName: user_insert
+            newDataType: text
+
+        - modifyDataType:
+            schemaName: anagrafiche
+            tableName: gestori
+            columnName: user_update
+            newDataType: text
+
+        - addDefaultValue:
+            schemaName: anagrafiche
+            tableName: gestori
+            columnName: user_insert
+            defaultValueComputed: "CURRENT_USER"
+
+        - addDefaultValue:
+            schemaName: anagrafiche
+            tableName: gestori
+            columnName: user_update
+            defaultValueComputed: "CURRENT_USER"
+
+        - addNotNullConstraint:
+            schemaName: anagrafiche
+            tableName: gestori
+            columnName: user_update
+
+        # 3) Allinea definizione colonne su anagrafiche.soggetti_ruoli
+        - modifyDataType:
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli
+            columnName: user_insert
+            newDataType: text
+
+        - modifyDataType:
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli
+            columnName: user_update
+            newDataType: text
+
+        - addDefaultValue:
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli
+            columnName: user_insert
+            defaultValueComputed: "CURRENT_USER"
+
+        - addDefaultValue:
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli
+            columnName: user_update
+            defaultValueComputed: "CURRENT_USER"
+
+        - addNotNullConstraint:
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli
+            columnName: user_update

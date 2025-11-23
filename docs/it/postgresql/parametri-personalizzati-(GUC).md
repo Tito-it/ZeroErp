@@ -2,12 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:
-> - [config.parameters](/dbzero/config/tabelle/parameters)
-> - [config.parameter\_overrides](/dbzero/config/tabelle/parameter_overrides)
+> Approfondimento Tabelle:   
+> - [config.parameters](/dbzero/config/tabelle/parameters)   
+> - [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)   
 >
 > Approfondimento funzioni:
-> - [script.fn\_get\_parameter\_full](/dbzero/script/funzioni/fn_get_parameter_full)
+> - [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)   
 >
 > All’interno del documento viene spiegata la differenza tra parametri GUC e parametri tabellari.
 
@@ -63,7 +63,7 @@ SET myapp.user_language = 'en';
 ### 📋 Esempi di GUC in Zero ERP
 
 * **`myapp.dblink_log_connection`**
-  Stringa di connessione per `dblink`, usata per log remoti fuori dalla transazione corrente.
+  Stringa di connessione per `dblink`, usata per log remoti fuori dalla transazione corrente. **Importante per** [`Dblink`](/postgresql/dblink.md) fare riferimento alla apposita documentazione.
 
   ```conf
   myapp.dblink_log_connection = 'host=localhost port=5432 dbname=Zero user=xx password=xx'
@@ -90,7 +90,7 @@ SET myapp.user_language = 'en';
 | Caratteristica       | GUC (`myapp.*`, `dbops.*`)                        | Tabelle (`config.parameters` + overrides)                  |
 | -------------------- | ------------------------------------------------- | ---------------------------------------------------------- |
 | **Scope**            | Cluster/DB/Role/Session                           | Record-level (tenant, utente, funzione, sessione)          |
-| **Versioning/Audit** | No (solo DDL o conf file)                         | Sì (Liquibase, trigger di audit, date\_insert, ecc.)       |
+| **Versioning/Audit** | No (solo DDL o conf file)                         | Sì (Liquibase, trigger di audit, date_insert, ecc.)       |
 | **Dinamico**         | Sì (SET/ALTER in sessione)                        | Sì (modificabile in runtime con query)                     |
 | **Use case**         | Configurazioni DB-centriche (lingua, connessioni) | Configurazioni business-centriche (feature-flag, timeouts) |
 

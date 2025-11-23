@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Refactor clienti/billing_account:
+# - Aggiunge billing_account_id su anagrafiche.clienti
+# - Collega clienti → billing_account via FK
+# - Allinea FK su istanze_utilities a ON DELETE NO ACTION
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20251121-21-clienti-billing-account-link-mctit.yaml
+
+    - changeSet:
+          id: 20251121-21-clienti-billing-account-link
+          author: mctit
+          comment: >
+              Aggiunge billing_account_id su anagrafiche.clienti e crea la FK verso anagrafiche.billing_account.
+              Allinea le FK verso anagrafiche.istanze_utilities (clienti e billing_account) a ON DELETE NO ACTION.
+
+          changes:
+              # 1) Aggiungo la colonna billing_account_id
+              - addColumn:
+                    schemaName: anagrafiche
+                    tableName: clienti
+                    columns:
+                        - column:
+                              name: billing_account_id
+                              type: integer
+
+              # 2) Imposto NOT NULL (tabella vuota/di test, nessun problema di dati)
+              - addNotNullConstraint:
+                    schemaName: anagrafiche
+                    tableName: clienti
+                    columnName: billing_account_id
+                    columnDataType: integer
+
+              # 3) FK clienti → billing_account
+              - addForeignKeyConstraint:
+                    constraintName: fk_clienti_billing_account
+                    baseTableSchemaName: anagrafiche
+                    baseTableName: clienti
+                    baseColumnNames: billing_account_id
+                    referencedTableSchemaName: anagrafiche
+                    referencedTableName: billing_account
+                    referencedColumnNames: id
+                    onUpdate: CASCADE
+                    onDelete: NO ACTION
+
+              # 4) Allineo FK clienti → istanze_utilities a ON DELETE NO ACTION
+              - dropForeignKeyConstraint:
+                    baseTableSchemaName: anagrafiche
+                    baseTableName: clienti
+                    constraintName: fk_clienti_istanze_utilities
+
+              - addForeignKeyConstraint:
+                    constraintName: fk_clienti_istanze_utilities
+                    baseTableSchemaName: anagrafiche
+                    baseTableName: clienti
+                    baseColumnNames: istanza_utility_id
+                    referencedTableSchemaName: anagrafiche
+                    referencedTableName: istanze_utilities
+                    referencedColumnNames: id
+                    onUpdate: CASCADE
+                    onDelete: NO ACTION
+
+              # 5) Allineo anche billing_account → istanze_utilities a ON DELETE NO ACTION
+              - dropForeignKeyConstraint:
+                    baseTableSchemaName: anagrafiche
+                    baseTableName: billing_account
+                    constraintName: fk_billing_account_istanze_utilities
+
+              - addForeignKeyConstraint:
+                    constraintName: fk_billing_account_istanze_utilities
+                    baseTableSchemaName: anagrafiche
+                    baseTableName: billing_account
+                    baseColumnNames: istanza_utility_id
+                    referencedTableSchemaName: anagrafiche
+                    referencedTableName: istanze_utilities
+                    referencedColumnNames: id
+                    onUpdate: CASCADE
+                    onDelete: NO ACTION
+
+              # 6) Commento opzionale su utility_id in clienti (denormalizzato ma legato al BA)
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        COMMENT ON COLUMN anagrafiche.clienti.utility_id IS
+                        'FK alla utility di riferimento (denormalizzata): deve coincidere con billing_account.utility_id.';

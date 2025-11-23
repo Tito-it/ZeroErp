@@ -1,0 +1,260 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# View di diagnostica per verificare i legami:
+#   soggetti → soggetti_ruoli → istanze_utilities → billing_account → clienti
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/dbops/20251122-11-fn-get-or-create-session-tx-id-mctit.yaml
+
+    - changeSet:
+          id: 20251122-11-fn-get-or-create-session-tx-id
+          author: mctit
+          comment: "Crea la view dbops.diag_v_clienti_links per verificare coerenza tra clienti e billing_account."
+          # runOnChange: true
+          #  validCheckSums: [ANY]
+
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+
+                        CREATE OR REPLACE FUNCTION dbops.fn_get_or_create_session_tx_id()
+                            RETURNS uuid
+                            LANGUAGE plpgsql
+                            COST 100
+                            VOLATILE
+                            SECURITY DEFINER
+                            PARALLEL UNSAFE
+                        AS $BODY$
+                        DECLARE
+                            v_tx_id        uuid;
+                            v_dblink_conn  text;
+                        BEGIN
+                            ----------------------------------------------------------------------
+                            -- 0) Se esiste già un tx_id in sessione, riusalo e basta
+                            ----------------------------------------------------------------------
+                            BEGIN
+                                v_tx_id := current_setting('dbops.tx_id', true)::uuid;
+                            EXCEPTION WHEN OTHERS THEN
+                                v_tx_id := NULL;
+                            END;
+
+                            IF v_tx_id IS NOT NULL THEN
+                                RETURN v_tx_id;
+                            END IF;
+
+                            ----------------------------------------------------------------------
+                            -- 1) Verifica che il parametro di connessione dblink sia impostato
+                            ----------------------------------------------------------------------
+                            BEGIN
+                                v_dblink_conn := current_setting('myapp.dblink_log_connection', true);
+                            EXCEPTION WHEN OTHERS THEN
+                                v_dblink_conn := NULL;
+                            END;
+
+                            IF v_dblink_conn IS NULL OR v_dblink_conn = '' THEN
+                                -- Configurazione mancante: logga ma NON bloccare, usa fallback locale
+                                PERFORM script.fn_log_error_only(
+                                    'database',
+                                    'dbops.fn_get_or_create_session_tx_id',
+                                    'E_DBLINK_LOG_CONN_MISSING',
+                                    jsonb_build_object(
+                                        'parameter', 'myapp.dblink_log_connection',
+                                        'hint', 'Impostare il parametro a livello DATABASE/ROLE o ALTER SYSTEM'
+                                    ),
+                                    NULL::uuid,
+                                    'myapp.dblink_log_connection'
+                                );
+
+                                v_tx_id := uuidv7();
+                                PERFORM set_config('dbops.tx_id', v_tx_id::text, false);
+                                RETURN v_tx_id;
+                            END IF;
+
+                            ----------------------------------------------------------------------
+                            -- 2) Generazione tx_id tramite dblink verso il DB di log
+                            ----------------------------------------------------------------------
+                            BEGIN
+                                SELECT tx_id
+                                INTO v_tx_id
+                                FROM dblink(
+                                    v_dblink_conn,
+                                    $gen$
+                                        SELECT dbops.fn_generate_tx_id(
+                                            'dbops.fn_get_or_create_session_tx_id',
+                                            jsonb_build_object('source','fn_get_or_create')
+                                        )
+                                    $gen$
+                                ) AS t(tx_id uuid);
+
+                                -- Se dblink ha risposto ma con NULL, fallback + log
+                                IF v_tx_id IS NULL THEN
+                                    PERFORM script.fn_log_error_only(
+                                        'database',
+                                        'dbops.fn_get_or_create_session_tx_id',
+                                        'E_TXID_DBLINK_NULL',
+                                        jsonb_build_object(
+                                            'note', 'dblink ha restituito NULL, uso uuidv7() locale'
+                                        ),
+                                        NULL::uuid,
+                                        'dbops.fn_generate_tx_id'
+                                    );
+                                    v_tx_id := uuidv7();
+                                END IF;
+
+                                -- Imposta SEMPRE la GUC di sessione
+                                PERFORM set_config('dbops.tx_id', v_tx_id::text, false);
+
+                            EXCEPTION WHEN OTHERS THEN
+                                -- Errore dblink: log + fallback locale
+                                PERFORM script.fn_log_error_only(
+                                    'database',
+                                    'dbops.fn_get_or_create_session_tx_id',
+                                    'E_TXID_DBLINK_ERROR',
+                                    jsonb_build_object(
+                                        'error', SQLERRM
+                                    ),
+                                    NULL::uuid,
+                                    'dbops.fn_generate_tx_id',
+                                    SQLERRM
+                                );
+
+                                v_tx_id := uuidv7();
+                                PERFORM set_config('dbops.tx_id', v_tx_id::text, false);
+                            END;
+
+                            ----------------------------------------------------------------------
+                            -- 3) Ritorna il tx_id (mai NULL)
+                            ----------------------------------------------------------------------
+                            RETURN v_tx_id;
+                        END;
+                        $BODY$;
+
+
+                        COMMENT ON FUNCTION dbops.fn_get_or_create_session_tx_id()
+                            IS 'Funzione helper che restituisce un tx_id univoco per sessione: riusa la GUC dbops.tx_id se presente o ne crea uno nuovo (via dblink verso dbops.fn_generate_tx_id, con fallback locale) e lo memorizza nella GUC di sessione.';
+
+    - changeSet:
+          id: 20251122-11Fix-fn-get-or-create-session-tx-id
+          author: mctit
+          comment: "Crea la view dbops.diag_v_clienti_links per verificare coerenza tra clienti e billing_account."
+          # runOnChange: true
+          #  validCheckSums: [ANY]
+
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+
+                        CREATE OR REPLACE FUNCTION dbops.fn_get_or_create_session_tx_id()
+                            RETURNS uuid
+                            LANGUAGE plpgsql
+                            COST 100
+                            VOLATILE
+                            SECURITY DEFINER
+                            PARALLEL UNSAFE
+                        AS $BODY$
+                        DECLARE
+                            v_tx_id        uuid;
+                            v_dblink_conn  text;
+                        BEGIN
+                            ----------------------------------------------------------------------
+                            -- 0) Se esiste già un tx_id in sessione, riusalo e basta
+                            ----------------------------------------------------------------------
+                            BEGIN
+                                v_tx_id := current_setting('dbops.tx_id', true)::uuid;
+                            EXCEPTION WHEN OTHERS THEN
+                                v_tx_id := NULL;
+                            END;
+
+                            IF v_tx_id IS NOT NULL THEN
+                                RETURN v_tx_id;
+                            END IF;
+
+                            ----------------------------------------------------------------------
+                            -- 1) Verifica che il parametro di connessione dblink sia impostato
+                            ----------------------------------------------------------------------
+                            BEGIN
+                                v_dblink_conn := current_setting('myapp.dblink_log_connection', true);
+                            EXCEPTION WHEN OTHERS THEN
+                                v_dblink_conn := NULL;
+                            END;
+
+                            IF v_dblink_conn IS NULL OR v_dblink_conn = '' THEN
+                                RAISE WARNING
+                                    'dbops.fn_get_or_create_session_tx_id: parametro myapp.dblink_log_connection non impostato; uso uuidv7() locale come tx_id. '
+                                    'Impostare il parametro a livello DATABASE/ROLE o ALTER SYSTEM.';
+                                
+                                v_tx_id := uuidv7();
+                                PERFORM set_config('dbops.tx_id', v_tx_id::text, false);
+                                RETURN v_tx_id;
+                            END IF;
+
+                            ----------------------------------------------------------------------
+                            -- 2) Generazione tx_id tramite dblink verso il DB di log
+                            ----------------------------------------------------------------------
+                            BEGIN
+                                SELECT tx_id
+                                INTO v_tx_id
+                                FROM dblink(
+                                    v_dblink_conn,
+                                    $gen$
+                                        SELECT dbops.fn_generate_tx_id(
+                                            'dbops.fn_get_or_create_session_tx_id',
+                                            jsonb_build_object('source','fn_get_or_create')
+                                        )
+                                    $gen$
+                                ) AS t(tx_id uuid);
+
+                                -- Se dblink ha risposto ma con NULL, fallback + warning
+                                IF v_tx_id IS NULL THEN
+                                    RAISE WARNING
+                                        'dbops.fn_get_or_create_session_tx_id: dblink ha restituito NULL; uso uuidv7() locale come tx_id.';
+                                    v_tx_id := uuidv7();
+                                END IF;
+
+                                -- Imposta SEMPRE la GUC di sessione
+                                PERFORM set_config('dbops.tx_id', v_tx_id::text, false);
+
+                            EXCEPTION WHEN OTHERS THEN
+                                -- Errore dblink: warning + fallback locale
+                                RAISE WARNING
+                                    'dbops.fn_get_or_create_session_tx_id: errore durante la chiamata dblink a dbops.fn_generate_tx_id: %; uso uuidv7() locale come tx_id.',
+                                    SQLERRM;
+
+                                v_tx_id := uuidv7();
+                                PERFORM set_config('dbops.tx_id', v_tx_id::text, false);
+                            END;
+
+                            ----------------------------------------------------------------------
+                            -- 3) Ritorna il tx_id (mai NULL)
+                            ----------------------------------------------------------------------
+                            RETURN v_tx_id;
+                        END;
+                        $BODY$;
+
+                        COMMENT ON FUNCTION dbops.fn_get_or_create_session_tx_id()
+                            IS 'Funzione helper che restituisce un tx_id univoco per sessione: riusa la GUC dbops.tx_id se presente o ne crea uno nuovo (via dblink verso dbops.fn_generate_tx_id, con fallback locale uuidv7()) e lo memorizza nella GUC di sessione.';
+
+    - changeSet:
+          id: 20251122-11Fix2-fn-get-or-create-session-tx-id-change-owner
+          author: mctit
+          context: test
+          comment: "Imposta owner postgres superuser per fn_get_or_create_session_tx_id."
+
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        ALTER FUNCTION dbops.fn_get_or_create_session_tx_id()
+                            OWNER TO postgres;

@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251121-16-trgfn-vettori-check-ruolo-vettore-mctit.yaml
+
+    - changeSet:
+          id: 20251121-16-trgfn-vettori-check-ruolo-vettore
+          author: mctit
+          comment: "Versione 2 della funzione trigger per vettori  che usa fn_check_soggetto_ruolo. La precedente(fn_check_ins_soggetto_ruolo) è deprecata ."
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_vettori_check_ruolo_vettore()
+                            RETURNS trigger
+                            LANGUAGE 'plpgsql'
+                            COST 100
+                            VOLATILE NOT LEAKPROOF
+                        AS $BODY$
+                        BEGIN
+                            -- FUNCTION: 
+                            --   Ogni volta che inserisco/aggiorno in vettori, gestisco la
+                            --   verifica della riga corrispondente in soggetti_ruoli.
+                            --   alimentando poi in NEW.soggetto_ruolo_id il record finale.
+
+                            -- Sostituisco NEW.soggetto_ruolo_id con l'ID vero (esistente),
+                            -- delegando completamente alla funzione generica:
+                            NEW.soggetto_ruolo_id := script.fn_check_soggetto_ruolo(
+                                                    p_soggetto_id       := NULL,
+                                                    p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
+                                                    p_cd_int_ruolo      := 'VT'
+                                                    );
+                            RETURN NEW;
+                        END;
+
+                        $BODY$;
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_vettori_check_ruolo_vettore()
+                            IS 'Trigger che, prima di inserire/aggiornare in anagrafiche.vettori,
+                        chiama fn_check_soggetto_ruolo per validare il legame
+                        soggetto→ruolo (cd_int_ruolo = ''VT'').';

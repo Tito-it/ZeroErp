@@ -30,6 +30,7 @@
 - [trgfn_clienti_check_ruolo_cliente](funzioni/trgfn_clienti_check_ruolo_cliente.md)
 - [trgfn_clienti_set_periodo](funzioni/trgfn_clienti_set_periodo.md)
 - [trgfn_clienti_sync_pdp](funzioni/trgfn_clienti_sync_pdp.md)
+- [trgfn_clienti_sync_utility_from_ba](funzioni/trgfn_clienti_sync_utility_from_ba.md)
 - [trgfn_contatti_set_default_contatto](funzioni/trgfn_contatti_set_default_contatto.md) — * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 - [trgfn_conti_bancari_normalize](funzioni/trgfn_conti_bancari_normalize.md)
 - [trgfn_dati_societari_guard_tipo_soggetto](funzioni/trgfn_dati_societari_guard_tipo_soggetto.md) — Verificare che il soggetto associato ai dati societari ( `new.soggetto_id` in `anagrafiche.dati_societari` ) abbia un `codice_interno` ammesso (solo **`SC`** o **`SP`**). In caso contrario, viene lanciato un errore tramite `script.fn_log_and_raise_error`.
