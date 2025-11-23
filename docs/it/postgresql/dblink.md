@@ -8,6 +8,39 @@
 
 L’estensione **`dblink`** di PostgreSQL permette l'esecuzione di query tra database PostgreSQL diversi o all’interno dello stesso server su database separati. È particolarmente utile per logging remoto, integrazioni di dati distribuiti e operazioni di sincronizzazione asincrone.
 
+>>
+>> ***FONDAMENTALE***
+>> **Ricordarsi** sempre che per dblink è necessario configurare la connessione al DB. Usare permessi di root e user postgres per eseguire le configurazioni.
+>>Esempi:
+>> 
+``` 
+ALTER DATABASE zeroerp
+  SET myapp.dblink_log_connection = 'dbname=zeroerp host=localhost user=loguser password=XXX'; 
+```
+>>**per verificare se i parametri sono caricati:**
+``` 
+  SHOW myapp.dblink_log_connection;
+                  myapp.dblink_log_connection   
+```
+
+>>per non esporre le password ho preferito usare un altro metodo :
+sudo -u postgres nano /var/lib/postgresql/.pg_service.conf 
+con contenuto
+[zeroerp_log]
+dbname=zeroerp
+host=localhost
+user=titodb  
+password=(password)
+
+postgres=# \connect zeroerp                                     
+Sei collegato al database "zeroerp" con nome utente "postgres".
+``` 
+ ALTER DATABASE zeroerp
+  SET myapp.dblink_log_connection = 'service=zeroerp_log';
+``` 
+
+
+
 ---
 
 ### 🎯 Scopo principale

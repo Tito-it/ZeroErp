@@ -12,7 +12,10 @@
 
 -- Numero di test
 SELECT plan(8);
- 
+SELECT diag('current_user=' || current_user);
+SELECT diag('db_name=' || current_database());
+SELECT diag('dblink_conn=' || current_setting('myapp.dblink_log_connection', true));
+
 -- =========================================================
 -- Costanti di test
 -- =========================================================
@@ -127,6 +130,9 @@ WHERE s.codice_fiscale = k.cf_test;
 -- Inizio transazione applicativa
 -- =========================================================
 BEGIN;
+
+-- Imposto il transaction id per la sessione
+--SELECT dbops.fn_get_or_create_session_tx_id();
 
 -- ---------------------------------------------------------
 -- 1) Recupero ruolo CLIENTE (config.tipi_ruoli)
