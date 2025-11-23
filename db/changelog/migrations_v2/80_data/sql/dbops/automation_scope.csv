@@ -1,0 +1,6 @@
+schema_name,table_like
+anagrafiche,*all
+catalogo,*all
+config,*all
+storico,*all
+vendite,*all

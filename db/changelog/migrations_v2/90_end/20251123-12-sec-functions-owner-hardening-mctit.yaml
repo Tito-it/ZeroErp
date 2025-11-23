@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Hardening funzioni sensibili:
+#  - Imposta, se possibile, l'owner della funzione dbops.fn_sync_functions_owner() a postgres
+#  - Esegue sempre la sincronizzazione degli owner in base a dbops.sec_functions_owner
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/90_end/20251123-12-sec-functions-owner-hardening-mctit.yaml
+
+  # 1) Prova a impostare owner=postgres per dbops.fn_sync_functions_owner()
+  #    In ambienti senza permessi (es. CI) cattura l'eccezione e non blocca la pipeline.
+  - changeSet:
+      id: 20251123-12-set-owner-fn-sync-functions-owner
+      author: mctit
+      # runAlways: true
+      comment: >
+        Imposta l'owner della funzione dbops.fn_sync_functions_owner() a postgres,
+        se l'utente corrente dispone dei privilegi necessari (altrimenti emette solo un NOTICE).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              BEGIN
+                BEGIN
+                  ALTER FUNCTION dbops.fn_sync_functions_owner()
+                    OWNER TO postgres;
+                EXCEPTION
+                  WHEN insufficient_privilege THEN
+                    RAISE NOTICE
+                      'Impossibile impostare owner=postgres per dbops.fn_sync_functions_owner() in questo ambiente (privilegi insufficienti).';
+                END;
+              END;
+              $$;
+
+  # 2) Esegue sempre la sincronizzazione degli owner delle funzioni “sensibili”
+  #    usando la tabella dbops.sec_functions_owner.
+  #    runAlways: true assicura che giri ad ogni liquibase update (utile anche dopo clone/restore).
+  - changeSet:
+      id: 20251123-04-run-sync-functions-owner
+      author: mctit
+      runAlways: true
+      comment: >
+        Esegue dbops.fn_sync_functions_owner() per allineare gli owner
+        delle funzioni sensibili alla configurazione definita in dbops.sec_functions_owner.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_sync_functions_owner();

@@ -1,0 +1,2 @@
+id,schema_name,table_name,column_name,old_default_expr,captured_at
+1,config,stati_pratiche,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02

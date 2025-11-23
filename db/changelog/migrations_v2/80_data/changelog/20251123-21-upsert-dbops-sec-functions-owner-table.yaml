@@ -1,0 +1,42 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20251123-21-upsert-dbops-sec-functions-owner-table.yaml
+
+  - changeSet:
+      id: 20251123-21-upsert-dbops-sec-functions-owner-table
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: sec_functions_owner
+      changes:
+        # Upsert dei dati nella tabella sec_functions_owner
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/sec_functions_owner.csv
+            tableName: sec_functions_owner
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: schema_name, type: STRING }
+              - column: { name: function_name, type: STRING }
+              - column: { name: arg_types, type: STRING }
+              - column: { name: required_owner, type: STRING }
+              - column: { name: note, type: STRING }

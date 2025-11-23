@@ -1,0 +1,43 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Seed tabella dbops.sec_functions_owner:
+# - Registra la funzione dbops.fn_get_or_create_session_tx_id()
+#   come funzione "sensibile" che deve avere owner postgres.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/dbops/20251123-02-seed-sec-functions-owner-mctit.yaml
+
+  - changeSet:
+      id: 20251123-02-seed-sec-functions-owner
+      author: mctit
+      comment: >
+        Inserisce la funzione dbops.fn_get_or_create_session_tx_id()
+        nella tabella dbops.sec_functions_owner, imponendo come owner richiesto 'postgres'.
+      changes:
+        - insert:
+            schemaName: dbops
+            tableName: sec_functions_owner
+            columns:
+              - column:
+                  name: schema_name
+                  value: dbops
+
+              - column:
+                  name: function_name
+                  value: fn_get_or_create_session_tx_id
+
+              - column:
+                  name: arg_types
+                  value: "" # Nessun argomento: signature dbops.fn_get_or_create_session_tx_id()
+
+              - column:
+                  name: required_owner
+                  value: postgres
+
+              - column:
+                  name: note
+                  value: >
+                    Gestione session_tx_id; richiede permessi elevati per accedere a
+                    configurazioni e funzioni di logging/tx_id.

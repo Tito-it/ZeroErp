@@ -35,11 +35,13 @@ Questa guida descrive in dettaglio il processo di **generazione di un cliente** 
 
    * Può essere creato **indipendentemente** dal cliente, anche in fase precontrattuale.
    * Viene sempre associato all'istanza (`istanza_utilities_id` NOT NULL).
+   * Il campo utility_id deve ora essere coerente con quello che verrà utilizzato in clienti.
 
 3. **Creazione del cliente (clienti)**:
 
-   * Avviene successivamente, con associazione all'istanza (`istanza_utilities_id` NOT NULL).
+   * Avviene successivamente, con associazione all'istanza (`istanza_utilities_id` NOT NULL) e ora deve riferirsi al billing_account generato per l’istanza.
    * Il cliente **eredita** l’account generato in fase di istanza, mantenendo coerenza tra fase precontrattuale e operativa.
+   * utility_id rimane presente per motivi operativi ma deve corrispondere a quello del billing_account. Un trigger lo tiene coerente con quello del billing account
 
 4. **Dati catastali**:
 
@@ -67,6 +69,10 @@ Questa guida descrive in dettaglio il processo di **generazione di un cliente** 
   * Collegati all’indirizzo per evitare **ridondanza** tra più istanze nello stesso luogo.
   * È comunque possibile una **versione legata all’istanza**, utile per tracciabilità storica o variazioni temporali.
 
+* **Clienti e billingo_account**:
+
+* Aggiornamento: è stato introdotto un vincolo concettuale  per garantire che:
+   clienti.utility_id = billing_account.utility_id entrambi coerenti con istanze_utilities.
 ---
 
 ## 📌 Best practice
@@ -84,6 +90,8 @@ Questa guida descrive in dettaglio il processo di **generazione di un cliente** 
 * Nessuna istanza può essere attiva contemporaneamente sullo stesso `indirizzo_dettaglio_id`.
 * Un cliente non può esistere senza istanza (`istanza_utilities_id` obbligatorio).
 * `billing_account` richiede sempre un'istanza valida.
+* `utility_id` su clienti deve essere coerente con billing_account.utility_id.
+
 
 ---
 

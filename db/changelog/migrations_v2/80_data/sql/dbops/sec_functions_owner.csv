@@ -1,0 +1,5 @@
+id,schema_name,function_name,arg_types,required_owner,note
+1,dbops,fn_get_or_create_session_tx_id,"",postgres,"Gestione session_tx_id; richiede permessi elevati per accedere a configurazioni e funzioni di logging/tx_id.
+"
+3,script,fn_ensure_logconn,"",postgres,Richiede permessi
+4,dbops,fn_generate_tx_id,"text,jsonb",postgres,Richiede permessi
