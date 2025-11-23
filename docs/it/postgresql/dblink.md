@@ -1,59 +1,99 @@
-# 📘 Estensione PostgreSQL: `dblink`
+## 📘 Estensione PostgreSQL: `dblink`
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni :    
-> - [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)    
+> Approfondimenti correlati:   
+> • [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)   
+> • [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)   
 
+L’estensione **`dblink`** consente l’esecuzione di query tra database PostgreSQL diversi o sullo stesso server ma su database separati. In Zero ERP è utilizzata principalmente per:
 
-L’estensione **`dblink`** di PostgreSQL permette l'esecuzione di query tra database PostgreSQL diversi o all’interno dello stesso server su database separati. È particolarmente utile per logging remoto, integrazioni di dati distribuiti e operazioni di sincronizzazione asincrone.
+* Logging remoto indipendente dalla transazione corrente
+* Operazioni tecniche asincrone
+* Sincronizzazioni e integrazioni *cross-database*
 
->>
->> ***FONDAMENTALE***
->> **Ricordarsi** sempre che per dblink è necessario configurare la connessione al DB. Usare permessi di root e user postgres per eseguire le configurazioni.
->>Esempi:
->> 
-``` 
-ALTER DATABASE zeroerp
-  SET myapp.dblink_log_connection = 'dbname=zeroerp host=localhost user=loguser password=XXX'; 
+---
+
+## 🚨 Sezione critica – *Configurazione necessaria prima dell’utilizzo*
+
+> 🔴 **FONDAMENTALE**
+> Prima di utilizzare `dblink`, è necessario configurare correttamente i parametri di connessione.
+> Questa operazione **deve essere eseguita come `postgres`** (utente superuser) e può essere necessaria *dopo ogni clonazione o restore del database*.
+
+### 🔒 1. Evitare password in chiaro
+
+Utilizzare **pg_service.conf** anziché inserire direttamente `password=` nei parametri.
+
+📁 Percorso consigliato (utente `postgres`):
+
 ```
->>**per verificare se i parametri sono caricati:**
-``` 
-  SHOW myapp.dblink_log_connection;
-                  myapp.dblink_log_connection   
+/var/lib/postgresql/.pg_service.conf
 ```
 
->>per non esporre le password ho preferito usare un altro metodo :
-sudo -u postgres nano /var/lib/postgresql/.pg_service.conf 
-con contenuto
+Esempio contenuto:
+
+```ini
 [zeroerp_log]
 dbname=zeroerp
 host=localhost
-user=titodb  
-password=(password)
+user=titodb
+password=••••••
+```
 
-postgres=# \connect zeroerp                                     
-Sei collegato al database "zeroerp" con nome utente "postgres".
-``` 
- ALTER DATABASE zeroerp
+🔹 Permessi suggeriti:
+
+```bash
+sudo chown postgres:postgres /var/lib/postgresql/.pg_service.conf
+sudo chmod 600 /var/lib/postgresql/.pg_service.conf
+```
+
+---
+
+### 🛠️ 2. Impostare il parametro di connessione (GUC)
+
+Eseguire come utente `postgres`:
+
+```sql
+ALTER DATABASE zeroerp
   SET myapp.dblink_log_connection = 'service=zeroerp_log';
-``` 
+```
 
+📌 Verifica caricamento parametro:
 
-
----
-
-### 🎯 Scopo principale
-
-* Eseguire query remote su altri database PostgreSQL.
-* Effettuare operazioni di logging indipendenti dalla transazione corrente.
-* Realizzare integrazioni e sincronizzazioni cross-database.
+```sql
+SHOW myapp.dblink_log_connection;
+-- Atteso: "service=zeroerp_log"
+```
 
 ---
 
-### ⚙️ Installazione
+### 🧪 3. Test funzionale tramite funzione
 
-Per installare l'estensione, utilizzare:
+Dopo aver impostato la configurazione, verificare:
+
+```sql
+SELECT script.fn_ensure_logconn();
+
+SELECT dbops.fn_get_or_create_session_tx_id();
+
+```
+**Nota:**
+  Per funzione fn_get_or_create_sessio_tx_id risultato atteso la generazione di un UUID , verificare su messaggi che non ci siano segnalazioni. Eseguire la function su una nuova sessione Sql(su Pgadmin) in modo da essere certi che non ci siano precedenti attività. 
+---
+
+## 🛠️ Procedura completa (nuovo ambiente / restore DB)
+
+| Step | Azione                                      | Eseguito come      |
+| ---- | ------------------------------------------- | ------------------ |
+| 1️⃣  | Abilitare estensione dblink                 | postgres           |
+| 2️⃣  | Creare utente tecnico (es. `titodb`)        | postgres           |
+| 3️⃣  | Configurare `.pg_service.conf`              | root/postgres      |
+| 4️⃣  | Impostare GUC `myapp.dblink_log_connection` | postgres           |
+| 5️⃣  | Verifica con `fn_ensure_logconn()`          | utente tecnico/app |
+
+---
+
+## 🧱 Installazione estensione
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS dblink;
@@ -61,25 +101,20 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 
 ---
 
-### 🛠️ Funzioni principali
+## 🔗 Funzioni principali
 
-* **`dblink_connect(text connname, text connstr)`**
-  Stabilisce una connessione con nome (`connname`) usando una stringa di connessione.
-
-* **`dblink_exec(text connname, text sql)`**
-  Esegue un comando SQL remoto sulla connessione identificata.
-
-* **`dblink_disconnect(text connname)`**
-  Chiude la connessione identificata.
+| Funzione                                      | Descrizione              |
+| --------------------------------------------- | ------------------------ |
+| `dblink_connect(text connname, text connstr)` | Apre connessione remota  |
+| `dblink_exec(text connname, text sql)`        | Esegue SQL sul DB remoto |
+| `dblink_disconnect(text connname)`            | Chiude la connessione    |
 
 ---
 
-### 📋 Esempio d’uso in Zero ERP
-
-Utilizzo comune per inserire un log di errore remoto isolato dalla transazione locale:
+## 📋 Esempio d’uso in Zero ERP
 
 ```plpgsql
-PERFORM script.fn_ensure_logconn(); -- Assicura connessione
+PERFORM script.fn_ensure_logconn(); -- Assicura connessione log
 
 sql_text :=
   'INSERT INTO dbops.error_log(occurred_at, area, function_name, messaggio_errore_id, context, tx_id) VALUES (' ||
@@ -90,21 +125,23 @@ sql_text :=
 PERFORM dblink_exec('logconn', sql_text);
 ```
 
-Questo approccio permette al log dell'errore di essere salvato immediatamente e permanentemente anche se la transazione principale subisce un rollback.
+Questo approccio garantisce che il log venga salvato **indipendentemente dalla transazione principale**, anche in caso di rollback.
 
 ---
 
-### 🔒 Buone pratiche
+## 🔒 Buone pratiche Zero ERP
 
-* Gestire sempre le connessioni con nomi chiari e riutilizzabili.
-* Assicurarsi che le stringhe di connessione siano configurate in modo sicuro tramite parametri personalizzati (GUC).
-* Evitare query troppo complesse o massive via dblink per non compromettere le performance.
+✔️ Utilizzare **utente tecnico dedicato** (es. `titodb`)
+✔️ Evitare password in chiaro nei parametri GUC
+✔️ Usare connessioni preconfigurate (`service=...`)
+✔️ Utilizzare `script.fn_ensure_logconn()` come controllo iniziale
+✔️ Dopo restore/clonazione → ricreare `.pg_service.conf` e reimpostare parametro
+
+---
+
+> 🧠 *“L’utilizzo corretto di `dblink` garantisce logging distribuito affidabile e integrazione tecnica sicura, mantenendo l’operatività isolata dalla transazione principale.”*
 
 ---
 
-> 🧠 **“Utilizzare `dblink` consente una gestione robusta del logging distribuito e dell'integrazione di dati, garantendo operazioni isolate e indipendenti dalla transazione principale.”**
----
-
-
----
 {% include-markdown "signature-core.md" %}
+

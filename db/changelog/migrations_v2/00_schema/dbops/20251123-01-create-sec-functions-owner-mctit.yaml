@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Crea tabella dbops.sec_functions_owner:
+# - Mappa le funzioni “sensibili” e l’owner richiesto
+# - Usata da dbops.fn_sync_functions_owner() per hardening permessi
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/dbops/20251123-01-create-sec-functions-owner-mctit.yaml
+
+  - changeSet:
+      id: 20251123-01-create-sec-functions-owner
+      author: mctit
+      comment: >
+        Crea la tabella dbops.sec_functions_owner per definire l'owner richiesto
+        delle funzioni sensibili (es. funzioni che usano dblink, tx_id, logging tecnico).
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: sec_functions_owner
+            remarks: Mappa funzioni sensibili e owner richiesto per hardening permessi.
+            columns:
+              - column:
+                  {
+                    name: id,
+                    type: BIGINT,
+                    autoIncrement: true,
+                    generationType: BY DEFAULT,
+                    constraints:
+                      {
+                        primaryKey: true,
+                        primaryKeyName: pk_sec_func_owner,
+                        nullable: false,
+                      },
+                  }
+              - column:
+                  name: schema_name
+                  type: TEXT
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: function_name
+                  type: TEXT
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: arg_types
+                  type: TEXT
+                  remarks: >
+                    Elenco tipi argomenti in formato testuale (es. 'uuid,text,jsonb').
+                    Usato per ricostruire la signature e individuare univocamente la funzione.
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: required_owner
+                  type: TEXT
+                  remarks: Nome del ruolo che deve possedere la funzione (es. 'postgres').
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: note
+                  type: TEXT
+                  remarks: Note descrittive sul motivo di sensibilità della funzione.
+
+        - addUniqueConstraint:
+            schemaName: dbops
+            tableName: sec_functions_owner
+            columnNames: schema_name,function_name,arg_types
+            constraintName: uq_sec_functions_owner_signature
+            validate: true

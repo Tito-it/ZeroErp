@@ -158,12 +158,11 @@ BEGIN
   END IF;
   
   
-  NEW.tx_id := COALESCE(
-    v_new_tx_id,
-    NULLIF(current_setting('dbops.tx_id', true), '')::uuid,
-    uuidv7()  
-  );
-  
+    NEW.tx_id := COALESCE(
+        NULLIF(current_setting('dbops.tx_id', true), '')::uuid,
+        v_new_tx_id,
+        uuidv7()
+    );
   RETURN NEW;
 
 END;

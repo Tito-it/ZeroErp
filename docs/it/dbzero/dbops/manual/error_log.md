@@ -8,6 +8,7 @@
 > * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)    
 >
 > Approfondimento funzioni:    
+> 
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
 > * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)    
 

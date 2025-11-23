@@ -4,8 +4,8 @@
 >
 > Approfondimento funzioni:
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) *(log + abort)*
-> * [script.fn_ensure_logconn](/dbzero/script/funzioni/.fn_ensure_logconn)
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) *(log + abort)*  
+> * [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)  
 
 Ultimo aggiornamento: **26/08/2025**
 
