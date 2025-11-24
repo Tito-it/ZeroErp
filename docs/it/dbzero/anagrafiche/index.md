@@ -1,6 +1,7 @@
 # Schema `anagrafiche`
 
 ## 📚 Tabelle
+- [bank_branches](tabelle/bank_branches.md)
 - [billing_account](tabelle/billing_account.md) — La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici cliente** per ciascuna `utility`, consentendo:
 - [clienti](tabelle/clienti.md) — La tabella `anagrafiche.clienti` memorizza le informazioni contrattuali e di fatturazione di un soggetto per una specifica *istanza* di servizio. Rappresenta la fase in cui un'attivazione (istanza) diventa un cliente ufficiale, includendo dettagli di scadenze, pagamento e classificazioni speciali (PA, split payment).
 - [contatti](tabelle/contatti.md) — * **Centralizzare i contatti**     Un’unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.
@@ -41,6 +42,7 @@
 - [trgfn_fornitori_guard_normalize](funzioni/trgfn_fornitori_guard_normalize.md)
 - [trgfn_fornitori_protect_account_code](funzioni/trgfn_fornitori_protect_account_code.md)
 - [trgfn_gestori_check_ruolo_gestore](funzioni/trgfn_gestori_check_ruolo_gestore.md) — - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_check_ins_soggetto_ruolo` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
+- [trgfn_gestori_guard](funzioni/trgfn_gestori_guard.md)
 - [trgfn_indirizzi_dettaglio_normalize](funzioni/trgfn_indirizzi_dettaglio_normalize.md) — * **Uniformità dei dati**: garantire che i campi relativi all’indirizzo (`via_norm`, `civico_norm`, `indirizzo_normalizzato`) rispettino regole di maiuscole, spaziatura e formattazione. * **Preparazione per ricerche e comparazioni**: offrire valori normalizzati che migliorano le performance di query basate su stringhe (es. ricerche full-text, join su via). * **Affidabilità**: centralizzare la logica di normalizzazione nel database, evitando differenze tra applicazioni diverse.
 - [trgfn_indirizzi_normalize](funzioni/trgfn_indirizzi_normalize.md) — Assicura che, in modalità **indirizzo normalizzato**, tutti i campi alternativi utilizzati per gli **indirizzi liberi** siano resettati a `NULL`. In questo modo si evita la coesistenza di dati incongruenti tra indirizzo normalizzato e indirizzo libero.
 - [trgfn_indirizzi_sync_geoloc](funzioni/trgfn_indirizzi_sync_geoloc.md) — Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`. In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.

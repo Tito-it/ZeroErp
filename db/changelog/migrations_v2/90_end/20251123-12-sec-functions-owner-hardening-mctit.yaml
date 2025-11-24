@@ -14,6 +14,7 @@ databaseChangeLog:
   - changeSet:
       id: 20251123-12-set-owner-fn-sync-functions-owner
       author: mctit
+      context: test
       # runAlways: true
       comment: >
         Imposta l'owner della funzione dbops.fn_sync_functions_owner() a postgres,
