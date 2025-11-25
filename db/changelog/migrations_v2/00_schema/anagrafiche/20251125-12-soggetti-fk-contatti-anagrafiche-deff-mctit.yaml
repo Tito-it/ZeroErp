@@ -1,0 +1,33 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Refactor conti bancari, legami conti, e tabella gestori:
+# - Aggiunge FK bank_branch_id a anagrafiche.conti_bancari
+# - Rimuove iban da anagrafiche.gestori
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20251125-12-soggetti-fk-contatti-anagrafiche-deff-mctit.yaml
+
+  - changeSet:
+      id: 20251125-12-soggetti-fk-contatti-anagrafiche-deff
+      author: mctit
+      comment: >
+        Refactor anagrafiche.soggetti:
+        - introduce default_contatto_id collegato a anagrafiche.contatti (constr. FK deferrable)
+
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti
+              DROP CONSTRAINT IF EXISTS fk_contatti_anagrafiche;
+
+              ALTER TABLE anagrafiche.soggetti
+              ADD CONSTRAINT fk_contatti_anagrafiche
+                FOREIGN KEY (default_contatto_id)
+                REFERENCES anagrafiche.contatti(id)
+                ON UPDATE CASCADE
+                ON DELETE NO ACTION
+                DEFERRABLE INITIALLY DEFERRED;

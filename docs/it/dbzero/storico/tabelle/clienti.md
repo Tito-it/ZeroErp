@@ -8,7 +8,7 @@
 | valid_to | timestamp with time zone | YES |  |
 | change_type | character | YES | 'A'::bpchar |
 | data_insert | timestamp without time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | cliente_id | bigint | NO |  |
 | snapshot | jsonb | NO |  |
 | tipo_operazione | smallint | YES |  |

@@ -9,7 +9,7 @@
 | valid_to | date | YES |  |
 | change_type | character | YES | 'A'::bpchar |
 | data_insert | timestamp without time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | indirizzo_dettaglio_id | integer | NO |  |
 | snapshot | jsonb | NO |  |
 | tipo_operazione | smallint | YES |  |

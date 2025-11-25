@@ -9,8 +9,8 @@
 | descrizione | character varying | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
-| user_insert | character varying | YES |  |
-| user_update | character varying | YES |  |
+| user_insert | text | YES |  |
+| user_update | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

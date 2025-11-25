@@ -9,9 +9,9 @@
 | codice | character varying | NO |  |
 | proprietario_inquilino | character | NO | 'I'::bpchar |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | NO | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | soggetto_id | uuid | NO |  |
 | indirizzo_dettaglio_id | bigint | YES |  |
 | tx_id | uuid | YES |  |

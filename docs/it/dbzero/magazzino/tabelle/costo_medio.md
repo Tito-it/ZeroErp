@@ -10,9 +10,9 @@
 | valore | numeric | NO | 0 |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | YES | CURRENT_USER |
+| user_update | text | YES | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

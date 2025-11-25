@@ -20,9 +20,9 @@
 | anno_protocollo | integer | YES |  |
 | superficie | integer | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | NO | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
 | istanza_utility_id | bigint | NO |  |

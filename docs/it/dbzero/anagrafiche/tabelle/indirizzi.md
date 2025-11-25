@@ -16,9 +16,9 @@
 | postal_box | character varying | YES |  |
 | geoloc | USER-DEFINED | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | NO | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | comune_id | integer | YES |  |
 | codice_postale_id | integer | YES |  |
 | storicizza | boolean | NO | false |

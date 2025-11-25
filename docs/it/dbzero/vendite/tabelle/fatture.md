@@ -35,9 +35,9 @@
 | storicizza | boolean | NO | false |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | YES | CURRENT_USER |
+| user_update | text | YES | CURRENT_USER |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
 | termine_pagamento_id | bigint | YES |  |

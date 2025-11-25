@@ -20,8 +20,8 @@
 | voce_utility | boolean | NO | false |
 | fondo_fattura | boolean | NO | false |
 | meta | jsonb | YES | '{}'::jsonb |
-| user_insert | character varying | NO | CURRENT_USER |
-| user_update | character varying | YES | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
+| user_update | text | YES | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 | tx_id | uuid | YES |  |

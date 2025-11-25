@@ -1,19 +1,19 @@
 # ⚙️ Funzione `fn_check_soggetto_ruolo`
 
 ```sql
-CREATE FUNCTION fn_check_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id integer, p_cd_int_ruolo character varying)
+CREATE FUNCTION fn_check_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_cd_int_ruolo character varying)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_check_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id integer, p_cd_int_ruolo character varying)
- RETURNS integer
+CREATE OR REPLACE FUNCTION script.fn_check_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_cd_int_ruolo character varying)
+ RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
 DECLARE
     v_tipo_ruolo_id  integer;
-    v_count     integer;
+    v_count          integer;
 
 BEGIN
     -- ------------------------------------------------------------
@@ -23,6 +23,7 @@ BEGIN
     -- In caso di esito positivo, restituisce p_soggetto_ruolo_id.
     -- Il parametro p_soggetto_id è opzionale: se NULL, non viene verificato.
     -- ------------------------------------------------------------
+
 
     -- 1) Validazione parametri minimi
     IF p_soggetto_ruolo_id IS NULL OR p_soggetto_ruolo_id <= 0 THEN
@@ -36,13 +37,11 @@ BEGIN
                 'codice_interno_ruolo', p_cd_int_ruolo
             ),
             NULL::uuid,
-            p_soggetto_ruolo_id::text,
-            p_soggetto_id::text,
-            p_cd_int_ruolo::text
+            coalesce(p_soggetto_ruolo_id::text, 'NULL'),
+            coalesce(p_soggetto_id::text, 'NULL'),
+            coalesce(p_cd_int_ruolo::text, 'NULL')
         );
-        -- fn_log_and_raise_error dovrebbe fare RAISE; per sicurezza:
-       -- RAISE EXCEPTION 'soggetto_ruolo_id mancante o non valido (%).', p_soggetto_ruolo_id
-       --     USING ERRCODE = 'P0001';
+ 
     END IF;
 
     -- 2) Risolvo l'ID del ruolo da config.tipi_ruoli
@@ -59,11 +58,9 @@ BEGIN
             'E_COD_INT_RUOLO',
             jsonb_build_object('codice_interno', p_cd_int_ruolo),
             NULL::uuid,
-            'codice_interno', p_cd_int_ruolo::text
-			);
+            'codice_interno', coalesce(p_cd_int_ruolo::text, 'NULL')
+        );
 
-        -- RAISE EXCEPTION 'Codice interno ruolo non valido: %', p_cd_int_ruolo
-        --    USING ERRCODE = 'P0001';
     END IF;
 
     -- 3) Verifica esistenza e coerenza del legame in anagrafiche.soggetti_ruoli
@@ -96,14 +93,12 @@ BEGIN
                 'codice_interno',    p_cd_int_ruolo
             ),
             NULL::uuid,
-            p_soggetto_ruolo_id::text,
-            p_soggetto_id::text,
-            v_tipo_ruolo_id::text,
-            p_cd_int_ruolo::text
+            coalesce(p_soggetto_ruolo_id::text, 'NULL'),
+            coalesce(p_soggetto_id::text, 'NULL'),
+            coalesce(v_tipo_ruolo_id::text, 'NULL'),
+            coalesce(p_cd_int_ruolo::text, 'NULL')
         );
-         -- RAISE EXCEPTION 'Nessun legame soggetto_ruolo coerente trovato (id %, ruolo %, soggetto %).',
-         --   p_soggetto_ruolo_id, v_tipo_ruolo_id, p_soggetto_id
-          --    USING ERRCODE = 'P0001';
+ 
     END IF;
 
     -- 4) Tutto ok: ritorno l'ID passato

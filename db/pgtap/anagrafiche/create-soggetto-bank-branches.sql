@@ -10,18 +10,17 @@
 SELECT plan(4);
 
 -- =========================================================
--- Costanti per il test
+-- Costanti per il test (TEMP TABLE)
 -- =========================================================
-WITH costanti AS (
-    SELECT
-        '05555555555'::text  AS piva_test,              -- P.IVA fittizia
-        'BANK_B'::varchar        AS codice_ruolo_istituto,  -- config.tipi_ruoli.codice_interno (da adattare)
-        'EUR'::varchar       AS codice_valuta,          -- se servirà in futuro
-        'ZEROERP'::varchar   AS codice_prod_software,   -- se servirà in futuro
-        '03069'::varchar     AS bank_code_test,         -- es. ABI fittizio
-        '01234'::varchar     AS branch_code_test,       -- es. CAB fittizio
-        'BZEROIT2XXX'::varchar AS bic_swift_test        -- BIC/SWIFT fittizio 8+3
-)
+CREATE TEMP TABLE tmp_costanti_banca_zero AS
+SELECT
+    '05555555555'::text      AS piva_test,              -- P.IVA fittizia
+    'BANK_B'::varchar        AS codice_ruolo_istituto,  -- config.tipi_ruoli.codice_interno (da adattare)
+    'EUR'::varchar           AS codice_valuta,          -- se servirà in futuro
+    'ZEROERP'::varchar       AS codice_prod_software,   -- se servirà in futuro
+    '03069'::varchar         AS bank_code_test,         -- es. ABI fittizio
+    '01234'::varchar         AS branch_code_test,       -- es. CAB fittizio
+    'BZEROIT2XXX'::varchar   AS bic_swift_test;         -- BIC/SWIFT fittizio 8+3
 
 -- =========================================================
 -- Pulizia preventiva di eventuali residui
@@ -31,63 +30,23 @@ WITH costanti AS (
 DELETE FROM anagrafiche.bank_branches bb
 USING anagrafiche.soggetti_ruoli sr,
       anagrafiche.soggetti s,
-      costanti k
+      tmp_costanti_banca_zero k
 WHERE bb.soggetto_ruolo_id = sr.id
   AND sr.soggetto_id = s.id
   AND s.partita_iva = k.piva_test;
 
-WITH costanti AS (
-    SELECT
-        '05555555555'::text  AS piva_test,
-        'BANK_B'::varchar        AS codice_ruolo_istituto,
-        'EUR'::varchar       AS codice_valuta,
-        'ZEROERP'::varchar   AS codice_prod_software,
-        '03069'::varchar     AS bank_code_test,
-        '01234'::varchar     AS branch_code_test,
-        'BZEROIT2XXX'::varchar AS bic_swift_test
-)
 DELETE FROM anagrafiche.soggetti_ruoli sr
 USING anagrafiche.soggetti s,
       config.tipi_ruoli tr,
-      costanti k
+      tmp_costanti_banca_zero k
 WHERE sr.soggetto_id = s.id
   AND sr.tipo_ruolo_id = tr.id
   AND s.partita_iva = k.piva_test
   AND tr.codice_interno = k.codice_ruolo_istituto;
 
-
-WITH costanti AS (
-    SELECT
-        '05555555555'::text  AS piva_test,
-        'BANK_B'::varchar        AS codice_ruolo_istituto,
-        'EUR'::varchar       AS codice_valuta,
-        'ZEROERP'::varchar   AS codice_prod_software,
-        '03069'::varchar     AS bank_code_test,
-        '01234'::varchar     AS branch_code_test,
-        'BZEROIT2XXX'::varchar AS bic_swift_test
-)
 DELETE FROM anagrafiche.soggetti s
-USING costanti k
+USING tmp_costanti_banca_zero k
 WHERE s.partita_iva = k.piva_test;
-
-
-
-WITH costanti AS (
-    SELECT
-        '05555555555'::text  AS piva_test,
-        'BANK_B'::varchar        AS codice_ruolo_istituto,
-        'EUR'::varchar       AS codice_valuta,
-        'ZEROERP'::varchar   AS codice_prod_software,
-        '03069'::varchar     AS bank_code_test,
-        '01234'::varchar     AS branch_code_test,
-        'BZEROIT2XXX'::varchar AS bic_swift_test
-)
-DELETE FROM anagrafiche.contatti c
-USING anagrafiche.soggetti s,
-      costanti k
-WHERE c.soggetto_id = s.id
-  AND s.partita_iva = k.piva_test;
-
 
 -- =========================================================
 -- Inizio transazione “applicativa”
@@ -97,17 +56,7 @@ BEGIN;
 -- ---------------------------------------------------------
 -- 1) Inserimento soggetto "Banca Zero Test pgTAP"
 -- ---------------------------------------------------------
-WITH costanti AS (
-    SELECT
-        '05555555555'::text  AS piva_test,
-        'BANK_B'::varchar        AS codice_ruolo_istituto,
-        'EUR'::varchar       AS codice_valuta,
-        'ZEROERP'::varchar   AS codice_prod_software,
-        '03069'::varchar     AS bank_code_test,
-        '01234'::varchar     AS branch_code_test,
-        'BZEROIT2XXX'::varchar AS bic_swift_test
-),
-nuovo_soggetto AS (
+WITH nuovo_soggetto AS (
     INSERT INTO anagrafiche.soggetti (
         ragione_sociale,
         cognome,
@@ -129,7 +78,7 @@ nuovo_soggetto AS (
         3,                 -- tipo_soggetto_dettaglio_id (PG IT, adatta se diverso)
         TRUE,
         TRUE
-    FROM costanti k
+    FROM tmp_costanti_banca_zero k
     RETURNING id, codice
 )
 SELECT *
@@ -165,24 +114,14 @@ VALUES (
 -- 2) Assegnazione ruolo ISTITUTO_CREDITO (es. codice 'IC')
 --    tramite fn_get_or_create_soggetto_ruolo
 -- ---------------------------------------------------------
-WITH costanti AS (
-    SELECT
-        '05555555555'::text  AS piva_test,
-        'BANK_B'::varchar        AS codice_ruolo_istituto,
-        'EUR'::varchar       AS codice_valuta,
-        'ZEROERP'::varchar   AS codice_prod_software,
-        '03069'::varchar     AS bank_code_test,
-        '01234'::varchar     AS branch_code_test,
-        'BZEROIT2XXX'::varchar AS bic_swift_test
-),
-soggetto_ruolo_istituto AS (
+WITH soggetto_ruolo_istituto AS (
     SELECT
         script.fn_get_or_create_soggetto_ruolo(
             p_soggetto_id   := s.id,
             p_cd_int_ruolo  := k.codice_ruolo_istituto
         ) AS id
     FROM tmp_soggetto_banca s,
-         costanti k
+         tmp_costanti_banca_zero k
 )
 SELECT id
 INTO TEMP TABLE tmp_soggetto_ruolo_istituto
@@ -198,17 +137,7 @@ SELECT is(
 -- ---------------------------------------------------------
 -- 3) Inserimento filiale in anagrafiche.bank_branches
 -- ---------------------------------------------------------
-WITH costanti AS (
-    SELECT
-        '05555555555'::text  AS piva_test,
-        'BANK_B'::varchar        AS codice_ruolo_istituto,
-        'EUR'::varchar       AS codice_valuta,
-        'ZEROERP'::varchar   AS codice_prod_software,
-        '03069'::varchar     AS bank_code_test,
-        '01234'::varchar     AS branch_code_test,
-        'BZEROIT2XXX'::varchar AS bic_swift_test
-),
-ins_filiale AS (
+WITH ins_filiale AS (
     INSERT INTO anagrafiche.bank_branches (
         soggetto_ruolo_id,
         bank_code,
@@ -223,7 +152,7 @@ ins_filiale AS (
         k.bic_swift_test,
         'Banca Zero - Filiale Test pgTAP'
     FROM tmp_soggetto_ruolo_istituto sr,
-         costanti k
+         tmp_costanti_banca_zero k
     RETURNING id
 )
 SELECT id
@@ -243,7 +172,7 @@ SELECT ok(
         SELECT 1
         FROM anagrafiche.bank_branches bb
         JOIN tmp_bank_branch tbb ON bb.id = tbb.id
-        JOIN costanti k ON TRUE
+        JOIN tmp_costanti_banca_zero k ON TRUE
         WHERE bb.bank_code   = k.bank_code_test
           AND bb.branch_code = k.branch_code_test
           AND bb.attivo      = TRUE
@@ -256,80 +185,8 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 COMMIT;
 
+-- (Opzionale) pulizia della temp table, non strettamente necessaria
+-- DROP TABLE IF EXISTS tmp_costanti_banca_zero;
 
-/*
--- =========================================================
--- Pulizia finale (idempotenza)
--- =========================================================
-WITH costanti AS (
-    SELECT
-        '05555555555'::text  AS piva_test,
-        'BANK_B'::varchar        AS codice_ruolo_istituto,
-        'EUR'::varchar       AS codice_valuta,
-        'ZEROERP'::varchar   AS codice_prod_software,
-        '03069'::varchar     AS bank_code_test,
-        '01234'::varchar     AS branch_code_test,
-        'BZEROIT2XXX'::varchar AS bic_swift_test
-)
-DELETE FROM anagrafiche.bank_branches bb
-USING anagrafiche.soggetti_ruoli sr,
-      anagrafiche.soggetti s,
-      costanti k
-WHERE bb.soggetto_ruolo_id = sr.id
-  AND sr.soggetto_id = s.id
-  AND s.partita_iva = k.piva_test;
-
-WITH costanti AS (
-    SELECT
-        '05555555555'::text  AS piva_test,
-        'BANK_B'::varchar        AS codice_ruolo_istituto,
-        'EUR'::varchar       AS codice_valuta,
-        'ZEROERP'::varchar   AS codice_prod_software,
-        '03069'::varchar     AS bank_code_test,
-        '01234'::varchar     AS branch_code_test,
-        'BZEROIT2XXX'::varchar AS bic_swift_test
-)
-DELETE FROM anagrafiche.soggetti_ruoli sr
-USING anagrafiche.soggetti s,
-      config.tipi_ruoli tr,
-      costanti k
-WHERE sr.soggetto_id = s.id
-  AND sr.tipo_ruolo_id = tr.id
-  AND s.partita_iva = k.piva_test
-  AND tr.codice_interno = k.codice_ruolo_istituto;
-
-
-WITH costanti AS (
-    SELECT
-        '05555555555'::text  AS piva_test,
-        'BANK_B'::varchar        AS codice_ruolo_istituto,
-        'EUR'::varchar       AS codice_valuta,
-        'ZEROERP'::varchar   AS codice_prod_software,
-        '03069'::varchar     AS bank_code_test,
-        '01234'::varchar     AS branch_code_test,
-        'BZEROIT2XXX'::varchar AS bic_swift_test
-)
-DELETE FROM anagrafiche.soggetti s
-USING costanti k
-WHERE s.partita_iva = k.piva_test;
-
-
-WITH costanti AS (
-    SELECT
-        '05555555555'::text  AS piva_test,
-        'BANK_B'::varchar        AS codice_ruolo_istituto,
-        'EUR'::varchar       AS codice_valuta,
-        'ZEROERP'::varchar   AS codice_prod_software,
-        '03069'::varchar     AS bank_code_test,
-        '01234'::varchar     AS branch_code_test,
-        'BZEROIT2XXX'::varchar AS bic_swift_test
-)
-DELETE FROM anagrafiche.contatti c
-USING anagrafiche.soggetti s,
-      costanti k
-WHERE c.soggetto_id = s.id
-  AND s.partita_iva = k.piva_test;
-
-*/
 -- Fine test
 SELECT * FROM finish();

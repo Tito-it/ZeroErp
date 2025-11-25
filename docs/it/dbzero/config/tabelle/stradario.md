@@ -10,9 +10,9 @@
 | geoloc | USER-DEFINED | YES |  |
 | extra_info | jsonb | YES |  |
 | data_insert | timestamp with time zone | YES | now() |
-| user_insert | character varying | YES | CURRENT_USER |
+| user_insert | text | YES | CURRENT_USER |
 | data_update | timestamp with time zone | YES | now() |
-| user_update | character varying | YES | CURRENT_USER |
+| user_update | text | YES | CURRENT_USER |
 | codice_postale_id | integer | NO |  |
 | storicizza | boolean | NO | false |
 | tx_id | uuid | YES |  |

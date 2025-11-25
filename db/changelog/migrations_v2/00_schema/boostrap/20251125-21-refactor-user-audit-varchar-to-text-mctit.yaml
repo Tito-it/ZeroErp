@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Refactor conti bancari, legami conti, e tabella gestori:
+# - Aggiunge FK bank_branch_id a anagrafiche.conti_bancari
+# - Rimuove iban da anagrafiche.gestori
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/boostrap/20251125-21-refactor-user-audit-varchar-to-text-mctit.yaml
+
+  - changeSet:
+      id: 20251125-21-refactor-user-audit-varchar-to-text
+      author: mctit
+      comment: >
+        Conversione automatica delle colonne user_insert/user_update
+        da character varying a text su tutte le tabelle applicative.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT
+                          table_schema,
+                          table_name,
+                          column_name
+                      FROM information_schema.columns
+                      WHERE column_name IN ('user_insert', 'user_update')
+                        AND data_type = 'character varying'
+                        AND table_schema NOT IN ('pg_catalog', 'information_schema')
+                        and table_name not like '%note%'
+                      ORDER BY table_schema, table_name, column_name
+                  LOOP
+                      RAISE NOTICE 'Converting %.%.% to text', r.table_schema, r.table_name, r.column_name;
+
+                      EXECUTE format(
+                          'ALTER TABLE %I.%I ALTER COLUMN %I TYPE text;',
+                          r.table_schema,
+                          r.table_name,
+                          r.column_name
+                      );
+                  END LOOP;
+              END;
+              $$;
+
+  - changeSet:
+      id: 20251125-21-01-refactor-user-audit-varchar-to-text
+      author: mctit
+      comment: >
+        Conversione automatica delle colonne user_insert/user_update
+        da character varying a text su tutte le tabelle applicative.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT
+                          table_schema,
+                          table_name,
+                          column_name
+                      FROM information_schema.columns
+                      WHERE column_name IN ('user_insert', 'user_update')
+                        AND data_type = 'character varying'
+                        AND table_schema NOT IN ('pg_catalog', 'information_schema')
+                        and table_name not like 'note_%'
+                      ORDER BY table_schema, table_name, column_name
+                  LOOP
+                      RAISE NOTICE 'Converting %.%.% to text', r.table_schema, r.table_name, r.column_name;
+
+                      EXECUTE format(
+                          'ALTER TABLE %I.%I ALTER COLUMN %I TYPE text;',
+                          r.table_schema,
+                          r.table_name,
+                          r.column_name
+                      );
+                  END LOOP;
+              END;
+              $$;
