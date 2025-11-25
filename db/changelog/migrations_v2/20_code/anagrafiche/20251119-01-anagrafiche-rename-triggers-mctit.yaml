@@ -14,7 +14,7 @@ databaseChangeLog:
           id: 20251119-01-anagrafiche-rename-triggers
           author: mctit
 
-          runAlways: true
+          # runAlways: true
           validCheckSums: <ANY>
           comment: "Rinomina trigger function schema anagrafiche secondo convenzione trgfn_<tabella>_<descrizione>"
 
@@ -101,7 +101,7 @@ databaseChangeLog:
           id: 20251119-02-anagrafiche-rename-triggers
           author: mct
 
-          runAlways: true
+          # runAlways: true
           validCheckSums: <ANY>
           comment: "Rinomina trigger function schema anagrafiche secondo convenzione trgfn_<tabella>_<descrizione>"
 

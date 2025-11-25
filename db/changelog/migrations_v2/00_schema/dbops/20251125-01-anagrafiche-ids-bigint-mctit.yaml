@@ -6,1404 +6,1404 @@
 # ------------------------------------------------------------
 
 databaseChangeLog:
-      - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20251125-01-anagrafiche-ids-bigint-mctit.yaml
-
-      - changeSet:
-              id: 20251125-01-anagrafiche-ids-bigint
-              author: mctit
-              runAlways: true
-              validCheckSums: <ANY>
-              comment: >
-                    Migrazione dei campi ID delle tabelle dello schema anagrafiche
-                    (billing_account, clienti, contatti, gestori, gestori_utilities,
-                     indirizzi, indirizzi_dettaglio, istanze_utilities, soggetti_ruoli)
-                    da integer a bigint, con allineamento di tutte le FK che li referenziano.
-                    NB: ambiente ancora di test, nessun dato di produzione.
-
-              preConditions:
-                    - onFail: MARK_RAN # se la colonna è già bigint, segna il changeSet come eseguito e salta
-                    - onError: MARK_RAN # in caso di errore nella precondizione, non bloccare la CI
-                    - sqlCheck:
-                            expectedResult: 1
-                            sql: |
-                                  SELECT COUNT(*)
-                                    FROM information_schema.columns
-                                    WHERE table_schema = 'anagrafiche'
-                                    AND table_name   = 'billing_account'
-                                    AND column_name  = 'id'
-                                    AND data_type   <> 'bigint';
-
-              changes:
-                    - sql:
-                            splitStatements: false
-                            stripComments: false
-                            sql: |
-                                  DROP VIEW IF EXISTS script.view_clienti_istanza_states;
-                                  DROP VIEW IF EXISTS dbops.diag_v_clienti_links;
-                                  DROP VIEW IF EXISTS anagrafiche.vw_conti_bancari_per_ruolo;
-
-                                  DROP TRIGGER IF EXISTS trg_ordini_a10_ao_only_consegna_tipo_con_ins_upd ON acquisti.ordini;
-                                  DROP TRIGGER IF EXISTS trg_pdp_protect_cols_upd ON anagrafiche.pdp;
-                                  DROP TRIGGER IF EXISTS trg_ordini_a10_ins_upd_ao_only_consegna_tipo_con ON acquisti.ordini;
-                                  DROP TRIGGER IF EXISTS trg_pdp_upd_protect_cols ON anagrafiche.pdp;
-
-                    # ============================
-                    # 1) DROP FOREIGN KEYS
-                    # ============================
-
-                    # billing_account → id
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: billing_account
-                            constraintName: fk_billing_account_anagrafiche
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: clienti
-                            constraintName: fk_clienti_billing_account
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: magazzino
-                            baseTableName: assets
-                            constraintName: fk_mag_assets_billing_account
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: pagamenti
-                            baseTableName: sepa_mandati
-                            constraintName: fk_sepa_mandati_billing_account
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: attivita_fatturabili
-                            constraintName: fk_attivita_fatturabili_billing_account
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: contratti
-                            constraintName: fk_contratti_billing_account
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: fatture
-                            constraintName: fk_fatture_ba
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: fatture_righe
-                            constraintName: fk_fatture_righe_ba_dest
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ordini
-                            constraintName: fk_ordini_v_billing_account
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: preventivi
-                            constraintName: fk_preventivi_billing_account
-
-                    # clienti → id
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: pdp
-                            constraintName: fk_pdp_clienti
-
-                    # contatti → id
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: soggetti
-                            constraintName: fk_contatti_anagrafiche
-
-                    # gestori → id
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: gestori_utilities
-                            constraintName: fk_gestori_anagrafiche
-
-                    # indirizzi → id
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: acquisti
-                            baseTableName: ordini
-                            constraintName: fk_ordini_ao_indir_cons
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ddt_indirizzi
-                            constraintName: fk_ddt_indirizzi_origine_indirizzo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: fatture_indirizzi
-                            constraintName: fk_fatture_indirizzi_origine_indirizzo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ordini_indirizzi
-                            constraintName: fk_ordini_indirizzi_origine_indirizzo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: preventivi_indirizzi
-                            constraintName: fk_preventivi_indirizzi_origine_indirizzo
-
-                    # indirizzi_dettaglio → id
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: dati_catastali
-                            constraintName: fk_dettaglio_catastali_indirizzi_dettaglio
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: indirizzi
-                            constraintName: fk_indirizzi_dettaglio_anagrafiche
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: istanze_utilities
-                            constraintName: fk_istanze_utilities_indirizzo_dettaglio
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: pdp
-                            constraintName: fk_pdp_indirizzi_dettaglio
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: magazzino
-                            baseTableName: magazzini
-                            constraintName: fk_magazzini_indirizzo_dettaglio
-
-                    # istanze_utilities → id
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: billing_account
-                            constraintName: fk_billing_account_istanze_utilities
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: clienti
-                            constraintName: fk_clienti_istanze_utilities
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: dati_catastali
-                            constraintName: fk_dati_catastali_istanze_utilities
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: istanze_dati_precontrattuali
-                            constraintName: fk_idp_istanze_utilities
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: istanze_utilities
-                            constraintName: fk_istanze_utilities_parent_istanza
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: pagamenti
-                            baseTableName: sepa_mandati
-                            constraintName: fk_sepa_mandati_istanza_utility
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: attivita_fatturabili
-                            constraintName: fk_attivita_fatturabili_istanze_utilities
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: contratti
-                            constraintName: fk_contratti_istanza
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: preventivi
-                            constraintName: fk_preventivi_istanza
-
-                    # soggetti_ruoli → id
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: acquisti
-                            baseTableName: ddt
-                            constraintName: fk_a_ddt_destinatario_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: acquisti
-                            baseTableName: ddt
-                            constraintName: fk_a_ddt_mittente_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: acquisti
-                            baseTableName: ordini
-                            constraintName: fk_ordini_ao_fornitore_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: bank_branches
-                            constraintName: fk_bank_branches_soggetti_ruoli
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: billing_account
-                            constraintName: fk_soggetti_ruoli_anagrafiche
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: clienti
-                            constraintName: fk_soggetti_ruoli_anagrafiche
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: contatti
-                            constraintName: fk_soggetti_ruoli_anagrafiche
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: emittenti_fiscali
-                            constraintName: fk_emittenti_fiscali_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: fornitori
-                            constraintName: fk_fornitori_soggetti_ruoli
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: gestori
-                            constraintName: fk_soggetti_ruoli_anagrafiche
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: indirizzi
-                            constraintName: fk_soggetti_ruoli_anagrafiche
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: resellers
-                            constraintName: fk_resellers_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: soggetti_ruoli_conti_bancari
-                            constraintName: fk_soggetti_ruoli_conti_bancari_soggetti_ruoli
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: vettori
-                            constraintName: fk_vettori_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ddt
-                            constraintName: fk_ddt_vendita_destinatario_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ddt
-                            constraintName: fk_ddt_vendita_mittente_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ddt
-                            constraintName: fk_ddt_vendita_vettore_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ddt_indirizzi
-                            constraintName: fk_ddt_indirizzi_origine_sog_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: fatture
-                            constraintName: fk_fatture_emittente
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: fatture
-                            constraintName: fk_fatture_reseller
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: fatture_indirizzi
-                            constraintName: fk_fatture_indirizzi_origine_sog_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ordini
-                            constraintName: fk_ordini_v_cliente_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ordini_indirizzi
-                            constraintName: fk_ordini_indirizzi_origine_sog_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: preventivi_indirizzi
-                            constraintName: fk_preventivi_indirizzi_origine_sog_ruolo
-
-                    - dropForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: registri_fatturazione
-                            constraintName: fk_registri_fatturazione_emitt
-
-                    # ============================
-                    # 2) MODIFY PK ID → BIGINT
-                    # ============================
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: billing_account
-                            columnName: id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: clienti
-                            columnName: id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: contatti
-                            columnName: id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: gestori
-                            columnName: id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: gestori_utilities
-                            columnName: id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: indirizzi
-                            columnName: id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: indirizzi_dettaglio
-                            columnName: id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: istanze_utilities
-                            columnName: id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: soggetti_ruoli
-                            columnName: id
-                            newDataType: bigint
-
-                    # ============================
-                    # 3) MODIFY FK COLUMN → BIGINT
-                    # (tutte quelle elencate dalla query)
-                    # ============================
-
-                    # billing_account refs
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: billing_account
-                            columnName: parent_account_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: clienti
-                            columnName: billing_account_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: magazzino
-                            tableName: assets
-                            columnName: billing_account_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: pagamenti
-                            tableName: sepa_mandati
-                            columnName: billing_account_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: attivita_fatturabili
-                            columnName: billing_account_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: contratti
-                            columnName: billing_account_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: fatture
-                            columnName: billing_account_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: fatture_righe
-                            columnName: dest_billing_account_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: ordini
-                            columnName: billing_account_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: preventivi
-                            columnName: billing_account_id
-                            newDataType: bigint
-
-                    # clienti refs
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: pdp
-                            columnName: cliente_id
-                            newDataType: bigint
-
-                    # contatti refs
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: soggetti
-                            columnName: default_contatto_id
-                            newDataType: bigint
-
-                    # gestori refs
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: gestori_utilities
-                            columnName: gestore_id
-                            newDataType: bigint
-
-                    # indirizzi refs
-                    - modifyDataType:
-                            schemaName: acquisti
-                            tableName: ordini
-                            columnName: indirizzo_consegna_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: ddt_indirizzi
-                            columnName: origine_indirizzo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: fatture_indirizzi
-                            columnName: origine_indirizzo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: ordini_indirizzi
-                            columnName: origine_indirizzo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: preventivi_indirizzi
-                            columnName: origine_indirizzo_id
-                            newDataType: bigint
-
-                    # indirizzi_dettaglio refs
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: dati_catastali
-                            columnName: indirizzo_dettaglio_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: indirizzi
-                            columnName: indirizzo_dettaglio_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: istanze_utilities
-                            columnName: indirizzo_dettaglio_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: pdp
-                            columnName: indirizzo_dettaglio_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: magazzino
-                            tableName: magazzini
-                            columnName: indirizzo_dettaglio_id
-                            newDataType: bigint
-
-                    # istanze_utilities refs
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: billing_account
-                            columnName: istanza_utility_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: clienti
-                            columnName: istanza_utility_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: dati_catastali
-                            columnName: istanza_utility_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: istanze_dati_precontrattuali
-                            columnName: istanza_utility_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: istanze_utilities
-                            columnName: parent_istanza_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: pagamenti
-                            tableName: sepa_mandati
-                            columnName: istanza_utility_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: attivita_fatturabili
-                            columnName: istanza_utility_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: contratti
-                            columnName: istanza_utility_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: preventivi
-                            columnName: istanza_utility_id
-                            newDataType: bigint
-
-                    # soggetti_ruoli refs
-                    - modifyDataType:
-                            schemaName: acquisti
-                            tableName: ddt
-                            columnName: destinatario_soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: acquisti
-                            tableName: ddt
-                            columnName: mittente_soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: acquisti
-                            tableName: ordini
-                            columnName: soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: bank_branches
-                            columnName: soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: billing_account
-                            columnName: soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: clienti
-                            columnName: soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: contatti
-                            columnName: soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: emittenti_fiscali
-                            columnName: soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: fornitori
-                            columnName: soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: gestori
-                            columnName: soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: indirizzi
-                            columnName: soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: resellers
-                            columnName: soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: soggetti_ruoli_conti_bancari
-                            columnName: soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: anagrafiche
-                            tableName: vettori
-                            columnName: soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: ddt
-                            columnName: destinatario_soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: ddt
-                            columnName: mittente_soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: ddt
-                            columnName: vettore_soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: ddt_indirizzi
-                            columnName: origine_soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: fatture
-                            columnName: emittente_soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: fatture
-                            columnName: reseller_soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: fatture_indirizzi
-                            columnName: origine_soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: ordini
-                            columnName: soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: ordini_indirizzi
-                            columnName: origine_soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: preventivi_indirizzi
-                            columnName: origine_soggetto_ruolo_id
-                            newDataType: bigint
-
-                    - modifyDataType:
-                            schemaName: vendite
-                            tableName: registri_fatturazione
-                            columnName: emittente_soggetto_ruolo_id
-                            newDataType: bigint
-
-                    # ============================
-                    # 4) RE-ADD FOREIGN KEYS
-                    # (stessa lista di prima, ma re-creata dopo i change di tipo)
-                    # ============================
-
-                    # billing_account → id
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: billing_account
-                            baseColumnNames: parent_account_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: billing_account
-                            referencedColumnNames: id
-                            constraintName: fk_billing_account_anagrafiche
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: clienti
-                            baseColumnNames: billing_account_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: billing_account
-                            referencedColumnNames: id
-                            constraintName: fk_clienti_billing_account
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: magazzino
-                            baseTableName: assets
-                            baseColumnNames: billing_account_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: billing_account
-                            referencedColumnNames: id
-                            constraintName: fk_mag_assets_billing_account
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: pagamenti
-                            baseTableName: sepa_mandati
-                            baseColumnNames: billing_account_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: billing_account
-                            referencedColumnNames: id
-                            constraintName: fk_sepa_mandati_billing_account
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: attivita_fatturabili
-                            baseColumnNames: billing_account_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: billing_account
-                            referencedColumnNames: id
-                            constraintName: fk_attivita_fatturabili_billing_account
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: contratti
-                            baseColumnNames: billing_account_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: billing_account
-                            referencedColumnNames: id
-                            constraintName: fk_contratti_billing_account
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: fatture
-                            baseColumnNames: billing_account_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: billing_account
-                            referencedColumnNames: id
-                            constraintName: fk_fatture_ba
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: fatture_righe
-                            baseColumnNames: dest_billing_account_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: billing_account
-                            referencedColumnNames: id
-                            constraintName: fk_fatture_righe_ba_dest
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ordini
-                            baseColumnNames: billing_account_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: billing_account
-                            referencedColumnNames: id
-                            constraintName: fk_ordini_v_billing_account
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: preventivi
-                            baseColumnNames: billing_account_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: billing_account
-                            referencedColumnNames: id
-                            constraintName: fk_preventivi_billing_account
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    # ... (segue stessa sequenza per tutte le altre FK,
-                    #      esattamente come droppate sopra, ma in addForeignKeyConstraint)
-
-                    # =====================================================
-                    # 4b) RE-ADD FOREIGN KEYS – resto delle dipendenze
-                    # =====================================================
-
-                    # ---------- clienti.id ----------
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: pdp
-                            baseColumnNames: cliente_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: clienti
-                            referencedColumnNames: id
-                            constraintName: fk_pdp_clienti
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    # ---------- contatti.id ----------
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: soggetti
-                            baseColumnNames: default_contatto_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: contatti
-                            referencedColumnNames: id
-                            constraintName: fk_contatti_anagrafiche
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    # ---------- gestori.id ----------
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: gestori_utilities
-                            baseColumnNames: gestore_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: gestori
-                            referencedColumnNames: id
-                            constraintName: fk_gestori_anagrafiche
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    # ---------- indirizzi.id ----------
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: acquisti
-                            baseTableName: ordini
-                            baseColumnNames: indirizzo_consegna_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: indirizzi
-                            referencedColumnNames: id
-                            constraintName: fk_ordini_ao_indir_cons
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ddt_indirizzi
-                            baseColumnNames: origine_indirizzo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: indirizzi
-                            referencedColumnNames: id
-                            constraintName: fk_ddt_indirizzi_origine_indirizzo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: fatture_indirizzi
-                            baseColumnNames: origine_indirizzo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: indirizzi
-                            referencedColumnNames: id
-                            constraintName: fk_fatture_indirizzi_origine_indirizzo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ordini_indirizzi
-                            baseColumnNames: origine_indirizzo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: indirizzi
-                            referencedColumnNames: id
-                            constraintName: fk_ordini_indirizzi_origine_indirizzo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: preventivi_indirizzi
-                            baseColumnNames: origine_indirizzo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: indirizzi
-                            referencedColumnNames: id
-                            constraintName: fk_preventivi_indirizzi_origine_indirizzo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    # ---------- indirizzi_dettaglio.id ----------
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: dati_catastali
-                            baseColumnNames: indirizzo_dettaglio_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: indirizzi_dettaglio
-                            referencedColumnNames: id
-                            constraintName: fk_dettaglio_catastali_indirizzi_dettaglio
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: indirizzi
-                            baseColumnNames: indirizzo_dettaglio_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: indirizzi_dettaglio
-                            referencedColumnNames: id
-                            constraintName: fk_indirizzi_dettaglio_anagrafiche
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: istanze_utilities
-                            baseColumnNames: indirizzo_dettaglio_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: indirizzi_dettaglio
-                            referencedColumnNames: id
-                            constraintName: fk_istanze_utilities_indirizzo_dettaglio
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: pdp
-                            baseColumnNames: indirizzo_dettaglio_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: indirizzi_dettaglio
-                            referencedColumnNames: id
-                            constraintName: fk_pdp_indirizzi_dettaglio
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: magazzino
-                            baseTableName: magazzini
-                            baseColumnNames: indirizzo_dettaglio_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: indirizzi_dettaglio
-                            referencedColumnNames: id
-                            constraintName: fk_magazzini_indirizzo_dettaglio
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    # ---------- istanze_utilities.id ----------
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: billing_account
-                            baseColumnNames: istanza_utility_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: istanze_utilities
-                            referencedColumnNames: id
-                            constraintName: fk_billing_account_istanze_utilities
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: clienti
-                            baseColumnNames: istanza_utility_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: istanze_utilities
-                            referencedColumnNames: id
-                            constraintName: fk_clienti_istanze_utilities
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: dati_catastali
-                            baseColumnNames: istanza_utility_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: istanze_utilities
-                            referencedColumnNames: id
-                            constraintName: fk_dati_catastali_istanze_utilities
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: istanze_dati_precontrattuali
-                            baseColumnNames: istanza_utility_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: istanze_utilities
-                            referencedColumnNames: id
-                            constraintName: fk_idp_istanze_utilities
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: istanze_utilities
-                            baseColumnNames: parent_istanza_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: istanze_utilities
-                            referencedColumnNames: id
-                            constraintName: fk_istanze_utilities_parent_istanza
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: pagamenti
-                            baseTableName: sepa_mandati
-                            baseColumnNames: istanza_utility_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: istanze_utilities
-                            referencedColumnNames: id
-                            constraintName: fk_sepa_mandati_istanza_utility
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: attivita_fatturabili
-                            baseColumnNames: istanza_utility_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: istanze_utilities
-                            referencedColumnNames: id
-                            constraintName: fk_attivita_fatturabili_istanze_utilities
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: contratti
-                            baseColumnNames: istanza_utility_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: istanze_utilities
-                            referencedColumnNames: id
-                            constraintName: fk_contratti_istanza
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: preventivi
-                            baseColumnNames: istanza_utility_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: istanze_utilities
-                            referencedColumnNames: id
-                            constraintName: fk_preventivi_istanza
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    # ---------- soggetti_ruoli.id (acquisti.ddt / ordini) ----------
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: acquisti
-                            baseTableName: ddt
-                            baseColumnNames: destinatario_soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_a_ddt_destinatario_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: acquisti
-                            baseTableName: ddt
-                            baseColumnNames: mittente_soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_a_ddt_mittente_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: acquisti
-                            baseTableName: ordini
-                            baseColumnNames: soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_ordini_ao_fornitore_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    # ---------- soggetti_ruoli.id (bank_branches) ----------
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: bank_branches
-                            baseColumnNames: soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_bank_branches_soggetti_ruoli
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    # ---------- soggetti_ruoli.id (billing_account / clienti / contatti / gestori / indirizzi) ----------
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: billing_account
-                            baseColumnNames: soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_soggetti_ruoli_anagrafiche
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: clienti
-                            baseColumnNames: soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_soggetti_ruoli_anagrafiche
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: contatti
-                            baseColumnNames: soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_soggetti_ruoli_anagrafiche
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: gestori
-                            baseColumnNames: soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_soggetti_ruoli_anagrafiche
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: indirizzi
-                            baseColumnNames: soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_soggetti_ruoli_anagrafiche
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    # ---------- soggetti_ruoli.id (altri ruoli) ----------
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: emittenti_fiscali
-                            baseColumnNames: soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_emittenti_fiscali_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: fornitori
-                            baseColumnNames: soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_fornitori_soggetti_ruoli
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: resellers
-                            baseColumnNames: soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_resellers_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: soggetti_ruoli_conti_bancari
-                            baseColumnNames: soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_soggetti_ruoli_conti_bancari_soggetti_ruoli
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: anagrafiche
-                            baseTableName: vettori
-                            baseColumnNames: soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_vettori_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    # ---------- soggetti_ruoli.id (vendite.ddt / indirizzi / fatture / ordini / preventivi / registri) ----------
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ddt
-                            baseColumnNames: destinatario_soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_ddt_vendita_destinatario_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ddt
-                            baseColumnNames: mittente_soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_ddt_vendita_mittente_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ddt
-                            baseColumnNames: vettore_soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_ddt_vendita_vettore_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ddt_indirizzi
-                            baseColumnNames: origine_soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_ddt_indirizzi_origine_sog_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: fatture
-                            baseColumnNames: emittente_soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_fatture_emittente
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: fatture
-                            baseColumnNames: reseller_soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_fatture_reseller
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: fatture_indirizzi
-                            baseColumnNames: origine_soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_fatture_indirizzi_origine_sog_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ordini
-                            baseColumnNames: soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_ordini_v_cliente_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: ordini_indirizzi
-                            baseColumnNames: origine_soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_ordini_indirizzi_origine_sog_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: preventivi_indirizzi
-                            baseColumnNames: origine_soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_preventivi_indirizzi_origine_sog_ruolo
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
-
-                    - addForeignKeyConstraint:
-                            baseTableSchemaName: vendite
-                            baseTableName: registri_fatturazione
-                            baseColumnNames: emittente_soggetto_ruolo_id
-                            referencedTableSchemaName: anagrafiche
-                            referencedTableName: soggetti_ruoli
-                            referencedColumnNames: id
-                            constraintName: fk_registri_fatturazione_emitt
-                            onUpdate: CASCADE
-                            onDelete: NO ACTION
+        - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20251125-01-anagrafiche-ids-bigint-mctit.yaml
+
+        - changeSet:
+                  id: 20251125-01-anagrafiche-ids-bigint
+                  author: mctit
+                  # runAlways: true
+                  validCheckSums: <ANY>
+                  comment: >
+                          Migrazione dei campi ID delle tabelle dello schema anagrafiche
+                          (billing_account, clienti, contatti, gestori, gestori_utilities,
+                           indirizzi, indirizzi_dettaglio, istanze_utilities, soggetti_ruoli)
+                          da integer a bigint, con allineamento di tutte le FK che li referenziano.
+                          NB: ambiente ancora di test, nessun dato di produzione.
+
+                  preConditions:
+                          - onFail: MARK_RAN # se la colonna è già bigint, segna il changeSet come eseguito e salta
+                          - onError: MARK_RAN # in caso di errore nella precondizione, non bloccare la CI
+                          - sqlCheck:
+                                    expectedResult: 1
+                                    sql: |
+                                            SELECT COUNT(*)
+                                              FROM information_schema.columns
+                                              WHERE table_schema = 'anagrafiche'
+                                              AND table_name   = 'billing_account'
+                                              AND column_name  = 'id'
+                                              AND data_type   <> 'bigint';
+
+                  changes:
+                          - sql:
+                                    splitStatements: false
+                                    stripComments: false
+                                    sql: |
+                                            DROP VIEW IF EXISTS script.view_clienti_istanza_states;
+                                            DROP VIEW IF EXISTS dbops.diag_v_clienti_links;
+                                            DROP VIEW IF EXISTS anagrafiche.vw_conti_bancari_per_ruolo;
+
+                                            DROP TRIGGER IF EXISTS trg_ordini_a10_ao_only_consegna_tipo_con_ins_upd ON acquisti.ordini;
+                                            DROP TRIGGER IF EXISTS trg_pdp_protect_cols_upd ON anagrafiche.pdp;
+                                            DROP TRIGGER IF EXISTS trg_ordini_a10_ins_upd_ao_only_consegna_tipo_con ON acquisti.ordini;
+                                            DROP TRIGGER IF EXISTS trg_pdp_upd_protect_cols ON anagrafiche.pdp;
+
+                          # ============================
+                          # 1) DROP FOREIGN KEYS
+                          # ============================
+
+                          # billing_account → id
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: billing_account
+                                    constraintName: fk_billing_account_anagrafiche
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: clienti
+                                    constraintName: fk_clienti_billing_account
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: magazzino
+                                    baseTableName: assets
+                                    constraintName: fk_mag_assets_billing_account
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: pagamenti
+                                    baseTableName: sepa_mandati
+                                    constraintName: fk_sepa_mandati_billing_account
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: attivita_fatturabili
+                                    constraintName: fk_attivita_fatturabili_billing_account
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: contratti
+                                    constraintName: fk_contratti_billing_account
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: fatture
+                                    constraintName: fk_fatture_ba
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: fatture_righe
+                                    constraintName: fk_fatture_righe_ba_dest
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ordini
+                                    constraintName: fk_ordini_v_billing_account
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: preventivi
+                                    constraintName: fk_preventivi_billing_account
+
+                          # clienti → id
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: pdp
+                                    constraintName: fk_pdp_clienti
+
+                          # contatti → id
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: soggetti
+                                    constraintName: fk_contatti_anagrafiche
+
+                          # gestori → id
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: gestori_utilities
+                                    constraintName: fk_gestori_anagrafiche
+
+                          # indirizzi → id
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: acquisti
+                                    baseTableName: ordini
+                                    constraintName: fk_ordini_ao_indir_cons
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ddt_indirizzi
+                                    constraintName: fk_ddt_indirizzi_origine_indirizzo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: fatture_indirizzi
+                                    constraintName: fk_fatture_indirizzi_origine_indirizzo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ordini_indirizzi
+                                    constraintName: fk_ordini_indirizzi_origine_indirizzo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: preventivi_indirizzi
+                                    constraintName: fk_preventivi_indirizzi_origine_indirizzo
+
+                          # indirizzi_dettaglio → id
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: dati_catastali
+                                    constraintName: fk_dettaglio_catastali_indirizzi_dettaglio
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: indirizzi
+                                    constraintName: fk_indirizzi_dettaglio_anagrafiche
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: istanze_utilities
+                                    constraintName: fk_istanze_utilities_indirizzo_dettaglio
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: pdp
+                                    constraintName: fk_pdp_indirizzi_dettaglio
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: magazzino
+                                    baseTableName: magazzini
+                                    constraintName: fk_magazzini_indirizzo_dettaglio
+
+                          # istanze_utilities → id
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: billing_account
+                                    constraintName: fk_billing_account_istanze_utilities
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: clienti
+                                    constraintName: fk_clienti_istanze_utilities
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: dati_catastali
+                                    constraintName: fk_dati_catastali_istanze_utilities
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: istanze_dati_precontrattuali
+                                    constraintName: fk_idp_istanze_utilities
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: istanze_utilities
+                                    constraintName: fk_istanze_utilities_parent_istanza
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: pagamenti
+                                    baseTableName: sepa_mandati
+                                    constraintName: fk_sepa_mandati_istanza_utility
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: attivita_fatturabili
+                                    constraintName: fk_attivita_fatturabili_istanze_utilities
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: contratti
+                                    constraintName: fk_contratti_istanza
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: preventivi
+                                    constraintName: fk_preventivi_istanza
+
+                          # soggetti_ruoli → id
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: acquisti
+                                    baseTableName: ddt
+                                    constraintName: fk_a_ddt_destinatario_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: acquisti
+                                    baseTableName: ddt
+                                    constraintName: fk_a_ddt_mittente_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: acquisti
+                                    baseTableName: ordini
+                                    constraintName: fk_ordini_ao_fornitore_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: bank_branches
+                                    constraintName: fk_bank_branches_soggetti_ruoli
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: billing_account
+                                    constraintName: fk_soggetti_ruoli_anagrafiche
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: clienti
+                                    constraintName: fk_soggetti_ruoli_anagrafiche
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: contatti
+                                    constraintName: fk_soggetti_ruoli_anagrafiche
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: emittenti_fiscali
+                                    constraintName: fk_emittenti_fiscali_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: fornitori
+                                    constraintName: fk_fornitori_soggetti_ruoli
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: gestori
+                                    constraintName: fk_soggetti_ruoli_anagrafiche
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: indirizzi
+                                    constraintName: fk_soggetti_ruoli_anagrafiche
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: resellers
+                                    constraintName: fk_resellers_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: soggetti_ruoli_conti_bancari
+                                    constraintName: fk_soggetti_ruoli_conti_bancari_soggetti_ruoli
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: vettori
+                                    constraintName: fk_vettori_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ddt
+                                    constraintName: fk_ddt_vendita_destinatario_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ddt
+                                    constraintName: fk_ddt_vendita_mittente_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ddt
+                                    constraintName: fk_ddt_vendita_vettore_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ddt_indirizzi
+                                    constraintName: fk_ddt_indirizzi_origine_sog_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: fatture
+                                    constraintName: fk_fatture_emittente
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: fatture
+                                    constraintName: fk_fatture_reseller
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: fatture_indirizzi
+                                    constraintName: fk_fatture_indirizzi_origine_sog_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ordini
+                                    constraintName: fk_ordini_v_cliente_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ordini_indirizzi
+                                    constraintName: fk_ordini_indirizzi_origine_sog_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: preventivi_indirizzi
+                                    constraintName: fk_preventivi_indirizzi_origine_sog_ruolo
+
+                          - dropForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: registri_fatturazione
+                                    constraintName: fk_registri_fatturazione_emitt
+
+                          # ============================
+                          # 2) MODIFY PK ID → BIGINT
+                          # ============================
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: billing_account
+                                    columnName: id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: clienti
+                                    columnName: id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: contatti
+                                    columnName: id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: gestori
+                                    columnName: id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: gestori_utilities
+                                    columnName: id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: indirizzi
+                                    columnName: id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: indirizzi_dettaglio
+                                    columnName: id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: istanze_utilities
+                                    columnName: id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: soggetti_ruoli
+                                    columnName: id
+                                    newDataType: bigint
+
+                          # ============================
+                          # 3) MODIFY FK COLUMN → BIGINT
+                          # (tutte quelle elencate dalla query)
+                          # ============================
+
+                          # billing_account refs
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: billing_account
+                                    columnName: parent_account_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: clienti
+                                    columnName: billing_account_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: magazzino
+                                    tableName: assets
+                                    columnName: billing_account_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: pagamenti
+                                    tableName: sepa_mandati
+                                    columnName: billing_account_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: attivita_fatturabili
+                                    columnName: billing_account_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: contratti
+                                    columnName: billing_account_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: fatture
+                                    columnName: billing_account_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: fatture_righe
+                                    columnName: dest_billing_account_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: ordini
+                                    columnName: billing_account_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: preventivi
+                                    columnName: billing_account_id
+                                    newDataType: bigint
+
+                          # clienti refs
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: pdp
+                                    columnName: cliente_id
+                                    newDataType: bigint
+
+                          # contatti refs
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: soggetti
+                                    columnName: default_contatto_id
+                                    newDataType: bigint
+
+                          # gestori refs
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: gestori_utilities
+                                    columnName: gestore_id
+                                    newDataType: bigint
+
+                          # indirizzi refs
+                          - modifyDataType:
+                                    schemaName: acquisti
+                                    tableName: ordini
+                                    columnName: indirizzo_consegna_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: ddt_indirizzi
+                                    columnName: origine_indirizzo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: fatture_indirizzi
+                                    columnName: origine_indirizzo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: ordini_indirizzi
+                                    columnName: origine_indirizzo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: preventivi_indirizzi
+                                    columnName: origine_indirizzo_id
+                                    newDataType: bigint
+
+                          # indirizzi_dettaglio refs
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: dati_catastali
+                                    columnName: indirizzo_dettaglio_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: indirizzi
+                                    columnName: indirizzo_dettaglio_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: istanze_utilities
+                                    columnName: indirizzo_dettaglio_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: pdp
+                                    columnName: indirizzo_dettaglio_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: magazzino
+                                    tableName: magazzini
+                                    columnName: indirizzo_dettaglio_id
+                                    newDataType: bigint
+
+                          # istanze_utilities refs
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: billing_account
+                                    columnName: istanza_utility_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: clienti
+                                    columnName: istanza_utility_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: dati_catastali
+                                    columnName: istanza_utility_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: istanze_dati_precontrattuali
+                                    columnName: istanza_utility_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: istanze_utilities
+                                    columnName: parent_istanza_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: pagamenti
+                                    tableName: sepa_mandati
+                                    columnName: istanza_utility_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: attivita_fatturabili
+                                    columnName: istanza_utility_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: contratti
+                                    columnName: istanza_utility_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: preventivi
+                                    columnName: istanza_utility_id
+                                    newDataType: bigint
+
+                          # soggetti_ruoli refs
+                          - modifyDataType:
+                                    schemaName: acquisti
+                                    tableName: ddt
+                                    columnName: destinatario_soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: acquisti
+                                    tableName: ddt
+                                    columnName: mittente_soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: acquisti
+                                    tableName: ordini
+                                    columnName: soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: bank_branches
+                                    columnName: soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: billing_account
+                                    columnName: soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: clienti
+                                    columnName: soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: contatti
+                                    columnName: soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: emittenti_fiscali
+                                    columnName: soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: fornitori
+                                    columnName: soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: gestori
+                                    columnName: soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: indirizzi
+                                    columnName: soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: resellers
+                                    columnName: soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: soggetti_ruoli_conti_bancari
+                                    columnName: soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: anagrafiche
+                                    tableName: vettori
+                                    columnName: soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: ddt
+                                    columnName: destinatario_soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: ddt
+                                    columnName: mittente_soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: ddt
+                                    columnName: vettore_soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: ddt_indirizzi
+                                    columnName: origine_soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: fatture
+                                    columnName: emittente_soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: fatture
+                                    columnName: reseller_soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: fatture_indirizzi
+                                    columnName: origine_soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: ordini
+                                    columnName: soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: ordini_indirizzi
+                                    columnName: origine_soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: preventivi_indirizzi
+                                    columnName: origine_soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          - modifyDataType:
+                                    schemaName: vendite
+                                    tableName: registri_fatturazione
+                                    columnName: emittente_soggetto_ruolo_id
+                                    newDataType: bigint
+
+                          # ============================
+                          # 4) RE-ADD FOREIGN KEYS
+                          # (stessa lista di prima, ma re-creata dopo i change di tipo)
+                          # ============================
+
+                          # billing_account → id
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: billing_account
+                                    baseColumnNames: parent_account_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: billing_account
+                                    referencedColumnNames: id
+                                    constraintName: fk_billing_account_anagrafiche
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: clienti
+                                    baseColumnNames: billing_account_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: billing_account
+                                    referencedColumnNames: id
+                                    constraintName: fk_clienti_billing_account
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: magazzino
+                                    baseTableName: assets
+                                    baseColumnNames: billing_account_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: billing_account
+                                    referencedColumnNames: id
+                                    constraintName: fk_mag_assets_billing_account
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: pagamenti
+                                    baseTableName: sepa_mandati
+                                    baseColumnNames: billing_account_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: billing_account
+                                    referencedColumnNames: id
+                                    constraintName: fk_sepa_mandati_billing_account
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: attivita_fatturabili
+                                    baseColumnNames: billing_account_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: billing_account
+                                    referencedColumnNames: id
+                                    constraintName: fk_attivita_fatturabili_billing_account
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: contratti
+                                    baseColumnNames: billing_account_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: billing_account
+                                    referencedColumnNames: id
+                                    constraintName: fk_contratti_billing_account
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: fatture
+                                    baseColumnNames: billing_account_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: billing_account
+                                    referencedColumnNames: id
+                                    constraintName: fk_fatture_ba
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: fatture_righe
+                                    baseColumnNames: dest_billing_account_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: billing_account
+                                    referencedColumnNames: id
+                                    constraintName: fk_fatture_righe_ba_dest
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ordini
+                                    baseColumnNames: billing_account_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: billing_account
+                                    referencedColumnNames: id
+                                    constraintName: fk_ordini_v_billing_account
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: preventivi
+                                    baseColumnNames: billing_account_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: billing_account
+                                    referencedColumnNames: id
+                                    constraintName: fk_preventivi_billing_account
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          # ... (segue stessa sequenza per tutte le altre FK,
+                          #      esattamente come droppate sopra, ma in addForeignKeyConstraint)
+
+                          # =====================================================
+                          # 4b) RE-ADD FOREIGN KEYS – resto delle dipendenze
+                          # =====================================================
+
+                          # ---------- clienti.id ----------
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: pdp
+                                    baseColumnNames: cliente_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: clienti
+                                    referencedColumnNames: id
+                                    constraintName: fk_pdp_clienti
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          # ---------- contatti.id ----------
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: soggetti
+                                    baseColumnNames: default_contatto_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: contatti
+                                    referencedColumnNames: id
+                                    constraintName: fk_contatti_anagrafiche
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          # ---------- gestori.id ----------
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: gestori_utilities
+                                    baseColumnNames: gestore_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: gestori
+                                    referencedColumnNames: id
+                                    constraintName: fk_gestori_anagrafiche
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          # ---------- indirizzi.id ----------
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: acquisti
+                                    baseTableName: ordini
+                                    baseColumnNames: indirizzo_consegna_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: indirizzi
+                                    referencedColumnNames: id
+                                    constraintName: fk_ordini_ao_indir_cons
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ddt_indirizzi
+                                    baseColumnNames: origine_indirizzo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: indirizzi
+                                    referencedColumnNames: id
+                                    constraintName: fk_ddt_indirizzi_origine_indirizzo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: fatture_indirizzi
+                                    baseColumnNames: origine_indirizzo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: indirizzi
+                                    referencedColumnNames: id
+                                    constraintName: fk_fatture_indirizzi_origine_indirizzo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ordini_indirizzi
+                                    baseColumnNames: origine_indirizzo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: indirizzi
+                                    referencedColumnNames: id
+                                    constraintName: fk_ordini_indirizzi_origine_indirizzo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: preventivi_indirizzi
+                                    baseColumnNames: origine_indirizzo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: indirizzi
+                                    referencedColumnNames: id
+                                    constraintName: fk_preventivi_indirizzi_origine_indirizzo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          # ---------- indirizzi_dettaglio.id ----------
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: dati_catastali
+                                    baseColumnNames: indirizzo_dettaglio_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: indirizzi_dettaglio
+                                    referencedColumnNames: id
+                                    constraintName: fk_dettaglio_catastali_indirizzi_dettaglio
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: indirizzi
+                                    baseColumnNames: indirizzo_dettaglio_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: indirizzi_dettaglio
+                                    referencedColumnNames: id
+                                    constraintName: fk_indirizzi_dettaglio_anagrafiche
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: istanze_utilities
+                                    baseColumnNames: indirizzo_dettaglio_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: indirizzi_dettaglio
+                                    referencedColumnNames: id
+                                    constraintName: fk_istanze_utilities_indirizzo_dettaglio
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: pdp
+                                    baseColumnNames: indirizzo_dettaglio_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: indirizzi_dettaglio
+                                    referencedColumnNames: id
+                                    constraintName: fk_pdp_indirizzi_dettaglio
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: magazzino
+                                    baseTableName: magazzini
+                                    baseColumnNames: indirizzo_dettaglio_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: indirizzi_dettaglio
+                                    referencedColumnNames: id
+                                    constraintName: fk_magazzini_indirizzo_dettaglio
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          # ---------- istanze_utilities.id ----------
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: billing_account
+                                    baseColumnNames: istanza_utility_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: istanze_utilities
+                                    referencedColumnNames: id
+                                    constraintName: fk_billing_account_istanze_utilities
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: clienti
+                                    baseColumnNames: istanza_utility_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: istanze_utilities
+                                    referencedColumnNames: id
+                                    constraintName: fk_clienti_istanze_utilities
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: dati_catastali
+                                    baseColumnNames: istanza_utility_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: istanze_utilities
+                                    referencedColumnNames: id
+                                    constraintName: fk_dati_catastali_istanze_utilities
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: istanze_dati_precontrattuali
+                                    baseColumnNames: istanza_utility_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: istanze_utilities
+                                    referencedColumnNames: id
+                                    constraintName: fk_idp_istanze_utilities
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: istanze_utilities
+                                    baseColumnNames: parent_istanza_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: istanze_utilities
+                                    referencedColumnNames: id
+                                    constraintName: fk_istanze_utilities_parent_istanza
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: pagamenti
+                                    baseTableName: sepa_mandati
+                                    baseColumnNames: istanza_utility_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: istanze_utilities
+                                    referencedColumnNames: id
+                                    constraintName: fk_sepa_mandati_istanza_utility
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: attivita_fatturabili
+                                    baseColumnNames: istanza_utility_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: istanze_utilities
+                                    referencedColumnNames: id
+                                    constraintName: fk_attivita_fatturabili_istanze_utilities
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: contratti
+                                    baseColumnNames: istanza_utility_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: istanze_utilities
+                                    referencedColumnNames: id
+                                    constraintName: fk_contratti_istanza
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: preventivi
+                                    baseColumnNames: istanza_utility_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: istanze_utilities
+                                    referencedColumnNames: id
+                                    constraintName: fk_preventivi_istanza
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          # ---------- soggetti_ruoli.id (acquisti.ddt / ordini) ----------
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: acquisti
+                                    baseTableName: ddt
+                                    baseColumnNames: destinatario_soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_a_ddt_destinatario_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: acquisti
+                                    baseTableName: ddt
+                                    baseColumnNames: mittente_soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_a_ddt_mittente_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: acquisti
+                                    baseTableName: ordini
+                                    baseColumnNames: soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_ordini_ao_fornitore_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          # ---------- soggetti_ruoli.id (bank_branches) ----------
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: bank_branches
+                                    baseColumnNames: soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_bank_branches_soggetti_ruoli
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          # ---------- soggetti_ruoli.id (billing_account / clienti / contatti / gestori / indirizzi) ----------
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: billing_account
+                                    baseColumnNames: soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_soggetti_ruoli_anagrafiche
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: clienti
+                                    baseColumnNames: soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_soggetti_ruoli_anagrafiche
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: contatti
+                                    baseColumnNames: soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_soggetti_ruoli_anagrafiche
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: gestori
+                                    baseColumnNames: soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_soggetti_ruoli_anagrafiche
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: indirizzi
+                                    baseColumnNames: soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_soggetti_ruoli_anagrafiche
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          # ---------- soggetti_ruoli.id (altri ruoli) ----------
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: emittenti_fiscali
+                                    baseColumnNames: soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_emittenti_fiscali_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: fornitori
+                                    baseColumnNames: soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_fornitori_soggetti_ruoli
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: resellers
+                                    baseColumnNames: soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_resellers_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: soggetti_ruoli_conti_bancari
+                                    baseColumnNames: soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_soggetti_ruoli_conti_bancari_soggetti_ruoli
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: anagrafiche
+                                    baseTableName: vettori
+                                    baseColumnNames: soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_vettori_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          # ---------- soggetti_ruoli.id (vendite.ddt / indirizzi / fatture / ordini / preventivi / registri) ----------
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ddt
+                                    baseColumnNames: destinatario_soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_ddt_vendita_destinatario_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ddt
+                                    baseColumnNames: mittente_soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_ddt_vendita_mittente_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ddt
+                                    baseColumnNames: vettore_soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_ddt_vendita_vettore_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ddt_indirizzi
+                                    baseColumnNames: origine_soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_ddt_indirizzi_origine_sog_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: fatture
+                                    baseColumnNames: emittente_soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_fatture_emittente
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: fatture
+                                    baseColumnNames: reseller_soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_fatture_reseller
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: fatture_indirizzi
+                                    baseColumnNames: origine_soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_fatture_indirizzi_origine_sog_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ordini
+                                    baseColumnNames: soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_ordini_v_cliente_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: ordini_indirizzi
+                                    baseColumnNames: origine_soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_ordini_indirizzi_origine_sog_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: preventivi_indirizzi
+                                    baseColumnNames: origine_soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_preventivi_indirizzi_origine_sog_ruolo
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION
+
+                          - addForeignKeyConstraint:
+                                    baseTableSchemaName: vendite
+                                    baseTableName: registri_fatturazione
+                                    baseColumnNames: emittente_soggetto_ruolo_id
+                                    referencedTableSchemaName: anagrafiche
+                                    referencedTableName: soggetti_ruoli
+                                    referencedColumnNames: id
+                                    constraintName: fk_registri_fatturazione_emitt
+                                    onUpdate: CASCADE
+                                    onDelete: NO ACTION

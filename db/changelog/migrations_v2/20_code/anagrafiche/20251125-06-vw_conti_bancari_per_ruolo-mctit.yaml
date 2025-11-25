@@ -13,6 +13,9 @@ databaseChangeLog:
     - changeSet:
           id: 20251125-06-vw_conti_bancari_per_ruolo
           author: mctit
+          # runAlways: true
+          validCheckSums: <ANY>
+
           comment: "Ripristino trigger dopo refactoring degli ID in anagrafiche."
           changes:
               - sql:
@@ -95,8 +98,6 @@ databaseChangeLog:
                         FROM candidates
                         ORDER BY soggetto_ruolo_id, uso, priority, predefinito DESC, data_update DESC, soggetto_ruolo_conto_id, soggetto_conto_id;
 
-                        ALTER TABLE anagrafiche.vw_conti_bancari_per_ruolo
-                            OWNER TO titodb;
                         COMMENT ON VIEW anagrafiche.vw_conti_bancari_per_ruolo
                             IS 'Vista di fallback per selezionare il conto bancario per ruolo: priorità RUOLO → SOGGETTO; filtra su validità odierna, non bloccato, conto attivo, preferendo il predefinito.';
 
