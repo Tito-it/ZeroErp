@@ -45,6 +45,7 @@ databaseChangeLog:
                                   DROP TRIGGER IF EXISTS trg_ordini_a10_ao_only_consegna_tipo_con_ins_upd ON acquisti.ordini;
                                   DROP TRIGGER IF EXISTS trg_pdp_protect_cols_upd ON anagrafiche.pdp;
                                   DROP TRIGGER IF EXISTS trg_ordini_a10_ins_upd_ao_only_consegna_tipo_con ON acquisti.ordini;
+                                  DROP TRIGGER IF EXISTS trg_pdp_upd_protect_cols ON anagrafiche.pdp;
 
                     # ============================
                     # 1) DROP FOREIGN KEYS
