@@ -5,8 +5,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | soggetto_ruolo_conto_id | bigint | NO |  |
-| billing_account_id | integer | YES |  |
-| istanza_utility_id | integer | YES |  |
+| billing_account_id | bigint | YES |  |
+| istanza_utility_id | bigint | YES |  |
 | umr | character varying | NO |  |
 | schema | character varying | NO |  |
 | creditor_id | character varying | YES |  |

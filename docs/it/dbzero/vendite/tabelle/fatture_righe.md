@@ -16,7 +16,7 @@
 | iva_id | integer | YES |  |
 | esigibilita | character | YES |  |
 | split_payment | boolean | YES |  |
-| dest_billing_account_id | integer | YES |  |
+| dest_billing_account_id | bigint | YES |  |
 | imponibile_riga | numeric | YES |  |
 | imposta_riga | numeric | YES |  |
 | totale_riga | numeric | YES |  |

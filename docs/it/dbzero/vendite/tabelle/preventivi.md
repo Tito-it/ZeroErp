@@ -7,8 +7,8 @@
 | numero | character varying | NO |  |
 | rev | integer | NO | 0 |
 | is_revision_attiva | boolean | NO | false |
-| billing_account_id | integer | YES |  |
-| istanza_utility_id | integer | YES |  |
+| billing_account_id | bigint | YES |  |
+| istanza_utility_id | bigint | YES |  |
 | utility_id | integer | NO |  |
 | validita_dal | date | YES |  |
 | validita_al | date | YES |  |

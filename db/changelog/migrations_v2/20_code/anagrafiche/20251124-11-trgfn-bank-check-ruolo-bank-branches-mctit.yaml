@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251124-11-trgfn-bank-check-ruolo-bank-branches-mctit.yaml
+
+    - changeSet:
+          id: 20251124-11-trgfn-bank-check-ruolo-bank-branches
+          author: mctit
+          comment: "Funzione trigger per bank_branches che usa fn_check_soggetto_ruolo."
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_bank_check_ruolo_bank_branches()
+                            RETURNS trigger
+                            LANGUAGE 'plpgsql'
+                            COST 100
+                            VOLATILE NOT LEAKPROOF
+                        AS $BODY$
+                        BEGIN
+                            -- FUNCTION: 
+                            --   Ogni volta che inserisco/aggiorno in bank_branches, gestisco la
+                            --   verifica della riga corrispondente in soggetti_ruoli.
+                            --   alimentando poi in NEW.soggetto_ruolo_id il record finale.
+
+                            -- Sostituisco NEW.soggetto_ruolo_id con l'ID vero (nuovo o esistente),
+                            -- delegando completamente alla funzione generica:
+                            NEW.soggetto_ruolo_id := script.fn_check_soggetto_ruolo(
+                                                    p_soggetto_id       := NULL,
+                                                    p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
+                                                    p_cd_int_ruolo      := 'BANK_B'
+                                                    );
+                            RETURN NEW;
+                        END;
+
+                        $BODY$;
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_bank_check_ruolo_bank_branches()
+                            IS 'Trigger che, prima di inserire/aggiornare in anagrafiche.bank,
+                        chiama fn_check_soggetto_ruolo per validare il legame
+                        soggetto→ruolo (cd_int_ruolo = ''BANK_B'').';
+
+
+                        -- Rimuovo un eventuale trigger precedente con stesso nome
+                        DROP TRIGGER IF EXISTS trg_bank_check_ruolo_bank_branches_ins_upd 
+                        ON anagrafiche.bank_branches;
+
+                        -- Creo il trigger di guardia
+                        CREATE TRIGGER trg_bank_check_ruolo_bank_branches_ins_upd
+                        BEFORE INSERT OR UPDATE
+                        ON anagrafiche.bank_branches
+                        FOR EACH ROW
+                        EXECUTE FUNCTION anagrafiche.trgfn_bank_check_ruolo_bank_branches();

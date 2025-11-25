@@ -7,7 +7,7 @@
 | uid | uuid | NO | uuidv7() |
 | codice | character varying | NO |  |
 | descrizione | character varying | NO |  |
-| indirizzo_dettaglio_id | integer | NO |  |
+| indirizzo_dettaglio_id | bigint | NO |  |
 | attivo | boolean | NO | true |
 | predefinito | boolean | NO | false |
 | meta | jsonb | NO | '{}'::jsonb |

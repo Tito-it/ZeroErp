@@ -4,10 +4,10 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO |  |
-| soggetto_ruolo_id | integer | NO |  |
+| id | bigint | NO |  |
+| soggetto_ruolo_id | bigint | NO |  |
 | tipo_indirizzo_id | integer | NO |  |
-| indirizzo_dettaglio_id | integer | YES |  |
+| indirizzo_dettaglio_id | bigint | YES |  |
 | indirizzo_libero | text | YES |  |
 | stato_id | integer | YES |  |
 | administrative_area | character varying | YES |  |

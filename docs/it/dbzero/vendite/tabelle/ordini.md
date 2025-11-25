@@ -7,7 +7,7 @@
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
 | soggetto_ruolo_id | bigint | NO |  |
-| billing_account_id | integer | YES |  |
+| billing_account_id | bigint | YES |  |
 | serie | character varying | YES |  |
 | numero | character varying | YES |  |
 | anno | smallint | YES |  |

@@ -17,7 +17,7 @@
 | modalita_pagamento_id | integer | YES |  |
 | giorni_pagamento | smallint | YES |  |
 | fine_mese | boolean | YES |  |
-| indirizzo_consegna_id | integer | NO |  |
+| indirizzo_consegna_id | bigint | NO |  |
 | indirizzo_cons_snapshot | jsonb | NO | '{}'::jsonb |
 | causale_trasporto_id | bigint | YES |  |
 | aspetto_bene_id | bigint | YES |  |

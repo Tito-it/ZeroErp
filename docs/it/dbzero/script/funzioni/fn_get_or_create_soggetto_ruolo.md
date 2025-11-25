@@ -38,8 +38,8 @@ BEGIN
                 'codice_interno_ruolo', p_cd_int_ruolo
             ),
             NULL::uuid,
-            coalesce(p_soggetto_id::text, 'NULL'),
-            coalesce(p_cd_int_ruolo::text, 'NULL')
+            p_soggetto_id::text, 
+            p_cd_int_ruolo::text
         );
         --RAISE EXCEPTION 'soggetto_id mancante per fn_get_or_create_soggetto_ruolo.'
         --    USING ERRCODE = 'P0001';
@@ -59,7 +59,7 @@ BEGIN
             'E_COD_INT_RUOLO',
             jsonb_build_object('codice_interno', p_cd_int_ruolo),
             NULL::uuid,
-            coalesce(p_cd_int_ruolo::text, 'NULL')
+            p_cd_int_ruolo::text
         );
         --RAISE EXCEPTION 'Codice interno ruolo non valido in fn_get_or_create_soggetto_ruolo: %',
         --    p_cd_int_ruolo
@@ -119,9 +119,9 @@ BEGIN
                         'codice_interno', p_cd_int_ruolo
                     ),
                     NULL::uuid,
-                    coalesce(p_soggetto_id::text, 'NULL'),
-                    coalesce(v_tipo_ruolo_id::text, 'NULL'),
-                    coalesce(p_cd_int_ruolo::text, 'NULL')
+                    p_soggetto_id::text, 
+                    v_tipo_ruolo_id::text,
+                    p_cd_int_ruolo::text
                 );
               --  RAISE EXCEPTION 'Race condition su soggetti_ruoli per soggetto %, ruolo %.',
               --      p_soggetto_id, v_tipo_ruolo_id

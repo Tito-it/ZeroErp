@@ -4,9 +4,9 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO |  |
-| soggetto_ruolo_id | integer | NO |  |
-| istanza_utility_id | integer | NO |  |
+| id | bigint | NO |  |
+| soggetto_ruolo_id | bigint | NO |  |
+| istanza_utility_id | bigint | NO |  |
 | tipo_gg_scadenza_ft | character | NO | 'N'::bpchar |
 | nr_giorni_scadenza | integer | NO | 0 |
 | modalita_pagamento_id | integer | YES |  |
@@ -35,7 +35,7 @@
 | garanzia_importo | numeric | YES | 0 |
 | periodo | daterange | YES |  |
 | termine_pagamento_id | bigint | YES |  |
-| billing_account_id | integer | NO |  |
+| billing_account_id | bigint | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

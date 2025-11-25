@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| indirizzo_dettaglio_id | integer | NO |  |
+| indirizzo_dettaglio_id | bigint | NO |  |
 | sezione_catastale | character | YES |  |
 | foglio_catastale | character | YES |  |
 | particella | character | YES |  |
@@ -25,7 +25,7 @@
 | user_update | character varying | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
-| istanza_utility_id | integer | NO |  |
+| istanza_utility_id | bigint | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

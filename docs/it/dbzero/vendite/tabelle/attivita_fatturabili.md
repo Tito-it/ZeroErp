@@ -6,8 +6,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| billing_account_id | integer | YES |  |
-| istanza_utility_id | integer | NO |  |
+| billing_account_id | bigint | YES |  |
+| istanza_utility_id | bigint | NO |  |
 | data_attivita | date | NO |  |
 | quantita | numeric | NO |  |
 | competenza_mese | date | YES |  |

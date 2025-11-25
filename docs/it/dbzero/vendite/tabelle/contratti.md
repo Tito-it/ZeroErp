@@ -5,8 +5,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | numero | character varying | NO |  |
-| billing_account_id | integer | NO |  |
-| istanza_utility_id | integer | NO |  |
+| billing_account_id | bigint | NO |  |
+| istanza_utility_id | bigint | NO |  |
 | utility_id | integer | NO |  |
 | ambito | character varying | YES | 'COMMODITY'::character varying |
 | valid_from | date | NO | CURRENT_DATE |

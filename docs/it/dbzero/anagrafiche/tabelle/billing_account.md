@@ -4,11 +4,11 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO |  |
-| istanza_utility_id | integer | NO |  |
-| soggetto_ruolo_id | integer | NO |  |
+| id | bigint | NO |  |
+| istanza_utility_id | bigint | NO |  |
+| soggetto_ruolo_id | bigint | NO |  |
 | utility_id | integer | NO |  |
-| parent_account_id | integer | YES |  |
+| parent_account_id | bigint | YES |  |
 | codice | character varying | NO |  |
 | valid_from | date | YES | CURRENT_DATE |
 | valid_to | date | YES |  |

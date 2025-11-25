@@ -4,8 +4,8 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO |  |
-| soggetto_ruolo_id | integer | NO |  |
+| id | bigint | NO |  |
+| soggetto_ruolo_id | bigint | NO |  |
 | descrizione | character | NO |  |
 | cd_prod_software | character | NO |  |
 | valuta_id | integer | NO |  |

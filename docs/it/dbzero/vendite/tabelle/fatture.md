@@ -14,7 +14,7 @@
 | tipo_doc_fiscale_id | bigint | YES |  |
 | stato_doc_fiscale_id | bigint | YES |  |
 | emittente_soggetto_ruolo_id | bigint | NO |  |
-| billing_account_id | integer | NO |  |
+| billing_account_id | bigint | NO |  |
 | reseller_soggetto_ruolo_id | bigint | YES |  |
 | valuta_id | integer | YES |  |
 | tasso_cambio | numeric | NO | 1 |

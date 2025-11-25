@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO |  |
+| id | bigint | NO |  |
 | stradario_id | integer | NO |  |
 | civico | integer | YES |  |
 | estensione_civico | character varying | YES |  |

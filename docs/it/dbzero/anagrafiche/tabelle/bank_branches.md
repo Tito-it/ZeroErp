@@ -34,5 +34,11 @@
 | pk_bank_branches | `CREATE UNIQUE INDEX pk_bank_branches ON anagrafiche.bank_branches USING btree (id)` |
 | uq_bank_branches_soggetto_ruolo_bank_branch_code | `CREATE UNIQUE INDEX uq_bank_branches_soggetto_ruolo_bank_branch_code ON anagrafiche.bank_branches USING btree (soggetto_ruolo_id, bank_code, branch_code)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_bank_check_ruolo_bank_branches_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_bank_check_ruolo_bank_branches()` |
+| trg_bank_check_ruolo_bank_branches_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_bank_check_ruolo_bank_branches()` |
+
 ---
 {% include-markdown "signature-core.md" %}

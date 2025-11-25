@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO |  |
+| id | bigint | NO |  |
 | soggetto_id | uuid | NO |  |
 | tipo_ruolo_id | integer | NO |  |
 | extra | jsonb | YES | '{}'::jsonb |

@@ -4,8 +4,8 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO |  |
-| gestore_id | integer | NO |  |
+| id | bigint | NO |  |
+| gestore_id | bigint | NO |  |
 | utility_id | integer | NO |  |
 | extra | jsonb | YES | '{}'::jsonb |
 | user_insert | character varying | NO | CURRENT_USER |

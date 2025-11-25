@@ -24,7 +24,6 @@ BEGIN
     -- Il parametro p_soggetto_id è opzionale: se NULL, non viene verificato.
     -- ------------------------------------------------------------
 
-
     -- 1) Validazione parametri minimi
     IF p_soggetto_ruolo_id IS NULL OR p_soggetto_ruolo_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -37,9 +36,9 @@ BEGIN
                 'codice_interno_ruolo', p_cd_int_ruolo
             ),
             NULL::uuid,
-            coalesce(p_soggetto_ruolo_id::text, 'NULL'),
-            coalesce(p_soggetto_id::text, 'NULL'),
-            coalesce(p_cd_int_ruolo::text, 'NULL')
+            p_soggetto_ruolo_id::text,
+            p_soggetto_id::text,
+            p_cd_int_ruolo::text
         );
         -- fn_log_and_raise_error dovrebbe fare RAISE; per sicurezza:
        -- RAISE EXCEPTION 'soggetto_ruolo_id mancante o non valido (%).', p_soggetto_ruolo_id
@@ -60,8 +59,8 @@ BEGIN
             'E_COD_INT_RUOLO',
             jsonb_build_object('codice_interno', p_cd_int_ruolo),
             NULL::uuid,
-            'codice_interno', coalesce(p_cd_int_ruolo::text, 'NULL')
-        );
+            'codice_interno', p_cd_int_ruolo::text
+			);
 
         -- RAISE EXCEPTION 'Codice interno ruolo non valido: %', p_cd_int_ruolo
         --    USING ERRCODE = 'P0001';
@@ -97,10 +96,10 @@ BEGIN
                 'codice_interno',    p_cd_int_ruolo
             ),
             NULL::uuid,
-            coalesce(p_soggetto_ruolo_id::text, 'NULL'),
-            coalesce(p_soggetto_id::text, 'NULL'),
-            coalesce(v_tipo_ruolo_id::text, 'NULL'),
-            coalesce(p_cd_int_ruolo::text, 'NULL')
+            p_soggetto_ruolo_id::text,
+            p_soggetto_id::text,
+            v_tipo_ruolo_id::text,
+            p_cd_int_ruolo::text
         );
          -- RAISE EXCEPTION 'Nessun legame soggetto_ruolo coerente trovato (id %, ruolo %, soggetto %).',
          --   p_soggetto_ruolo_id, v_tipo_ruolo_id, p_soggetto_id

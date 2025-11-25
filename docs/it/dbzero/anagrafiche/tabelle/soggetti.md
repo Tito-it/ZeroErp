@@ -23,7 +23,7 @@
 | titolo_cortesia_id | integer | YES |  |
 | identificativo_old | character varying | YES |  |
 | ragione_sociale_completa | text | YES |  |
-| default_contatto_id | integer | YES |  |
+| default_contatto_id | bigint | YES |  |
 | tipo_soggetto_dettaglio_id | bigint | YES |  |
 | id_fiscale_univoco_cf_piva | text | YES |  |
 | tx_id | uuid | YES |  |
@@ -40,7 +40,7 @@
 | FOREIGN KEY | fk_titoli_cortesia_config | titolo_cortesia_id, titolo_cortesia_id |
 | PRIMARY KEY | pk_soggetto | id |
 | UNIQUE | uq_soggetto_codice | codice |
-| UNIQUE | uq_soggetto_idstato_id_fiscale_univoco | id_fiscale_univoco_cf_piva, stato_id |
+| UNIQUE | uq_soggetto_idstato_id_fiscale_univoco | stato_id, id_fiscale_univoco_cf_piva |
 
 ## 📑 Indici
 | Nome | Definizione |
