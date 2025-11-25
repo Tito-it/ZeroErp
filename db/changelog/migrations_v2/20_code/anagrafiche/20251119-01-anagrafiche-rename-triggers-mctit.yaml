@@ -8,341 +8,373 @@
 # ------------------------------------------------------------
 
 databaseChangeLog:
-  - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251119-01-anagrafiche-rename-triggers-mctit.yaml
-
-  - changeSet:
-      id: 20251119-01-anagrafiche-rename-triggers
-      author: mctit
-      comment: "Rinomina trigger function schema anagrafiche secondo convenzione trgfn_<tabella>_<descrizione>"
-      changes:
-        - sql:
-            splitStatements: true
-            stripComments: true
-            sql: |
-              -- Emittenti fiscali / Resellers / Vettori - protezione codice (rimozione prefix a10)
-              ALTER FUNCTION anagrafiche.trgfn_a10_emittenti_fiscali_protect_codice() RENAME TO trgfn_emittenti_fiscali_protect_codice;
-              ALTER FUNCTION anagrafiche.trgfn_a10_resellers_protect_codice() RENAME TO trgfn_resellers_protect_codice;
-              ALTER FUNCTION anagrafiche.trgfn_a10_vettori_protect_codice() RENAME TO trgfn_vettori_protect_codice;
-
-              -- Billing account
-              ALTER FUNCTION anagrafiche.trgfn_billing_account_ins_upd_guard_normalize() RENAME TO trgfn_billing_account_guard_normalize;
-              ALTER FUNCTION anagrafiche.trgfn_billing_account_upd_protect_account_code() RENAME TO trgfn_billing_account_protect_account_code;
-
-              -- Clienti
-              ALTER FUNCTION anagrafiche.trgfn_clienti_ins_upd_check_ruolo_cliente() RENAME TO trgfn_clienti_check_ruolo_cliente;
-              -- queste restano uguali ma le lasciamo per completezza logica: nessun rename necessario
-              -- trgfn_clienti_set_periodo()
-              -- trgfn_clienti_sync_pdp()
-
-              -- Contatti
-              ALTER FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contatto() RENAME TO trgfn_contatti_set_default_contatto;
-
-              -- Conti bancari
-              ALTER FUNCTION anagrafiche.trgfn_conti_bancari_ins_upd_normalize() RENAME TO trgfn_conti_bancari_normalize;
-
-              -- Dati societari: da check -> guard (perché fa RAISE) e rimozione ins_upd dal nome
-              ALTER FUNCTION anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto() RENAME TO trgfn_dati_societari_guard_tipo_soggetto;
-
-              -- Emittenti fiscali: check + normalize
-              ALTER FUNCTION anagrafiche.trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis() RENAME TO trgfn_emittenti_fiscali_check_ruolo_emi_fis;
-              ALTER FUNCTION anagrafiche.trgfn_emittenti_fiscali_norm() RENAME TO trgfn_emittenti_fiscali_normalize;
-
-              -- Fornitori
-              ALTER FUNCTION anagrafiche.trgfn_fornitori_ins_upd_check_ruolo_fornitore() RENAME TO trgfn_fornitori_check_ruolo_fornitore;
-              ALTER FUNCTION anagrafiche.trgfn_fornitori_upd_protect_account_code() RENAME TO trgfn_fornitori_protect_account_code;
-              -- trgfn_fornitori_guard_normalize() resta così
-
-              -- Gestori
-              ALTER FUNCTION anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore() RENAME TO trgfn_gestori_check_ruolo_gestore;
-
-              -- Indirizzi dettaglio: norm -> normalize
-              ALTER FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio() RENAME TO trgfn_indirizzi_dettaglio_normalize;
-
-              -- Indirizzi: clean_fields -> normalize, sync_geoloc senza ins_upd
-              ALTER FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_clean_fields() RENAME TO trgfn_indirizzi_normalize;
-              ALTER FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_sync_geoloc() RENAME TO trgfn_indirizzi_sync_geoloc;
-
-              -- Istanze utilities: clean_fields -> normalize, rimozione upd dal nome protect_codice
-              ALTER FUNCTION anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields() RENAME TO trgfn_istanze_utilities_normalize;
-              ALTER FUNCTION anagrafiche.trgfn_istanze_utilities_upd_protect_codice() RENAME TO trgfn_istanze_utilities_protect_codice;
-
-              -- PDP: la funzione resta invariata (già buona)
-              -- trgfn_pdp_protect_cols()
-
-              -- Resellers: check + normalize
-              ALTER FUNCTION anagrafiche.trgfn_resellers_ins_upd_check_ruolo_reseller() RENAME TO trgfn_resellers_check_ruolo_reseller;
-              ALTER FUNCTION anagrafiche.trgfn_resellers_norm() RENAME TO trgfn_resellers_normalize;
-
-              -- Soggetti: clean_fields -> normalize, rimozione upd dal nome protect_codice_soggetto
-              ALTER FUNCTION anagrafiche.trgfn_soggetti_ins_upd_clean_fields() RENAME TO trgfn_soggetti_normalize;
-              ALTER FUNCTION anagrafiche.trgfn_soggetti_upd_protect_codice_soggetto() RENAME TO trgfn_soggetti_protect_codice_soggetto;
-
-              -- Vettori: check + normalize
-              ALTER FUNCTION anagrafiche.trgfn_vettori_ins_upd_check_ruolo_vettore() RENAME TO trgfn_vettori_check_ruolo_vettore;
-              ALTER FUNCTION anagrafiche.trgfn_vettori_norm() RENAME TO trgfn_vettori_normalize;
-
-  - changeSet:
-      id: 20251119-02-anagrafiche-rename-triggers
-      author: mct
-      comment: "Rinomina trigger schema anagrafiche secondo convenzione trg_<tabella>_<fase>_<descrizione>_<eventi>"
-      changes:
-        - sql:
-            splitStatements: true
-            stripComments: true
-            sql: |
-              -- billing_account
-              ALTER TRIGGER trg_billing_account_a10_upd_protect_account_code on 
-              anagrafiche.billing_account
-                  RENAME 
-                  TO trg_billing_account_a10_protect_account_code_upd;
-
-              ALTER TRIGGER trg_billing_account_ins_upd_guard_normalize on 
-              anagrafiche.billing_account
-                  RENAME
-                  TO trg_billing_account_guard_normalize_ins_upd;
-
-              ALTER TRIGGER trg_billing_account_ins_upd_tx_id_managed on 
-              anagrafiche.billing_account
-                  RENAME 
-                  TO trg_billing_account_tx_id_managed_ins_upd;
-
-              ALTER TRIGGER trg_billing_account_upd_audit_data_user_generic on 
-              anagrafiche.billing_account
-                  RENAME 
-                  TO trg_billing_account_audit_data_user_generic_upd;
-
-              -- clienti
-              ALTER TRIGGER trg_clienti_ins_upd_check_ruolo_cliente ON anagrafiche.clienti
-                  RENAME 
-                  TO trg_clienti_check_ruolo_cliente_ins_upd;
-
-              ALTER TRIGGER trg_clienti_ins_upd_set_periodo ON anagrafiche.clienti
-                  RENAME 
-                  TO trg_clienti_set_periodo_ins_upd;
-
-              ALTER TRIGGER trg_clienti_ins_upd_sync_pdp ON anagrafiche.clienti
-                  RENAME 
-                  TO trg_clienti_sync_pdp_ins_upd;
-
-              ALTER TRIGGER trg_clienti_ins_upd_tx_id_managed ON anagrafiche.clienti
-                  RENAME 
-                  TO trg_clienti_tx_id_managed_ins_upd;
-
-              ALTER TRIGGER trg_clienti_upd_audit_data_user_generic ON anagrafiche.clienti
-                  RENAME 
-                  TO trg_clienti_audit_data_user_generic_upd;
-
-              ALTER TRIGGER trg_clienti_z90_upd_dlt_storico_generic ON anagrafiche.clienti
-                  RENAME 
-                  TO trg_clienti_z90_storico_generic_upd_dlt;
-
-              -- contatti
-              ALTER TRIGGER trg_contatti_ins_upd_set_default_contatto ON anagrafiche.contatti
-                  RENAME 
-                  TO trg_contatti_set_default_contatto_ins_upd;
-
-              ALTER TRIGGER trg_contatti_ins_upd_tx_id_managed ON anagrafiche.contatti
-                  RENAME 
-                  TO trg_contatti_tx_id_managed_ins_upd;
-
-              ALTER TRIGGER trg_contatti_upd_audit_data_user_generic ON anagrafiche.contatti
-                  RENAME 
-                  TO trg_contatti_audit_data_user_generic_upd;
-
-              -- conti_bancari
-              ALTER TRIGGER trg_conti_bancari_ins_upd_normalize ON anagrafiche.conti_bancari
-                  RENAME 
-                  TO trg_conti_bancari_normalize_ins_upd;
-
-              -- dati_catastali
-              ALTER TRIGGER trg_dati_catastali_ins_upd_tx_id_managed ON anagrafiche.dati_catastali
-                  RENAME 
-                  TO trg_dati_catastali_tx_id_managed_ins_upd;
-
-              ALTER TRIGGER trg_dati_catastali_upd_audit_data_user_generic ON anagrafiche.dati_catastali
-                  RENAME 
-                  TO trg_dati_catastali_audit_data_user_generic_upd;
-
-              ALTER TRIGGER trg_dati_catastali_z90_upd_dlt_storico_generic ON anagrafiche.dati_catastali
-                  RENAME 
-                  TO trg_dati_catastali_z90_storico_generic_upd_dlt;
-
-              -- dati_societari
-              ALTER TRIGGER trg_dati_societari_ins_upd_check_tipo_soggetto ON anagrafiche.dati_societari
-                  RENAME 
-                  TO trg_dati_societari_guard_tipo_soggetto_ins_upd;
-
-              ALTER TRIGGER trg_dati_societari_ins_upd_tx_id_managed ON anagrafiche.dati_societari
-                  RENAME 
-                  TO trg_dati_societari_tx_id_managed_ins_upd;
-
-              ALTER TRIGGER trg_dati_societari_upd_audit_data_user_generic ON anagrafiche.dati_societari
-                  RENAME 
-                  TO trg_dati_societari_audit_data_user_generic_upd;
-
-              ALTER TRIGGER trg_dati_societari_z90_upd_dlt_storico_generic ON anagrafiche.dati_societari
-                  RENAME 
-                  TO trg_dati_societari_z90_storico_generic_upd_dlt;
-
-              -- emittenti_fiscali
-              ALTER TRIGGER trg_emittenti_fiscali_a10_upd_protect_codice ON anagrafiche.emittenti_fiscali
-                  RENAME 
-                  TO trg_emittenti_fiscali_a10_protect_codice_upd;
-
-              ALTER TRIGGER trg_emittenti_fiscali_ins_upd_check_ruolo_emi_fis ON anagrafiche.emittenti_fiscali
-                  RENAME 
-                  TO trg_emittenti_fiscali_check_ruolo_emi_fis_ins_upd;
-
-              ALTER TRIGGER trg_emittenti_fiscali_ins_upd_norm ON anagrafiche.emittenti_fiscali
-                  RENAME 
-                  TO trg_emittenti_fiscali_normalize_ins_upd;
-
-              -- fornitori
-              ALTER TRIGGER trg_fornitori_a10_upd_protect_account_code ON anagrafiche.fornitori
-                  RENAME 
-                  TO trg_fornitori_a10_protect_account_code_upd;
-
-              ALTER TRIGGER trg_fornitori_ins_upd_check_ruolo_fornitore ON anagrafiche.fornitori
-                  RENAME 
-                  TO trg_fornitori_check_ruolo_fornitore_ins_upd;
-
-              ALTER TRIGGER trg_fornitori_ins_upd_guard_normalize ON anagrafiche.fornitori
-                  RENAME 
-                  TO trg_fornitori_guard_normalize_ins_upd;
-
-              -- gestori / gestori_utilities
-              ALTER TRIGGER trg_gestori_upd_audit_data_user_generic ON anagrafiche.gestori
-                  RENAME 
-                  TO trg_gestori_audit_data_user_generic_upd;
-
-              ALTER TRIGGER trg_gestori_utilities_upd_audit_data_user_generic ON anagrafiche.gestori_utilities
-                  RENAME 
-                  TO trg_gestori_utilities_audit_data_user_generic_upd;
-
-              -- indirizzi
-              ALTER TRIGGER trg_indirizzi_ins_upd_clean_fields ON anagrafiche.indirizzi
-                  RENAME 
-                  TO trg_indirizzi_normalize_ins_upd;
-
-              ALTER TRIGGER trg_indirizzi_ins_upd_sync_geoloc ON anagrafiche.indirizzi
-                  RENAME 
-                  TO trg_indirizzi_sync_geoloc_ins_upd;
-
-              ALTER TRIGGER trg_indirizzi_ins_upd_tx_id_managed ON anagrafiche.indirizzi
-                  RENAME 
-                  TO trg_indirizzi_tx_id_managed_ins_upd;
-
-              ALTER TRIGGER trg_indirizzi_upd_audit_data_user_generic ON anagrafiche.indirizzi
-                  RENAME 
-                  TO trg_indirizzi_audit_data_user_generic_upd;
-
-              ALTER TRIGGER trg_indirizzi_z90_upd_dlt_storico_generic ON anagrafiche.indirizzi
-                  RENAME 
-                  TO trg_indirizzi_z90_storico_generic_upd_dlt;
-
-              -- indirizzi_dettaglio
-              ALTER TRIGGER trg_indirizzi_dettaglio_ins_upd_norm ON anagrafiche.indirizzi_dettaglio
-                  RENAME 
-                  TO trg_indirizzi_dettaglio_normalize_ins_upd;
-
-              ALTER TRIGGER trg_indirizzi_dettaglio_ins_upd_tx_id_managed ON anagrafiche.indirizzi_dettaglio
-                  RENAME 
-                  TO trg_indirizzi_dettaglio_tx_id_managed_ins_upd;
-
-              ALTER TRIGGER trg_indirizzi_dettaglio_upd_audit_data_user_generic ON anagrafiche.indirizzi_dettaglio
-                  RENAME 
-                  TO trg_indirizzi_dettaglio_audit_data_user_generic_upd;
-
-              ALTER TRIGGER trg_indirizzi_dettaglio_z90_upd_dlt_storico_generic ON anagrafiche.indirizzi_dettaglio
-                  RENAME 
-                  TO trg_indirizzi_dettaglio_z90_storico_generic_upd_dlt;
-
-              -- istanze_utilities
-              ALTER TRIGGER trg_istanze_utilities_ins_upd_clean_fields ON anagrafiche.istanze_utilities
-                  RENAME 
-                  TO trg_istanze_utilities_normalize_ins_upd;
-
-              ALTER TRIGGER trg_istanze_utilities_ins_upd_tx_id_managed ON anagrafiche.istanze_utilities
-                  RENAME 
-                  TO trg_istanze_utilities_tx_id_managed_ins_upd;
-
-              ALTER TRIGGER trg_istanze_utilities_upd_audit_data_user_generic ON anagrafiche.istanze_utilities
-                  RENAME 
-                  TO trg_istanze_utilities_audit_data_user_generic_upd;
-
-              ALTER TRIGGER trg_istanze_utilities_upd_protect_codice ON anagrafiche.istanze_utilities
-                  RENAME 
-                  TO trg_istanze_utilities_protect_codice_upd;
-
-              -- pdp
-              ALTER TRIGGER trg_pdp_ins_upd_tx_id_managed ON anagrafiche.pdp
-                  RENAME 
-                  TO trg_pdp_tx_id_managed_ins_upd;
-
-              ALTER TRIGGER trg_pdp_upd_protect_cols ON anagrafiche.pdp
-                  RENAME 
-                  TO trg_pdp_protect_cols_upd;
-
-              ALTER TRIGGER trg_pdp_z90_upd_dlt_storico_generic ON anagrafiche.pdp
-                  RENAME 
-                  TO trg_pdp_z90_storico_generic_upd_dlt;
-
-              -- resellers
-              ALTER TRIGGER trg_resellers_a10_upd_protect_codice ON anagrafiche.resellers
-                  RENAME 
-                  TO trg_resellers_a10_protect_codice_upd;
-
-              ALTER TRIGGER trg_resellers_ins_upd_check_ruolo_reseller ON anagrafiche.resellers
-                  RENAME 
-                  TO trg_resellers_check_ruolo_reseller_ins_upd;
-
-              ALTER TRIGGER trg_resellers_ins_upd_norm ON anagrafiche.resellers
-                  RENAME 
-                  TO trg_resellers_normalize_ins_upd;
-
-              -- soggetti
-              -- questo lo lascio così, è già descrittivo e coerente con guard_
-              -- trg_soggetti_def_guard_soggetto_contatti_ins_upd
-
-              ALTER TRIGGER trg_soggetti_ins_upd_clean_fields ON anagrafiche.soggetti
-                  RENAME 
-                  TO trg_soggetti_normalize_ins_upd;
-
-              ALTER TRIGGER trg_soggetti_ins_upd_tx_id_managed ON anagrafiche.soggetti
-                  RENAME 
-                  TO trg_soggetti_tx_id_managed_ins_upd;
-
-              ALTER TRIGGER trg_soggetti_ins_upd_valida_cf_piva_dispatch ON anagrafiche.soggetti
-                  RENAME
-                  TO trg_soggetti_valida_cf_piva_dispatch_ins_upd;
-
-              ALTER TRIGGER trg_soggetti_upd_audit_data_user_generic ON anagrafiche.soggetti
-                  RENAME 
-                  TO trg_soggetti_audit_data_user_generic_upd;
-
-              ALTER TRIGGER trg_soggetti_upd_protect_codice_soggetto ON anagrafiche.soggetti
-                  RENAME 
-                  TO trg_soggetti_protect_codice_soggetto_upd;
-
-              ALTER TRIGGER trg_soggetti_z90_upd_dlt_storico_generic ON anagrafiche.soggetti
-                  RENAME 
-                  TO trg_soggetti_z90_storico_generic_upd_dlt;
-
-              -- soggetti_conti_bancari
-              ALTER TRIGGER trg_soggetti_conti_bancari_ins_upd_guard ON anagrafiche.soggetti_conti_bancari
-                  RENAME 
-                  TO trg_soggetti_conti_bancari_guard_ins_upd;
-
-              -- soggetti_ruoli
-              ALTER TRIGGER trg_soggetti_ruoli_ins_upd_tx_id_managed ON anagrafiche.soggetti_ruoli
-                  RENAME 
-                  TO trg_soggetti_ruoli_tx_id_managed_ins_upd;
-
-              ALTER TRIGGER trg_soggetti_ruoli_upd_audit_data_user_generic ON anagrafiche.soggetti_ruoli
-                  RENAME 
-                  TO trg_soggetti_ruoli_audit_data_user_generic_upd;
-
-              -- soggetti_ruoli_conti_bancari
-              ALTER TRIGGER trg_soggetti_ruoli_conti_bancari_ins_upd_guard ON anagrafiche.soggetti_ruoli_conti_bancari
-                  RENAME 
-                  TO trg_soggetti_ruoli_conti_bancari_guard_ins_upd;
+    - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251119-01-anagrafiche-rename-triggers-mctit.yaml
+
+    - changeSet:
+          id: 20251119-01-anagrafiche-rename-triggers
+          author: mctit
+
+          runAlways: true
+          validCheckSums: <ANY>
+          comment: "Rinomina trigger function schema anagrafiche secondo convenzione trgfn_<tabella>_<descrizione>"
+
+          preConditions:
+              - onFail: MARK_RAN # se la colonna è già bigint, segna il changeSet come eseguito e salta
+              - onError: MARK_RAN # in caso di errore nella precondizione, non bloccare la CI
+              - sqlCheck:
+                    expectedResult: 1
+                    sql: |
+                        SELECT COUNT(*)
+                          FROM pg_proc p
+                          JOIN pg_namespace n ON n.oid = p.pronamespace
+                          WHERE n.nspname = 'anagrafiche'
+                          AND p.proname = 'trgfn_a10_emittenti_fiscali_protect_codice';
+
+          changes:
+              - sql:
+                    splitStatements: true
+                    stripComments: true
+                    sql: |
+                        -- Emittenti fiscali / Resellers / Vettori - protezione codice (rimozione prefix a10)
+                        ALTER FUNCTION anagrafiche.trgfn_a10_emittenti_fiscali_protect_codice() RENAME TO trgfn_emittenti_fiscali_protect_codice;
+                        ALTER FUNCTION anagrafiche.trgfn_a10_resellers_protect_codice() RENAME TO trgfn_resellers_protect_codice;
+                        ALTER FUNCTION anagrafiche.trgfn_a10_vettori_protect_codice() RENAME TO trgfn_vettori_protect_codice;
+
+                        -- Billing account
+                        ALTER FUNCTION anagrafiche.trgfn_billing_account_ins_upd_guard_normalize() RENAME TO trgfn_billing_account_guard_normalize;
+                        ALTER FUNCTION anagrafiche.trgfn_billing_account_upd_protect_account_code() RENAME TO trgfn_billing_account_protect_account_code;
+
+                        -- Clienti
+                        ALTER FUNCTION anagrafiche.trgfn_clienti_ins_upd_check_ruolo_cliente() RENAME TO trgfn_clienti_check_ruolo_cliente;
+                        -- queste restano uguali ma le lasciamo per completezza logica: nessun rename necessario
+                        -- trgfn_clienti_set_periodo()
+                        -- trgfn_clienti_sync_pdp()
+
+                        -- Contatti
+                        ALTER FUNCTION anagrafiche.trgfn_contatti_ins_upd_set_default_contatto() RENAME TO trgfn_contatti_set_default_contatto;
+
+                        -- Conti bancari
+                        ALTER FUNCTION anagrafiche.trgfn_conti_bancari_ins_upd_normalize() RENAME TO trgfn_conti_bancari_normalize;
+
+                        -- Dati societari: da check -> guard (perché fa RAISE) e rimozione ins_upd dal nome
+                        ALTER FUNCTION anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto() RENAME TO trgfn_dati_societari_guard_tipo_soggetto;
+
+                        -- Emittenti fiscali: check + normalize
+                        ALTER FUNCTION anagrafiche.trgfn_emittenti_fiscali_ins_upd_check_ruolo_emi_fis() RENAME TO trgfn_emittenti_fiscali_check_ruolo_emi_fis;
+                        ALTER FUNCTION anagrafiche.trgfn_emittenti_fiscali_norm() RENAME TO trgfn_emittenti_fiscali_normalize;
+
+                        -- Fornitori
+                        ALTER FUNCTION anagrafiche.trgfn_fornitori_ins_upd_check_ruolo_fornitore() RENAME TO trgfn_fornitori_check_ruolo_fornitore;
+                        ALTER FUNCTION anagrafiche.trgfn_fornitori_upd_protect_account_code() RENAME TO trgfn_fornitori_protect_account_code;
+                        -- trgfn_fornitori_guard_normalize() resta così
+
+                        -- Gestori
+                        ALTER FUNCTION anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore() RENAME TO trgfn_gestori_check_ruolo_gestore;
+
+                        -- Indirizzi dettaglio: norm -> normalize
+                        ALTER FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_ins_upd_norm_indirizzi_dettaglio() RENAME TO trgfn_indirizzi_dettaglio_normalize;
+
+                        -- Indirizzi: clean_fields -> normalize, sync_geoloc senza ins_upd
+                        ALTER FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_clean_fields() RENAME TO trgfn_indirizzi_normalize;
+                        ALTER FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_sync_geoloc() RENAME TO trgfn_indirizzi_sync_geoloc;
+
+                        -- Istanze utilities: clean_fields -> normalize, rimozione upd dal nome protect_codice
+                        ALTER FUNCTION anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields() RENAME TO trgfn_istanze_utilities_normalize;
+                        ALTER FUNCTION anagrafiche.trgfn_istanze_utilities_upd_protect_codice() RENAME TO trgfn_istanze_utilities_protect_codice;
+
+                        -- PDP: la funzione resta invariata (già buona)
+                        -- trgfn_pdp_protect_cols()
+
+                        -- Resellers: check + normalize
+                        ALTER FUNCTION anagrafiche.trgfn_resellers_ins_upd_check_ruolo_reseller() RENAME TO trgfn_resellers_check_ruolo_reseller;
+                        ALTER FUNCTION anagrafiche.trgfn_resellers_norm() RENAME TO trgfn_resellers_normalize;
+
+                        -- Soggetti: clean_fields -> normalize, rimozione upd dal nome protect_codice_soggetto
+                        ALTER FUNCTION anagrafiche.trgfn_soggetti_ins_upd_clean_fields() RENAME TO trgfn_soggetti_normalize;
+                        ALTER FUNCTION anagrafiche.trgfn_soggetti_upd_protect_codice_soggetto() RENAME TO trgfn_soggetti_protect_codice_soggetto;
+
+                        -- Vettori: check + normalize
+                        ALTER FUNCTION anagrafiche.trgfn_vettori_ins_upd_check_ruolo_vettore() RENAME TO trgfn_vettori_check_ruolo_vettore;
+                        ALTER FUNCTION anagrafiche.trgfn_vettori_norm() RENAME TO trgfn_vettori_normalize;
+
+    - changeSet:
+          id: 20251119-02-anagrafiche-rename-triggers
+          author: mct
+
+          runAlways: true
+          validCheckSums: <ANY>
+          comment: "Rinomina trigger function schema anagrafiche secondo convenzione trgfn_<tabella>_<descrizione>"
+
+          preConditions:
+              - onFail: MARK_RAN # se la colonna è già bigint, segna il changeSet come eseguito e salta
+              - onError: MARK_RAN # in caso di errore nella precondizione, non bloccare la CI
+              - sqlCheck:
+                    expectedResult: 1
+                    sql: |
+                        SELECT COUNT(*)
+                          FROM pg_proc p
+                          JOIN pg_namespace n ON n.oid = p.pronamespace
+                          WHERE n.nspname = 'anagrafiche'
+                          AND p.proname = 'trg_billing_account_a10_upd_protect_account_code';
+
+          changes:
+              - sql:
+                    splitStatements: true
+                    stripComments: true
+                    sql: |
+                        -- billing_account
+                        ALTER TRIGGER trg_billing_account_a10_upd_protect_account_code on 
+                        anagrafiche.billing_account
+                            RENAME 
+                            TO trg_billing_account_a10_protect_account_code_upd;
+
+                        ALTER TRIGGER trg_billing_account_ins_upd_guard_normalize on 
+                        anagrafiche.billing_account
+                            RENAME
+                            TO trg_billing_account_guard_normalize_ins_upd;
+
+                        ALTER TRIGGER trg_billing_account_ins_upd_tx_id_managed on 
+                        anagrafiche.billing_account
+                            RENAME 
+                            TO trg_billing_account_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_billing_account_upd_audit_data_user_generic on 
+                        anagrafiche.billing_account
+                            RENAME 
+                            TO trg_billing_account_audit_data_user_generic_upd;
+
+                        -- clienti
+                        ALTER TRIGGER trg_clienti_ins_upd_check_ruolo_cliente ON anagrafiche.clienti
+                            RENAME 
+                            TO trg_clienti_check_ruolo_cliente_ins_upd;
+
+                        ALTER TRIGGER trg_clienti_ins_upd_set_periodo ON anagrafiche.clienti
+                            RENAME 
+                            TO trg_clienti_set_periodo_ins_upd;
+
+                        ALTER TRIGGER trg_clienti_ins_upd_sync_pdp ON anagrafiche.clienti
+                            RENAME 
+                            TO trg_clienti_sync_pdp_ins_upd;
+
+                        ALTER TRIGGER trg_clienti_ins_upd_tx_id_managed ON anagrafiche.clienti
+                            RENAME 
+                            TO trg_clienti_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_clienti_upd_audit_data_user_generic ON anagrafiche.clienti
+                            RENAME 
+                            TO trg_clienti_audit_data_user_generic_upd;
+
+                        ALTER TRIGGER trg_clienti_z90_upd_dlt_storico_generic ON anagrafiche.clienti
+                            RENAME 
+                            TO trg_clienti_z90_storico_generic_upd_dlt;
+
+                        -- contatti
+                        ALTER TRIGGER trg_contatti_ins_upd_set_default_contatto ON anagrafiche.contatti
+                            RENAME 
+                            TO trg_contatti_set_default_contatto_ins_upd;
+
+                        ALTER TRIGGER trg_contatti_ins_upd_tx_id_managed ON anagrafiche.contatti
+                            RENAME 
+                            TO trg_contatti_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_contatti_upd_audit_data_user_generic ON anagrafiche.contatti
+                            RENAME 
+                            TO trg_contatti_audit_data_user_generic_upd;
+
+                        -- conti_bancari
+                        ALTER TRIGGER trg_conti_bancari_ins_upd_normalize ON anagrafiche.conti_bancari
+                            RENAME 
+                            TO trg_conti_bancari_normalize_ins_upd;
+
+                        -- dati_catastali
+                        ALTER TRIGGER trg_dati_catastali_ins_upd_tx_id_managed ON anagrafiche.dati_catastali
+                            RENAME 
+                            TO trg_dati_catastali_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_dati_catastali_upd_audit_data_user_generic ON anagrafiche.dati_catastali
+                            RENAME 
+                            TO trg_dati_catastali_audit_data_user_generic_upd;
+
+                        ALTER TRIGGER trg_dati_catastali_z90_upd_dlt_storico_generic ON anagrafiche.dati_catastali
+                            RENAME 
+                            TO trg_dati_catastali_z90_storico_generic_upd_dlt;
+
+                        -- dati_societari
+                        ALTER TRIGGER trg_dati_societari_ins_upd_check_tipo_soggetto ON anagrafiche.dati_societari
+                            RENAME 
+                            TO trg_dati_societari_guard_tipo_soggetto_ins_upd;
+
+                        ALTER TRIGGER trg_dati_societari_ins_upd_tx_id_managed ON anagrafiche.dati_societari
+                            RENAME 
+                            TO trg_dati_societari_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_dati_societari_upd_audit_data_user_generic ON anagrafiche.dati_societari
+                            RENAME 
+                            TO trg_dati_societari_audit_data_user_generic_upd;
+
+                        ALTER TRIGGER trg_dati_societari_z90_upd_dlt_storico_generic ON anagrafiche.dati_societari
+                            RENAME 
+                            TO trg_dati_societari_z90_storico_generic_upd_dlt;
+
+                        -- emittenti_fiscali
+                        ALTER TRIGGER trg_emittenti_fiscali_a10_upd_protect_codice ON anagrafiche.emittenti_fiscali
+                            RENAME 
+                            TO trg_emittenti_fiscali_a10_protect_codice_upd;
+
+                        ALTER TRIGGER trg_emittenti_fiscali_ins_upd_check_ruolo_emi_fis ON anagrafiche.emittenti_fiscali
+                            RENAME 
+                            TO trg_emittenti_fiscali_check_ruolo_emi_fis_ins_upd;
+
+                        ALTER TRIGGER trg_emittenti_fiscali_ins_upd_norm ON anagrafiche.emittenti_fiscali
+                            RENAME 
+                            TO trg_emittenti_fiscali_normalize_ins_upd;
+
+                        -- fornitori
+                        ALTER TRIGGER trg_fornitori_a10_upd_protect_account_code ON anagrafiche.fornitori
+                            RENAME 
+                            TO trg_fornitori_a10_protect_account_code_upd;
+
+                        ALTER TRIGGER trg_fornitori_ins_upd_check_ruolo_fornitore ON anagrafiche.fornitori
+                            RENAME 
+                            TO trg_fornitori_check_ruolo_fornitore_ins_upd;
+
+                        ALTER TRIGGER trg_fornitori_ins_upd_guard_normalize ON anagrafiche.fornitori
+                            RENAME 
+                            TO trg_fornitori_guard_normalize_ins_upd;
+
+                        -- gestori / gestori_utilities
+                        ALTER TRIGGER trg_gestori_upd_audit_data_user_generic ON anagrafiche.gestori
+                            RENAME 
+                            TO trg_gestori_audit_data_user_generic_upd;
+
+                        ALTER TRIGGER trg_gestori_utilities_upd_audit_data_user_generic ON anagrafiche.gestori_utilities
+                            RENAME 
+                            TO trg_gestori_utilities_audit_data_user_generic_upd;
+
+                        -- indirizzi
+                        ALTER TRIGGER trg_indirizzi_ins_upd_clean_fields ON anagrafiche.indirizzi
+                            RENAME 
+                            TO trg_indirizzi_normalize_ins_upd;
+
+                        ALTER TRIGGER trg_indirizzi_ins_upd_sync_geoloc ON anagrafiche.indirizzi
+                            RENAME 
+                            TO trg_indirizzi_sync_geoloc_ins_upd;
+
+                        ALTER TRIGGER trg_indirizzi_ins_upd_tx_id_managed ON anagrafiche.indirizzi
+                            RENAME 
+                            TO trg_indirizzi_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_indirizzi_upd_audit_data_user_generic ON anagrafiche.indirizzi
+                            RENAME 
+                            TO trg_indirizzi_audit_data_user_generic_upd;
+
+                        ALTER TRIGGER trg_indirizzi_z90_upd_dlt_storico_generic ON anagrafiche.indirizzi
+                            RENAME 
+                            TO trg_indirizzi_z90_storico_generic_upd_dlt;
+
+                        -- indirizzi_dettaglio
+                        ALTER TRIGGER trg_indirizzi_dettaglio_ins_upd_norm ON anagrafiche.indirizzi_dettaglio
+                            RENAME 
+                            TO trg_indirizzi_dettaglio_normalize_ins_upd;
+
+                        ALTER TRIGGER trg_indirizzi_dettaglio_ins_upd_tx_id_managed ON anagrafiche.indirizzi_dettaglio
+                            RENAME 
+                            TO trg_indirizzi_dettaglio_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_indirizzi_dettaglio_upd_audit_data_user_generic ON anagrafiche.indirizzi_dettaglio
+                            RENAME 
+                            TO trg_indirizzi_dettaglio_audit_data_user_generic_upd;
+
+                        ALTER TRIGGER trg_indirizzi_dettaglio_z90_upd_dlt_storico_generic ON anagrafiche.indirizzi_dettaglio
+                            RENAME 
+                            TO trg_indirizzi_dettaglio_z90_storico_generic_upd_dlt;
+
+                        -- istanze_utilities
+                        ALTER TRIGGER trg_istanze_utilities_ins_upd_clean_fields ON anagrafiche.istanze_utilities
+                            RENAME 
+                            TO trg_istanze_utilities_normalize_ins_upd;
+
+                        ALTER TRIGGER trg_istanze_utilities_ins_upd_tx_id_managed ON anagrafiche.istanze_utilities
+                            RENAME 
+                            TO trg_istanze_utilities_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_istanze_utilities_upd_audit_data_user_generic ON anagrafiche.istanze_utilities
+                            RENAME 
+                            TO trg_istanze_utilities_audit_data_user_generic_upd;
+
+                        ALTER TRIGGER trg_istanze_utilities_upd_protect_codice ON anagrafiche.istanze_utilities
+                            RENAME 
+                            TO trg_istanze_utilities_protect_codice_upd;
+
+                        -- pdp
+                        ALTER TRIGGER trg_pdp_ins_upd_tx_id_managed ON anagrafiche.pdp
+                            RENAME 
+                            TO trg_pdp_tx_id_managed_ins_upd;
+
+                        -- ALTER TRIGGER trg_pdp_upd_protect_cols ON anagrafiche.pdp
+                        --     RENAME 
+                        --     TO trg_pdp_protect_cols_upd;
+
+                        ALTER TRIGGER trg_pdp_z90_upd_dlt_storico_generic ON anagrafiche.pdp
+                            RENAME 
+                            TO trg_pdp_z90_storico_generic_upd_dlt;
+
+                        -- resellers
+                        ALTER TRIGGER trg_resellers_a10_upd_protect_codice ON anagrafiche.resellers
+                            RENAME 
+                            TO trg_resellers_a10_protect_codice_upd;
+
+                        ALTER TRIGGER trg_resellers_ins_upd_check_ruolo_reseller ON anagrafiche.resellers
+                            RENAME 
+                            TO trg_resellers_check_ruolo_reseller_ins_upd;
+
+                        ALTER TRIGGER trg_resellers_ins_upd_norm ON anagrafiche.resellers
+                            RENAME 
+                            TO trg_resellers_normalize_ins_upd;
+
+                        -- soggetti
+                        -- questo lo lascio così, è già descrittivo e coerente con guard_
+                        -- trg_soggetti_def_guard_soggetto_contatti_ins_upd
+
+                        ALTER TRIGGER trg_soggetti_ins_upd_clean_fields ON anagrafiche.soggetti
+                            RENAME 
+                            TO trg_soggetti_normalize_ins_upd;
+
+                        ALTER TRIGGER trg_soggetti_ins_upd_tx_id_managed ON anagrafiche.soggetti
+                            RENAME 
+                            TO trg_soggetti_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_soggetti_ins_upd_valida_cf_piva_dispatch ON anagrafiche.soggetti
+                            RENAME
+                            TO trg_soggetti_valida_cf_piva_dispatch_ins_upd;
+
+                        ALTER TRIGGER trg_soggetti_upd_audit_data_user_generic ON anagrafiche.soggetti
+                            RENAME 
+                            TO trg_soggetti_audit_data_user_generic_upd;
+
+                        ALTER TRIGGER trg_soggetti_upd_protect_codice_soggetto ON anagrafiche.soggetti
+                            RENAME 
+                            TO trg_soggetti_protect_codice_soggetto_upd;
+
+                        ALTER TRIGGER trg_soggetti_z90_upd_dlt_storico_generic ON anagrafiche.soggetti
+                            RENAME 
+                            TO trg_soggetti_z90_storico_generic_upd_dlt;
+
+                        -- soggetti_conti_bancari
+                        ALTER TRIGGER trg_soggetti_conti_bancari_ins_upd_guard ON anagrafiche.soggetti_conti_bancari
+                            RENAME 
+                            TO trg_soggetti_conti_bancari_guard_ins_upd;
+
+                        -- soggetti_ruoli
+                        ALTER TRIGGER trg_soggetti_ruoli_ins_upd_tx_id_managed ON anagrafiche.soggetti_ruoli
+                            RENAME 
+                            TO trg_soggetti_ruoli_tx_id_managed_ins_upd;
+
+                        ALTER TRIGGER trg_soggetti_ruoli_upd_audit_data_user_generic ON anagrafiche.soggetti_ruoli
+                            RENAME 
+                            TO trg_soggetti_ruoli_audit_data_user_generic_upd;
+
+                        -- soggetti_ruoli_conti_bancari
+                        ALTER TRIGGER trg_soggetti_ruoli_conti_bancari_ins_upd_guard ON anagrafiche.soggetti_ruoli_conti_bancari
+                            RENAME 
+                            TO trg_soggetti_ruoli_conti_bancari_guard_ins_upd;
