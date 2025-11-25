@@ -6,8 +6,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| billing_account_id | integer | YES |  |
-| istanza_utility_id | integer | NO |  |
+| billing_account_id | bigint | YES |  |
+| istanza_utility_id | bigint | NO |  |
 | data_attivita | date | NO |  |
 | quantita | numeric | NO |  |
 | competenza_mese | date | YES |  |
@@ -17,8 +17,8 @@
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
-| user_insert | character varying | NO | CURRENT_USER |
-| user_update | character varying | YES | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
+| user_update | text | YES | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 | sorgente_riga | bigint | YES | 0 |

@@ -4,10 +4,10 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO |  |
+| id | bigint | NO |  |
 | tipo_contatto_id | integer | NO |  |
 | soggetto_id | uuid | NO |  |
-| soggetto_ruolo_id | integer | YES |  |
+| soggetto_ruolo_id | bigint | YES |  |
 | utility_id | integer | YES |  |
 | nominativo | character varying | NO |  |
 | email | character varying | YES |  |

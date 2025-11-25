@@ -4,12 +4,11 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO |  |
-| soggetto_ruolo_id | integer | NO |  |
+| id | bigint | NO |  |
+| soggetto_ruolo_id | bigint | NO |  |
 | descrizione | character | NO |  |
 | cd_prod_software | character | NO |  |
 | valuta_id | integer | NO |  |
-| iban | character | NO |  |
 | user_insert | text | NO | CURRENT_USER |
 | user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
@@ -33,7 +32,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_gestori_a10_guard_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_guard()` |
+| trg_gestori_a10_guard_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_guard()` |
 | trg_gestori_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_gestori_check_ruolo_gestore_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_check_ruolo_gestore()` |
+| trg_gestori_check_ruolo_gestore_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_check_ruolo_gestore()` |
 
 ---
 {% include-markdown "signature-core.md" %}

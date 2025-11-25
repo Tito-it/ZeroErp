@@ -1,19 +1,19 @@
 # ⚙️ Funzione `fn_check_soggetto_ruolo`
 
 ```sql
-CREATE FUNCTION fn_check_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id integer, p_cd_int_ruolo character varying)
+CREATE FUNCTION fn_check_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_cd_int_ruolo character varying)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_check_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id integer, p_cd_int_ruolo character varying)
- RETURNS integer
+CREATE OR REPLACE FUNCTION script.fn_check_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_cd_int_ruolo character varying)
+ RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
 DECLARE
     v_tipo_ruolo_id  integer;
-    v_count     integer;
+    v_count          integer;
 
 BEGIN
     -- ------------------------------------------------------------
@@ -41,9 +41,7 @@ BEGIN
             coalesce(p_soggetto_id::text, 'NULL'),
             coalesce(p_cd_int_ruolo::text, 'NULL')
         );
-        -- fn_log_and_raise_error dovrebbe fare RAISE; per sicurezza:
-       -- RAISE EXCEPTION 'soggetto_ruolo_id mancante o non valido (%).', p_soggetto_ruolo_id
-       --     USING ERRCODE = 'P0001';
+ 
     END IF;
 
     -- 2) Risolvo l'ID del ruolo da config.tipi_ruoli
@@ -63,8 +61,6 @@ BEGIN
             'codice_interno', coalesce(p_cd_int_ruolo::text, 'NULL')
         );
 
-        -- RAISE EXCEPTION 'Codice interno ruolo non valido: %', p_cd_int_ruolo
-        --    USING ERRCODE = 'P0001';
     END IF;
 
     -- 3) Verifica esistenza e coerenza del legame in anagrafiche.soggetti_ruoli
@@ -102,9 +98,7 @@ BEGIN
             coalesce(v_tipo_ruolo_id::text, 'NULL'),
             coalesce(p_cd_int_ruolo::text, 'NULL')
         );
-         -- RAISE EXCEPTION 'Nessun legame soggetto_ruolo coerente trovato (id %, ruolo %, soggetto %).',
-         --   p_soggetto_ruolo_id, v_tipo_ruolo_id, p_soggetto_id
-          --    USING ERRCODE = 'P0001';
+ 
     END IF;
 
     -- 4) Tutto ok: ritorno l'ID passato

@@ -16,7 +16,7 @@
 | iva_id | integer | YES |  |
 | esigibilita | character | YES |  |
 | split_payment | boolean | YES |  |
-| dest_billing_account_id | integer | YES |  |
+| dest_billing_account_id | bigint | YES |  |
 | imponibile_riga | numeric | YES |  |
 | imposta_riga | numeric | YES |  |
 | totale_riga | numeric | YES |  |
@@ -24,9 +24,9 @@
 | storicizza | boolean | NO | false |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | YES | CURRENT_USER |
+| user_update | text | YES | CURRENT_USER |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_riga | bigint | YES | 0 |
 | iva_natura | character varying | YES |  |

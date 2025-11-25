@@ -4,18 +4,18 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO |  |
-| istanza_utility_id | integer | NO |  |
-| soggetto_ruolo_id | integer | NO |  |
+| id | bigint | NO |  |
+| istanza_utility_id | bigint | NO |  |
+| soggetto_ruolo_id | bigint | NO |  |
 | utility_id | integer | NO |  |
-| parent_account_id | integer | YES |  |
+| parent_account_id | bigint | YES |  |
 | codice | character varying | NO |  |
 | valid_from | date | YES | CURRENT_DATE |
 | valid_to | date | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | NO | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
 

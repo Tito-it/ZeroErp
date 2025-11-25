@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| istanza_utility_id | integer | NO |  |
+| istanza_utility_id | bigint | NO |  |
 | utility_id | integer | NO |  |
 | stato | character varying | YES | 'RICEVUTO'::character varying |
 | tipo_utenza_id | integer | YES |  |
@@ -16,9 +16,9 @@
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | YES | CURRENT_USER |
+| user_update | text | YES | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -29,7 +29,7 @@
 | FOREIGN KEY | fk_idp_tipi_utenze | tipo_utenza_id |
 | FOREIGN KEY | fk_idp_utilities | utility_id |
 | PRIMARY KEY | pk_istanze_dati_precontrattuali | id |
-| UNIQUE | uq_istanze_dati_precontrattuali_id_utility_id | istanza_utility_id, utility_id |
+| UNIQUE | uq_istanze_dati_precontrattuali_id_utility_id | utility_id, istanza_utility_id |
 
 ## 📑 Indici
 | Nome | Definizione |

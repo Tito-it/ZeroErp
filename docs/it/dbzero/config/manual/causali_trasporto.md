@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+> Approfondimenti tabelle:   
 >
-> * [config.aspetti_beni](/dbzero/config/tabelle/aspetti_beni)
-> * [vendite.ddt_testata](/dbzero/vendite/tabelle/ddt_testata)
-> * [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)
+> * [config.aspetti_beni](/dbzero/config/tabelle/aspetti_beni)    
+> * [vendite.ddt_testata](/dbzero/vendite/tabelle/ddt_testata)     
+> * [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)    
 >
 > Approfondimenti funzioni/trigger generici:
 >
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)  
 
 ---
 

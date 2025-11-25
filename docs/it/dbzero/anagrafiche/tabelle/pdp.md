@@ -12,8 +12,8 @@
 | tx_id | uuid | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO |  |
-| user_update | character varying | NO |  |
+| user_insert | text | NO |  |
+| user_update | text | NO |  |
 | storicizza | boolean | NO | true |
 | extra_info | jsonb | NO | '{}'::jsonb |
 
@@ -25,9 +25,9 @@
 | FOREIGN KEY | fk_pdp_indirizzi_dettaglio | indirizzo_dettaglio_id |
 | FOREIGN KEY | fk_pdp_utilities | utilities_id |
 | PRIMARY KEY | pk_pdp | id |
-| UNIQUE | uq_pdp_addr_utility | utilities_id, indirizzo_dettaglio_id |
+| UNIQUE | uq_pdp_addr_utility | indirizzo_dettaglio_id, utilities_id |
 | UNIQUE | uq_pdp_codice | pdp |
-| UNIQUE | uq_pdp_id_addr | id, indirizzo_dettaglio_id |
+| UNIQUE | uq_pdp_id_addr | indirizzo_dettaglio_id, id |
 
 ## 📑 Indici
 | Nome | Definizione |

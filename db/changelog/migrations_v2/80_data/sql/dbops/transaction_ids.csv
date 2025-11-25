@@ -1,0 +1,2 @@
+id,user_insert,data_insert,user_update,data_update,generating_function,session_info
+c13178c6-2171-4132-ac2a-8c4a9588a3d3,titodb,2025-09-21 23:18:03.391457+02,,,dbops.fn_get_or_create_session_tx_id,"{""source"": ""fn_get_or_create""}"

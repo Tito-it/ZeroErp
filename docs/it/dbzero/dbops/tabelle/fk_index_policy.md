@@ -10,9 +10,9 @@
 | consentito | boolean | NO | true |
 | dll_command | text | YES |  |
 | generated_by_script | boolean | YES | false |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
-| user_update | character varying | YES |  |
+| user_update | text | YES |  |
 | data_update | timestamp with time zone | YES |  |
 
 ## 🔒 Vincoli

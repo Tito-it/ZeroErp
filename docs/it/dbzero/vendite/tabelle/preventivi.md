@@ -7,8 +7,8 @@
 | numero | character varying | NO |  |
 | rev | integer | NO | 0 |
 | is_revision_attiva | boolean | NO | false |
-| billing_account_id | integer | YES |  |
-| istanza_utility_id | integer | YES |  |
+| billing_account_id | bigint | YES |  |
+| istanza_utility_id | bigint | YES |  |
 | utility_id | integer | NO |  |
 | validita_dal | date | YES |  |
 | validita_al | date | YES |  |
@@ -18,9 +18,9 @@
 | valuta_id | integer | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | YES | CURRENT_USER |
+| user_update | text | YES | CURRENT_USER |
 | competenza_mese | date | YES |  |
 | fatturazione_immediata | boolean | YES | false |
 | stato_doc_preventivo_id | bigint | NO |  |

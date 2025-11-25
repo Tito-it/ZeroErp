@@ -1,0 +1,473 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+#                    -- anagrafiche.trgfn_gestori_guard_ins_upd()
+#                        -- Guard di dominio per anagrafiche.gestori
+#                        --
+#                        -- Regole:
+#                        --  1) Singleton: massimo 1 record in anagrafiche.gestori
+#                        --  2) Il soggetto collegato DEVE avere partita_iva valorizzata
+
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251124-01-trgfn_gestori_guard_ins_upd-mctit.yaml
+
+    #  Vedi in basSo per la versione aggiornat
+
+    - changeSet:
+          id: 20251124-01-trgfn_gestori_guard_ins_upd
+          author: mctit
+          comment: "Guard di dominio per anagrafiche.gestori."
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_gestori_guard_ins_upd()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $$
+                        DECLARE
+                            v_soggetto_id   uuid;
+                            v_partita_iva   text;
+                            v_existing_id   integer;
+                        BEGIN
+
+                        -- =========================================================
+                        -- anagrafiche.trgfn_gestori_guard_ins_upd()
+                        -- Guard di dominio per anagrafiche.gestori
+                        --
+                        -- Regole:
+                        --  1) Singleton: massimo 1 record in anagrafiche.gestori
+                        --  2) Il soggetto collegato DEVE avere partita_iva valorizzata
+                        -- =========================================================
+
+
+                            ----------------------------------------------------------------
+                            -- 0) Verifica che il soggetto_ruolo esista e risali al soggetto
+                            ----------------------------------------------------------------
+                            SELECT s.id, s.partita_iva
+                            INTO v_soggetto_id, v_partita_iva
+                            FROM anagrafiche.soggetti_ruoli sr
+                            JOIN anagrafiche.soggetti s
+                            ON s.id = sr.soggetto_id
+                            WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                            IF v_soggetto_id IS NULL THEN
+                                PERFORM dbops.fn_log_and_raise_error(
+                                    p_codice_errore := 'E_GESTORE_SOGGETTO_RUOLO_MANCANTE',
+                                    p_messaggio     := 'Il gestore deve riferirsi a un soggetto_ruolo esistente.',
+                                    p_context       := jsonb_build_object(
+                                                        'table', TG_TABLE_NAME,
+                                                        'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                                    ),
+                                NEW.tx_id,
+                                coalesce(NEW.soggetto_ruolo_id::text, 'NULL')
+                                );
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- 1) Regola: il soggetto del gestore deve avere PARTITA IVA
+                            ----------------------------------------------------------------
+                            IF v_partita_iva IS NULL OR btrim(v_partita_iva) = '' THEN
+                                PERFORM dbops.fn_log_and_raise_error(
+                                    p_codice_errore := 'E_RUOLO_RICHIEDE_PIVA',
+                                    p_messaggio     := 'Il gestore deve essere associato a un soggetto con partita_iva valorizzata.',
+                                    p_context       := jsonb_build_object(
+                                                        'table', TG_TABLE_NAME,
+                                                        'soggetto_id', v_soggetto_id,
+                                                        'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                                    ),
+                                NEW.tx_id,
+                                'gestore',
+                                v_soggetto_id::text,
+                                coalesce(NEW.soggetto_ruolo_id::text, 'NULL')
+                                
+                                );
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- 2) Regola singleton: massimo 1 record in anagrafiche.gestori
+                            --
+                            -- NB: id <> NEW.id per permettere UPDATE sulla stessa riga.
+                            ----------------------------------------------------------------
+                            SELECT g.id
+                            INTO v_existing_id
+                            FROM anagrafiche.gestori g
+                            WHERE g.id <> COALESCE(NEW.id, -1)
+                            LIMIT 1;
+
+                            IF FOUND THEN
+                                PERFORM dbops.fn_log_and_raise_error(
+                                    p_codice_errore := 'E_GESTORE_SINGLETON_VIOLATO',
+                                    p_messaggio     := 'Esiste già un record di gestore. Non è possibile crearne un secondo.',
+                                    p_context       := jsonb_build_object(
+                                                        'table', TG_TABLE_NAME,
+                                                        'existing_gestore_id', v_existing_id,
+                                                        'new_soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                                    ),
+                                NEW.tx_id,
+                                coalesce(NEW.soggetto_ruolo_id::text, 'NULL')
+                                );
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $$;
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_gestori_guard_ins_upd()
+                            IS 'Guard di dominio per anagrafiche.gestori.';
+
+    - changeSet:
+          id: 20251124-02-trgfn_gestori_guard_ins_upd
+          author: mctit
+          comment: "Rename Guard di dominio per anagrafiche.gestori."
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        ALTER FUNCTION anagrafiche.trgfn_gestori_guard_ins_upd() 
+                        RENAME TO trgfn_gestori_guard;
+
+    ## Fix
+
+    - changeSet:
+          id: 20251124-01FIX-trgfn_gestori_guard_ins_upd
+          author: mctit
+          comment: "Guard di dominio per anagrafiche.gestori."
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_gestori_guard_ins_upd()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $$
+                        DECLARE
+                            v_soggetto_id   uuid;
+                            v_partita_iva   text;
+                            v_existing_id   integer;
+                        BEGIN
+
+                        -- =========================================================
+                        -- anagrafiche.trgfn_gestori_guard_ins_upd()
+                        -- Guard di dominio per anagrafiche.gestori
+                        --
+                        -- Regole:
+                        --  1) Singleton: massimo 1 record in anagrafiche.gestori
+                        --  2) Il soggetto collegato DEVE avere partita_iva valorizzata
+                        -- =========================================================
+
+
+                            ----------------------------------------------------------------
+                            -- 0) Verifica che il soggetto_ruolo esista e risali al soggetto
+                            ----------------------------------------------------------------
+                            SELECT s.id, s.partita_iva
+                            INTO v_soggetto_id, v_partita_iva
+                            FROM anagrafiche.soggetti_ruoli sr
+                            JOIN anagrafiche.soggetti s
+                            ON s.id = sr.soggetto_id
+                            WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                            IF v_soggetto_id IS NULL THEN
+                                PERFORM dbops.fn_log_and_raise_error(
+                                    p_codice_errore := 'E_GESTORE_SOGGETTO_RUOLO_MANCANTE',
+                                    p_messaggio     := 'Il gestore deve riferirsi a un soggetto_ruolo esistente.',
+                                    p_context       := jsonb_build_object(
+                                                        'table', TG_TABLE_NAME,
+                                                        'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                                    ),
+                                --NEW.tx_id,
+                                NULL::uuid,
+                                coalesce(NEW.soggetto_ruolo_id::text, 'NULL')
+                                );
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- 1) Regola: il soggetto del gestore deve avere PARTITA IVA
+                            ----------------------------------------------------------------
+                            IF v_partita_iva IS NULL OR btrim(v_partita_iva) = '' THEN
+                                PERFORM dbops.fn_log_and_raise_error(
+                                    p_codice_errore := 'E_RUOLO_RICHIEDE_PIVA',
+                                    p_messaggio     := 'Il gestore deve essere associato a un soggetto con partita_iva valorizzata.',
+                                    p_context       := jsonb_build_object(
+                                                        'table', TG_TABLE_NAME,
+                                                        'soggetto_id', v_soggetto_id,
+                                                        'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                                    ),
+                                --NEW.tx_id,
+                                NULL::uuid,
+                                'gestore',
+                                v_soggetto_id::text,
+                                coalesce(NEW.soggetto_ruolo_id::text, 'NULL')
+                                
+                                );
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- 2) Regola singleton: massimo 1 record in anagrafiche.gestori
+                            --
+                            -- NB: id <> NEW.id per permettere UPDATE sulla stessa riga.
+                            ----------------------------------------------------------------
+                            SELECT g.id
+                            INTO v_existing_id
+                            FROM anagrafiche.gestori g
+                            WHERE g.id <> COALESCE(NEW.id, -1)
+                            LIMIT 1;
+
+                            IF FOUND THEN
+                                PERFORM dbops.fn_log_and_raise_error(
+                                    p_codice_errore := 'E_GESTORE_SINGLETON_VIOLATO',
+                                    p_messaggio     := 'Esiste già un record di gestore. Non è possibile crearne un secondo.',
+                                    p_context       := jsonb_build_object(
+                                                        'table', TG_TABLE_NAME,
+                                                        'existing_gestore_id', v_existing_id,
+                                                        'new_soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                                    ),
+                                --NEW.tx_id,
+                                NULL::uuid,
+                                coalesce(NEW.soggetto_ruolo_id::text, 'NULL')
+                                );
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $$;
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_gestori_guard_ins_upd()
+                            IS 'Guard di dominio per anagrafiche.gestori.';
+
+    ## Fix
+
+    - changeSet:
+          id: 20251124-01FIX-trgfn_gestori_guard
+          author: mctit
+          comment: "Guard di dominio per anagrafiche.gestori."
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        DROP FUNCTION IF EXISTS anagrafiche.trgfn_gestori_guard_ins_upd();
+
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_gestori_guard()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $$
+                        DECLARE
+                            v_soggetto_id   uuid;
+                            v_partita_iva   text;
+                            v_existing_id   integer;
+                        BEGIN
+
+                        -- =========================================================
+                        -- anagrafiche.trgfn_gestori_guard_ins_upd()
+                        -- Guard di dominio per anagrafiche.gestori
+                        --
+                        -- Regole:
+                        --  1) Singleton: massimo 1 record in anagrafiche.gestori
+                        --  2) Il soggetto collegato DEVE avere partita_iva valorizzata
+                        -- =========================================================
+
+
+                            ----------------------------------------------------------------
+                            -- 0) Verifica che il soggetto_ruolo esista e risali al soggetto
+                            ----------------------------------------------------------------
+                            SELECT s.id, s.partita_iva
+                            INTO v_soggetto_id, v_partita_iva
+                            FROM anagrafiche.soggetti_ruoli sr
+                            JOIN anagrafiche.soggetti s
+                            ON s.id = sr.soggetto_id
+                            WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                            IF v_soggetto_id IS NULL THEN
+                                PERFORM dbops.fn_log_and_raise_error(
+                                    p_codice_errore := 'E_GESTORE_SOGGETTO_RUOLO_MANCANTE',
+                                    p_messaggio     := 'Il gestore deve riferirsi a un soggetto_ruolo esistente.',
+                                    p_context       := jsonb_build_object(
+                                                        'table', TG_TABLE_NAME,
+                                                        'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                                    ),
+                                --NEW.tx_id,
+                                NULL::uuid,
+                                coalesce(NEW.soggetto_ruolo_id::text, 'NULL')
+                                );
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- 1) Regola: il soggetto del gestore deve avere PARTITA IVA
+                            ----------------------------------------------------------------
+                            IF v_partita_iva IS NULL OR btrim(v_partita_iva) = '' THEN
+                                PERFORM dbops.fn_log_and_raise_error(
+                                    p_codice_errore := 'E_RUOLO_RICHIEDE_PIVA',
+                                    p_messaggio     := 'Il gestore deve essere associato a un soggetto con partita_iva valorizzata.',
+                                    p_context       := jsonb_build_object(
+                                                        'table', TG_TABLE_NAME,
+                                                        'soggetto_id', v_soggetto_id,
+                                                        'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                                    ),
+                                --NEW.tx_id,
+                                NULL::uuid,
+                                'gestore',
+                                v_soggetto_id::text,
+                                coalesce(NEW.soggetto_ruolo_id::text, 'NULL')
+                                
+                                );
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- 2) Regola singleton: massimo 1 record in anagrafiche.gestori
+                            --
+                            -- NB: id <> NEW.id per permettere UPDATE sulla stessa riga.
+                            ----------------------------------------------------------------
+                            SELECT g.id
+                            INTO v_existing_id
+                            FROM anagrafiche.gestori g
+                            WHERE g.id <> COALESCE(NEW.id, -1)
+                            LIMIT 1;
+
+                            IF FOUND THEN
+                                PERFORM dbops.fn_log_and_raise_error(
+                                    p_codice_errore := 'E_GESTORE_SINGLETON_VIOLATO',
+                                    p_messaggio     := 'Esiste già un record di gestore. Non è possibile crearne un secondo.',
+                                    p_context       := jsonb_build_object(
+                                                        'table', TG_TABLE_NAME,
+                                                        'existing_gestore_id', v_existing_id,
+                                                        'new_soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                                    ),
+                                --NEW.tx_id,
+                                NULL::uuid,
+                                coalesce(NEW.soggetto_ruolo_id::text, 'NULL')
+                                );
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $$;
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_gestori_guard()
+                            IS 'Guard di dominio per anagrafiche.gestori.';
+
+    ## Fix
+
+    - changeSet:
+          id: 20251124-01FIX-02-trgfn_gestori_guard
+          author: mctit
+          comment: "Guard di dominio per anagrafiche.gestori."
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_gestori_guard()
+                            RETURNS trigger
+                            LANGUAGE 'plpgsql'
+                            COST 100
+                            VOLATILE NOT LEAKPROOF
+                        AS $BODY$
+                        DECLARE
+                            v_soggetto_id   uuid;
+                            v_partita_iva   text;
+                            v_existing_id   integer;
+                        BEGIN
+
+                        -- =========================================================
+                        -- anagrafiche.trgfn_gestori_guard_ins_upd()
+                        -- Guard di dominio per anagrafiche.gestori
+                        --
+                        -- Regole:
+                        --  1) Singleton: massimo 1 record in anagrafiche.gestori
+                        --  2) Il soggetto collegato DEVE avere partita_iva valorizzata
+                        -- =========================================================
+
+                            ----------------------------------------------------------------
+                            -- 0) Verifica che il soggetto_ruolo esista e risali al soggetto
+                            ----------------------------------------------------------------
+                            SELECT s.id, s.partita_iva
+                            INTO v_soggetto_id, v_partita_iva
+                            FROM anagrafiche.soggetti_ruoli sr
+                            JOIN anagrafiche.soggetti s
+                            ON s.id = sr.soggetto_id
+                            WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                            IF v_soggetto_id IS NULL THEN
+                                PERFORM dbops.fn_log_and_raise_error(
+                                    'database' ,
+                                    TG_NAME,
+                                    p_codice_errore := 'E_GESTORE_SOGGETTO_RUOLO_MANCANTE',
+                                    jsonb_build_object(
+                                            'table', TG_TABLE_NAME,
+                                            'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                        ),
+                                    --NEW.tx_id,
+                                    NULL::uuid,
+                                    NEW.soggetto_ruolo_id::text
+                                );
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- 1) Regola: il soggetto del gestore deve avere PARTITA IVA
+                            ----------------------------------------------------------------
+                            IF v_partita_iva IS NULL OR btrim(v_partita_iva) = '' THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database' ,
+                                    TG_NAME,
+                                    'E_RUOLO_RICHIEDE_PIVA',
+                                    jsonb_build_object(
+                                        'table', TG_TABLE_NAME,
+                                        'soggetto_id', v_soggetto_id,
+                                        'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                    ),
+                                    --NEW.tx_id,
+                                    NULL::uuid,
+                                    'gestore',
+                                    v_soggetto_id::text,
+                                    NEW.soggetto_ruolo_id::text      
+                                );
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- 2) Regola singleton: massimo 1 record in anagrafiche.gestori
+                            --
+                            -- NB: id <> NEW.id per permettere UPDATE sulla stessa riga.
+                            ----------------------------------------------------------------
+                            SELECT g.id
+                            INTO v_existing_id
+                            FROM anagrafiche.gestori g
+                            WHERE g.id <> COALESCE(NEW.id, -1)
+                            LIMIT 1;
+
+                            IF FOUND THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database' ,
+                                    TG_NAME,
+                                    'E_GESTORE_SINGLETON_VIOLATO',
+                                    jsonb_build_object
+                                        ('table', TG_TABLE_NAME,
+                                        'existing_gestore_id', v_existing_id,
+                                        'new_soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                        ),
+                                    --NEW.tx_id,
+                                    NULL::uuid,
+                                    NEW.soggetto_ruolo_id::text
+                                );
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $BODY$;
+
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_gestori_guard()
+                            IS 'Guard di dominio per anagrafiche.gestori.';

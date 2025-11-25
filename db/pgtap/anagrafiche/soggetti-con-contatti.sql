@@ -138,17 +138,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 COMMIT;
 
--- Pulizia finale dei dati di test
-WITH costanti AS (
-    SELECT
-        '01677080440'::text  AS piva_test,
-        'TTNMHL68E07D042Z'::text   AS cf_test
-)
-DELETE FROM anagrafiche.contatti c
-USING anagrafiche.soggetti s, costanti k
-WHERE c.soggetto_id = s.id
-  AND s.partita_iva = k.piva_test
-  AND s.codice_fiscale = k.cf_test;
 
 WITH costanti AS (
     SELECT
@@ -157,8 +146,11 @@ WITH costanti AS (
 )
 DELETE FROM anagrafiche.soggetti s
 USING costanti k
-WHERE s.partita_iva = k.piva_test
-  AND s.codice_fiscale = k.cf_test;
+WHERE s.partita_iva = k.piva_test;
+  --AND s.codice_fiscale = k.cf_test;
+
+
+
 
 -- Fine test
 SELECT * FROM finish();

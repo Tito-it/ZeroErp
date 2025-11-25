@@ -9,16 +9,16 @@
 | bic_swift | character varying | YES |  |
 | intestatario_predefinito | character varying | YES |  |
 | paese | character | YES |  |
-| banca_nome | character varying | YES |  |
 | attivo | boolean | NO | true |
 | verificato | boolean | NO | false |
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | YES | CURRENT_USER |
+| user_update | text | YES | CURRENT_USER |
+| bank_branch_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -26,6 +26,7 @@
 | CHECK | chk_conti_bancari_bic_fmt |  |
 | CHECK | chk_conti_bancari_iban_fmt |  |
 | CHECK | chk_conti_bancari_paese_fmt |  |
+| FOREIGN KEY | fk_conti_bancari_bank_branches | bank_branch_id |
 | PRIMARY KEY | pk_conti_bancari | id |
 | UNIQUE | uq_conti_bancari_iban | iban |
 

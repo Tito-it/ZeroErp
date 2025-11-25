@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/script/20251125-07-fn_get_stato_cliente_by_istanza-mctit.yaml
+
+    - changeSet:
+          id: 20251125-07-fn_get_stato_cliente_by_istanza
+          author: mctit
+          comment: "Ripristino  dopo refactoring degli ID in anagrafiche. Utilizzo id bigint"
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        DROP FUNCTION IF EXISTS script.fn_get_stato_cliente_by_istanza(integer);
+
+                        CREATE OR REPLACE FUNCTION script.fn_get_stato_cliente_by_istanza(
+                            p_istanza_id BIGINT)
+                            RETURNS integer
+                            LANGUAGE 'plpgsql'
+                            COST 100
+                            STABLE PARALLEL UNSAFE
+                        AS $BODY$
+                        BEGIN
+                        -- 1. Funzione di recupero stato_cliente per un'istanza
+                        SELECT COALESCE(
+                            (SELECT c.stato_cliente_id
+                            FROM anagrafiche.clienti c
+                            WHERE c.istanza_utility_id = p_istanza_id 
+                            ORDER BY c.id DESC
+                            LIMIT 1),
+                            (SELECT id
+                            FROM config.stati_cliente
+                            WHERE codice_interno = 'IS'
+                            LIMIT 1)
+                        );
+                        END
+                        $BODY$;
+
+
+                        COMMENT ON FUNCTION script.fn_get_stato_cliente_by_istanza(BIGINT)
+                            IS ' Restituisce lo stato di un cliente in base alla istanza. ';

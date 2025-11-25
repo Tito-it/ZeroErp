@@ -1,0 +1,119 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_sync_functions_owner.md" %}
+# ⚙️ Funzione `fn_sync_functions_owner`
+
+```sql
+CREATE FUNCTION fn_sync_functions_owner()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION dbops.fn_sync_functions_owner()
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    r              dbops.sec_functions_owner%ROWTYPE;
+    v_regproc      regprocedure;
+    v_owner_oid    oid;
+    v_owner_name   text;
+    v_required_oid oid;
+BEGIN
+
+-- ------------------------------------------------------------
+-- dbops.fn_sync_functions_owner()
+-- Sincronizza l'owner delle funzioni "sensibili" in base alla
+-- tabella dbops.sec_functions_owner.
+--
+-- NOTE:
+--  - Va idealmente posseduta da postgres e SECURITY DEFINER
+--    per poter cambiare owner ad altre funzioni.
+-- ------------------------------------------------------------
+
+
+    FOR r IN
+        SELECT *
+        FROM dbops.sec_functions_owner
+        ORDER BY schema_name, function_name, arg_types
+    LOOP
+        -- Costruisco la signature per to_regprocedure:
+        -- se arg_types = '' → nessun argomento
+        IF r.arg_types = '' THEN
+            v_regproc := to_regprocedure(
+                format('%I.%I()',
+                    r.schema_name,
+                    r.function_name)
+            );
+        ELSE
+            v_regproc := to_regprocedure(
+                format('%I.%I(%s)',
+                    r.schema_name,
+                    r.function_name,
+                    r.arg_types)
+            );
+        END IF;
+
+        IF v_regproc IS NULL THEN
+            RAISE WARNING
+                'fn_sync_functions_owner: funzione non trovata: %.%(%).',
+                r.schema_name, r.function_name, r.arg_types;
+            CONTINUE;
+        END IF;
+
+        -- Owner corrente
+        SELECT p.proowner, pg_get_userbyid(p.proowner)
+        INTO v_owner_oid, v_owner_name
+        FROM pg_proc p
+        WHERE p.oid = v_regproc;
+
+        -- Owner richiesto
+        SELECT oid
+        INTO v_required_oid
+        FROM pg_roles
+        WHERE rolname = r.required_owner;
+
+        IF v_required_oid IS NULL THEN
+            RAISE WARNING
+                'fn_sync_functions_owner: ruolo richiesto "%" non esiste (%.%(%)).',
+                r.required_owner, r.schema_name, r.function_name, r.arg_types;
+            CONTINUE;
+        END IF;
+
+        -- Se già coincide → niente da fare
+        IF v_owner_oid = v_required_oid THEN
+            CONTINUE;
+        END IF;
+
+        -- TENTO ALTER FUNCTION OWNER TO ...
+        BEGIN
+            EXECUTE format(
+                'ALTER FUNCTION %s OWNER TO %I',
+                v_regproc,
+                r.required_owner
+            );
+
+            RAISE NOTICE
+                'fn_sync_functions_owner: cambiato owner funzione %.%(%): % -> %.',
+                r.schema_name, r.function_name, r.arg_types,
+                v_owner_name, r.required_owner;
+
+        EXCEPTION
+            WHEN insufficient_privilege THEN
+                RAISE WARNING
+                    'fn_sync_functions_owner: privilegi insufficienti per ALTER FUNCTION %.%(%): owner attuale %, richiesto %.',
+                    r.schema_name, r.function_name, r.arg_types,
+                    v_owner_name, r.required_owner;
+            WHEN others THEN
+                RAISE WARNING
+                    'fn_sync_functions_owner: errore inatteso su funzione %.%(%): % %.',
+                    r.schema_name, r.function_name, r.arg_types,
+                    SQLSTATE, SQLERRM;
+        END;
+    END LOOP;
+END;
+$function$
+```
+
+---
+{% include-markdown "signature-core.md" %}

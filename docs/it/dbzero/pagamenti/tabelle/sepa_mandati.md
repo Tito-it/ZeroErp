@@ -5,8 +5,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | soggetto_ruolo_conto_id | bigint | NO |  |
-| billing_account_id | integer | YES |  |
-| istanza_utility_id | integer | YES |  |
+| billing_account_id | bigint | YES |  |
+| istanza_utility_id | bigint | YES |  |
 | umr | character varying | NO |  |
 | schema | character varying | NO |  |
 | creditor_id | character varying | YES |  |
@@ -20,9 +20,9 @@
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | YES | CURRENT_USER |
+| user_update | text | YES | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

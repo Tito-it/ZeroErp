@@ -17,7 +17,7 @@
 | modalita_pagamento_id | integer | YES |  |
 | giorni_pagamento | smallint | YES |  |
 | fine_mese | boolean | YES |  |
-| indirizzo_consegna_id | integer | NO |  |
+| indirizzo_consegna_id | bigint | NO |  |
 | indirizzo_cons_snapshot | jsonb | NO | '{}'::jsonb |
 | causale_trasporto_id | bigint | YES |  |
 | aspetto_bene_id | bigint | YES |  |
@@ -35,9 +35,9 @@
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | YES | CURRENT_USER |
+| user_update | text | YES | CURRENT_USER |
 | hash_contenuto | character varying | YES |  |
 | sorgente_uid | uuid | YES |  |
 

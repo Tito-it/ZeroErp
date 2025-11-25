@@ -5,7 +5,7 @@
 
 > 👀 **Vedi anche**
 > 
->  - Documento configurazione fondamentale per [`Dblink`](/postgresql/dblink.md)
+>  - Documento configurazione fondamentale per [`Dblink`](/postgresql/dblink)
 >
 > Approfondimento Tabelle:   
 > - [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      

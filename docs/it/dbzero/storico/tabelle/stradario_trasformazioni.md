@@ -10,7 +10,7 @@
 | data_evento | date | NO |  |
 | note | text | YES |  |
 | data_insert | timestamp without time zone | YES | now() |
-| user_insert | character varying | YES | CURRENT_USER |
+| user_insert | text | YES | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

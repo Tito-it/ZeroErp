@@ -5,8 +5,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | numero | character varying | NO |  |
-| billing_account_id | integer | NO |  |
-| istanza_utility_id | integer | NO |  |
+| billing_account_id | bigint | NO |  |
+| istanza_utility_id | bigint | NO |  |
 | utility_id | integer | NO |  |
 | ambito | character varying | YES | 'COMMODITY'::character varying |
 | valid_from | date | NO | CURRENT_DATE |
@@ -14,9 +14,9 @@
 | parent_contratto_id | bigint | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | YES | CURRENT_USER |
+| user_update | text | YES | CURRENT_USER |
 | stato_doc_contratto_id | bigint | NO |  |
 | data | date | NO | CURRENT_DATE |
 | uid | uuid | NO | uuidv7() |

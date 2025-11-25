@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO |  |
+| id | bigint | NO |  |
 | stradario_id | integer | NO |  |
 | civico | integer | YES |  |
 | estensione_civico | character varying | YES |  |
@@ -17,9 +17,9 @@
 | civico_norm | text | NO |  |
 | street_geoloc | USER-DEFINED | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | NO | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | scala | character varying | YES |  |
 | indirizzo_normalizzato | text | YES |  |
 | tx_id | uuid | YES |  |

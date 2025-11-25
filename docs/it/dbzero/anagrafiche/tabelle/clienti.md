@@ -4,9 +4,9 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO |  |
-| soggetto_ruolo_id | integer | NO |  |
-| istanza_utility_id | integer | NO |  |
+| id | bigint | NO |  |
+| soggetto_ruolo_id | bigint | NO |  |
+| istanza_utility_id | bigint | NO |  |
 | tipo_gg_scadenza_ft | character | NO | 'N'::bpchar |
 | nr_giorni_scadenza | integer | NO | 0 |
 | modalita_pagamento_id | integer | YES |  |
@@ -20,9 +20,9 @@
 | iva_id | integer | NO |  |
 | servizio_da_fatturare | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | NO | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | utility_id | integer | YES |  |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
@@ -35,7 +35,7 @@
 | garanzia_importo | numeric | YES | 0 |
 | periodo | daterange | YES |  |
 | termine_pagamento_id | bigint | YES |  |
-| billing_account_id | integer | NO |  |
+| billing_account_id | bigint | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -31,7 +31,22 @@ databaseChangeLog:
     - changeSet:
           id: 20251119-42-acquisti-rename-trigger
           author: mctit
+          runAlways: true
+          validCheckSums: <ANY>
           comment: "Rinomina trigger  schema acquisti secondo convenzione trgfn_<tabella>_<descrizione>"
+
+          preConditions:
+              - onFail: MARK_RAN # se la colonna è già bigint, segna il changeSet come eseguito e salta
+              - onError: MARK_RAN # in caso di errore nella precondizione, non bloccare la CI
+              - sqlCheck:
+                    expectedResult: 1
+                    sql: |
+                        SELECT COUNT(*)
+                          FROM pg_proc p
+                          JOIN pg_namespace n ON n.oid = p.pronamespace
+                          WHERE n.nspname = 'acquisti'
+                          AND p.proname = 'trg_ddt_a10_upd_a_protect_num';
+
           changes:
               - sql:
                     splitStatements: true
@@ -55,9 +70,9 @@ databaseChangeLog:
                                 ON acquisti.note_ordini
                             RENAME TO trg_note_ordini_validate_ins_upd;
 
-                            ALTER TRIGGER trg_ordini_a10_ins_upd_ao_only_consegna_tipo_con
-                                ON acquisti.ordini
-                            RENAME TO trg_ordini_a10_ao_only_consegna_tipo_con_ins_upd;
+                            --ALTER TRIGGER trg_ordini_a10_ins_upd_ao_only_consegna_tipo_con
+                            --    ON acquisti.ordini
+                            -- RENAME TO trg_ordini_a10_ao_only_consegna_tipo_con_ins_upd;
 
                             ALTER TRIGGER trg_ordini_a10_upd_protect_num
                                 ON acquisti.ordini

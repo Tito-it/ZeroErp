@@ -7,7 +7,7 @@
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
 | soggetto_ruolo_id | bigint | NO |  |
-| billing_account_id | integer | YES |  |
+| billing_account_id | bigint | YES |  |
 | serie | character varying | YES |  |
 | numero | character varying | YES |  |
 | anno | smallint | YES |  |
@@ -24,9 +24,9 @@
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | YES | CURRENT_USER |
+| user_update | text | YES | CURRENT_USER |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
 | termine_pagamento_id | bigint | YES |  |

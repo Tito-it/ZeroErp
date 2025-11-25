@@ -8,9 +8,9 @@
 | parameter_id | bigint | NO |  |
 | overridden_value | text | NO |  |
 | data_insert | timestamp without time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp without time zone | NO | now() |
-| user_update | character varying | NO | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | tenant_id | integer | YES |  |
 | session_key | text | YES |  |
 | function_name | text | YES |  |

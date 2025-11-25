@@ -4,10 +4,10 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | integer | NO |  |
-| soggetto_ruolo_id | integer | NO |  |
+| id | bigint | NO |  |
+| soggetto_ruolo_id | bigint | NO |  |
 | tipo_indirizzo_id | integer | NO |  |
-| indirizzo_dettaglio_id | integer | YES |  |
+| indirizzo_dettaglio_id | bigint | YES |  |
 | indirizzo_libero | text | YES |  |
 | stato_id | integer | YES |  |
 | administrative_area | character varying | YES |  |
@@ -16,9 +16,9 @@
 | postal_box | character varying | YES |  |
 | geoloc | USER-DEFINED | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | NO | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | comune_id | integer | YES |  |
 | codice_postale_id | integer | YES |  |
 | storicizza | boolean | NO | false |

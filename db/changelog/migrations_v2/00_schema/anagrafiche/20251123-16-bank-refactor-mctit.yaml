@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Refactor conti bancari, legami conti, e tabella gestori:
+# - Aggiunge FK bank_branch_id a anagrafiche.conti_bancari
+# - Rimuove iban da anagrafiche.gestori
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20251123-16-bank-refactor-mctit.yaml
+
+  # --------------------------------------------------------
+  # 1) anagrafiche.conti_bancari
+  #    - Aggiunge bank_branch_id (FK → anagrafiche.bank_branches.id)
+  #    - Rimuove banca_nome (dopo migrazione dati)
+  # --------------------------------------------------------
+  - changeSet:
+      id: 20251123-16-01-conti-bancari-refactor
+      author: mctit
+      comment: >
+        Refactor anagrafiche.conti_bancari:
+        - introduce bank_branch_id collegato a anagrafiche.bank_branches
+        - rimuove banca_nome (dopo eventuale migrazione dati su bank_branches).
+
+      changes:
+        # 1.1) Aggiunta colonna bank_branch_id
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: conti_bancari
+            columns:
+              - column:
+                  name: bank_branch_id
+                  type: bigint
+                  remarks: "FK → anagrafiche.bank_branches.id (filiale associata all'IBAN)."
+                  constraints:
+                    nullable: true
+
+        # 1.2) FK verso anagrafiche.bank_branches
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: conti_bancari
+            baseColumnNames: bank_branch_id
+            constraintName: fk_conti_bancari_bank_branches
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: bank_branches
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # 1.3) Drop colonna banca_nome (normalizzata su bank_branches)
+        # ATTENZIONE: eseguire solo dopo aver migrato i dati esistenti.
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: conti_bancari
+            columnName: banca_nome
+
+  # --------------------------------------------------------
+  # 2) anagrafiche.gestori
+  #    - Rimuove colonna iban (uso consolidato via conti_bancari + legami)
+  # --------------------------------------------------------
+  - changeSet:
+      id: 20251123-16-02-gestori-drop-iban
+      author: mctit
+      comment: >
+        Rimuove la colonna iban da anagrafiche.gestori, spostando la
+        responsabilità degli IBAN verso anagrafiche.conti_bancari e
+        le tabelle di legame soggetti/soggetti_ruoli_conti_bancari.
+        ATTENZIONE: eseguire solo dopo eventuale migrazione dei dati
+        di gestori.iban verso i nuovi legami.
+
+      changes:
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: gestori
+            columnName: iban

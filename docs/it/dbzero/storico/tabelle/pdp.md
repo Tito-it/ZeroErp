@@ -12,7 +12,7 @@
 | valid_from | timestamp with time zone | NO | now() |
 | valid_to | timestamp with time zone | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
