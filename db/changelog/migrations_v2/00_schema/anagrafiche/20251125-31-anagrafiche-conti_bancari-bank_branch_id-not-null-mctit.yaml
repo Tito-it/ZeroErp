@@ -1,0 +1,23 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20251125-31-anagrafiche-conti_bancari-bank_branch_id-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20251125-31-anagrafiche-conti_bancari-bank_branch_id-not-null
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN # se è già NOT NULL: non eseguire il change, ma segna il changeset come eseguito
+        - onError: MARK_RAN
+        - dbms:
+            type: postgresql
+
+      changes:
+        - addNotNullConstraint:
+            schemaName: anagrafiche
+            tableName: conti_bancari
+            columnName: bank_branch_id
+            columnDataType: bigint

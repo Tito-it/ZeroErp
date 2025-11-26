@@ -25,7 +25,6 @@
 - [vettori](tabelle/vettori.md)
 
 ## ⚙️ Funzioni
-- [fn_get_conto_bancario_predefinito](funzioni/fn_get_conto_bancario_predefinito.md)
 - [trgfn_bank_check_ruolo_bank_branches](funzioni/trgfn_bank_check_ruolo_bank_branches.md)
 - [trgfn_billing_account_guard_normalize](funzioni/trgfn_billing_account_guard_normalize.md) — Il trigger `anagrafiche.trgfn_billing_account_ins_upd_guard_normalize` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
 - [trgfn_billing_account_protect_account_code](funzioni/trgfn_billing_account_protect_account_code.md) — Il trigger `anagrafiche.trgfn_billing_account_upd_protect_account_code`, invocato **prima di ogni UPDATE** su `anagrafiche.billing_account`, impedisce modifiche improprie al campo **`codice (account)`** una volta assegnato.

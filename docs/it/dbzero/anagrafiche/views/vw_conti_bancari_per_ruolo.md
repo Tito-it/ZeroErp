@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/vw_conti_bancari_per_ruolo.md" %}
 # 🔍 View `vw_conti_bancari_per_ruolo`
 
 ```sql
