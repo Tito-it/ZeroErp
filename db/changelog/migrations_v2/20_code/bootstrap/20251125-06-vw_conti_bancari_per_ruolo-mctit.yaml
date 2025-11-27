@@ -13,7 +13,7 @@ databaseChangeLog:
     - changeSet:
           id: 20251125-06-vw_conti_bancari_per_ruolo
           author: mctit
-          runAlways: true
+          # runAlways: true
           validCheckSums: <ANY>
 
           comment: "Ripristino trigger dopo refactoring degli ID in anagrafiche. Fix"
