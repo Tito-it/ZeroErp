@@ -1,15 +1,19 @@
-## 📘 Introduzione a PostgreSQL
+#  Introduzione a PostgreSQL
 
 Zero ERP utilizza PostgreSQL, un database relazionale open-source potente e altamente estensibile, riconosciuto per robustezza, scalabilità e aderenza agli standard SQL. La scelta di PostgreSQL risponde alle esigenze specifiche del progetto Zero ERP, dove è fondamentale garantire integrità dei dati, elevate prestazioni e flessibilità nello sviluppo e nella gestione.
 
-### Perché PostgreSQL?
+---
+
+## ❓ Perché PostgreSQL?
 
 * **Integrità e Affidabilità**: PostgreSQL garantisce consistenza e durabilità dei dati attraverso avanzati meccanismi di transazione e controllo dei vincoli.
-* **Estendibilità**: Supporta numerose estensioni come `dblink` per comunicazioni inter-database e `pgcrypto` per sicurezza e crittografia.
-* **Performance e Scalabilità**: Offre eccellenti prestazioni anche con dataset molto grandi e carichi di lavoro complessi, grazie a strumenti come gli indici avanzati e il query planner intelligente.
-* **Community e Supporto**: Ampia comunità di utenti e sviluppatori, che offre documentazione estesa e risorse utili per supporto e manutenzione.
+* **Estendibilità**: supporta numerose estensioni come `dblink` per comunicazioni inter-database e `pgcrypto` per sicurezza e crittografia.
+* **Performance e Scalabilità**: offre eccellenti prestazioni anche con dataset molto grandi e carichi di lavoro complessi, grazie a strumenti come gli indici avanzati e il query planner intelligente.
+* **Community e Supporto**: ampia comunità di utenti e sviluppatori, che offre documentazione estesa e risorse utili per supporto e manutenzione.
 
-### Struttura della documentazione del Database
+---
+
+##  Struttura della documentazione del Database
 
 Questa sezione della documentazione include:
 
@@ -21,6 +25,59 @@ Seguendo questa documentazione sarà possibile gestire al meglio PostgreSQL all�
 
 ---
 
+##  Gestione delle chiavi UNIQUE con valori NULL in PostgreSQL
+
+> ⚠️ **Nota tecnica importante – Best Practice Zero ERP**
+
+In PostgreSQL, secondo lo **standard SQL ANSI**, un valore `NULL` *non è considerato uguale ad un altro `NULL`*.
+Questo significa che **gli indici `UNIQUE` non impediscono l’inserimento di più righe con gli stessi campi impostati a `NULL`**, poiché tecnicamente si tratta di valori “sconosciuti” e quindi non confrontabili.
+
+Questa regola è corretta in molti scenari applicativi, ma può risultare **problematicamente permissiva** in casi, come Zero ERP, dove alcuni campi – anche se opzionali – concorrono alla **definizione univoca dell’entità** (es. un indirizzo fisico normalizzato).
 
 ---
-{% include-markdown "signature-core.md" %}
+
+###  Esempio reale dal progetto
+
+Nel caso della tabella:
+
+```text
+anagrafiche.indirizzi_dettaglio
+```
+
+vogliamo garantire che **ogni indirizzo fisico** (stradario + civico + estensione + piano + interno, ecc.) sia rappresentato da **una sola riga univoca**.
+
+Per ottenere correttamente questa unicità, è stato definito un indice `UNIQUE` che normalizza i valori `NULL` tramite `COALESCE`:
+
+```sql
+CREATE UNIQUE INDEX ix_uq_indirizzi_dettaglio_norm
+ON anagrafiche.indirizzi_dettaglio (
+    stradario_id,
+    COALESCE(civico, ''),
+    COALESCE(estensione_civico, ''),
+    COALESCE(palazzina, ''),
+    COALESCE(scala, ''),
+    COALESCE(piano, ''),
+    COALESCE(interno, '')
+);
+```
+
+In questo modo, due righe con tutti i campi strutturali identici (anche se valorizzati a `NULL`) vengono considerate effettivamente duplicate e la `UNIQUE` impedisce inserimenti incoerenti.
+
+---
+
+##  Best Practice Zero ERP per gli indici UNIQUE
+
+| Caso                                                      | Raccomandazione                             |
+| --------------------------------------------------------- | ------------------------------------------- |
+| Il campo è facoltativo ma **non definisce l’identità**    | Non includerlo nell’indice `UNIQUE`         |
+| Il campo è facoltativo ma **definisce l’identità logica** | Includerlo nell’indice usando `COALESCE()`  |
+| Il campo è sempre valorizzato                             | Includerlo normalmente nell’indice `UNIQUE` |
+
+>  **Linea guida pratica**: ogni volta che si progettano vincoli `UNIQUE`, valutare se i campi opzionali concorrono all’identità reale dell’oggetto.
+> Se sì → usarli con `COALESCE` nella definizione dell’indice.
+
+Questa regola è essenziale per evitare **duplicazioni silenti** e garantire consistenza logica dei dati, specialmente in ambiti documentali, fiscalità, mapping geografico e gestione di indirizzi.
+
+---
+
+ Questa best practice va tenuta presente anche nello sviluppo futuro di tabelle simili (es. contatti, localizzazioni, strutture gerarchiche e cicliche, configurazioni parametriche complesse, ecc.).
