@@ -64,4 +64,4 @@
 - [trgfn_vettori_protect_codice](funzioni/trgfn_vettori_protect_codice.md)
 
 ## 🔍 Views
-- [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md)
+- [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md) — * **Selezione unificata del conto per ruolo**   Fornisce una vista già pre-filtrata e normalizzata con **una sola riga per coppia `(soggetto_ruolo_id, uso)`**, scegliendo il miglior candidato tra:
