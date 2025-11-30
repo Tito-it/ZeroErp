@@ -1,0 +1,193 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Creazione tabella anagrafiche.bank_branches (filiali di istituti di credito)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20251129-01-ruoli-tipi-indirizzo-mctit.yaml
+
+  - changeSet:
+      id: 20251129-01-ruoli-tipi-indirizzo
+      author: mctit
+      comment: >
+        Crea la tabella config.ruoli_tipi_indirizzo per definire
+        la matrice di configurazione ruolo ↔ tipo indirizzo
+        (ammissibilità e regole base).
+
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: ruoli_tipi_indirizzo
+            remarks: "Matrice di configurazione ruolo ↔ tipo indirizzo (ammissibilità e regole base)"
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "Identificativo univoco interno (PK)"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_ruoli_tipi_indirizzo
+                    nullable: false
+
+              - column:
+                  name: ruolo_id
+                  type: bigint
+                  remarks: "Ruolo anagrafico (FK → config.ruoli.id)"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tipo_indirizzo_id
+                  type: bigint
+                  remarks: "Tipo indirizzo ammesso per il ruolo (FK → anagrafiche.tipi_indirizzo.id)"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: obbligatorio
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Se TRUE, il ruolo deve avere almeno un indirizzo di questo tipo"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: valido_dal
+                  type: date
+                  remarks: "Data di inizio validità della regola (NULL = sempre valido in passato)"
+
+              - column:
+                  name: valido_al
+                  type: date
+                  remarks: "Data di fine validità della regola (NULL = valido a tempo indeterminato)"
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag di attivazione logica della regola"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili in formato JSONB"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Identificativo di transazione logica (coerente con framework dbops)"
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente che ha creato la riga"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Ultimo utente che ha modificato la riga"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueDate: "CURRENT_TIMESTAMP"
+                  remarks: "Timestamp di inserimento riga"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueDate: "CURRENT_TIMESTAMP"
+                  remarks: "Timestamp di ultima modifica riga"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Flag per trig di storicizzazione (framework storico)"
+                  constraints:
+                    nullable: false
+
+        # FK: ruolo_id → config.ruoli(id)
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: ruoli_tipi_indirizzo
+            baseColumnNames: ruolo_id
+            constraintName: fk_tipi_ruoli_tipi_indirizzo_ruolo
+            referencedTableSchemaName: config
+            referencedTableName: tipi_ruoli
+            referencedColumnNames: id
+            deferrable: false
+            initiallyDeferred: false
+            onDelete: RESTRICT
+            onUpdate: RESTRICT
+
+        # FK: tipo_indirizzo_id → anagrafiche.tipi_indirizzo(id)
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: ruoli_tipi_indirizzo
+            baseColumnNames: tipo_indirizzo_id
+            constraintName: fk_ruoli_tipi_indirizzo_tipo_indirizzo
+            referencedTableSchemaName: config
+            referencedTableName: tipi_indirizzi
+            referencedColumnNames: id
+            deferrable: false
+            initiallyDeferred: false
+            onDelete: RESTRICT
+            onUpdate: RESTRICT
+
+        # Unique: ogni combinazione ruolo + tipo_indirizzo deve essere univoca
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: ruoli_tipi_indirizzo
+            columnNames: ruolo_id, tipo_indirizzo_id
+            constraintName: uq_ruoli_tipi_indirizzo_ruolo_tipo
+
+        # Indici operativi (ricerca per ruolo / per tipo_indirizzo)
+        - createIndex:
+            schemaName: config
+            tableName: ruoli_tipi_indirizzo
+            indexName: idx_ruoli_tipi_indirizzo_ruolo
+            columns:
+              - column:
+                  name: ruolo_id
+
+        - createIndex:
+            schemaName: config
+            tableName: ruoli_tipi_indirizzo
+            indexName: idx_ruoli_tipi_indirizzo_tipo
+            columns:
+              - column:
+                  name: tipo_indirizzo_id
+
+        # CHECK RULES in SQL puro (Liquibase base)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Validità temporale: valido_al deve essere NULL o maggiore o uguale a valido_dal
+              ALTER TABLE config.ruoli_tipi_indirizzo
+              ADD CONSTRAINT chk_ruoli_tipi_indirizzo_validita
+              CHECK (
+                  valido_dal IS NULL
+                  OR valido_al IS NULL
+                  OR valido_al >= valido_dal
+              );

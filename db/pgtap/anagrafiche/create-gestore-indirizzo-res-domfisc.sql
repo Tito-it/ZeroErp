@@ -15,9 +15,14 @@
 --       * 1 solo indirizzo_dettaglio
 --       * 1 indirizzo RES e 1 DOMFISC per il Gestore
 --       * entrambi puntano allo stesso indirizzo_dettaglio_id
+
+--  Aggiunta del 2024-06-11  utilizzo di fn_search_indirizzi_dettaglio
+--  per verificare che l'indirizzo_dettaglio creato sia effettivamente
+--  reperibile tramite la funzione di ricerca indirizzi_dettaglio 3-bis)
+
 -- ------------------------------------------------------------
 
-SELECT plan(8);
+SELECT plan(10);
 
 -- =========================================================
 -- Costanti per il test (stesso pattern del test RES)
@@ -156,6 +161,52 @@ SELECT is(
     1,
     'Upsert di indirizzo_dettaglio: ottenuto esattamente 1 id (nuovo o esistente)'
 );
+
+
+-- inserimento del 2024-06-11  --
+
+-- =========================================================
+-- 3-bis) Verifica tramite fn_search_indirizzi_dettaglio
+--       che l'indirizzo sia reperibile in modo coerente
+-- =========================================================
+
+-- Richiamo funzione di ricerca con:
+--   - p_stradario_id      = quello scelto nel test
+--   - p_civico            = 1
+--   - p_palazzina/piano/interno = quelli definiti nelle costanti (tutti NULL nel test attuale)
+--   - p_indirizzo_norm    = pattern sulla via normalizzata
+--   - p_limit             = 10 (abbondante per il test)
+
+CREATE TEMP TABLE tmp_search_indirizzo_gestore AS
+SELECT *
+FROM anagrafiche.fn_search_indirizzi_dettaglio(
+    p_stradario_id      => (SELECT id FROM tmp_stradario),
+    p_civico            => 1,
+    p_estensione_civico => NULL,
+    p_palazzina         => (SELECT palazzina_test FROM tmp_costanti_indirizzo_gestore),
+    p_scala             => NULL,
+    p_piano             => (SELECT piano_test FROM tmp_costanti_indirizzo_gestore),
+    p_interno           => (SELECT interno_test FROM tmp_costanti_indirizzo_gestore),
+    p_indirizzo_norm    => (SELECT via_norm_test FROM tmp_costanti_indirizzo_gestore),
+    p_limit             => 10
+);
+
+-- Test 4 (nuovo): la funzione trova esattamente 1 indirizzo
+SELECT is(
+    (SELECT count(*)::int FROM tmp_search_indirizzo_gestore),
+    1,
+    'fn_search_indirizzi_dettaglio trova esattamente 1 indirizzo per il pattern e i parametri forniti'
+);
+
+-- Test 5 (nuovo): l'id trovato dalla funzione coincide con quello dell'upsert
+SELECT is(
+    (SELECT indirizzo_dettaglio_id FROM tmp_search_indirizzo_gestore),
+    (SELECT id FROM tmp_indirizzo_dettaglio_gestore),
+    'fn_search_indirizzi_dettaglio restituisce lo stesso indirizzo_dettaglio_id creato/aggiornato dall''upsert'
+);
+
+
+--  Fine agggiornamento 2024-06-11  --
 
 -- =========================================================
 -- 4) Upsert indirizzo RES per il Gestore

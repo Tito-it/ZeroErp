@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20251128-14-fn-get-indirizzo-mctit.yaml
+
+  - changeSet:
+      id: 20251128-14-fn-get-indirizzo
+      author: mctit
+      comment: >
+        Refactor script.fn_get_indirizzo per restituire un singolo indirizzo completo
+        (stesso output esteso di script.fn_get_indirizzi_by_ruolo) per soggetto_ruolo e tipo_indirizzo
+        identificato da config.tipi_indirizzi.codice_interno.
+        Internamente delega a script.fn_get_indirizzi_by_ruolo e seleziona al massimo una riga.
+
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              -- Rimuovo versione precedente (firma bigint, varchar)
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzo(bigint, character varying);
+
+              CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(
+                  p_soggetto_ruolo_id bigint,
+                  p_tipo_codice       character varying
+              )
+              RETURNS TABLE(
+                  -- output principale (coerente con fn_get_indirizzi_by_ruolo)
+                  tipo_indirizzo         varchar,
+                  indirizzo_completo     text,
+                  geoloc                 geometry,
+
+                  -- base tecnica
+                  indirizzo_id           bigint,
+                  soggetto_ruolo_id      bigint,
+                  tipo_indirizzo_id      integer,
+                  indirizzo_dettaglio_id bigint,
+                  indirizzo_libero       text,
+                  is_normalizzato        boolean,
+
+                  -- geografica strutturata
+                  stato_id               integer,
+                  stato_descrizione      varchar(100),
+                  stato_iso2             char(2),
+
+                  regione_id             integer,
+                  regione_descrizione    varchar(80),
+
+                  provincia_id           integer,
+                  provincia_sigla        varchar(10),
+                  provincia_descrizione  varchar(80),
+
+                  comune_id              integer,
+                  comune_descrizione     varchar(100),
+
+                  codice_postale_id      integer,
+                  cap_codice             char(10),
+
+                  -- campi raw (internazionali / indirizzo libero)
+                  locality               varchar(100),
+                  administrative_area    varchar(100),
+                  sublocality            varchar(100),
+                  postal_box             varchar(20)
+              )
+              LANGUAGE sql
+              COST 100
+              STABLE PARALLEL UNSAFE
+              ROWS 1
+              AS $BODY$
+              /*
+                  Funzione: script.fn_get_indirizzo(p_soggetto_ruolo_id, p_tipo_codice)
+
+                  Scopo:
+                  Restituire UN solo indirizzo "migliore" per:
+                  - soggetto_ruolo (p_soggetto_ruolo_id)
+                  - tipo_indirizzo identificato da config.tipi_indirizzi.codice_interno (p_tipo_codice)
+
+                  Comportamento:
+                  - Delega la logica di composizione/fallback A/B/C a script.fn_get_indirizzi_by_ruolo(...),
+                    che gestisce:
+                      A) indirizzo normalizzato (indirizzo_dettaglio_id NON NULL)
+                      B) indirizzo libero nazionale
+                      C) indirizzo libero / estero
+                  - Filtra per tipo_indirizzo = p_tipo_codice.
+                  - Grazie al vincolo UNIQUE (soggetto_ruolo_id, tipo_indirizzo_id) su anagrafiche.indirizzi
+                    ci si attende al massimo una riga per combinazione soggetto_ruolo/tipo.
+                   Attenzione ho eliminato il LIMIT 1 per restituire comunque tutti i dati tecnici
+                   anche in caso di anomalie (più indirizzi dello stesso tipo). In tal caso
+                   la funzione restituirà più righe (da gestire a livello applicativo).
+
+                  Output:
+                  - Stesso schema di fn_get_indirizzi_by_ruolo:
+                    tipo_indirizzo, indirizzo_completo, geoloc,
+                    id tecnici, flag is_normalizzato,
+                    stato/regione/provincia/comune/CAP,
+                    campi "raw" internazionali.
+              */
+              SELECT
+                  tipo_indirizzo,
+                  indirizzo_completo,
+                  geoloc,
+                  indirizzo_id,
+                  soggetto_ruolo_id,
+                  tipo_indirizzo_id,
+                  indirizzo_dettaglio_id,
+                  indirizzo_libero,
+                  is_normalizzato,
+                  stato_id,
+                  stato_descrizione,
+                  stato_iso2,
+                  regione_id,
+                  regione_descrizione,
+                  provincia_id,
+                  provincia_sigla,
+                  provincia_descrizione,
+                  comune_id,
+                  comune_descrizione,
+                  codice_postale_id,
+                  cap_codice,
+                  locality,
+                  administrative_area,
+                  sublocality,
+                  postal_box
+              FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id)
+              WHERE tipo_indirizzo = p_tipo_codice
+              --LIMIT 1;
+              $BODY$;
+
+              COMMENT ON FUNCTION script.fn_get_indirizzo(bigint, character varying)
+                IS 'Restituisce un singolo indirizzo completo per soggetto_ruolo e tipo (config.tipi_indirizzi.codice_interno).
+                Delegata a fn_get_indirizzi_by_ruolo per la logica di composizione A/B/C e fallback (normalizzato, libero nazionale, estero).
+                Output allineato a fn_get_indirizzi_by_ruolo (dati tecnici + struttura geografica + campi internazionali).';
