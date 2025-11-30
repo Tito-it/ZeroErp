@@ -31,7 +31,7 @@ databaseChangeLog:
     - changeSet:
           id: 20251119-42-acquisti-rename-trigger
           author: mctit
-          runAlways: true
+          # runAlways: true
           validCheckSums: <ANY>
           comment: "Rinomina trigger  schema acquisti secondo convenzione trgfn_<tabella>_<descrizione>"
 

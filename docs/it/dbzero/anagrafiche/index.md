@@ -25,7 +25,7 @@
 - [vettori](tabelle/vettori.md)
 
 ## ⚙️ Funzioni
-- [fn_get_conto_bancario_predefinito](funzioni/fn_get_conto_bancario_predefinito.md)
+- [fn_search_indirizzi_dettaglio](funzioni/fn_search_indirizzi_dettaglio.md) — La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
 - [trgfn_bank_check_ruolo_bank_branches](funzioni/trgfn_bank_check_ruolo_bank_branches.md)
 - [trgfn_billing_account_guard_normalize](funzioni/trgfn_billing_account_guard_normalize.md) — Il trigger `anagrafiche.trgfn_billing_account_ins_upd_guard_normalize` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
 - [trgfn_billing_account_protect_account_code](funzioni/trgfn_billing_account_protect_account_code.md) — Il trigger `anagrafiche.trgfn_billing_account_upd_protect_account_code`, invocato **prima di ogni UPDATE** su `anagrafiche.billing_account`, impedisce modifiche improprie al campo **`codice (account)`** una volta assegnato.
@@ -65,4 +65,5 @@
 - [trgfn_vettori_protect_codice](funzioni/trgfn_vettori_protect_codice.md)
 
 ## 🔍 Views
-- [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md)
+- [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md) — * **Selezione unificata del conto per ruolo**   Fornisce una vista già pre-filtrata e normalizzata con **una sola riga per coppia `(soggetto_ruolo_id, uso)`**, scegliendo il miglior candidato tra:
+- [vw_indirizzi_dettaglio](views/vw_indirizzi_dettaglio.md) — La vista **`anagrafiche.vw_indirizzi_dettaglio`** fornisce una rappresentazione "comoda" e già arricchita degli indirizzi di dettaglio, a partire dalla tabella sorgente [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) collegata allo stradario [`config.stradario`](/dbzero/config/tabelle/stradario).

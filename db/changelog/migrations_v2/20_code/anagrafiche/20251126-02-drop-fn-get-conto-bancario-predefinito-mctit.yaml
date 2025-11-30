@@ -1,0 +1,24 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/anagrafiche/20251126-02-drop-fn-get-conto-bancario-predefinito-mctit.yaml
+
+    - changeSet:
+          id: 20251126-02-drop-fn-get-conto-bancario-predefinito
+          author: mctit
+          comment: " Rimozione definitiva della funzione deprecata anagrafiche.fn_get_conto_bancario_predefinito(bigint, character varying)."
+
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        DROP FUNCTION IF EXISTS anagrafiche.fn_get_conto_bancario_predefinito(bigint, character varying);

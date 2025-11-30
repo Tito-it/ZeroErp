@@ -131,3 +131,17 @@ databaseChangeLog:
                             e, se specificato, con il soggetto indicato (p_soggetto_id). Non crea né modifica dati:
                               in caso di incoerenza utilizza script.fn_log_and_raise_error e solleva eccezione,
                              in caso di esito positivo restituisce p_soggetto_ruolo_id.';
+
+    - changeSet:
+          id: 20251125-11-01-fn_check_soggetto_ruolo
+          author: mctit
+          comment: >
+              Drop funzione script.fn_check_soggetto_ruolo(uuid, integer, character varying)
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        DROP FUNCTION IF EXISTS 
+                        script.fn_check_soggetto_ruolo(uuid, integer, character varying);

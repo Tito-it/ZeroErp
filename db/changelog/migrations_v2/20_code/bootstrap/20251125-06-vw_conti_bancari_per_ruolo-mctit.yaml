@@ -16,7 +16,7 @@ databaseChangeLog:
           # runAlways: true
           validCheckSums: <ANY>
 
-          comment: "Ripristino trigger dopo refactoring degli ID in anagrafiche."
+          comment: "Ripristino trigger dopo refactoring degli ID in anagrafiche. Fix"
           changes:
               - sql:
                     splitStatements: false

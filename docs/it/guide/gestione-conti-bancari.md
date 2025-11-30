@@ -18,6 +18,24 @@ Questa guida descrive l’architettura per la **gestione centralizzata dei conti
 
 ---
 
+## ⚠️ RACCOMANDAZIONE (nota del 25/11/2025):
+
+❌ Nessuna modifica al modello DB: l'attuale struttura è corretta e coerente con la guida.
+
+  il modello consente più conti per lo stesso uso, ma
+  in esercizio è raccomandato avere un solo conto "corrente" per uso (attivo, valido oggi, non bloccato),
+  gli altri conti per lo stesso uso devono rappresentare casi particolari:
+
+  *  storico (valido_al < oggi),
+  *  sostituzione pianificata (valido_dal > oggi),
+  *  esclusi dall’uso operativo (bloccato = true).
+
+⚙️ La VIEW e la FUNCTION restituiscono sempre una sola riga, quindi la logica operativa funziona comunque correttamente.
+
+**La regola applicativa (UI/API) deve eventualmente guidare l’utente a disattivare il conto precedente quando ne inserisce uno nuovo per lo stesso uso.**
+
+---
+
 ## 🧩 Tabelle coinvolte
 
 * **Anagrafiche (dati “chi/cosa”)**
@@ -118,12 +136,12 @@ FROM script.fn_get_conto_bancario_predefinito(:srid, 'PAGAMENTO') AS f;
 
 * **Normalizzazione/Audit**:
 
-  * `script.trgfn_conti_ins_upd_normalize()` su `conti_bancari`.
-  * `script.trgfn_soggetti_conti_guard()` / `script.trgfn_soggetti_ruoli_conti_bancari_guard()` per coerenza legami.
-  * `dbops.trgfn_tx_id_managed()` e `script.trgfn_upd_audit_data_user_generic()` per audit/tx.
+  * `anagrafiche.trgfn_conti_bancari_normalize()` su `conti_bancari`.
+  * `anagrafiche.trgfn_soggetti_conti_banacari_guard()` / `anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()` per coerenza legami.
+  * `dbops.trgfn_tx_id_managed()` e `script.trgfn_audit_data_user_generic()` per audit/tx.
 * **Storico**:
 
-  * `script.trgfn_upd_dlt_storico_generic()` per snapshot su UPDATE/DELETE quando `storicizza=true`.
+  * `script.trgfn_storico_generic()` per snapshot su UPDATE/DELETE quando `storicizza=true`.
 
 ---
 
@@ -134,6 +152,7 @@ FROM script.fn_get_conto_bancario_predefinito(:srid, 'PAGAMENTO') AS f;
 * **Cambio IBAN pianificato**: inserisci un nuovo legame con `valido_dal` futuro e imposta `predefinito=true`; al cambio data, la VIEW selezionerà il nuovo conto.
 
 ---
+
 
 ## 📊 Diagramma ER (semplificato)
 

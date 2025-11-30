@@ -1,25 +1,28 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_get_indirizzo`
 
 > 👀 **Vedi anche**
-
+>
 > **Approfondimento tabelle:**
 >
-> • [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
-> • [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
-> • [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)   
-> • [config.comuni](/dbzero/config/tabelle/comuni)   
-> • [config.codici_postali](/dbzero/config/tabelle/codici_postali)   
+> • [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)
+> • [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
+> • [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)
+> • [config.comuni](/dbzero/config/tabelle/comuni)
+> • [config.codici_postali](/dbzero/config/tabelle/codici_postali)
 >
 > **Approfondimento funzioni:**
 >
-> • [`script.fn_get_indirizzi_by_ruolo`](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo.md)   
+> • [`script.fn_get_indirizzi_by_ruolo`](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo.md)
 
 ---
 
 ### 🎯 Scopo Principale
 
-Restituisce **un singolo indirizzo** (testo + geolocalizzazione) per uno specifico `soggetto_ruolo`, filtrando per **tipo di indirizzo** identificato dal **codice interno** (`config.tipi_indirizzi.codice_interno`).
-La funzione **delegata** è `script.fn_get_indirizzi_by_ruolo`, da cui eredita la logica di formattazione e la priorità della geolocalizzazione.
+Restituisce **un singolo indirizzo completo e geolocalizzato** relativo ad un determinato `soggetto_ruolo`, filtrando per **tipo di indirizzo** identificato dal **codice interno** (`config.tipi_indirizzi.codice_interno`).
+
+La funzione **non replica la logica di composizione**, bensì **delegata a `script.fn_get_indirizzi_by_ruolo`**, garantendo coerenza e riusabilità.
+
+Restituisce il **miglior indirizzo disponibile** secondo le regole di priorità (normalizzato → libero nazionale → estero) e con geolocalizzazione preferita ove esistente.
 
 ---
 
@@ -32,7 +35,14 @@ CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(
 )
 RETURNS TABLE(
   indirizzo_completo text,
-  geoloc geometry
+  geoloc geometry,
+  -- Estensioni v2 (allineate alla funzione madre)
+  comune_id integer,
+  comune_descrizione text,
+  codice_postale text,
+  provincia text,
+  stato text,
+  is_normalizzato boolean
 )
 LANGUAGE sql
 COST 100
@@ -41,113 +51,113 @@ PARALLEL UNSAFE
 ROWS 1000;
 ```
 
+>  *Estesa rispetto alla versione precedente per includere i campi territoriali e il flag `is_normalizzato`, in linea con la funzione madre `fn_get_indirizzi_by_ruolo`.*
+
 ---
 
 ### 🔢 Parametri di input
 
-| Nome                  | Tipo      | Descrizione                                                                                                           |
-| --------------------- | --------- | --------------------------------------------------------------------------------------------------------------------- |
-| `p_soggetto_ruolo_id` | `integer` | ID della relazione in `anagrafiche.soggetti_ruoli` (chiave esterna degli indirizzi).                                  |
-| `p_tipo_codice`       | `varchar` | **Codice interno** del tipo indirizzo (campo `config.tipi_indirizzi.codice_interno`, es. `SEDE`, `FATT`, `DOM`, ...). |
+| Nome                  | Tipo      | Descrizione                                                                                                    |
+| --------------------- | --------- | -------------------------------------------------------------------------------------------------------------- |
+| `p_soggetto_ruolo_id` | `integer` | ID della relazione in `anagrafiche.soggetti_ruoli`.                                                            |
+| `p_tipo_codice`       | `varchar` | **Codice interno** del tipo indirizzo (`config.tipi_indirizzi.codice_interno`, es. `SEDE`, `FATT`, `DOMFISC`). |
 
-> ℹ️ **Nota:** il parametro `p_tipo_codice` non è l’ID ma il **codice** del tipo indirizzo.
+ *Non è richiesto l’ID della tabella `tipi_indirizzi`, ma il valore del campo `codice_interno`.*
 
 ---
 
 ### 📤 Valori restituiti
 
-| Colonna              | Tipo       | Descrizione                                                                                                                                               |
-| -------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `indirizzo_completo` | `text`     | Indirizzo “human‑readable”, composizione ereditata da `fn_get_indirizzi_by_ruolo` (priorità: dettaglio normalizzato → indirizzo libero → internazionale). |
-| `geoloc`             | `geometry` | Geometria (tipicamente `POINT` SRID **4326**). Priorità: `anagrafiche.indirizzi_dettaglio.civic_geoloc` → `anagrafiche.indirizzi.geoloc`.                 |
+| Colonna              | Tipo       | Descrizione                                                                                                      |
+| -------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------- |
+| `indirizzo_completo` | `text`     | Indirizzo formattato “human-readable”, applicando le regole di priorità definite in `fn_get_indirizzi_by_ruolo`. |
+| `geoloc`             | `geometry` | Geolocalizzazione (SRID 4326). Priorità: `indirizzi_dettaglio.civic_geoloc` → `indirizzi.geoloc`.                |
+| `comune_id`          | `integer`  | Comune associato (se disponibile).                                                                               |
+| `comune_descrizione` | `text`     | Nome del comune.                                                                                                 |
+| `codice_postale`     | `text`     | Codice postale (CAP).                                                                                            |
+| `provincia`          | `text`     | Provincia (derivata dalla tabella `config.comuni`).                                                              |
+| `stato`              | `text`     | Stato del soggetto o dell’indirizzo (gestione futura per internazionale).                                        |
+| `is_normalizzato`    | `boolean`  | `TRUE` se derivato da `indirizzo_dettaglio`; `FALSE` se indirizzo libero o fallback internazionale.              |
 
 ---
 
-### 🧠 Logica
+### 🧠 Logica di estrazione (semplificata)
 
 ```sql
-SELECT indirizzo_completo, geoloc
+SELECT indirizzo_completo, geoloc, comune_id, comune_descrizione, codice_postale,
+       provincia, stato, is_normalizzato
 FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id)
 WHERE tipo_indirizzo = p_tipo_codice
+ORDER BY (geoloc IS NULL), is_normalizzato DESC
 LIMIT 1;
 ```
 
-* Filtra la tabella restituita da `fn_get_indirizzi_by_ruolo` per il tipo richiesto.
-* **Limita** a **una sola riga**.
+ *Senza `ORDER BY`, non vi è determinismo se esistono più indirizzi dello stesso tipo.* La regola suggerita:
 
-> ⚠️ **Determinismo**: senza `ORDER BY`, in presenza di più indirizzi con lo stesso tipo, la riga scelta **non è garantita** in modo deterministico. Se serve una regola di preferenza (es. **geoloc non NULL**), usare la **variante** seguente:
->
-> ```sql
-> SELECT indirizzo_completo, geoloc
-> FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id)
-> WHERE tipo_indirizzo = p_tipo_codice
-> ORDER BY (geoloc IS NULL) -- prima quelli con geoloc valorizzata
-> LIMIT 1;
-> ```
+* 1️⃣ privilegia indirizzi con **geolocalizzazione valida**,
+* 2️⃣ privilegia quelli **normalizzati** rispetto a liberi.
 
 ---
 
-### 🧷 Dipendenze (indirette)
+### 🧷 Dipendenze tecniche
 
-* **Funzione**: `script.fn_get_indirizzi_by_ruolo`
-* **Tabelle**:
-  `anagrafiche.indirizzi`, `anagrafiche.indirizzi_dettaglio`,
-  `config.tipi_indirizzi`, `config.comuni`, `config.codici_postali`
+| Tipo       | Riferimento                                                                                                                   |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Funzione   | `script.fn_get_indirizzi_by_ruolo`                                                                                            |
+| Tabelle    | `anagrafiche.indirizzi`, `anagrafiche.indirizzi_dettaglio`, `config.tipi_indirizzi`, `config.comuni`, `config.codici_postali` |
+| Estensioni | Richiede **PostGIS** per tipo `geometry`                                                                                      |
 
 ---
 
-### ⚙️ Comportamento e proprietà tecniche
+### ⚙️ Proprietà tecniche
 
-* **Stabilità**: `STABLE` (nessun effetto collaterale; risultati coerenti nella stessa transazione).
-* **Parallelismo**: `PARALLEL UNSAFE` (eredita le caratteristiche della funzione delegata e dei tipi `geometry`).
-* **Prestazioni**: previsto `ROWS 1000` (indicativo). Assicurare indici su `anagrafiche.indirizzi(soggetto_ruolo_id)` e su chiavi esterne correlate.
-* **Requisiti**: estensione **PostGIS** abilitata per il tipo `geometry`.
+| Attributo    | Valore                 | Note                                                    |
+| ------------ | ---------------------- | ------------------------------------------------------- |
+| Stabilità    | `STABLE`               | Nessuna modifica ai dati.                               |
+| Parallelismo | `PARALLEL UNSAFE`      | Per via del tipo `geometry` e funzioni non thread-safe. |
+| Rows (hint)  | `1000`                 | Indicativo.                                             |
+| Determinismo | Consigliato `ORDER BY` | In caso di indirizzi multipli per tipo.                 |
 
 ---
 
 ### 🧪 Esempi d’uso
 
 ```sql
--- 1) Indirizzo di SEDE legale per il soggetto_ruolo 123
+-- 1) Indirizzo DOMFISC per il soggetto_ruolo 63
 SELECT *
-FROM script.fn_get_indirizzo(123, 'SEDE');
+FROM script.fn_get_indirizzo(63, 'DOMFISC');
 
--- 2) Indirizzo di FATTURAZIONE con geoloc disponibile (variante suggerita)
-SELECT indirizzo_completo, geoloc
-FROM (
-  SELECT *
-  FROM script.fn_get_indirizzi_by_ruolo(123)
-  WHERE tipo_indirizzo = 'FATT'
-  ORDER BY (geoloc IS NULL)
-  LIMIT 1
-) t;
-
--- 3) Uso come subquery in una SELECT più ampia
-SELECT sr.id, f.indirizzo_completo
+-- 2) Uso in JOIN laterale (estrazione dinamica)
+SELECT sr.id, sr.ruolo, f.indirizzo_completo
 FROM anagrafiche.soggetti_ruoli sr
-CROSS JOIN LATERAL script.fn_get_indirizzo(sr.id, 'DOM') AS f;
+CROSS JOIN LATERAL script.fn_get_indirizzo(sr.id, 'RES') AS f;
+
+-- 3) Verifica indirizzo con geoloc disponibile
+SELECT *
+FROM script.fn_get_indirizzo(123, 'FATT')
+WHERE geoloc IS NOT NULL;
 ```
 
 ---
 
-### ✅ Best practice e note
+### ✅ Best practice
 
-* **Preferisci indirizzi normalizzati** (se disponibili) per qualità e precisione della geocodifica – la funzione delegata lo fa automaticamente.
-* Se nel dominio applicativo **possono esistere più indirizzi per lo stesso tipo**, valuta di **codificare una regola di ordinamento** (es. geoloc presente, data più recente, flag “principale”, ecc.).
-* Verifica che `config.tipi_indirizzi` sia coerente e che i **codici interni** utilizzati dall’applicativo siano stabilizzati.
+* Usare **sempre codici interni standardizzati** (non ID) per richiamare la funzione.
+* Mantenere **coerenza con `fn_get_indirizzi_by_ruolo`** per ogni modifica futura.
+* In presenza di applicativi o API, valutare gestione esplicita `ORDER BY`.
+* Validare sempre tramite test pgTAP in caso di modifiche a tabelle correlate.
 
 ---
 
-### 💬 Commento catalogo (PostgreSQL)
-
-Per tracciare una descrizione nel catalogo:
+### 💬 Commento catalogo (SQL)
 
 ```sql
 COMMENT ON FUNCTION script.fn_get_indirizzo(integer, character varying) IS
-  'Ritorna un singolo indirizzo (indirizzo_completo, geoloc) per soggetto_ruolo e codice del tipo (config.tipi_indirizzi.codice_interno). Delegata a fn_get_indirizzi_by_ruolo; senza ORDER BY, la scelta tra più indirizzi dello stesso tipo non è deterministica.';
+  'Restituisce un singolo indirizzo completo e geolocalizzato per soggetto_ruolo e codice tipo indirizzo, ' ||
+  'delegando a fn_get_indirizzi_by_ruolo. Include campi territoriali e flag is_normalizzato. ' ||
+  'La selezione è deterministica solo se definito un ORDER BY.';
 ```
 
 ---
-
 
 {% include-markdown "signature-core.md" %}

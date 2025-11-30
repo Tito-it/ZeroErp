@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+      - logicalFilePath: migrations_v2/20_code/anagrafiche/20251127-01-indirizzi-dettaglio-uniq-stradario-civico-v2-mctit.yaml
+
+      - changeSet:
+              id: 20251127-01-anagrafiche-indirizzi_dettaglio-uniq-stradario-civico-v2
+              author: mctit
+              context: ddl,anagrafiche
+              preConditions:
+                    - onFail: MARK_RAN
+                    - tableExists:
+                            schemaName: anagrafiche
+                            tableName: indirizzi_dettaglio
+
+              changes:
+                    # 1) Drop dell'indice univoco precedente basato su via_norm/civico_norm/...
+                    - dropIndex:
+                            schemaName: anagrafiche
+                            indexName: ix_uq_indirizzi_dettaglio_norm
+
+                    # 2) Creazione nuovo UNIQUE index con chiave "fisica" dell'indirizzo
+                    - createIndex:
+                            schemaName: anagrafiche
+                            tableName: indirizzi_dettaglio
+                            indexName: ix_uq_indirizzi_dettaglio_norm
+                            unique: true
+                            columns:
+                                  - column:
+                                          name: stradario_id
+                                  - column:
+                                          name: civico
+                                  - column:
+                                          name: estensione_civico
+                                  - column:
+                                          name: palazzina
+                                  - column:
+                                          name: scala
+                                  - column:
+                                          name: piano
+                                  - column:
+                                          name: interno
+
+      - changeSet:
+              id: 20251127-01-1-anagrafiche-indirizzi_dettaglio-uniq-stradario-civico-v2
+              author: mctit
+
+              preConditions:
+                    - onFail: MARK_RAN
+                    - tableExists:
+                            schemaName: anagrafiche
+                            tableName: indirizzi_dettaglio
+              changes:
+                    - dropIndex:
+                            schemaName: anagrafiche
+                            indexName:
+                                  ix_uq_indirizzi_dettaglio_norm
+
+                                  # 2) Creazione nuovo UNIQUE index su espressioni (COALESCE per gestire i NULL)
+                    - createIndex:
+                            schemaName: anagrafiche
+                            tableName: indirizzi_dettaglio
+                            indexName: uq_indirizzi_dettaglio_norm
+                            unique: true
+                            columns:
+                                  - column:
+                                          name: stradario_id
+                                  - column:
+                                          name: civico
+                                  - column:
+                                          name: "COALESCE(estensione_civico, '')"
+                                          computed: true
+                                  - column:
+                                          name: "COALESCE(palazzina, '')"
+                                          computed: true
+                                  - column:
+                                          name: "COALESCE(scala, '')"
+                                          computed: true
+                                  - column:
+                                          name: "COALESCE(piano, '')"
+                                          computed: true
+                                  - column:
+                                          name: "COALESCE(interno, '')"
+                                          computed: true
