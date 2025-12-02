@@ -1,7 +1,7 @@
 # Schema `anagrafiche`
 
 ## 📚 Tabelle
-- [bank_branches](tabelle/bank_branches.md)
+- [bank_branches](tabelle/bank_branches.md) — La tabella **`anagrafiche.bank_branches`** rappresenta le **filiali di istituti di credito** (branch bancarie) collegate a un determinato **ruolo di soggetto** di tipo *ISTITUTO_CREDITO* (`anagrafiche.soggetti_ruoli`).
 - [billing_account](tabelle/billing_account.md) — La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici cliente** per ciascuna `utility`, consentendo:
 - [clienti](tabelle/clienti.md) — La tabella `anagrafiche.clienti` memorizza le informazioni contrattuali e di fatturazione di un soggetto per una specifica *istanza* di servizio. Rappresenta la fase in cui un'attivazione (istanza) diventa un cliente ufficiale, includendo dettagli di scadenze, pagamento e classificazioni speciali (PA, split payment).
 - [contatti](tabelle/contatti.md) — * **Centralizzare i contatti**     Un’unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.
@@ -26,9 +26,9 @@
 
 ## ⚙️ Funzioni
 - [fn_search_indirizzi_dettaglio](funzioni/fn_search_indirizzi_dettaglio.md) — La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
-- [trgfn_bank_check_ruolo_bank_branches](funzioni/trgfn_bank_check_ruolo_bank_branches.md)
+- [trgfn_bank_check_ruolo_bank_branches](funzioni/trgfn_bank_check_ruolo_bank_branches.md) — - **Centralizzare l’assegnazione del ruolo “bank_branches”**     Delegare a `script.fn_check_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_billing_account_guard_normalize](funzioni/trgfn_billing_account_guard_normalize.md) — Il trigger `anagrafiche.trgfn_billing_account_ins_upd_guard_normalize` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
-- [trgfn_billing_account_protect_account_code](funzioni/trgfn_billing_account_protect_account_code.md) — Il trigger `anagrafiche.trgfn_billing_account_upd_protect_account_code`, invocato **prima di ogni UPDATE** su `anagrafiche.billing_account`, impedisce modifiche improprie al campo **`codice (account)`** una volta assegnato.
+- [trgfn_billing_account_protect_account_code](funzioni/trgfn_billing_account_protect_account_code.md) — Il trigger `anagrafiche.trgfn_billing_account_protect_account_code`, invocato **prima di ogni UPDATE** su `anagrafiche.billing_account`, impedisce modifiche improprie al campo **`codice (account)`** una volta assegnato.
 - [trgfn_clienti_check_ruolo_cliente](funzioni/trgfn_clienti_check_ruolo_cliente.md)
 - [trgfn_clienti_set_periodo](funzioni/trgfn_clienti_set_periodo.md)
 - [trgfn_clienti_sync_pdp](funzioni/trgfn_clienti_sync_pdp.md)
@@ -42,9 +42,10 @@
 - [trgfn_fornitori_check_ruolo_fornitore](funzioni/trgfn_fornitori_check_ruolo_fornitore.md)
 - [trgfn_fornitori_guard_normalize](funzioni/trgfn_fornitori_guard_normalize.md)
 - [trgfn_fornitori_protect_account_code](funzioni/trgfn_fornitori_protect_account_code.md)
-- [trgfn_gestori_check_ruolo_gestore](funzioni/trgfn_gestori_check_ruolo_gestore.md) — - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_check_ins_soggetto_ruolo` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
+- [trgfn_gestori_check_ruolo_gestore](funzioni/trgfn_gestori_check_ruolo_gestore.md) — - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_check_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_gestori_guard](funzioni/trgfn_gestori_guard.md)
 - [trgfn_indirizzi_dettaglio_normalize](funzioni/trgfn_indirizzi_dettaglio_normalize.md) — * **Uniformità dei dati**: garantire che i campi relativi all’indirizzo (`via_norm`, `civico_norm`, `indirizzo_normalizzato`) rispettino regole di maiuscole, spaziatura e formattazione. * **Preparazione per ricerche e comparazioni**: offrire valori normalizzati che migliorano le performance di query basate su stringhe (es. ricerche full-text, join su via). * **Affidabilità**: centralizzare la logica di normalizzazione nel database, evitando differenze tra applicazioni diverse.
+- [trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo](funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo.md) — La funzione **`anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`** è una **trigger function di tipo “guard”** che:
 - [trgfn_indirizzi_normalize](funzioni/trgfn_indirizzi_normalize.md) — Assicura che, in modalità **indirizzo normalizzato**, tutti i campi alternativi utilizzati per gli **indirizzi liberi** siano resettati a `NULL`. In questo modo si evita la coesistenza di dati incongruenti tra indirizzo normalizzato e indirizzo libero.
 - [trgfn_indirizzi_sync_geoloc](funzioni/trgfn_indirizzi_sync_geoloc.md) — Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`. In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.
 - [trgfn_istanze_utilities_normalize](funzioni/trgfn_istanze_utilities_normalize.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:

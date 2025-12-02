@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore`
+## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_gestori_check_ruolo_gestore`
 
 > 👀 **Vedi anche**
 
@@ -9,16 +9,16 @@
 
 > Approfondimenti funzioni:   
 >
->  * [script.fn_check_ins_soggetto_ruolo](/dbzero/script/funzioni/fn_check_ins_soggetto_ruolo) 
+>  * [script.fn_check_soggetto_ruolo ](/dbzero/script/funzioni/fn_check_soggetto_ruolo ) 
 
-La trigger function **`anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore()`** si attiva **BEFORE INSERT** e **BEFORE UPDATE** sulla tabella `anagrafiche.gestori`. Il suo scopo è garantire che, ogni volta che si crea o modifica il record del gestore, venga automaticamente gestita (verificata o creata) la corrispondente riga di relazione in `anagrafiche.soggetti_ruoli` con ruolo “Gestore” (`codice_interno = 'GE'`).
+La trigger function **`anagrafiche.trgfn_gestori_check_ruolo_gestore()`** si attiva **BEFORE INSERT** e **BEFORE UPDATE** sulla tabella `anagrafiche.gestori`. Il suo scopo è garantire che, ogni volta che si crea o modifica il record del gestore, venga automaticamente gestita (verificata o creata) la corrispondente riga di relazione in `anagrafiche.soggetti_ruoli` con ruolo “Gestore” (`codice_interno = 'GE'`).
 
 ---
 
 ### 🎯 Scopo Principale
 
 - **Centralizzare l’assegnazione del ruolo “Gestore”**  
-  Delegare a `script.fn_check_ins_soggetto_ruolo` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
+  Delegare a `script.fn_check_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 
 - **Mantenere coerenza referenziale**  
   Associare sempre correttamente il soggetto al ruolo di gestore, aggiornando `NEW.soggetto_ruolo_id` con l’ID valido, che sia preesistente o appena creato.
@@ -41,10 +41,10 @@ La trigger function **`anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore()`*
 
 Nel DDL di anagrafiche.gestori il trigger viene definito così:
 
-CREATE OR REPLACE TRIGGER trg_gestori_ins_upd_check_ruolo_gestore
+CREATE OR REPLACE TRIGGER trg_gestori_check_ruolo_gestore_ins_upd
   BEFORE INSERT OR UPDATE ON anagrafiche.gestori
   FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore();
+  EXECUTE FUNCTION anagrafiche.trgfn_gestori_check_ruolo_gestore();
 
 ---
 ### 💡 Vantaggi Operativi
@@ -58,7 +58,7 @@ CREATE OR REPLACE TRIGGER trg_gestori_ins_upd_check_ruolo_gestore
     gestiscono anagrafiche.gestori.
 
     Coerenza e tracciabilità
-    Grazie all’uso di script.fn_check_ins_soggetto_ruolo, ogni assegnazione di ruolo registra automaticamente 
+    Grazie all’uso di script.fn_check_soggetto_ruolo , ogni assegnazione di ruolo registra automaticamente 
     user_insert nel linking table e garantisce che soggetto_ruolo_id sia sempre valido.
 
     Flessibilità per ruoli futuri
@@ -67,6 +67,6 @@ CREATE OR REPLACE TRIGGER trg_gestori_ins_upd_check_ruolo_gestore
 
 ---
 ### 🚧 Nota di sviluppo
-    Questa trigger function e la funzione generica fn_check_ins_soggetto_ruolo costituiscono il 
+    Questa trigger function e la funzione generica fn_check_soggetto_ruolo  costituiscono il 
     nucleo metodologico per la gestione dei ruoli in Zero ERP: saranno estese e replicate per ogni nuovo 
     tipo di ruolo oggetto di implementazione.

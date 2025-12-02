@@ -1,20 +1,20 @@
-## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_billing_account_upd_protect_account_code`
+## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_billing_account_protect_account_code`
 
 > 👀 **Vedi anche**
 >
-> Approdondmenti tabelle: 
+> Approdondmenti tabelle:  
 >
-> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)   
 >
 > Approdondmenti funzioni: 
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 ---
 
 ### 🎯 Scopo Principale
 
-Il trigger `anagrafiche.trgfn_billing_account_upd_protect_account_code`, invocato **prima di ogni UPDATE** su `anagrafiche.billing_account`, impedisce modifiche improprie al campo **`codice (account)`** una volta assegnato.
+Il trigger `anagrafiche.trgfn_billing_account_protect_account_code`, invocato **prima di ogni UPDATE** su `anagrafiche.billing_account`, impedisce modifiche improprie al campo **`codice (account)`** una volta assegnato.
 
 ---
 
@@ -42,13 +42,13 @@ Il trigger `anagrafiche.trgfn_billing_account_upd_protect_account_code`, invocat
 ### ⚙️ Trigger Collegato
 
 ```sql
-DROP TRIGGER IF EXISTS trg_billing_account_upd_protect_account_code
+DROP TRIGGER IF EXISTS trgfn_billing_account_protect_account_code_upd
   ON anagrafiche.billing_account;
 
-CREATE TRIGGER trg_billing_account_upd_protect_account_code
+CREATE TRIGGER trgfn_billing_account_protect_account_code_upd
   BEFORE UPDATE ON anagrafiche.billing_account
   FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_billing_account_upd_protect_account_code();
+  EXECUTE FUNCTION anagrafiche.trgfn_billing_account_protect_account_code();
 ```
 
 ---

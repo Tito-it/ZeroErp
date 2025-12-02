@@ -10,8 +10,7 @@
 >
 > Approfondimenti funzioni:   
 >
-> * [anagrafiche.trgfn_contatti_ins_upd_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_ins_upd_set_default_contatto)     
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
+> * [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto)     
 
 
 La tabella **`anagrafiche.contatti`** è il **punto di raccolta centralizzato** per tutte le informazioni di contatto nell’applicazione, a diversi livelli di granularità:
@@ -174,10 +173,10 @@ erDiagram
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%
 erDiagram
     contatti {
-        int      id PK
+        bigint      id PK
         int      tipo_contatto_id FK
         uuid     soggetto_id FK
-        int      soggetto_ruolo_id FK
+        bigint      soggetto_ruolo_id FK
         int      utility_id FK
         string   nominativo
         string   email

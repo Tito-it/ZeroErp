@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_contatti_ins_upd_set_default_contatto`
+## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_contatti_set_default_contatto`
 
 > 👀 **Vedi anche**
 >
@@ -12,7 +12,7 @@
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
 
 
-La trigger function **`anagrafiche.trgfn_contatti_ins_upd_set_default_contatto()`** gestisce automaticamente il contatto predefinito per un soggetto, tenendo conto di un **contesto** dinamico (`soggetto`, `ruolo` o `utility`). Assicura che esista al massimo un contatto default per soggetto e contesto, ed aggiorna il riferimento `default_contatto_id` in `anagrafiche.soggetti` quando richiesto.
+La trigger function **`anagrafiche.trgfn_contatti_set_default_contatto()`** gestisce automaticamente il contatto predefinito per un soggetto, tenendo conto di un **contesto** dinamico (`soggetto`, `ruolo` o `utility`). Assicura che esista al massimo un contatto default per soggetto e contesto, ed aggiorna il riferimento `default_contatto_id` in `anagrafiche.soggetti` quando richiesto.
 
 ---
 
