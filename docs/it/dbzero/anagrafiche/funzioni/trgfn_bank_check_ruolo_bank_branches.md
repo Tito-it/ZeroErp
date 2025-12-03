@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_bank_check_ruolo_bank_branches.md" %}
 # ⚙️ Funzione `trgfn_bank_check_ruolo_bank_branches`
 
 ```sql

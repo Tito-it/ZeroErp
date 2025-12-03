@@ -16,6 +16,7 @@
 | user_update | text | YES |  |
 | data_update | timestamp with time zone | YES |  |
 | stato_id | bigint | YES |  |
+| dati_societari_policy | USER-DEFINED | NO | 'NONE'::config.dati_societari_policy_enum |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

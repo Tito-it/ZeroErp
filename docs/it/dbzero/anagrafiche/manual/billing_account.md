@@ -14,9 +14,8 @@
 >   * [config.utilities](/dbzero/config/tabelle/utilities)
 >
 > Approfondimeto funzioni:
->
-> * [anagrafiche.trgfn_billing_account_ins_upd_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_billing_account_ins_upd_clean_fields)
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+>courtesy_title
+> * [anagrafiche.trgfn_billing_account_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_billing_account_clean_fields)
 > * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 ---
@@ -106,9 +105,9 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 
 | Trigger                                        | Evento                  | Funzione                                                   |
 | ---------------------------------------------- | ----------------------- | ---------------------------------------------------------- |
-| `trg_billing_account_ins_upd_clean_fields`     | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_billing_account_ins_upd_clean_fields()` |
-| `trg_billing_account_ins_upd_gen_account_code` | BEFORE INSERT OR UPDATE | `script.fn_generate_codice('billing_account')`             |
-| `trg_upd_billing_account_audit_data_user`      | BEFORE UPDATE           | `script.trgfn_upd_audit_data_user_generic()`               |
+| `trg_billing_account_clean_fields_ins_upd`     | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_billing_account_clean_fields_ins_upd()` |
+| `trg_billing_account_gen_account_code_ins_upd` | BEFORE INSERT OR UPDATE | `script.fn_generate_codice('billing_account')`             |
+| `trg_billing_account_audit_data_user_upd`      | BEFORE UPDATE           | `script.trgfn_upd_audit_data_user_generic_upd()`           |
 
 ---
 

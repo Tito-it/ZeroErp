@@ -10,8 +10,7 @@
 >
 > Approfondimenti funzioni:   
 >
-> * [anagrafiche.trgfn_contatti_ins_upd_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_ins_upd_set_default_contatto)     
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
+> * [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto)     
 
 
 La tabella **`anagrafiche.contatti`** è il **punto di raccolta centralizzato** per tutte le informazioni di contatto nell’applicazione, a diversi livelli di granularità:
@@ -62,12 +61,12 @@ In questo modo è possibile definire:
 
 ### ⚙️ Relazioni e Trigger
 
-- **Trigger `trg_contatti_ins_upd_set_default_contatto`**  
+- **Trigger `trg_contatti_set_default_contatto_ins_upd`**  
   Assicura che esista al più un contatto `is_default = TRUE` per ogni `soggetto_id`:  
   - Se `NEW.is_default = TRUE`, resetta gli altri a `FALSE`.  
   - Se nessun contatto precedente è `default`, marca automaticamente il primo inserito/aggiornato.
 
-- **Trigger `trg_upd_contatti_audit_data_user`**  
+- **Trigger `trg_contatti_audit_data_user_upd`**  
   Aggiorna i campi `data_update` e `user_update` ad ogni modifica.
 
 
@@ -174,10 +173,10 @@ erDiagram
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%
 erDiagram
     contatti {
-        int      id PK
+        bigint      id PK
         int      tipo_contatto_id FK
         uuid     soggetto_id FK
-        int      soggetto_ruolo_id FK
+        bigint      soggetto_ruolo_id FK
         int      utility_id FK
         string   nominativo
         string   email

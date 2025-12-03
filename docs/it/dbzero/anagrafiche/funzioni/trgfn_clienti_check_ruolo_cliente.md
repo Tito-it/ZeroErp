@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_clienti_check_ruolo_cliente.md" %}
 # ⚙️ Funzione `trgfn_clienti_check_ruolo_cliente`
 
 ```sql

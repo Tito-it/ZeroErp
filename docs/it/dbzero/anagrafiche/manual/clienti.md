@@ -5,23 +5,23 @@
 >
 > **Guide generali:**
 
-> * [Generazione di un cliente](/guide/generazione-cliente)
+> * [Generazione di un cliente](/guide/generazione-cliente)  
 >
-> **Approfondimento tabelle:**
+> **Approfondimento tabelle:**  
 >
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
-> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> * [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)
-> * [config.modalita_pagamento](/dbzero/config/tabelle/modalita_pagamento)
-> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)
-> * [config.iva](/dbzero/config/tabelle/iva)
-> * [config.utilities](/dbzero/config/tabelle/utilities)
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)  
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)    
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
+> * [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)  
+> * [config.modalita_pagamento](/dbzero/config/tabelle/modalita_pagamento)  
+> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)  
+> * [config.iva](/dbzero/config/tabelle/iva)  
+> * [config.utilities](/dbzero/config/tabelle/utilities)  
 >
 >**Approfondimeto funzioni:**
 >
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 > * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 
@@ -62,7 +62,7 @@ La tabella `anagrafiche.clienti` memorizza le informazioni contrattuali e di fat
 ### ⚙️ Implementazioni Aggiuntive
 
 * Può essere estesa con **campi di contratto** specifici (es. durata, condizioni).
-* I trigger di audit (`trg_upd_clienti_audit_data_user`) mantengono traccia di modifiche.
+* I trigger di audit (`trg_clienti_audit_data_user_upd`) mantengono traccia di modifiche.
 
 ---
 

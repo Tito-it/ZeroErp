@@ -3,15 +3,15 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+> **Approfondimento tabelle:**  
 >
-> • [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)
-> • [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
-> • [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)
-> • [config.comuni](/dbzero/config/tabelle/comuni)
-> • [config.codici_postali](/dbzero/config/tabelle/codici_postali)
-> • [config.province](/dbzero/config/tabelle/province)
-> • [config.stati](/dbzero/config/tabelle/stati)
+> • [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
+> • [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
+> • [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)    
+> • [config.comuni](/dbzero/config/tabelle/comuni)   
+> • [config.codici_postali](/dbzero/config/tabelle/codici_postali)   
+> • [config.province](/dbzero/config/tabelle/province)   
+> • [config.stati](/dbzero/config/tabelle/stati)    
 
 ---
 
@@ -37,7 +37,7 @@ Questa funzione centralizza la composizione dell’indirizzo, garantendo consist
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_ruolo(
-  p_soggetto_ruolo_id integer
+  p_soggetto_ruolo_id bigint
 )
 RETURNS TABLE(
   tipo_indirizzo character varying,
@@ -64,9 +64,9 @@ ROWS 1000;
 
 ### 🔢 Parametri di input
 
-| Nome                  | Tipo      | Descrizione                                                                            |
-| --------------------- | --------- | -------------------------------------------------------------------------------------- |
-| `p_soggetto_ruolo_id` | `integer` | ID della relazione in `anagrafiche.soggetti_ruoli` a cui sono collegati gli indirizzi. |
+| Nome                  | Tipo     | Descrizione                                                                            |
+| --------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `p_soggetto_ruolo_id` | `bigint` | ID della relazione in `anagrafiche.soggetti_ruoli` a cui sono collegati gli indirizzi. |
 
 ---
 

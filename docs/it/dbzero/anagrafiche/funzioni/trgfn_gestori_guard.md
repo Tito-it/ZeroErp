@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_gestori_guard.md" %}
 # ⚙️ Funzione `trgfn_gestori_guard`
 
 ```sql

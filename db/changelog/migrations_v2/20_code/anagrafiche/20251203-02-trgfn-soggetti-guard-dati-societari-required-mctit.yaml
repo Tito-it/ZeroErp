@@ -1,0 +1,247 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251203-02-trgfn-soggetti-check-dati-societari-required-mctit.yaml
+
+    - changeSet:
+          id: 20251203-02-trgfn_soggetti_check_dati_societari_required
+          author: mctit
+          comment: "Funzione trigger per controllare obbligatorietà dati societari."
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        -- DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_check_dati_societari_required();
+
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_check_dati_societari_required()
+                            RETURNS trigger
+                            LANGUAGE plpgsql
+                            COST 100
+                            VOLATILE
+                            NOT LEAKPROOF
+                        AS $BODY$
+                        DECLARE
+                            v_policy       config.dati_societari_policy_enum;
+                            v_cod_int_tipo text;
+                            v_has_dati     boolean;
+                        BEGIN
+                            /*
+                            Controllo esistenza dati_societari SOLO per i casi in cui
+                            la policy del tipo_soggetto_dettaglio è 'REQUIRED'.
+
+                            Il trigger è DEFERRABLE INITIALLY DEFERRED, quindi il controllo avviene
+                            a fine transazione: è possibile inserire soggetto e dati_societari
+                            nella stessa transazione.
+                            */
+
+                            -- Se non è impostato il tipo_soggetto_dettaglio, al momento non applichiamo
+                            -- la regola di obbligatorietà. In futuro si può irrigidire se necessario.
+                            IF NEW.tipo_soggetto_dettaglio_id IS NULL THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- Recupero policy e codice_interno dal tipo_soggetto_dettaglio
+                            SELECT tsd.dati_societari_policy,
+                                tsd.codice_interno
+                            INTO v_policy,
+                                v_cod_int_tipo
+                            FROM config.tipi_soggetto_dettaglio tsd
+                            WHERE tsd.id = NEW.tipo_soggetto_dettaglio_id;
+
+                            -- Tipo dettaglio non trovato o non coerente con la configurazione
+                            IF v_policy IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'anagrafiche.trgfn_soggetti_check_dati_societari_required',
+                                    'E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO',
+                                    jsonb_build_object(
+                                        'soggetto_id', NEW.id,
+                                        'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                                        'codice_interno', v_cod_int_tipo
+                                    ),
+                                    new.tx_id,
+                                    NEW.id::text,
+                                    COALESCE(v_cod_int_tipo, '<NULL>')
+                                );
+                            END IF;
+
+                            -- Se la policy non è REQUIRED, nessun controllo aggiuntivo
+                            IF v_policy <> 'REQUIRED' THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- Per policy = REQUIRED: deve esistere una riga in anagrafiche.dati_societari
+                            SELECT EXISTS (
+                                SELECT 1
+                                FROM anagrafiche.dati_societari ds
+                                WHERE ds.soggetto_id = NEW.id
+                            )
+                            INTO v_has_dati;
+
+                            IF NOT v_has_dati THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'anagrafiche.trgfn_soggetti_check_dati_societari_required',
+                                    'E_DATI_SOCIETARI_REQUIRED_MANCANTI',
+                                    jsonb_build_object(
+                                        'soggetto_id', NEW.id,
+                                        'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                                        'codice_interno', v_cod_int_tipo,
+                                        'dati_societari_policy', v_policy
+                                    ),
+                                    new.tx_id,
+                                    NEW.id::text,
+                                    v_cod_int_tipo
+                                );
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $BODY$;
+
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_check_dati_societari_required()
+                            IS '
+                        Constraint trigger function (DEFERRABLE) su anagrafiche.soggetti che verifica,
+                        a fine transazione, che per i soggetti il cui tipo_soggetto_dettaglio ha
+                        dati_societari_policy = ''REQUIRED'' esista una riga in anagrafiche.dati_societari.
+
+                        In caso di violazione utilizza script.fn_log_and_raise_error con codice
+                        E_DATI_SOCIETARI_REQUIRED_MANCANTI.
+                        ';
+
+    - changeSet:
+          id: 20251203-02-01-trgfn_soggetti_guard_dati_societari_required
+          author: mctit
+          comment: "Funzione trigger per controllare obbligatorietà dati societari."
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_check_dati_societari_required();
+
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_dati_societari_required()
+                            RETURNS trigger
+                            LANGUAGE plpgsql
+                            COST 100
+                            VOLATILE
+                            NOT LEAKPROOF
+                        AS $BODY$
+                        DECLARE
+                            v_policy       config.dati_societari_policy_enum;
+                            v_cod_int_tipo text;
+                            v_has_dati     boolean;
+                        BEGIN
+                            /*
+                            Controllo esistenza dati_societari SOLO per i casi in cui
+                            la policy del tipo_soggetto_dettaglio è 'REQUIRED'.
+
+                            Il trigger è DEFERRABLE INITIALLY DEFERRED, quindi il controllo avviene
+                            a fine transazione: è possibile inserire soggetto e dati_societari
+                            nella stessa transazione.
+                            */
+
+                            -- Se non è impostato il tipo_soggetto_dettaglio, al momento non applichiamo
+                            -- la regola di obbligatorietà. In futuro si può irrigidire se necessario.
+                            IF NEW.tipo_soggetto_dettaglio_id IS NULL THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- Recupero policy e codice_interno dal tipo_soggetto_dettaglio
+                            SELECT tsd.dati_societari_policy,
+                                tsd.codice_interno
+                            INTO v_policy,
+                                v_cod_int_tipo
+                            FROM config.tipi_soggetto_dettaglio tsd
+                            WHERE tsd.id = NEW.tipo_soggetto_dettaglio_id;
+
+                            -- Tipo dettaglio non trovato o non coerente con la configurazione
+                            IF v_policy IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'anagrafiche.trgfn_soggetti_guard_dati_societari_required',
+                                    'E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO',
+                                    jsonb_build_object(
+                                        'soggetto_id', NEW.id,
+                                        'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                                        'codice_interno', v_cod_int_tipo
+                                    ),
+                                    new.tx_id,
+                                    NEW.id::text,
+                                    COALESCE(v_cod_int_tipo, '<NULL>')
+                                );
+                            END IF;
+
+                            -- Se la policy non è REQUIRED, nessun controllo aggiuntivo
+                            IF v_policy <> 'REQUIRED' THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- Per policy = REQUIRED: deve esistere una riga in anagrafiche.dati_societari
+                            SELECT EXISTS (
+                                SELECT 1
+                                FROM anagrafiche.dati_societari ds
+                                WHERE ds.soggetto_id = NEW.id
+                            )
+                            INTO v_has_dati;
+
+                            IF NOT v_has_dati THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'anagrafiche.trgfn_soggetti_guard_dati_societari_required',
+                                    'E_DATI_SOCIETARI_REQUIRED_MANCANTI',
+                                    jsonb_build_object(
+                                        'soggetto_id', NEW.id,
+                                        'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                                        'codice_interno', v_cod_int_tipo,
+                                        'dati_societari_policy', v_policy
+                                    ),
+                                    new.tx_id,
+                                    NEW.id::text,
+                                    v_cod_int_tipo
+                                );
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $BODY$;
+
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_dati_societari_required()
+                            IS '
+                        Constraint trigger function (DEFERRABLE) su anagrafiche.soggetti che verifica,
+                        a fine transazione, che per i soggetti il cui tipo_soggetto_dettaglio ha
+                        dati_societari_policy = ''REQUIRED'' esista una riga in anagrafiche.dati_societari.
+
+                        In caso di violazione utilizza script.fn_log_and_raise_error con codice
+                        E_DATI_SOCIETARI_REQUIRED_MANCANTI.
+                        ';
+
+
+
+                        -- DROP TRIGGER IF EXISTS trg_soggetti_guard_dati_societari_required_ins_upd ON anagrafiche.soggetti;
+
+                        CREATE CONSTRAINT TRIGGER trg_soggetti_def_guard_dati_societari_required_ins_upd
+                            AFTER INSERT OR UPDATE
+                            ON anagrafiche.soggetti
+                            DEFERRABLE INITIALLY DEFERRED
+                            FOR EACH ROW
+                            EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_dati_societari_required();
+
+                        COMMENT ON TRIGGER trg_soggetti_def_guard_dati_societari_required_ins_upd ON anagrafiche.soggetti
+                            IS '
+                        Constraint trigger DEFERRABLE su anagrafiche.soggetti che, per i soggetti
+                        con tipo_soggetto_dettaglio avente dati_societari_policy = ''REQUIRED'',
+                        verifica a fine transazione l''esistenza di una riga in anagrafiche.dati_societari.
+                        ';

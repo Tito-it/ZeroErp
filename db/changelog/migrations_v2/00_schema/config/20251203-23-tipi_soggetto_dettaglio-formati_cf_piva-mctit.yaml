@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20251203-23-config-tipi_soggetto_dettaglio-formati_cf_piva-mctit.yaml
+
+  - changeSet:
+      id: 20251203-23-config-tipi_soggetto_dettaglio-formati_cf_piva
+      author: mctit
+
+      changes:
+        # 1) Vincolo formato_cf: solo NON_APPLICABILE o pattern NUM_/ALFA_/ALFANUM_ + N
+        - sql:
+            sql: |
+              ALTER TABLE config.tipi_soggetto_dettaglio
+              ADD CONSTRAINT chk_tipi_soggetto_dettaglio_formato_cf
+              CHECK (
+                formato_cf = 'NON_APPLICABILE'
+                OR formato_cf ~ '^(NUM|ALFA|ALFANUM)_[0-9]{1,2}$'
+              );
+
+        # 2) Vincolo formato_piva: solo NON_APPLICABILE o pattern NUM_/ALFA_/ALFANUM_ + N
+        - sql:
+            sql: |
+              ALTER TABLE config.tipi_soggetto_dettaglio
+              ADD CONSTRAINT chk_tipi_soggetto_dettaglio_formato_piva
+              CHECK (
+                formato_piva = 'NON_APPLICABILE'
+                OR formato_piva ~ '^(NUM|ALFA|ALFANUM)_[0-9]{1,2}$'
+              );
+
+        # 3) Coerenza formato_piva <-> dati_societari_policy
+        #    - se formato_piva = NON_APPLICABILE  -> dati_societari_policy = 'NONE'
+        #    - se formato_piva <> NON_APPLICABILE -> dati_societari_policy IN ('OPTIONAL','REQUIRED')
+        - sql:
+            sql: |
+              ALTER TABLE config.tipi_soggetto_dettaglio
+              ADD CONSTRAINT chk_tipi_soggetto_dettaglio_piva_vs_policy
+              CHECK (
+                (formato_piva = 'NON_APPLICABILE'
+                 AND dati_societari_policy = 'NONE')
+                OR
+                (formato_piva <> 'NON_APPLICABILE'
+                 AND dati_societari_policy IN ('OPTIONAL','REQUIRED'))
+              );
+
+        # 4) Rendo NOT NULL i formati (dati attuali già normalizzati)
+        - sql:
+            sql: |
+              ALTER TABLE config.tipi_soggetto_dettaglio
+              ALTER COLUMN formato_cf SET NOT NULL;
+
+        - sql:
+            sql: |
+              ALTER TABLE config.tipi_soggetto_dettaglio
+              ALTER COLUMN formato_piva SET NOT NULL;
+
+        # 5) (facoltativo ma utile) aggiorno commenti per ricordare il formato ammesso
+        - sql:
+            sql: |
+              COMMENT ON COLUMN config.tipi_soggetto_dettaglio.formato_cf IS
+              'Formato Codice Fiscale. Valori ammessi:
+               - NON_APPLICABILE
+               - NUM_<N>     (solo cifre, lunghezza N)
+               - ALFA_<N>    (solo lettere, lunghezza N)
+               - ALFANUM_<N> (lettere+cifre, lunghezza N)';
+
+        - sql:
+            sql: |
+              COMMENT ON COLUMN config.tipi_soggetto_dettaglio.formato_piva IS
+              'Formato Partita IVA. Valori ammessi:
+               - NON_APPLICABILE
+               - NUM_<N>     (solo cifre, lunghezza N)
+               - ALFA_<N>    (solo lettere, lunghezza N)
+               - ALFANUM_<N> (lettere+cifre, lunghezza N)';
+
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE config.tipi_soggetto_dettaglio
+              ALTER COLUMN formato_cf DROP NOT NULL;
+
+              ALTER TABLE config.tipi_soggetto_dettaglio
+              ALTER COLUMN formato_piva DROP NOT NULL;
+
+              ALTER TABLE config.tipi_soggetto_dettaglio
+              DROP CONSTRAINT IF EXISTS chk_tipi_soggetto_dettaglio_piva_vs_policy;
+
+              ALTER TABLE config.tipi_soggetto_dettaglio
+              DROP CONSTRAINT IF EXISTS chk_tipi_soggetto_dettaglio_formato_cf;
+
+              ALTER TABLE config.tipi_soggetto_dettaglio
+              DROP CONSTRAINT IF EXISTS chk_tipi_soggetto_dettaglio_formato_piva;

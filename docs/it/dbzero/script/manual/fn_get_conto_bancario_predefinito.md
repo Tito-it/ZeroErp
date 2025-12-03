@@ -1,18 +1,18 @@
 ## 📘 Documentazione Funzione – `script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)`
 
-> 👀 **Vedi anche**
+> 👀 **Vedi anche**  
 >
-> Approfondimento Tabelle / Vista:
+> Approfondimento Tabelle / Vista:  
 >
-> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> * [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)
-> * [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)
+> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)    
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
+> * [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)   
+> * [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)   
 >
-> Approfondimento vista/funzioni:
+> Approfondimento vista/funzioni:  
 >
-> * [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/funzioni/vw_conti_bancari_per_ruolo)
-> * [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)
+> * [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/funzioni/vw_conti_bancari_per_ruolo)   
+> * [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)   
 
 La funzione **`script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)`** restituisce, per un determinato **ruolo di soggetto** e un dato **uso del conto** (`INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`), **al massimo un conto bancario selezionato**, applicando la logica di priorità e fallback già implementata nella vista **`anagrafiche.vw_conti_bancari_per_ruolo`**.
 
@@ -20,7 +20,7 @@ Se non esiste alcun conto compatibile per l’uso richiesto, la funzione tenta u
 
 ---
 
-### 🎯 Scopo principale
+### 🎯 Scopo Principale
 
 * **Incapsulare la logica di selezione del conto**
   Fornisce un punto di accesso unico per ottenere “il conto da usare ora” dato un `soggetto_ruolo_id` e un `uso`, senza dover ripetere join e ordinamenti sulle tabelle sorgenti.
