@@ -61,12 +61,12 @@ In questo modo è possibile definire:
 
 ### ⚙️ Relazioni e Trigger
 
-- **Trigger `trg_contatti_ins_upd_set_default_contatto`**  
+- **Trigger `trg_contatti_set_default_contatto_ins_upd`**  
   Assicura che esista al più un contatto `is_default = TRUE` per ogni `soggetto_id`:  
   - Se `NEW.is_default = TRUE`, resetta gli altri a `FALSE`.  
   - Se nessun contatto precedente è `default`, marca automaticamente il primo inserito/aggiornato.
 
-- **Trigger `trg_upd_contatti_audit_data_user`**  
+- **Trigger `trg_contatti_audit_data_user_upd`**  
   Aggiorna i campi `data_update` e `user_update` ad ogni modifica.
 
 

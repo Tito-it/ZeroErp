@@ -15,8 +15,8 @@
 >
 > **Approfondimento Trigger/Funzioni generiche**   
 > • [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
-> • [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)   
-> • [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
+> • [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
+> • [script.trgfn_dlt_storico_generic](/dbzero/script/funzioni/trgfn_dlt_storico_generic)   
 
 ---
 
@@ -34,11 +34,11 @@
 
 > La tabella non contiene FK verso altre entità; è invece **referenziata** da:
 
-| Tabella che referenzia                     | Campo → `conti_bancari.id`    | Azioni FK                               |
-| ------------------------------------------ | ----------------------------- | --------------------------------------- |
+| Tabella che referenzia                     | Campo → `conti_bancari.id`    | Azioni FK                              |
+| ------------------------------------------ | ----------------------------- | -------------------------------------- |
 | `anagrafiche.soggetti_conti_bancari`       | `conto_bancario_id`           | ON UPDATE CASCADE, ON DELETE NO ACTION |
 | `anagrafiche.soggetti_ruoli_conti_bancari` | `conto_bancario_id`           | ON UPDATE CASCADE, ON DELETE NO ACTION |
-| *(indiretto)* `pagamenti.sepa_mandati`     | via `soggetto_ruolo_conto_id` | — (il conto è risolto a monte)          |
+| *(indiretto)* `pagamenti.sepa_mandati`     | via `soggetto_ruolo_conto_id` | — (il conto è risolto a monte)         |
 
 ---
 
@@ -84,10 +84,10 @@
 
 | Trigger                                 | Tabella         | Scopo                                                                                 |
 | --------------------------------------- | --------------- | ------------------------------------------------------------------------------------- |
-| `trg_conti_bancari_ins_upd_normalize`   | `conti_bancari` | Normalizza IBAN/BIC (uppercase, rimuovi spazi) e deriva `paese`; aggiorna audit base. |
-| `trg_conti_bancari_ins_upd_gen_tx_id`   | `conti_bancari` | Assegna `tx_id` se nullo (`dbops.trgfn_tx_id_managed`).                               |
-| `trg_upd_conti_bancari_audit_data_user` | `conti_bancari` | Aggiorna `data_update`/`user_update` su UPDATE.                                       |
-| `trg_z90_conti_bancari_upd_dlt_storico` | `conti_bancari` | Crea snapshot storico su UPDATE/DELETE (`script.trgfn_upd_dlt_storico_generic`).      |
+| `trg_conti_bancari_normalize_ins_upd`   | `conti_bancari` | Normalizza IBAN/BIC (uppercase, rimuovi spazi) e deriva `paese`; aggiorna audit base. |
+| `trg_conti_bancari_gen_tx_id_ins_upd`   | `conti_bancari` | Assegna `tx_id` se nullo (`dbops.trgfn_tx_id_managed`).                               |
+| `trg_conti_bancari_audit_data_user_upd` | `conti_bancari` | Aggiorna `data_update`/`user_update` su UPDATE.                                       |
+| `trg_z90_conti_bancari_storico_upd_dlt` | `conti_bancari` | Crea snapshot storico su UPDATE/DELETE (`script.trgfn_storico_generic_upd_dlt`).      |
 
 > **Nota**: la selezione del conto “effettivo” per ruolo/uso avviene tramite:
 > • `anagrafiche.vw_conti_bancari_per_ruolo` (priorità **RUOLO → SOGGETTO**, validità odierna, non bloccato, conto attivo)

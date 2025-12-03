@@ -15,7 +15,7 @@
 >
 > Altre guide correlate:
 >
-> * [Gestione conti bancari](/guide/conti-bancari)
+> * [Gestione conti bancari](/guide/gestione-conti-bancari)
 
 ---
 

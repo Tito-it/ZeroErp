@@ -7,7 +7,7 @@
 - [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
 - [fn_generate_codice](funzioni/fn_generate_codice.md) — * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_tipo` passato in input.
 - [fn_get_contatti](funzioni/fn_get_contatti.md) — * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
-- [fn_get_contatto_default](funzioni/fn_get_contatto_default.md)
+- [fn_get_contatto_default](funzioni/fn_get_contatto_default.md) — principale
 - [fn_get_conto_bancario_predefinito](funzioni/fn_get_conto_bancario_predefinito.md) — * **Incapsulare la logica di selezione del conto**   Fornisce un punto di accesso unico per ottenere “il conto da usare ora” dato un `soggetto_ruolo_id` e un `uso`, senza dover ripetere join e ordinamenti sulle tabelle sorgenti.
 - [fn_get_dati_catastali_by_istanza](funzioni/fn_get_dati_catastali_by_istanza.md) — La funzione `script.fn_get_dati_catastali_by_istanza(p_istanza_utilities_id)` fornisce un **meccanismo di fallback** per recuperare i dati catastali di un punto di erogazione a partire da un’istanza di servizio. In particolare:
 - [fn_get_default_by_param](funzioni/fn_get_default_by_param.md) — Recuperare in modo dinamico un valore di **PK** (o altro identificativo) da qualsiasi tabella, basandosi su un **codice parametro**. La funzione:
@@ -34,17 +34,11 @@
 - [fn_validate_cf_piva_it](funzioni/fn_validate_cf_piva_it.md) — * **Centralizzazione Validazioni**: Unico punto per verificare CF e P.IVA in accordo ai formati configurati. * **Dinamicità**: I formati (alfanumerico, numerico, lunghezza) sono letti da `config.tipi_soggetto_dettaglio` e possono variare per Stato. * **Estendibilità**: Aggiunta futura di funzioni con suffissi di Stato, es. `_FR`, `_DE`, `_UK`.
 - [log](funzioni/log.md)
 - [trgfn_audit_data_user_generic](funzioni/trgfn_audit_data_user_generic.md) — * **Audit automatico**   Assicurare che ogni modifica a una riga di tabella sia registrata con timestamp (`data_update`) e utente (`user_update`) correnti. * **Centralizzare la logica di update audit**   Evitare di replicare manualmente la medesima assegnazione in ogni trigger `BEFORE UPDATE` delle varie tabelle.
-- [trgfn_conti_bancari_ins_upd_normalize](funzioni/trgfn_conti_bancari_ins_upd_normalize.md)
-- [trgfn_conti_ins_upd_normalize](funzioni/trgfn_conti_ins_upd_normalize.md)
-- [trgfn_fornitori_guard](funzioni/trgfn_fornitori_guard.md)
 - [trgfn_guard_sorgente_polimorfa](funzioni/trgfn_guard_sorgente_polimorfa.md) — `script.trgfn_guard_sorgente_polimorfa()` fornisce un **controllo unificato e riusabile** sulla **coerenza dei riferimenti di sorgente** (origine dati) per tabelle applicative che adottano il pattern:
 - [trgfn_lock_columns](funzioni/trgfn_lock_columns.md) — -  Trigger function generica per **bloccare modifiche non autorizzate** su colonne specificate, integrando:
 - [trgfn_note_validate_generic](funzioni/trgfn_note_validate_generic.md)
 - [trgfn_prevent_modification_generic](funzioni/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
 - [trgfn_qta_from_operativa](funzioni/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
-- [trgfn_sepa_mandati_guard](funzioni/trgfn_sepa_mandati_guard.md)
-- [trgfn_soggetti_conti_bancari_guard](funzioni/trgfn_soggetti_conti_bancari_guard.md)
-- [trgfn_soggetti_ruoli_conti_bancari_guard](funzioni/trgfn_soggetti_ruoli_conti_bancari_guard.md)
 - [trgfn_storico_generic](funzioni/trgfn_storico_generic.md) — * **Unificazione logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 - [trgfn_sync_stato_iso2](funzioni/trgfn_sync_stato_iso2.md) — * **Sincronizzazione automatica** del campo `stato_iso2` all’interno delle tabelle che lo richiedono. * **Garantire coerenza** tra il campo `stato_id` e il relativo `codice_iso2`, estraendolo dinamicamente da `config.stati`.
 - [uuid_nil](funzioni/uuid_nil.md) — * Fornire un valore UUID costante, composto interamente da zeri. * Usato come **fallback** o **default** quando non è possibile generare o recuperare un UUID valido.

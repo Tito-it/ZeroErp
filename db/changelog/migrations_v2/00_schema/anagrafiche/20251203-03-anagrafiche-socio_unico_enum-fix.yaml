@@ -1,0 +1,164 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+        - changeSet:
+                  id: 20251203-03-anagrafiche-socio_unico_enum-fix
+                  author: mctit
+                  comment: "Allinea enum anagrafiche.socio_unico_enum a SU/SM/NA."
+                  changes:
+                          - sql:
+                                    splitStatements: false
+                                    stripComments: false
+                                    sql: |
+                                            DO $$
+                                            DECLARE
+                                              v_has_su boolean;
+                                              v_has_sm boolean;
+                                              v_has_na boolean;
+                                            BEGIN
+                                              -- Verifico valori esistenti
+                                              SELECT EXISTS (
+                                                       SELECT 1
+                                                       FROM pg_type t
+                                                       JOIN pg_enum e      ON e.enumtypid = t.oid
+                                                       JOIN pg_namespace n ON n.oid = t.typnamespace
+                                                       WHERE n.nspname = 'anagrafiche'
+                                                         AND t.typname = 'socio_unico_enum'
+                                                         AND e.enumlabel = 'SU'
+                                                     ),
+                                                     EXISTS (
+                                                       SELECT 1
+                                                       FROM pg_type t
+                                                       JOIN pg_enum e      ON e.enumtypid = t.oid
+                                                       JOIN pg_namespace n ON n.oid = t.typnamespace
+                                                       WHERE n.nspname = 'anagrafiche'
+                                                         AND t.typname = 'socio_unico_enum'
+                                                         AND e.enumlabel = 'SM'
+                                                     ),
+                                                     EXISTS (
+                                                       SELECT 1
+                                                       FROM pg_type t
+                                                       JOIN pg_enum e      ON e.enumtypid = t.oid
+                                                       JOIN pg_namespace n ON n.oid = t.typnamespace
+                                                       WHERE n.nspname = 'anagrafiche'
+                                                         AND t.typname = 'socio_unico_enum'
+                                                         AND e.enumlabel = 'NA'
+                                                     )
+                                              INTO v_has_su, v_has_sm, v_has_na;
+
+                                              -- SU dovrebbe già esserci, non lo tocchiamo
+                                              IF NOT v_has_su THEN
+                                                RAISE EXCEPTION 'Enum anagrafiche.socio_unico_enum privo del valore SU: situazione non prevista';
+                                              END IF;
+
+                                              -- Aggiungo SM (Socio multiplo) se manca
+                                              IF NOT v_has_sm THEN
+                                                ALTER TYPE anagrafiche.socio_unico_enum
+                                                  ADD VALUE 'SM';
+                                              END IF;
+
+                                              -- Aggiungo NA (Non applicabile) se manca
+                                              IF NOT v_has_na THEN
+                                                ALTER TYPE anagrafiche.socio_unico_enum
+                                                  ADD VALUE 'NA';
+                                              END IF;
+                                            END;
+                                            $$;
+
+                                            COMMENT ON TYPE anagrafiche.socio_unico_enum IS
+                                              'Enum socio_unico:
+                                               - SU: Socio unico
+                                               - SM: Soci multipli
+                                               - NA: Non applicabile (informazione non rilevante)';
+        - changeSet:
+                  id: 20251203-03-01-anagrafiche-liquidazione_enum-fix
+                  author: mctit
+                  comment: "Allinea enum anagrafiche.liquidazione_enum a LN/LS/NA (rinomina CL→LS se presente)."
+                  changes:
+                          - sql:
+                                    splitStatements: false
+                                    stripComments: false
+                                    sql: |
+                                            DO $$
+                                            DECLARE
+                                              v_has_ln boolean;
+                                              v_has_ls boolean;
+                                              v_has_na boolean;
+                                              v_has_cl boolean;
+                                            BEGIN
+                                              -- Stato attuale dei valori
+                                              SELECT EXISTS (
+                                                       SELECT 1
+                                                       FROM pg_type t
+                                                       JOIN pg_enum e      ON e.enumtypid = t.oid
+                                                       JOIN pg_namespace n ON n.oid = t.typnamespace
+                                                       WHERE n.nspname = 'anagrafiche'
+                                                         AND t.typname = 'liquidazione_enum'
+                                                         AND e.enumlabel = 'LN'
+                                                     ),
+                                                     EXISTS (
+                                                       SELECT 1
+                                                       FROM pg_type t
+                                                       JOIN pg_enum e      ON e.enumtypid = t.oid
+                                                       JOIN pg_namespace n ON n.oid = t.typnamespace
+                                                       WHERE n.nspname = 'anagrafiche'
+                                                         AND t.typname = 'liquidazione_enum'
+                                                         AND e.enumlabel = 'LS'
+                                                     ),
+                                                     EXISTS (
+                                                       SELECT 1
+                                                       FROM pg_type t
+                                                       JOIN pg_enum e      ON e.enumtypid = t.oid
+                                                       JOIN pg_namespace n ON n.oid = t.typnamespace
+                                                       WHERE n.nspname = 'anagrafiche'
+                                                         AND t.typname = 'liquidazione_enum'
+                                                         AND e.enumlabel = 'NA'
+                                                     ),
+                                                     EXISTS (
+                                                       SELECT 1
+                                                       FROM pg_type t
+                                                       JOIN pg_enum e      ON e.enumtypid = t.oid
+                                                       JOIN pg_namespace n ON n.oid = t.typnamespace
+                                                       WHERE n.nspname = 'anagrafiche'
+                                                         AND t.typname = 'liquidazione_enum'
+                                                         AND e.enumlabel = 'CL'
+                                                     )
+                                              INTO v_has_ln, v_has_ls, v_has_na, v_has_cl;
+
+                                              -- LN deve esistere (Non in liquidazione)
+                                              IF NOT v_has_ln THEN
+                                                RAISE EXCEPTION 'Enum anagrafiche.liquidazione_enum privo del valore LN: situazione non prevista';
+                                              END IF;
+
+                                              -- Gestione LS:
+                                              -- se non esiste LS ma esiste CL, assumiamo che CL fosse il vecchio codice per "in liquidazione" e lo rinominiamo.
+                                              IF NOT v_has_ls THEN
+                                                IF v_has_cl THEN
+                                                  ALTER TYPE anagrafiche.liquidazione_enum
+                                                    RENAME VALUE 'CL' TO 'LS';
+                                                ELSE
+                                                  ALTER TYPE anagrafiche.liquidazione_enum
+                                                    ADD VALUE 'LS';
+                                                END IF;
+                                              END IF;
+
+                                              -- Gestione NA (Non applicabile)
+                                              IF NOT v_has_na THEN
+                                                ALTER TYPE anagrafiche.liquidazione_enum
+                                                  ADD VALUE 'NA';
+                                              END IF;
+                                            END;
+                                            $$;
+
+                                            COMMENT ON TYPE anagrafiche.liquidazione_enum IS
+                                              'Enum liquidazione:
+                                               - LN: Non in liquidazione
+                                               - LS: In liquidazione
+                                               - NA: Non applicabile (informazione non rilevante)';
