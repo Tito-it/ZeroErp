@@ -17,7 +17,7 @@ La trigger function **`anagrafiche.trgfn_contatti_set_default_contatto()`** gest
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 03-12-25)
 * **Impostare il contatto default**
   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 

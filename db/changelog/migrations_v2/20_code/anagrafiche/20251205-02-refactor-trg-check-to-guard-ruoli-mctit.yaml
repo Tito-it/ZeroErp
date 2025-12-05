@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251205-02-refactor-trg-check-to-guard-ruoli-mctit.yaml
+
+    - changeSet:
+          id: 20251205-02-refactor-trg-check-to-guard-ruoli
+          author: mctit
+
+          comment: "Rinomina i trigger check_ruolo_* in guard_ruolo_* per coerenza di naming"
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: true
+                    stripComments: true
+                    sql: |
+                        -- Bank branches
+                        ALTER TRIGGER trg_bank_check_ruolo_bank_branches_ins_upd
+                            ON anagrafiche.bank_branches
+                        RENAME TO trg_bank_guard_ruolo_bank_branches_ins_upd;
+
+                        -- Clienti
+                        ALTER TRIGGER trg_clienti_check_ruolo_cliente_ins_upd
+                            ON anagrafiche.clienti
+                        RENAME TO trg_clienti_guard_ruolo_cliente_ins_upd;
+
+                        -- Gestori
+                        ALTER TRIGGER trg_gestori_check_ruolo_gestore_ins_upd
+                            ON anagrafiche.gestori
+                        RENAME TO trg_gestori_guard_ruolo_gestore_ins_upd;
+
+                        -- Emittenti fiscali
+                        ALTER TRIGGER trg_emittenti_fiscali_check_ruolo_emi_fis_ins_upd
+                            ON anagrafiche.emittenti_fiscali
+                        RENAME TO trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd;
+
+                        -- Fornitori
+                        ALTER TRIGGER trg_fornitori_check_ruolo_fornitore_ins_upd
+                            ON anagrafiche.fornitori
+                        RENAME TO trg_fornitori_guard_ruolo_fornitore_ins_upd;
+
+                        -- Resellers
+                        ALTER TRIGGER trg_resellers_check_ruolo_reseller_ins_upd
+                            ON anagrafiche.resellers
+                        RENAME TO trg_resellers_guard_ruolo_reseller_ins_upd;
+
+                        -- Vettori
+                        ALTER TRIGGER trg_vettori_ins_upd_check_ruolo_vettore
+                            ON anagrafiche.vettori
+                        RENAME TO trg_vettori_guard_ruolo_vettore_ins_upd;
+
+    - changeSet:
+          id: 20251205-02-01-refactor-trg-vettori
+          author: mctit
+
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: true
+                    stripComments: true
+                    sql: |
+                        -- Vettori
+                        ALTER TRIGGER trg_vettori_a10_upd_protect_codice
+                            ON anagrafiche.vettori
+                        RENAME TO trg_vettori_a10_protect_codice_upd;
+
+                        ALTER TRIGGER trg_vettori_ins_upd_norm
+                            ON anagrafiche.vettori
+                        RENAME TO trg_vettori_norm_ins_upd;

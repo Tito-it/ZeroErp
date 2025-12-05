@@ -20,7 +20,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 03-12-25)
 La funzione **`anagrafiche.trgfn_gestori_guard()`** è una **funzione trigger di guardia di dominio** per la tabella `anagrafiche.gestori`.
 
 Viene eseguita **BEFORE INSERT/UPDATE** (tramite il trigger `trg_gestori_a10_guard_ins_upd`) e ha il compito di garantire che:

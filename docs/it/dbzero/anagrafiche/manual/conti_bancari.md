@@ -21,7 +21,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 02-12-25)
 `anagrafiche.conti_bancari` è l’**anagrafe unica degli IBAN**. Centralizza e **deduplica** i conti correnti, li **normalizza** (uppercase, senza spazi) e li rende riusabili da **qualsiasi soggetto** e **ruolo**. Questo disaccoppiamento:
 
 * evita duplicazioni dello stesso IBAN su più anagrafiche;

@@ -2,22 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+> **Approfondimento tabelle:**  
 >
-> • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> • [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
-> • [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)
-> • [config.utilities](/dbzero/config/tabelle/utilities)
+> • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
+> • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
+> • [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)   
+> • [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)   
+> • [config.utilities](/dbzero/config/tabelle/utilities)   
 >
 > **Approfondimento funzioni:**
 >
-> • [`script.fn_get_contatti`](/dbzero/script/funzioni/fn_get_contatti.md)
+> • [`script.fn_get_contatti`](/dbzero/script/funzioni/fn_get_contatti.md)  
 
 ---
 
 ### 🎯 Scopo principale
-
+(latest review 03-12-25)
 La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
 
 * **ruolo** (`soggetto_ruolo`),

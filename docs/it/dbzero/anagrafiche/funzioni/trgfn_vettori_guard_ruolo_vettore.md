@@ -1,19 +1,19 @@
-# ⚙️ Funzione `trgfn_fornitori_check_ruolo_fornitore`
+# ⚙️ Funzione `trgfn_vettori_guard_ruolo_vettore`
 
 ```sql
-CREATE FUNCTION trgfn_fornitori_check_ruolo_fornitore()
+CREATE FUNCTION trgfn_vettori_guard_ruolo_vettore()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_fornitori_check_ruolo_fornitore()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_vettori_guard_ruolo_vettore()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
 BEGIN
     -- FUNCTION: 
-    --   Ogni volta che inserisco/aggiorno in fornitori, gestisco la
+    --   Ogni volta che inserisco/aggiorno in vettori, gestisco la
     --   verifica della riga corrispondente in soggetti_ruoli.
     --   alimentando poi in NEW.soggetto_ruolo_id il record finale.
 
@@ -22,7 +22,7 @@ BEGIN
     NEW.soggetto_ruolo_id := script.fn_check_soggetto_ruolo(
                             p_soggetto_id       := NULL,
                             p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
-                            p_cd_int_ruolo      := 'FO'
+                            p_cd_int_ruolo      := 'VT'
                             );
     RETURN NEW;
 END;

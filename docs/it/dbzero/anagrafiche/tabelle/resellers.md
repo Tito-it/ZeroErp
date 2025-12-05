@@ -41,8 +41,8 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_resellers_a10_protect_codice_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_protect_codice()` |
-| trg_resellers_check_ruolo_reseller_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_check_ruolo_reseller()` |
-| trg_resellers_check_ruolo_reseller_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_check_ruolo_reseller()` |
+| trg_resellers_guard_ruolo_reseller_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_guard_ruolo_reseller()` |
+| trg_resellers_guard_ruolo_reseller_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_guard_ruolo_reseller()` |
 | trg_resellers_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_normalize()` |
 | trg_resellers_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_normalize()` |
 

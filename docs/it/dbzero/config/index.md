@@ -47,7 +47,7 @@
 - [tipi_indirizzi_allowed](tabelle/tipi_indirizzi_allowed.md)
 - [tipi_ruoli](tabelle/tipi_ruoli.md) — * **Distinzione dei ruoli**: consente di assegnare a ogni record della tabella `soggetti` uno o più ruoli funzionali (es. cliente, fornitore, gestore). * **Flessibilità operativa**: un soggetto può assumere ruoli differenti in contesti diversi (ad esempio un fornitore che può diventare cliente in altre transazioni). * **Ruolo "gestore"**: l’azienda stessa che utilizza il software viene registrata in `soggetti` e associata al ruolo interno “gestore” per identificare i dati dell’utente principale o amministratore del sistema.
 - [tipi_ruolo_tipi_indirizzo](tabelle/tipi_ruolo_tipi_indirizzo.md)
-- [tipi_soggetto](tabelle/tipi_soggetto.md) — * Definire le **macro-tipologie** di soggetto (es. Persona Fisica, Persona Giuridica, Ente, ecc.) * Separare la classificazione di alto livello dalla gestione dettagliata dei tipi soggetto (internazionale) tramite la tabella di dettaglio.
+- [tipi_soggetto](tabelle/tipi_soggetto.md) — La tabella **`config.tipi_soggetto`** definisce le **macro-tipologie** dei soggetti presenti nel sistema ERP:
 - [tipi_soggetto_dettaglio](tabelle/tipi_soggetto_dettaglio.md) — * **Gestione Internazionale**   Permette di adattare la validazione di CF/P.IVA alle regole di ciascuno Stato (`stato_iso2`). * **Estendibilità**   Il collegamento a `config.tipi_soggetto` garantisce macro-categorie estensibili (Fisico, Giuridico, Ente, …). * **Controllo Applicativo**   Centralizza il formato di CF/P.IVA, evitando logiche duplicate nel backend.
 - [tipi_tariffe_ee](tabelle/tipi_tariffe_ee.md)
 - [tipi_ubicazione](tabelle/tipi_ubicazione.md)

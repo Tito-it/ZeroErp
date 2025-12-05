@@ -18,7 +18,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 30-11-25)
 La funzione **`anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`** è una **trigger function di tipo “guard”** che:
 
 * controlla gli **inserimenti / aggiornamenti** sulla tabella

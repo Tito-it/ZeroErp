@@ -40,11 +40,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_vettori_a10_upd_protect_codice | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_protect_codice()` |
-| trg_vettori_ins_upd_check_ruolo_vettore | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_check_ruolo_vettore()` |
-| trg_vettori_ins_upd_check_ruolo_vettore | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_check_ruolo_vettore()` |
-| trg_vettori_ins_upd_norm | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_normalize()` |
-| trg_vettori_ins_upd_norm | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_normalize()` |
+| trg_vettori_a10_protect_codice_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_protect_codice()` |
+| trg_vettori_guard_ruolo_vettore_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_guard_ruolo_vettore()` |
+| trg_vettori_guard_ruolo_vettore_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_guard_ruolo_vettore()` |
+| trg_vettori_norm_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_normalize()` |
+| trg_vettori_norm_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_normalize()` |
 
 ---
 {% include-markdown "signature-core.md" %}

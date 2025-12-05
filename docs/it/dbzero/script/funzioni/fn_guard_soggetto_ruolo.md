@@ -1,13 +1,14 @@
-# ⚙️ Funzione `fn_check_soggetto_ruolo`
+{% include-markdown "it/dbzero/script/manual/fn_guard_soggetto_ruolo.md" %}
+# ⚙️ Funzione `fn_guard_soggetto_ruolo`
 
 ```sql
-CREATE FUNCTION fn_check_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_cd_int_ruolo character varying)
+CREATE FUNCTION fn_guard_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_cd_int_ruolo character varying)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_check_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_cd_int_ruolo character varying)
+CREATE OR REPLACE FUNCTION script.fn_guard_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_cd_int_ruolo character varying)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$

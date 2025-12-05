@@ -1,19 +1,19 @@
-# ⚙️ Funzione `trgfn_vettori_check_ruolo_vettore`
+# ⚙️ Funzione `trgfn_emittenti_fiscali_guard_ruolo_emi_fis`
 
 ```sql
-CREATE FUNCTION trgfn_vettori_check_ruolo_vettore()
+CREATE FUNCTION trgfn_emittenti_fiscali_guard_ruolo_emi_fis()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_vettori_check_ruolo_vettore()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
 BEGIN
     -- FUNCTION: 
-    --   Ogni volta che inserisco/aggiorno in vettori, gestisco la
+    --   Ogni volta che inserisco/aggiorno in emittenti_fiscali, gestisco la
     --   verifica della riga corrispondente in soggetti_ruoli.
     --   alimentando poi in NEW.soggetto_ruolo_id il record finale.
 
@@ -22,7 +22,7 @@ BEGIN
     NEW.soggetto_ruolo_id := script.fn_check_soggetto_ruolo(
                             p_soggetto_id       := NULL,
                             p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
-                            p_cd_int_ruolo      := 'VT'
+                            p_cd_int_ruolo      := 'EF'
                             );
     RETURN NEW;
 END;

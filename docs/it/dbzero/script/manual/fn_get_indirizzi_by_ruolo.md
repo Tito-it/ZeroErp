@@ -16,7 +16,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 30-11-25)
 Restituisce tutti gli **indirizzi** associati a uno specifico `soggetto_ruolo`, producendo per ciascuno:
 
 * il **tipo di indirizzo** (`codice_interno`) e indicazione se **normalizzato**;
