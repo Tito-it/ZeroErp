@@ -9,8 +9,8 @@
 >
 > Approfondimento funzioni e trigger:   
 >   
-> * [anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_ins_upd_check_tipo_soggetto)
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> * [anagrafiche.trgfn_dati_societari_check_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_gauard_tipo_soggetto)
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 
 
@@ -19,9 +19,9 @@ La tabella **`anagrafiche.dati_societari`** contiene i dati societari estesi per
 ---
 
 ### 🎯 Scopo Principale
-
+(latest update 05-12-25)
 - **Estendere l’anagrafica generale**  
-  I soggetti di tipo giuridico (aziende) hanno esigenze di memorizzazione di dati societari che non interessano le persone fisiche. Spostando queste informazioni in `dati_societari`, si mantiene la tabella `anagrafiche.soggetti` leggera e focalizzata sui campi anagrafici di base. Solo per i tipi soggetti appropriati controllati dalla trigger function `anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto`
+  I soggetti di tipo giuridico (aziende) hanno esigenze di memorizzazione di dati societari che non interessano le persone fisiche. Spostando queste informazioni in `dati_societari`, si mantiene la tabella `anagrafiche.soggetti` leggera e focalizzata sui campi anagrafici di base. Solo per i tipi soggetti appropriati controllati dalla trigger function `anagrafiche.trgfn_dati_societari_guard_tipo_soggetto`
 
 - **Gestione iscrizione REA e capitale sociale**  
   Memorizzare la provincia di iscrizione REA (`id_prov_iscri_rea` + `iscrizione_rea`) e il capitale sociale in Euro (`capitale_sociale`), dato fondamentale per valutazioni finanziarie e di business.
@@ -175,8 +175,204 @@ erDiagram
     }
 
 ```
+---
+
+## 📘 Integrazione – Coerenza tra `dati_societari`, Tipo Soggetto e Tipologie Fiscali
+
+*(Aggiornamento del 2025-12-03)*
+
+Questa integrazione descrive le nuove regole introdotte per la tabella **`anagrafiche.dati_societari`**, basate sul refactoring di:
+
+* `config.tipi_soggetto`
+* `config.tipi_soggetto_dettaglio`
+* formati CF/P.IVA (NUM_N, ALFA_N, ALFANUM_N, NON_APPLICABILE)
+* `dati_societari_policy` (NONE / OPTIONAL / REQUIRED)
+
+La documentazione estende quella già presente e rappresenta la logica aggiornata di coerenza tra le varie componenti anagrafiche.
 
 ---
+
+### 🧩 1. Ruolo delle Tabelle Coinvolte
+
+ **`config.tipi_soggetto`** → Macro natura del soggetto
+
+Contiene la classificazione generale:
+
+* **PF** → Persona Fisica
+* **PG** → Persona Giuridica
+* **ENTE** → Ente / Ente non commerciale
+* **ALTRO** → Categoria residuale
+
+Questa tabella determina la **natura giuridica** di un soggetto.
+
+---
+
+ **`config.tipi_soggetto_dettaglio`** → Regole fiscali e nazionali
+
+Per ogni tipo soggetto definisce:
+
+* Paese (`stato_iso2`)
+* Formati fiscali (`formato_cf`, `formato_piva`)
+* Policy dati societari (`dati_societari_policy`)
+
+Valori ammessi per i formati:
+
+* `NUM_<N>`
+* `ALFA_<N>`
+* `ALFANUM_<N>`
+* `NON_APPLICABILE`
+
+Valori ammessi per la policy:
+
+* `NONE`
+* `OPTIONAL`
+* `REQUIRED`
+
+Questa tabella è il livello in cui si definisce **se** un soggetto prevede la P.IVA e **se** deve avere una scheda societaria.
+
+---
+
+ **`anagrafiche.soggetti`**
+
+Contiene l'anagrafica generale e ha un FK verso:
+
+```
+tipo_soggetto_dettaglio_id → config.tipi_soggetto_dettaglio.id
+```
+
+---
+
+ **`anagrafiche.dati_societari`**
+
+Contiene la scheda societaria, soggetta alle policy definite nel dettaglio soggetto.
+
+---
+
+### 🧭 2. Regole di Coerenza
+
+✔ **Regola 1 — Dati societari NON ammessi**
+
+Se nel dettaglio soggetto:
+
+```
+
+dati_societari_policy = 'NONE'
+```
+
+allora:
+
+* non deve esistere alcuna riga in `anagrafiche.dati_societari`
+* se un inserimento/modifica viene tentato → **errore** (bloccato dal trigger)
+
+Tipico per:
+
+* Persona Fisica senza P.IVA
+
+---
+
+ ✔ **Regola 2 — Dati societari AMMESSI (opzionali)**
+
+Se:
+
+```
+OPTIONAL
+```
+
+allora:
+
+* la scheda societaria può esistere
+* non è obbligatoria
+
+Esempi:
+
+* PF con P.IVA (professionista)
+* Associazioni semplici
+
+---
+
+ ✔ **Regola 3 — Dati societari OBBLIGATORI**
+
+Se:
+
+```
+REQUIRED
+```
+
+allora:
+
+* deve esistere **esattamente una** riga in `dati_societari`
+* il trigger vieta inserimento/aggiornamento incoerente
+
+Tipico per:
+
+* PG (SRL, SPA, SNC, SAPA)
+* ENTI strutturati
+
+---
+
+### 🛠 3. Applicazione tramite Trigger
+
+ 🔧 `anagrafiche.trgfn_dati_societari_guard_tipo_soggetto`
+
+Gestisce:
+
+* rispetto della policy (NONE / OPTIONAL / REQUIRED)
+* presenza massima di una riga per soggetto
+* blocco di inserimenti/modifiche quando non ammessi
+* coerenza completa con `config.tipi_soggetto_dettaglio`
+
+ 🔧 `anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch`
+
+* valida CF/P.IVA solo se `stato_iso2 = 'IT'`
+* si attiva solo quando il dettaglio soggetto **prevede** CF/P.IVA (`formato_cf/piva <> 'NON_APPLICABILE'`)
+
+---
+
+### 📚 4. Esempi Pratici
+
+ 🔸 Caso: Persona Fisica senza partita IVA
+
+* `formato_cf = ALFANUM_16`
+* `formato_piva = NON_APPLICABILE`
+* `dati_societari_policy = NONE`
+  → non deve esistere una scheda societaria
+
+---
+
+ 🔸 Caso: PF con partita IVA
+
+* `formato_piva = NUM_11`
+* `dati_societari_policy = OPTIONAL`
+  → può avere scheda societaria
+
+---
+
+ 🔸 Caso: PG (azienda)
+
+* `formato_cf = NUM_11`
+* `formato_piva = NUM_11`
+* `dati_societari_policy = REQUIRED`
+  → deve avere scheda societaria
+
+---
+
+### 💡 Beneficio Architetturale
+
+> **La gestione della scheda societaria diventa completamente configurabile e allineata al dominio.**
+>
+> La combinazione di macro‑tipo, dettaglio fiscale e policy permette a Zero ERP di:
+>
+> * integrare nuovi paesi,
+> * distinguere correttamente PF/PG/Enti,
+> * fornire validazioni dinamiche senza logica hardcoded,
+> * evitare incoerenze nella gestione delle informazioni societarie.
+
+---
+
+Se vuoi, posso aggiornare anche la doc completa della tabella `anagrafiche.dati_societari` incorporando automaticamente questa integrazione nella sezione finale.
+
+---
+
 {% include-markdown "signature-core.md" %}
 
 ---

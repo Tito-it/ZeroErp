@@ -13,6 +13,23 @@ databaseChangeLog:
     - changeSet:
           id: 20251205-02-refactor-trg-check-to-guard-ruoli
           author: mctit
+          runOnChange: true
+          validCheckSum:
+              - ANY
+
+          preConditions:
+              - onFail: MARK_RAN # se la precondizione FALLISCE => considera il changeset eseguito
+              - onError: HALT
+              - sqlCheck:
+                    expectedResult: 0
+                    sql: |
+                        SELECT COUNT(1)
+                        FROM pg_trigger t
+                        JOIN pg_class c ON c.oid = t.tgrelid
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = 'anagrafiche'
+                            AND c.relname = 'bank_branches'
+                            AND t.tgname = 'trg_bank_guard_ruolo_bank_branches_ins_upd';
 
           comment: "Rinomina i trigger check_ruolo_* in guard_ruolo_* per coerenza di naming"
           changes:
@@ -27,9 +44,9 @@ databaseChangeLog:
                         RENAME TO trg_bank_guard_ruolo_bank_branches_ins_upd;
 
                         -- Clienti
-                        ALTER TRIGGER trg_clienti_check_ruolo_cliente_ins_upd
-                            ON anagrafiche.clienti
-                        RENAME TO trg_clienti_guard_ruolo_cliente_ins_upd;
+                        --ALTER TRIGGER trg_clienti_check_ruolo_cliente_ins_upd
+                        --    ON anagrafiche.clienti
+                        --RENAME TO trg_clienti_guard_ruolo_cliente_ins_upd;
 
                         -- Gestori
                         ALTER TRIGGER trg_gestori_check_ruolo_gestore_ins_upd

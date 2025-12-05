@@ -1,6 +1,12 @@
-# 📘 Guida Tecnica – Generazione di un Cliente in Zero ERP
+# 🌱 Guida Tecnica – Generazione di un Cliente in Zero ERP
 
-> 📋 **Destinatari:** sviluppatori database, backend e analisti funzionali
+> 🧩 **Destinatari:** sviluppatori database, backend e analisti funzionali
+>
+>
+> 👀 **Vedi anche**
+>
+> * [`Guida Soggetti & Ruoli`](/guide/soggetti-e-ruoli-anagrafici)  
+ 
 
 ---
 
@@ -10,13 +16,14 @@ Questa guida descrive in dettaglio il processo di **generazione di un cliente** 
 
 ---
 
-## 🧩 Tabelle coinvolte
+## 🧱 Tabelle coinvolte
 
 * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
 * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
 * [anagrafiche.dati_catastali](/dbzero/anagrafiche/tabelle/dati_catastali)
 * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+* [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
 * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)
 * [config.utilities](/dbzero/config/tabelle/utilities)
@@ -35,13 +42,13 @@ Questa guida descrive in dettaglio il processo di **generazione di un cliente** 
 
    * Può essere creato **indipendentemente** dal cliente, anche in fase precontrattuale.
    * Viene sempre associato all'istanza (`istanza_utilities_id` NOT NULL).
-   * Il campo utility_id deve ora essere coerente con quello che verrà utilizzato in clienti.
+   * Il campo `utility_id` deve ora essere coerente con quello che verrà utilizzato in `clienti`.
 
 3. **Creazione del cliente (clienti)**:
 
-   * Avviene successivamente, con associazione all'istanza (`istanza_utilities_id` NOT NULL) e ora deve riferirsi al billing_account generato per l’istanza.
+   * Avviene successivamente, con associazione all'istanza (`istanza_utilities_id` NOT NULL) e ora deve riferirsi al `billing_account` generato per l’istanza.
    * Il cliente **eredita** l’account generato in fase di istanza, mantenendo coerenza tra fase precontrattuale e operativa.
-   * utility_id rimane presente per motivi operativi ma deve corrispondere a quello del billing_account. Un trigger lo tiene coerente con quello del billing account
+   * `utility_id` rimane presente per motivi operativi ma deve corrispondere a quello del `billing_account`. Un trigger lo tiene coerente con quello del billing account.
 
 4. **Dati catastali**:
 
@@ -58,10 +65,10 @@ Questa guida descrive in dettaglio il processo di **generazione di un cliente** 
   * L’istanza non rappresenta un ruolo anagrafico, ma un **punto di erogazione** del servizio (esempio PdR/PdP) ed è legata ad un indirizzo.
   * Di conseguenza, **non è presente nella tabella `anagrafiche.indirizzi`**, ma direttamente in `indirizzi_dettaglio`.
   * Sarà il cliente associato a determinare la chiusura o meno dell’istanza.
-  
+
 * **Istanze fittizie**:
 
-  * Possono essere associate **fittizie** agli indirizzi, in quanto non neccessarie per la generazione di un cliente.
+  * Possono essere associate **fittizie** agli indirizzi, in quanto non necessarie per la generazione di un cliente.
   * In questi casi, `indirizzo_dettaglio_id` può essere NULL.
 
 * **Dati catastali**:
@@ -69,10 +76,26 @@ Questa guida descrive in dettaglio il processo di **generazione di un cliente** 
   * Collegati all’indirizzo per evitare **ridondanza** tra più istanze nello stesso luogo.
   * È comunque possibile una **versione legata all’istanza**, utile per tracciabilità storica o variazioni temporali.
 
-* **Clienti e billingo_account**:
+* **Ruolo CLIENTE e `anagrafiche.soggetti_ruoli`**:
 
-* Aggiornamento: è stato introdotto un vincolo concettuale  per garantire che:
-   clienti.utility_id = billing_account.utility_id entrambi coerenti con istanze_utilities.
+  * Un cliente **non è solo un record nella tabella `anagrafiche.clienti`**, ma la specializzazione di un **ruolo** assegnato ad un soggetto.
+  * Prima (o contestualmente) alla creazione del record in `clienti` è necessario che esista:
+
+    * un `soggetto` in `anagrafiche.soggetti`;
+    * un record in `anagrafiche.soggetti_ruoli` con `tipo_ruolo_id` = CLIENTE.
+  * La tabella `clienti` utilizza l'`id` di `soggetti_ruoli` (`soggetto_ruolo_id`) come FK, permettendo di risalire **in un solo join** all’identità del soggetto e agli altri ruoli eventualmente collegati.
+  * Questo rende naturale collegare al ruolo CLIENTE indirizzi, contatti, conti bancari e altre informazioni di dominio.
+
+* **Clienti e billing_account**:
+
+  * Aggiornamento: è stato introdotto un vincolo concettuale per garantire che:
+
+    ```text
+    clienti.utility_id = billing_account.utility_id
+    ```
+
+    Entrambi coerenti con `istanze_utilities`.
+
 ---
 
 ## 📌 Best practice
@@ -90,8 +113,7 @@ Questa guida descrive in dettaglio il processo di **generazione di un cliente** 
 * Nessuna istanza può essere attiva contemporaneamente sullo stesso `indirizzo_dettaglio_id`.
 * Un cliente non può esistere senza istanza (`istanza_utilities_id` obbligatorio).
 * `billing_account` richiede sempre un'istanza valida.
-* `utility_id` su clienti deve essere coerente con billing_account.utility_id.
-
+* `utility_id` su `clienti` deve essere coerente con `billing_account.utility_id`.
 
 ---
 
@@ -113,7 +135,7 @@ Questa guida descrive in dettaglio il processo di **generazione di un cliente** 
 
 ---
 
-## 🧾 Note finali
+## ☕ Note finali
 
 > Il processo di generazione può essere **eseguito per step**:
 >
@@ -123,16 +145,21 @@ Questa guida descrive in dettaglio il processo di **generazione di un cliente** 
 
 ---
 
-## 📊 Diagramma ER
+## 🧬 Diagramma ER
 
-```mermaid
+````mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%
 erDiagram
 
 %% Relazioni principali per la generazione di un cliente
-    
+
+    soggetti               ||--o{ soggetti_ruoli            : has
+    tipi_ruoli             ||--o{ soggetti_ruoli            : classifies
+
+    soggetti_ruoli         ||--o{ clienti                   : as_cliente
+
     soggetti               ||--o{ istanze_utilities         : has
-    
+
     istanze_utilities      ||--o{ clienti                   : assigned_to
     istanze_utilities      ||--o{ billing_account           : generates
     istanze_utilities      ||--o{ dati_catastali            : may_have
@@ -147,14 +174,11 @@ erDiagram
     indirizzi              ||--o{ codici_postali            : uses
     indirizzi_dettaglio    ||--o{ istanze_utilities         : optional_for
     indirizzi_dettaglio    ||--o{ indirizzi                 : normalized_by
-
-    
-
-```
+````
 
 ---
 
-## 📊 Diagramma ER tabelle storicizzate
+## 🧬 Diagramma ER tabelle storicizzate
 
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%
@@ -169,4 +193,5 @@ erDiagram
 ```
 
 ---
+
 {% include-markdown "signature-core.md" %}

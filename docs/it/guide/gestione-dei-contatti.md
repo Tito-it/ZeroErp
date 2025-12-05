@@ -3,6 +3,11 @@
 > 📋 **Destinatari:** sviluppatori database, backend, integratori e analisti funzionali
 >
 > 🔗 Si affianca alla guida *gestione_indirizzi* come riferimento completo per la modellazione e l’utilizzo dei contatti nel sistema.
+>
+>
+> 👀 **Vedi anche**
+>
+> * [`Guida Soggetti & Ruoli`](/guide/soggetti-e-ruoli-anagrafici)  
 
 ---
 

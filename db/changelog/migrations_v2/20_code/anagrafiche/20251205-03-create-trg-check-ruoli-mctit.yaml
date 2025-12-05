@@ -1,0 +1,33 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251205-03-create-trg-guard-ruoli-mctit.yaml
+
+    - changeSet:
+          id: 20251205-03-create-trg-guard-ruoli
+          author: mctit
+          comment: "Genera trigger fn_guard_soggetto_ruolo "
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Trigger: trg_clienti_guard_ruolo_cliente_ins_upd
+
+
+                        CREATE OR REPLACE TRIGGER trg_clienti_guard_ruolo_cliente_ins_upd
+                           BEFORE INSERT OR UPDATE 
+                           ON anagrafiche.clienti
+                           FOR EACH ROW
+                           EXECUTE FUNCTION anagrafiche.trgfn_clienti_guard_ruolo_cliente();
+
+                        COMMENT ON TRIGGER trg_clienti_guard_ruolo_cliente_ins_upd ON anagrafiche.clienti
+                           IS 'Controlla il ruolo del cliente prima di inserire o aggiornare. Se non esiste lo genera tramite la funzione script.fn_guard_ins_soggetto_ruolo.';
