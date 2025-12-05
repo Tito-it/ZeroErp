@@ -59,19 +59,19 @@ databaseChangeLog:
                         --RENAME TO trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd;
 
                         -- Fornitori
-                        ALTER TRIGGER trg_fornitori_check_ruolo_fornitore_ins_upd
-                            ON anagrafiche.fornitori
-                        RENAME TO trg_fornitori_guard_ruolo_fornitore_ins_upd;
+                        --ALTER TRIGGER trg_fornitori_check_ruolo_fornitore_ins_upd
+                        --    ON anagrafiche.fornitori
+                        --RENAME TO trg_fornitori_guard_ruolo_fornitore_ins_upd;
 
                         -- Resellers
-                        ALTER TRIGGER trg_resellers_check_ruolo_reseller_ins_upd
-                            ON anagrafiche.resellers
-                        RENAME TO trg_resellers_guard_ruolo_reseller_ins_upd;
+                        --ALTER TRIGGER trg_resellers_check_ruolo_reseller_ins_upd
+                        --    ON anagrafiche.resellers
+                        --RENAME TO trg_resellers_guard_ruolo_reseller_ins_upd;
 
                         -- Vettori
-                        ALTER TRIGGER trg_vettori_ins_upd_check_ruolo_vettore
-                            ON anagrafiche.vettori
-                        RENAME TO trg_vettori_guard_ruolo_vettore_ins_upd;
+                        --ALTER TRIGGER trg_vettori_ins_upd_check_ruolo_vettore
+                        --    ON anagrafiche.vettori
+                        --RENAME TO trg_vettori_guard_ruolo_vettore_ins_upd;
 
     - changeSet:
           id: 20251205-02-01-refactor-trg-vettori

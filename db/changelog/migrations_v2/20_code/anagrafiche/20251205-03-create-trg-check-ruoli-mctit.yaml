@@ -52,3 +52,84 @@ databaseChangeLog:
 
                         COMMENT ON TRIGGER trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd ON anagrafiche.emittenti_fiscali
                             IS 'Controlla il ruolo dell''emittente fiscale prima di inserire o aggiornare. Se non esiste lo genera tramite la funzione script.fn_check_ins_soggetto_ruolo.';
+
+    - changeSet:
+          id: 20251205-03-02-create-trg-guard-ruoli
+          author: mctit
+          comment: "Genera trigger fn_guard_soggetto_ruolo "
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        CREATE OR REPLACE TRIGGER trg_fornitori_guard_ruolo_fornitore_ins_upd
+                            BEFORE INSERT OR UPDATE 
+                            ON anagrafiche.fornitori
+                            FOR EACH ROW
+                            EXECUTE FUNCTION anagrafiche.trgfn_fornitori_guard_ruolo_fornitore();
+
+                        COMMENT ON TRIGGER trg_fornitori_guard_ruolo_fornitore_ins_upd ON anagrafiche.fornitori
+                            IS 'Controlla il ruolo del fornitore prima di inserire o aggiornare.
+                            Se non esiste lo genera tramite la funzione script.fn_guard_soggetto_ruolo.';
+
+    - changeSet:
+          id: 20251205-03-03-create-trg-guard-ruoli
+          author: mctit
+          comment: "Genera trigger fn_guard_soggetto_ruolo "
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE TRIGGER trg_resellers_guard_ruolo_reseller_ins_upd
+                            BEFORE INSERT OR UPDATE 
+                            ON anagrafiche.resellers
+                            FOR EACH ROW
+                            EXECUTE FUNCTION anagrafiche.trgfn_resellers_guard_ruolo_reseller();
+
+                        COMMENT ON TRIGGER trg_resellers_guard_ruolo_reseller_ins_upd ON anagrafiche.resellers
+                            IS 'Controlla il ruolo del reseller prima di inserire o aggiornare.
+                            Se non esiste lo genera tramite la funzione script.fn_guard_soggetto_ruolo.';
+
+    - changeSet:
+          id: 20251205-03-04-create-trg-guard-ruoli
+          author: mctit
+          comment: "Genera trigger fn_guard_soggetto_ruolo "
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE TRIGGER trg_vettori_guard_ruolo_vettore_ins_upd
+                            BEFORE INSERT OR UPDATE 
+                            ON anagrafiche.vettori
+                            FOR EACH ROW
+                            EXECUTE FUNCTION anagrafiche.trgfn_vettori_guard_ruolo_vettore();
+
+                        COMMENT ON TRIGGER trg_vettori_guard_ruolo_vettore_ins_upd ON anagrafiche.vettori
+                            IS 'Controlla il ruolo del vettore prima di inserire o aggiornare.
+                            Se non esiste lo genera tramite la funzione script.fn_guard_soggetto_ruolo.';
+
+    - changeSet:
+          id: 20251205-03-05-create-trg-guard-ruoli
+          author: mctit
+          comment: "Genera trigger fn_guard_soggetto_ruolo "
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        DROP TRIGGER IF EXISTS trg_fornitori_check_ruolo_fornitore_ins_upd ON anagrafiche.fornitori;
+
+                        DROP TRIGGER IF EXISTS trg_resellers_check_ruolo_reseller_ins_upd ON anagrafiche.resellers;
+
+                        DROP TRIGGER IF EXISTS trg_vettori_check_ruolo_vettore_ins_upd ON anagrafiche.vettori;
+
+                        DROP TRIGGER IF EXISTS trg_emittenti_fiscali_check_ruolo_emi_fis_ins_upd ON anagrafiche.emittenti_fiscali;
+
+                        DROP TRIGGER IF EXISTS trg_clienti_check_ruolo_cliente_ins_upd ON anagrafiche.clienti;
