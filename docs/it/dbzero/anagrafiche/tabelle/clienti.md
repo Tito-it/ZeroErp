@@ -72,8 +72,8 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_clienti_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_clienti_check_ruolo_cliente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_check_ruolo_cliente()` |
-| trg_clienti_check_ruolo_cliente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_check_ruolo_cliente()` |
+| trg_clienti_guard_ruolo_cliente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_guard_ruolo_cliente()` |
+| trg_clienti_guard_ruolo_cliente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_guard_ruolo_cliente()` |
 | trg_clienti_set_periodo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_periodo()` |
 | trg_clienti_set_periodo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_periodo()` |
 | trg_clienti_sync_pdp_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_pdp()` |

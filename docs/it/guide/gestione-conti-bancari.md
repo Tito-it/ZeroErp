@@ -2,6 +2,11 @@
 
 > 📋 **Destinatari:** sviluppatori database, backend e analisti funzionali
 
+>
+> 👀 **Vedi anche**
+>
+> * [`Guida Soggetti & Ruoli`](/guide/soggetti-e-ruoli-anagrafici)  
+
 ---
 
 ## ✅ Introduzione e scopo

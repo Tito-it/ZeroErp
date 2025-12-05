@@ -1,20 +1,20 @@
-{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_gestori_check_ruolo_gestore.md" %}
-# ⚙️ Funzione `trgfn_gestori_check_ruolo_gestore`
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_bank_guard_ruolo_bank_branches.md" %}
+# ⚙️ Funzione `trgfn_bank_guard_ruolo_bank_branches`
 
 ```sql
-CREATE FUNCTION trgfn_gestori_check_ruolo_gestore()
+CREATE FUNCTION trgfn_bank_guard_ruolo_bank_branches()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_gestori_check_ruolo_gestore()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_bank_guard_ruolo_bank_branches()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
 BEGIN
     -- FUNCTION: 
-    --   Ogni volta che inserisco/aggiorno in gestori, gestisco la
+    --   Ogni volta che inserisco/aggiorno in bank_branches, gestisco la
     --   verifica della riga corrispondente in soggetti_ruoli.
     --   alimentando poi in NEW.soggetto_ruolo_id il record finale.
 
@@ -23,7 +23,7 @@ BEGIN
     NEW.soggetto_ruolo_id := script.fn_check_soggetto_ruolo(
                             p_soggetto_id       := NULL,
                             p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
-                            p_cd_int_ruolo      := 'GE'
+                            p_cd_int_ruolo      := 'BANK_B'
                             );
     RETURN NEW;
 END;

@@ -18,7 +18,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 01-12-25)
 Restituisce **il miglior indirizzo disponibile** (uno o più record tecnici) relativo ad un determinato `soggetto_ruolo`, filtrando per **tipo di indirizzo** identificato dal **codice interno** (`config.tipi_indirizzi.codice_interno`).
 
 La funzione:

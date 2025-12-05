@@ -21,7 +21,7 @@ Se non esiste alcun conto compatibile per l’uso richiesto, la funzione tenta u
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 01-12-25)
 * **Incapsulare la logica di selezione del conto**
   Fornisce un punto di accesso unico per ottenere “il conto da usare ora” dato un `soggetto_ruolo_id` e un `uso`, senza dover ripetere join e ordinamenti sulle tabelle sorgenti.
 

@@ -29,7 +29,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 02-12-25)
 La tabella `anagrafiche.clienti` memorizza le informazioni contrattuali e di fatturazione di un soggetto per una specifica *istanza* di servizio. Rappresenta la fase in cui un'attivazione (istanza) diventa un cliente ufficiale, includendo dettagli di scadenze, pagamento e classificazioni speciali (PA, split payment).
 
 ---

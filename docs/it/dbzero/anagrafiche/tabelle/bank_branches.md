@@ -38,8 +38,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_bank_check_ruolo_bank_branches_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_bank_check_ruolo_bank_branches()` |
-| trg_bank_check_ruolo_bank_branches_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_bank_check_ruolo_bank_branches()` |
+| trg_bank_guard_ruolo_bank_branches_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_bank_guard_ruolo_bank_branches()` |
+| trg_bank_guard_ruolo_bank_branches_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_bank_guard_ruolo_bank_branches()` |
 
 ---
 {% include-markdown "signature-core.md" %}

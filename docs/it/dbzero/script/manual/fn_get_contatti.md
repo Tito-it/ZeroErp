@@ -23,7 +23,7 @@ La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BI
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 03-12-25)
 * **Selezione univoca per tipo**
   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
 

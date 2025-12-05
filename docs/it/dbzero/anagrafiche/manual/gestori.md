@@ -10,15 +10,15 @@
 >
 > Approfondimenti funzioni:   
 >
-> * [anagrafiche.trgfn_gestori_ins_upd_check_ruolo_gestore](/dbzero/anagrafiche/funzioni/trgfn_gestori_ins_upd_check_ruolo_gestore)   
-> * [script.fn_check_ins_soggetto_ruolo](/dbzero/script/funzioni/fn_check_ins_soggetto_ruolo)  
+> * [anagrafiche.trgfn_gestori_guard_ruolo_gestore](/dbzero/anagrafiche/funzioni/trgfn_gestori_guard_check_ruolo_gestore)   
+> * [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)  
 
 La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza e amministra il sistema Zero ERP (“gestore”). Attualmente raccoglie le informazioni di base necessarie a identificare il gestore, ma è ancora in fase di definizione: in futuro potrà essere estesa per includere ulteriori parametri funzionali e di configurazione del software.
 
 ---
 
 ### 🎯 Scopo Principale
-
+(latest update 05-12-25)
 - **Identificare il gestore del sistema**  
   Memorizzare la riga unica che corrisponde all’azienda proprietaria o amministratrice di Zero ERP, distinguendola da tutti gli altri soggetti (clienti, fornitori, partner, ecc.).
 
@@ -26,7 +26,7 @@ La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza
   Utilizzare il campo `soggetto_id` per riferirsi al record corrispondente in `anagrafiche.soggetti` (azienda di tipo giuridico), garantendo coerenza fra scheda anagrafica e scheda gestore.
 
 - **Assicurare il ruolo corretto**  
-  Contribuire al rispetto della logica applicativa: il trigger `trg_gestori_ins_upd_check_ruolo_gestore` verifica che il record inserito o aggiornato faccia effettivamente riferimento a una relazione soggetto-ruolo di tipo “Gestore” (presente in `anagrafiche.soggetti_ruoli`).
+  Contribuire al rispetto della logica applicativa: il trigger `trg_gestori_guard_ruolo_gestore_ins_upd` verifica che il record inserito o aggiornato faccia effettivamente riferimento a una relazione soggetto-ruolo di tipo “Gestore” (presente in `anagrafiche.soggetti_ruoli`).
 
 ---
 
@@ -70,8 +70,7 @@ La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza
 - **Campi testuali obbligatori**  
   - `descrizione` (50 caratteri) e `cd_prod_software` (20 caratteri) non possono essere nulli, al fine di fornire un’etichetta descrittiva e l’indicazione del prodotto software in uso.
 
-- **IBAN obbligatorio**  
-  - Il campo `iban` (35 caratteri) è necessario per registrare il conto bancario del gestore.
+
 
 ---
 
@@ -96,8 +95,6 @@ La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza
 - **`valuta_id`**  
   Riferimento a `config.valute(id)`, indica la valuta di default per prezzi, bilanci e reporting amministrativo (es. EUR, USD, GBP).
 
-- **`iban`**  
-  Codice IBAN (35 caratteri) del conto corrente aziendale del gestore, utilizzato per operazioni bancarie e pagamento fatture.
 
 - **`user_insert`, `data_insert`, `user_update`, `data_update`**  
   Campi di audit standard:
@@ -179,7 +176,6 @@ erDiagram
         string   descrizione
         string   cd_prod_software
         int      valuta_id FK
-        string   iban
         string   user_insert
         string   user_update
         datetime data_insert

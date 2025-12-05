@@ -21,7 +21,7 @@ La vista **`anagrafiche.vw_conti_bancari_per_ruolo`** espone, per ogni **ruolo d
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 28-11-25)
 * **Selezione unificata del conto per ruolo**
   Fornisce una vista già pre-filtrata e normalizzata con **una sola riga per coppia `(soggetto_ruolo_id, uso)`**, scegliendo il miglior candidato tra:
 

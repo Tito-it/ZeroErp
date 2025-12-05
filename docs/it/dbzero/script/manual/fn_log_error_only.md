@@ -19,7 +19,7 @@ La funzione **`script.fn_log_error_only`** registra **solo** un messaggio in `db
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 23-11-25)
 * **Logging “silenzioso”**: inserisce una riga in `dbops.error_log` con contesto ricco, ma **non** solleva eccezioni.
 * **Separazione delle responsabilità**: differenzia chiaramente i casi di **solo tracciamento** da quelli di **error handling critico** (per cui usare `fn_log_and_raise_error`).
 

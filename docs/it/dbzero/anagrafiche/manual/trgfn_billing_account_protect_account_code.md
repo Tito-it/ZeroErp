@@ -13,7 +13,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 01-12-25)
 Il trigger `anagrafiche.trgfn_billing_account_protect_account_code`, invocato **prima di ogni UPDATE** su `anagrafiche.billing_account`, impedisce modifiche improprie al campo **`codice (account)`** una volta assegnato.
 
 ---

@@ -14,7 +14,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 28-11-25)
 La vista **`anagrafiche.vw_indirizzi_dettaglio`** fornisce una rappresentazione "comoda" e già arricchita degli indirizzi di dettaglio, a partire dalla tabella sorgente [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) collegata allo stradario [`config.stradario`](/dbzero/config/tabelle/stradario).
 
 Gli obiettivi principali sono:

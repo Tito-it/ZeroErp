@@ -10,6 +10,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_update | text | YES |  |
 | data_update | timestamp with time zone | YES |  |
+| natura_soggetto | USER-DEFINED | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -16,7 +16,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 03-12-25)
 Garantire che *solo* i soggetti autorizzati secondo le **policy dati societari** possano inserire o aggiornare una riga in `anagrafiche.dati_societari`.
 
 La funzione applica la logica definita nella colonna:

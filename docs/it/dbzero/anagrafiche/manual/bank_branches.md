@@ -20,7 +20,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 02-12-25)
 La tabella **`anagrafiche.bank_branches`** rappresenta le **filiali di istituti di credito** (branch bancarie) collegate a un determinato **ruolo di soggetto** di tipo *ISTITUTO_CREDITO* (`anagrafiche.soggetti_ruoli`).
 
 Obiettivi principali:

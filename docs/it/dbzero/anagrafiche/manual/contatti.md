@@ -34,7 +34,7 @@ In questo modo è possibile definire:
 
 
 ### 🎯 Scopo Principale
-
+(latest review 02-12-25)
 * **Centralizzare i contatti**  
   Un’unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.
 

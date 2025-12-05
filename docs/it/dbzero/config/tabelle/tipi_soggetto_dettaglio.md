@@ -9,8 +9,8 @@
 | stato_iso2 | character varying | NO |  |
 | codice_interno | character varying | NO |  |
 | descrizione | character varying | YES |  |
-| formato_cf | character varying | YES |  |
-| formato_piva | character varying | YES |  |
+| formato_cf | character varying | NO |  |
+| formato_piva | character varying | NO |  |
 | user_insert | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | user_update | text | YES |  |
@@ -21,6 +21,9 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_tipi_soggetto_dettaglio_formato_cf |  |
+| CHECK | chk_tipi_soggetto_dettaglio_formato_piva |  |
+| CHECK | chk_tipi_soggetto_dettaglio_piva_vs_policy |  |
 | FOREIGN KEY | fk_tipi_soggetto_dettaglio_stato_id | stato_id |
 | FOREIGN KEY | fk_tipi_soggetto_dettaglio_tipi_soggetto_id | tipo_soggetto_id |
 | PRIMARY KEY | pk_tipi_soggetto_dettaglio | id |

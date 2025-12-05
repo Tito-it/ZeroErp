@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Funzione `script.fn_check_ins_soggetto_ruolo`
+## 📘 Documentazione Concettuale – Funzione `script.fn_guard_ins_soggetto_ruolo`
 
 > 👀 **Vedi anche**
 
@@ -7,12 +7,12 @@
 > * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
 > * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)  
 
-La funzione **`script.fn_check_ins_soggetto_ruolo(p_soggetto_id, p_soggetto_ruolo_id, p_cd_int_ruolo)`** centralizza e semplifica la gestione della relazione tra un **soggetto** e il suo **ruolo**. Garantisce che, ogni volta che si assegna un ruolo a un soggetto, la tabella `anagrafiche.soggetti_ruoli` sia mantenuta correttamente e senza duplicati.
+La funzione **`script.fn_guard_ins_soggetto_ruolo(p_soggetto_id, p_soggetto_ruolo_id, p_cd_int_ruolo)`** centralizza e semplifica la gestione della relazione tra un **soggetto** e il suo **ruolo**. Garantisce che, ogni volta che si assegna un ruolo a un soggetto, la tabella `anagrafiche.soggetti_ruoli` sia mantenuta correttamente e senza duplicati.
 
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 05-12-25)
 - **Verifica esistenza**  
   Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 
@@ -27,10 +27,10 @@ La funzione **`script.fn_check_ins_soggetto_ruolo(p_soggetto_id, p_soggetto_ruol
 
 ### 🔍 Parametri di Input
 
-| Nome                  | Tipo      | Descrizione
-|-----------------------|-----------|---------------------------------------------------------------------------|
-| `p_soggetto_id`       | `UUID`    | ID del soggetto in `anagrafiche.oggetti` ---> Opzionale.                                                  |
-| `p_soggetto_ruolo_id` | `INTEGER` | ID esistente della relazione in `anagrafiche.soggetti_ruoli`; se `NULL` o 0`,
+| Nome                  | Tipo      | Descrizione                                                                   |
+| --------------------- | --------- | ----------------------------------------------------------------------------- |
+| `p_soggetto_id`       | `UUID`    | ID del soggetto in `anagrafiche.oggetti` ---> Opzionale.                      |
+| `p_soggetto_ruolo_id` | `INTEGER` | ID esistente della relazione in `anagrafiche.soggetti_ruoli`; se `NULL` o 0`, |
                                       verrà      creato un nuovo record. 
 | `p_cd_int_ruolo`      | `VARCHAR` | Codice interno del ruolo (`codice_interno` in `config.tipi_ruoli`) da associare al 
                                       soggetto.  
@@ -70,7 +70,7 @@ La funzione **`script.fn_check_ins_soggetto_ruolo(p_soggetto_id, p_soggetto_ruol
 Utilizzare all’interno di trigger `BEFORE INSERT` o `BEFORE UPDATE` sulle tabelle di assegnazione ruoli:
 
 ```plpgsql
-NEW.soggetto_ruolo_id := script.fn_check_ins_soggetto_ruolo(
+NEW.soggetto_ruolo_id := script.fn_guard_ins_soggetto_ruolo(
   NULL,
   NEW.soggetto_ruolo_id,
   'CL'            -- o altro codice interno di ruolo

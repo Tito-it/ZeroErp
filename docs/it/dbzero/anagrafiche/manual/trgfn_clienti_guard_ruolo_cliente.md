@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_clienti_check_ruolo_cliente`
+## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_clienti_guard_ruolo_cliente`
 
 > 👀 **Vedi anche**
 
@@ -9,16 +9,16 @@
 
 > Approfondimenti funzioni:   
 >
->  * [script.fn_check_soggetto_ruolo ](/dbzero/script/funzioni/fn_check_soggetto_ruolo ) 
+>  * [script.fn_guard_soggetto_ruolo ](/dbzero/script/funzioni/fn_guard_soggetto_ruolo ) 
 
-La trigger function **`anagrafiche.trgfn_clienti_check_ruolo_cliente()`** si attiva **BEFORE INSERT** e **BEFORE UPDATE** sulla tabella `anagrafiche.clienti`. Il suo scopo è garantire che, ogni volta che si crea o modifica il record del cliente, venga automaticamente gestita (verificata o creata) la corrispondente riga di relazione in `anagrafiche.soggetti_ruoli` con ruolo “cliente” (`codice_interno = 'GE'`).
+La trigger function **`anagrafiche.trgfn_clienti_guard_ruolo_cliente()`** si attiva **BEFORE INSERT** e **BEFORE UPDATE** sulla tabella `anagrafiche.clienti`. Il suo scopo è garantire che, ogni volta che si crea o modifica il record del cliente, venga automaticamente gestita (verificata o creata) la corrispondente riga di relazione in `anagrafiche.soggetti_ruoli` con ruolo “cliente” (`codice_interno = 'GE'`).
 
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 05-12-25)
 - **Centralizzare l’assegnazione del ruolo “cliente”**  
-  Delegare a `script.fn_check_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
+  Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 
 - **Mantenere coerenza referenziale**  
   Associare sempre correttamente il soggetto al ruolo di cliente, aggiornando `NEW.soggetto_ruolo_id` con l’ID valido, che sia preesistente o appena creato.
@@ -41,10 +41,10 @@ La trigger function **`anagrafiche.trgfn_clienti_check_ruolo_cliente()`** si att
 
 Nel DDL di anagrafiche.clienti il trigger viene definito così:
 
-CREATE OR REPLACE TRIGGER trg_clienti_check_ruolo_cliente_ins_upd
+CREATE OR REPLACE TRIGGER trg_clienti_guard_ruolo_cliente_ins_upd
   BEFORE INSERT OR UPDATE ON anagrafiche.clienti
   FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_clienti_check_ruolo_cliente();
+  EXECUTE FUNCTION anagrafiche.trgfn_clienti_guard_ruolo_cliente();
 
 ---
 ### 💡 Vantaggi Operativi
@@ -58,7 +58,7 @@ CREATE OR REPLACE TRIGGER trg_clienti_check_ruolo_cliente_ins_upd
     gestiscono anagrafiche.clienti.
 
     Coerenza e tracciabilità
-    Grazie all’uso di script.fn_check_soggetto_ruolo , ogni assegnazione di ruolo registra automaticamente 
+    Grazie all’uso di script.fn_guard_soggetto_ruolo , ogni assegnazione di ruolo registra automaticamente 
     user_insert nel linking table e garantisce che soggetto_ruolo_id sia sempre valido.
 
     Flessibilità per ruoli futuri
@@ -67,6 +67,6 @@ CREATE OR REPLACE TRIGGER trg_clienti_check_ruolo_cliente_ins_upd
 
 ---
 ### 🚧 Nota di sviluppo
-    Questa trigger function e la funzione generica fn_check_soggetto_ruolo  costituiscono il 
+    Questa trigger function e la funzione generica fn_guard_soggetto_ruolo  costituiscono il 
     nucleo metodologico per la gestione dei ruoli in Zero ERP: saranno estese e replicate per ogni nuovo 
     tipo di ruolo oggetto di implementazione.

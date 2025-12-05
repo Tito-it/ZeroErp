@@ -1,21 +1,21 @@
-{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_bank_check_ruolo_bank_branches.md" %}
-# ⚙️ Funzione `trgfn_bank_check_ruolo_bank_branches`
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_clienti_guard_ruolo_cliente.md" %}
+# ⚙️ Funzione `trgfn_clienti_guard_ruolo_cliente`
 
 ```sql
-CREATE FUNCTION trgfn_bank_check_ruolo_bank_branches()
+CREATE FUNCTION trgfn_clienti_guard_ruolo_cliente()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_bank_check_ruolo_bank_branches()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_guard_ruolo_cliente()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
 BEGIN
     -- FUNCTION: 
-    --   Ogni volta che inserisco/aggiorno in bank_branches, gestisco la
-    --   verifica della riga corrispondente in soggetti_ruoli.
+    --   Ogni volta che inserisco/aggiorno in clienti, gestisco la
+    --   creazione/verifica della riga corrispondente in soggetti_ruoli
     --   alimentando poi in NEW.soggetto_ruolo_id il record finale.
 
     -- Sostituisco NEW.soggetto_ruolo_id con l'ID vero (nuovo o esistente),
@@ -23,7 +23,7 @@ BEGIN
     NEW.soggetto_ruolo_id := script.fn_check_soggetto_ruolo(
                             p_soggetto_id       := NULL,
                             p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
-                            p_cd_int_ruolo      := 'BANK_B'
+                            p_cd_int_ruolo      := 'CL'
                             );
     RETURN NEW;
 END;
