@@ -31,3 +31,24 @@ databaseChangeLog:
 
                         COMMENT ON TRIGGER trg_clienti_guard_ruolo_cliente_ins_upd ON anagrafiche.clienti
                            IS 'Controlla il ruolo del cliente prima di inserire o aggiornare. Se non esiste lo genera tramite la funzione script.fn_guard_ins_soggetto_ruolo.';
+
+    - changeSet:
+          id: 20251205-03-01-create-trg-guard-ruoli
+          author: mctit
+          comment: "Genera trigger fn_guard_soggetto_ruolo "
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+
+                        CREATE OR REPLACE TRIGGER trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd
+                            BEFORE INSERT OR UPDATE 
+                            ON anagrafiche.emittenti_fiscali
+                            FOR EACH ROW
+                            EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis();
+
+                        COMMENT ON TRIGGER trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd ON anagrafiche.emittenti_fiscali
+                            IS 'Controlla il ruolo dell''emittente fiscale prima di inserire o aggiornare. Se non esiste lo genera tramite la funzione script.fn_check_ins_soggetto_ruolo.';

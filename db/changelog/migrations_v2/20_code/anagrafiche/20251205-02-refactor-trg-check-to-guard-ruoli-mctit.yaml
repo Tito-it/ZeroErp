@@ -54,9 +54,9 @@ databaseChangeLog:
                         RENAME TO trg_gestori_guard_ruolo_gestore_ins_upd;
 
                         -- Emittenti fiscali
-                        ALTER TRIGGER trg_emittenti_fiscali_check_ruolo_emi_fis_ins_upd
-                            ON anagrafiche.emittenti_fiscali
-                        RENAME TO trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd;
+                        --ALTER TRIGGER trg_emittenti_fiscali_check_ruolo_emi_fis_ins_upd
+                        --    ON anagrafiche.emittenti_fiscali
+                        --RENAME TO trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd;
 
                         -- Fornitori
                         ALTER TRIGGER trg_fornitori_check_ruolo_fornitore_ins_upd
