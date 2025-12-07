@@ -1,0 +1,27 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20251207-06-istanza-utilities-chk-iu-pdp-not-fittizia-mctit.yaml
+
+  - changeSet:
+      id: 20251207-06-istanza-utilities-chk-iu-pdp-not-fittizia
+      author: mctit
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              -- 
+              ALTER TABLE anagrafiche.istanze_utilities
+              ADD CONSTRAINT chk_iu_pdp_not_fittizia
+              CHECK (
+                  pdp_id IS NULL OR fittizia = false
+              );

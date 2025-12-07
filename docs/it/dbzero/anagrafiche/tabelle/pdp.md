@@ -12,10 +12,11 @@
 | tx_id | uuid | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
-| user_insert | text | NO |  |
-| user_update | text | NO |  |
+| user_insert | text | NO | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | storicizza | boolean | NO | true |
 | extra_info | jsonb | NO | '{}'::jsonb |
+| stato_pdp_id | bigint | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,9 +24,10 @@
 | CHECK | chk_pdp_codice_len |  |
 | FOREIGN KEY | fk_pdp_clienti | cliente_id |
 | FOREIGN KEY | fk_pdp_indirizzi_dettaglio | indirizzo_dettaglio_id |
+| FOREIGN KEY | fk_pdp_stati_pdp | stato_pdp_id |
 | FOREIGN KEY | fk_pdp_utilities | utilities_id |
 | PRIMARY KEY | pk_pdp | id |
-| UNIQUE | uq_pdp_addr_utility | indirizzo_dettaglio_id, utilities_id |
+| UNIQUE | uq_pdp_addr_utility | utilities_id, indirizzo_dettaglio_id |
 | UNIQUE | uq_pdp_codice | pdp |
 | UNIQUE | uq_pdp_id_addr | indirizzo_dettaglio_id, id |
 
@@ -43,6 +45,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_pdp_a10_set_default_stato_ins | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_pdp_set_default_stato()` |
 | trg_pdp_protect_cols_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_pdp_protect_cols()` |
 | trg_pdp_tx_id_managed_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_pdp_tx_id_managed_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

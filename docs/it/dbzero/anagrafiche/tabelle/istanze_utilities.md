@@ -23,6 +23,7 @@
 |------|------|---------|
 | CHECK | chk_istanza_fittizia_indirizzo |  |
 | CHECK | chk_istanze_utilities_prop_inquilino |  |
+| CHECK | chk_iu_pdp_not_fittizia |  |
 | CHECK | chk_iu_pdp_requires_address |  |
 | FOREIGN KEY | fk_istanze_utilities_indirizzo_dettaglio | indirizzo_dettaglio_id |
 | FOREIGN KEY | fk_istanze_utilities_parent_istanza | parent_istanza_id |

@@ -16,7 +16,7 @@
 - [indirizzi_dettaglio](tabelle/indirizzi_dettaglio.md) — * **Dettagliare lo stradario**     Associare a ciascuna via (memorizzata in `config.stradario`) le singole unità civiche (numeri civici, estensioni, palazzine, interni, piani), ottenendo così l’indirizzo completo e navigabile.   * **Geolocalizzazione precisa**     Il campo `civic_geoloc` memorizza il punto geografico corrispondente al singolo civico, mentre `street_geoloc` rappresenta la posizione media della via. Questi dati consentono ricerche spaziali e visualizzazioni GIS a livello di civico.   * **Indirizzo normalizzato**     Il campo calcolato `indirizzo_normalizzato` combina via, civico, palazzina, scala, piano e interno in un’unica stringa formattata in modo coerente, facilitando confronti testuali e ricerche full-text.
 - [istanze_dati_precontrattuali](tabelle/istanze_dati_precontrattuali.md) — La tabella `anagrafiche.istanze_dati_precontrattuali` raccoglie **tutte le informazioni pre‑contrattuali** relative ad una specifica **istanza utility** (fornitura/utenza). Il campo **`meta` (JSONB)** consente di archiviare attributi **specifici per tipo di utility** (es. potenza impegnata, pressione, soglie tecniche, parametri di profilazione).
 - [istanze_utilities](tabelle/istanze_utilities.md) — * Registrare ogni **attivazione** di servizio (volta) per un soggetto su un punto di erogazione. * Gestire la **gerarchia** delle attivazioni successive (subentri/volture) tramite `parent_istanza_id`. * Supportare record **fittizi**, ossia senza indirizzo obbligatorio.
-- [pdp](tabelle/pdp.md) — `anagrafiche.pdp` rappresenta i **Punti di Prelievo (PDP)** come entità **fisiche** ancorate a un **indirizzo** (`indirizzo_dettaglio_id`), identificate da un **codice univoco globale** (campo `pdp`) e **tipizzate** rispetto a una **utility** (`utilities_id`, es. GAS, ENERGIA…). La tabella **base** contiene lo **stato corrente** (incluso il **cliente attuale** se presente). Questa scelta separa stato (qui) da storia (in storico.pdp), semplificando le query operative e garantendo audit completo.
+- [pdp](tabelle/pdp.md) — (latest revison 06-12-25) La tabella **`anagrafiche.pdp`** rappresenta i **Punti di Prelievo (PDP)**, entità fisiche ancorate a un indirizzo e identificate da un codice univoco globale (POD/PDR/altro). Ogni PDP appartiene a una utility (GAS, ENERGIA, ecc.) ed espone **lo stato tecnico corrente**, distinto dagli stati commerciali del cliente.
 - [resellers](tabelle/resellers.md)
 - [soggetti](tabelle/soggetti.md) — - **Coerenza dei dati**     Garantire che ogni soggetto—persona fisica, giuridica o fisica forzata—sia identificato in modo univoco e validato secondo le regole aziendali.
 - [soggetti_conti_bancari](tabelle/soggetti_conti_bancari.md) — `anagrafiche.soggetti_conti_bancari` gestisce l’**associazione tra un Soggetto** (persona/azienda) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
@@ -32,6 +32,7 @@
 - [trgfn_clienti_guard_ruolo_cliente](funzioni/trgfn_clienti_guard_ruolo_cliente.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “cliente”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_clienti_set_periodo](funzioni/trgfn_clienti_set_periodo.md)
 - [trgfn_clienti_sync_pdp](funzioni/trgfn_clienti_sync_pdp.md)
+- [trgfn_clienti_sync_stato_pdp](funzioni/trgfn_clienti_sync_stato_pdp.md)
 - [trgfn_clienti_sync_utility_from_ba](funzioni/trgfn_clienti_sync_utility_from_ba.md)
 - [trgfn_contatti_set_default_contatto](funzioni/trgfn_contatti_set_default_contatto.md) — (latest review 03-12-25) * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 - [trgfn_conti_bancari_normalize](funzioni/trgfn_conti_bancari_normalize.md)
@@ -51,6 +52,7 @@
 - [trgfn_istanze_utilities_normalize](funzioni/trgfn_istanze_utilities_normalize.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
 - [trgfn_istanze_utilities_protect_codice](funzioni/trgfn_istanze_utilities_protect_codice.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_upd_protect_codice`, eseguito **prima di ogni UPDATE** su `anagrafiche.istanze_utilities`, impedisce modifiche non autorizzate al campo **`codice (istanza)`** una volta impostato.
 - [trgfn_pdp_protect_cols](funzioni/trgfn_pdp_protect_cols.md)
+- [trgfn_pdp_set_default_stato](funzioni/trgfn_pdp_set_default_stato.md)
 - [trgfn_resellers_guard_ruolo_reseller](funzioni/trgfn_resellers_guard_ruolo_reseller.md)
 - [trgfn_resellers_normalize](funzioni/trgfn_resellers_normalize.md)
 - [trgfn_resellers_protect_codice](funzioni/trgfn_resellers_protect_codice.md)
@@ -69,3 +71,5 @@
 ## 🔍 Views
 - [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md) — (latest review 28-11-25) * **Selezione unificata del conto per ruolo**   Fornisce una vista già pre-filtrata e normalizzata con **una sola riga per coppia `(soggetto_ruolo_id, uso)`**, scegliendo il miglior candidato tra:
 - [vw_indirizzi_dettaglio](views/vw_indirizzi_dettaglio.md) — (latest review 28-11-25) La vista **`anagrafiche.vw_indirizzi_dettaglio`** fornisce una rappresentazione "comoda" e già arricchita degli indirizzi di dettaglio, a partire dalla tabella sorgente [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) collegata allo stradario [`config.stradario`](/dbzero/config/tabelle/stradario).
+- [vw_istanze_utilities_dettaglio](views/vw_istanze_utilities_dettaglio.md)
+- [vw_pdp](views/vw_pdp.md)

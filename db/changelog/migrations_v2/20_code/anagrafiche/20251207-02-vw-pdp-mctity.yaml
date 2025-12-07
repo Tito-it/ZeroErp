@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251207-02-vw-pdp-mctity.yaml
+
+    - changeSet:
+          id: 20251207-02-vw-pdp
+          author: mctit
+          comment: >
+              Crea/aggiorna la view anagrafiche.vw_pdp per la consultazione
+              dei punti di prelievo (PDP) con indirizzo normalizzato, utility,
+              stato tecnico e cliente corrente.
+
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE VIEW anagrafiche.vw_pdp
+                        AS
+                        SELECT
+                            -- PDP
+                            p.id              AS pdp_id,
+                            p.pdp             AS pdp_codice,
+
+                            -- Utility
+                            p.utilities_id,
+                            u.codice_interno  AS utility_codice_interno,
+                            u.codice          AS utility_codice,
+                            u.descrizione     AS utility_descrizione,
+
+                            -- Stato tecnico PDP
+                            p.stato_pdp_id,
+                            sp.codice_interno AS stato_pdp_codice_interno,
+                            sp.codice         AS stato_pdp_codice,
+                            sp.descrizione    AS stato_pdp_descrizione,
+
+                            -- Cliente corrente (se presente)
+                            p.cliente_id,
+
+                            -- Indirizzo di dettaglio (stessi campi della view esistente)
+                            v.indirizzo_dettaglio_id,
+                            v.stradario_id,
+                            v.comune_id,
+                            v.descrizione_comune,
+                            v.cap,
+                            v.provincia,                                                    
+                            v.indirizzo_normalizzato,
+                            v.via_norm,
+                            v.civico,
+                            v.estensione_civico,
+                            v.palazzina,
+                            v.scala,
+                            v.piano,
+                            v.interno,
+                            v.altro,
+                            v.civic_geoloc,
+                            v.street_geoloc,
+                            v.attivo          AS indirizzo_attivo,
+                            v.storicizza      AS indirizzo_storicizza,
+                            v.tx_id           AS indirizzo_tx_id,
+                            v.data_insert     AS indirizzo_data_insert,
+                            v.user_insert     AS indirizzo_user_insert,
+                            v.data_update     AS indirizzo_data_update,
+                            v.user_update     AS indirizzo_user_update
+
+                        FROM anagrafiche.pdp p
+                        JOIN anagrafiche.vw_indirizzi_dettaglio v
+                        ON v.indirizzo_dettaglio_id = p.indirizzo_dettaglio_id
+                        JOIN config.utilities u
+                        ON u.id = p.utilities_id
+                        JOIN config.stati_pdp sp
+                        ON sp.id = p.stato_pdp_id
+                        LEFT JOIN anagrafiche.clienti c
+                        ON c.id = p.cliente_id;
+
+
+                        COMMENT ON VIEW anagrafiche.vw_pdp IS
+                            'Vista di comodo per la consultazione dei punti di prelievo (PDP) 
+                            con indirizzo normalizzato, utility, stato tecnico e cliente corrente.';

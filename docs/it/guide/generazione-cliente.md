@@ -120,8 +120,8 @@ Questa guida descrive in dettaglio il processo di **generazione di un cliente** 
 ## 🛠️ Trigger e funzioni coinvolte
 
 * `dbops.trgfn_tx_id_managed()` → genera `tx_id` su `istanze_utilities`, `dati_catastali`, etc.
-* `script.trgfn_upd_audit_data_user_generic()` → aggiorna i metadati di auditing.
-* `script.trgfn_upd_dlt_storico_generic()` → snapshot storico in caso di update/delete.
+* `script.trgfn_audit_data_user_generic()` → aggiorna i metadati di auditing.
+* `script.trgfn_storico_generic()` → snapshot storico in caso di update/delete.
 * Funzione di fallback `script.fn_get_dati_catastali_by_istanza(p_istanza_utilities_id)` per ottenere i dati catastali via `istanza_utilities_id`, oppure solo per indirizzo.
 
 ---
