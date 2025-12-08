@@ -7,7 +7,6 @@
 >
 > * [`Guida Soggetti & Ruoli`](/guide/soggetti-e-ruoli-anagrafici)  
 
-
 ---
 
 ## ✅ Introduzione
@@ -19,6 +18,21 @@ L’**istanza utility** rappresenta l’entità che collega il dominio fisico de
 * **flessibile**, perché può esistere prima di un PDP;
 * **coerente**, perché può vincolare il proprio indirizzo e stato all’infrastruttura tecnica;
 * **stabile nel tempo**, grazie ai meccanismi di storicizzazione e audit.
+
+---
+
+## 🧱 Tabelle coinvolte
+
+* [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+* [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
+* [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
+* [anagrafiche.dati_catastali](/dbzero/anagrafiche/tabelle/dati_catastali)
+* [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+* [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)
+* [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
+* [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)
+* [config.utilities](/dbzero/config/tabelle/utilities)
+
 
 ---
 
