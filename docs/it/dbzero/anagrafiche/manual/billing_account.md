@@ -1,5 +1,5 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.billing_account`
-
+>
 > 👀 **Vedi anche**
 > 
 > Guide generali: 
@@ -14,21 +14,28 @@
 >   * [config.utilities](/dbzero/config/tabelle/utilities)
 >
 > Approfondimeto funzioni:
->courtesy_title
+>
 > * [anagrafiche.trgfn_billing_account_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_billing_account_clean_fields)
 > * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+
+> **Aggiornamenti dicembre 2025:** 
+> Per i dettagli completi, le motivazioni progettuali e tutti i vincoli formali introdotti, consulta la sezione **7** dedicata nella documentazione :
+>
+>👉 [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+>
+
 ---
 
 ### 🎯 Scopo Principale
 (latest review 02-12-25)
+
 La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici cliente** per ciascuna `utility`, consentendo:
 
 * **Generazione anticipata** del `codice (account)` in fase precontrattuale.
 * **Unicità di `codice`** grazie al vincolo `uq_billing_account_codice`.
 * **Unicità per istanza+utility**: non possono esistere due record con la stessa coppia (`istanza_utility_id`, `utility_id`).
 * **Strutture gerarchiche** dei codici tramite `parent_account_id`, utile per Modellare:
-
 
 ---
 
@@ -107,7 +114,7 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 | ---------------------------------------------- | ----------------------- | ---------------------------------------------------------- |
 | `trg_billing_account_clean_fields_ins_upd`     | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_billing_account_clean_fields_ins_upd()` |
 | `trg_billing_account_gen_account_code_ins_upd` | BEFORE INSERT OR UPDATE | `script.fn_generate_codice('billing_account')`             |
-| `trg_billing_account_audit_data_user_upd`      | BEFORE UPDATE           | `script.trgfn_upd_audit_data_user_generic_upd()`           |
+| `trg_billing_account_audit_data_user_upd`      | BEFORE UPDATE           | `script.trgfn_audit_data_user_generic()`                   |
 
 ---
 

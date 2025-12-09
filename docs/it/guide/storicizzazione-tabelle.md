@@ -1,5 +1,6 @@
 # 📗 Guida Tecnica – Storicizzazione delle Tabelle in Zero ERP
-
+> (latest review 08-12-25)
+> 
 > 📋 **Destinatari:** sviluppatori database, sviluppatori backend
 >
 > 👀 **Vedi anche:**
@@ -10,7 +11,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 > * [script.fn_get_snapshot_as_of](/dbzero/script/funzioni/fn_get_snapshot_as_of) *(restituisce lo snapshot JSONB a un dato istante)*
 > * [script.fn_get_record_id_as_of ](/dbzero/script/funzioni/fn_get_record_id_as_of ) *(restituisce solo l’ID del record storico a un dato istante)*
 
@@ -25,7 +26,7 @@ Ogni entità che richiede **versioning** e **audit trail** in Zero ERP utilizza 
 
 * **Tracciabilità completa** delle operazioni di **INSERT**, **UPDATE** e **DELETE** su tabelle chiave.
 * **Flessibilità di schema**: supportare evoluzioni future senza dover modificare la struttura dello storico.
-* **Centralizzazione della logica** di storicizzazione in una funzione generic (`trgfn_upd_dlt_storico_generic`).
+* **Centralizzazione della logica** di storicizzazione in una funzione generic (`trgfn_storico_generic`).
 
 ---
 
@@ -59,7 +60,7 @@ Tutte le tabelle di storico in Zero ERP devono avere:
 
 ## 🔄 Trigger Generic di Storico
 
-La funzione **`script.trgfn_upd_dlt_storico_generic(fk_column)`** gestisce:
+La funzione **`script.trgfn_storico_generic(fk_column)`** gestisce:
 
 1. **Chiusura** di eventuali snapshot aperti (`valid_to = CURRENT_DATE`).
 2. **Inserimento snapshot iniziale** (solo se non esisteva) con `valid_from = '1950-01-01'`.
@@ -72,10 +73,10 @@ La funzione **`script.trgfn_upd_dlt_storico_generic(fk_column)`** gestisce:
 CREATE TRIGGER trg_storico_<entita>
   AFTER UPDATE OR DELETE ON <schema>.<entita>
   FOR EACH ROW
-  EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('<entita>_id');
+  EXECUTE FUNCTION script.trgfn_storico_generic('<entita>_id');
 ```
 
-> **Importante Naming Convention**: il trigger di storico deve chiamarsi con prefisso `trg_Z90<schema>_upd_dlt_storico` (es. `trg_Z90_stradario_upd_dlt_storico`). Questo garantisce:
+> **Importante Naming Convention**: il trigger di storico deve chiamarsi con prefisso `trg_Z90_<tabella>_storico_upd_dlt` (es. `trg_Z90_stradario_storico_upd_dlt`). Questo garantisce:
 >
 > * Esecuzione per ultima, grazie all’ordinamento alfabetico.
 > * Compatibilità con gli altri trigger precedenti nell’ordine di firing.

@@ -1,23 +1,24 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.istanze_utilities`
 
 > 👀 **Vedi anche**
+> 
 > Guide generali:
 >
-> * [Generazione di un cliente](/guide/generazione-cliente)
+> * [Generazione di un cliente](/guide/generazione-cliente)   
 >
 > Approfondimeto tabelle:
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)   
+> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)   
 >
 > Approfondimeto funzioni:
 >
-> * [anagrafiche.trgfn_istanze_utilities_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_clean_fields)
-> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
-> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+> * [anagrafiche.trgfn_istanze_utilities_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_clean_fields)   
+> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
+> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)   
+> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
 

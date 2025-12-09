@@ -253,4 +253,24 @@ Questa guida fornisce le basi concettuali e operative per costruire servizi robu
 
 ---
 
+🆕 📌 Nota Importante sulle Regole Strutturali dell’Istanza (Modello 2025)
+
+Le funzionalità descritte in questa guida sono basate su un modello più ampio e più restrittivo introdotto nel 2025, che definisce in modo formale:
+
+l’identità unitaria dell’istanza come ciclo tecnico-commerciale del servizio;
+
+il vincolo 1 istanza ⇄ 1 cliente;
+
+la relazione deterministica tra istanza ⇄ billing account ⇄ cliente;
+
+il comportamento delle istanze in presenza di PDP (un solo cliente attivo per PDP);
+
+la gestione della catena lineare di istanze tramite parent_istanza_id.
+
+Per i dettagli completi, le motivazioni progettuali e tutti i vincoli formali introdotti, consulta la sezione **7** dedicata nella documentazione :
+
+👉 [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+
+---
+
 {% include-markdown "signature-core.md" %}

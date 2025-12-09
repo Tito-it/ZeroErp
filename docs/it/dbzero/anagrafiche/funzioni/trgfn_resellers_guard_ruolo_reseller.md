@@ -19,7 +19,7 @@ BEGIN
 
     -- Sostituisco NEW.soggetto_ruolo_id con l'ID vero (esistente),
     -- delegando completamente alla funzione generica:
-    NEW.soggetto_ruolo_id := script.fn_check_soggetto_ruolo(
+    NEW.soggetto_ruolo_id := script.fn_guard_soggetto_ruolo(
                             p_soggetto_id       := NULL,
                             p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
                             p_cd_int_ruolo      := 'RE'
