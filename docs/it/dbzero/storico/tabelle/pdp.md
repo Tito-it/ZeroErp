@@ -17,7 +17,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | pdp_tipo_operazione_check |  |
 | PRIMARY KEY | pdp_pkey | id |
 
 ## 📑 Indici

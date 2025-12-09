@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_get_or_create_soggetto_ruolo.md" %}
 # ⚙️ Funzione `fn_get_or_create_soggetto_ruolo`
 
 ```sql

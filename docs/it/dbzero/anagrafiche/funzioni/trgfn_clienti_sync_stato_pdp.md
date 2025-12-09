@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_clienti_sync_stato_pdp.md" %}
 # ⚙️ Funzione `trgfn_clienti_sync_stato_pdp`
 
 ```sql

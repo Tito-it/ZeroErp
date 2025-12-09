@@ -15,7 +15,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest update 09-12-25)
 La funzione `anagrafiche.trgfn_clienti_set_parent_istanza()` ha il compito di **mantenere la catena lineare delle istanze** (`istanze_utilities.parent_istanza_id`) per ciascun **PDP** quando viene inserito o attivato un nuovo cliente.
 
 In particolare:

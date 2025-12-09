@@ -18,11 +18,12 @@
 --        Verifiche:
 --          - catena lineare corretta
 --          - clienti AN esclusi
+--          - fn_subentro_cliente chiude il cliente precedente (stato CH, data_chiusura -1 giorno)
 --          - sync utility da billing_account
 --          - 1 cliente per istanza (nel dataset di test)
 -- ------------------------------------------------------------
 
-SELECT plan(19);
+SELECT plan(26);
 
 -- =========================================================
 --  Pulizia preliminare: rimuove eventuali dati di test preesistenti
@@ -94,6 +95,18 @@ SELECT is(
     (SELECT count(*)::int FROM tmp_stato_annullato),
     1,
     'Esiste uno stato_cliente con codice_interno = AN'
+);
+
+CREATE TEMP TABLE tmp_stato_chiuso AS
+SELECT id
+FROM config.stati_cliente
+WHERE codice_interno = 'CH'
+LIMIT 1;
+
+SELECT is(
+    (SELECT count(*)::int FROM tmp_stato_chiuso),
+    1,
+    'Esiste uno stato_cliente con codice_interno = CH'
 );
 
 -- 0.3) Soggetti di test (usiamo due soggetti reali esistenti)
@@ -304,6 +317,42 @@ WITH ins_ba AS (
 )
 SELECT * FROM ins_ba;
 
+
+-----------------------------------------------------------
+-- 2.3.0) Subentro: chiude il cliente precedente sul PDP prima di creare il nuovo
+CREATE TEMP TABLE tmp_subentro1 AS
+SELECT script.fn_subentro_cliente(
+    (SELECT id FROM tmp_pdp_test),
+    DATE '2025-06-01'
+) AS cliente_chiuso_id;
+
+SELECT is(
+    (SELECT cliente_chiuso_id::bigint FROM tmp_subentro1),
+    (SELECT id::bigint FROM tmp_cli_1),
+    'fn_subentro_cliente chiude il cliente precedente attivo sul PDP (CLI2)'
+);
+
+SELECT is(
+    (
+        SELECT data_chiusura::date
+        FROM anagrafiche.clienti
+        WHERE id = (SELECT id FROM tmp_cli_1)
+    ),
+    (DATE '2025-06-01' - 1),
+    'Cliente precedente chiuso con data_chiusura = data attivazione nuovo - 1 giorno'
+);
+
+SELECT is(
+    (
+        SELECT stato_cliente_id::int
+        FROM anagrafiche.clienti
+        WHERE id = (SELECT id FROM tmp_cli_1)
+    ),
+    (SELECT id::int FROM tmp_stato_chiuso),
+    'Cliente precedente impostato a stato CH dopo subentro'
+);
+----------------------------------------------------------
+
 -- 2.3) Cliente 2 ATTIVO per istanza 2
 WITH 
 iva AS (
@@ -418,6 +467,42 @@ WITH ins_ba AS (
 )
 SELECT * FROM ins_ba;
 
+-- 3.3.0) Subentro: chiude il cliente precedente sul PDP prima di creare il nuovo
+CREATE TEMP TABLE tmp_subentro3 AS
+SELECT script.fn_subentro_cliente(
+    (SELECT id FROM tmp_pdp_test),
+    DATE '2025-09-01'
+) AS cliente_chiuso_id;
+
+SELECT is(
+    (SELECT cliente_chiuso_id::bigint FROM tmp_subentro3),
+    (SELECT id::bigint FROM tmp_cli_2),
+    'fn_subentro_cliente chiude il cliente precedente attivo sul PDP (CLI3)'
+);
+
+SELECT is(
+    (
+        SELECT data_chiusura::date
+        FROM anagrafiche.clienti
+        WHERE id = (SELECT id FROM tmp_cli_2)
+    ),
+    (DATE '2025-09-01' - 1),
+    'Cliente precedente chiuso con data_chiusura = data attivazione nuovo - 1 giorno'
+);
+
+SELECT is(
+    (
+        SELECT stato_cliente_id::int
+        FROM anagrafiche.clienti
+        WHERE id = (SELECT id FROM tmp_cli_2)
+    ),
+    (SELECT id::int FROM tmp_stato_chiuso),
+    'Cliente precedente impostato a stato CH dopo subentro'
+);
+
+
+
+
 -- 3.3) Cliente 3 ANNULLATO (stato = AN) → deve essere escluso dalla catena
 WITH 
 iva AS (
@@ -434,6 +519,7 @@ ins_cli3 AS (
         istanza_utility_id,
         stato_cliente_id,
         data_attivazione,
+        data_chiusura,
         billing_account_id,
         codice_cliente_importato,
         iva_id
@@ -442,7 +528,8 @@ ins_cli3 AS (
         sr.soggetto_ruolo_id,
         iu3.id,
         sc_an.id,
-        DATE '2025-07-01',
+        DATE '2025-09-01',
+        DATE '2025-09-01',
         ba3.id,
         'TST-CLI-CHAIN-003',
         iv.id
@@ -530,7 +617,45 @@ WITH ins_ba AS (
 )
 SELECT * FROM ins_ba;
 
--- 4.3) Cliente 4 ATTIVO per istanza 4 (data più recente)
+
+
+
+
+-- 4.3) Subentro: chiude il cliente precedente sul PDP prima di creare il nuovo
+/*
+CREATE TEMP TABLE tmp_subentro AS
+SELECT script.fn_subentro_cliente(
+    (SELECT id FROM tmp_pdp_test),
+    DATE '2025-10-01'
+) AS cliente_chiuso_id;
+
+SELECT is(
+    (SELECT cliente_chiuso_id::bigint FROM tmp_subentro),
+    (SELECT id::bigint FROM tmp_cli_2),
+    'fn_subentro_cliente chiude il cliente precedente attivo sul PDP (CLI3)'
+);
+
+SELECT is(
+    (
+        SELECT data_chiusura::date
+        FROM anagrafiche.clienti
+        WHERE id = (SELECT id FROM tmp_cli_2)
+    ),
+    (DATE '2025-10-01' - 1),
+    'Cliente precedente chiuso con data_chiusura = data attivazione nuovo - 1 giorno'
+);
+
+SELECT is(
+    (
+        SELECT stato_cliente_id::int
+        FROM anagrafiche.clienti
+        WHERE id = (SELECT id FROM tmp_cli_2)
+    ),
+    (SELECT id::int FROM tmp_stato_chiuso),
+    'Cliente precedente impostato a stato CH dopo subentro'
+);
+*/
+-- 4.4) Cliente 4 ATTIVO per istanza 4 (data più recente)
 WITH 
 iva AS (
     -- prendi un codice IVA valido (es. 22%)
