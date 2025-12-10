@@ -21,6 +21,7 @@
 --          - fn_subentro_cliente chiude il cliente precedente (stato CH, data_chiusura -1 giorno)
 --          - sync utility da billing_account
 --          - 1 cliente per istanza (nel dataset di test)
+-- Autore: Tid (
 -- ------------------------------------------------------------
 
 SELECT plan(26);
