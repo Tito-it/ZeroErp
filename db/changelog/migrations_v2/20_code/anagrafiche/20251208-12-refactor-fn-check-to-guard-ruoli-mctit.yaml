@@ -134,7 +134,7 @@ databaseChangeLog:
     - changeSet:
           id: 20251208-12-01-refactor-fn-check-to-guard-ruoli-vettore
           author: mctit
-          runOnChange: true
+          # runOnChange: true
           validCheckSum:
               - ANY
           changes:
@@ -177,7 +177,7 @@ databaseChangeLog:
     - changeSet:
           id: 20251208-12-02-refactor-fn-check-to-guard-ruoli-cliente
           author: mctit
-          runOnChange: true
+          # runOnChange: true
           validCheckSum:
               - ANY
 
@@ -221,7 +221,7 @@ databaseChangeLog:
     - changeSet:
           id: 20251208-12-03-refactor-fn-check-to-guard-ruoli-gestore
           author: mctit
-          runOnChange: true
+          #  runOnChange: true
           validCheckSum:
               - ANY
 
@@ -265,7 +265,7 @@ databaseChangeLog:
     - changeSet:
           id: 20251208-12-04-refactor-fn-check-to-guard-ruoli-bank
           author: mctit
-          runOnChange: true
+          # runOnChange: true
           validCheckSum:
               - ANY
 
@@ -309,7 +309,7 @@ databaseChangeLog:
     - changeSet:
           id: 20251208-12-05-refactor-fn-check-to-guard-ruoli-emi-fis
           author: mctit
-          runOnChange: true
+          # runOnChange: true
           validCheckSum:
               - ANY
 
@@ -353,7 +353,7 @@ databaseChangeLog:
     - changeSet:
           id: 20251208-12-06-refactor-fn-check-to-guard-ruoli-fornitore
           author: mctit
-          runOnChange: true
+          # runOnChange: true
           validCheckSum:
               - ANY
 
@@ -397,7 +397,7 @@ databaseChangeLog:
     - changeSet:
           id: 20251208-12-07-refactor-fn-check-to-guard-ruoli-reseller
           author: mctit
-          runOnChange: true
+          # runOnChange: true
           validCheckSum:
               - ANY
 
