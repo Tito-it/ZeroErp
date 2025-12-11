@@ -29,22 +29,23 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_catasto_un_imm_ist_utility | istanza_utility_id |
 | FOREIGN KEY | fk_dati_catastali_istanze_utilities | istanza_utility_id |
-| PRIMARY KEY | dati_catastali_pkey | id |
+| PRIMARY KEY | pk_catasto_unita_immobiliari | id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| dati_catastali_pkey | `CREATE UNIQUE INDEX dati_catastali_pkey ON anagrafiche.catasto_unita_immobiliari USING btree (id)` |
+| pk_catasto_unita_immobiliari | `CREATE UNIQUE INDEX pk_catasto_unita_immobiliari ON anagrafiche.catasto_unita_immobiliari USING btree (id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_dati_catastali_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_dati_catastali_tx_id_managed_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_dati_catastali_tx_id_managed_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_dati_catastali_z90_storico_generic_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('dato_catastale_id')` |
-| trg_dati_catastali_z90_storico_generic_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('dato_catastale_id')` |
+| trg_catasto_unita_immobiliari_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_catasto_unita_immobiliari_tx_id_managed_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_catasto_unita_immobiliari_tx_id_managed_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_catasto_unita_immobiliari_z90_storico_generic_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('dato_catastale_id')` |
+| trg_catasto_unita_immobiliari_z90_storico_generic_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('dato_catastale_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}
