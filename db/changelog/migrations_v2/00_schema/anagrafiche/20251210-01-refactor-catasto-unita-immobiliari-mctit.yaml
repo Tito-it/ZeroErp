@@ -1,0 +1,398 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Refactor completo del modello catastale:
+#  - Rinomina anagrafiche.dati_catastali → catasto_unita_immobiliari
+#  - Rimuove FK e colonna indirizzo_dettaglio_id
+#  - Crea tabella ponte catasto_unita_immobiliari_indirizzi (N:N)
+#  - Aggiunge FK a istanze_utilities → catasto_unita_immobiliari
+#  - Rigenera FK e constraint coerenti con il nuovo modello
+#
+# Autore: mctit
+# Data: 2025-12-10
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20251210-01-refactor-catasto-unita-immobiliari-mctit.yaml
+
+  # ============================================================
+  # 1) Rinomina tabella dati_catastali → catasto_unita_immobiliari
+  # ============================================================
+  - changeSet:
+      id: 20251210-01-01-rename-dati-catastali
+      author: mctit
+      comment: >
+        Rinomina anagrafiche.dati_catastali in catasto_unita_immobiliari
+        come entità primaria che rappresenta l'unità catastale reale.
+
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: dati_catastali
+
+      changes:
+        - renameTable:
+            oldTableName: dati_catastali
+            newTableName: catasto_unita_immobiliari
+            schemaName: anagrafiche
+
+  # ============================================================
+  # 2) Drop FK e colonna indirizzo_dettaglio_id
+  # ============================================================
+  - changeSet:
+      id: 20251210-01-02-drop-indirizzo-col-fk
+      author: mctit
+      comment: >
+        Rimuove la colonna indirizzo_dettaglio_id e la relativa FK,
+        eliminando l'associazione errata tra indirizzo e unità catastale.
+
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: catasto_unita_immobiliari
+            columnName: indirizzo_dettaglio_id
+
+      changes:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: catasto_unita_immobiliari
+            constraintName: fk_dettaglio_catastali_indirizzi_dettaglio
+
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: catasto_unita_immobiliari
+            columnName: indirizzo_dettaglio_id
+
+  # ============================================================
+  # 3) Crea tabella ponte catasto_unita_immobiliari_indirizzi (N:N)
+  # ============================================================
+  - changeSet:
+      id: 20251210-01-03-create-tabella-ponte
+      author: mctit
+      comment: >
+        Crea la tabella ponte N:N tra unità catastali e indirizzi
+        come deciso nel refactor: nessuna temporalità, vincolo UNIQUE.
+
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: catasto_unita_immobiliari_indirizzi
+
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: catasto_unita_immobiliari_indirizzi
+            remarks: "Tabella ponte tra unità catastali e indirizzi civici."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_catasto_unita_immobiliari_indirizzi
+                    nullable: false
+
+              - column:
+                  name: catasto_unita_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: indirizzo_dettaglio_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+
+        # FK verso catasto_unita_immobiliari
+        - addForeignKeyConstraint:
+            constraintName: fk_catunitaindir_unita
+            baseTableSchemaName: anagrafiche
+            baseTableName: catasto_unita_immobiliari_indirizzi
+            baseColumnNames: catasto_unita_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: catasto_unita_immobiliari
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        # FK verso indirizzi_dettaglio
+        - addForeignKeyConstraint:
+            constraintName: fk_catunitaindir_indirizzo
+            baseTableSchemaName: anagrafiche
+            baseTableName: catasto_unita_immobiliari_indirizzi
+            baseColumnNames: indirizzo_dettaglio_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: indirizzi_dettaglio
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        # UNIQUE composito
+        - addUniqueConstraint:
+            constraintName: uq_catunitaindir
+            schemaName: anagrafiche
+            tableName: catasto_unita_immobiliari_indirizzi
+            columnNames: catasto_unita_id, indirizzo_dettaglio_id
+
+  # ============================================================
+  # 4) Aggiunge dati_catastali_id a istanze_utilities
+  # ============================================================
+  - changeSet:
+      id: 20251210-01-04-add-fk-istanze
+      author: mctit
+      comment: >
+        Aggiunge colonna dati_catastali_id a anagrafiche.istanze_utilities
+        (obbligatoria). Collega ogni istanza alla propria unità immobiliare.
+
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: istanze_utilities
+                columnName: dati_catastali_id
+
+      changes:
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: istanze_utilities
+            columns:
+              - column:
+                  name: dati_catastali_id
+                  type: bigint
+                  remarks: "FK → anagrafiche.catasto_unita_immobiliari.id"
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: istanze_utilities
+            baseColumnNames: dati_catastali_id
+            constraintName: fk_iu_catasto_unita
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: catasto_unita_immobiliari
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+  # --------------------------------------------------------
+  # 2) Rinomina PK e FK (se ancora con nomi "dati_catastali_*")
+  # --------------------------------------------------------
+  - changeSet:
+      id: 20251210-01-01-rename-constraints-catasto-unita-imm
+      author: mctit
+      runOnChange: true
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT 1
+              FROM pg_constraint c
+              JOIN pg_class t ON t.oid = c.conrelid
+              JOIN pg_namespace n ON n.oid = t.relnamespace
+              WHERE n.nspname = 'anagrafiche'
+                AND t.relname = 'catasto_unita_immobiliari'
+                AND c.conname = 'dati_catastali_pkey';
+
+      comment: >
+        Rinomina i vincoli di catasto_unita_immobiliari da "dati_catastali_*"
+        a nomi coerenti con il nuovo naming.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- Rinomina PK se esiste ancora con il vecchio nome
+              DO $$
+              BEGIN
+                  IF EXISTS (
+                      SELECT 1
+                      FROM pg_constraint c
+                      JOIN pg_class t ON t.oid = c.conrelid
+                      JOIN pg_namespace n ON n.oid = t.relnamespace
+                      WHERE n.nspname = 'anagrafiche'
+                        AND t.relname = 'catasto_unita_immobiliari'
+                        AND c.conname = 'dati_catastali_pkey'
+                  ) THEN
+                      ALTER TABLE anagrafiche.catasto_unita_immobiliari
+                          RENAME CONSTRAINT dati_catastali_pkey
+                          TO pk_catasto_unita_immobiliari;
+                  END IF;
+              END$$;
+
+              -- Rinomina FK verso istanze_utilities se ha ancora il vecchio nome
+              DO $$
+              BEGIN
+                  IF EXISTS (
+                      SELECT 1
+                      FROM pg_constraint c
+                      JOIN pg_class t ON t.oid = c.conrelid
+                      JOIN pg_namespace n ON n.oid = t.relnamespace
+                      WHERE n.nspname = 'anagrafiche'
+                        AND t.relname = 'catasto_unita_immobiliari'
+                        AND c.conname = 'fk_dati_catastali_istanze_utilities'
+                  ) THEN
+                      ALTER TABLE anagrafiche.catasto_unita_immobiliari
+                          RENAME CONSTRAINT fk_dati_catastali_istanze_utilities
+                          TO fk_catasto_un_imm_ist_utility;
+                  END IF;
+              END$$;
+
+  # --------------------------------------------------------
+  # 3) Aggiorna COMMENT della tabella
+  # --------------------------------------------------------
+  - changeSet:
+      id: 20251210-01-03-comment-table-catasto-unita-imm
+      author: mctit
+      runOnChange: true
+      comment: >
+        Aggiorna il comment della tabella catasto_unita_immobiliari per
+        aderire al nuovo modello (legame diretto con istanza_utility).
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: true
+            sql: |
+              COMMENT ON TABLE anagrafiche.catasto_unita_immobiliari IS
+                'Dati catastali relativi a una singola unità immobiliare, associata a una istanza di utility (anagrafiche.istanze_utilities).';
+
+  # --------------------------------------------------------
+  # 1) Rename PK: dati_catastali_pkey -> pk_catasto_unita_immobiliari
+  # --------------------------------------------------------
+  - changeSet:
+      id: 20251210-01-11-rename-pk-catasto-unita-immobiliari
+      author: mctit
+      # runOnChange: false
+      comment: >
+        Rinomina la PK di anagrafiche.catasto_unita_immobiliari
+        da dati_catastali_pkey a pk_catasto_unita_immobiliari.
+
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - nestedPreconditions:
+            - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: catasto_unita_immobiliari
+            - primaryKeyExists:
+                schemaName: anagrafiche
+                tableName: catasto_unita_immobiliari
+                primaryKeyName: dati_catastali_pkey
+
+      changes:
+        - sql:
+            stripComments: false
+            splitStatements: false
+            dbms: postgresql
+            comment: "Rinomina completata della PK."
+            sql: -- Elimina  la PK e la FK con i nomi errati
+              ALTER TABLE IF EXISTS anagrafiche.catasto_unita_immobiliari
+              DROP CONSTRAINT IF EXISTS fk_dati_catastali_istanze_utilities;
+
+              ALTER TABLE IF EXISTS anagrafiche.catasto_unita_immobiliari_indirizzi
+              DROP CONSTRAINT IF EXISTS fk_catunitaindir_indirizzo;
+
+              ALTER TABLE IF EXISTS anagrafiche.catasto_unita_immobiliari_indirizzi
+              DROP CONSTRAINT IF EXISTS fk_catunitaindir_unita;
+
+              ALTER TABLE IF EXISTS anagrafiche.istanze_utilities
+              DROP CONSTRAINT IF EXISTS fk_iu_catasto_unita;
+
+              --ALTER TABLE IF EXISTS anagrafiche.catasto_unita_immobiliari
+              --DROP CONSTRAINT IF EXISTS dati_catastali_pkey;
+              -- Rinomina PK se esiste ancora con il vecchio nome
+              DO $$
+              BEGIN
+              IF EXISTS (
+              SELECT 1
+              FROM pg_constraint c
+              JOIN pg_class t ON t.oid = c.conrelid
+              JOIN pg_namespace n ON n.oid = t.relnamespace
+              WHERE n.nspname = 'anagrafiche'
+              AND t.relname = 'catasto_unita_immobiliari'
+              AND c.conname = 'dati_catastali_pkey'
+              ) THEN
+              ALTER TABLE anagrafiche.catasto_unita_immobiliari
+              RENAME CONSTRAINT dati_catastali_pkey
+              TO pk_catasto_unita_immobiliari;
+              END IF;
+              END$$;
+
+
+
+
+              --  Ricrea con i nomi corretti
+              --ALTER TABLE IF EXISTS anagrafiche.catasto_unita_immobiliari
+              --ADD CONSTRAINT pk_catasto_unita_immobiliari PRIMARY KEY (id);
+
+
+              ALTER TABLE IF EXISTS anagrafiche.catasto_unita_immobiliari
+              ADD CONSTRAINT fk_catasto_un_imm_ist_utility
+              FOREIGN KEY (istanza_utility_id)
+              REFERENCES anagrafiche.istanze_utilities (id) MATCH SIMPLE
+              ON UPDATE CASCADE
+              ON DELETE NO ACTION;
+
+
+              ALTER TABLE IF EXISTS anagrafiche.catasto_unita_immobiliari_indirizzi
+              ADD CONSTRAINT fk_cat_un_imm_indir_indirizzo_dett FOREIGN KEY (indirizzo_dettaglio_id)
+              REFERENCES anagrafiche.indirizzi_dettaglio (id) MATCH SIMPLE
+              ON UPDATE CASCADE
+              ON DELETE CASCADE;
+
+              ALTER TABLE IF EXISTS anagrafiche.catasto_unita_immobiliari_indirizzi
+              ADD CONSTRAINT fk_cat_un_imm_indir_cat_un_imm FOREIGN KEY (catasto_unita_id)
+              REFERENCES anagrafiche.catasto_unita_immobiliari (id) MATCH SIMPLE
+              ON UPDATE CASCADE
+              ON DELETE CASCADE;
+
+              ALTER TABLE IF EXISTS anagrafiche.istanze_utilities
+              ADD CONSTRAINT fk_iu_catasto_unita FOREIGN KEY (dati_catastali_id)
+              REFERENCES anagrafiche.catasto_unita_immobiliari (id) MATCH SIMPLE
+              ON UPDATE CASCADE
+              ON DELETE NO ACTION;
+
+  - changeSet:
+      id: 20251210-01-12-rename-pk-catasto-unita-immobiliari
+      author: mctit
+      # runOnChange: false
+      comment: >
+        Rinomina la PK di anagrafiche.catasto_unita_immobiliari
+        da dati_catastali_pkey a pk_catasto_unita_immobiliari.
+
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - nestedPreconditions:
+            - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: catasto_unita_immobiliari
+            - primaryKeyExists:
+                schemaName: anagrafiche
+                tableName: catasto_unita_immobiliari
+                primaryKeyName: dati_catastali_pkey
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER TABLE anagrafiche.catasto_unita_immobiliari
+                RENAME CONSTRAINT dati_catastali_pkey
+                TO pk_catasto_unita_immobiliari;

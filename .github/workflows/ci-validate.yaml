@@ -49,7 +49,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Liquibase 5 (community)
+      - name: Setup Liquibase 5 (oss)
         uses: liquibase/setup-liquibase@v2
         with:
           version: '5.0.0'

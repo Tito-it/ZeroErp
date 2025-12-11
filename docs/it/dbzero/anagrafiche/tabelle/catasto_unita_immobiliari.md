@@ -1,11 +1,10 @@
-{% include-markdown "it/dbzero/anagrafiche/manual/dati_catastali.md" %}
-# 📚 Tabella `dati_catastali`
+{% include-markdown "it/dbzero/anagrafiche/manual/catasto_unita_immobiliari.md" %}
+# 📚 Tabella `catasto_unita_immobiliari`
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| indirizzo_dettaglio_id | bigint | NO |  |
 | sezione_catastale | character | YES |  |
 | foglio_catastale | character | YES |  |
 | particella | character | YES |  |
@@ -31,15 +30,12 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_dati_catastali_istanze_utilities | istanza_utility_id |
-| FOREIGN KEY | fk_dettaglio_catastali_indirizzi_dettaglio | indirizzo_dettaglio_id |
 | PRIMARY KEY | dati_catastali_pkey | id |
-| UNIQUE | uq_dati_catastali_indirizzo_istanza | indirizzo_dettaglio_id, istanza_utility_id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| dati_catastali_pkey | `CREATE UNIQUE INDEX dati_catastali_pkey ON anagrafiche.dati_catastali USING btree (id)` |
-| uq_dati_catastali_indirizzo_istanza | `CREATE UNIQUE INDEX uq_dati_catastali_indirizzo_istanza ON anagrafiche.dati_catastali USING btree (indirizzo_dettaglio_id, istanza_utility_id)` |
+| dati_catastali_pkey | `CREATE UNIQUE INDEX dati_catastali_pkey ON anagrafiche.catasto_unita_immobiliari USING btree (id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

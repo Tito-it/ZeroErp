@@ -65,9 +65,10 @@ extra_javascript:
 nav:
         - Home: index.md
         - Introduzione:
-                  - Cos’è Zero ERP: it/introduzione.md
-                  - Manifesto: it/manifesto.md
-                  - Licenza: it/LICENSE.md
+                  - Cos’è Zero ERP: introduzione.md
+                  - Manifesto: manifesto.md
+                  - Licenza: LICENSE.md
+
         - Installazione:
                   - Prerequisiti: it/installazione.md
         - Architettura:

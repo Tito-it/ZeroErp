@@ -93,7 +93,7 @@ jobs:
 
  # Dicembre 2025 passaggio a Liquibase 5 Community
    # Versione Liquibase 5 (Community)       
-      - name: Setup Liquibase 5 (Community)
+      - name: Setup Liquibase 5 (oss)
         uses: liquibase/setup-liquibase@v2
         with:
           version: '5.0.0'
