@@ -13,6 +13,8 @@ databaseChangeLog:
     - changeSet:
           id: 20251125-09-diag_v_clienti_links
           author: mctit
+
+          validCheckSums: [ANY]
           comment: "Ripristino view dopo refactoring degli ID in anagrafiche."
           changes:
               - sql:
