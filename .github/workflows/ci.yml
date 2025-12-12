@@ -113,6 +113,17 @@ jobs:
           source .venv/bin/activate
           pre-commit run --all-files
 
+     # Generate Liquibase changelog autogen (strict mode) ordered by timeline     
+      - name: Generate Liquibase autogen master (timeline)
+        run: |
+          source .venv/bin/activate
+          python scripts/gen_master_autogen.py \
+            --root db/changelog/migrations_v2 \
+            --out  db/changelog/migrations_v2/changelog-autogen.yaml \
+            --base db/changelog \
+            --strict
+      
+
         # Attenzione si può usare solo una negazione context (non una lista di context negati)
       - name: Applica migrazioni Liquibase
         run: |

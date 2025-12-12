@@ -60,6 +60,14 @@ jobs:
           liquibase lpm add postgresql --global
           liquibase --version
 
+     # Genera il changelog-master-autogen.yaml dalla cartella migrations_v2     
+      - name: Generate Liquibase autogen master (timeline)
+        run: |
+          python scripts/gen_master_autogen.py \
+            --root db/changelog/migrations_v2 \
+            --out  db/changelog/migrations_v2/changelog-autogen.yaml \
+            --base db/changelog \
+            --strict
 
 
       - name: Liquibase update (DB effimero del job)
@@ -93,4 +101,4 @@ jobs:
         run: |
           source .venv/bin/activate               # venv è ./backend/.venv
           python manage.py migrate --noinput
-          python manage.py migrate --noinput
+          
