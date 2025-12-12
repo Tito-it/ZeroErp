@@ -25,7 +25,7 @@ databaseChangeLog:
                     stripComments: true
                     sql: |
                         -- Dati catastali → Catasto unità immobiliari
-                        ALTER TRIGGER trg_dati_catastali_audit_data_user_generic_upd
+                        /*     ALTER TRIGGER trg_dati_catastali_audit_data_user_generic_upd
                             ON anagrafiche.catasto_unita_immobiliari
                         RENAME TO trg_catasto_unita_immobiliari_audit_data_user_generic_upd;
 
@@ -36,8 +36,8 @@ databaseChangeLog:
                         ALTER TRIGGER trg_dati_catastali_z90_storico_generic_upd_dlt
                             ON anagrafiche.catasto_unita_immobiliari
                         RENAME TO trg_catasto_unita_immobiliari_z90_storico_generic_upd_dlt;
-
-    # --------------------------------------------------------
+                        */
+    # --------------*------------------------------------------
     # 4) Aggiorna COMMENT dei trigger
     # --------------------------------------------------------
     - changeSet:
@@ -54,6 +54,7 @@ databaseChangeLog:
                     stripComments: true
                     sql: |
 
+                        /*
                         COMMENT ON TRIGGER trg_catasto_unita_immobiliari_audit_data_user_generic_upd
                            ON anagrafiche.catasto_unita_immobiliari IS
                            'Aggiorna i campi di audit (data_update, user_update) su catasto_unita_immobiliari.';
@@ -65,3 +66,5 @@ databaseChangeLog:
                         COMMENT ON TRIGGER trg_catasto_unita_immobiliari_z90_storico_generic_upd_dlt
                            ON anagrafiche.catasto_unita_immobiliari IS
                            'Genera uno snapshot storico in storico.catasto_unita_immobiliari tramite script.trgfn_storico_generic.';
+
+                         */

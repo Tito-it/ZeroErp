@@ -35,7 +35,7 @@ DEFAULT_INCLUDE_EXTS = {".yaml", ".yml", ".sql"}
 # Cartelle tipiche che non vuoi includere (modifica liberamente)
 DEFAULT_EXCLUDE_DIRS = {
     ".git", ".idea", ".vscode", "__pycache__", "node_modules",
-    "tmp", "temp", "backup", "backups", "old", "archive", "archivio",
+    "tmp", "temp", "backup", "backups", "old", "archive", "archivio"
 }
 
 # Escludi intere aree dalla timeline autogenerata (path relativo alla root scansionata)
