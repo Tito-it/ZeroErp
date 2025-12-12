@@ -38,6 +38,13 @@ DEFAULT_EXCLUDE_DIRS = {
     "tmp", "temp", "backup", "backups", "old", "archive", "archivio",
 }
 
+# Escludi intere aree dalla timeline autogenerata (path relativo alla root scansionata)
+DEFAULT_EXCLUDE_PREFIXES = (
+    "80_data/",
+    "85_pgagent/",
+    "90_end/",
+)
+
 
 @dataclass(frozen=True)
 class ChangeFile:
@@ -48,23 +55,34 @@ class ChangeFile:
     sort_key: Tuple[int, int, str]
 
 
+
 def iter_candidate_files(
     root: Path,
     include_exts: set[str],
     exclude_dirs: set[str],
+    exclude_prefixes: tuple[str, ...],
 ) -> Iterable[Path]:
     for p in root.rglob("*"):
         if p.is_dir():
             continue
-        # skip excluded directories
+
+        # skip excluded directories (per nome cartella)
         if any(part in exclude_dirs for part in p.parts):
             continue
+
         if p.suffix.lower() not in include_exts:
             continue
+
+        # skip excluded prefixes (relativi a root)
+        rel = p.relative_to(root).as_posix()
+        if any(rel.startswith(pref) for pref in exclude_prefixes):
+            continue
+
         yield p
 
 
-def parse_changefile(p: Path, rel_base: Path) -> ChangeFile | None:
+
+def parse_changefile(p: Path, root: Path) -> ChangeFile | None:
     m = FILENAME_RE.match(p.name)
     if not m:
         return None
@@ -72,10 +90,9 @@ def parse_changefile(p: Path, rel_base: Path) -> ChangeFile | None:
     date = int(m.group("date"))
     seq = int(m.group("seq"))
 
-    # path relativo in formato posix (Liquibase gradisce / anche su Windows)
-    rel_path = p.relative_to(rel_base).as_posix()
+    # path relativo alla root scansionata (migrations_v2)
+    rel_path = p.relative_to(root).as_posix()
 
-    # key deterministica: data, seq, path (per evitare ordine instabile)
     sort_key = (date, seq, rel_path.lower())
     return ChangeFile(path=p, rel_path=rel_path, date=date, seq=seq, sort_key=sort_key)
 
@@ -144,12 +161,16 @@ def main() -> int:
     if not root.exists() or not root.is_dir():
         raise SystemExit(f"Root non valida: {root}")
 
-    candidates = list(iter_candidate_files(root, DEFAULT_INCLUDE_EXTS, exclude_dirs))
+   # candidates = list(iter_candidate_files(root, DEFAULT_INCLUDE_EXTS, exclude_dirs))
+    exclude_prefixes = DEFAULT_EXCLUDE_PREFIXES
+    candidates = list(iter_candidate_files(root, DEFAULT_INCLUDE_EXTS, exclude_dirs, exclude_prefixes))
+
 
     parsed: List[ChangeFile] = []
     skipped: List[Path] = []
     for p in candidates:
-        cf = parse_changefile(p, rel_base=rel_base)
+       # cf = parse_changefile(p, rel_base=rel_base)
+        cf = parse_changefile(p, root=root)
         if cf is None:
             skipped.append(p)
             continue

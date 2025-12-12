@@ -116,13 +116,11 @@ jobs:
      # Generate Liquibase changelog autogen (strict mode) ordered by timeline     
       - name: Generate Liquibase autogen master (timeline)
         run: |
-          source .venv/bin/activate
           python scripts/gen_master_autogen.py \
             --root db/changelog/migrations_v2 \
             --out  db/changelog/migrations_v2/changelog-autogen.yaml \
-            --base db/changelog \
             --strict
-      
+
 
         # Attenzione si può usare solo una negazione context (non una lista di context negati)
       - name: Applica migrazioni Liquibase
@@ -146,21 +144,7 @@ jobs:
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts=ci_apply
 
-
-
-        # attendiamo che pgAgent legga le nuove definizioni e lanci il job di test
-      #- name: Wait for pgAgent to schedule jobs
-      #  run: sleep 15
-
-      #- name: Verify pgAgent test log
-      #  env:
-      #    PGPASSWORD: secret
-      #  run: |
-      #      psql -h localhost -p 5432 \
-      #        -U zeroerp \
-      #        -d zeroerp \
-      #        -c "SELECT * FROM maintenance.test_pgagent_log ORDER BY id DESC LIMIT 1;"
-
+      
       - name: Genera doc DB
         # Qui sopra non serve più caricare i tuoi secrets, ma usiamo quelli del servizio
         env:
@@ -212,16 +196,7 @@ jobs:
             echo "No AWS creds → skipping S3 sync."
           fi
 
-      # - name: Upload generated site as artifact
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: docs-site
-      #     path: site/
-      #     if-no-files-found: error
-      #     retention-days: 1 # artefatto effimero
-      #     overwrite: true # <— chiave: non accumula più
-      #     compression-level: 6
-
+      
   # Nuovo job per Docker
   docker:
     needs: build

@@ -66,7 +66,6 @@ jobs:
           python scripts/gen_master_autogen.py \
             --root db/changelog/migrations_v2 \
             --out  db/changelog/migrations_v2/changelog-autogen.yaml \
-            --base db/changelog \
             --strict
 
 
