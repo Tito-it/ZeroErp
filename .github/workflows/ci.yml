@@ -91,41 +91,42 @@ jobs:
            psql --no-psqlrc -h localhost -p 5432 -U zeroerp -d zeroerp -v ON_ERROR_STOP=1 -c \
              "SELECT name, setting FROM pg_settings WHERE name LIKE 'myapp.%' ORDER BY name;"
 
-      - name: Install Liquibase CLI
+ # Dicembre 2025 passaggio a Liquibase 5 Community
+   # Versione Liquibase 5 (Community)       
+      - name: Setup Liquibase 5 (oss)
+        uses: liquibase/setup-liquibase@v2
+        with:
+          version: '5.0.0'
+          edition: 'oss'
+
+   # Istalla il driver PostgreSQL       
+      - name: Install PostgreSQL driver for Liquibase 5
         run: |
-          sudo apt-get update
-          sudo apt-get install -y default-jre unzip wget
-
-          LIQUIBASE_VERSION=4.33.0
-          wget https://github.com/liquibase/liquibase/releases/download/v${LIQUIBASE_VERSION}/liquibase-${LIQUIBASE_VERSION}.zip -O liquibase.zip
-          unzip -q liquibase.zip -d liquibase-temp
-
-          sudo mkdir -p /opt/liquibase
-          sudo mv liquibase-temp/* /opt/liquibase/
-          rm -rf liquibase-temp liquibase.zip
-
-          # Assicurati che lo script sia eseguibile
-          sudo chmod +x /opt/liquibase/liquibase
-
-          # Aggiorna il PATH **anche** per questo step
-          export PATH=/opt/liquibase:$PATH
-
-          # Ora funziona
+          # Installa il driver PostgreSQL tramite LPM (Liquibase Package Manager)
+          liquibase lpm add postgresql --global
           liquibase --version
+ # Dicembre 2025 fine passaggio a Liquibase 5 Community
 
+          
       - name: Run pre-commit hooks
         run: |
           source .venv/bin/activate
           pre-commit run --all-files
 
+     # Generate Liquibase changelog autogen (strict mode) ordered by timeline     
+      - name: Generate Liquibase autogen master (timeline)
+        run: |
+          python scripts/gen_master_autogen.py \
+            --root db/changelog/migrations_v2 \
+            --out  db/changelog/migrations_v2/changelog-autogen.yaml \
+            --strict
+
+
+        # Attenzione si può usare solo una negazione context (non una lista di context negati)
       - name: Applica migrazioni Liquibase
         run: |
           source .venv/bin/activate
 
-          # Se liquibase è installato in /opt/liquibase, aggiungilo al PATH
-          export PATH=/opt/liquibase:$PATH
-
-          # Attenzione imposto la disattivazione del dblink
           # 1) Migrazioni standard (no test, no CI)
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff" \
@@ -133,12 +134,9 @@ jobs:
             --password=secret \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts="!test"
-        # Attenzione si può usare solo una negazione context (non una lista di context negati)
 
-        # 2) CI apply (runner di automazione)
       - name: Liquibase CI apply (run automations)
         run: |
-          export PATH=/opt/liquibase:$PATH
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff%20-c%20app.env%3Dci" \
             --username=zeroerp \
@@ -146,19 +144,7 @@ jobs:
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts=ci_apply
 
-        # attendiamo che pgAgent legga le nuove definizioni e lanci il job di test
-      #- name: Wait for pgAgent to schedule jobs
-      #  run: sleep 15
-
-      #- name: Verify pgAgent test log
-      #  env:
-      #    PGPASSWORD: secret
-      #  run: |
-      #      psql -h localhost -p 5432 \
-      #        -U zeroerp \
-      #        -d zeroerp \
-      #        -c "SELECT * FROM maintenance.test_pgagent_log ORDER BY id DESC LIMIT 1;"
-
+      
       - name: Genera doc DB
         # Qui sopra non serve più caricare i tuoi secrets, ma usiamo quelli del servizio
         env:
@@ -210,16 +196,7 @@ jobs:
             echo "No AWS creds → skipping S3 sync."
           fi
 
-      # - name: Upload generated site as artifact
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: docs-site
-      #     path: site/
-      #     if-no-files-found: error
-      #     retention-days: 1 # artefatto effimero
-      #     overwrite: true # <— chiave: non accumula più
-      #     compression-level: 6
-
+      
   # Nuovo job per Docker
   docker:
     needs: build

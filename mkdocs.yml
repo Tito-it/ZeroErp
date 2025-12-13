@@ -65,9 +65,10 @@ extra_javascript:
 nav:
         - Home: index.md
         - Introduzione:
-                  - Cos’è Zero ERP: it/introduzione.md
-                  - Manifesto: it/manifesto.md
-                  - Licenza: it/LICENSE.md
+                  - Cos’è Zero ERP: introduzione.md
+                  - Manifesto: manifesto.md
+                  - Licenza: LICENSE.md
+
         - Installazione:
                   - Prerequisiti: it/installazione.md
         - Architettura:
@@ -135,6 +136,7 @@ nav:
                             - Messaggi di Audit: guide/messaggi-audit.md
                             - Processi e Job: guide/Analisi-tracciamento-processi-e-job.md
                   - Soggetti e ruoli anagrafici: guide/soggetti-e-ruoli-anagrafici.md
+                  - Gestione delle Istanze Utility: guide/gestione-delle-istanze-utility.md
                   - Generazione di un cliente: guide/generazione-cliente.md
                   - Gestione conti bancari: guide/gestione-conti-bancari.md
                   - Gestione degli indirizzi: guide/gestione-degli-indirizzi.md

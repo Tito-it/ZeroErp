@@ -1,0 +1,226 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20251206-01-create-stati-pdp-mctit.yaml
+
+  - changeSet:
+      id: 20251206-01-create-stati-pdp
+      author: mctit
+
+      changes:
+        - createTable:
+            tableName: stati_pdp
+            schemaName: config
+            remarks: "Stati tecnici dei punti di prelievo (PDP): disponibile, attivo, disattivo tecnico, dismesso."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_stati_pdp
+                    nullable: false
+
+              - column:
+                  name: codice_interno
+                  type: varchar(16)
+                  remarks: "Codice interno stabile usato nella logica applicativa (es. DISP, ATT, DTEC, DISM)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: codice
+                  type: varchar(64)
+                  remarks: "Codice leggibile, usato in UI e configurazioni (es. DISPONIBILE, ATTIVO)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione testuale dello stato tecnico del PDP."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag di abilitazione logica dello stato (true = utilizzabile)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: ordine
+                  type: integer
+                  defaultValueNumeric: 10
+                  remarks: "Ordine di visualizzazione suggerito in UI."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Campo JSONB per metadati aggiuntivi (mapping esterni, note dominio, ecc.)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: CURRENT_USER
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: CURRENT_USER
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Id transazione applicativa."
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Se true abilita la storicizzazione tramite trigger generici."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: stati_pdp
+            columnNames: codice_interno
+            constraintName: uq_stati_pdp_codice_interno
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: stati_pdp
+            columnNames: codice
+            constraintName: uq_stati_pdp_codice
+
+        - createIndex:
+            schemaName: config
+            tableName: stati_pdp
+            indexName: ix_stati_pdp_attivo_ordine
+            columns:
+              - column:
+                  name: attivo
+              - column:
+                  name: ordine
+
+  # ----------------------------------------------------------
+  # Seed iniziale stati tecnici PDP
+  # ----------------------------------------------------------
+  - changeSet:
+      id: 20251206-01-01-seed-stati-pdp
+      author: mctit
+
+      changes:
+        - insert:
+            schemaName: config
+            tableName: stati_pdp
+            columns:
+              - column:
+                  name: codice_interno
+                  value: "DISP"
+              - column:
+                  name: codice
+                  value: "DISPONIBILE"
+              - column:
+                  name: descrizione
+                  value: "Punto tecnicamente presente e utilizzabile, attualmente senza cliente attivo associato."
+              - column:
+                  name: ordine
+                  valueNumeric: 10
+
+        - insert:
+            schemaName: config
+            tableName: stati_pdp
+            columns:
+              - column:
+                  name: codice_interno
+                  value: "ATT"
+              - column:
+                  name: codice
+                  value: "ATTIVO"
+              - column:
+                  name: descrizione
+                  value: "Punto fisicamente in servizio con almeno un cliente attivo associato."
+              - column:
+                  name: ordine
+                  valueNumeric: 20
+
+        - insert:
+            schemaName: config
+            tableName: stati_pdp
+            columns:
+              - column:
+                  name: codice_interno
+                  value: "DTEC"
+              - column:
+                  name: codice
+                  value: "DISATTIVO_TECNICO"
+              - column:
+                  name: descrizione
+                  value: "Punto tecnicamente staccato (lavori, sospensione tecnica, stacco per morosità, ecc.)."
+              - column:
+                  name: ordine
+                  valueNumeric: 30
+
+        - insert:
+            schemaName: config
+            tableName: stati_pdp
+            columns:
+              - column:
+                  name: codice_interno
+                  value: "DISM"
+              - column:
+                  name: codice
+                  value: "DISMESSO"
+              - column:
+                  name: descrizione
+                  value: "Punto dismesso/non più utilizzabile: derivazione rimossa o rete non più attiva."
+              - column:
+                  name: ordine
+                  valueNumeric: 40
+
+        # Idempotenza: se il changeSet viene rigiocato, evita violazioni delle unique
+        - sql:
+            comment: "Rende idempotente il seed: ignora conflitti sulle unique (codice_interno/codice)."
+            dbms: postgresql
+            sql: |
+              -- In PostgreSQL è spesso più semplice usare ON CONFLICT direttamente
+              INSERT INTO config.stati_pdp (codice_interno, codice, descrizione, ordine)
+              VALUES
+                  ('DISP', 'DISPONIBILE', 'Punto tecnicamente presente e utilizzabile, attualmente senza cliente attivo associato.', 10),
+                  ('ATT',  'ATTIVO',      'Punto fisicamente in servizio con almeno un cliente attivo associato.',                 20),
+                  ('DTEC', 'DISATTIVO_TECNICO', 'Punto tecnicamente staccato (lavori, sospensione tecnica, stacco per morosità, ecc.).', 30),
+                  ('DISM', 'DISMESSO',    'Punto dismesso/non più utilizzabile: derivazione rimossa o rete non più attiva.',      40)
+              ON CONFLICT (codice_interno) DO NOTHING;

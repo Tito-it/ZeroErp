@@ -23,9 +23,13 @@ SELECT idd.id AS indirizzo_dettaglio_id,
     idd.data_insert,
     idd.user_insert,
     idd.data_update,
-    idd.user_update
-   FROM (anagrafiche.indirizzi_dettaglio idd
-     JOIN config.stradario s ON ((s.id = idd.stradario_id)));
+    idd.user_update,
+    ic.comune AS descrizione_comune,
+    ic.codice_postale AS cap,
+    ic.provincia
+   FROM ((anagrafiche.indirizzi_dettaglio idd
+     JOIN config.stradario s ON ((s.id = idd.stradario_id)))
+     JOIN script.vw_indirizzo_completo ic ON ((ic.id_stradario = idd.stradario_id)));
 ```
 
 

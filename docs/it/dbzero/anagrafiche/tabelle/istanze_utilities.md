@@ -17,17 +17,20 @@
 | tx_id | uuid | YES |  |
 | parent_istanza_id | bigint | YES |  |
 | pdp_id | bigint | YES |  |
+| dati_catastali_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_istanza_fittizia_indirizzo |  |
 | CHECK | chk_istanze_utilities_prop_inquilino |  |
+| CHECK | chk_iu_pdp_not_fittizia |  |
 | CHECK | chk_iu_pdp_requires_address |  |
 | FOREIGN KEY | fk_istanze_utilities_indirizzo_dettaglio | indirizzo_dettaglio_id |
 | FOREIGN KEY | fk_istanze_utilities_parent_istanza | parent_istanza_id |
 | FOREIGN KEY | fk_istanze_utilities_soggetto | soggetto_id |
-| FOREIGN KEY | fk_iu_pdp_id_addr | indirizzo_dettaglio_id, pdp_id |
+| FOREIGN KEY | fk_iu_catasto_unita | dati_catastali_id |
+| FOREIGN KEY | fk_iu_pdp_id_addr | pdp_id, indirizzo_dettaglio_id |
 | PRIMARY KEY | pk_istanze_utilities | id |
 | UNIQUE | uq_istanze_utilities_codice | codice |
 

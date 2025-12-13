@@ -1,207 +1,220 @@
-## 📘 Documentazione concettuale – Tabella `anagrafiche.pdp` 
+## 📘 Documentazione concettuale – Tabella `anagrafiche.pdp`
 
 > 👀 **Vedi anche**
 >
 > **Approfondimento tabelle:**
 >
-> • [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
+> • [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
 > • [`anagrafiche.clienti`](/dbzero/anagrafiche/tabelle/clienti)   
-> • [`anagrafiche.istanze_utilities`](/dbzero/anagrafiche/tabelle/istanze_utilities)  
+> • [`anagrafiche.istanze_utilities`](/dbzero/anagrafiche/tabelle/istanze_utilities)   
 > • [`config.utilities`](/dbzero/config/tabelle/utilities)   
+> • [`config.stati_pdp`](/dbzero/config/tabelle/stati_pdp)   
 > • [`storico.pdp`](/dbzero/storico/tabelle/pdp)   
 >
 > **Approfondimento funzioni:**
 >
-> • [`anagrafiche.trgfn_pdp_protect_cols`](/dbzero/anagrafiche/funzioni/trgfn_pdp_protect_cols)   
-> • [`script.trgfn_upd_dlt_storico_generic`](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
-> • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
-
+> • [`anagrafiche.trgfn_pdp_protect_cols`](/dbzero/anagrafiche/funzioni/trgfn_pdp_protect_cols)  
+> • [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)  
+> • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)  
 
 ---
 
 ### 🎯 Scopo Principale
+(latest revison 06-12-25)
+La tabella **`anagrafiche.pdp`** rappresenta i **Punti di Prelievo (PDP)**, entità fisiche ancorate a un indirizzo e identificate da un codice univoco globale (POD/PDR/altro). Ogni PDP appartiene a una utility (GAS, ENERGIA, ecc.) ed espone **lo stato tecnico corrente**, distinto dagli stati commerciali del cliente.
 
-`anagrafiche.pdp` rappresenta i **Punti di Prelievo (PDP)** come entità **fisiche** ancorate a un **indirizzo** (`indirizzo_dettaglio_id`), identificate da un **codice univoco globale** (campo `pdp`) e **tipizzate** rispetto a una **utility** (`utilities_id`, es. GAS, ENERGIA…). La tabella **base** contiene lo **stato corrente** (incluso il **cliente attuale** se presente).
-Questa scelta separa stato (qui) da storia (in storico.pdp), semplificando le query operative e garantendo audit completo.
+La progettazione segue tre principi chiave:
 
-Questa modellazione consente di:
+1. **Il PDP è una struttura fisica**, non dipende dai clienti.
+2. **Il PDP ha uno stato tecnico** gestito in `config.stati_pdp`.
+3. **La storia è separata dallo stato corrente**, in `storico.pdp`.
 
-* creare **PDP prima** dell’esistenza di una istanza utility,
-* garantire **coerenza fisica** (PDP non “si sposta” d’indirizzo),
-* mantenere **stato corrente** in base e **storia** a parte.
+Questo modello consente di:
 
----
-
-### 2. Schema e colonne principali
-
-### 2.1 `anagrafiche.pdp` (stato corrente)
-
-* **Chiave primaria**: `id BIGINT IDENTITY`.
-* **`pdp VARCHAR(30) NOT NULL`** → **univoco globale** (`uq_pdp_codice`).
-  *Scelta*: unicità “globale” riflette i codici POD/PDR/PdC normalmente **univoci a prescindere dalla utility** nel dominio.
-* **`utilities_id BIGINT NOT NULL`** → FK `config.utilities(id)`.
-  *Perché*: consente **validazioni/pattern** specifici (es. POD vs PDR), filtri e reporting.
-* **`indirizzo_dettaglio_id BIGINT NOT NULL`** → FK `anagrafiche.indirizzi_dettaglio(id)`.
-  *Perché*: PDP è **ancorato al luogo fisico**.
-* **`cliente_id BIGINT NULL`** → FK `anagrafiche.clienti(id)`.
-  *Perché*: in base teniamo **solo il cliente “corrente”**; tutti i passaggi stanno nello storico.
-* **Audit/ops**: `tx_id UUID NOT NULL`, `data_insert/Update TIMESTAMPTZ`, `user_insert/update VARCHAR(64)`,
-  `storicizza BOOLEAN DEFAULT TRUE`, `extra_info JSONB DEFAULT '{}'`.
-
-### ⚙️ Vincoli e Relazioni
-
-* `PRIMARY KEY (id)`
-* `UNIQUE (pdp)` → `uq_pdp_codice`
-* `UNIQUE (indirizzo_dettaglio_id, utilities_id)` → `uq_pdp_addr_utility`
-  *Perché*: su uno stesso **indirizzo** si ammette al più **un PDP per utility** (GAS, ENERGIA, …).
-* `UNIQUE (id, indirizzo_dettaglio_id)` → `uq_pdp_id_addr`
-  *Perché*: supporta la **FK composita** da `istanze_utilities` (vedi §5).
-* `CHECK char_length(pdp) BETWEEN 1 AND 30` → `chk_pdp_codice_len`
-* Indici: `idx_pdp_utilities_id`, `idx_pdp_indirizzo_dettaglio_id`, `idx_pdp_cliente_id`
-
-### 🚨 Triggers
-
-* `trg_pdp_ins_upd_gen_tx_id` → `dbops.trgfn_tx_id_managed()`
-  *Perché*: garantisce `tx_id` **sempre valorizzato** in INSERT/UPDATE.
-* `trg_pdp_upd_protect_cols` → `anagrafiche.trgfn_pdp_protect_cols()`
-  *Perché*: **immutabilità** di `pdp` (codice) e `indirizzo_dettaglio_id` (il PDP **non cambia luogo**).
-* `trg_z90_pdp_upd_dlt_storico` → `script.trgfn_upd_dlt_storico_generic('pdp_id')`
-  *Perché*: registra **storico** su UPDATE/DELETE (vedi nota in §4.3 per INSERT).
-
-
+* censire punti di prelievo anche senza istanza o cliente,
+* mantenere coerenza infrastrutturale (il PDP non cambia indirizzo),
+* gestire attivazioni/disattivazioni tecniche indipendenti dal ciclo commerciale.
 
 ---
 
-### 🔍 Considerazioni di Progettazione 
+## 2. Schema e colonne principali
 
-1. **PDP come entità fisica ancorata all’indirizzo**
-   Il PDP non si “sposta”: l’immutabilità di `indirizzo_dettaglio_id` è enforced via trigger.
-   → Evita incoerenze storiche (stesso codice PDP che cambia luogo).
+### 2.1 Stato corrente (`anagrafiche.pdp`)
 
-2. **Codice PDP univoco e immutabile**
-   `UNIQUE (pdp)` + trigger protect: il codice è **identità del punto**.
-   → Salvaguarda integrazioni e riferimenti esterni.
-
-3. **Un PDP per utility per indirizzo**
-   `UNIQUE (indirizzo_dettaglio_id, utilities_id)`: su uno stesso luogo puoi avere **max 1** PDP per tipo di utility.
-   → Riflette il caso d’uso: GAS + ENERGIA + (eventuale) ACQUA sullo stesso indirizzo.
-
-4. **Stato corrente in base, timeline nello storico**
-   In `anagrafiche.pdp` c’è **solo** il cliente corrente; i passaggi cliente→cliente si vedono in `storico.pdp` (con `tx_id` e finestre di validità).
-   → Query operative semplici; audit e ricostruzioni affidabili.
-
-5. **`utilities_id` conservato sul PDP**
-   Anche con unicità globale del codice, `utilities_id` abilita **controlli e formattazioni** specifiche (es. regex POD/PDR), oltre a filtri e reporting.
-
-6. **`tx_id` ovunque**
-   Allinea gli eventi di storico e base alla **stessa transazione applicativa**, facilitando troubleshooting e ricostruzioni.
+* **PK**: `id BIGINT IDENTITY`
+* **Codice PDP**: `pdp VARCHAR(30)`, **univoco globale e immutabile**
+* **Utility**: `utilities_id BIGINT NOT NULL` → FK `config.utilities(id)`
+* **Indirizzo fisico**: `indirizzo_dettaglio_id BIGINT NOT NULL` → FK
+* **Cliente corrente**: `cliente_id BIGINT NULL` → FK
+* **Stato tecnico**: `stato_pdp_id BIGINT NOT NULL` → FK `config.stati_pdp(id)`
+* **Audit**: `tx_id`, `data_insert/update`, `user_insert/update`
+* **Storicizzazione**: `storicizza BOOLEAN DEFAULT TRUE`
+* **Extra info**: JSONB
 
 ---
 
-### 4. Comportamento dei trigger e storico
+## 🔄 Stato tecnico del PDP
 
-### 4.1 `dbops.trgfn_tx_id_managed()`
+Con le modifiche concordate, il PDP ora include il campo:
 
-Assegna `NEW.tx_id` se assente in INSERT/UPDATE.
-*Effetto*: `tx_id` sempre presente in base e (via trigger storico) propagato nelle righe di `storico.pdp`.
+### **`stato_pdp_id` → FK verso `config.stati_pdp`**
 
-### 4.2 `anagrafiche.trgfn_pdp_protect_cols()`
+Gli stati tecnici attualmente previsti sono:
 
-Blocca UPDATE su `pdp` e `indirizzo_dettaglio_id` **dopo la prima valorizzazione**.
-*Motivo*: preservare identità (codice) e collocazione fisica.
+| Codice   | Nome              | Descrizione sintetica                             |
+| -------- | ----------------- | ------------------------------------------------- |
+| **DISP** | Disponibile       | Punto fisicamente presente, senza cliente attivo  |
+| **ATT**  | Attivo            | Punto tecnicamente in servizio con cliente attivo |
+| **DTEC** | Disattivo tecnico | Stacco tecnico, lavori, sospensione fisica        |
+| **DISM** | Dismesso          | Punto non più utilizzabile, derivazione rimossa   |
 
+Questa separazione evita la confusione tra **stato tecnico del punto** e **stato commerciale della fornitura**.
+
+### Perché è corretto avere *entrambi* gli stati (tecnico vs commerciale)
+
+* Il PDP può essere tecnicamente **DTEC** anche se il cliente è ancora attivo (morosità o guasto).
+* Il PDP può essere tecnicamente **DISP** con cliente commerciale chiuso.
+* Il PDP può essere **DISMESSO**, mentre lo storico dei clienti rimane valido.
+
+Questo modello consente coerenza e accuratezza anche in domini complessi (gas/energia).
 
 ---
 
-### 5. Integrazione con `anagrafiche.istanze_utilities`
+## ⚙️ Vincoli e Relazioni
 
-* L’istanza ha un **indirizzo** e può collegarsi **opzionalmente** a un **PDP** dello **stesso indirizzo**.
-* Per garantire la coerenza, si usa una **FK composita** su `(pdp_id, indirizzo_dettaglio_id)` → `pdp(id, indirizzo_dettaglio_id)` (serve la UNIQUE `uq_pdp_id_addr` in base).
-* Vincolo di **implicazione**: `CHECK (pdp_id IS NULL OR indirizzo_dettaglio_id IS NOT NULL)` sulla tabella delle istanze, così se c’è il PDP l’indirizzo è obbligatorio.
-
-Effetti: per un dato indirizzo, **max un PDP per utility** → per N utility sullo stesso indirizzo avrai **al più N PDP** e **al più N istanze** collegate (una per PDP/utility).
+* **UNIQUE (pdp)** → codice univoco globale
+* **UNIQUE (indirizzo_dettaglio_id, utilities_id)** → massimo un PDP per utility per indirizzo
+* **UNIQUE (id, indirizzo_dettaglio_id)** → supporto alla FK composita da istanze
+* **CHECK length(pdp)** → verifica formale
+* **FK stato_pdp_id → config.stati_pdp**
+* Indici: `idx_pdp_utilities_id`, `idx_pdp_indirizzo_dettaglio_id`, `idx_pdp_cliente_id`, `idx_pdp_stato_pdp_id`
 
 ---
 
-### 6. Operatività (query tipiche)
+## 🚨 Trigger
 
-* **PDP correnti per indirizzo**
+### `trg_pdp_protect_cols`
+
+Blocca modifiche a:
+
+* `pdp` (codice) → identità del punto
+* `indirizzo_dettaglio_id` → il PDP non può cambiare luogo
+
+### `dbops.trgfn_tx_id_managed`
+
+Garantisce `tx_id` sempre valorizzato.
+
+### `trg_pdp_z90_storico_generic`
+
+Registra UPDATE/DELETE in `storico.pdp`.
+
+*(Si suggerisce evoluzione futura: trigger anche su INSERT per timeline completa).*
+
+---
+
+## 🔍 Considerazioni architetturali aggiornate
+
+### 1. Stato tecnico distinto da cliente
+
+La presenza di `stato_pdp_id` permette di modellare:
+
+* disponibilità tecnica vera, indipendente dal contratto,
+* lavori/disattivi tecnici,
+* dismissioni fisiche della rete.
+
+### 2. Coerenza operativa
+
+Lo stato del PDP può essere aggiornato:
+
+* da processi tecnici (es. interventi sul campo),
+* da eventi commerciali coerenti (es. attivazione cliente → PDP passa a *ATTIVO*),
+* da validazioni in backend.
+
+### 3. Allineamento con istanze
+
+L’istanza (`anagrafiche.istanze_utilities`) può collegarsi solo a PDP **dello stesso indirizzo**.
+
+Ne deriva un modello coerente tra:
+
+* **luogo fisico** (indirizzo_dettaglio),
+* **punto fisico** (pdp),
+* **fornitura** (istanza),
+* **soggetto/cliente**.
+
+---
+
+## 6. Operatività – Query tipiche
+
+**PDP per indirizzo**
 
 ```sql
-SELECT p.*
+SELECT *
+FROM anagrafiche.pdp
+WHERE indirizzo_dettaglio_id = :id;
+```
+
+**Timeline storico**
+
+```sql
+SELECT *
+FROM storico.pdp
+WHERE pdp_id = :id
+ORDER BY valid_from;
+```
+
+**Stato tecnico del PDP**
+
+```sql
+SELECT p.pdp, sp.codice, sp.descrizione
 FROM anagrafiche.pdp p
-WHERE p.indirizzo_dettaglio_id = :addr_id;
-```
-
-* **Timeline di un PDP**
-
-```sql
-SELECT s.*
-FROM storico.pdp s
-WHERE s.pdp_id = :id
-ORDER BY s.valid_from;
-```
-
-* **Stato “aperto” (corrente) di tutti i PDP**
-
-```sql
-SELECT s.*
-FROM storico.pdp s
-WHERE s.valid_to IS NULL;
-```
-
-* **Cliente corrente di un PDP** (dalla base)
-
-```sql
-SELECT p.cliente_id
-FROM anagrafiche.pdp p
+JOIN config.stati_pdp sp ON sp.id = p.stato_pdp_id
 WHERE p.id = :id;
 ```
 
 ---
 
-### 7. Best practice
-
-* **Proteggi** sempre `pdp` e `indirizzo_dettaglio_id` (immutabili) – già coperto dal trigger.
-* **Validazioni per utility** (futuro): applica regex/pattern differenti su `pdp` in base a `utilities_id`.
-* **Indicizza** i join frequenti (`utilities_id`, `indirizzo_dettaglio_id`, `cliente_id`).
-* **Inserisci anche l’evento `I` nello storico** (trigger AFTER INSERT) per avere la timeline completa fin dall’inizio.
-* **Usa `tx_id`** nelle analisi per correlare modifiche multi-tabella.
-
----
-
-### 8. Errori frequenti & diagnosi
-
-* **Violazione `uq_pdp_codice`**: codice duplicato → verificare migrazioni/import.
-* **Violazione `uq_pdp_addr_utility`**: esiste già un PDP della stessa utility su quell’indirizzo.
-* **Update bloccato da trigger protect**: tentato cambio di codice o spostamento d’indirizzo.
-* **Storico incompleto**: manca il trigger INSERT → aggiungere per scrivere l’evento `I`.
-
----
-
-### 9. Evoluzioni possibili
-
-* **Pattern/format per utility**: `CHECK` condizionali o trigger di validazione su `pdp`.
-* **View operative** (es. `v_pdp_correnti`) per semplificare report e API.
-* **Allineamento automatico** indirizzo istanza ↔ indirizzo PDP (trigger lato `istanze_utilities`).
-
----
-
-### 10. Diagramma ER
+## 7. Diagramma ER relazioni
 
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%
 erDiagram
-    utilities            ||--o{ pdp                : has
-    indirizzi_dettaglio  ||--o{ pdp                : has
-    clienti              ||--o{ pdp                : assigned_to
+    stati_pdp           ||--o{ pdp                 : has
+    utilities           ||--o{ pdp                 : has
+    indirizzi_dettaglio ||--o{ pdp                 : located_at
+    clienti             ||--o| pdp                 : current_client
 
-    pdp                  ||--o{ storico_pdp        : history
+    pdp                 ||--o{ storico_pdp         : history
 
-    indirizzi_dettaglio  ||--o{ istanze_utilities  : has
-    istanze_utilities    }o--|| pdp                : uses
+    indirizzi_dettaglio ||--o{ istanze_utilities   : has
+    istanze_utilities   }o--|| pdp                 : uses
+```
+
+---
+
+## 8. Diagramma ER attributi
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    pdp {
+        bigint   id PK
+        varchar  pdp
+        bigint   utilities_id FK
+        bigint   indirizzo_dettaglio_id FK
+        bigint   cliente_id FK
+        bigint   stato_pdp_id FK
+        jsonb    extra_info
+        timestamptz data_insert
+        text     user_insert
+        timestamptz data_update
+        text     user_update
+        uuid     tx_id
+        boolean  storicizza
+    }
 ```
 
 ---
 
 {% include-markdown "signature-core.md" %}
+
+---

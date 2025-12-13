@@ -1,0 +1,46 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251208-02-clienti-billing-account-istanza-link-mctit.yaml
+
+  - changeSet:
+      id: 20251208-02-clienti-billing-account-istanza-link
+      author: mctit
+
+      comment: "Allinea clienti.billing_account_id all'istanza_utility_id del billing_account tramite FK composita"
+
+      changes:
+        # 1) Rimuovo il vecchio FK solo su billing_account_id
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: clienti
+            constraintName: fk_clienti_billing_account
+
+        # 2) Rendo (id, istanza_utility_id) referenziabile in billing_account
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnNames: id, istanza_utility_id
+            constraintName: uq_billing_account_id_istanza_utility
+
+        # 3) Nuovo FK composito: il billing account deve appartenere alla stessa istanza
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: clienti
+            baseColumnNames: billing_account_id, istanza_utility_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id, istanza_utility_id
+            constraintName: fk_clienti_billing_account
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+            deferrable: false
+            initiallyDeferred: false
+            validate: true

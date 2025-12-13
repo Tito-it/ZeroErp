@@ -1,0 +1,38 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20251208-01-add-uniq-clienti-istanza-mctit.yaml
+
+  - changeSet:
+      id: 20251208-01-add-uniq-clienti-istanza
+      author: mctit
+      comment: "Vincolo UNIQUE: per ogni istanza_utility al massimo un cliente"
+
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - not:
+            - uniqueConstraintExists:
+                schemaName: anagrafiche
+                tableName: clienti
+                constraintName: uq_clienti_istanza_utility
+
+      changes:
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: clienti
+            columnNames: istanza_utility_id
+            constraintName: uq_clienti_istanza_utility
+
+      rollback:
+        - dropUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: clienti
+            constraintName: uq_clienti_istanza_utility

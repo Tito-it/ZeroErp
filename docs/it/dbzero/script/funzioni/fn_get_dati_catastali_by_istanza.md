@@ -9,7 +9,7 @@ CREATE FUNCTION fn_get_dati_catastali_by_istanza(p_istanza_utilities_id integer)
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_dati_catastali_by_istanza(p_istanza_utilities_id integer)
- RETURNS anagrafiche.dati_catastali
+ RETURNS anagrafiche.catasto_unita_immobiliari
  LANGUAGE plpgsql
 AS $function$
   DECLARE

@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Funzione `script.fn_guard_ins_soggetto_ruolo`
+## 📘 Documentazione Concettuale – Funzione `script.fn_guard_soggetto_ruolo`
 
 > 👀 **Vedi anche**
 
@@ -6,8 +6,9 @@
 >
 > * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
 > * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)  
+>
 
-La funzione **`script.fn_guard_ins_soggetto_ruolo(p_soggetto_id, p_soggetto_ruolo_id, p_cd_int_ruolo)`** centralizza e semplifica la gestione della relazione tra un **soggetto** e il suo **ruolo**. Garantisce che, ogni volta che si assegna un ruolo a un soggetto, la tabella `anagrafiche.soggetti_ruoli` sia mantenuta correttamente e senza duplicati.
+La funzione **`script.fn_guard_soggetto_ruolo(p_soggetto_id, p_soggetto_ruolo_id, p_cd_int_ruolo)`** centralizza e semplifica la gestione della relazione tra un **soggetto** e il suo **ruolo**. Garantisce che, ogni volta che si assegna un ruolo a un soggetto, la tabella `anagrafiche.soggetti_ruoli` sia mantenuta correttamente e senza duplicati.
 
 ---
 
@@ -70,7 +71,7 @@ La funzione **`script.fn_guard_ins_soggetto_ruolo(p_soggetto_id, p_soggetto_ruol
 Utilizzare all’interno di trigger `BEFORE INSERT` o `BEFORE UPDATE` sulle tabelle di assegnazione ruoli:
 
 ```plpgsql
-NEW.soggetto_ruolo_id := script.fn_guard_ins_soggetto_ruolo(
+NEW.soggetto_ruolo_id := script.fn_guard_soggetto_ruolo(
   NULL,
   NEW.soggetto_ruolo_id,
   'CL'            -- o altro codice interno di ruolo

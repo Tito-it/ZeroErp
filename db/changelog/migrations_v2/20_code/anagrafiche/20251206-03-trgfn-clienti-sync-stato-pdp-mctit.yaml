@@ -1,0 +1,350 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+# NOta vedere sotto per la versione corretta della funzione.
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251206-03-trgfn-clienti-sync-stato-pdp-mctit.yaml
+
+    - changeSet:
+          id: 20251206-03-create-trgfn-clienti-sync-stato-pdp
+          author: mctit
+          comment: "Sincronizza lo stato tecnico del PDP (config.stati_pdp)
+              in base al cambio di stato_cliente del cliente."
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_cd_stato_cliente   text;
+                            v_cd_int_attivo      constant text := 'AT';
+                            v_cd_int_chiuso      constant text := 'CH';
+
+                            v_stato_pdp_att_id   bigint;
+                            v_stato_pdp_disp_id  bigint;
+                            v_stato_pdp_dism_id  bigint;
+
+                            v_other_active_count integer;
+                        BEGIN
+                            -- =========================================================
+                            -- Sincronizza lo stato tecnico del PDP (config.stati_pdp)
+                            -- in base al cambio di stato_cliente del cliente.
+                            --
+                            -- Regole implementate (SOLO AT e CH):
+                            --  - Se stato_cliente = 'AT' (Attivo)
+                            --      -> PDP passa a 'ATT' (Attivo) se non DISMESSO
+                            --
+                            --  - Se stato_cliente = 'CH' (Chiuso)
+                            --      -> se NON esistono altri clienti ATTIVI sullo stesso PDP
+                            --         PDP passa a 'DISP' (Disponibile)
+                            --
+                            --  Tutti gli altri casi NON modificano lo stato_pdp.
+                            --  Gli stati 'DTEC' e 'DISM' saranno gestiti da processi/azioni specifiche.
+                            -- =========================================================
+
+                            ----------------------------------------------------------------
+                            -- 0) Se non c'è PDP collegato, non facciamo nulla
+                            ----------------------------------------------------------------
+                            IF NEW.pdp_id IS NULL THEN
+                                RETURN NEW;
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- 1) Consideriamo solo:
+                            --    - INSERT
+                            --    - UPDATE in cui cambia stato_cliente_id
+                            ----------------------------------------------------------------
+                            IF TG_OP = 'UPDATE' THEN
+                                IF NEW.stato_cliente_id IS NOT DISTINCT FROM OLD.stato_cliente_id THEN
+                                    RETURN NEW;
+                                END IF;
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- 2) Recupero codice_interno dello stato_cliente corrente
+                            ----------------------------------------------------------------
+                            SELECT sc.codice_interno
+                            INTO v_cd_stato_cliente
+                            FROM config.stati_cliente sc
+                            WHERE sc.id = NEW.stato_cliente_id;
+
+                            -- Se per qualche motivo non troviamo lo stato, non facciamo nulla
+                            IF v_cd_stato_cliente IS NULL THEN
+                                RETURN NEW;
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- 3) Pre-carico gli ID degli stati PDP che ci servono:
+                            --    - ATT  (Attivo tecnico)
+                            --    - DISP (Disponibile)
+                            --    - DISM (Dismesso, da non toccare)
+                            ----------------------------------------------------------------
+                            SELECT
+                                MAX(CASE WHEN sp.codice_interno = 'ATT'  THEN sp.id END),
+                                MAX(CASE WHEN sp.codice_interno = 'DISP' THEN sp.id END),
+                                MAX(CASE WHEN sp.codice_interno = 'DISM' THEN sp.id END)
+                            INTO
+                                v_stato_pdp_att_id,
+                                v_stato_pdp_disp_id,
+                                v_stato_pdp_dism_id
+                            FROM config.stati_pdp sp;
+
+                            ----------------------------------------------------------------
+                            -- 4) Caso stato_cliente = 'AT' (Attivo)
+                            --    -> PDP va in ATTIVO, se non DISMESSO
+                            ----------------------------------------------------------------
+                            IF v_cd_stato_cliente = v_cd_int_attivo THEN
+
+                                -- Non cambiare mai uno stato DISMESSO
+                                UPDATE anagrafiche.pdp p
+                                SET stato_pdp_id = v_stato_pdp_att_id
+                                WHERE p.id = NEW.pdp_id
+                                AND p.stato_pdp_id IS DISTINCT FROM v_stato_pdp_att_id
+                                AND (v_stato_pdp_dism_id IS NULL OR p.stato_pdp_id IS DISTINCT FROM v_stato_pdp_dism_id);
+
+                                RETURN NEW;
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- 5) Caso stato_cliente = 'CH' (Chiuso)
+                            --    -> se NON esistono altri clienti ATTIVI sullo stesso PDP,
+                            --       PDP va in DISPONIBILE (DISP)
+                            ----------------------------------------------------------------
+                            IF v_cd_stato_cliente = v_cd_int_chiuso THEN
+
+                                -- Esistono altri clienti ATIVI sullo stesso PDP?
+                                SELECT COUNT(*)::integer
+                                INTO v_other_active_count
+                                FROM anagrafiche.clienti c
+                                JOIN config.stati_cliente sc
+                                ON sc.id = c.stato_cliente_id
+                                WHERE c.pdp_id = NEW.pdp_id
+                                AND c.id <> NEW.id
+                                AND sc.codice_interno = v_cd_int_attivo;
+
+                                -- Se non ci sono altri attivi e il PDP non è DISMESSO, mettilo DISPONIBILE
+                                IF v_other_active_count = 0 THEN
+                                    UPDATE anagrafiche.pdp p
+                                    SET stato_pdp_id = v_stato_pdp_disp_id
+                                    WHERE p.id = NEW.pdp_id
+                                    AND p.stato_pdp_id IS DISTINCT FROM v_stato_pdp_disp_id
+                                    AND (v_stato_pdp_dism_id IS NULL OR p.stato_pdp_id IS DISTINCT FROM v_stato_pdp_dism_id);
+                                END IF;
+
+                                RETURN NEW;
+                            END IF;
+
+                            ----------------------------------------------------------------
+                            -- 6) Tutti gli altri stati_cliente NON modificano lo stato_pdp.
+                            --    Stati PDP DTEC/DISM saranno gestiti da processi dedicati.
+                            ----------------------------------------------------------------
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp()
+                            IS 'Sincronizza lo stato tecnico del PDP (config.stati_pdp)
+                            in base al cambio di stato_cliente del cliente.
+                            
+                            Regole implementate (SOLO AT e CH):
+                             - Se stato_cliente = ''AT'' (Attivo)
+                                 -> PDP passa a ''ATT'' (Attivo) se non DISMESSO
+                             
+                             - Se stato_cliente = ''CH'' (Chiuso)
+                                 -> se NON esistono altri clienti ATTIVI sullo stesso PDP
+                                    PDP passa a ''DISP'' (Disponibile)
+                             
+                             Tutti gli altri casi NON modificano lo stato_pdp.
+                             Gli stati ''DTEC'' e ''DISM'' saranno gestiti da processi/azioni specifiche.'; 
+
+
+
+                        CREATE TRIGGER trg_clienti_sync_stato_pdp_aft_ins_upd
+                            AFTER INSERT OR UPDATE OF stato_cliente_id
+                            ON anagrafiche.clienti
+                            FOR EACH ROW
+                            EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp();
+                        COMMENT ON TRIGGER trg_clienti_sync_stato_pdp_aft_ins_upd ON anagrafiche.clienti
+                            IS 'Sincronizza lo stato tecnico del PDP (config.stati_pdp)
+                            in base al cambio di stato_cliente del cliente. ';
+
+    - changeSet:
+          id: 20251206-03-01-create-trgfn-clienti-sync-stato-pdp
+          author: mctit
+          comment: "Sincronizza lo stato tecnico del PDP (config.stati_pdp)
+              in base al cambio di stato_cliente del cliente."
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_cd_stato_cliente text;
+                            v_stato_att_id     bigint;
+                            v_stato_disp_id    bigint;
+                        BEGIN
+
+                            -- =========================================================
+                            -- Sincronizza lo stato tecnico del PDP (config.stati_pdp)
+                            -- in base al cambio di stato_cliente del cliente.
+                            --
+                            -- Regole implementate (SOLO AT e CH):
+                            --  - Se stato_cliente = 'AT' (Attivo)
+                            --      -> PDP passa a 'ATT' (Attivo) se non DISMESSO
+                            --
+                            --  - Se stato_cliente = 'CH' (Chiuso)
+                            --      -> se NON esistono altri clienti ATTIVI sullo stesso PDP
+                            --         PDP passa a 'DISP' (Disponibile)
+                            --
+                            --  Tutti gli altri casi NON modificano lo stato_pdp.
+                            --  Gli stati 'DTEC' e 'DISM' saranno gestiti da processi/azioni specifiche.
+                            -- =========================================================
+
+
+
+                            --------------------------------------------------------------------
+                            -- 0) Senza PDP collegato → nessuna sincronizzazione necessaria
+                            --------------------------------------------------------------------
+                            IF NEW.pdp_id IS NULL THEN
+                                RETURN NEW;
+                            END IF;
+
+                            --------------------------------------------------------------------
+                            -- 1) Recupero codice interno dello stato cliente
+                            --------------------------------------------------------------------
+                            SELECT sc.codice_interno
+                            INTO v_cd_stato_cliente
+                            FROM config.stati_cliente sc
+                            WHERE sc.id = NEW.stato_cliente_id;
+
+                            IF v_cd_stato_cliente IS NULL THEN
+                                RETURN NEW; -- stato non trovato → non interveniamo
+                            END IF;
+
+                            --------------------------------------------------------------------
+                            -- 2) Ci interessano solo due stati cliente:
+                            --      AT = Attivo → PDP deve diventare ATT
+                            --      CH = Chiuso → PDP deve tornare DISP
+                            --------------------------------------------------------------------
+                            IF v_cd_stato_cliente NOT IN ('AT', 'CH') THEN
+                                RETURN NEW;
+                            END IF;
+
+                            --------------------------------------------------------------------
+                            -- 3) Recupero ID degli stati tecnici PDP
+                            --------------------------------------------------------------------
+                            SELECT id INTO v_stato_att_id
+                            FROM config.stati_pdp
+                            WHERE codice_interno = 'ATT';
+
+                            SELECT id INTO v_stato_disp_id
+                            FROM config.stati_pdp
+                            WHERE codice_interno = 'DISP';
+
+                            IF v_stato_att_id IS NULL OR v_stato_disp_id IS NULL THEN
+                                
+                                 PERFORM script.fn_log_and_raise_error(
+                                        'database',
+                                        'anagrafiche.trgfn_clienti_sync_stato_pdp',
+                                        'E_CODICE',
+                                        jsonb_build_object(
+                                            'config.stati_pdp: stati tecnici ATT / DISP non configurati correttamente)', 
+                                            'att/disp missing'  
+                                        ),
+                                        new.tx_id,
+                                        'ATT/DISP',
+                                        'config.stati_pdp'
+                                    );
+
+                            END IF;
+
+
+                            --------------------------------------------------------------------
+                            -- 4) Logica di sincronizzazione
+                            --------------------------------------------------------------------
+
+                            -- Caso A → Cliente in ATTIVO → PDP = ATTIVO
+                            IF v_cd_stato_cliente = 'AT' THEN
+
+                                UPDATE anagrafiche.pdp p
+                                SET stato_pdp_id = v_stato_att_id
+                                WHERE p.id = NEW.pdp_id
+                                AND p.stato_pdp_id IS DISTINCT FROM v_stato_att_id;
+
+                                RETURN NEW;
+                            END IF;
+
+                            -- Caso B → Cliente CHIUSO → PDP = DISPONIBILE
+                            IF v_cd_stato_cliente = 'CH' THEN
+
+                                UPDATE anagrafiche.pdp p
+                                SET stato_pdp_id = v_stato_disp_id
+                                WHERE p.id = NEW.pdp_id
+                                AND p.stato_pdp_id IS DISTINCT FROM v_stato_disp_id;
+
+                                RETURN NEW;
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp()
+                            IS 'Sincronizza lo stato tecnico del PDP (config.stati_pdp)
+                            in base al cambio di stato_cliente del cliente.
+                            
+                            Regole implementate (SOLO AT e CH):
+                             - Se stato_cliente = ''AT'' (Attivo)
+                                 -> PDP passa a ''ATT'' (Attivo) se non DISMESSO
+                             
+                             - Se stato_cliente = ''CH'' (Chiuso)
+                                 -> se NON esistono altri clienti ATTIVI sullo stesso PDP
+                                    PDP passa a ''DISP'' (Disponibile)
+                             
+                             Tutti gli altri casi NON modificano lo stato_pdp.
+                             Gli stati ''DTEC'' e ''DISM'' saranno gestiti da processi/azioni specifiche.';
+
+
+                        CREATE OR REPLACE TRIGGER trg_clienti_a20_sync_stato_pdp_aft_ins_upd
+                            AFTER INSERT OR UPDATE OF stato_cliente_id, pdp_id
+                            ON anagrafiche.clienti
+                            FOR EACH ROW
+                            EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp();
+
+                        COMMENT ON TRIGGER trg_clienti_a20_sync_stato_pdp_aft_ins_upd ON anagrafiche.clienti
+                            IS 'Sincronizza lo stato tecnico del PDP (config.stati_pdp)
+                            in base al cambio di stato_cliente del cliente. ';
+
+
+                        DROP TRIGGER IF EXISTS trg_clienti_sync_stato_pdp_aft_ins_upd ON anagrafiche.pdp;
+
+    - changeSet:
+          id: 20251206-03-02-create-trgfn-clienti-sync-stato-pdp
+          author: mctit
+          comment: "Drop trigger trg_clienti_sync_stato_pdp_aft_ins_upd creato erroneamente."
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        DROP TRIGGER IF EXISTS trg_clienti_sync_stato_pdp_aft_ins_upd ON anagrafiche.clienti;

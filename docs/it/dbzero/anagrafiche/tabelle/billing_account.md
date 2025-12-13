@@ -28,6 +28,7 @@
 | FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
 | PRIMARY KEY | pk_billing_account | id |
 | UNIQUE | uq_billing_account_codice | codice |
+| UNIQUE | uq_billing_account_id_istanza_utility | istanza_utility_id, id |
 | UNIQUE | uq_billing_instance_utility | utility_id, istanza_utility_id |
 
 ## 📑 Indici
@@ -39,6 +40,7 @@
 | ix_billing_account_parent | `CREATE INDEX ix_billing_account_parent ON anagrafiche.billing_account USING btree (parent_account_id)` |
 | pk_billing_account | `CREATE UNIQUE INDEX pk_billing_account ON anagrafiche.billing_account USING btree (id)` |
 | uq_billing_account_codice | `CREATE UNIQUE INDEX uq_billing_account_codice ON anagrafiche.billing_account USING btree (codice)` |
+| uq_billing_account_id_istanza_utility | `CREATE UNIQUE INDEX uq_billing_account_id_istanza_utility ON anagrafiche.billing_account USING btree (id, istanza_utility_id)` |
 | uq_billing_instance_utility | `CREATE UNIQUE INDEX uq_billing_instance_utility ON anagrafiche.billing_account USING btree (istanza_utility_id, utility_id)` |
 
 ## 🚨 Trigger

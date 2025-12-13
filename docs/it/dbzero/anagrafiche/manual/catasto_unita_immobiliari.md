@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Tabella `anagrafiche.dati_catastali`
+## 📘 Documentazione Concettuale – Tabella `anagrafiche.catasto_unita_immobiliari`
 
 > 👀 **Vedi anche**
 >
@@ -10,13 +10,13 @@
 > Approfondimento funzioni:   
 >
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
 ---
 
 ### 🎯 Scopo Principale
-
-La tabella `anagrafiche.dati_catastali` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
+(latest review 10-12-25)
+La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
 
 * **Evita ridondanza** delle informazioni catastali su più istanze nello stesso indirizzo.
 * Permette di **storico** e versioning dei dati per singola istanza.
@@ -37,7 +37,7 @@ La tabella `anagrafiche.dati_catastali` archivia i **dati catastali** associati 
 
 1. **Unicità**
 
-   * È garantita dal vincolo `uq_dati_catastali_indirizzo_istanza` su (`indirizzo_dettaglio_id`, `istanza_utility_id`).
+   * È garantita dal vincolo `uq_catasto_unita_immobiliari_indirizzo_istanza` su (`indirizzo_dettaglio_id`, `istanza_utility_id`).
 2. **Campi obbligatori**
 
    * `indirizzo_dettaglio_id` NOT NULL
@@ -58,18 +58,18 @@ La tabella `anagrafiche.dati_catastali` archivia i **dati catastali** associati 
 ### 💡 Vantaggi Operativi
 
 * **Normalizzazione**: un solo set di dati catastali per combinazione indirizzo+istanza.
-* **Storico**: ogni modifica viene snapshot con `trg_z90_dati_catastali_upd_dlt_storico`.
+* **Storico**: ogni modifica viene snapshot con `trg_z90_catasto_unita_immobiliari_storico_upd_dlt`.
 * **Audit**: i trigger di audit mantengono traccia delle modifiche in `data_update`/`user_update`.
 
 ---
 
 ### ⚙️ Trigger e Funzioni Coinvolte
 
-| Trigger                                  | Tabella          | Scopo                                                                                  |
-| ---------------------------------------- | ---------------- | -------------------------------------------------------------------------------------- |
-| `trg_dati_catastali_ins_upd_gen_tx_id`   | `dati_catastali` | Genera `tx_id` se assente (dbops.trgfn_tx_id_managed)                               |
-| `trg_upd_dati_catastali_audit_data_user` | `dati_catastali` | Aggiorna `data_update` e `user_update` (script.trgfn_upd_audit_data_user_generic) |
-| `trg_z90_dati_catastali_upd_dlt_storico` | `dati_catastali` | Crea snapshot in storico (script.trgfn_upd_dlt_storico_generic)                    |
+| Trigger                                             | Tabella                     | Scopo                                                                             |
+| --------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------- |
+| `trg_catasto_unita_immobiliari_gen_tx_id_ins_upd`   | `catasto_unita_immobiliari` | Genera `tx_id` se assente (dbops.trgfn_tx_id_managed)                             |
+| `trg_catasto_unita_immobiliari_audit_data_user_upd` | `catasto_unita_immobiliari` | Aggiorna `data_update` e `user_update` (script.trgfn_upd_audit_data_user_generic) |
+| `trg_z90_catasto_unita_immobiliari_storico_upd_dlt` | `catasto_unita_immobiliari` | Crea snapshot in storico (script.trgfn_upd_dlt_storico_generic)                   |
 
 ---
 
@@ -93,46 +93,12 @@ Questa tabella è fondamentale per gestire in modo **flessibile** e **storicizza
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%
 erDiagram
-    indirizzi_dettaglio ||--o{ dati_catastali : has
-    istanze_utilities   ||--o{ dati_catastali : linked_by
+    indirizzi_dettaglio ||--o{ catasto_unita_immobiliari : has
+    istanze_utilities   ||--o{ catasto_unita_immobiliari : linked_by
 
     indirizzi_dettaglio { int id PK }
     istanze_utilities   { int id PK }
-    dati_catastali      { bigint id PK }
-
-```
-
----
-
-###  Diagramma ER attributi
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    dati_catastali {
-        bigint    id PK
-        int       indirizzo_dettaglio_id FK
-        int       istanza_utility_id FK
-        char      sezione_catastale
-        char      foglio_catastale
-        char      particella
-        char      subalterno
-        varchar   categoria_catastale
-        varchar   classe_catastale
-        numeric   rendita_catastale
-        int       consistenza
-        char      tipo_accatastamento
-        bool      immobile_rurale
-        char      destinazione_immobile
-        int       anno_protocollo
-        int       superficie
-        datetime  data_insert
-        varchar   user_insert
-        datetime  data_update
-        varchar   user_update
-        uuid      tx_id
-        bool      storicizza
-    }
+    catasto_unita_immobiliari      { bigint id PK }
 
 ```
 

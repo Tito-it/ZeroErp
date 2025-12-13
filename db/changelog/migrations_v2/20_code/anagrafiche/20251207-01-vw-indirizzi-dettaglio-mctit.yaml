@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+        - logicalFilePath: migrations_v2/20_code/anagrafiche/20251207-01-vw-indirizzi-dettaglio-mctit.yaml
+
+        - changeSet:
+                  id: 20251207-01-vw-indirizzi-dettaglio
+                  author: mctit
+                  runOnChange: true
+                  validCheckSum:
+                          - ANY
+
+                            # ------------------------------------------------------------
+                            # Scopo
+                            # ------------------------------------------------------------
+                            # Crea una vista di comodo per la ricerca e la consultazione
+                            # degli indirizzi di dettaglio normalizzati.
+                            #
+                            # anagrafiche.vw_indirizzi_dettaglio:
+                            #   - Espone i campi chiave di anagrafiche.indirizzi_dettaglio
+                            #   - Include il comune (via config.stradario)
+                            #   - È pensata come base per funzioni di ricerca e UI
+                            #
+                            # Nota:
+                            #   La logica applicativa (ricerca parametrica, LIKE, ecc.)
+                            #   sarà implementata in una funzione separata, che userà
+                            #   questa vista come sorgente.
+                            # ------------------------------------------------------------
+
+                            # ------------------------------------------------------
+                            # Vista di comodo per la ricerca indirizzi_dettaglio
+                            #
+                            # Campi esposti:
+                            #   - id                         : PK indirizzo_dettaglio
+                            #   - stradario_id               : FK a config.stradario
+                            #   - comune_id                  : comune dello stradario
+                            #   - comune                     : descrizione comune dello stradario
+                            #   - codice postale             : CAP del comune dello stradario
+                            #   - provincia                  : provincia del comune dello stradario
+                            #   - indirizzo_normalizzato     : stringa composta (via, civico, palazzina, scala, piano, interno)
+                            #   - via_norm                   : via normalizzata
+                            #   - civico                     : civico numerico
+                            #   - estensione_civico          : lettera/estensione civico (es. A, B, int. scala ecc.)
+                            #   - palazzina                  : palazzina
+                            #   - scala                      : scala
+                            #   - piano                      : piano
+                            #   - interno                    : interno
+                            #   - altro                      : note aggiuntive non strutturate
+                            #   - civic_geoloc               : punto geolocalizzato del civico
+                            #   - street_geoloc              : punto geolocalizzato di via
+                            #   - attivo                     : flag attivo/disattivo
+                            #   - storicizza                 : abilita/disabilita storico
+                            #   - tx_id                      : id transazione logica
+                            #   - data_insert / user_insert  : audit inserimento
+                            #   - data_update / user_update  : audit ultima modifica
+                            #
+                            # Uso previsto:
+                            #   - Funzioni helper di ricerca (es. fn_search_indirizzi_dettaglio)
+                            #   - Interfacce utente (autocomplete indirizzo)
+                            #   - Reportistica leggera sugli indirizzi normalizzati
+                            #
+                            # Non va usata per:
+                            #   - DML diretto (INSERT/UPDATE/DELETE) → usare sempre le tabelle base
+                            # ------------------------------------------------------
+
+                  preConditions:
+                          - onFail: MARK_RAN
+                          - onError:
+                                    HALT
+                                    # La vista ha senso solo se esistono le tabelle di base
+                          - tableExists:
+                                    schemaName: anagrafiche
+                                    tableName: indirizzi_dettaglio
+                          - tableExists:
+                                    schemaName: config
+                                    tableName: stradario
+
+                  changes:
+                          - sql:
+                                    splitStatements: false
+                                    stripComments: false
+                                    sql: |
+                                            --DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_dettaglio;
+
+                                            CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_dettaglio
+                                            AS
+                                                SELECT
+                                                    -- --------------------------------------------------------
+                                                    -- Uso previsto:
+                                                    --   - Funzioni helper di ricerca (es. fn_search_indirizzi_dettaglio)
+                                                    --   - Interfacce utente (autocomplete indirizzo)
+                                                    --   - Reportistica leggera sugli indirizzi normalizzati
+                                                    --
+                                                    -- Non va usata per:
+                                                    --   - DML diretto (INSERT/UPDATE/DELETE) → usare sempre le tabelle base
+                                                    ------------------------------------------------------
+
+                                                    idd.id                      AS indirizzo_dettaglio_id,
+                                                    idd.stradario_id,
+                                                    s.comune_id,
+                                                    idd.indirizzo_normalizzato,
+                                                    idd.via_norm,
+                                                    idd.civico,
+                                                    idd.estensione_civico,
+                                                    idd.palazzina,
+                                                    idd.scala,
+                                                    idd.piano,
+                                                    idd.interno,
+                                                    idd.altro,
+                                                    idd.civic_geoloc,
+                                                    idd.street_geoloc,
+                                                    idd.attivo,
+                                                    idd.storicizza,
+                                                    idd.tx_id,
+                                                    idd.data_insert,
+                                                    idd.user_insert,
+                                                    idd.data_update,
+                                                    idd.user_update,
+                                                    ic.comune                   AS descrizione_comune,
+                                                    ic.codice_postale           AS cap,
+                                                    ic.provincia                AS provincia
+                                                    
+                                                    FROM anagrafiche.indirizzi_dettaglio idd
+                                                    JOIN config.stradario s
+                                                    ON s.id = idd.stradario_id
+                                                    JOIN script.vw_indirizzo_completo ic
+                                                    ON ic.id_stradario = idd.stradario_id;
+
+
+                                                    COMMENT ON VIEW anagrafiche.vw_indirizzi_dettaglio 
+                                                    IS
+                                                    'Vista di comodo per la ricerca e consultazione degli indirizzi di dettaglio normalizzati.
+                                                     Espone i campi chiave di anagrafiche.indirizzi_dettaglio, 
+                                                     include comune / provincia / CAP (via script.vw_indirizzo_completo)
+                                                     Pensata come base per funzioni di ricerca e UI.';

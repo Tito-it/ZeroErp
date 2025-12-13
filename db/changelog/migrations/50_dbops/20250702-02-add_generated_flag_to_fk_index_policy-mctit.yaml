@@ -1,8 +1,7 @@
-
 # ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Liquibase changelog per Zero ERP
-# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
 #
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
@@ -15,7 +14,7 @@ databaseChangeLog:
         # 1) Aggiunge colonna per indicare l'origine dello script
         - addColumn:
             schemaName: dbops
-            tableName: fk_index_policy 
+            tableName: fk_index_policy
             columns:
               - column:
                   name: generated_by_script
@@ -24,7 +23,6 @@ databaseChangeLog:
                   remarks: "True se l'indice suggerito è stato creato da Liquibase/script"
         # 2) Commento sulla nuova colonna
         - sql:
-            
             sql: |
               COMMENT ON COLUMN dbops.fk_index_policy.generated_by_script
                 IS 'Flag che indica se la foreign key è stata registrata automaticamente da script';
@@ -32,12 +30,12 @@ databaseChangeLog:
   - changeSet:
       id: 20250702-03-seed_fk_index_policy_from_view
       author: mctit
-      runOnChange: true
+      # runOnChange: true
       validCheckSums:
         - ANY
       changes:
         # 3) Inserisce in fk_index_policy tutte le fk mancanti (derivate dalla view)
-        - sql: 
+        - sql:
             splitStatements: false
             sql: |
               CREATE OR REPLACE FUNCTION dbops.fn_seed_fk_index_policy()
@@ -74,7 +72,6 @@ databaseChangeLog:
               COMMENT ON FUNCTION dbops.fn_seed_fk_index_policy()
                 IS 'Registro policy indici per foreign key: seed automatico da view';
 
-  
   - changeSet:
       id: 20250702-90-add_generated_flag_to_fk_index_policy
       author: mctit
