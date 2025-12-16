@@ -4,7 +4,7 @@
 - [bank_branches](tabelle/bank_branches.md) — (latest review 02-12-25) La tabella **`anagrafiche.bank_branches`** rappresenta le **filiali di istituti di credito** (branch bancarie) collegate a un determinato **ruolo di soggetto** di tipo *ISTITUTO_CREDITO* (`anagrafiche.soggetti_ruoli`).
 - [billing_account](tabelle/billing_account.md) — (latest review 02-12-25)
 - [catasto_unita_immobiliari](tabelle/catasto_unita_immobiliari.md) — (latest review 10-12-25) La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
-- [catasto_unita_immobiliari_indirizzi](tabelle/catasto_unita_immobiliari_indirizzi.md)
+- [catasto_unita_immobiliari_indirizzi](tabelle/catasto_unita_immobiliari_indirizzi.md) — La tabella `anagrafiche.catasto_unita_immobiliari_indirizzi` è una **tabella ponte** che esplicita la relazione tra:
 - [clienti](tabelle/clienti.md) — (latest review 02-12-25) La tabella `anagrafiche.clienti` memorizza le informazioni contrattuali e di fatturazione di un soggetto per una specifica *istanza* di servizio. Rappresenta la fase in cui un'attivazione (istanza) diventa un cliente ufficiale, includendo dettagli di scadenze, pagamento e classificazioni speciali (PA, split payment).
 - [contatti](tabelle/contatti.md) — (latest review 02-12-25) * **Centralizzare i contatti**     Un’unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.
 - [conti_bancari](tabelle/conti_bancari.md) — (latest review 02-12-25) `anagrafiche.conti_bancari` è l’**anagrafe unica degli IBAN**. Centralizza e **deduplica** i conti correnti, li **normalizza** (uppercase, senza spazi) e li rende riusabili da **qualsiasi soggetto** e **ruolo**. Questo disaccoppiamento:
@@ -53,6 +53,8 @@
 - [trgfn_indirizzi_sync_geoloc](funzioni/trgfn_indirizzi_sync_geoloc.md) — Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`. In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.
 - [trgfn_istanze_utilities_normalize](funzioni/trgfn_istanze_utilities_normalize.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
 - [trgfn_istanze_utilities_protect_codice](funzioni/trgfn_istanze_utilities_protect_codice.md) — Il trigger `anagrafiche.trgfn_istanze_utilities_upd_protect_codice`, eseguito **prima di ogni UPDATE** su `anagrafiche.istanze_utilities`, impedisce modifiche non autorizzate al campo **`codice (istanza)`** una volta impostato.
+- [trgfn_iu_clone_catasto_from_parent](funzioni/trgfn_iu_clone_catasto_from_parent.md)
+- [trgfn_iu_sync_catasto_unita_indirizzo](funzioni/trgfn_iu_sync_catasto_unita_indirizzo.md)
 - [trgfn_pdp_protect_cols](funzioni/trgfn_pdp_protect_cols.md)
 - [trgfn_pdp_set_default_stato](funzioni/trgfn_pdp_set_default_stato.md)
 - [trgfn_resellers_guard_ruolo_reseller](funzioni/trgfn_resellers_guard_ruolo_reseller.md)

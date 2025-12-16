@@ -97,9 +97,6 @@ BEGIN
     LIMIT 1;
 
     IF v_stato_chiuso_id IS NULL THEN
-        RAISE EXCEPTION
-            'fn_subentro_cliente: stato_cliente con codice_interno = % non trovato',
-            v_codice_chiuso;
         PERFORM script.fn_log_and_raise_error(
                           'database',
                           'script.fn_subentro_cliente',

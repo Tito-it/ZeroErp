@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Fix catasto_unita_immobiliari:#
+# Elimina colonna e fk
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20251215-01-refactor-catasto-unita-immobiliari-drop-istanza-utility-link-mctit.yaml
+
+  - changeSet:
+      id: 20251212-01-01-drop-duplicate-fk20251215-01-refactor-catasto-unita-immobiliari-drop-istanza-utility-link
+
+      author: mctit
+      comment: >
+        Rimuove la FK duplicata ereditata da dati_catastali, lasciando solo
+        fk_catasto_un_imm_ist_utility su istanza_utility_id.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- Refactor: rimozione ciclo FK tra:
+              --   anagrafiche.istanze_utilities.catasto_unita_immobiliare_id  -> catasto_unita_immobiliari.id
+              --   anagrafiche.catasto_unita_immobiliari.istanza_utility_id    -> istanze_utilities.id  (DA RIMUOVERE)
+              --
+              -- Obiettivo:
+              --   - Rendere "istanza -> catasto" l'unico legame ufficiale
+              --   - Catasto resta collegato a indirizzo tramite tabella ponte
+              -- ============================================================
+
+              -- 1) Drop FK constraint (se esiste)
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE n.nspname = 'anagrafiche'
+                    AND t.relname = 'catasto_unita_immobiliari'
+                    AND c.conname = 'fk_catasto_un_imm_ist_utility'
+                ) THEN
+                  EXECUTE 'ALTER TABLE anagrafiche.catasto_unita_immobiliari DROP CONSTRAINT fk_catasto_un_imm_ist_utility';
+                END IF;
+              END;
+              $$;
+
+              -- 2) Drop colonna istanza_utility_id (se esiste)
+              ALTER TABLE anagrafiche.catasto_unita_immobiliari
+                DROP COLUMN IF EXISTS istanza_utility_id;
+
+              -- 3) Commento tabella (opzionale, ma utile per chiarezza post-refactor)
+              COMMENT ON TABLE anagrafiche.catasto_unita_immobiliari
+                IS 'Dati catastali relativi a una singola unità immobiliare. 
+                Il collegamento all''istanza avviene tramite anagrafiche.istanze_utilities.catasto_unita_immobiliare_id; 
+                il collegamento agli indirizzi civici avviene tramite la tabella ponte anagrafiche.catasto_unita_immobiliari_indirizzi.';

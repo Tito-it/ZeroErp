@@ -1,0 +1,489 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+--
+-- Scopo:
+--  - Verificare continuità indirizzo ↔ catasto tramite tabella ponte
+--  - Simulare subentro con CLONE catasto su nuova istanza:
+--      * chiusura cliente precedente
+--      * nuova istanza + nuovo cliente sullo stesso PDP/indirizzo
+--      * parent_istanza_id valorizzato
+--      * catasto clonato (id diverso, dati uguali)
+--      * link tabella ponte presente
+--
+-- Prerequisiti:
+--  - PDP: GAS-PDP-0002
+--  - 2 soggetti reali (P.IVA sotto) o adattare
+--  - IVA codice=22
+--  - Stati cliente: AT, CH
+-- ------------------------------------------------------------
+
+SELECT plan(20);
+
+-- =========================================================
+--  Pulizia preliminare (idempotente)
+-- =========================================================
+
+DELETE FROM anagrafiche.clienti
+WHERE codice_cliente_importato IN (
+  'TST-CLI-CAT-SUB-001',
+  'TST-CLI-CAT-SUB-002'
+);
+
+DELETE FROM anagrafiche.billing_account
+WHERE codice IN (
+  'TST-BA-CAT-SUB-001',
+  'TST-BA-CAT-SUB-002'
+);
+
+DELETE FROM anagrafiche.istanze_utilities
+WHERE codice IN (
+  'TST-IU-CAT-SUB-001',
+  'TST-IU-CAT-SUB-002'
+);
+
+-- Ponte + catasto (solo record test riconoscibili)
+DELETE FROM anagrafiche.catasto_unita_immobiliari_indirizzi
+WHERE catasto_unita_id IN (
+  SELECT id FROM anagrafiche.catasto_unita_immobiliari
+  WHERE foglio_catastale = 'TST01'
+    AND particella = 'TST01'
+);
+
+DELETE FROM anagrafiche.catasto_unita_immobiliari
+WHERE foglio_catastale = 'TST01'
+  AND particella = 'TST01';
+
+-- =========================================================
+-- 0) Precondizioni
+-- =========================================================
+
+-- 0.1) PDP GAS-PDP-0002
+CREATE TEMP TABLE tmp_pdp AS
+SELECT id,
+       indirizzo_dettaglio_id,
+       utilities_id AS utility_id
+FROM anagrafiche.pdp
+WHERE pdp = 'GAS-PDP-0002'
+LIMIT 1;
+
+SELECT is((SELECT count(*)::int FROM tmp_pdp), 1,
+  'Esiste esattamente un PDP GAS-PDP-0002');
+
+-- 0.2) Stati cliente AT e CH
+CREATE TEMP TABLE tmp_stato_at AS
+SELECT id FROM config.stati_cliente WHERE codice_interno = 'AT' LIMIT 1;
+
+SELECT is((SELECT count(*)::int FROM tmp_stato_at), 1,
+  'Esiste stato_cliente AT');
+
+CREATE TEMP TABLE tmp_stato_ch AS
+SELECT id FROM config.stati_cliente WHERE codice_interno = 'CH' LIMIT 1;
+
+SELECT is((SELECT count(*)::int FROM tmp_stato_ch), 1,
+  'Esiste stato_cliente CH');
+
+-- 0.3) Soggetti
+CREATE TEMP TABLE tmp_soggetto_1 AS
+SELECT id FROM anagrafiche.soggetti WHERE partita_iva = '24551170426' LIMIT 1;
+
+SELECT is((SELECT count(*)::int FROM tmp_soggetto_1), 1,
+  'Trovato soggetto 1 (partita_iva=24551170426)');
+
+CREATE TEMP TABLE tmp_soggetto_2 AS
+SELECT id FROM anagrafiche.soggetti WHERE partita_iva = '45807930719' LIMIT 1;
+
+SELECT is((SELECT count(*)::int FROM tmp_soggetto_2), 1,
+  'Trovato soggetto 2 (partita_iva=45807930719)');
+
+-- 0.4) Ruolo cliente
+CREATE TEMP TABLE tmp_sr_1 AS
+SELECT script.fn_get_or_create_soggetto_ruolo(s.id, 'CL') AS soggetto_ruolo_id
+FROM tmp_soggetto_1 s;
+
+CREATE TEMP TABLE tmp_sr_2 AS
+SELECT script.fn_get_or_create_soggetto_ruolo(s.id, 'CL') AS soggetto_ruolo_id
+FROM tmp_soggetto_2 s;
+
+-- 0.5) IVA
+CREATE TEMP TABLE tmp_iva AS
+SELECT id FROM config.iva WHERE codice = '22' LIMIT 1;
+
+SELECT is((SELECT count(*)::int FROM tmp_iva), 1,
+  'Esiste IVA codice=22');
+
+
+
+
+
+-- =========================================================
+-- 1) Istanza 1 + catasto 1 + link ponte (via trigger sync)
+-- =========================================================
+
+-- 1.1) Istanza 1 (con indirizzo e pdp)
+WITH ins_iu1 AS (
+  INSERT INTO anagrafiche.istanze_utilities (
+    fittizia, codice, proprietario_inquilino, soggetto_id, indirizzo_dettaglio_id, pdp_id
+  )
+  SELECT
+    false,
+    'TST-IU-CAT-SUB-001',
+    'P',
+    s1.id,
+    p.indirizzo_dettaglio_id,
+    p.id
+  FROM tmp_soggetto_1 s1, tmp_pdp p
+  RETURNING id, indirizzo_dettaglio_id
+)
+SELECT * INTO TEMP TABLE tmp_iu1 FROM ins_iu1;
+
+SELECT is((SELECT count(*)::int FROM tmp_iu1), 1,
+  'Creata istanza 1 (TST-IU-CAT-SUB-001)');
+
+-- 1.2) Catasto 1 (post-refactor: nessun istanza_utility_id)
+WITH ins_cat AS (
+  INSERT INTO anagrafiche.catasto_unita_immobiliari (
+    sezione_catastale, foglio_catastale, particella, subalterno,
+    categoria_catastale, classe_catastale,
+    rendita_catastale, consistenza,
+    tipo_accatastamento, immobile_rurale,
+    destinazione_immobile, anno_protocollo, superficie,
+    storicizza
+  )
+  VALUES (
+    'TST', 'TST01', 'TST01', '0001',
+    'A/2', '1',
+    123.45, 1,
+    'U', false,
+    'AB', 2025, 80,
+    true
+  )
+  RETURNING id
+)
+SELECT * INTO TEMP TABLE tmp_catasto_1 FROM ins_cat;
+
+SELECT is((SELECT count(*)::int FROM tmp_catasto_1), 1,
+  'Creata unità catastale di test (catasto 1)');
+
+-- 1.3) Aggancio catasto 1 alla istanza 1 (trigger sync crea ponte)
+UPDATE anagrafiche.istanze_utilities
+SET catasto_unita_immobiliare_id = (SELECT id FROM tmp_catasto_1)
+WHERE id = (SELECT id FROM tmp_iu1);
+
+SELECT ok((
+  SELECT (catasto_unita_immobiliare_id = (SELECT id FROM tmp_catasto_1))
+  FROM anagrafiche.istanze_utilities
+  WHERE id = (SELECT id FROM tmp_iu1)
+)::boolean,
+  'Istanza 1 ha catasto_unita_immobiliare_id valorizzato'
+);
+
+-- 1.4) Verifica ponte per catasto 1
+SELECT is((
+  SELECT count(*)::int
+  FROM anagrafiche.catasto_unita_immobiliari_indirizzi x
+  WHERE x.catasto_unita_id = (SELECT id FROM tmp_catasto_1)
+    AND x.indirizzo_dettaglio_id = (SELECT indirizzo_dettaglio_id FROM tmp_iu1)
+), 1,
+  'Link ponte: catasto 1 ↔ indirizzo (via trgfn_iu_sync_catasto_unita_indirizzo)'
+);
+
+-- =========================================================
+-- 2) Cliente 1 (AT) + subentro (chiusura cliente precedente)
+-- =========================================================
+
+
+
+-- 2.0) Subentro preliminare: chiude eventuale cliente già attivo sul PDP prima del Cliente 1 (2025-11-01)
+CREATE TEMP TABLE tmp_subentro0 AS
+SELECT script.fn_subentro_cliente(
+    (SELECT id FROM tmp_pdp),
+    DATE '2025-11-01'
+) AS cliente_chiuso_id;
+
+-- Se non c'era nessuno, ritorna NULL ed è OK.
+SELECT ok(
+  (SELECT true)::boolean,
+  'Subentro preliminare eseguito (cliente_chiuso_id può essere NULL se nessun attivo)'
+);
+
+-- Se ha chiuso qualcuno, verifichiamo data_chiusura e stato CH
+SELECT ok((
+  SELECT CASE
+    WHEN (SELECT cliente_chiuso_id FROM tmp_subentro0) IS NULL THEN true
+    ELSE (
+      (SELECT data_chiusura::date
+       FROM anagrafiche.clienti
+       WHERE id = (SELECT cliente_chiuso_id FROM tmp_subentro0)
+      ) = (DATE '2025-11-01' - 1)
+    )
+  END
+)::boolean,
+  'Subentro preliminare: se ha chiuso un cliente, data_chiusura = 2025-11-01 - 1'
+);
+
+SELECT ok((
+  SELECT CASE
+    WHEN (SELECT cliente_chiuso_id FROM tmp_subentro0) IS NULL THEN true
+    ELSE (
+      (SELECT stato_cliente_id::bigint
+       FROM anagrafiche.clienti
+       WHERE id = (SELECT cliente_chiuso_id FROM tmp_subentro0)
+      ) = (SELECT id::bigint FROM tmp_stato_ch)
+    )
+  END
+)::boolean,
+  'Subentro preliminare: se ha chiuso un cliente, stato_cliente = CH'
+);
+
+
+CREATE TEMP TABLE tmp_ba1 AS
+WITH ins_ba AS (
+  INSERT INTO anagrafiche.billing_account (
+    istanza_utility_id, soggetto_ruolo_id, utility_id, codice
+  )
+  SELECT
+    iu.id,
+    sr.soggetto_ruolo_id,
+    p.utility_id,
+    'TST-BA-CAT-SUB-001'
+  FROM tmp_iu1 iu, tmp_sr_1 sr, tmp_pdp p
+  RETURNING id
+)
+SELECT * FROM ins_ba;
+
+WITH ins_cli AS (
+  INSERT INTO anagrafiche.clienti (
+    soggetto_ruolo_id, istanza_utility_id, stato_cliente_id, data_attivazione,
+    billing_account_id, codice_cliente_importato, iva_id
+  )
+  SELECT
+    sr.soggetto_ruolo_id,
+    iu.id,
+    st.id,
+    DATE '2025-11-01',
+    ba.id,
+    'TST-CLI-CAT-SUB-001',
+    iv.id
+  FROM tmp_sr_1 sr, tmp_iu1 iu, tmp_stato_at st, tmp_ba1 ba, tmp_iva iv
+  RETURNING id
+)
+SELECT * INTO TEMP TABLE tmp_cli1 FROM ins_cli;
+
+SELECT is((SELECT count(*)::int FROM tmp_cli1), 1,
+  'Creato cliente 1 (AT) con data_attivazione=2025-11-01'
+);
+
+-- subentro: chiude cliente precedente sul PDP (usiamo pdp_id da tmp_pdp)
+CREATE TEMP TABLE tmp_subentro AS
+SELECT script.fn_subentro_cliente((SELECT id FROM tmp_pdp), DATE '2025-11-10') AS cliente_chiuso_id;
+
+SELECT is(
+  (SELECT cliente_chiuso_id::bigint FROM tmp_subentro),
+  (SELECT id::bigint FROM tmp_cli1),
+  'Subentro (2025-11-10): chiuso cliente 1 come precedente attivo'
+);
+
+-- =========================================================
+-- 3) Istanza 2 + Cliente 2 (AT)
+--    -> trigger clienti_set_parent_istanza: valorizza parent_istanza_id sulla istanza 2
+--    -> trigger iu_clone_catasto_from_parent: clona catasto e valorizza catasto_unita_immobiliare_id
+--    -> trigger sync: crea link ponte per catasto 2
+-- =========================================================
+
+WITH ins_iu2 AS (
+  INSERT INTO anagrafiche.istanze_utilities (
+    fittizia, codice, proprietario_inquilino, soggetto_id, indirizzo_dettaglio_id, pdp_id
+  )
+  SELECT
+    false,
+    'TST-IU-CAT-SUB-002',
+    'I',
+    s2.id,
+    p.indirizzo_dettaglio_id,
+    p.id
+  FROM tmp_soggetto_2 s2, tmp_pdp p
+  RETURNING id, indirizzo_dettaglio_id
+)
+SELECT * INTO TEMP TABLE tmp_iu2 FROM ins_iu2;
+
+SELECT is((SELECT count(*)::int FROM tmp_iu2), 1,
+  'Creata istanza 2 (TST-IU-CAT-SUB-002)'
+);
+
+CREATE TEMP TABLE tmp_ba2 AS
+WITH ins_ba AS (
+  INSERT INTO anagrafiche.billing_account (
+    istanza_utility_id, soggetto_ruolo_id, utility_id, codice
+  )
+  SELECT
+    iu.id,
+    sr.soggetto_ruolo_id,
+    p.utility_id,
+    'TST-BA-CAT-SUB-002'
+  FROM tmp_iu2 iu, tmp_sr_2 sr, tmp_pdp p
+  RETURNING id
+)
+SELECT * FROM ins_ba;
+
+
+
+-- CHIUSURA EVENTUALE UTENTE ATTIVO
+-- Subentro: chiude il cliente precedente sul PDP prima di creare il nuovo (2025-11-10)
+CREATE TEMP TABLE tmp_subentro1 AS
+SELECT script.fn_subentro_cliente(
+    (SELECT id FROM tmp_pdp),
+    DATE '2025-11-10'
+) AS cliente_chiuso_id;
+
+SELECT is(
+    (SELECT cliente_chiuso_id::bigint FROM tmp_subentro1),
+    (SELECT id::bigint FROM tmp_cli1),
+    'fn_subentro_cliente chiude il cliente precedente attivo sul PDP (CLI1)'
+);
+
+SELECT is(
+    (
+        SELECT data_chiusura::date
+        FROM anagrafiche.clienti
+        WHERE id = (SELECT id FROM tmp_cli1)
+    ),
+    (DATE '2025-11-10' - 1),
+    'Cliente precedente chiuso con data_chiusura = data attivazione nuovo - 1 giorno'
+);
+
+SELECT is(
+    (
+        SELECT stato_cliente_id::bigint
+        FROM anagrafiche.clienti
+        WHERE id = (SELECT id FROM tmp_cli1)
+    ),
+    (SELECT id::bigint FROM tmp_stato_ch),
+    'Cliente precedente impostato a stato CH dopo subentro'
+);
+
+
+
+-- Inserisce cliente 2
+
+WITH ins_cli AS (
+  INSERT INTO anagrafiche.clienti (
+    soggetto_ruolo_id, istanza_utility_id, stato_cliente_id, data_attivazione,
+    billing_account_id, codice_cliente_importato, iva_id
+  )
+  SELECT
+    sr.soggetto_ruolo_id,
+    iu.id,
+    st.id,
+    DATE '2025-11-10',
+    ba.id,
+    'TST-CLI-CAT-SUB-002',
+    iv.id
+  FROM tmp_sr_2 sr, tmp_iu2 iu, tmp_stato_at st, tmp_ba2 ba, tmp_iva iv
+  RETURNING id
+)
+SELECT * INTO TEMP TABLE tmp_cli2 FROM ins_cli;
+
+SELECT is((SELECT count(*)::int FROM tmp_cli2), 1,
+  'Creato cliente 2 (AT) con data_attivazione=2025-11-10'
+);
+
+-- =========================================================
+-- 4) Verifiche: parent chain + clone + ponte + unique
+-- =========================================================
+
+-- 4.1) stesso indirizzo
+SELECT is(
+  (SELECT indirizzo_dettaglio_id::bigint FROM tmp_iu2),
+  (SELECT indirizzo_dettaglio_id::bigint FROM tmp_iu1),
+  'Istanza 2 ha lo stesso indirizzo_dettaglio_id di istanza 1'
+);
+
+-- 4.2) parent_istanza_id su istanza 2 punta a istanza 1
+SELECT is((
+  SELECT parent_istanza_id::bigint
+  FROM anagrafiche.istanze_utilities
+  WHERE id = (SELECT id FROM tmp_iu2)
+), (SELECT id::bigint FROM tmp_iu1),
+  'Istanza 2: parent_istanza_id = istanza 1'
+);
+
+-- 4.3) catasto su istanza 2 valorizzato (clone)
+SELECT ok((
+  SELECT (catasto_unita_immobiliare_id IS NOT NULL)
+  FROM anagrafiche.istanze_utilities
+  WHERE id = (SELECT id FROM tmp_iu2)
+)::boolean,
+  'Istanza 2: catasto_unita_immobiliare_id valorizzato via clone automatico'
+);
+
+-- 4.4) clone: id diverso da catasto 1
+SELECT ok((
+  SELECT (
+    (SELECT catasto_unita_immobiliare_id
+     FROM anagrafiche.istanze_utilities
+     WHERE id = (SELECT id FROM tmp_iu2))
+    <>
+    (SELECT id FROM tmp_catasto_1)
+  )
+)::boolean,
+  'Clone: istanza 2 ha un catasto nuovo (id diverso da catasto 1)'
+);
+
+-- 4.5) clone: campi chiave identici
+SELECT ok((
+  SELECT (
+    c2.sezione_catastale      = c1.sezione_catastale AND
+    c2.foglio_catastale       = c1.foglio_catastale  AND
+    c2.particella             = c1.particella        AND
+    c2.subalterno             = c1.subalterno        AND
+    c2.categoria_catastale    = c1.categoria_catastale AND
+    c2.classe_catastale       = c1.classe_catastale AND
+    c2.rendita_catastale      = c1.rendita_catastale AND
+    c2.consistenza            = c1.consistenza AND
+    c2.tipo_accatastamento    = c1.tipo_accatastamento AND
+    c2.immobile_rurale        = c1.immobile_rurale AND
+    c2.destinazione_immobile  = c1.destinazione_immobile AND
+    c2.anno_protocollo        = c1.anno_protocollo AND
+    c2.superficie             = c1.superficie
+  )
+  FROM anagrafiche.catasto_unita_immobiliari c1
+  JOIN anagrafiche.catasto_unita_immobiliari c2
+    ON c1.id = (SELECT id FROM tmp_catasto_1)
+   AND c2.id = (SELECT catasto_unita_immobiliare_id
+                FROM anagrafiche.istanze_utilities
+                WHERE id = (SELECT id FROM tmp_iu2))
+)::boolean,
+  'Clone: campi catastali principali identici tra catasto 1 e catasto 2'
+);
+
+-- 4.6) ponte: link per catasto 2 ↔ indirizzo
+SELECT is((
+  SELECT count(*)::int
+  FROM anagrafiche.catasto_unita_immobiliari_indirizzi x
+  WHERE x.catasto_unita_id = (
+    SELECT catasto_unita_immobiliare_id
+    FROM anagrafiche.istanze_utilities
+    WHERE id = (SELECT id FROM tmp_iu2)
+  )
+    AND x.indirizzo_dettaglio_id = (SELECT indirizzo_dettaglio_id FROM tmp_iu2)
+), 1,
+  'Ponte: creato link catasto 2 ↔ indirizzo (via trigger sync)'
+);
+
+-- 4.7) unique: duplicato ponte deve fallire
+SELECT throws_ok(
+  $$
+  INSERT INTO anagrafiche.catasto_unita_immobiliari_indirizzi (catasto_unita_id, indirizzo_dettaglio_id)
+  VALUES (
+    (SELECT catasto_unita_immobiliare_id
+     FROM anagrafiche.istanze_utilities
+     WHERE id = (SELECT id FROM tmp_iu2)),
+    (SELECT indirizzo_dettaglio_id FROM tmp_iu2)
+  );
+  $$,
+  '23505',
+  'Unique: impedisce duplicato catasto 2 ↔ indirizzo (uq_catunitaindir)'
+);
+
+SELECT * FROM finish();

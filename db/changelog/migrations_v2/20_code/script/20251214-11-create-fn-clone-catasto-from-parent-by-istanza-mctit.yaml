@@ -1,0 +1,203 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - changeSet:
+          id: 20251214-11-create-fn-clone-catasto-from-parent-by-istanza
+          author: mctit
+          comment: >
+              Clona i dati da catasto_unita_immobiliari della parent_istanza
+                 verso una nuova riga catasto per l'istanza corrente.
+               - Aggiorna istanze_utilities.catasto_unita_immobiliare_id.
+               - Idempotente:
+                    * se l'istanza ha già catasto_unita_immobiliare_id -> return quello
+                    * se esiste già catasto con istanza_utility_id = istanza -> collega e return
+                    * se non esiste sorgente -> return NULL
+
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION script.fn_clone_catasto_from_parent_by_istanza(
+                            p_istanza_utilities_id bigint
+                        )
+                        RETURNS bigint
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_parent_istanza_id     anagrafiche.istanze_utilities.parent_istanza_id%TYPE;
+                            v_curr_catasto_id       anagrafiche.catasto_unita_immobiliari.id%TYPE;
+                            v_existing_catasto_id   anagrafiche.catasto_unita_immobiliari.id%TYPE;
+                            v_src                   anagrafiche.catasto_unita_immobiliari;
+                            v_new_catasto_id        anagrafiche.catasto_unita_immobiliari.id%TYPE;
+                        BEGIN
+
+                          -- ------------------------------------------------------------
+                          -- Funzione: script.fn_clone_catasto_from_parent_by_istanza
+                          -- Scopo:
+                          --   - Clona i dati da catasto_unita_immobiliari della parent_istanza
+                          --     verso una nuova riga catasto per l'istanza corrente.
+                          --   - Aggiorna istanze_utilities.catasto_unita_immobiliare_id.
+                          --   - Idempotente:
+                          --       * se l'istanza ha già catasto_unita_immobiliare_id -> return quello
+                          --       * se esiste già catasto con istanza_utility_id = istanza -> collega e return
+                          --       * se non esiste sorgente -> return NULL
+                          -- ------------------------------------------------------------
+
+                            -- Validazione minima
+                            IF p_istanza_utilities_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'script.fn_clone_catasto_from_parent_by_istanza',
+                                    'ERRORE_PARAMETRI',
+                                    jsonb_build_object('p_istanza_utilities_id', 'NULL'),
+                                    NULL,
+                                    'Parametro p_istanza_utilities_id non può essere NULL'
+                                );
+                            END IF;
+
+                            -- Lock riga istanza per evitare corse
+                            SELECT iu.parent_istanza_id,
+                                   iu.catasto_unita_immobiliare_id
+                              INTO v_parent_istanza_id,
+                                   v_curr_catasto_id
+                            FROM anagrafiche.istanze_utilities iu
+                            WHERE iu.id = p_istanza_utilities_id
+                            FOR UPDATE;
+
+                            -- Se già valorizzata la FK, idempotenza
+                            IF v_curr_catasto_id IS NOT NULL THEN
+                                RETURN v_curr_catasto_id;
+                            END IF;
+
+                            -- Se esiste già un record catasto figlio dell'istanza (edge-case / retry), riusalo
+                            SELECT c.id
+                              INTO v_existing_catasto_id
+                            FROM anagrafiche.catasto_unita_immobiliari c
+                            WHERE c.istanza_utility_id = p_istanza_utilities_id
+                            ORDER BY c.id DESC
+                            LIMIT 1;
+
+                            IF v_existing_catasto_id IS NOT NULL THEN
+                                UPDATE anagrafiche.istanze_utilities iu
+                                   SET catasto_unita_immobiliare_id = v_existing_catasto_id
+                                 WHERE iu.id = p_istanza_utilities_id
+                                   AND iu.catasto_unita_immobiliare_id IS NULL;
+                                RETURN v_existing_catasto_id;
+                            END IF;
+
+                            -- Senza parent non c'è sorgente da clonare
+                            IF v_parent_istanza_id IS NULL THEN
+                                RETURN NULL;
+                            END IF;
+
+                            -- Lookup sorgente (puro) dalla parent
+                            SELECT *
+                              INTO v_src
+                            FROM script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id);
+
+                            IF NOT FOUND THEN
+                                RETURN NULL;
+                            END IF;
+
+                            -- Clone: copia campi catastali, nuova istanza_utility_id
+                            INSERT INTO anagrafiche.catasto_unita_immobiliari (
+                                sezione_catastale,
+                                foglio_catastale,
+                                particella,
+                                subalterno,
+                                categoria_catastale,
+                                classe_catastale,
+                                rendita_catastale,
+                                consistenza,
+                                tipo_accatastamento,
+                                immobile_rurale,
+                                destinazione_immobile,
+                                anno_protocollo,
+                                superficie,
+                                storicizza,
+                                istanza_utility_id
+                            )
+                            VALUES (
+                                v_src.sezione_catastale,
+                                v_src.foglio_catastale,
+                                v_src.particella,
+                                v_src.subalterno,
+                                v_src.categoria_catastale,
+                                v_src.classe_catastale,
+                                v_src.rendita_catastale,
+                                v_src.consistenza,
+                                v_src.tipo_accatastamento,
+                                v_src.immobile_rurale,
+                                v_src.destinazione_immobile,
+                                v_src.anno_protocollo,
+                                v_src.superficie,
+                                COALESCE(v_src.storicizza, true),
+                                p_istanza_utilities_id
+                            )
+                            RETURNING id INTO v_new_catasto_id;
+
+                            -- Aggancio sulla istanza corrente
+                            UPDATE anagrafiche.istanze_utilities iu
+                               SET catasto_unita_immobiliare_id = v_new_catasto_id
+                             WHERE iu.id = p_istanza_utilities_id
+                               AND iu.catasto_unita_immobiliare_id IS NULL;
+
+                            -- La tabella ponte (catasto_unita_immobiliari_indirizzi) verrà gestita
+                            -- dal trigger AFTER su istanze_utilities (trgfn_iu_sync_catasto_unita_indirizzo),
+                            -- quando catasto_unita_immobiliare_id e indirizzo_dettaglio_id sono presenti.
+
+                            RETURN v_new_catasto_id;
+                        END;
+                        $function$;
+
+    - changeSet:
+          id: 20251214-11-01-create-trigger-clone-catasto-on-parent-update
+          author: mctit
+          comment: >
+              Trigger function che invoca il clone (side-effect controllato)
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        -- Trigger function che invoca il clone (side-effect controllato)
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_iu_clone_catasto_from_parent()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        BEGIN
+                          -- Idempotenza e logica principale sono dentro la funzione clone
+                          PERFORM script.fn_clone_catasto_from_parent_by_istanza(NEW.id);
+                          RETURN NEW;
+                        END;
+                        $function$;
+
+                        -- Trigger: scatta quando la catena viene calcolata (parent_istanza_id valorizzata)
+                        DROP TRIGGER IF EXISTS trg_iu_z50_clone_catasto_from_parent_aft_upd
+                        ON anagrafiche.istanze_utilities;
+
+                        CREATE TRIGGER trg_iu_z50_clone_catasto_from_parent_aft_upd
+                        AFTER UPDATE OF parent_istanza_id
+                        ON anagrafiche.istanze_utilities
+                        FOR EACH ROW
+                        WHEN (
+                          NEW.parent_istanza_id IS NOT NULL
+                          AND NEW.catasto_unita_immobiliare_id IS NULL
+                          AND NEW.indirizzo_dettaglio_id IS NOT NULL
+                        )
+                        EXECUTE FUNCTION anagrafiche.trgfn_iu_clone_catasto_from_parent();
+
+                        COMMENT ON TRIGGER trg_iu_z50_clone_catasto_from_parent_aft_upd
+                        ON anagrafiche.istanze_utilities
+                        IS 'AFTER UPDATE OF parent_istanza_id: 
+                            clona catasto dalla parent_istanza verso la nuova istanza (subentro),
+                             poi il trigger sync crea il link in catasto_unita_immobiliari_indirizzi.';

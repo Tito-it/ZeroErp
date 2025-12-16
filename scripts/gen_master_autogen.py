@@ -45,6 +45,11 @@ DEFAULT_EXCLUDE_PREFIXES = (
     "90_end/",
 )
 
+DEFAULT_EXCLUDE_FILES = {
+    "changelog-autogen.yaml",
+    "changelog-autogen.yml",
+}
+
 
 @dataclass(frozen=True)
 class ChangeFile:
@@ -78,6 +83,9 @@ def iter_candidate_files(
         if any(rel.startswith(pref) for pref in exclude_prefixes):
             continue
 
+        # skip excluded exact files (relativi a root)
+        if rel in DEFAULT_EXCLUDE_FILES:
+            continue    
         yield p
 
 

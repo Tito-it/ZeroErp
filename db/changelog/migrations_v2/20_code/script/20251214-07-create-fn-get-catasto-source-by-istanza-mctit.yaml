@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/script/20251214-07-create-fn-get-catasto-source-by-istanza-mctit.yaml
+
+    - changeSet:
+          id: 20251214-07-create-fn-get-catasto-source-by-istanza
+          comment: >
+              Recupera il record catastale "sorgente" da clonare per una istanza_utilities.
+              La sorgente è determinata ESCLUSIVAMENTE da:
+              istanze_utilities.parent_istanza_id
+          author: mctit
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION script.fn_get_catasto_source_by_istanza(
+                        p_istanza_utilities_id   bigint)
+                        RETURNS anagrafiche.catasto_unita_immobiliari
+                        LANGUAGE plpgsql
+                        AS $function$
+
+                        DECLARE
+                            v_parent_istanza_id anagrafiche.istanze_utilities.parent_istanza_id%TYPE ;
+                            v_catasto           anagrafiche.catasto_unita_immobiliari;
+                        BEGIN
+                            -- ============================================================
+                            -- Funzione: script.fn_get_catasto_source_by_istanza
+                            -- Scopo:
+                            --   - Recupera il record catastale "sorgente" da clonare
+                            --     per una istanza_utilities.
+                            --   - La sorgente è determinata ESCLUSIVAMENTE da:
+                            --       istanze_utilities.parent_istanza_id
+                            --
+                            -- Comportamento:
+                            --   - Se parent_istanza_id è NULL → RETURN NULL
+                            --   - Se esiste un catasto associato alla parent → RETURN record
+                            --   - Nessun side-effect (NO insert / update)
+                            -- ============================================================
+
+                            -- 1) Recupero parent_istanza_id
+                            SELECT iu.parent_istanza_id
+                            INTO v_parent_istanza_id
+                            FROM anagrafiche.istanze_utilities iu
+                            WHERE iu.id = p_istanza_utilities_id;
+
+                            IF v_parent_istanza_id IS NULL THEN
+                                RETURN NULL;
+                            END IF;
+
+                            -- 2) Recupero catasto associato alla parent istanza
+                            SELECT c.*
+                            INTO v_catasto
+                            FROM anagrafiche.catasto_unita_immobiliari c
+                            WHERE c.istanza_utility_id = v_parent_istanza_id
+                            ORDER BY c.id DESC
+                            LIMIT 1;
+
+                            IF NOT FOUND THEN
+                                RETURN NULL;
+                            END IF;
+
+                            RETURN v_catasto;
+                        END;
+                        $function$;
+
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        COMMENT ON FUNCTION 
+                        script.fn_get_catasto_source_by_istanza(bigint) IS
+                         'Recupera il record catastale "sorgente" da clonare per una istanza_utilities.
+                          La sorgente è determinata ESCLUSIVAMENTE da:
+                          istanze_utilities.parent_istanza_id';

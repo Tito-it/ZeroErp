@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Fix catasto_unita_immobiliari:
+# - rimuove FK duplicata "fk_dati_catastali_istanze_utilities"
+# - allinea trigger storico a "catasto_unita_immobiliare_id"
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20251212-01-catasto-unita-immobiliari-fix-mctit.yaml
+
+  - changeSet:
+      id: 20251212-01-01-drop-duplicate-fk
+      author: mctit
+      comment: >
+        Rimuove la FK duplicata ereditata da dati_catastali, lasciando solo
+        fk_catasto_un_imm_ist_utility su istanza_utility_id.
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT CASE WHEN EXISTS (
+                SELECT 1
+                FROM pg_constraint c
+                JOIN pg_class t ON t.oid = c.conrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                WHERE n.nspname = 'anagrafiche'
+                  AND t.relname = 'catasto_unita_immobiliari'
+                  AND c.conname = 'fk_dati_catastali_istanze_utilities'
+              ) THEN 1 ELSE 0 END;
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.catasto_unita_immobiliari
+              DROP CONSTRAINT IF EXISTS fk_dati_catastali_istanze_utilities;
+
+  - changeSet:
+      id: 20251212-01-02-fix-storico-trigger-param
+      author: mctit
+      comment: >
+        Ricrea il trigger z90 storico su catasto_unita_immobiliari usando
+        la chiave corretta catasto_unita_immobiliare_id.
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_catasto_unita_immobiliari_z90_storico_generic_upd_dlt
+              ON anagrafiche.catasto_unita_immobiliari;
+
+              CREATE TRIGGER trg_catasto_unita_immobiliari_z90_storico_generic_upd_dlt
+              BEFORE DELETE OR UPDATE
+              ON anagrafiche.catasto_unita_immobiliari
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_storico_generic('catasto_unita_immobiliare_id');
+
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON TRIGGER trg_catasto_unita_immobiliari_z90_storico_generic_upd_dlt
+              ON anagrafiche.catasto_unita_immobiliari
+              IS 'Genera snapshot storico: scrive su storico.catasto_unita_immobiliari (link catasto_unita_immobiliare_id).';

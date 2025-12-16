@@ -1,12 +1,10 @@
 # **Documento di Avvio e Struttura di Liquibase (v2)**
 
 > 👀 **Vedi anche**
-> Approfondimento SQL
->
 > Tutte le attività SQL generate tramite Liquibase devono rispettare le convenzioni definite nel documento:
 > *[Linee Guida SQL](linee-guida-sql.md)*
 >
-> *Verisone iniziale  [liquibase-setup-and-workflow_v1](../liquibase-setup-workflow_v1.md)*
+> *Versione iniziale(solo consultazione): [liquibase-setup-and-workflow_v1](../liquibase-setup-workflow_v1.md)*
 
 ---
 
@@ -18,10 +16,11 @@
 
 ## 1. Obiettivo
 
-Descrivere configurazione e workflow di **Liquibase** per **ZeroErp**:
+Descrivere configurazione e workflow di **Liquibase** per **ZeroErp (struttura v2)**:
 
 * Avvio su PostgreSQL
 * Struttura dei changelog (**master v2** e cartelle `migrations_v2/…`)
+* Ordinamento delle migrazioni tramite **changelog autogenerato**
 * Esecuzione comandi base (`validate`, `update`)
 * Gestione evoluzioni con nuovi changeSet (`00_schema`, `20_code`, …)
 
@@ -29,43 +28,59 @@ Descrivere configurazione e workflow di **Liquibase** per **ZeroErp**:
 
 ## 2. Prerequisiti
 
-* Java 11+
-* Liquibase 4.33.x (o superiore)
+* - Java **17 LTS** (obbligatorio per Liquibase 5.x)
+* Liquibase **5.x Community**
 * Driver JDBC PostgreSQL presente nel classpath
 * Accesso a un DB di sviluppo/test
 
 ---
 
-## 3. Struttura dei Changelog e delle Cartelle
+## 3. Struttura dei Changelog e delle Cartelle (v2)
 
 ```
 ZeroErp/db/changelog/
-├─ changelog-master-v2.yaml     # NUOVO master (in uso)
-├─ changelog-master.yaml        # master storico (v1) — incluso da v2
+├─ changelog-master-v2.yaml        # Master v2 (attivo)
+├─ changelog-master.yaml           # Master storico v1 (incluso)
 │
-├─ migrations_v2/               # nuove migrazioni da oggi in poi
-│  ├─ 00_schema/                # DDL: tabelle/indici/FK/VIEW ecc.
+├─ migrations_v2/
+│  ├─ changelog-autogen.yaml       # 🔧 AUTOGENERATO (DDL + CODE ordinati)
+│  │
+│  ├─ 00_schema/                   # DDL (tabelle, indici, FK, view strutturali)
 │  │  ├─ anagrafiche/
 │  │  ├─ vendite/
-│  │  └─ … (acquisti, catalogo, contabilita, internal, magazzino, maintenance, pagamenti)
-│  ├─ 20_code/                  # codice DB: funzioni/trigger/procedure
+│  │  └─ …
+│  │
+│  ├─ 20_code/                     # Codice DB (funzioni, trigger, procedure, view tecniche)
 │  │  ├─ anagrafiche/
 │  │  ├─ vendite/
-│  │  └─ … (stessi schemi)
-│  ├─ 80_data/                  # import dati/config (CSV + loadUpdateData)
-│  │  └─ config/
-│  ├─ 85_pgagent/               # job di scheduling (pgAgent)
-│  └─ 90_end/                   # step finali (runAlways / operazioni di chiusura)
+│  │  └─ …
+│  │
+│  ├─ 80_data/                     # Dati / configurazioni (loadUpdateData)
+│  ├─ 85_pgagent/                  # Job di scheduling (pgAgent)
+│  └─ 90_end/                      # Step finali (runAlways / apply policy)
 │
-├─ migrations/                  # **LEGACY v1** (non modificare)
-├─ baseline/                    # **LEGACY v1** (non modificare)
-└─ legacy/                      # archivio eventuali file dismessi/spostati
+├─ migrations/                     # LEGACY v1 (non modificare)
+├─ baseline/                       # LEGACY v1 (non modificare)
+└─ legacy/                         # Archivio file dismessi/spostati
 ```
 
-**Regole operative (v2):**
+### Regole operative (v2)
 
-* **Nuovo lavoro** solo in `migrations_v2/…`.
-* La **storia precedente** rimane dove si trova (migrations/baseline) e viene **inclusa** dal master v2: utile per nuovi ambienti e per consultazione.
+* Tutto il **nuovo sviluppo** avviene esclusivamente in `migrations_v2/`.
+
+* La **storia pregressa (v1)** rimane invariata ed è inclusa dal master v2.
+
+* Le cartelle `00_schema` e `20_code` **non sono incluse direttamente nel master**.
+
+* L’ordine di esecuzione di DDL e CODE è governato dal file:
+
+  ```
+  migrations_v2/changelog-autogen.yaml
+  ```
+
+  che viene **generato automaticamente** in base al timestamp nel nome file (`YYYYMMDD-NN`).
+
+* Le cartelle `80_data`, `85_pgagent`, `90_end` sono **escluse dall’autogen** e vengono incluse **a blocchi** nel master v2.
 
 ---
 
@@ -78,13 +93,12 @@ databaseChangeLog:
       file: changelog-master.yaml
       relativeToChangelogFile: true
 
-  # 2) Nuove migrazioni (v2): ordine garantito
-  - includeAll:
-      path: migrations_v2/00_schema
+  # 2) Nuove migrazioni v2 (DDL + CODE ordinati temporalmente)
+  - include:
+      file: migrations_v2/changelog-autogen.yaml
       relativeToChangelogFile: true
-  - includeAll:
-      path: migrations_v2/20_code
-      relativeToChangelogFile: true
+
+  # 3) Dati, job e step finali (gestiti a blocchi)
   - includeAll:
       path: migrations_v2/80_data
       relativeToChangelogFile: true
@@ -96,7 +110,13 @@ databaseChangeLog:
       relativeToChangelogFile: true
 ```
 
-**Ordine d’esecuzione**: `00_schema` → `20_code` → `80_data` → `85_pgagent` → `90_end`.
+### Ordine di esecuzione complessivo
+
+1. Storia legacy v1
+2. **DDL + CODE v2** (ordine temporale globale)
+3. Import dati / configurazioni
+4. Job pgAgent
+5. Step finali
 
 ---
 
@@ -105,108 +125,111 @@ databaseChangeLog:
 ```properties
 # Connessione PostgreSQL
 driver=org.postgresql.Driver
-# classpath=<path>/postgresql-<version>.jar   # se serve
 
 url=jdbc:postgresql://localhost:5432/zeroerp
-username=titodb
+username=zeroerp
+password=secret
 
 # Master in uso
 changeLogFile=db/changelog/changelog-master-v2.yaml
 ```
 
-> **Nota**: il master v2 include il master storico v1. Non è necessario modificare/traslocare la storia precedente.
+> ℹ️ Il master v2 include automaticamente il master storico v1.
 
 ---
 
-## 6. `80_data` (schema `config`) — import dati
+## 6. `changelog-autogen.yaml`
 
-* CSV prodotti dalla pipeline in `migrations_v2/80_data/config/…`
-* Changelog YAML con `loadUpdateData` (uno per tabella)
-* Esempi già presenti (stati/utilities) restano validi
-
-> **Suggerimenti**: usare `runOnChange: true`, `validCheckSums: [ANY]`, e `preConditions` con `tableExists`.
-
----
-
-## 7. Workflow Iniziale
-
-* **Validazione**: `liquibase validate`
-* **Update** su nuovi o esistenti:
+* È **autogenerato** dallo script:
 
   ```bash
-  liquibase --defaults-file=db/liquibase.properties \
-            --changelog-file=db/changelog/changelog-master-v2.yaml \
-            update
+  python scripts/gen_master_autogen.py \
+    --root db/changelog/migrations_v2 \
+    --out  db/changelog/migrations_v2/changelog-autogen.yaml \
+    --strict
   ```
 
-  *Gli ambienti già aggiornati con v1 non rieseguono i changeSet storici, perché sono gli stessi file (stessi checksum).*
+* Contiene **solo** include relativi a:
+
+  * `00_schema/**`
+  * `20_code/**`
+
+* È ignorato da Git (`.gitignore`) e **rigenerato automaticamente**:
+
+  * in CI
+  * tramite wrapper locale `liquibase5`
+
+---
+
+## 7. Workflow Operativo
+
+### Validazione
+
+```bash
+liquibase validate
+```
+
+### Update
+
+```bash
+liquibase update
+```
+
+Il wrapper `liquibase5` garantisce che il file `changelog-autogen.yaml` venga rigenerato prima dell’esecuzione.
 
 ---
 
 ## 8. Evoluzioni Future (v2)
 
-* **Nuovi file**:
+### Nuovi file
 
-  * `migrations_v2/00_schema/<schema>/YYYYMMDD-NN-<tipo>-<desc>.yaml` (DDL)
-  * `migrations_v2/20_code/<schema>/YYYYMMDD-NN-<tipo>-<desc>.yaml` (fn/trg/proc)
-  * `migrations_v2/90_end/…` per step finali
-* **Header obbligatorio** in ogni file:
+* DDL:
 
-  ```yaml
-  databaseChangeLog:
-    logicalFilePath: db/changelog/migrations_v2/<subpath>/<filename>.yaml
   ```
-* **Pattern sicuro per rinomine**: **Expand → Align (20\_code) → Contract**
+  migrations_v2/00_schema/<schema>/YYYYMMDD-NN-<tipo>-<descrizione>.yaml
+  ```
 
-  * Expand (00\_schema): aggiungi il nuovo senza rimuovere il vecchio
-  * Align (20\_code): `CREATE OR REPLACE` funzioni/trigger compatibili col nuovo
-  * Contract (00\_schema): rimuovi il vecchio quando sei certo (release successiva)
+* CODE:
 
----
+  ```
+  migrations_v2/20_code/<schema>/YYYYMMDD-NN-<tipo>-<descrizione>.yaml
+  ```
 
-## 9. Comandi Principali
+### Pattern sicuro di refactor
 
-* `liquibase validate`
-* `liquibase update`
-* `liquibase updateSql`
-* `liquibase rollback` / `rollbackCount` / `rollbackToDate` / `rollbackOneChangeSet`
+**Expand → Align → Contract**
 
----
-
-## 10. Convenzioni e Best Practice
-
-* **Naming**: `YYYYMMDD-NN-<tipo>-<feature>.yaml` (`tipo`: `tbl/col/fk/idx/view/fn/trg/proc/data/end`)
-* **Un changeSet coeso** per oggetto/funzionalità
-* **`logicalFilePath`**: sempre impostato; consente spostamenti futuri senza invalidare checksum
-* **`includeAll`** + prefisso data garantiscono l’ordine
-* **Contexts/Labels** se servono per ambienti diversi
-* **`90_end`**: step finali (es. `CALL dbops.apply_fk_index_policy()`), eventualmente `runAlways: true`
+1. **Expand (00_schema)**: aggiunta nuovo oggetto senza rimuovere il vecchio
+2. **Align (20_code)**: funzioni/trigger compatibili con entrambe le versioni
+3. **Contract (00_schema)**: rimozione definitiva in release successiva
 
 ---
 
-## 11. Struttura **Legacy** (solo riferimento)
+## 9. Convenzioni e Best Practice
 
-La precedente organizzazione rimane nel repository per **compatibilità e consultazione**:
+* Naming file: `YYYYMMDD-NN-<tipo>-<feature>.yaml`
+* Un changeSet coerente per file
+* `logicalFilePath` sempre valorizzato
+* View diagnostiche (`dbops.diag_*`) preferibilmente:
+
+  * con `preConditions`
+  * oppure posizionate dopo i refactor
+* `90_end` usato solo per step finali e policy applicative
+
+---
+
+## 10. Struttura Legacy (solo riferimento)
 
 ```
 ZeroErp/db/changelog/
-├─ changelog-master.yaml         # master storico (v1)
-├─ baseline/                     # snapshot iniziale v1
-└─ migrations/                   # vecchie migrazioni
-   ├─ 00_bootstrap/              # DDL iniziali (storico)
-   ├─ 10_scripts/
-   ├─ 20_config/
-   ├─ 30_anagrafiche/
-   ├─ 40_storico/
-   ├─ 50_dbops/
-   ├─ 55_maintenance/
-   ├─ 80_data/
-   ├─ 85_pgagent/
-   └─ 90_end/
+├─ changelog-master.yaml
+├─ baseline/
+└─ migrations/
 ```
 
-> **Uso pratico**: Il **master v2** include il **master storico v1**; quindi i nuovi cloni possono partire direttamente da `changelog-master-v2.yaml`. In caso di necessità, è sempre possibile **recuperare** changeSet o script dal percorso legacy senza modificarlo.
+> ⚠️ La struttura legacy **non va modificata**.
+> Il master v2 la include integralmente per garantire bootstrap completo su nuovi ambienti.
 
 ---
 
-*Documento redatto per il progetto ZeroErp (struttura v2).*
+*Documento aggiornato per il progetto ZeroErp – Liquibase v2 con autogen timeline.*

@@ -6,6 +6,7 @@
 - [articolo_regole_fatturazione](tabelle/articolo_regole_fatturazione.md)
 - [attivita_fatturabili](tabelle/attivita_fatturabili.md)
 - [billing_account](tabelle/billing_account.md)
+- [catasto_unita_immobiliari](tabelle/catasto_unita_immobiliari.md)
 - [clienti](tabelle/clienti.md)
 - [comune_trasformazioni](tabelle/comune_trasformazioni.md)
 - [comuni](tabelle/comuni.md) — * **Audit Trail**: Conservare una traccia immutabile di ogni modifica e cancellazione applicata a `config.comuni`. * **Versioning dei record**: Permettere la ricostruzione dello stato storico di ogni comune in un dato momento. * **Query storiche**: Supportare interrogazioni basate su intervalli temporali grazie ai campi `valid_from` e `valid_to`. * **Classificazione operazioni**: Utilizzare `tipo_operazione_id` e `change_type` per distinguere INSERT iniziale, UPDATE e DELETE. ---

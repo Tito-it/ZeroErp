@@ -39,6 +39,11 @@ if [[ $uses_master_v2 -eq 0 ]]; then
   done
 fi
 
+#echo "[liquibase5] git_root=$git_root"
+#echo "[liquibase5] cmd=$cmd needs_changelog=$needs_changelog uses_master_v2=$uses_master_v2"
+#echo "[liquibase5] pwd=$(pwd)"
+
+
 if [[ $needs_changelog -eq 1 && $uses_master_v2 -eq 1 && -n "$git_root" ]]; then
   py="${PYTHON:-python3}"
   script="$git_root/scripts/gen_master_autogen.py"
