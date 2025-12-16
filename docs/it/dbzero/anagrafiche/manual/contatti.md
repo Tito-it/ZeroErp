@@ -157,42 +157,11 @@ erDiagram
     titoli_cortesia  ||--o{ contatti : courtesy
 
     soggetti        { uuid id PK }
-    soggetti_ruoli  { int id PK }
+    soggetti_ruoli  { bigint id PK }
     utilities       { int id PK }
     tipi_contatti   { int id PK }
     titoli_cortesia { int id PK }
     contatti        { int id PK }
-
-```
-
----
-
-###  Diagramma ER attributi
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    contatti {
-        bigint      id PK
-        int      tipo_contatto_id FK
-        uuid     soggetto_id FK
-        bigint      soggetto_ruolo_id FK
-        int      utility_id FK
-        string   nominativo
-        string   email
-        string   telefono
-        string   cellulare
-        string   pec
-        text     note
-        string   user_insert
-        string   user_update
-        bool     is_default
-        datetime data_insert
-        datetime data_update
-        int      titolo_cortesia_id FK
-        string   default_context
-        uuid     tx_id
-    }
 
 ```
 

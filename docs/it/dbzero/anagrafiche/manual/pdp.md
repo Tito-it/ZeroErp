@@ -37,9 +37,9 @@ Questo modello consente di:
 
 ---
 
-## 2. Schema e colonne principali
+### 2. Schema e colonne principali
 
-### 2.1 Stato corrente (`anagrafiche.pdp`)
+  **2.1 Stato corrente (`anagrafiche.pdp`)**
 
 * **PK**: `id BIGINT IDENTITY`
 * **Codice PDP**: `pdp VARCHAR(30)`, **univoco globale e immutabile**
@@ -53,11 +53,11 @@ Questo modello consente di:
 
 ---
 
-## 🔄 Stato tecnico del PDP
+### 🔄 Stato tecnico del PDP
 
 Con le modifiche concordate, il PDP ora include il campo:
 
-### **`stato_pdp_id` → FK verso `config.stati_pdp`**
+ **`stato_pdp_id` → FK verso `config.stati_pdp`**
 
 Gli stati tecnici attualmente previsti sono:
 
@@ -70,7 +70,7 @@ Gli stati tecnici attualmente previsti sono:
 
 Questa separazione evita la confusione tra **stato tecnico del punto** e **stato commerciale della fornitura**.
 
-### Perché è corretto avere *entrambi* gli stati (tecnico vs commerciale)
+ **Perché è corretto avere *entrambi* gli stati (tecnico vs commerciale)**
 
 * Il PDP può essere tecnicamente **DTEC** anche se il cliente è ancora attivo (morosità o guasto).
 * Il PDP può essere tecnicamente **DISP** con cliente commerciale chiuso.
@@ -80,7 +80,7 @@ Questo modello consente coerenza e accuratezza anche in domini complessi (gas/en
 
 ---
 
-## ⚙️ Vincoli e Relazioni
+### ⚙️ Vincoli e Relazioni
 
 * **UNIQUE (pdp)** → codice univoco globale
 * **UNIQUE (indirizzo_dettaglio_id, utilities_id)** → massimo un PDP per utility per indirizzo
@@ -91,30 +91,10 @@ Questo modello consente coerenza e accuratezza anche in domini complessi (gas/en
 
 ---
 
-## 🚨 Trigger
 
-### `trg_pdp_protect_cols`
+### 🔍 Considerazioni architetturali aggiornate
 
-Blocca modifiche a:
-
-* `pdp` (codice) → identità del punto
-* `indirizzo_dettaglio_id` → il PDP non può cambiare luogo
-
-### `dbops.trgfn_tx_id_managed`
-
-Garantisce `tx_id` sempre valorizzato.
-
-### `trg_pdp_z90_storico_generic`
-
-Registra UPDATE/DELETE in `storico.pdp`.
-
-*(Si suggerisce evoluzione futura: trigger anche su INSERT per timeline completa).*
-
----
-
-## 🔍 Considerazioni architetturali aggiornate
-
-### 1. Stato tecnico distinto da cliente
+ **1. Stato tecnico distinto da cliente**
 
 La presenza di `stato_pdp_id` permette di modellare:
 
@@ -122,7 +102,7 @@ La presenza di `stato_pdp_id` permette di modellare:
 * lavori/disattivi tecnici,
 * dismissioni fisiche della rete.
 
-### 2. Coerenza operativa
+ **2. Coerenza operativa**
 
 Lo stato del PDP può essere aggiornato:
 
@@ -130,7 +110,7 @@ Lo stato del PDP può essere aggiornato:
 * da eventi commerciali coerenti (es. attivazione cliente → PDP passa a *ATTIVO*),
 * da validazioni in backend.
 
-### 3. Allineamento con istanze
+ **3. Allineamento con istanze**
 
 L’istanza (`anagrafiche.istanze_utilities`) può collegarsi solo a PDP **dello stesso indirizzo**.
 
@@ -143,7 +123,7 @@ Ne deriva un modello coerente tra:
 
 ---
 
-## 6. Operatività – Query tipiche
+### 6. Operatività – Query tipiche
 
 **PDP per indirizzo**
 
@@ -173,7 +153,7 @@ WHERE p.id = :id;
 
 ---
 
-## 7. Diagramma ER relazioni
+### 7. Diagramma ER relazioni
 
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%
@@ -187,30 +167,6 @@ erDiagram
 
     indirizzi_dettaglio ||--o{ istanze_utilities   : has
     istanze_utilities   }o--|| pdp                 : uses
-```
-
----
-
-## 8. Diagramma ER attributi
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    pdp {
-        bigint   id PK
-        varchar  pdp
-        bigint   utilities_id FK
-        bigint   indirizzo_dettaglio_id FK
-        bigint   cliente_id FK
-        bigint   stato_pdp_id FK
-        jsonb    extra_info
-        timestamptz data_insert
-        text     user_insert
-        timestamptz data_update
-        text     user_update
-        uuid     tx_id
-        boolean  storicizza
-    }
 ```
 
 ---

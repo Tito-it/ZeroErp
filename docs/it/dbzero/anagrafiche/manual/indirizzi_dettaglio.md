@@ -84,33 +84,7 @@ erDiagram
         int id PK
     }
     storico_indirizzi_dettaglio {
-    int id PK }
-
-    indirizzi_dettaglio {
-        int        id PK
-        int        stradario_id FK
-        int        civico
-        string     estensione_civico
-        string     palazzina
-        string     interno
-        string     piano
-        string     scala
-        text       altro
-        text       via_norm
-        text       civico_norm
-        text       indirizzo_normalizzato
-        point4326  civic_geoloc
-        point4326  street_geoloc
-        datetime   data_insert
-        varchar    user_insert
-        datetime   data_update
-        varchar    user_update
-        uuid       tx_id
-        bool       attivo
-        bool       storicizza
-    }
-
-    
+    bigint id PK }
 
 ```
 

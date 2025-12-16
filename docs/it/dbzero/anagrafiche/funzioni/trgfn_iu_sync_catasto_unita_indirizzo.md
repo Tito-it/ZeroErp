@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_iu_sync_catasto_unita_indirizzo.md" %}
 # ⚙️ Funzione `trgfn_iu_sync_catasto_unita_indirizzo`
 
 ```sql

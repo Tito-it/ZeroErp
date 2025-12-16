@@ -148,35 +148,6 @@ erDiagram
 
 ---
 
-###  Diagramma ER attributi
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    dati_societari {
-        bigint   id PK
-        uuid     soggetto_id FK
-        text     forma_giuridica
-        decimal  capitale_sociale
-        int      id_prov_iscri_rea FK
-        varchar  iscrizione_rea
-        enum     socio_unico         
-        enum     liquidazione       
-        char     destinatario_fe
-        varchar  pec_fatturazione
-        varchar  codice_sdi
-        date     data_costituzione
-        datetime data_insert
-        text     user_insert
-        datetime data_update
-        text     user_update
-        uuid     tx_id
-        bool     storicizza
-    }
-
-```
----
-
 ## 📘 Integrazione – Coerenza tra `dati_societari`, Tipo Soggetto e Tipologie Fiscali
 
 *(Aggiornamento del 2025-12-03)*

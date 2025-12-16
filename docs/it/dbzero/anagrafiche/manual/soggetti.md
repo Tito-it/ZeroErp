@@ -183,34 +183,4 @@ erDiagram
 
 ---
 
-###  Diagramma ER attributi
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-soggetti {
-        uuid  id PK
-        string codice
-        string ragione_sociale
-        string cognome
-        string nome
-        char   sesso
-        int    stato_id FK
-        int    comune_id FK
-        int    titolo_cortesia_id FK
-        int    default_contatto_id FK
-        bigint tipo_soggetto_dettaglio_id FK
-        string ragione_sociale_completa
-        string id_fiscale_univoco_cf_piva
-        string user_insert
-        string user_update
-        datetime data_insert
-        datetime data_update
-        uuid   tx_id
-        bool   storicizza
-    }
-
-```
-
----
 {% include-markdown "signature-core.md" %}

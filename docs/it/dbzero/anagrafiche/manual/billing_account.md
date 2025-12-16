@@ -141,35 +141,10 @@ erDiagram
     utilities         ||--o{ billing_account : for
     billing_account   ||--o{ billing_account : parent_of
 
-    istanze_utilities { int id PK }
-    soggetti_ruoli    { int id PK }
-    utilities         { int id PK }
-    billing_account   { int id PK }
-```
-
----
-
-###  Diagramma ER attributi
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    billing_account {
-        int      id PK
-        int      istanza_utility_id FK
-        int      soggetto_ruolo_id FK
-        int      utility_id FK
-        int      parent_account_id FK  
-        varchar  codice
-        date     valid_from
-        date     valid_to
-        datetime data_insert
-        varchar  user_insert
-        datetime data_update
-        varchar  user_update
-        uuid     tx_id
-        bool     storicizza
-    }
+    istanze_utilities { bigint id PK }
+    soggetti_ruoli    { bigiint id PK }
+    utilities         { bigint id PK }
+    billing_account   { bigint id PK }
 ```
 
 ---

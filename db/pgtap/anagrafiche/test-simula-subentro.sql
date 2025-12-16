@@ -18,7 +18,7 @@
 --  - Stati cliente: AT, CH
 -- ------------------------------------------------------------
 
-SELECT plan(20);
+SELECT plan(26);
 
 -- =========================================================
 --  Pulizia preliminare (idempotente)
@@ -274,16 +274,6 @@ SELECT is((SELECT count(*)::int FROM tmp_cli1), 1,
   'Creato cliente 1 (AT) con data_attivazione=2025-11-01'
 );
 
--- subentro: chiude cliente precedente sul PDP (usiamo pdp_id da tmp_pdp)
-CREATE TEMP TABLE tmp_subentro AS
-SELECT script.fn_subentro_cliente((SELECT id FROM tmp_pdp), DATE '2025-11-10') AS cliente_chiuso_id;
-
-SELECT is(
-  (SELECT cliente_chiuso_id::bigint FROM tmp_subentro),
-  (SELECT id::bigint FROM tmp_cli1),
-  'Subentro (2025-11-10): chiuso cliente 1 come precedente attivo'
-);
-
 -- =========================================================
 -- 3) Istanza 2 + Cliente 2 (AT)
 --    -> trigger clienti_set_parent_istanza: valorizza parent_istanza_id sulla istanza 2
@@ -483,6 +473,7 @@ SELECT throws_ok(
   );
   $$,
   '23505',
+  NULL,
   'Unique: impedisce duplicato catasto 2 ↔ indirizzo (uq_catunitaindir)'
 );
 

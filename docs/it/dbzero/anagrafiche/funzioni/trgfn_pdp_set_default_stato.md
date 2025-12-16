@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_pdp_set_default_stato.md" %}
 # ⚙️ Funzione `trgfn_pdp_set_default_stato`
 
 ```sql

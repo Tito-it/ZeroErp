@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_iu_clone_catasto_from_parent.md" %}
 # ⚙️ Funzione `trgfn_iu_clone_catasto_from_parent`
 
 ```sql

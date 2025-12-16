@@ -113,35 +113,4 @@ erDiagram
 ```
 
 ---
-
-###  Diagramma ER attributi
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    indirizzi {
-        int        id PK
-        int        soggetto_ruolo_id FK
-        int        tipo_indirizzo_id FK
-        int        indirizzo_dettaglio_id FK
-        text       indirizzo_libero
-        int        stato_id FK
-        varchar    administrative_area
-        varchar    locality
-        varchar    sublocality
-        varchar    postal_box
-        point4326  geoloc
-        int        comune_id FK
-        int        codice_postale_id FK
-        uuid       tx_id
-        bool       storicizza
-        datetime   data_insert
-        varchar    user_insert
-        datetime   data_update
-        varchar    user_update
-    }
-
-```
-
----
 {% include-markdown "signature-core.md" %}

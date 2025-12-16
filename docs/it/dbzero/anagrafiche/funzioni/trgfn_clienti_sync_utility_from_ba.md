@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_clienti_sync_utility_from_ba.md" %}
 # ⚙️ Funzione `trgfn_clienti_sync_utility_from_ba`
 
 ```sql

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_clone_catasto_from_parent_by_istanza.md" %}
 # ⚙️ Funzione `fn_clone_catasto_from_parent_by_istanza`
 
 ```sql
