@@ -17,9 +17,8 @@
 >
 > Approfondimento funzioni:   
 >
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)    
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
-
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)    
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
 
 La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli indirizzi civici, collegati a una specifica via (tramite `stradario_id`) e al relativo contesto geografico (comune, provincia, regione, stato). In essa sono memorizzati numeri civici, estensioni, palazzine, interni, piani, dati di geolocalizzazione e un campo di indirizzo normalizzato generato automaticamente.
@@ -27,6 +26,7 @@ La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli ind
 ---
 
 ### 🎯 Scopo Principale
+(latest review 16-12-25)
 
 * **Dettagliare lo stradario**  
   Associare a ciascuna via (memorizzata in `config.stradario`) le singole unità civiche (numeri civici, estensioni, palazzine, interni, piani), ottenendo così l’indirizzo completo e navigabile.  

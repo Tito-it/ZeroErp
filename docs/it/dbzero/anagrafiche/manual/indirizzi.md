@@ -19,8 +19,8 @@
 >
 > Approfondimento funzioni e trigger:  
 >
-> * [anagrafiche.trgfn_indirizzi_ins_upd_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_ins_upd_clean_fields)  
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic) 
+> * [anagrafiche.trgfn_indirizzi_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_clean_fields)  
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)  
 > * [script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)   
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
@@ -38,7 +38,7 @@ Supporta:
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 16-12-25)
 * **Associazione soggetto/ruolo → indirizzo**  
   Ogni soggetto può avere più indirizzi distinti in base al ruolo (es. cliente, fornitore) e al tipo di indirizzo (es. sede legale, spedizione, residenza).
 

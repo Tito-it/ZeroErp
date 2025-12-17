@@ -13,7 +13,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 16-12-25)
 La tabella `anagrafiche.catasto_unita_immobiliari_indirizzi` è una **tabella ponte** che esplicita la relazione tra:
 
 * 🏠 una **unità immobiliare catastale** (`catasto_unita_immobiliari`)
