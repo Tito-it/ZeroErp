@@ -1,4 +1,4 @@
-id,tipo_soggetto_dettaglio_id,tipo_indirizzo_id,obbligatorio,valido_dal,valido_al,attivo,meta,user_insert,user_update,data_insert,data_insert,fallback_tipo_indirizzo_id
+id,tipo_soggetto_dettaglio_id,tipo_indirizzo_id,obbligatorio,valido_dal,valido_al,attivo,meta,user_insert,user_update,data_insert,data_insert,storico,fallback_tipo_indirizzo_id
 1,1,1,True,,,True,{},titodb,titodb,2025-11-30 12:28:09.854477+01,2025-11-30 12:28:09.854477+01,false,
 2,1,2,True,,,True,{},titodb,titodb,2025-11-30 12:28:09.854477+01,2025-11-30 12:28:09.854477+01,false,
 3,1,5,False,,,True,{},titodb,titodb,2025-11-30 12:28:09.854477+01,2025-11-30 12:28:09.854477+01,false,1

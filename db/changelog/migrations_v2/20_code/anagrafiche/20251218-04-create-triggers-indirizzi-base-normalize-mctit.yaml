@@ -52,12 +52,16 @@ databaseChangeLog:
   - changeSet:
       id: 20251218-04-01-drop-trgfn_indirizzi_normalize
       author: mctit
-
+      runOnChange: true
+      validCheckSum:
+        - ANY
       changes:
         - sql:
             dbms: postgresql
             splitStatements: false
             stripComments: false
             sql: |
+
+              DROP TRIGGER IF EXISTS trg_indirizzi_ins_upd_clean_fields ON anagrafiche.indirizzi;
 
               DROP FUNCTION IF EXISTS anagrafiche.trgfn_indirizzi_normalize();
