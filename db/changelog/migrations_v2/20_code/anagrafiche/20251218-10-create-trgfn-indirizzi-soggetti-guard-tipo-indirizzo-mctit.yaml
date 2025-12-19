@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Guard tipo_indirizzo per anagrafiche.indirizzi_soggetti (policy su matrice soggetto)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251218-10-create-trgfn-indirizzi-soggetti-guard-tipo-indirizzo-mctit.yaml
+
+  - changeSet:
+      id: 20251218-10-create-trgfn-indirizzi-soggetti-guard-tipo-indirizzo
+      author: mctit
+      comment: >
+        Crea/aggiorna anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo().
+        Valida tipo_indirizzo per indirizzi_soggetti in base alla matrice
+        config.tipi_soggetto_dettaglio_tipi_indirizzo.
+        Se per il tipo_soggetto_dettaglio non esiste alcuna riga di matrice → policy "libero".
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $BODY$
+              DECLARE
+                v_tipo_soggetto_dettaglio_id config.tipi_soggetto_dettaglio.id%TYPE;
+                v_has_matrix                 boolean;
+                v_today                      date := current_date;
+              BEGIN
+                -- Gestione DELETE: nessun controllo
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                -- Se mancano i riferimenti chiave, non faccio nulla
+                IF NEW.soggetto_id IS NULL OR NEW.tipo_indirizzo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Recupero tipo_soggetto_dettaglio dal soggetto
+                SELECT s.tipo_soggetto_dettaglio_id
+                  INTO v_tipo_soggetto_dettaglio_id
+                  FROM anagrafiche.soggetti s
+                 WHERE s.id = NEW.soggetto_id;
+
+                -- Se non ho tipo_soggetto_dettaglio non applico vincoli (fallback permissivo)
+                IF v_tipo_soggetto_dettaglio_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Verifico se ESISTE almeno una riga di matrice per questo tipo_soggetto_dettaglio
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                   WHERE m.tipo_soggetto_dettaglio_id = v_tipo_soggetto_dettaglio_id
+                ) INTO v_has_matrix;
+
+                -- Caso A: nessuna matrice definita → indirizzi liberi
+                IF NOT v_has_matrix THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Caso B: matrice definita → accetto solo tipi previsti, attivi e validi
+                IF NOT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                   WHERE m.tipo_soggetto_dettaglio_id = v_tipo_soggetto_dettaglio_id
+                     AND m.tipo_indirizzo_id          = NEW.tipo_indirizzo_id
+                     AND m.attivo                     = TRUE
+                     AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                     AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+                ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_indirizzi_soggetti_guard_tipo_indirizzo',
+                    'E_TIPO_INDIRIZZO_NON_PERMESSO',
+                    jsonb_build_object(
+                      'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                      'tipo_soggetto_dettaglio_id', v_tipo_soggetto_dettaglio_id,
+                      'soggetto_id', NEW.soggetto_id
+                    ),
+                    NEW.tx_id,
+                    NEW.tipo_indirizzo_id::text,
+                    v_tipo_soggetto_dettaglio_id::text,
+                    NEW.soggetto_id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $BODY$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()
+              IS 'Trigger function per validare coerenza tra anagrafiche.indirizzi_soggetti e config.tipi_soggetto_dettaglio_tipi_indirizzo.
+              Verifica che tipo_indirizzo sia ammesso per il tipo_soggetto_dettaglio del soggetto associato.
+              Se non esiste alcuna riga di matrice per il tipo_soggetto_dettaglio → tutti i tipi sono ammessi.
+              Altrimenti, solo i tipi attivi e validi sono permessi.';
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_indirizzi_soggetti_a10_guard_tipo_indirizzo_ins_upd
+              ON anagrafiche.indirizzi_soggetti;
+
+              CREATE TRIGGER trg_indirizzi_soggetti_a10_guard_tipo_indirizzo_ins_upd
+              BEFORE INSERT OR UPDATE OF tipo_indirizzo_id
+              ON anagrafiche.indirizzi_soggetti
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo();
+
+              COMMENT ON TRIGGER trg_indirizzi_soggetti_a10_guard_tipo_indirizzo_ins_upd
+              ON anagrafiche.indirizzi_soggetti
+              IS 'Valida tipo_indirizzo per indirizzi_soggetti in base alla matrice config.tipi_soggetto_dettaglio_tipi_indirizzo (se definita).';

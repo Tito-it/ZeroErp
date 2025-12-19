@@ -45,11 +45,12 @@
 - [tipi_documenti](tabelle/tipi_documenti.md)
 - [tipi_evento_assets](tabelle/tipi_evento_assets.md)
 - [tipi_indirizzi](tabelle/tipi_indirizzi.md) — La tabella **`config.tipi_indirizzi`** centralizza i **tipi di indirizzo** utilizzabili in Zero ERP, come ad esempio Residenza, Domicilio Fiscale, Sede Legale, Sede Operativa, Corrispondenza Postale, Indirizzo di Fornitura, ecc. 
-- [tipi_indirizzi_allowed](tabelle/tipi_indirizzi_allowed.md)
+- [tipi_indirizzi_allowed](tabelle/tipi_indirizzi_allowed.md) — (Ultima review 19-12-25)
 - [tipi_ruoli](tabelle/tipi_ruoli.md) — * **Distinzione dei ruoli**: consente di assegnare a ogni record della tabella `soggetti` uno o più ruoli funzionali (es. cliente, fornitore, gestore). * **Flessibilità operativa**: un soggetto può assumere ruoli differenti in contesti diversi (ad esempio un fornitore che può diventare cliente in altre transazioni). * **Ruolo "gestore"**: l’azienda stessa che utilizza il software viene registrata in `soggetti` e associata al ruolo interno “gestore” per identificare i dati dell’utente principale o amministratore del sistema.
-- [tipi_ruolo_tipi_indirizzo](tabelle/tipi_ruolo_tipi_indirizzo.md)
+- [tipi_ruolo_tipi_indirizzo](tabelle/tipi_ruolo_tipi_indirizzo.md) — (latest review 19-12-25) La tabella **`config.tipi_ruolo_tipi_indirizzo`** rappresenta la **matrice di configurazione** che definisce:
 - [tipi_soggetto](tabelle/tipi_soggetto.md) — La tabella **`config.tipi_soggetto`** definisce le **macro-tipologie** dei soggetti presenti nel sistema ERP:
 - [tipi_soggetto_dettaglio](tabelle/tipi_soggetto_dettaglio.md) — * **Gestione Internazionale**   Permette di adattare la validazione di CF/P.IVA alle regole di ciascuno Stato (`stato_iso2`). * **Estendibilità**   Il collegamento a `config.tipi_soggetto` garantisce macro-categorie estensibili (Fisico, Giuridico, Ente, …). * **Controllo Applicativo**   Centralizza il formato di CF/P.IVA, evitando logiche duplicate nel backend.
+- [tipi_soggetto_dettaglio_tipi_indirizzo](tabelle/tipi_soggetto_dettaglio_tipi_indirizzo.md) — (latest review 19-12-25) La tabella **`config.tipi_soggetto_dettaglio_tipi_indirizzo`** rappresenta la **matrice di configurazione** che definisce:
 - [tipi_tariffe_ee](tabelle/tipi_tariffe_ee.md)
 - [tipi_ubicazione](tabelle/tipi_ubicazione.md)
 - [tipi_utenze](tabelle/tipi_utenze.md)

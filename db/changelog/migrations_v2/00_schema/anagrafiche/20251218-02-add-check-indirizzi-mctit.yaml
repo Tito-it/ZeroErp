@@ -1,0 +1,26 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Creazione tabella anagrafiche.indirizzi_soggetti
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20251218-02-add-check-indirizzi-mctit.yaml
+
+  - changeSet:
+      id: 20251218-02-add-check-indirizzi
+      author: mctit
+
+      changes:
+        # -------------------- CHECK (XOR normalizzato/libero) --------------------
+
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.indirizzi
+              ADD CONSTRAINT chk_indirizzi_xor_norm_libero
+              CHECK (
+                (indirizzo_dettaglio_id IS NOT NULL AND indirizzo_libero IS NULL)
+                OR
+                (indirizzo_dettaglio_id IS NULL AND indirizzo_libero IS NOT NULL)
+              );

@@ -1,0 +1,57 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/indirizzi_soggetti.md" %}
+# 📚 Tabella `indirizzi_soggetti`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO |  |
+| soggetto_id | uuid | NO |  |
+| tipo_indirizzo_id | integer | NO |  |
+| indirizzo_dettaglio_id | bigint | YES |  |
+| indirizzo_libero | text | YES |  |
+| stato_id | integer | YES |  |
+| administrative_area | character varying | YES |  |
+| locality | character varying | YES |  |
+| sublocality | character varying | YES |  |
+| postal_box | character varying | YES |  |
+| comune_id | integer | YES |  |
+| codice_postale_id | integer | YES |  |
+| geoloc | USER-DEFINED | YES |  |
+| storicizza | boolean | NO | true |
+| tx_id | uuid | YES |  |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | CURRENT_USER |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | chk_indirizzi_soggetti_xor_norm_libero |  |
+| FOREIGN KEY | fk_indirizzi_soggetti_codici_postali | codice_postale_id |
+| FOREIGN KEY | fk_indirizzi_soggetti_comuni | comune_id |
+| FOREIGN KEY | fk_indirizzi_soggetti_indirizzi_dettaglio | indirizzo_dettaglio_id |
+| FOREIGN KEY | fk_indirizzi_soggetti_soggetti | soggetto_id |
+| FOREIGN KEY | fk_indirizzi_soggetti_stati | stato_id |
+| FOREIGN KEY | fk_indirizzi_soggetti_tipi_indirizzi | tipo_indirizzo_id |
+| PRIMARY KEY | pk_indirizzi_soggetti | id |
+| UNIQUE | uq_indirizzi_soggetti_soggetto_tipo | soggetto_id, tipo_indirizzo_id |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_indirizzi_soggetti_soggetto_id | `CREATE INDEX ix_indirizzi_soggetti_soggetto_id ON anagrafiche.indirizzi_soggetti USING btree (soggetto_id)` |
+| ix_indirizzi_soggetti_tipo_indirizzo_id | `CREATE INDEX ix_indirizzi_soggetti_tipo_indirizzo_id ON anagrafiche.indirizzi_soggetti USING btree (tipo_indirizzo_id)` |
+| pk_indirizzi_soggetti | `CREATE UNIQUE INDEX pk_indirizzi_soggetti ON anagrafiche.indirizzi_soggetti USING btree (id)` |
+| uq_indirizzi_soggetti_soggetto_tipo | `CREATE UNIQUE INDEX uq_indirizzi_soggetti_soggetto_tipo ON anagrafiche.indirizzi_soggetti USING btree (soggetto_id, tipo_indirizzo_id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_indirizzi_soggetti_a10_guard_tipo_indirizzo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()` |
+| trg_indirizzi_soggetti_a10_guard_tipo_indirizzo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()` |
+| trg_indirizzi_soggetti_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_base_normalize()` |
+| trg_indirizzi_soggetti_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_base_normalize()` |
+
+---
+{% include-markdown "signature-core.md" %}

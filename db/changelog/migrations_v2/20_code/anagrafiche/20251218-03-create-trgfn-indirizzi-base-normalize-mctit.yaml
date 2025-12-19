@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Funzione trigger generica normalize per indirizzi (ruolo/soggetto)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251218-03-create-trgfn-indirizzi-base-normalize-mctit.yaml
+
+  - changeSet:
+      id: 20251218-03-create-trgfn-indirizzi-base-normalize
+      author: mctit
+      comment: >
+        Crea/aggiorna anagrafiche.trgfn_indirizzi_base_normalize().
+        Funzione riusabile su anagrafiche.indirizzi e anagrafiche.indirizzi_soggetti:
+        - se indirizzo_dettaglio_id valorizzato, pulisce i campi fallback/liberi
+        - altrimenti imposta default stato_id se NULL
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_base_normalize()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $BODY$
+              BEGIN
+                IF NEW.indirizzo_dettaglio_id IS NOT NULL THEN
+                  -- pulisco i fallback/liberi (evita mix normalizzato+libero)
+                  NEW.stato_id             := NULL;
+                  NEW.indirizzo_libero     := NULL;
+                  NEW.comune_id            := NULL;
+                  NEW.codice_postale_id    := NULL;
+                  NEW.administrative_area  := NULL;
+                  NEW.locality             := NULL;
+                  NEW.sublocality          := NULL;
+                  NEW.postal_box           := NULL;
+
+                  -- geoloc: coerente con sync_geoloc (si ricalcola da indirizzi_dettaglio)
+                  NEW.geoloc := NULL;
+
+                ELSE
+                  -- caso libero/internazionale: default minimo
+                  IF NEW.stato_id IS NULL THEN
+                    NEW.stato_id := script.fn_get_default_by_param(
+                      'config',
+                      'stati',
+                      'codice_iso3',
+                      'state_code_iso3',
+                      TG_NAME
+                    )::integer;
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $BODY$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_base_normalize()
+              IS 'Trigger function generica: normalizza indirizzi (ruolo/soggetto). Se indirizzo_dettaglio_id presente pulisce fallback/liberi; altrimenti imposta default su stato_id.';
