@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Guard DEFERRABLE: indirizzi obbligatori per soggetti_ruoli
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251220-02-create-guard-soggetti-ruoli-indirizzi-required-mctit.yaml
+
+  - changeSet:
+      id: 20251220-02-create-guard-soggetti-ruoli-indirizzi-required
+      author: mctit
+      comment: >
+        Crea la funzione constraint-trigger DEFERRABLE che verifica, per soggetti_ruoli,
+        la presenza degli indirizzi obbligatori definiti in config.tipi_ruolo_tipi_indirizzo.
+        Se per il tipo_ruolo non esiste alcuna riga matrice -> policy libero (nessun obbligo).
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $BODY$
+              DECLARE
+                v_has_matrix boolean;
+                v_today      date := current_date;
+                v_missing    record;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                IF NEW.tipo_ruolo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se non esiste alcuna riga matrice per quel ruolo -> libero
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_ruolo_tipi_indirizzo m
+                   WHERE m.tipo_ruolo_id = NEW.tipo_ruolo_id
+                ) INTO v_has_matrix;
+
+                IF NOT v_has_matrix THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Cerca un obbligatorio mancante (considerando fallback)
+                SELECT m.tipo_indirizzo_id,
+                       m.fallback_tipo_indirizzo_id
+                  INTO v_missing
+                  FROM config.tipi_ruolo_tipi_indirizzo m
+                 WHERE m.tipo_ruolo_id = NEW.tipo_ruolo_id
+                   AND m.obbligatorio = TRUE
+                   AND m.attivo = TRUE
+                   AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                   AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM anagrafiche.indirizzi i
+                      WHERE i.soggetto_ruolo_id = NEW.id
+                        AND (
+                          i.tipo_indirizzo_id = m.tipo_indirizzo_id
+                          OR (m.fallback_tipo_indirizzo_id IS NOT NULL AND i.tipo_indirizzo_id = m.fallback_tipo_indirizzo_id)
+                        )
+                   )
+                 LIMIT 1;
+
+                IF FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_soggetti_ruoli_guard_indirizzi_required',
+                    'E_INDIRIZZO_OBBLIGATORIO_MANCANTE',
+                    jsonb_build_object(
+                      'soggetto_ruolo_id', NEW.id,
+                      'tipo_ruolo_id', NEW.tipo_ruolo_id,
+                      'tipo_indirizzo_id_required', v_missing.tipo_indirizzo_id,
+                      'fallback_tipo_indirizzo_id', v_missing.fallback_tipo_indirizzo_id
+                    ),
+                    NEW.tx_id,
+                    NEW.id::text,
+                    'tipo ruolo' , NEW.tipo_ruolo_id::text,
+                    v_missing.tipo_indirizzo_id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $BODY$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required()
+              IS 'Constraint trigger DEFERRABLE: per soggetti_ruoli verifica presenza indirizzi obbligatori da config.tipi_ruolo_tipi_indirizzo. Se matrice assente -> libero.';
+
+  - changeSet:
+      id: 20251220-02-02-create-guard-soggetti-ruoli-indirizzi-required
+      author: mctit
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_soggetti_ruoli_def_guard_indirizzi_required_aft_ins_upd ON anagrafiche.soggetti_ruoli;
+
+              CREATE CONSTRAINT TRIGGER trg_soggetti_ruoli_def_guard_indirizzi_required_aft_ins_upd
+              AFTER INSERT OR UPDATE
+              ON anagrafiche.soggetti_ruoli
+              DEFERRABLE INITIALLY DEFERRED
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required();
+
+              COMMENT ON TRIGGER trg_soggetti_ruoli_def_guard_indirizzi_required_aft_ins_upd ON anagrafiche.soggetti_ruoli
+              IS 'Constraint trigger DEFERRABLE: verifica indirizzi obbligatori del ruolo (policy da matrice; se matrice assente -> libero).';
