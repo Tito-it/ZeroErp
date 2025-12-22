@@ -29,10 +29,9 @@ databaseChangeLog:
               DROP FUNCTION IF EXISTS script.fn_get_indirizzi_by_soggetto;
               DROP FUNCTION IF EXISTS script.fn_get_indirizzo_by_soggetto;
 
-
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_all;
               DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_ruolo;
               DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_soggetto;
-              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_all;
 
               DROP VIEW IF EXISTS  anagrafiche.vw_indirizzi_resolved_base;
 

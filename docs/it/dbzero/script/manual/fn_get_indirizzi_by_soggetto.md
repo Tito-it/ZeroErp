@@ -11,8 +11,8 @@
 >
 > **Approfondimento viste:**
 >
-> • [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/funzioni/vw_indirizzi_resolved_soggetto)  
-> • [anagrafiche.vw_indirizzi_resolved_all](/dbzero/anagrafiche/funziomni/vw_indirizzi_resolved_all)  
+> • [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto)  
+> • [anagrafiche.vw_indirizzi_resolved_all](/dbzero/anagrafiche/views/vw_indirizzi_resolved_all)  
 
 ---
 
