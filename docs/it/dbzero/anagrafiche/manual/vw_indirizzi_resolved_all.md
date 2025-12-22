@@ -19,7 +19,6 @@
 ### 🎯 Scopo Principale
 
 (latest review 20-12-25)
-
 La vista **`anagrafiche.vw_indirizzi_resolved_all`** rappresenta il **punto unico e canonico di lettura** degli indirizzi in Zero ERP.
 
 È costruita come **UNION ALL** delle due viste “resolved” specialistiche:

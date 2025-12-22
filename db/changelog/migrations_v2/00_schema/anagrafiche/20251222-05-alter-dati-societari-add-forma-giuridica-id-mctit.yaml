@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Alter tabella: anagrafiche.dati_societari
+#  - aggiunge forma_giuridica_id (FK → config.forme_giuridiche)
+#  - crea indice di supporto
+# NOTE:
+#  - Non rimuove la vecchia colonna forma_giuridica (testo)
+#  - Migrazione dati e drop colonna testo saranno in changeset separati
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20251222-05-alter-dati-societari-add-forma-giuridica-id-mctit.yaml
+
+  - changeSet:
+      id: 20251222-05-alter-dati-societari-add-forma-giuridica-id
+      author: mctit
+      comment: >
+        Aggiunge il riferimento normalizzato alla forma giuridica tramite FK
+        verso config.forme_giuridiche. La vecchia colonna testo (forma_giuridica)
+        resta temporaneamente per migrazione/compatibilità.
+
+      changes:
+        # ------------------------------------------------------------
+        # 1) Aggiunta colonna nuova (nullable per migrazione graduale)
+        # ------------------------------------------------------------
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: dati_societari
+            columns:
+              - column:
+                  name: forma_giuridica_id
+                  type: bigint
+                  remarks: "FK → config.forme_giuridiche.id. Nuovo riferimento normalizzato alla forma giuridica."
+                  constraints:
+                    nullable: true
+
+        # ------------------------------------------------------------
+        # 2) Foreign Key verso tabella di dominio
+        # ------------------------------------------------------------
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: dati_societari
+            baseColumnNames: forma_giuridica_id
+            constraintName: fk_dati_societari_forme_giuridiche
+            referencedTableSchemaName: config
+            referencedTableName: forme_giuridiche
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # ------------------------------------------------------------
+        # 3) Indice di supporto per lookup/join
+        # ------------------------------------------------------------
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: dati_societari
+            indexName: ix_dati_societari_forma_giuridica_id
+            columns:
+              - column:
+                  name: forma_giuridica_id
+
+        # ------------------------------------------------------------
+        # 4) Commento tabella/colonna (extra, per coerenza con stile)
+        # ------------------------------------------------------------
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN anagrafiche.dati_societari.forma_giuridica_id
+                IS 'FK → config.forme_giuridiche(id). Riferimento normalizzato alla forma giuridica. (Migrazione: convivere con dati_societari.forma_giuridica fino a drop successivo).';
+
+  - changeSet:
+      id: 20251222-05-01-alter-dati-societari-add-forma-giuridica-id
+      author: mctit
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: MARK_RAN
+
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: dati_societari
+            columnName: forma_giuridica
+      comment: >
+        Rimuove la vecchia colonna testo (forma_giuridica).
+
+      changes:
+        #  Rimozione colonna forma_giuridica
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: dati_societari
+            columnName: forma_giuridica

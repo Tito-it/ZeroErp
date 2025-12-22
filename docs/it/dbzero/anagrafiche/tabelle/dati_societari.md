@@ -6,7 +6,6 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | soggetto_id | uuid | NO |  |
-| forma_giuridica | text | NO |  |
 | capitale_sociale | numeric | NO |  |
 | id_prov_iscri_rea | integer | NO |  |
 | iscrizione_rea | character varying | NO |  |
@@ -22,10 +21,12 @@
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | false |
+| forma_giuridica_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_dati_societari_forme_giuridiche | forma_giuridica_id |
 | FOREIGN KEY | fk_province_config | id_prov_iscri_rea |
 | FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id, soggetto_id, soggetto_id |
 | PRIMARY KEY | pk_dati_societari | id |
@@ -38,6 +39,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_anagrafiche_dati_societari_id_prov_iscri_rea | `CREATE INDEX ix_anagrafiche_dati_societari_id_prov_iscri_rea ON anagrafiche.dati_societari USING btree (id_prov_iscri_rea)` |
+| ix_dati_societari_forma_giuridica_id | `CREATE INDEX ix_dati_societari_forma_giuridica_id ON anagrafiche.dati_societari USING btree (forma_giuridica_id)` |
 | pk_dati_societari | `CREATE UNIQUE INDEX pk_dati_societari ON anagrafiche.dati_societari USING btree (id)` |
 | uq_ds_codice_sdi | `CREATE UNIQUE INDEX uq_ds_codice_sdi ON anagrafiche.dati_societari USING btree (codice_sdi)` |
 | uq_ds_pec_fatt | `CREATE UNIQUE INDEX uq_ds_pec_fatt ON anagrafiche.dati_societari USING btree (pec_fatturazione)` |
@@ -47,11 +49,13 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_dati_societari_a10_guard_forma_giuridica_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()` |
+| trg_dati_societari_a10_guard_forma_giuridica_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()` |
 | trg_dati_societari_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_dati_societari_guard_tipo_soggetto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()` |
 | trg_dati_societari_guard_tipo_soggetto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()` |
-| trg_dati_societari_tx_id_managed_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_dati_societari_tx_id_managed_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_dati_societari_tx_id_managed_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_dati_societari_z90_storico_generic_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('dati_societari_id')` |
 | trg_dati_societari_z90_storico_generic_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('dati_societari_id')` |
 

@@ -39,6 +39,7 @@
 - [trgfn_clienti_sync_utility_from_ba](funzioni/trgfn_clienti_sync_utility_from_ba.md) — (latest review 15-12-25) La trigger function **`anagrafiche.trgfn_clienti_sync_utility_from_ba()`** garantisce la **coerenza** tra:
 - [trgfn_contatti_set_default_contatto](funzioni/trgfn_contatti_set_default_contatto.md) — (latest review 03-12-25) * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 - [trgfn_conti_bancari_normalize](funzioni/trgfn_conti_bancari_normalize.md) — (latest review 15-12-26) La trigger function **`anagrafiche.trgfn_conti_bancari_normalize()`** normalizza i campi bancari principali prima della persistenza, applicando regole semplici e deterministicamente ripetibili:
+- [trgfn_dati_societari_guard_forma_giuridica](funzioni/trgfn_dati_societari_guard_forma_giuridica.md)
 - [trgfn_dati_societari_guard_tipo_soggetto](funzioni/trgfn_dati_societari_guard_tipo_soggetto.md) — (latest review 03-12-25) Garantire che *solo* i soggetti autorizzati secondo le **policy dati societari** possano inserire o aggiornare una riga in `anagrafiche.dati_societari`.
 - [trgfn_emittenti_fiscali_guard_ruolo_emi_fis](funzioni/trgfn_emittenti_fiscali_guard_ruolo_emi_fis.md)
 - [trgfn_emittenti_fiscali_normalize](funzioni/trgfn_emittenti_fiscali_normalize.md)
@@ -79,8 +80,9 @@
 ## 🔍 Views
 - [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md) — (latest review 28-11-25) * **Selezione unificata del conto per ruolo**   Fornisce una vista già pre-filtrata e normalizzata con **una sola riga per coppia `(soggetto_ruolo_id, uso)`**, scegliendo il miglior candidato tra:
 - [vw_indirizzi_dettaglio](views/vw_indirizzi_dettaglio.md) — (latest review 28-11-25) La vista **`anagrafiche.vw_indirizzi_dettaglio`** fornisce una rappresentazione "comoda" e già arricchita degli indirizzi di dettaglio, a partire dalla tabella sorgente [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) collegata allo stradario [`config.stradario`](/dbzero/config/tabelle/stradario).
-- [vw_indirizzi_resolved_all](views/vw_indirizzi_resolved_all.md) — (latest review 20-12-25)
-- [vw_indirizzi_resolved_ruolo](views/vw_indirizzi_resolved_ruolo.md) — (latest review 20‑12‑25)
-- [vw_indirizzi_resolved_soggetto](views/vw_indirizzi_resolved_soggetto.md) — (latest review 20-12-25)
+- [vw_indirizzi_resolved_all](views/vw_indirizzi_resolved_all.md) — (latest review 20-12-25) La vista **`anagrafiche.vw_indirizzi_resolved_all`** rappresenta il **punto unico e canonico di lettura** degli indirizzi in Zero ERP.
+- [vw_indirizzi_resolved_base](views/vw_indirizzi_resolved_base.md)
+- [vw_indirizzi_resolved_ruolo](views/vw_indirizzi_resolved_ruolo.md) — (latest review 20‑12‑25) La vista **`anagrafiche.vw_indirizzi_resolved_ruolo`** fornisce una rappresentazione **unificata, pronta all’uso e semanticamente ricca** degli indirizzi associati a uno **specifico ruolo di un soggetto** (es. cliente, fornitore, punto di fornitura).
+- [vw_indirizzi_resolved_soggetto](views/vw_indirizzi_resolved_soggetto.md) — (latest review 20-12-25) La vista **`anagrafiche.vw_indirizzi_resolved_soggetto`** fornisce una rappresentazione **normalizzata e pronta all’uso** degli indirizzi **associati direttamente a un soggetto**, indipendentemente dai suoi ruoli.
 - [vw_istanze_utilities_dettaglio](views/vw_istanze_utilities_dettaglio.md)
 - [vw_pdp](views/vw_pdp.md)

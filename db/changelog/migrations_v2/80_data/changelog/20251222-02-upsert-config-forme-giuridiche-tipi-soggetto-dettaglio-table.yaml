@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20251222-02-upsert-config-forme-giuridiche-tipi-soggetto-dettaglio-table.yaml
+
+  - changeSet:
+      id: 20251222-02-upsert-config-forme-giuridiche-tipi-soggetto-dettaglio-table
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: forme_giuridiche_tipi_soggetto_dettaglio
+      changes:
+        # Upsert dei dati nella tabella forme_giuridiche_tipi_soggetto_dettaglio
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/forme_giuridiche_tipi_soggetto_dettaglio.csv
+            tableName: forme_giuridiche_tipi_soggetto_dettaglio
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "forma_giuridica_id,tipo_soggetto_dettaglio_id"
+            columns:
+              - column: { name: forma_giuridica_id, type: STRING }
+              - column: { name: tipo_soggetto_dettaglio_id, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: valido_dal, type: DATE }
+              - column: { name: valido_al, type: DATE }
+
+              - column:
+                  name: meta
+                  type: JSON
+                  # se il CSV ha valore vuoto, usa {} come JSON valido
+                  defaultValue: "{}"
+
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_update, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: tx_id, type: text }
+              - column: { name: storicizza, type: BOOLEAN }
