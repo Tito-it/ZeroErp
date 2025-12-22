@@ -1,4 +1,4 @@
-## 📘 Documentazione Tecnica – Funzione `script.fn_clone_catasto_from_parent_by_istanza`
+## 📘 Documentazione Tecnica – Funzione `script.fn_clone_catasto_from_parent_by_istanza` 
 
 > 👀 **Vedi anche**
 >
