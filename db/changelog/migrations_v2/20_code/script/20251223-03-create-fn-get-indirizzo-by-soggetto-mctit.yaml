@@ -11,7 +11,7 @@ databaseChangeLog:
       id: 20251223-03-create-fn-get-indirizzo-by-soggetto
       author: mctit
       # runAlways: true
-      runOnChange: true
+      # runOnChange: true
       validCheckSum:
         - ANY
       comment: >
