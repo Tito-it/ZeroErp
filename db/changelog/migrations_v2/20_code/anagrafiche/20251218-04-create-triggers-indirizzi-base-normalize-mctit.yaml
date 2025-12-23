@@ -52,7 +52,7 @@ databaseChangeLog:
   - changeSet:
       id: 20251218-04-01-drop-trgfn_indirizzi_normalize
       author: mctit
-      runOnChange: true
+      # runOnChange: true
       validCheckSum:
         - ANY
       changes:

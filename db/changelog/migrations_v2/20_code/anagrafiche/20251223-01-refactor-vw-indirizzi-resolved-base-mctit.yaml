@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20251223-01-refactor-vw-indirizzi-resolved-base
       author: mctit
-      runOnChange: true
+      # runOnChange: true
       validCheckSum:
         - ANY
       comment: >

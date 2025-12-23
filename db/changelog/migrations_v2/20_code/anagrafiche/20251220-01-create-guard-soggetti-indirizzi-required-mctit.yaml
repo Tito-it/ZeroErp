@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20251220-01-create-guard-soggetti-indirizzi-required
       author: mctit
-      runOnChange: true
+      # runOnChange: true
       validCheckSum:
         - ANY
       comment: >
