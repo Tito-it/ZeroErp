@@ -1,0 +1,224 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Refactor viste resolved indirizzi: logica condivisa
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251223-01-refactor-vw-indirizzi-resolved-base-mctit.yaml
+
+  - changeSet:
+      id: 20251223-01-refactor-vw-indirizzi-resolved-base
+      author: mctit
+      # runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Refactor delle viste resolved indirizzi per eliminare logica duplicata:
+        introduce vw_indirizzi_resolved_base e aggiorna le viste derivate.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- RESOLVED BASE (SOGGETTO + RUOLO)
+              -- ============================================================
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzi_by_soggetto;
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzo_by_soggetto;
+
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_all;
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_ruolo;
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_soggetto;
+
+              DROP VIEW IF EXISTS  anagrafiche.vw_indirizzi_resolved_base;
+
+              CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_base AS
+              SELECT
+                b.scope,
+                b.indirizzo_id,
+                b.soggetto_id,
+                b.soggetto_ruolo_id,
+
+                b.tipo_indirizzo_id::integer           AS tipo_indirizzo_id,
+                ti.codice_interno                      AS tipo_indirizzo_codice,
+                ti.descrizione                         AS tipo_indirizzo_descrizione,
+
+                (b.indirizzo_dettaglio_id IS NOT NULL) AS is_normalizzato,
+                b.indirizzo_dettaglio_id               AS indirizzo_dettaglio_id,
+
+                COALESCE(
+                  vidd.indirizzo_normalizzato,
+                  NULLIF(btrim(b.indirizzo_libero), ''),
+                  NULLIF(btrim(
+                    concat_ws(', ',
+                      NULLIF(btrim(b.postal_box), ''),
+                      NULLIF(btrim(b.sublocality), ''),
+                      NULLIF(btrim(b.locality), ''),
+                      NULLIF(btrim(b.administrative_area), '')
+                    )
+                  ), '')
+                )                                       AS indirizzo_display,
+
+                -- componenti liberi/internazionali
+                b.indirizzo_libero,
+                b.administrative_area,
+                b.locality,
+                b.sublocality,
+                b.postal_box,
+
+                -- Comune/CAP/Provincia: da dettaglio se normalizzato, altrimenti da dati liberi/stradario
+                COALESCE(vidd.comune_id, b.comune_id)                          AS comune_id,
+                COALESCE(vidd.descrizione_comune, co_ai.descrizione, co_s.descrizione, ic.comune)
+                                                                              AS comune_descrizione,
+                COALESCE(vidd.cap, ic.codice_postale)                          AS cap,
+                COALESCE(vidd.provincia, ic.provincia)                         AS provincia,
+
+                -- geodata strutturata
+                COALESCE(pr_ai.id, pr_s.id)                                    AS provincia_id,
+                COALESCE(pr_ai.sigla, pr_s.sigla)                              AS provincia_sigla,
+                COALESCE(pr_ai.descrizione, pr_s.descrizione)                  AS provincia_descrizione,
+
+                COALESCE(re_ai.id, re_s.id)                                    AS regione_id,
+                COALESCE(re_ai.descrizione, re_s.descrizione)                  AS regione_descrizione,
+
+                COALESCE(b.stato_id, re_ai.stato_id, re_s.stato_id)            AS stato_id,
+                st.descrizione                                                 AS stato_descrizione,
+                st.codice_iso2                                                 AS stato_iso2,
+
+                COALESCE(b.codice_postale_id, cp_s.id)                         AS codice_postale_id,
+                COALESCE(cp_ai.codice, cp_s.codice)                            AS cap_codice,
+
+                -- stradario/dettaglio (solo se normalizzato)
+                vidd.stradario_id,
+                vidd.via_norm,
+                vidd.civico,
+                vidd.estensione_civico,
+                vidd.palazzina,
+                vidd.scala,
+                vidd.piano,
+                vidd.interno,
+                vidd.altro,
+
+                -- geoloc: priorità al dettaglio, altrimenti geoloc libero
+                COALESCE(vidd.civic_geoloc, vidd.street_geoloc, b.geoloc) AS geoloc,
+
+                -- audit + tx
+                b.storicizza,
+                b.tx_id,
+                b.data_insert,
+                b.user_insert,
+                b.data_update,
+                b.user_update
+              FROM (
+                SELECT
+                  'RUOLO'::text      AS scope,
+                  i.id              AS indirizzo_id,
+                  sr.soggetto_id    AS soggetto_id,
+                  i.soggetto_ruolo_id AS soggetto_ruolo_id,
+                  i.tipo_indirizzo_id AS tipo_indirizzo_id,
+                  i.indirizzo_dettaglio_id,
+                  i.indirizzo_libero,
+                  i.stato_id,
+                  i.administrative_area,
+                  i.locality,
+                  i.sublocality,
+                  i.postal_box,
+                  i.comune_id,
+                  i.codice_postale_id,
+                  i.geoloc,
+                  i.storicizza,
+                  i.tx_id,
+                  i.data_insert,
+                  i.user_insert,
+                  i.data_update,
+                  i.user_update
+                FROM anagrafiche.indirizzi i
+                JOIN anagrafiche.soggetti_ruoli sr
+                  ON sr.id = i.soggetto_ruolo_id
+
+                UNION ALL
+
+                SELECT
+                  'SOGGETTO'::text   AS scope,
+                  isg.id             AS indirizzo_id,
+                  isg.soggetto_id    AS soggetto_id,
+                  NULL::bigint       AS soggetto_ruolo_id,
+                  isg.tipo_indirizzo_id AS tipo_indirizzo_id,
+                  isg.indirizzo_dettaglio_id,
+                  isg.indirizzo_libero,
+                  isg.stato_id,
+                  isg.administrative_area,
+                  isg.locality,
+                  isg.sublocality,
+                  isg.postal_box,
+                  isg.comune_id,
+                  isg.codice_postale_id,
+                  isg.geoloc,
+                  isg.storicizza,
+                  isg.tx_id,
+                  isg.data_insert,
+                  isg.user_insert,
+                  isg.data_update,
+                  isg.user_update
+                FROM anagrafiche.indirizzi_soggetti isg
+              ) b
+              JOIN config.tipi_indirizzi ti
+                ON ti.id = b.tipo_indirizzo_id
+              LEFT JOIN anagrafiche.vw_indirizzi_dettaglio vidd
+                ON vidd.indirizzo_dettaglio_id = b.indirizzo_dettaglio_id
+              LEFT JOIN script.vw_indirizzo_completo ic
+                ON ic.id_comune = b.comune_id
+              LEFT JOIN config.stradario s
+                ON s.id = vidd.stradario_id
+              -- lato STRADARIO
+              LEFT JOIN config.comuni co_s
+                ON co_s.id = s.comune_id
+              LEFT JOIN config.codici_postali cp_s
+                ON cp_s.id = s.codice_postale_id
+              -- lato INDIRIZZI (per casi liberi/override)
+              LEFT JOIN config.comuni co_ai
+                ON co_ai.id = b.comune_id
+              LEFT JOIN config.codici_postali cp_ai
+                ON cp_ai.id = b.codice_postale_id
+              LEFT JOIN config.province pr_ai
+                ON pr_ai.id = co_ai.provincia_id
+              LEFT JOIN config.province pr_s
+                ON pr_s.id = co_s.provincia_id
+              LEFT JOIN config.regioni re_ai
+                ON re_ai.id = pr_ai.regione_id
+              LEFT JOIN config.regioni re_s
+                ON re_s.id = pr_s.regione_id
+              LEFT JOIN config.stati st
+                ON st.id = COALESCE(b.stato_id, re_ai.stato_id, re_s.stato_id);
+
+              COMMENT ON VIEW anagrafiche.vw_indirizzi_resolved_base
+              IS 'Vista base resolved: indirizzi soggetto/ruolo con output standard condiviso (display + campi strutturati).';
+
+              -- ============================================================
+              -- RESOLVED DERIVATE
+              -- ============================================================
+              CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_ruolo AS
+              SELECT *
+              FROM anagrafiche.vw_indirizzi_resolved_base
+              WHERE scope = 'RUOLO';
+
+              COMMENT ON VIEW anagrafiche.vw_indirizzi_resolved_ruolo
+              IS 'Vista resolved: indirizzi associati a soggetto_ruolo, con output standard.';
+
+              CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_soggetto AS
+              SELECT *
+              FROM anagrafiche.vw_indirizzi_resolved_base
+              WHERE scope = 'SOGGETTO';
+
+              COMMENT ON VIEW anagrafiche.vw_indirizzi_resolved_soggetto
+              IS 'Vista resolved: indirizzi associati direttamente al soggetto, con output standard.';
+
+              CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_all AS
+              SELECT *
+              FROM anagrafiche.vw_indirizzi_resolved_base;
+
+              COMMENT ON VIEW anagrafiche.vw_indirizzi_resolved_all
+              IS 'Vista unificata degli indirizzi resolved: scope SOGGETTO + RUOLO.';

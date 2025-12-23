@@ -156,31 +156,9 @@ erDiagram
     valute         ||--o{ gestori : uses
 
     soggetti       { uuid id PK }
-    soggetti_ruoli { int  id PK }
+    soggetti_ruoli { bigint  id PK }
     valute         { int  id PK }
     gestori        { int  id PK }
-
-```
-
----
-
-###  Diagramma ER attributi
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    gestori {
-        int      id PK
-        uuid     soggetto_id FK
-        int      soggetto_ruolo_id FK
-        string   descrizione
-        string   cd_prod_software
-        int      valuta_id FK
-        string   user_insert
-        string   user_update
-        datetime data_insert
-        datetime data_update
-    }
 
 ```
 

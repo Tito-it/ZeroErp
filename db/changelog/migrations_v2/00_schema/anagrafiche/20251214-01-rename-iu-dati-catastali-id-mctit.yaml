@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Fix istanza_utility_id in catasto_unita_immobiliari:
+# - Rinomina colonna dati_catastali_id in catasto_unita_immobiliare_id
+# - Rinomina FK associata
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/220251214-01-rename-iu-dati-catastali-id-mctit.yaml
+
+  - changeSet:
+      id: 20251214-01-rename-iu-dati-catastali-id
+      author: mctit
+      comment: >
+        Rinomina la colonna anagrafiche.istanze_utilities.dati_catastali_id in
+        catasto_unita_immobiliare_id, aggiornando di conseguenza la FK associata.
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: istanze_utilities
+            columnName: dati_catastali_id
+
+      changes:
+        # 1) Drop FK esistente (su dati_catastali_id)
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: istanze_utilities
+            constraintName: fk_iu_catasto_unita
+
+        # 2) Rinomina colonna
+        - renameColumn:
+            schemaName: anagrafiche
+            tableName: istanze_utilities
+            oldColumnName: dati_catastali_id
+            newColumnName: catasto_unita_immobiliare_id
+            columnDataType: bigint
+
+        # 3) Ricrea FK con nome nuovo
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: istanze_utilities
+            baseColumnNames: catasto_unita_immobiliare_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: catasto_unita_immobiliari
+            referencedColumnNames: id
+            constraintName: fk_iu_catasto_unita_immobiliare
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+            deferrable: false
+            initiallyDeferred: false
+            validate: true
+
+        # 4) (Consigliato) aggiorna il commento colonna
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON COLUMN anagrafiche.istanze_utilities.catasto_unita_immobiliare_id
+              IS 'FK → anagrafiche.catasto_unita_immobiliari.id';

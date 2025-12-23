@@ -96,8 +96,8 @@ erDiagram
     indirizzi_dettaglio ||--o{ catasto_unita_immobiliari : has
     istanze_utilities   ||--o{ catasto_unita_immobiliari : linked_by
 
-    indirizzi_dettaglio { int id PK }
-    istanze_utilities   { int id PK }
+    indirizzi_dettaglio { bigint id PK }
+    istanze_utilities   { bigint id PK }
     catasto_unita_immobiliari      { bigint id PK }
 
 ```

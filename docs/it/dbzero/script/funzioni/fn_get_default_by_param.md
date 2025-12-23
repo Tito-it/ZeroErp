@@ -19,26 +19,27 @@ DECLARE
   v_pk_col     text;
 BEGIN
 
-    
-    
-    
-    
-    
-    
-    
-    
-    
+    -- -----------------------------------------------------
+    -- Input
+    -- p_table_schema: schema della tabella da cui recuperare il valore
+    -- p_table_name: nome della tabella da cui recuperare il valore
+    -- p_filter_column: colonna della tabella da usare come filtro (presumibilmente una PK o indice univoco esempio: codice_iso3)
+    -- p_param_code: codice del parametro da cui recuperare il valore di filtro (esempio: 'state_code_iso3')
+    -- Output
+    -- v_lookup_id: valore trovato nella tabella, sempre come TEXT (caller deve castare in seguito) rappresenta id del record trovato.
+    -- -----------------------------------------------------
 
-  
+  -- 1) Valore del parametro (session_key letta da GUC impostata dal middleware)
   v_param_val := script.fn_get_parameter_full(
     p_param_code,
-    NULL,                                     
-    NULL,                                     
-    current_setting('app.session_key', true), 
+    NULL,                                     -- tenant_id
+    NULL,                                     -- user_id (se usi django_user_id, passalo qui)
+    NULL::integer[],                          -- group id
+    current_setting('app.session_key', true), -- session_key
     p_function_name
   );
 
-  
+  -- 1.1) Recupero della vera PK dalla catalog table
   SELECT a.attname
     INTO v_pk_col
   FROM pg_index i
@@ -63,11 +64,9 @@ BEGIN
       NULL::uuid,
       p_table_schema, p_table_name
     );
-    
-     
   END IF;
 
-  
+  -- 2) Lookup con cast a text sul filtro
   EXECUTE format(
     'SELECT %I::text FROM %I.%I WHERE %I::text = $1 LIMIT 1',
     v_pk_col, p_table_schema, p_table_name, p_filter_column
@@ -75,7 +74,7 @@ BEGIN
   INTO v_lookup_id
   USING v_param_val;
 
-  
+  -- 3) Se non trovato: log + raise (se la funzione di log non alza da sola)
   IF v_lookup_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
@@ -89,12 +88,9 @@ BEGIN
       NULL::uuid,
         p_table_schema||'.'||p_table_name,
         p_param_code,
-        v_param_val
-      
+        v_param_val    
     );
-    
-     
-     
+  
   END IF;
 
   RETURN v_lookup_id;

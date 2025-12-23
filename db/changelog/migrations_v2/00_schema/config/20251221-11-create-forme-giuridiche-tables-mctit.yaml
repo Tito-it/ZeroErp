@@ -1,0 +1,370 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Creazione tabelle:
+#  - config.forme_giuridiche
+#  - config.forme_giuridiche_tipi_soggetto_dettaglio (matrice - Strada B)
+#
+# NOTE:
+# - Questo file contiene SOLO struttura, vincoli e indici.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20251221-11-create-forme-giuridiche-tables-mctit.yaml
+
+  # ------------------------------------------------------------------
+  # 1) Tabella dominio: config.forme_giuridiche
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: 20251221-11-create-forme-giuridiche-table
+      author: mctit
+      comment: >
+        Crea tabella di dominio config.forme_giuridiche (per-paese).
+        Contiene codici canonici e policy di controllo dati (REA/capitale sociale).
+
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: forme_giuridiche
+            remarks: "Dominio forme giuridiche per-paese. Policy REA e capitale sociale. (No SDI/PEC)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "Identificativo univoco interno (PK)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_forme_giuridiche
+                    nullable: false
+
+              # --- Internazionalizzazione ------------------------------------
+              - column:
+                  name: stato_iso2
+                  type: character varying(2)
+                  remarks: "ISO2 del paese. Tipicamente sincronizzato da stato_id (trigger in changelog separato)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: stato_id
+                  type: bigint
+                  remarks: "FK → config.stati.id. Base per internazionalizzazione e sync dello stato_iso2."
+                  constraints:
+                    nullable: true
+
+              # --- Codice e descrizioni -------------------------------------
+              - column:
+                  name: codice
+                  type: character varying(20)
+                  remarks: "Codice canonico interno forma giuridica (es. SRL, SPA, SNC...). Unico per stato_iso2."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: character varying(150)
+                  remarks: "Descrizione base (lingua principale)."
+                  constraints:
+                    nullable: false
+
+              # --- Policy controlli dati ------------------------------------
+              # Usate come regole di dominio: NONE | OPTIONAL | REQUIRED
+              # NB: Per ora TEXT + CHECK, per evitare introdurre nuovi enum oggi.
+              - column:
+                  name: rea_policy
+                  type: text
+                  defaultValue: "NONE"
+                  remarks: "Policy REA: NONE | OPTIONAL | REQUIRED."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: capitale_sociale_policy
+                  type: text
+                  defaultValue: "NONE"
+                  remarks: "Policy capitale sociale: NONE | OPTIONAL | REQUIRED."
+                  constraints:
+                    nullable: false
+
+              # --- Stato logico ---------------------------------------------
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag attivazione logica della forma giuridica."
+                  constraints:
+                    nullable: false
+
+              # --- Metadata estendibili -------------------------------------
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili JSONB (note, alias, future estensioni)."
+                  constraints:
+                    nullable: false
+
+              # --- Audit standard -------------------------------------------
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente che ha creato la riga."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento riga."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  remarks: "Ultimo utente che ha modificato la riga."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  remarks: "Timestamp ultima modifica riga."
+                  constraints:
+                    nullable: true
+
+              # --- Framework tx_id / storico --------------------------------
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID per audit/log (gestito da trigger in changelog separato)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Flag per trigger di storicizzazione (framework storico)."
+                  constraints:
+                    nullable: false
+
+        # Unicità: codice forma giuridica per paese
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: forme_giuridiche
+            columnNames: stato_iso2, codice
+            constraintName: uq_forme_giuridiche_statoiso2_codice
+
+        # FK su stati (internazionalizzazione)
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: forme_giuridiche
+            baseColumnNames: stato_id
+            constraintName: fk_forme_giuridiche_stato_id
+            referencedTableSchemaName: config
+            referencedTableName: stati
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # CHECK policy (no enum)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.forme_giuridiche
+                ADD CONSTRAINT chk_forme_giuridiche_rea_policy
+                CHECK (rea_policy IN ('NONE','OPTIONAL','REQUIRED'));
+
+              ALTER TABLE config.forme_giuridiche
+                ADD CONSTRAINT chk_forme_giuridiche_capitale_sociale_policy
+                CHECK (capitale_sociale_policy IN ('NONE','OPTIONAL','REQUIRED'));
+
+        # Indici utili
+        - createIndex:
+            schemaName: config
+            tableName: forme_giuridiche
+            indexName: ix_forme_giuridiche_stato_id
+            columns:
+              - column:
+                  name: stato_id
+
+        - createIndex:
+            schemaName: config
+            tableName: forme_giuridiche
+            indexName: ix_forme_giuridiche_codice
+            columns:
+              - column:
+                  name: codice
+
+  # ------------------------------------------------------------------
+  # 2) Matrice (Strada B): config.forme_giuridiche_tipi_soggetto_dettaglio
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: 20251221-11-02-create-forme-giuridiche-tipi-soggetto-dettaglio-table
+      author: mctit
+      comment: >
+        Crea matrice di compatibilità forme_giuridiche ↔ tipi_soggetto_dettaglio.
+        Definisce quali forme giuridiche sono ammesse per un tipo_soggetto_dettaglio,
+        con flag attivo e finestra di validità temporale.
+
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: forme_giuridiche_tipi_soggetto_dettaglio
+            remarks: "Matrice compatibilità: forme_giuridiche ↔ tipi_soggetto_dettaglio (abilitazioni e validità)."
+            columns:
+              - column:
+                  name: forma_giuridica_id
+                  type: bigint
+                  remarks: "FK → config.forme_giuridiche.id"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tipo_soggetto_dettaglio_id
+                  type: bigint
+                  remarks: "FK → config.tipi_soggetto_dettaglio.id"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Abilitazione logica dell’associazione."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: valido_dal
+                  type: date
+                  remarks: "Data inizio validità (NULL = sempre valido in passato)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: valido_al
+                  type: date
+                  remarks: "Data fine validità (NULL = valido a tempo indeterminato)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili JSONB (motivazioni, note, mapping legacy)."
+                  constraints:
+                    nullable: false
+
+              # Audit
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente che ha creato la riga."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento riga."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  remarks: "Ultimo utente che ha modificato la riga."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  remarks: "Timestamp ultima modifica riga."
+                  constraints:
+                    nullable: true
+
+              # Framework tx_id / storico
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID per audit/log (gestito da trigger in changelog separato)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Flag per trigger di storicizzazione (framework storico)."
+                  constraints:
+                    nullable: false
+
+        # PK composta (tipica tabella ponte)
+        - addPrimaryKey:
+            schemaName: config
+            tableName: forme_giuridiche_tipi_soggetto_dettaglio
+            columnNames: forma_giuridica_id, tipo_soggetto_dettaglio_id
+            constraintName: pk_forme_giuridiche_tsd
+
+        # FK verso forme_giuridiche
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: forme_giuridiche_tipi_soggetto_dettaglio
+            baseColumnNames: forma_giuridica_id
+            constraintName: fk_fg_tsd_forma_giuridica
+            referencedTableSchemaName: config
+            referencedTableName: forme_giuridiche
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # FK verso tipi_soggetto_dettaglio
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: forme_giuridiche_tipi_soggetto_dettaglio
+            baseColumnNames: tipo_soggetto_dettaglio_id
+            constraintName: fk_fg_tsd_tipo_soggetto_dettaglio
+            referencedTableSchemaName: config
+            referencedTableName: tipi_soggetto_dettaglio
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # CHECK validità
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.forme_giuridiche_tipi_soggetto_dettaglio
+                ADD CONSTRAINT chk_fg_tsd_validita
+                CHECK (valido_dal IS NULL OR valido_al IS NULL OR valido_al >= valido_dal);
+
+        # Indici di supporto (lookup rapidi in entrambe le direzioni)
+        - createIndex:
+            schemaName: config
+            tableName: forme_giuridiche_tipi_soggetto_dettaglio
+            indexName: ix_fg_tsd_forma_giuridica_id
+            columns:
+              - column:
+                  name: forma_giuridica_id
+
+        - createIndex:
+            schemaName: config
+            tableName: forme_giuridiche_tipi_soggetto_dettaglio
+            indexName: ix_fg_tsd_tipo_soggetto_dettaglio_id
+            columns:
+              - column:
+                  name: tipo_soggetto_dettaglio_id

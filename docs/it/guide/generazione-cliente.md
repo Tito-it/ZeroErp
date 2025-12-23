@@ -1,4 +1,5 @@
 # 🌱 Guida Tecnica – Generazione di un Cliente in Zero ERP
+> (latest review 16-12-25)
 
 > 🧩 **Destinatari:** sviluppatori database, backend e analisti funzionali
 >
@@ -6,7 +7,9 @@
 > 👀 **Vedi anche**
 >
 > * [`Guida Soggetti & Ruoli`](/guide/soggetti-e-ruoli-anagrafici)  
- 
+
+>
+> **All'interno si trova l'appendice per le funzionalità subentro cliente,chiusura e attivazione** 
 
 ---
 
@@ -193,5 +196,146 @@ erDiagram
 ```
 
 ---
+
+# 📎 Appendice – Gestione del Subentro Cliente (continuità tecnica e commerciale)
+
+## 🎯 Obiettivo
+
+Garantire il passaggio da un **cliente uscente** a un **cliente entrante** sullo stesso **PDP / indirizzo**, assicurando:
+
+* ❌ assenza di overlap commerciale tra clienti
+* 🔗 corretta catena tecnica delle istanze (`parent_istanza_id`)
+* 🧱 continuità dei dati **catastali** tramite clone controllato
+* 🗺️ allineamento automatico tra **catasto** e **indirizzo** (tabella ponte)
+
+---
+
+## 🔄 Flusso operativo sintetico
+
+### 1️⃣ Chiusura preventiva del cliente precedente
+
+Prima di creare il nuovo cliente, viene sempre eseguita la funzione:
+
+```sql
+SELECT script.fn_subentro_cliente(p_pdp_id, p_data_attivazione_nuovo);
+```
+
+Effetti:
+
+* individua il **cliente attivo** più recente sul PDP
+* imposta:
+
+  * `data_chiusura = p_data_attivazione_nuovo - 1 giorno`
+  * `stato_cliente = CH`
+* se non esiste alcun cliente precedente → ritorna `NULL`
+
+👉 Questo step rende sicura la creazione del nuovo cliente rispetto ai vincoli di periodo.
+
+---
+
+### 2️⃣ Creazione della nuova istanza tecnica
+
+Viene creata una nuova riga in `anagrafiche.istanze_utilities`:
+
+* stesso `pdp_id`
+* stesso `indirizzo_dettaglio_id`
+* soggetto differente (nuovo intestatario)
+
+Successivamente, il trigger:
+
+* `anagrafiche.trgfn_clienti_set_parent_istanza`
+
+calcola e valorizza automaticamente:
+
+* `istanze_utilities.parent_istanza_id`
+
+➡️ **Questa è la fonte ufficiale** della catena tecnica di subentro.
+
+---
+
+### 3️⃣ Clone dei dati catastali dalla parent istanza
+
+Quando `parent_istanza_id` viene impostato e la nuova istanza non ha ancora un catasto:
+
+* scatta il trigger:
+
+  * `trg_iu_z50_clone_catasto_from_parent_aft_upd`
+
+che esegue:
+
+* `anagrafiche.trgfn_iu_clone_catasto_from_parent()`
+
+Logica interna:
+
+1. individua il **catasto sorgente** tramite `script.fn_get_catasto_source_by_istanza`
+2. crea un **nuovo record** in `anagrafiche.catasto_unita_immobiliari`
+3. collega il nuovo catasto alla nuova istanza (`catasto_unita_immobiliare_id`)
+
+➡️ Il clone garantisce **continuità storica** senza condividere lo stesso record.
+
+---
+
+### 4️⃣ Sincronizzazione catasto ↔ indirizzo
+
+Quando l’istanza possiede entrambi:
+
+* `catasto_unita_immobiliare_id`
+* `indirizzo_dettaglio_id`
+
+il trigger:
+
+* `anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo`
+
+assicura l’inserimento **idempotente** nella tabella ponte:
+
+* `anagrafiche.catasto_unita_immobiliari_indirizzi`
+
+(con vincolo `uq_catunitaindir`).
+
+---
+
+### 5️⃣ Creazione del nuovo cliente
+
+A valle della messa in sicurezza:
+
+* viene creato il `billing_account` della nuova istanza
+* viene inserito il nuovo record in `anagrafiche.clienti` con:
+
+  * `data_attivazione = p_data_attivazione_nuovo`
+  * stato iniziale **ATTIVO**
+
+Eventuali trigger su `clienti` completano:
+
+* normalizzazione periodo
+* aggiornamento stato PDP
+* storicizzazione
+
+---
+
+## 🧠 Principi chiave
+
+* Il **subentro è sempre guidato dal PDP**, non dall’indirizzo diretto
+* La **parent istanza** è l’unica fonte per il recupero del catasto sorgente
+* Il **catasto non è mai condiviso** tra istanze: viene sempre clonato
+* La tabella ponte gestisce esclusivamente il legame territoriale
+
+---
+
+## 🔎 Funzioni e trigger coinvolti
+
+* [`anagrafiche.trgfn_clienti_set_parent_istanza`](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_parent_istanza)   
+* [`anagrafiche.trgfn_iu_clone_catasto_from_parent`](/dbzero/anagrafiche/funzioni/trgfn_iu_clone_catasto_from_parent)   
+* [`anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_iu_sync_catasto_unita_indirizzo)   
+
+* [`script.fn_subentro_cliente`](/dbzero/script/funzioni/fn_subentro_cliente)   
+* [`script.fn_get_catasto_source_by_istanza`](/dbzero/script/funzioni/fn_get_catasto_source_by_istanza)   
+* [`script.fn_clone_catasto_from_parent_by_istanza`](/dbzero/script/funzioni/fn_clone_catasto_from_parent_by_istanza)   
+
+---
+
+## 🧭 Nota finale
+
+> Questo flusso è progettato per essere **deterministico, idempotente e auditabile**,
+> ed è compatibile con subentri multipli nel tempo sullo stesso punto di erogazione.
 
 {% include-markdown "signature-core.md" %}

@@ -20,7 +20,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 19-12-25)
 La tabella **`config.tipi_ruolo_tipi_indirizzo`** rappresenta la **matrice di configurazione** che definisce:
 
 * **quali tipi di indirizzo** sono **ammessi** per ogni **tipo di ruolo**
@@ -90,7 +90,7 @@ Con `config.tipi_ruolo_tipi_indirizzo`:
 
 ### ⚙️ Regole di Funzionamento
 
-#### 1️⃣ Matrice presente vs assente
+ **1️⃣ Matrice presente vs assente**
 
 La logica implementata dal *guard* sugli indirizzi è:
 
@@ -113,7 +113,7 @@ che blocca l’inserimento/update di indirizzi non coerenti con la matrice.
 
 ---
 
-#### 2️⃣ Fallback tra tipi indirizzo
+ **2️⃣ Fallback tra tipi indirizzo**
 
 La colonna `fallback_tipo_indirizzo_id` permette di definire **una catena di fallback** per i casi in cui **manca l’indirizzo del tipo richiesto**.
 
@@ -142,7 +142,7 @@ Con questa configurazione:
 
 ### 🔍 Esempi d’Uso (concettuali)
 
-#### ✔ Ruolo Cliente
+ **✔ Ruolo Cliente**
 
 * Ammessi:
 
@@ -155,7 +155,7 @@ Con questa configurazione:
   * FATT → DOMFISC,
   * SPED → RES
 
-#### ✔ Ruolo Gestore
+ **✔ Ruolo Gestore**
 
 * Ammessi:
 
@@ -168,7 +168,7 @@ Con questa configurazione:
   * SEDEOP → SEDELEG
   * FORNITURA → SEDEOP
 
-#### ✔ Ruolo senza matrice
+ **✔ Ruolo senza matrice**
 
 * Nessuna riga in `config.tipi_ruolo_tipi_indirizzo` per quel `tipo_ruolo`
   ➜ indirizzi **non vincolati dalla matrice**, utili in scenari di migrazione/adozione graduale.

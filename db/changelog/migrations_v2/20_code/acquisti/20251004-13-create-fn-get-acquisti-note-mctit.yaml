@@ -1,7 +1,7 @@
 # ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Liquibase changelog per Zero ERP
-# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
 #
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
@@ -10,16 +10,16 @@
 # Funzione generica per estrarre note per target_tipo/target_id
 # ------------------------------------------------------------
 databaseChangeLog:
-
   - changeSet:
       id: 20251004-13-create-fn-get-acquisti-note
       author: mctit
+      context: test
       logicalFilePath: migrations_v2/00_schema/acquisti/20251004-13-create-fn-get-acquisti-note.sql.yaml
       preConditions:
-     # non deve essere più creata fatta funzione generica 22/10/22  
-        
-          - onFail: CONTINUE
-          - not:
+        # non deve essere più creata fatta funzione generica 22/10/22
+
+        - onFail: CONTINUE
+        - not:
             - tableExists: { schemaName: vendite, tableName: note }
 
       changes:

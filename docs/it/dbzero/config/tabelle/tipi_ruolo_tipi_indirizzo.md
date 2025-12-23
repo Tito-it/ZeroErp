@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/tipi_ruolo_tipi_indirizzo.md" %}
 # 📚 Tabella `tipi_ruolo_tipi_indirizzo`
 
 ## 🗂️ Campi principali
@@ -5,7 +6,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | tipo_ruolo_id | bigint | NO |  |
-| tipo_indirizzo_id | bigint | NO |  |
+| tipo_indirizzo_id | integer | NO |  |
 | obbligatorio | boolean | NO | false |
 | valido_dal | date | YES |  |
 | valido_al | date | YES |  |
@@ -16,7 +17,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 | storicizza | boolean | NO | false |
-| fallback_tipo_indirizzo_id | bigint | YES |  |
+| fallback_tipo_indirizzo_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -28,7 +29,7 @@
 | FOREIGN KEY | fk_tipi_ruolo_tipi_indirizzo_fallback_tipo | fallback_tipo_indirizzo_id |
 | FOREIGN KEY | fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo | tipo_ruolo_id |
 | PRIMARY KEY | pk_ruoli_tipi_indirizzo | id |
-| UNIQUE | uq_tipi_ruolo_tipi_indirizzo_tipo_ruolo_tipo | tipo_ruolo_id, tipo_indirizzo_id |
+| UNIQUE | uq_tipi_ruolo_tipi_indirizzo_tipo_ruolo_tipo | tipo_indirizzo_id, tipo_ruolo_id |
 
 ## 📑 Indici
 | Nome | Definizione |

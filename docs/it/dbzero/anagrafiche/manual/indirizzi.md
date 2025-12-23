@@ -19,8 +19,8 @@
 >
 > Approfondimento funzioni e trigger:  
 >
-> * [anagrafiche.trgfn_indirizzi_ins_upd_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_ins_upd_clean_fields)  
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic) 
+> * [anagrafiche.trgfn_indirizzi_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_clean_fields)  
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)  
 > * [script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)   
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
@@ -38,7 +38,7 @@ Supporta:
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 16-12-25)
 * **Associazione soggetto/ruolo → indirizzo**  
   Ogni soggetto può avere più indirizzi distinti in base al ruolo (es. cliente, fornitore) e al tipo di indirizzo (es. sede legale, spedizione, residenza).
 
@@ -109,37 +109,6 @@ erDiagram
     codici_postali   ||--o{ indirizzi : uses
     stati            ||--o{ indirizzi : uses
     indirizzi               ||--o{ storico_indirizzi : history
-
-```
-
----
-
-###  Diagramma ER attributi
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    indirizzi {
-        int        id PK
-        int        soggetto_ruolo_id FK
-        int        tipo_indirizzo_id FK
-        int        indirizzo_dettaglio_id FK
-        text       indirizzo_libero
-        int        stato_id FK
-        varchar    administrative_area
-        varchar    locality
-        varchar    sublocality
-        varchar    postal_box
-        point4326  geoloc
-        int        comune_id FK
-        int        codice_postale_id FK
-        uuid       tx_id
-        bool       storicizza
-        datetime   data_insert
-        varchar    user_insert
-        datetime   data_update
-        varchar    user_update
-    }
 
 ```
 

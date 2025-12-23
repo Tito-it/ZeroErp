@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_conti_bancari_normalize.md" %}
 # ⚙️ Funzione `trgfn_conti_bancari_normalize`
 
 ```sql

@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Ponte catasto_unita_immobiliari <-> indirizzi_dettaglio:
+# - Funzione di sync idempotente
+# - Trigger su anagrafiche.istanze_utilities
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251214-02-trgfn-catasto-ponte-sync-mctit.yaml
+
+    - changeSet:
+          id: 20251214-02-trgfn-catasto-ponte-sync
+          author: mctit
+          runOnChange: true
+          validCheckSum:
+              - ANY
+          comment: >
+              Crea/aggiorna automaticamente la tabella ponte
+              anagrafiche.catasto_unita_immobiliari_indirizzi quando
+              istanze_utilities ha sia catasto_unita_immobiliare_id che indirizzo_dettaglio_id.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $$
+                        BEGIN
+                          -- Se mancano i dati minimi, non facciamo nulla
+                          IF NEW.catasto_unita_immobiliare_id IS NULL OR NEW.indirizzo_dettaglio_id IS NULL THEN
+                            RETURN NEW;
+                          END IF;
+
+                          -- Inserimento idempotente nella tabella ponte
+                          INSERT INTO anagrafiche.catasto_unita_immobiliari_indirizzi (
+                            catasto_unita_id,
+                            indirizzo_dettaglio_id
+                          )
+                          VALUES (
+                            NEW.catasto_unita_immobiliare_id,
+                            NEW.indirizzo_dettaglio_id
+                          )
+                          ON CONFLICT ON CONSTRAINT uq_catunitaindir
+                          DO NOTHING;
+
+                          RETURN NEW;
+                        END;
+                        $$;
+
+                        COMMENT ON FUNCTION 
+                        anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo() IS
+                            'Funzione trigger che garantisce la presenza del legame
+                            tra catasto_unita_immobiliari e indirizzi_dettaglio nella tabella ponte
+                            catasto_unita_immobiliari_indirizzi quando istanze_utilities ha entrambi i riferimenti.';
+
+    - changeSet:
+          id: 20251214-02-02-trgfn-catasto-ponte-sync
+          author: mctit
+          comment: >
+              Trigger AFTER INSERT/UPDATE su anagrafiche.istanze_utilities per garantire
+              la presenza del legame unità catastale <-> indirizzo in tabella ponte.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        DROP TRIGGER IF EXISTS 
+                        trg_istanze_utilities_z40_sync_catasto_unita_indirizzo_aft_ins_upd
+                        ON anagrafiche.istanze_utilities;
+
+                          CREATE TRIGGER trg_istanze_utilities_z40_sync_catasto_unita_indirizzo_aft_ins_upd
+                          AFTER INSERT OR UPDATE OF catasto_unita_immobiliare_id, indirizzo_dettaglio_id
+                          ON anagrafiche.istanze_utilities
+                          FOR EACH ROW
+                          EXECUTE FUNCTION anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo();
+
+                        COMMENT ON TRIGGER trg_istanze_utilities_z40_sync_catasto_unita_indirizzo_aft_ins_upd
+                        ON anagrafiche.istanze_utilities IS
+                        'Trigger AFTER INSERT/UPDATE che garantisce la presenza del legame
+                         tra catasto_unita_immobiliari e indirizzi_dettaglio nella tabella ponte
+                         catasto_unita_immobiliari_indirizzi quando istanze_utilities ha entrambi i riferimenti.';
+
+    - changeSet:
+          id: 20251214-02-03-trgfn-catasto-ponte-sync
+          author: mctit
+          comment: >
+              Trigger AFTER INSERT/UPDATE su anagrafiche.istanze_utilities per garantire
+              la presenza del legame unità catastale <-> indirizzo in tabella ponte.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        DROP TRIGGER IF EXISTS 
+                        trg_istanze_utilities_z40_sync_catasto_unita_indirizzo_aft_ins_upd
+                        ON anagrafiche.istanze_utilities;
+
+                          CREATE TRIGGER trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd
+                          AFTER INSERT OR UPDATE OF catasto_unita_immobiliare_id, indirizzo_dettaglio_id
+                          ON anagrafiche.istanze_utilities
+                          FOR EACH ROW
+                          EXECUTE FUNCTION anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo();
+
+                        COMMENT ON TRIGGER trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd
+                        ON anagrafiche.istanze_utilities IS
+                        'Trigger AFTER INSERT/UPDATE che garantisce la presenza del legame
+                         tra catasto_unita_immobiliari e indirizzi_dettaglio nella tabella ponte
+                         catasto_unita_immobiliari_indirizzi quando istanze_utilities ha entrambi i riferimenti.';

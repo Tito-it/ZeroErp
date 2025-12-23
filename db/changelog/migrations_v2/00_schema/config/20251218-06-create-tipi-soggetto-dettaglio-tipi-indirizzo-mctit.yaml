@@ -1,0 +1,201 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Creazione tabella config.tipi_soggetto_dettaglio_tipi_indirizzo
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20251218-06-create-tipi-soggetto-dettaglio-tipi-indirizzo-mctit.yaml
+
+  - changeSet:
+      id: 20251218-06-create-tipi-soggetto-dettaglio-tipi-indirizzo
+      author: mctit
+      comment: >
+        Crea la matrice di configurazione tipo_soggetto_dettaglio ↔ tipo_indirizzo
+        per definire ammissibilità, obbligatorietà e validità temporale.
+        Se per un tipo_soggetto_dettaglio non esiste alcuna riga di matrice,
+        la policy è "libero" (tutti i tipi indirizzo ammessi).
+
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio_tipi_indirizzo
+            remarks: "Matrice tipo soggetto dettaglio ↔ tipo indirizzo (ammissibilità e regole base)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "Identificativo univoco interno (PK)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_tipi_soggetto_dettaglio_tipi_indirizzo
+                    nullable: false
+
+              - column:
+                  name: tipo_soggetto_dettaglio_id
+                  type: bigint
+                  remarks: "Tipo soggetto dettaglio (FK → config.tipi_soggetto_dettaglio.id)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tipo_indirizzo_id
+                  type: integer
+                  remarks: "Tipo indirizzo ammesso (FK → config.tipi_indirizzi.id)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: obbligatorio
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Se TRUE, il soggetto deve avere almeno un indirizzo di questo tipo."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: valido_dal
+                  type: date
+                  remarks: "Data inizio validità (NULL = sempre valido in passato)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: valido_al
+                  type: date
+                  remarks: "Data fine validità (NULL = valido a tempo indeterminato)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag attivazione logica della regola."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili in formato JSONB."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente che ha creato la riga."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Ultimo utente che ha modificato la riga."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento riga."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica riga."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Flag per trig di storicizzazione (framework storico)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: fallback_tipo_indirizzo_id
+                  type: integer
+                  remarks: "Tipo indirizzo di fallback (FK → config.tipi_indirizzi.id)."
+                  constraints:
+                    nullable: true
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio_tipi_indirizzo
+            columnNames: tipo_soggetto_dettaglio_id, tipo_indirizzo_id
+            constraintName: uq_tipi_soggetto_dettaglio_tipi_indirizzo_tipo_soggetto_tipo
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: tipi_soggetto_dettaglio_tipi_indirizzo
+            baseColumnNames: tipo_soggetto_dettaglio_id
+            constraintName: fk_tsd_tipi_indirizzo_tipo_soggetto_dettaglio
+            referencedTableSchemaName: config
+            referencedTableName: tipi_soggetto_dettaglio
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: tipi_soggetto_dettaglio_tipi_indirizzo
+            baseColumnNames: tipo_indirizzo_id
+            constraintName: fk_tsd_tipi_indirizzo_tipo_indirizzo
+            referencedTableSchemaName: config
+            referencedTableName: tipi_indirizzi
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: tipi_soggetto_dettaglio_tipi_indirizzo
+            baseColumnNames: fallback_tipo_indirizzo_id
+            constraintName: fk_tsd_tipi_indirizzo_fallback_tipo
+            referencedTableSchemaName: config
+            referencedTableName: tipi_indirizzi
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.tipi_soggetto_dettaglio_tipi_indirizzo
+              ADD CONSTRAINT chk_tsd_tipi_indirizzo_fallback_not_self
+              CHECK (fallback_tipo_indirizzo_id IS NULL OR fallback_tipo_indirizzo_id <> tipo_indirizzo_id);
+
+              ALTER TABLE config.tipi_soggetto_dettaglio_tipi_indirizzo
+              ADD CONSTRAINT chk_tsd_tipi_indirizzo_validita
+              CHECK (valido_dal IS NULL OR valido_al IS NULL OR valido_al >= valido_dal);
+
+        - createIndex:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio_tipi_indirizzo
+            indexName: ix_tsd_tipi_indirizzo_tipo_indirizzo
+            columns:
+              - column:
+                  name: tipo_indirizzo_id
+
+        - createIndex:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio_tipi_indirizzo
+            indexName: ix_tsd_tipi_indirizzo_tipo_soggetto_dettaglio
+            columns:
+              - column:
+                  name: tipo_soggetto_dettaglio_id

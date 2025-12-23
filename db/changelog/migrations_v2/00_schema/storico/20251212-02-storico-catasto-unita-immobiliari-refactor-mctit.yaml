@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Refactor storico:
+# - rinomina storico.dati_catastali -> storico.catasto_unita_immobiliari
+# - rinomina colonna dato_catastale_id -> catasto_unita_immobiliare_id
+# - rinomina PK e trigger tx_id (coerenza naming)
+# - aggiorna commenti
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/storico/20251212-02-storico-catasto-unita-immobiliari-refactor-mctit.yaml
+
+  - changeSet:
+      id: 20251212-02-01-rename-table
+      author: mctit
+      comment: Rinomina la tabella storico.dati_catastali in storico.catasto_unita_immobiliari.
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - tableExists:
+            schemaName: storico
+            tableName: dati_catastali
+      changes:
+        - renameTable:
+            oldTableName: dati_catastali
+            newTableName: catasto_unita_immobiliari
+            schemaName: storico
+
+  - changeSet:
+      id: 20251212-02-02-rename-link-column
+      author: mctit
+      comment: Rinomina dato_catastale_id in catasto_unita_immobiliare_id.
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - columnExists:
+            schemaName: storico
+            tableName: catasto_unita_immobiliari
+            columnName: dato_catastale_id
+      changes:
+        - renameColumn:
+            schemaName: storico
+            tableName: catasto_unita_immobiliari
+            oldColumnName: dato_catastale_id
+            newColumnName: catasto_unita_immobiliare_id
+            columnDataType: bigint
+
+  - changeSet:
+      id: 20251212-02-03-rename-pk-if-needed
+      author: mctit
+      comment: Rinomina la PK se ancora pk_storico_dati_catastali.
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  JOIN pg_class t ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE n.nspname = 'storico'
+                    AND t.relname = 'catasto_unita_immobiliari'
+                    AND c.conname = 'pk_storico_dati_catastali'
+                ) THEN
+                  ALTER TABLE storico.catasto_unita_immobiliari
+                    RENAME CONSTRAINT pk_storico_dati_catastali
+                    TO pk_storico_catasto_unita_immobiliari;
+                END IF;
+              END$$;
+
+  - changeSet:
+      id: 20251212-02-04-rename-txid-trigger
+      author: mctit
+      comment: Rinomina trigger tx_id managed (se presente con nome vecchio) e garantisce che esista.
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_trigger tg
+                  JOIN pg_class t ON t.oid = tg.tgrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE n.nspname = 'storico'
+                    AND t.relname = 'catasto_unita_immobiliari'
+                    AND tg.tgname = 'trg_dati_catastali_tx_id_managed_ins_upd'
+                ) THEN
+                  ALTER TRIGGER trg_dati_catastali_tx_id_managed_ins_upd
+                  ON storico.catasto_unita_immobiliari
+                  RENAME TO trg_catasto_unita_immobiliari_tx_id_managed_ins_upd;
+                END IF;
+              END$$;
+
+              -- Garantiamo che il trigger esista col nome corretto
+              DROP TRIGGER IF EXISTS trg_catasto_unita_immobiliari_tx_id_managed_ins_upd
+              ON storico.catasto_unita_immobiliari;
+
+              CREATE TRIGGER trg_catasto_unita_immobiliari_tx_id_managed_ins_upd
+              BEFORE INSERT OR UPDATE
+              ON storico.catasto_unita_immobiliari
+              FOR EACH ROW
+              EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+
+              COMMENT ON TRIGGER trg_catasto_unita_immobiliari_tx_id_managed_ins_upd
+              ON storico.catasto_unita_immobiliari
+              IS 'Assegna tx_id tramite dbops.trgfn_tx_id_managed solo se NEW.tx_id è NULL.';
+
+  - changeSet:
+      id: 20251212-02-05-update-comments
+      author: mctit
+      comment: Aggiorna commenti tabella/colonna di link coerenti col nuovo naming.
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE storico.catasto_unita_immobiliari
+              IS 'Storico snapshot (JSONB) per anagrafiche.catasto_unita_immobiliari con campi di audit e tx_id.';
+
+              COMMENT ON COLUMN storico.catasto_unita_immobiliari.catasto_unita_immobiliare_id
+              IS 'Riferimento alla tabella anagrafiche.catasto_unita_immobiliari (record corrente).';

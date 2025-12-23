@@ -63,11 +63,11 @@ extra_javascript:
         #- assets/javascripts/custom-mermaid.js
 
 nav:
-        - Home: index.md
+        - Home: it/index.md
         - Introduzione:
-                  - Cos’è Zero ERP: introduzione.md
-                  - Manifesto: manifesto.md
-                  - Licenza: LICENSE.md
+                  - Cos’è Zero ERP: it/introduzione.md
+                  - Manifesto: it/manifesto.md
+                  - Licenza: it/LICENSE.md
 
         - Installazione:
                   - Prerequisiti: it/installazione.md
@@ -88,59 +88,59 @@ nav:
                                                 - pgcrypto: it/postgresql/pgcrypto.md
 
         - DB Zero:
-                  - Panoramica: dbzero/index.md
+                  - Panoramica: it/dbzero/index.md
                   - Schemi:
-                            - Anagrafiche: dbzero/anagrafiche/index.md
-                            - Catalogo: dbzero/catalogo/index.md
-                            - Config: dbzero/config/index.md
-                            - Dbops: dbzero/dbops/index.md
-                            - Magazzino: dbzero/magazzino/index.md
-                            - Vendite: dbzero/vendite/index.md
-                            - Acquisti: dbzero/acquisti/index.md
-                            - Pagamenti: dbzero/pagamenti/index.md
-                            - Storico: dbzero/storico/index.md
-                            - Script: dbzero/script/index.md
-                            - Maintenance: dbzero/maintenance/index.md
-                            - Public: dbzero/public/index.md
+                            - Anagrafiche: it/dbzero/anagrafiche/index.md
+                            - Catalogo: it/dbzero/catalogo/index.md
+                            - Config: it/dbzero/config/index.md
+                            - Dbops: it/dbzero/dbops/index.md
+                            - Magazzino: it/dbzero/magazzino/index.md
+                            - Vendite: it/dbzero/vendite/index.md
+                            - Acquisti: it/dbzero/acquisti/index.md
+                            - Pagamenti: it/dbzero/pagamenti/index.md
+                            - Storico: it/dbzero/storico/index.md
+                            - Script: it/dbzero/script/index.md
+                            - Maintenance: it/dbzero/maintenance/index.md
+                            - Public: it/dbzero/public/index.md
 
         - Strumenti:
-                  - Generatore Documentazione: dbzero/tools/gen_db_docs.md
+                  - Generatore Documentazione: it/dbzero/tools/gen_db_docs.md
         - Sviluppatori:
-                  - API: dev/api.md
+                  - API: it/dev/api.md
                   - Backend:
-                            - Guida backend-dev: dev/backend/backend-dev.md
-                            - Checklist post upgrade: dev/backend/checklist-post-upgrade.md
-                            - Configurazione Django: dev/backend/configurazione-django.md
+                            - Guida backend-dev: it/dev/backend/backend-dev.md
+                            - Checklist post upgrade: it/dev/backend/checklist-post-upgrade.md
+                            - Configurazione Django: it/dev/backend/configurazione-django.md
                   #    - (Opz) Celery & Beat: dev/backend/backend-celery.md
                   #    - (Opz) Produzione: dev/backend/backend-prod.md
                   - Database:
-                            - VM dbdev (PostgreSQL): dev/db/dbdev.md
+                            - VM dbdev (PostgreSQL): it/dev/db/dbdev.md
                   #    - (Opz) Produzione: dev/db/db-prod.md
                   - Infrastruttura:
-                            - Proxmox: dev/infra/proxmox.md
+                            - Proxmox: it/dev/infra/proxmox.md
                   - Workstation:
-                            - Vm wrk1-dev (ubuntu): dev/workstation-dev/configurazione.md
+                            - Vm wrk1-dev (ubuntu): it/dev/workstation-dev/configurazione.md
                   - GitHub:
-                            - Documentazione: dev/github/configurazione.md
+                            - Documentazione: it/dev/github/configurazione.md
                   #- Frontend:
                   #    - Setup frontend-dev: dev/frontend/frontend-dev.md
                   #    - Build & Deploy: dev/frontend/frontend-build-deploy.md
 
         - Guide tecniche:
-                  - Implementazione Transaction ID: guide/tx_id_implementation_guide.md
-                  - Storicizzazione Tabelle: guide/storicizzazione-tabelle.md
-                  - Configurazione e gestione parametri: guide/configurazione-e-gestione-parametri.md
-                  - Automazione DB: guide/automazione-db.md
+                  - Implementazione Transaction ID: it/guide/tx_id_implementation_guide.md
+                  - Storicizzazione Tabelle: it/guide/storicizzazione-tabelle.md
+                  - Configurazione e gestione parametri: it/guide/configurazione-e-gestione-parametri.md
+                  - Automazione DB: it/guide/automazione-db.md
                   - Log:
-                            - Messaggi di Errore: guide/Messaggi-di-Errore-e-Generazione-Log.md
-                            - Messaggi di Audit: guide/messaggi-audit.md
-                            - Processi e Job: guide/Analisi-tracciamento-processi-e-job.md
-                  - Soggetti e ruoli anagrafici: guide/soggetti-e-ruoli-anagrafici.md
-                  - Gestione delle Istanze Utility: guide/gestione-delle-istanze-utility.md
-                  - Generazione di un cliente: guide/generazione-cliente.md
-                  - Gestione conti bancari: guide/gestione-conti-bancari.md
-                  - Gestione degli indirizzi: guide/gestione-degli-indirizzi.md
-                  - Gestione dei contatti: guide/gestione-dei-contatti.md
+                            - Messaggi di Errore: it/guide/Messaggi-di-Errore-e-Generazione-Log.md
+                            - Messaggi di Audit: it/guide/messaggi-audit.md
+                            - Processi e Job: it/guide/Analisi-tracciamento-processi-e-job.md
+                  - Soggetti e ruoli anagrafici: it/guide/soggetti-e-ruoli-anagrafici.md
+                  - Gestione delle Istanze Utility: it/guide/gestione-delle-istanze-utility.md
+                  - Generazione di un cliente: it/guide/generazione-cliente.md
+                  - Gestione conti bancari: it/guide/gestione-conti-bancari.md
+                  - Gestione degli indirizzi: it/guide/gestione-degli-indirizzi.md
+                  - Gestione dei contatti: it/guide/gestione-dei-contatti.md
         - Glossario:
                   - Dev&Ops: it/glossario/devops&db.md
                   - Process Analysis: it/glossario/process-analysis.md

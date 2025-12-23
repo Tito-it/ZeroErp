@@ -1,0 +1,42 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger per:
+#  - config.forme_giuridiche
+#
+# NOTE:
+# - Questo file contiene SOLO trigger.
+# - Le tabelle devono esistere già (vedi changelog 00_schema).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/config/20251221-12-create-forme-giuridiche-triggers-mctit.yaml
+
+  # ------------------------------------------------------------------
+  # Trigger su config.forme_giuridiche
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: 20251221-12-trg-forme-giuridiche-audit-sync-txid
+      author: mctit
+      comment: >
+        Trigger audit, sync stato_iso2 e tx_id_managed su config.forme_giuridiche.
+
+      changes:
+        # 2) Sync stato_iso2 (coerente con config.tipi_soggetto_dettaglio)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_forme_giuridiche_sync_stato_iso2_ins_upd
+                ON config.forme_giuridiche;
+
+              CREATE OR REPLACE TRIGGER trg_forme_giuridiche_sync_stato_iso2_ins_upd
+                BEFORE INSERT OR UPDATE
+                ON config.forme_giuridiche
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_sync_stato_iso2();
+
+              COMMENT ON TRIGGER trg_forme_giuridiche_sync_stato_iso2_ins_upd
+                ON config.forme_giuridiche
+                IS 'Sincronizza stato_iso2 da stato_id tramite script.trgfn_sync_stato_iso2.';

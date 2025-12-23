@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_conti_bancari_guard.md" %}
 # ⚙️ Funzione `trgfn_soggetti_conti_bancari_guard`
 
 ```sql

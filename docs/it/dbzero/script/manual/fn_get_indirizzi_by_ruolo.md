@@ -43,21 +43,32 @@ RETURNS TABLE(
   tipo_indirizzo character varying,
   indirizzo_completo text,
   geoloc geometry,
+  indirizzo_id bigint,
+  soggetto_ruolo_id bigint,
+  tipo_indirizzo_id integer,
+  indirizzo_dettaglio_id bigint,
+  indirizzo_libero text,
   is_normalizzato boolean,
-  comune_id integer,
-  comune_descrizione text,
-  provincia_id integer,
-  provincia_sigla text,
   stato_id integer,
-  stato_iso2 character varying(2),
-  stato_descrizione text,
-  cap_codice character varying
+  stato_descrizione character varying,
+  stato_iso2 character,
+  regione_id integer,
+  regione_descrizione character varying,
+  provincia_id integer,
+  provincia_sigla character varying,
+  provincia_descrizione character varying,
+  comune_id integer,
+  comune_descrizione character varying,
+  codice_postale_id integer,
+  cap_codice character,
+  locality character varying,
+  administrative_area character varying,
+  sublocality character varying,
+  postal_box character varying
 )
 LANGUAGE sql
-COST 100
 STABLE
-PARALLEL UNSAFE
-ROWS 1000;
+PARALLEL UNSAFE;
 ```
 
 ---
@@ -78,15 +89,28 @@ ROWS 1000;
 | `tipo_indirizzo`     | varchar    | Codice interno da `config.tipi_indirizzi.codice_interno`.                            |
 | `indirizzo_completo` | text       | Indirizzo formattato human-readable secondo logica A/B/C.                            |
 | `geoloc`             | geometry   | Geometria preferenziale → `civic_geoloc` → `ai.geoloc`.                              |
+| `indirizzo_id`       | bigint     | Identificativo tecnico dell’indirizzo.                                               |
+| `soggetto_ruolo_id`  | bigint     | ID del soggetto/ruolo associato.                                                     |
+| `tipo_indirizzo_id`  | integer    | ID tecnico del tipo indirizzo.                                                       |
+| `indirizzo_dettaglio_id` | bigint | FK al dettaglio civico, se presente.                                                 |
+| `indirizzo_libero`   | text       | Indirizzo libero (se non normalizzato).                                              |
 | `is_normalizzato`    | boolean    | TRUE se collegato a `indirizzo_dettaglio`.                                           |
 | `comune_id`          | integer    | Comune recuperato da `ai.comune_id`, o da `stradario` tramite `indirizzo_dettaglio`. |
 | `comune_descrizione` | text       | Nome del comune.                                                                     |
 | `provincia_id`       | integer    | Provincia collegata al comune.                                                       |
 | `provincia_sigla`    | text       | Sigla della provincia (es. RM, MI).                                                  |
+| `provincia_descrizione` | text    | Descrizione estesa della provincia.                                                  |
 | `stato_id`           | integer    | Stato recuperato da `ai.stato_id`, o se NULL da comune/provincia.                    |
 | `stato_iso2`         | varchar(2) | Codice ISO2.                                                                         |
 | `stato_descrizione`  | text       | Nome dello stato.                                                                    |
+| `regione_id`         | integer    | Regione associata alla provincia.                                                    |
+| `regione_descrizione`| text       | Nome della regione.                                                                  |
+| `codice_postale_id`  | integer    | ID tecnico del codice postale.                                                       |
 | `cap_codice`         | varchar    | Codice CAP (solo se italiano).                                                       |
+| `locality`           | varchar    | Località (uso internazionale).                                                       |
+| `administrative_area`| varchar    | Area amministrativa (uso internazionale).                                            |
+| `sublocality`        | varchar    | Sublocalità (uso internazionale).                                                    |
+| `postal_box`         | varchar    | Casella postale (uso internazionale).                                                |
 
 ---
 

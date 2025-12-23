@@ -2,42 +2,45 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**    
+> **Approfondimento tabelle:**
 >
 > • [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
-> • [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
-> • [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)    
-> • [config.tipi_ruolo_tipi_indirizzo](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo)    
-> • [config.comuni](/dbzero/config/tabelle/comuni)   
+> • [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
+> • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
+> • [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)  
+> • [config.tipi_ruolo_tipi_indirizzo](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo)  
+> • [config.comuni](/dbzero/config/tabelle/comuni)  
 > • [config.codici_postali](/dbzero/config/tabelle/codici_postali)  
 >
 > **Approfondimento funzioni:**
 >
-> • [`script.fn_get_indirizzi_by_ruolo`](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo.md)   
+> • [`script.fn_get_indirizzi_by_ruolo`](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo.md)  
 
 ---
 
 ### 🎯 Scopo Principale
-(latest review 01-12-25)
-Restituisce **il miglior indirizzo disponibile** (uno o più record tecnici) relativo ad un determinato `soggetto_ruolo`, filtrando per **tipo di indirizzo** identificato dal **codice interno** (`config.tipi_indirizzi.codice_interno`).
+
+*(latest review 01-12-25)*
+La funzione **`script.fn_get_indirizzo`** restituisce **uno o più indirizzi tecnici** associati a un determinato **`soggetto_ruolo`**, filtrando per **tipo di indirizzo** identificato dal **codice interno** (`config.tipi_indirizzi.codice_interno`).
 
 La funzione:
 
-* **non replica** la logica di composizione dell’indirizzo,
-* ma la **delegata a `script.fn_get_indirizzi_by_ruolo`**, garantendo coerenza e riusabilità,
-* integra una logica di **fallback multi-livello** basata sulla matrice
+* **non implementa** la logica di composizione dell’indirizzo,
+* **delega integralmente** il recupero e la normalizzazione dei dati a `script.fn_get_indirizzi_by_ruolo`,
+* aggiunge una logica di **fallback multi-livello** basata sulla matrice di configurazione
   [`config.tipi_ruolo_tipi_indirizzo`](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo).
 
 In pratica:
 
-> “Dammi l’indirizzo per questo tipo; se non esiste, segui la catena di fallback definita in `config.tipi_ruolo_tipi_indirizzo` finché trovi un indirizzo utilizzabile, o finché la catena termina.”
+> “Dammi l’indirizzo per questo tipo; se non esiste, segui la catena di fallback definita in `config.tipi_ruolo_tipi_indirizzo` finché trovi uno o più indirizzi utilizzabili, o finché la catena termina.”
+
+📌 **Nota di ambito**
+La funzione opera **esclusivamente a livello di `soggetto_ruolo`** e utilizza la matrice **ruolo ↔ tipo indirizzo**.
+Non coinvolge né consulta la matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`, che è invece riferita agli indirizzi **diretti del soggetto**.
 
 ---
 
-### 🧩 Firma (concettuale)
-
-> ⚠️ La firma reale restituisce molti più campi (allineati a `fn_get_indirizzi_by_ruolo`).
-> Qui è riportata una **vista logica semplificata** dei parametri principali.
+### 🧩 Firma (reale)
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(
@@ -45,64 +48,90 @@ CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(
   p_tipo_codice       character varying
 )
 RETURNS TABLE(
-  indirizzo_completo   text,
-  geoloc               geometry,
-  comune_id            integer,
-  comune_descrizione   text,
-  codice_postale       text,
-  provincia            text,
-  stato                text,
-  is_normalizzato      boolean,
-  -- + tutti i campi tecnici restituiti da fn_get_indirizzi_by_ruolo
-  ...
+  tipo_indirizzo          character varying,
+  indirizzo_completo     text,
+  geoloc                 geometry,
+  indirizzo_id           bigint,
+  soggetto_ruolo_id      bigint,
+  tipo_indirizzo_id      integer,
+  indirizzo_dettaglio_id bigint,
+  indirizzo_libero       text,
+  is_normalizzato        boolean,
+  stato_id               integer,
+  stato_descrizione      character varying,
+  stato_iso2             character,
+  regione_id             integer,
+  regione_descrizione    character varying,
+  provincia_id           integer,
+  provincia_sigla        character varying,
+  provincia_descrizione  character varying,
+  comune_id              integer,
+  comune_descrizione     character varying,
+  codice_postale_id      integer,
+  cap_codice             character,
+  locality               character varying,
+  administrative_area    character varying,
+  sublocality            character varying,
+  postal_box             character varying
 )
-LANGUAGE sql / plpgsql
+LANGUAGE plpgsql
 STABLE
 PARALLEL UNSAFE;
 ```
+
+📌 Il result-set restituito è **identico** a quello prodotto da `script.fn_get_indirizzi_by_ruolo`, con la sola differenza che i record sono **filtrati** per tipo indirizzo e fallback.
 
 ---
 
 ### 🔢 Parametri di input
 
-| Nome                  | Tipo      | Descrizione                                                                                                  |
-| --------------------- | --------- | ------------------------------------------------------------------------------------------------------------ |
-| `p_soggetto_ruolo_id` | `bigint`  | ID della relazione in `anagrafiche.soggetti_ruoli`.                                                          |
-| `p_tipo_codice`       | `varchar` | **Codice interno** del tipo indirizzo (`config.tipi_indirizzi.codice_interno`, es. `RES`, `FATT`, `SEDEOP`). |
+| Nome                  | Tipo      | Descrizione                                                                                              |
+| --------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
+| `p_soggetto_ruolo_id` | `bigint`  | ID della relazione in `anagrafiche.soggetti_ruoli`.                                                      |
+| `p_tipo_codice`       | `varchar` | Codice interno del tipo indirizzo (`config.tipi_indirizzi.codice_interno`, es. `RES`, `FATT`, `SEDEOP`). |
 
-> 🔹 *Non si passa l’ID del tipo indirizzo, ma il suo `codice_interno`, pensato come chiave funzionale stabile.*
-
----
-
-### 📤 Valori restituiti (principali)
-
-| Colonna              | Tipo       | Descrizione                                                                                                |
-| -------------------- | ---------- | ---------------------------------------------------------------------------------------------------------- |
-| `indirizzo_completo` | `text`     | Indirizzo formattato “human-readable”, applicando le regole A/B/C definite in `fn_get_indirizzi_by_ruolo`. |
-| `geoloc`             | `geometry` | Geolocalizzazione (SRID 4326). Priorità: `indirizzi_dettaglio.civic_geoloc` → `indirizzi.geoloc`.          |
-| `comune_id`          | `integer`  | Comune associato (se disponibile).                                                                         |
-| `comune_descrizione` | `text`     | Nome del comune.                                                                                           |
-| `codice_postale`     | `text`     | Codice postale (CAP).                                                                                      |
-| `provincia`          | `text`     | Sigla / descrizione provincia (da `config.comuni` / `config.province`).                                    |
-| `stato`              | `text`     | Stato (derivato da `config.stati` via catena stato/regione/provincia/comune).                              |
-| `is_normalizzato`    | `boolean`  | `TRUE` se derivato da `indirizzo_dettaglio`; `FALSE` se indirizzo libero o estero.                         |
-
-> ℹ️ In realtà la funzione restituisce anche tutti i campi tecnici (`indirizzo_id`, `tipo_indirizzo_id`, `stato_id`, ecc.), perché è direttamente basata sul result-set di `fn_get_indirizzi_by_ruolo`.
+> 🔹 Il tipo indirizzo viene passato tramite **codice interno** (chiave funzionale stabile), non tramite ID tecnico.
 
 ---
 
-### 🧠 Logica di estrazione (senza dettagli tecnici)
+### 📤 Valori restituiti
 
-La logica può essere vista come una **sequenza di tentativi**:
+La funzione restituisce **zero, uno o più record**, tutti con struttura **completa e coerente**, derivata direttamente da `fn_get_indirizzi_by_ruolo`.
 
-1. **Determina il tipo ruolo** del `soggetto_ruolo`.
-2. **Prova il tipo richiesto (`p_tipo_codice`)** tramite `fn_get_indirizzi_by_ruolo`.
+Alcuni campi rilevanti:
 
-   * Se trova almeno un indirizzo → **restituisce e termina**.
-3. **Altrimenti, cerca un fallback** in `config.tipi_ruolo_tipi_indirizzo`.
+| Colonna              | Tipo       | Descrizione                                                                      |
+| -------------------- | ---------- | -------------------------------------------------------------------------------- |
+| `tipo_indirizzo`     | `varchar`  | Codice interno del tipo indirizzo **effettivamente utilizzato** (post-fallback). |
+| `indirizzo_completo` | `text`     | Indirizzo formattato in forma human-readable.                                    |
+| `geoloc`             | `geometry` | Geolocalizzazione (SRID 4326), se disponibile.                                   |
+| `is_normalizzato`    | `boolean`  | TRUE se derivato da `indirizzi_dettaglio`, FALSE se indirizzo libero/estero.     |
+| `indirizzo_id`       | `bigint`   | Identificativo tecnico dell’indirizzo.                                           |
+| `tipo_indirizzo_id`  | `integer`  | ID tecnico del tipo indirizzo effettivo.                                         |
 
-   * Prosegue seguendo la catena di fallback (multi-livello) finché non trova un indirizzo.
-   * Protezione da **loop** nella catena (es. A→B→A): la funzione termina senza errori.
+📌 Tutti gli altri campi geografici (stato, regione, provincia, comune, CAP) sono già **risolti e coerenti**, in quanto prodotti dalla funzione base.
+
+---
+
+### 🧠 Logica di funzionamento (concettuale)
+
+La funzione implementa una **ricerca iterativa con fallback configurabile**:
+
+1. Determina il **tipo ruolo** associato al `soggetto_ruolo`.
+2. Prova a recuperare indirizzi del tipo richiesto (`p_tipo_codice`).
+3. Se vengono trovati uno o più record, **li restituisce e termina**.
+4. In assenza di risultati:
+
+   * consulta `config.tipi_ruolo_tipi_indirizzo` per individuare un `fallback_tipo_indirizzo_id`,
+   * traduce l’ID in `codice_interno`,
+   * ripete il tentativo.
+5. La catena termina quando:
+
+   * viene trovato almeno un indirizzo,
+   * il fallback è `NULL`,
+   * viene rilevato un **loop** nella catena (protezione A → B → A).
+
+📌 **Comportamento intenzionale**: la funzione **non solleva errori** se nessun indirizzo è disponibile; restituisce semplicemente zero righe.
 
 ---
 
@@ -113,38 +142,37 @@ La logica può essere vista come una **sequenza di tentativi**:
 | SEDEOP         | SEDELEG                 |
 | FORNITURA      | SEDEOP                  |
 
-Effetto pratico: `fn_get_indirizzo(p_sr, 'FORNITURA')` → prova FORNITURA → SEDEOP → SEDELEG.
+Effetto pratico:
 
----
+```sql
+SELECT *
+FROM script.fn_get_indirizzo(p_soggetto_ruolo_id, 'FORNITURA');
+```
 
-### 🧷 Dipendenze tecniche
+Ordine dei tentativi:
 
-| Tipo       | Riferimento                                                                                                                                                                                                                                          |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Funzione   | `script.fn_get_indirizzi_by_ruolo`                                                                                                                                                                                                                   |
-| Tabelle    | `anagrafiche.indirizzi`, `anagrafiche.indirizzi_dettaglio`, `anagrafiche.soggetti_ruoli`, `config.tipi_indirizzi`, `config.tipi_ruolo_tipi_indirizzo`, `config.comuni`, `config.codici_postali`, `config.province`, `config.regioni`, `config.stati` |
-| Estensioni | Richiede **PostGIS** per tipo `geometry`                                                                                                                                                                                                             |
+`FORNITURA → SEDEOP → SEDELEG`
 
 ---
 
 ### ⚙️ Proprietà tecniche
 
-| Attributo    | Valore                       | Note                                                                    |
-| ------------ | ---------------------------- | ----------------------------------------------------------------------- |
-| Stabilità    | `STABLE`                     | Non modifica i dati, ma legge configurazione/anagrafiche                |
-| Parallelismo | `PARALLEL UNSAFE`            | Uso di `geometry` e logica non sicura in parallel                       |
-| Semantica    | “Best address with fallback” | Può restituire più righe se anomalie (es. doppio indirizzo stesso tipo) |
+| Attributo    | Valore            | Note                                              |
+| ------------ | ----------------- | ------------------------------------------------- |
+| Stabilità    | `STABLE`          | Funzione di sola lettura su dati e configurazione |
+| Parallelismo | `PARALLEL UNSAFE` | Uso di `geometry` e logica iterativa              |
+| Semantica    | Multi-row         | Può restituire più righe per lo stesso tipo       |
 
 ---
 
 ### 🧪 Esempi d’uso
 
 ```sql
--- 1) Indirizzo SEDEOP per un Gestore, con fallback su SEDELEG se assente
+-- 1) Indirizzo SEDEOP per un Gestore, con fallback su SEDELEG
 SELECT *
 FROM script.fn_get_indirizzo(63, 'SEDEOP');
 
--- 2) Estrazione dinamica in JOIN laterale
+-- 2) Uso in JOIN laterale
 SELECT sr.id, sr.soggetto_id, f.indirizzo_completo
 FROM anagrafiche.soggetti_ruoli sr
 CROSS JOIN LATERAL script.fn_get_indirizzo(sr.id, 'FATT') AS f;

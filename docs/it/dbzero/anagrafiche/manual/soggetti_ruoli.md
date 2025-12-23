@@ -78,7 +78,7 @@ erDiagram
     }
 
     soggetti_ruoli {
-        int id PK
+        bigint id PK
         uuid soggetto_id FK
         int ruolo_id FK
         jsonb extra

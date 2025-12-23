@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Ponte catasto_unita_immobiliari <-> indirizzi_dettaglio:
+# - Funzione di sync idempotente
+# - Trigger su anagrafiche.istanze_utilities
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251216-11-fix-trgfn_soggetti_ruoli_conti_bancari_guard-mctit.yaml
+
+  - changeSet:
+      id: 20251216-11-fix-trgfn_soggetti_ruoli_conti_bancari_guard-mctit.yaml
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Guard-rail: impedisce uso di conti non attivi, 
+                controlla coerenza date e cura audit base. Fix date dal/al con valido dal/al.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_attivo boolean;
+              BEGIN
+                -- Evita legami a conti disattivati
+                SELECT attivo INTO v_attivo
+                  FROM anagrafiche.conti_bancari
+                WHERE id = NEW.conto_bancario_id;
+                IF v_attivo IS NOT TRUE THEN
+
+                  PERFORM anagrafiche.fn_log_and_raise_error(
+                                      'database',
+                                      TGNAME,
+                                      'E_CONTO_BANCARIO',
+                                      jsonb_build_object(
+                                        'tabella','soggetti_ruoli_conti_bancari',
+                                        'conto_bancario_id',  NEW.conto_bancario_id::text
+                                      ) , 
+                                       NEW.tx_id::uuid,
+                                       NEW.conto_bancario_id::text
+                                    ); 
+                END IF;
+
+                -- Coerenza date
+                IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
+                  AND NEW.valido_al < NEW.valido_dal THEN
+
+                      PERFORM anagrafiche.fn_log_and_raise_error(
+                                      'database',
+                                      TGNAME,
+                                      'E_DATA_AL_MINORE_DAL',
+                                      jsonb_build_object(
+                                        'tabella','anagrafiche.soggetti_ruoli_conti_bancari',
+                                        'valido_al',  NEW.valido_al::text,
+                                        'valido_dal',  NEW.valido_dal::text
+                                      ) , 
+                                      NEW.tx_id::uuid, 
+                                      NEW.valido_al::text, NEW.valido_dal::text
+                                    ); 
+                END IF;
+                RETURN NEW;
+              END
+              $function$;
+
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
+              IS 'Guard-rail: impedisce uso di conti non attivi, 
+              controlla coerenza date e cura audit base.';

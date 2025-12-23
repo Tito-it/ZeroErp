@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_pdp_protect_cols.md" %}
 # ⚙️ Funzione `trgfn_pdp_protect_cols`
 
 ```sql

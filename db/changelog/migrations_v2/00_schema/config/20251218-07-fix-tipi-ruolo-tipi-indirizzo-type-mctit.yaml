@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Fix tipi colonne in config.tipi_ruolo_tipi_indirizzo (bigint -> integer)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/config/20251218-07-fix-tipi-ruolo-tipi-indirizzo-type-mctit.yaml
+
+  - changeSet:
+      id: 20251218-07-fix-tipi-ruolo-tipi-indirizzo-type
+      author: mctit
+      comment: >
+        Allinea i tipi di config.tipi_ruolo_tipi_indirizzo.tipo_indirizzo_id e fallback_tipo_indirizzo_id
+        a integer (coerenti con config.tipi_indirizzi.id). Preserva i dati esistenti.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Drop vincoli dipendenti (FK/unique/check) prima della conversione
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                DROP CONSTRAINT IF EXISTS fk_ruoli_tipi_indirizzo_tipo_indirizzo;
+
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                DROP CONSTRAINT IF EXISTS fk_tipi_ruolo_tipi_indirizzo_fallback_tipo;
+
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                DROP CONSTRAINT IF EXISTS uq_tipi_ruolo_tipi_indirizzo_tipo_ruolo_tipo;
+
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                DROP CONSTRAINT IF EXISTS chk_tipi_ruolo_tipi_indirizzo_fallback_not_self;
+
+              -- NB: questa non dipende dal tipo, ma la rimetto comunque dopo per coerenza
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                DROP CONSTRAINT IF EXISTS chk_ruoli_tipi_indirizzo_validita;
+
+              -- 2) Converti tipi colonne (bigint -> integer) preservando i valori
+              --    Se i valori superano integer, qui fallirà: in quel caso va deciso un piano diverso.
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                ALTER COLUMN tipo_indirizzo_id TYPE integer
+                USING (tipo_indirizzo_id::integer);
+
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                ALTER COLUMN fallback_tipo_indirizzo_id TYPE integer
+                USING (fallback_tipo_indirizzo_id::integer);
+
+              -- 3) Ricrea unique + check
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                ADD CONSTRAINT uq_tipi_ruolo_tipi_indirizzo_tipo_ruolo_tipo
+                UNIQUE (tipo_ruolo_id, tipo_indirizzo_id);
+
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                ADD CONSTRAINT chk_tipi_ruolo_tipi_indirizzo_fallback_not_self
+                CHECK (fallback_tipo_indirizzo_id IS NULL OR fallback_tipo_indirizzo_id <> tipo_indirizzo_id);
+
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                ADD CONSTRAINT chk_ruoli_tipi_indirizzo_validita
+                CHECK (valido_dal IS NULL OR valido_al IS NULL OR valido_al >= valido_dal);
+
+              -- 4) Ricrea FK verso config.tipi_indirizzi (ora coerenti su integer)
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                ADD CONSTRAINT fk_ruoli_tipi_indirizzo_tipo_indirizzo
+                FOREIGN KEY (tipo_indirizzo_id)
+                REFERENCES config.tipi_indirizzi (id)
+                ON UPDATE NO ACTION
+                ON DELETE NO ACTION;
+
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                ADD CONSTRAINT fk_tipi_ruolo_tipi_indirizzo_fallback_tipo
+                FOREIGN KEY (fallback_tipo_indirizzo_id)
+                REFERENCES config.tipi_indirizzi (id)
+                ON UPDATE NO ACTION
+                ON DELETE NO ACTION;
+
+              -- 5) Ricrea indici (se esistono, li rifaccio per sicurezza)
+              DROP INDEX IF EXISTS config.ix_tipi_ruolo_tipi_indirizzo_tipo;
+              CREATE INDEX ix_tipi_ruolo_tipi_indirizzo_tipo
+                ON config.tipi_ruolo_tipi_indirizzo (tipo_indirizzo_id);
+
+              DROP INDEX IF EXISTS config.ix_tipi_ruolo_tipi_indirizzo_tipo_ruolo;
+              CREATE INDEX ix_tipi_ruolo_tipi_indirizzo_tipo_ruolo
+                ON config.tipi_ruolo_tipi_indirizzo (tipo_ruolo_id);

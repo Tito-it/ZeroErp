@@ -95,46 +95,14 @@ erDiagram
     termini_pagamento ||--o{ clienti : pays_as
 
 
-    istanze_utilities   { int id PK }
-    soggetti_ruoli      { int id PK }
+    istanze_utilities   { bigint id PK }
+    soggetti_ruoli      { bigint id PK }
     utilities           { int id PK }
     stati_cliente       { int id PK }
     iva                 { int id PK }
     modalita_pagamento  { int id PK }
     termine_pagamento   { int id PK }
-    clienti             { int id PK }
-```
-
----
-
-###  Diagramma ER attributi
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    clienti {
-        int       id PK
-        int       soggetto_ruolo_id FK
-        int       istanza_utility_id FK
-        int       termine_pagamento_id FK
-        int       modalita_pagamento_id FK
-        char      cliente_pa
-        varchar   codice_cig
-        varchar   codice_cup
-        varchar   cod_commessa
-        char      split_payment
-        varchar   cd_cliente_importato
-        int       stato_cliente_id FK
-        int       iva_id FK
-        bool      servizio_da_fatturare
-        int       utility_id FK
-        uuid      tx_id
-        bool      storicizza
-        datetime  data_insert
-        varchar   user_insert
-        datetime  data_update
-        varchar   user_update
-    }
+    clienti             { bigint id PK }
 ```
 
 ---
