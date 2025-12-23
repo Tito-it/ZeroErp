@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20251220-03-create-vw-indirizzi-resolved-ruolo
       author: mctit
-      runOnChange: true
+      # runOnChange: true
       validCheckSums:
         - ANY
       comment: >
