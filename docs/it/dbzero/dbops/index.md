@@ -21,7 +21,6 @@
 - [fn_audit_log_once](funzioni/fn_audit_log_once.md) — La funzione **`fn_audit_log_once`** registra un singolo evento di audit senza richiedere una sessione completa (`fn_audit_begin`/`fn_audit_end`). È utile per eventi puntuali o messaggi informativi.
 - [fn_cleanup_triggers_suffix_2](funzioni/fn_cleanup_triggers_suffix_2.md)
 - [fn_col_exists](funzioni/fn_col_exists.md)
-- [fn_create_gestore](funzioni/fn_create_gestore.md)
 - [fn_drop_triggers_by_function_args](funzioni/fn_drop_triggers_by_function_args.md) — La funzione **`fn_drop_triggers_by_function_args`** elimina tutti i **trigger associati a una tabella** che invocano una determinata funzione di trigger, filtrando in base a **schema**, **nome funzione** e **lista di argomenti**.
 - [fn_ensure_storico_table](funzioni/fn_ensure_storico_table.md) — La funzione **`fn_ensure_storico_table`** si occupa di **creare** (se non esiste) la **tabella di storico** nello schema `storico` corrispondente ad una tabella base (`p_schema_base.p_table_base`), con **colonna FK** coerente al **tipo** della PK della tabella padre, **indici** necessari e **logging** integrato. Supporta modalità **dry‑run** e la creazione opzionale di un **indice GIN** sullo `snapshot`.
 - [fn_find_file_usage](funzioni/fn_find_file_usage.md) — * **Analisi d’impatto**     Identificare rapidamente tutte le relazioni di FK verso una tabella, utile per valutare dipendenze e conseguenze di modifiche, cancellazioni o refactoring di schema.

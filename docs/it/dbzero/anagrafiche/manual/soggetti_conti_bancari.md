@@ -22,6 +22,7 @@
 
 ### 🎯 Scopo Principale
 
+(lateste review 01-12-25)
 `anagrafiche.soggetti_conti_bancari` gestisce l’**associazione tra un Soggetto** (persona/azienda) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 
 Questa tabella rappresenta il **fallback di default** per il soggetto: se per un dato **Ruolo** (es. Cliente/Fornitore/Gestore) non è definito un conto specifico, verrà usato il **predefinito** definito qui, grazie alla **VIEW** e alla **FUNCTION** di selezione.
@@ -30,11 +31,11 @@ Questa tabella rappresenta il **fallback di default** per il soggetto: se per un
 
 ### 🔗 Relazioni
 
-| Tipo       | Tabella ↔ Campo                              | Descrizione                                   |
-| ---------- | -------------------------------------------- | --------------------------------------------- |
-| FK →       | `anagrafiche.soggetti(id)` ← `soggetto_id`   | Soggetto fiscale proprietario del legame      |
+| Tipo       | Tabella ↔ Campo                                       | Descrizione                                   |
+| ---------- | ----------------------------------------------------- | --------------------------------------------- |
+| FK →       | `anagrafiche.soggetti(id)` ← `soggetto_id`            | Soggetto fiscale proprietario del legame      |
 | FK →       | `anagrafiche.conti_bancari(id)` ← `conto_bancario_id` | Conto bancario registrato nell’anagrafe unica |
-| (usata da) | `anagrafiche.vw_conti_bancari_per_ruolo`     | Selezione con fallback RUOLO → SOGGETTO       |
+| (usata da) | `anagrafiche.vw_conti_bancari_per_ruolo`              | Selezione con fallback RUOLO → SOGGETTO       |
 
 > **Nota:** le cancellazioni sono **NO ACTION** per evitare orfani; disattivare un legame si fa con `valido_al` o `bloccato=true`.
 

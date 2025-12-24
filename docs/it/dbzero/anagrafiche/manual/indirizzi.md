@@ -46,8 +46,14 @@ Supporta:
   - **Normalizzata**: tramite `indirizzo_dettaglio_id`, si collega a una via e civico specifici (con geolocalizzazione puntuale e struttura gerarchica).
   - **Libera**: tramite `indirizzo_libero`, con campi ausiliari (`comune_id`, `stato_id`, `locality`, `postal_box`, ecc.), utile per indirizzi internazionali o non standardizzati.
 
+> ⚠️ **Nota Bene**  
+> La modalità **normalizzata** è sempre preferibile.  
+> L’inserimento di indirizzi **liberi** deve essere considerato **solo come opzione estrema** (es. migrazioni da altri database o casi non normalizzabili).
+
 * **Controllo di coerenza**  
-  Tramite vincoli `CHECK`, è garantita l’alternatività tra le due modalità (o normalizzata o libera) e la completezza minima dei dati se si usa la modalità libera.
+  Tramite vincoli `CHECK`, è garantita l’alternatività tra le due modalità (o normalizzata o libera) e la completezza minima dei dati se si usa la modalità libera:
+  - se `indirizzo_dettaglio_id` è `NULL` → `indirizzo_libero` e `stato_id` sono obbligatori;
+  - modalità libera: o **`comune_id` + `codice_postale_id`**, oppure **`locality` + `postal_box`** con almeno uno tra `administrative_area` e `sublocality`.
 
 * **Tracciabilità e storicizzazione**  
   Con il campo `storicizza` e i trigger associati, le modifiche vengono salvate come snapshot nella tabella `storico.indirizzi`.

@@ -28,6 +28,7 @@
 ---
 
 ### 🎯 Scopo Principale
+
 (latest review 02-12-25)
 
 La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici cliente** per ciascuna `utility`, consentendo:

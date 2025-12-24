@@ -31,6 +31,7 @@ Questa documentazione descrive le regole di progettazione e implementazione dell
 
 ### 🎯 Scopo Principale
 
+(latest review 20-11-26)
 - **Coerenza dei dati**  
   Garantire che ogni soggetto—persona fisica, giuridica o fisica forzata—sia identificato in modo univoco e validato secondo le regole aziendali.
 
@@ -131,14 +132,14 @@ In questa sezione sono descritte le modifiche chiave apportate per allinearsi al
    * Definire formati diversi (alfanumerico, numerico, lunghezza fissa) a livello di dettaglio di soggetto (privato, ditta individuale, società di capitali, ecc.).
    * Facilitare l’internazionalizzazione e futuri ampliamenti a nuovi paesi senza modificare lo schema principale.
 
-2. \*\*Rimozione della colonna \*\***`tipo_soggetto`**
+2. **Rimozione della colonna ** **`tipo_soggetto`**
 
    ```sql
    ALTER TABLE anagrafiche.soggetti
      DROP COLUMN IF EXISTS tipo_soggetto;
    ```
 
-3. \*\*Introduzione di \*\***`tipo_soggetto_dettaglio_id`**
+3. **Introduzione di ** **`tipo_soggetto_dettaglio_id`**
 
    ```sql
    ALTER TABLE anagrafiche.soggetti

@@ -1,11 +1,12 @@
-# Guida alla Gestione degli Indirizzi in Zero ERP
-
+# 🌱 Guida alla Gestione degli Indirizzi
 Questa guida illustra l’architettura, le scelte progettuali e i componenti coinvolti nella gestione degli indirizzi in Zero ERP.
 
+> (latest review 23-12-25)
 >
 > 👀 **Vedi anche**
 >
-* [`Guida Soggetti & Ruoli`](/guide/soggetti-e-ruoli-anagrafici)  
+> * [`Guida Soggetti & Ruoli`](/guide/soggetti-e-ruoli-anagrafici)  
+> **All'interno si trova l'appendice per le funzionalità indirizzo ruolo/soggetto** 
 
 ---
  
@@ -101,8 +102,10 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 *Questa guida copre l’intero ciclo di vita e le componenti software per la gestione degli indirizzi in Zero ERP: dalla tabella geografica di base, al dettaglio civico, fino alle funzioni di audit e storicizzazione.*
 
 ---
+##
 
-## 6. Diagramma ER
+
+### 6. Diagramma ER
 
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%  
@@ -124,7 +127,63 @@ erDiagram
 
     indirizzi          ||--o{ storico_indirizzi   : history
     stradario          ||--o{ storico_stradario    : history
+```
 
+---
+## 7. Appendice – Indirizzi per Ruolo e per Soggetto
+
+Questa appendice descrive la separazione tra indirizzi **per ruolo** e **per soggetto**, le motivazioni e gli oggetti tecnici introdotti per la consultazione coerente.
+
+### 7.1. Motivazioni e funzionamento
+
+* **Indirizzi per ruolo (`anagrafiche.indirizzi`)**
+  - Rappresentano indirizzi operativi legati a un ruolo (cliente, fornitore, gestore, ecc.).
+  - Sono usati per documenti, processi e flussi specifici di ruolo.
+
+* **Indirizzi per soggetto (`anagrafiche.indirizzi_soggetti`)**
+  - Rappresentano indirizzi identitari del soggetto (es. residenza, sede legale primaria).
+  - Sono indipendenti dai ruoli e possono essere usati come fallback.
+
+* **Regole di coerenza (indirizzi liberi)**
+  - La modalità normalizzata è sempre preferibile.
+  - Gli indirizzi liberi sono ammessi solo quando `indirizzo_dettaglio_id` è `NULL`,
+    con obbligo di `indirizzo_libero`, `stato_id` e una struttura minima:
+    **(comune + CAP)** oppure **(locality + postal_box)** con almeno uno tra
+    `administrative_area` e `sublocality`.
+
+### 7.2. Viste “resolved”
+
+Le viste resolved centralizzano la composizione dell’indirizzo human‑readable e i campi territoriali:
+
+* [`anagrafiche.vw_indirizzi_resolved_base`](/dbzero/anagrafiche/views/vw_indirizzi_resolved_base)
+* [`anagrafiche.vw_indirizzi_resolved_ruolo`](/dbzero/anagrafiche/views/vw_indirizzi_resolved_ruolo)
+* [`anagrafiche.vw_indirizzi_resolved_soggetto`](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto)
+* [`anagrafiche.vw_indirizzi_resolved_all`](/dbzero/anagrafiche/views/vw_indirizzi_resolved_all)
+* [`anagrafiche.vw_indirizzi_dettaglio`](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)
+
+### 7.3. Funzioni di lettura
+
+* [`script.fn_get_indirizzi_by_ruolo`](/dbzero/script/funzioni/vw_fn_get_indirizzi_by_ruolo)
+* [`script.fn_get_indirizzo`](/dbzero/script/funzioni/vw_fn_get_indirizzo)
+* [`script.fn_get_indirizzi_by_soggetto`](/dbzero/script/funzioni/vw_fn_get_indirizzi_by_soggetto)
+* [`script.fn_get_indirizzo_by_soggetto`](/dbzero/script/funzioni/vw_fn_get_indirizzo_by_soggetto)
+
+### 7.4. Diagramma logico (ruolo vs soggetto)
+
+```mermaid
+%%{init: {'er': {'layoutDirection': 'TB'}}}%%
+erDiagram
+    soggetti        ||--o{ indirizzi_soggetti : has
+    soggetti        ||--o{ soggetti_ruoli : has
+    soggetti_ruoli  ||--o{ indirizzi : has
+
+    indirizzi_dettaglio ||--o{ indirizzi : normalized_by
+    indirizzi_dettaglio ||--o{ indirizzi_soggetti : normalized_by
+
+    indirizzi           ||--o{ vw_indirizzi_resolved_ruolo : resolved
+    indirizzi_soggetti  ||--o{ vw_indirizzi_resolved_soggetto : resolved
+    vw_indirizzi_resolved_ruolo ||--o{ vw_indirizzi_resolved_all : union
+    vw_indirizzi_resolved_soggetto ||--o{ vw_indirizzi_resolved_all : union
 ```
 
 ---

@@ -1,9 +1,10 @@
-# 📘 Guida Tecnica – Gestione dei Contatti in Zero ERP
+# 📘 Guida Tecnica – Gestione dei Contatti
 
+> (latest review 16-12-25)
+>
 > 📋 **Destinatari:** sviluppatori database, backend, integratori e analisti funzionali
 >
 > 🔗 Si affianca alla guida *gestione_indirizzi* come riferimento completo per la modellazione e l’utilizzo dei contatti nel sistema.
->
 >
 > 👀 **Vedi anche**
 >

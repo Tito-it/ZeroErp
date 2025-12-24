@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Vista dati societari con decodifiche
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/anagrafiche/20251223-07-create-vw-dati-societari-mctit.yaml
+
+  - changeSet:
+      id: 20251223-07-create-vw-dati-societari
+      author: mctit
+      comment: >
+        Crea la vista anagrafiche.vw_dati_societari con decodifiche
+        per forma giuridica e provincia, includendo gli id tecnici.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW anagrafiche.vw_dati_societari AS
+              SELECT
+                ds.id                          AS dati_societari_id,
+                ds.soggetto_id,
+                s.ragione_sociale_completa,
+                s.id_fiscale_univoco_cf_piva,
+
+                ds.forma_giuridica_id,
+                fg.codice                      AS forma_giuridica_codice,
+                fg.descrizione                 AS forma_giuridica_descrizione,
+
+                ds.id_prov_iscri_rea           AS provincia_iscrizione_rea_id,
+                pr.sigla                       AS provincia_iscrizione_rea_sigla,
+                pr.descrizione                 AS provincia_iscrizione_rea_descrizione,
+
+                ds.iscrizione_rea,
+                ds.capitale_sociale,
+                ds.socio_unico,
+                ds.liquidazione,
+                ds.destinatario_fe,
+                ds.pec_fatturazione,
+                ds.codice_sdi,
+                ds.data_costituzione,
+
+                ds.storicizza,
+                ds.tx_id,
+                ds.data_insert,
+                ds.user_insert,
+                ds.data_update,
+                ds.user_update
+              FROM anagrafiche.dati_societari ds
+              JOIN anagrafiche.soggetti s
+                ON s.id = ds.soggetto_id
+              LEFT JOIN config.forme_giuridiche fg
+                ON fg.id = ds.forma_giuridica_id
+              LEFT JOIN config.province pr
+                ON pr.id = ds.id_prov_iscri_rea;
+
+              COMMENT ON VIEW anagrafiche.vw_dati_societari
+              IS 'Vista dati societari con decodifiche forma giuridica e provincia, include identificativi tecnici.';

@@ -17,6 +17,7 @@ La tabella **`anagrafiche.soggetti_ruoli`** funge da collegamento (linking table
 
 ### 🎯 Scopo Principale
 
+(latest review 01-12-25)
 * **Associazione molti-a-molti**: stabilisce una relazione N\:N tra la tabella `anagrafiche.soggetti` e `config.tipi_ruoli`, consentendo a ogni soggetto di rivestire più ruoli (es. cliente, fornitore, gestore) e a ogni ruolo di essere assegnato a molti soggetti.
 * **Estensione semantica**: il campo `extra` (JSONB) offre la possibilità di collegare metadati aggiuntivi per la singola associazione soggetto-ruolo (ad esempio, parametri contrattuali specifici se il ruolo è “fornitore” o date di attivazione per il ruolo “cliente”).
 * **Tracciatura delle modifiche**: grazie ai campi di audit (`user_insert`, `data_insert`, `user_update`, `data_update`) aggiornati automaticamente, la tabella conserva la cronologia di creazione e aggiornamento di ciascuna associazione.

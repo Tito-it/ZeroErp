@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/vw_indirizzi_resolved_base.md" %}
 # 🔍 View `vw_indirizzi_resolved_base`
 
 ```sql

@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Vincoli indirizzi: requisiti per indirizzo libero
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20251223-06-add-check-indirizzi-free-requirements-mctit.yaml
+
+  - changeSet:
+      id: 20251223-06-add-check-indirizzi-free-requirements
+      author: mctit
+      comment: >
+        Aggiunge vincoli di coerenza per indirizzi liberi: obbligo stato_id
+        e completezza minima (comune+CAP o locality+postal_box con area/sublocality).
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.indirizzi
+                ADD CONSTRAINT chk_indirizzi_free_requirements
+                CHECK (
+                  indirizzo_dettaglio_id IS NOT NULL
+                  OR (
+                    indirizzo_libero IS NOT NULL
+                    AND stato_id IS NOT NULL
+                    AND (
+                      (comune_id IS NOT NULL AND codice_postale_id IS NOT NULL)
+                      OR (
+                        locality IS NOT NULL
+                        AND postal_box IS NOT NULL
+                        AND (administrative_area IS NOT NULL OR sublocality IS NOT NULL)
+                      )
+                    )
+                  )
+                );
+
+              ALTER TABLE anagrafiche.indirizzi_soggetti
+                ADD CONSTRAINT chk_indirizzi_soggetti_free_requirements
+                CHECK (
+                  indirizzo_dettaglio_id IS NOT NULL
+                  OR (
+                    indirizzo_libero IS NOT NULL
+                    AND stato_id IS NOT NULL
+                    AND (
+                      (comune_id IS NOT NULL AND codice_postale_id IS NOT NULL)
+                      OR (
+                        locality IS NOT NULL
+                        AND postal_box IS NOT NULL
+                        AND (administrative_area IS NOT NULL OR sublocality IS NOT NULL)
+                      )
+                    )
+                  )
+                );
