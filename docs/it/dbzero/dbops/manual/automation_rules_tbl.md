@@ -2,13 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> ApprofondimeNto tabelle
+> Approfondimento tabelle
 > 
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)      
 > * [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)      
-> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)      >
+> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)
+>       
 >
 > Approfondimento funzioni:  
+> 
 >  * Regola **ATTIVO / soft-delete** [dbops.trgfn_soft_delete_cascade](/dbzero/dbops/funzioni/trgfn_soft_delete_cascade)      
 > * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)      
 > * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)      

@@ -99,13 +99,33 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 
 ---
 
+## 6. Riclassificazione Vie (Caso A/B)
+
+Questa sezione descrive come gestire variazioni di nome via mantenendo tracciabilita storica e coerenza dei civici.
+
+### Caso A: cambio nome completo della via (stesso tracciato)
+
+1. Aggiornare il nome in `config.stradario_generale` oppure l’associazione in `config.stradario` verso il nuovo `stradario_generale_id`.
+2. Verificare che `config.stradario.storicizza = TRUE` per tracciare la modifica.
+3. Non modificare `anagrafiche.indirizzi_dettaglio`: il `stradario_id` resta invariato.
+4. Per audit “as of”, usare `script.fn_get_snapshot_as_of()` su `storico.stradario`.
+
+### Caso B: cambio nome parziale della via (solo un tratto)
+
+1. Creare una nuova via in `config.stradario_generale` e il relativo record in `config.stradario` per il tratto riclassificato.
+2. Aggiornare `anagrafiche.indirizzi_dettaglio.stradario_id` solo per i civici interessati.
+3. Verificare `storicizza = TRUE` su `config.stradario` e su `anagrafiche.indirizzi_dettaglio` per avere tracciabilita completa.
+4. Per audit “as of”, combinare `storico.indirizzi_dettaglio` con `storico.stradario`.
+
+---
+
 *Questa guida copre l’intero ciclo di vita e le componenti software per la gestione degli indirizzi in Zero ERP: dalla tabella geografica di base, al dettaglio civico, fino alle funzioni di audit e storicizzazione.*
 
 ---
 ##
 
 
-### 6. Diagramma ER
+### 7. Diagramma ER
 
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%  
@@ -130,11 +150,11 @@ erDiagram
 ```
 
 ---
-## 7. Appendice – Indirizzi per Ruolo e per Soggetto
+## 8. Appendice – Indirizzi per Ruolo e per Soggetto
 
 Questa appendice descrive la separazione tra indirizzi **per ruolo** e **per soggetto**, le motivazioni e gli oggetti tecnici introdotti per la consultazione coerente.
 
-### 7.1. Motivazioni e funzionamento
+### 8.1. Motivazioni e funzionamento
 
 * **Indirizzi per ruolo (`anagrafiche.indirizzi`)**
   - Rappresentano indirizzi operativi legati a un ruolo (cliente, fornitore, gestore, ecc.).
@@ -151,7 +171,7 @@ Questa appendice descrive la separazione tra indirizzi **per ruolo** e **per sog
     **(comune + CAP)** oppure **(locality + postal_box)** con almeno uno tra
     `administrative_area` e `sublocality`.
 
-### 7.2. Viste “resolved”
+### 8.2. Viste “resolved”
 
 Le viste resolved centralizzano la composizione dell’indirizzo human‑readable e i campi territoriali:
 
@@ -161,14 +181,14 @@ Le viste resolved centralizzano la composizione dell’indirizzo human‑readabl
 * [`anagrafiche.vw_indirizzi_resolved_all`](/dbzero/anagrafiche/views/vw_indirizzi_resolved_all)
 * [`anagrafiche.vw_indirizzi_dettaglio`](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)
 
-### 7.3. Funzioni di lettura
+### 8.3. Funzioni di lettura
 
 * [`script.fn_get_indirizzi_by_ruolo`](/dbzero/script/funzioni/vw_fn_get_indirizzi_by_ruolo)
 * [`script.fn_get_indirizzo`](/dbzero/script/funzioni/vw_fn_get_indirizzo)
 * [`script.fn_get_indirizzi_by_soggetto`](/dbzero/script/funzioni/vw_fn_get_indirizzi_by_soggetto)
 * [`script.fn_get_indirizzo_by_soggetto`](/dbzero/script/funzioni/vw_fn_get_indirizzo_by_soggetto)
 
-### 7.4. Diagramma logico (ruolo vs soggetto)
+### 8.4. Diagramma logico (ruolo vs soggetto)
 
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%

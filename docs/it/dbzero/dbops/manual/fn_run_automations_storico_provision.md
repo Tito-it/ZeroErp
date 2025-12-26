@@ -2,6 +2,10 @@
 
 > 👀 **Vedi anche**
 >
+> Guide:
+>
+> * [Automazione DB](/guide/automazione-db)
+>
 > Approfondimento tabelle:
 >
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
@@ -18,6 +22,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 26-12-25)
 La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas, p_dry_run)`** automatizza il **provisioning delle tabelle nello schema `storico`** per tutte le tabelle applicative che adottano la colonna di storicizzazione (es. `storicizza`). Per ogni tabella in scope, verifica prerequisiti e demanda la creazione/adeguamento dell’omologa tabella storico a `fn_ensure_storico_table` (con eventuale indice GIN opzionale).
 
 ---
@@ -26,9 +31,9 @@ La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas
 
 | Parametro     | Tipo    | Obbligatorio | Descrizione                                                                                                                |
 | ------------- | ------- | :----------: | -------------------------------------------------------------------------------------------------------------------------- |
-| `p_exec_mode` | text    |      ✔️      | Modalità di esecuzione (`AUTO`, `FORCE`, `CHECK`).                                                                         |
-| `p_schemas`   | text[] |       ❌      | Lista schemi da considerare; se `NULL`, risolta da `fn_resolve_scope`.                                                     |
-| `p_dry_run`   | boolean |      ✔️      | Se `true`, esegue in modalità simulazione (la creazione effettiva è demandata all'helper che gestisce anche il `dry_run`). |
+| `p_exec_mode` | text    |      ✔️       | Modalità di esecuzione (`AUTO`, `FORCE`, `CHECK`).                                                                         |
+| `p_schemas`   | text[]  |      ❌       | Lista schemi da considerare; se `NULL`, risolta da `fn_resolve_scope`.                                                     |
+| `p_dry_run`   | boolean |      ✔️       | Se `true`, esegue in modalità simulazione (la creazione effettiva è demandata all'helper che gestisce anche il `dry_run`). |
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## 📚 Tabelle
 - [bank_branches](tabelle/bank_branches.md) — (latest review 02-12-25) La tabella **`anagrafiche.bank_branches`** rappresenta le **filiali di istituti di credito** (branch bancarie) collegate a un determinato **ruolo di soggetto** di tipo *ISTITUTO_CREDITO* (`anagrafiche.soggetti_ruoli`).
-- [billing_account](tabelle/billing_account.md) — (latest review 02-12-25)
+- [billing_account](tabelle/billing_account.md) — (latest review 02-12-25) La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici cliente** per ciascuna `utility`, consentendo:
 - [catasto_unita_immobiliari](tabelle/catasto_unita_immobiliari.md) — (latest review 10-12-25) La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
 - [catasto_unita_immobiliari_indirizzi](tabelle/catasto_unita_immobiliari_indirizzi.md) — (latest review 16-12-25) La tabella `anagrafiche.catasto_unita_immobiliari_indirizzi` è una **tabella ponte** che esplicita la relazione tra:
 - [clienti](tabelle/clienti.md) — (latest review 02-12-25) La tabella `anagrafiche.clienti` memorizza le informazioni contrattuali e di fatturazione di un soggetto per una specifica *istanza* di servizio. Rappresenta la fase in cui un'attivazione (istanza) diventa un cliente ufficiale, includendo dettagli di scadenze, pagamento e classificazioni speciali (PA, split payment).

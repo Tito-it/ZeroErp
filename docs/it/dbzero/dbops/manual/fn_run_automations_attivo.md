@@ -2,6 +2,10 @@
 
 > 👀 **Vedi anche**
 >
+> Guide:
+>
+> * [Automazione DB](/guide/automazione-db)
+>
 > Approdondimento tabelle:
 >
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
@@ -20,6 +24,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 26-12-25)
 La funzione **`dbops.fn_run_automations_attivo(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico le regole di gestione della colonna **`attivo`** (soft-delete / stato di validità) sulle tabelle e relazioni con vincoli di chiave esterna. È uno dei moduli eseguiti da `fn_run_automations`.
 
 ---
@@ -28,9 +33,9 @@ La funzione **`dbops.fn_run_automations_attivo(p_exec_mode, p_schemas, p_dry_run
 
 | Parametro     | Tipo    | Obbligatorio | Descrizione                                                                     |
 | ------------- | ------- | :----------: | ------------------------------------------------------------------------------- |
-| `p_exec_mode` | text    |      ✔️      | Modalità di esecuzione (AUTO, FORCE, CHECK).                                    |
-| `p_schemas`   | text\[] |       ❌      | Schemi su cui applicare le regole. Se NULL, risolti tramite `fn_resolve_scope`. |
-| `p_dry_run`   | boolean |      ✔️      | Se true, non applica modifiche ma registra solo azioni simulate.                |
+| `p_exec_mode` | text    |      ✔️       | Modalità di esecuzione (AUTO, FORCE, CHECK).                                    |
+| `p_schemas`   | text\[] |      ❌       | Schemi su cui applicare le regole. Se NULL, risolti tramite `fn_resolve_scope`. |
+| `p_dry_run`   | boolean |      ✔️       | Se true, non applica modifiche ma registra solo azioni simulate.                |
 
 ---
 
