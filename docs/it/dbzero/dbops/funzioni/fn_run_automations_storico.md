@@ -24,6 +24,61 @@ DECLARE
   exist_strat text;
 BEGIN
 
+      /*
+        Scopo
+        -----
+        Esegue l'automazione di provisioning dei trigger di storico sulle tabelle "in scope",
+        applicando le regole abilitate in dbops.automation_rules_tbl di tipo 'STORICO'.
+
+        La funzione:
+        1) risolve lo scope degli schemi (dbops.fn_resolve_scope),
+        2) scorre tutte le tabelle (relkind='r') degli schemi target (escluso 'storico'),
+          filtrate da dbops.fn_table_in_scope(schema, table),
+        3) per ogni tabella applica le regole STORICO compatibili con:
+          - enabled = true
+          - exec_mode = 'AUTO' oppure exec_mode = p_exec_mode
+          - match su schema (dbops.fn_schema_match)
+          - match su tabella: '*ALL' oppure pattern ILIKE su r.target_table
+        4) se esiste la tabella storico corrispondente (storico.<table_name>),
+          assicura la presenza del trigger UPDATE+DELETE sulla tabella base usando:
+          - nome trigger derivato da template (rrule.name_template, default 'trg_z90_{table}_storico_upd_dlt')
+          - funzione trigger generica script.trgfn_storico_generic(fk_col)
+
+        Esistenza trigger / strategie
+        -----------------------------
+        La creazione del trigger è condizionata da rrule.existence_strategy (default 'BY_NAME'):
+        - BY_NAME     : verifica esistenza per nome trigger
+        - BY_FUNCTION : verifica esistenza per funzione trigger
+        - BOTH        : considera presente se esiste per nome OR per funzione
+        Questo evita duplicazioni e permette migrazioni graduali da trigger legacy a trigger generici.
+
+        Colonna FK logica (fk_col)
+        --------------------------
+        Determina la colonna FK logica passata alla funzione trigger tramite:
+        - override (dbops.fn_get_override_col) con chiave 'STORICO_FK'
+        - fallback: <table_name>_id
+
+        Legacy triggers
+        ---------------
+        Se rrule.params->>'drop_legacy_ud' è true, elimina eventuali trigger legacy
+        (pattern trg_{table}_upd_storico e trg_{table}_dlt_storico) dopo aver gestito
+        la creazione/validazione del trigger generico.
+
+        Modalità DRY RUN
+        ---------------
+        Se p_dry_run=true non esegue DDL (CREATE TRIGGER/DROP TRIGGER) e registra invece
+        un audit con dbops.fn_audit_log_once indicando cosa verrebbe creato.
+
+        Error handling
+        --------------
+        - duplicate_object: logga SKIP_EXISTS su audit (trigger già presente)
+        - altri errori: log strutturato e rilancio tramite script.fn_log_and_raise_error
+          includendo tabella e messaggio SQLERRM.
+      */
+
+
+
+
 v_schemas := dbops.fn_resolve_scope(p_schemas);
 
 FOR rtab IN
@@ -44,7 +99,7 @@ LOOP
       AND r.rule_type='STORICO'
       AND (r.exec_mode='AUTO' OR r.exec_mode=p_exec_mode)
       AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
-      AND (r.target_table IS NULL OR rtab.table_name LIKE r.target_table)
+      AND (UPPER (r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
 
       ORDER BY r.priority, r.id
     LOOP
@@ -61,12 +116,10 @@ LOOP
       IF has_sto THEN
         fk_col := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'STORICO_FK', rtab.table_name||'_id');
 
-        
         tmpl     := COALESCE(rrule.name_template, 'trg_z90_{table}_storico_upd_dlt');
         trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL, 'upd_dlt');
         exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
 
-        
         IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rtab.rel, trg_name))
         OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rtab.rel,'script','trgfn_upd_dlt_storico_generic'))
         OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rtab.rel, trg_name)
@@ -97,12 +150,11 @@ LOOP
           END IF;
         END IF;
 
-        
         IF COALESCE((rrule.params->>'drop_legacy_ud')::boolean,false) THEN
           EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', dbops.fn_name_from_template('trg_{table}_upd_storico',rtab.schema_name,rtab.table_name,NULL,NULL,NULL,NULL), rtab.schema_name, rtab.table_name);
           EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', dbops.fn_name_from_template('trg_{table}_dlt_storico',rtab.schema_name,rtab.table_name,NULL,NULL,NULL,NULL), rtab.schema_name, rtab.table_name);
         END IF;
-        
+
       END IF;
     END LOOP;
   END LOOP;

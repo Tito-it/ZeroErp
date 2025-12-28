@@ -8,7 +8,7 @@
 | enabled | boolean | NO | true |
 | rule_type | text | NO |  |
 | target_schema | text | NO | '*all'::text |
-| target_table | text | YES |  |
+| target_table | text | NO | '*all'::text |
 | exec_mode | text | NO | 'AUTO'::text |
 | name_template | text | YES |  |
 | existence_strategy | text | NO | 'BY_NAME'::text |

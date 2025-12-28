@@ -28,7 +28,7 @@
 - [fn_get_vie_discendenti](funzioni/fn_get_vie_discendenti.md)
 - [fn_guard_soggetto_ruolo](funzioni/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 - [fn_log](funzioni/fn_log.md)
-- [fn_log_and_raise_error](funzioni/fn_log_and_raise_error.md) — * **Entrypoint unificato** per error handling: evita duplicazioni di log e raise in trigger, procedure e funzioni. * **Logging remoto sicuro**: usa `dblink_exec` su connessione permanente fornita da `script.fn_ensure_logconn()`, per isolare il log dall’eventuale rollback della sessione principale. * **Escalation immediata**: rialza l’eccezione con `DETAIL` e `HINT` recuperati dalla tabella dei messaggi.
+- [fn_log_and_raise_error](funzioni/fn_log_and_raise_error.md) — (last review 28-12-25) * **Entrypoint unificato** per error handling: evita duplicazioni di log e raise in trigger, procedure e funzioni. * **Logging remoto sicuro**: usa `dblink_exec` su connessione permanente fornita da `script.fn_ensure_logconn()`, per isolare il log dall’eventuale rollback della sessione principale. * **Escalation immediata**: rialza l’eccezione con `DETAIL` e `HINT` recuperati dalla tabella dei messaggi.
 - [fn_log_error_only](funzioni/fn_log_error_only.md) — (latest review 23-11-25) * **Logging “silenzioso”**: inserisce una riga in `dbops.error_log` con contesto ricco, ma **non** solleva eccezioni. * **Separazione delle responsabilità**: differenzia chiaramente i casi di **solo tracciamento** da quelli di **error handling critico** (per cui usare `fn_log_and_raise_error`).
 - [fn_norm_testo](funzioni/fn_norm_testo.md)
 - [fn_norm_via](funzioni/fn_norm_via.md)

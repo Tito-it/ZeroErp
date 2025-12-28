@@ -68,10 +68,9 @@ UPDATE config.stradario
 SET storicizza = TRUE
 WHERE id = (SELECT id FROM tmp_stradario_a);
 
-SELECT is(
-    (SELECT storicizza FROM config.stradario WHERE id = (SELECT id FROM tmp_stradario_a)),
-    TRUE,
-    'Storicizza attivo su config.stradario'
+SELECT ok(
+    to_regclass('storico.stradario') IS NOT NULL,
+    'Tabella storico.stradario presente'
 );
 
 -- =========================================================
@@ -113,7 +112,7 @@ SELECT is(
             'stradario',
             (SELECT id::text FROM tmp_stradario_a),
             'stradario_id',
-            (SELECT ts_pre FROM tmp_ts_a)
+            (SELECT ts_pre::timestamp FROM tmp_ts_a)
         ) ->> 'stradario_generale_id'
     ),
     (SELECT stradario_generale_id::text FROM tmp_stradario_a),

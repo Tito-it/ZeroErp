@@ -23,7 +23,21 @@ AS $function$
       BEGIN
         v_schemas := dbops.fn_resolve_scope(p_schemas);
 
-      
+        /*
+          Scopo:
+          - Scansiona le tabelle degli schemi in scope (risolti da fn_resolve_scope), escludendo lo schema storico.
+          - Per ogni tabella, applica le regole abilitate con rule_type = ''STORICO_PROVISION'' compatibili con exec_mode e target schema/table.
+          - Se la tabella espone una colonna di flag storicizza (default ''storicizza'', override tramite automation_overrides_cols: key ''STORICIZZA_COL''),
+            invoca fn_ensure_storico_table per creare/aggiornare la corrispondente tabella in storico.*.
+          - La colonna FK nello storico è calcolata come <table_name>_id (override tramite automation_overrides_cols: key ''STORICO_FK'').
+          - Parametro create_gin_index (in params JSON della regola) abilita la creazione dell''indice GIN sullo snapshot nello storico.
+
+          Parametri:
+          - p_exec_mode: modalità di esecuzione (es. ''AUTO'', ''MANUAL''); una regola è applicata se exec_mode = ''AUTO'' oppure exec_mode = p_exec_mode.
+          - p_schemas: lista schemi target; può includere scope/wildcard risolti da fn_resolve_scope.
+          - p_dry_run: se TRUE, esegue in modalità simulata (nessun DDL effettivo), demandando la gestione al helper fn_ensure_storico_table.
+        */
+
 
         -- loop tabelle degli schemi target
         FOR rtab IN
@@ -42,7 +56,7 @@ AS $function$
               AND r.rule_type='STORICO_PROVISION'
               AND (r.exec_mode='AUTO' OR r.exec_mode=p_exec_mode)
               AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
-              AND (r.target_table IS NULL OR rtab.table_name LIKE r.target_table)
+              AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
           LOOP
             --  parametri regola
             create_gin := COALESCE((rrule.params->>'create_gin_index')::boolean, false);

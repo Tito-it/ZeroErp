@@ -19,7 +19,8 @@ AS $function$
         orig_schema     TEXT          := TG_TABLE_SCHEMA; -- Schema della tabella sorgente
         orig_table      TEXT          := TG_TABLE_NAME;   -- Nome tabella sorgente
         hist_table      TEXT          := orig_table;      -- Nome tabella storica (stesso nome)
-        v_current_date  CONSTANT DATE := CURRENT_DATE; -- Data corrente per chiusura snapshot
+        --v_current_date  CONSTANT DATE := CURRENT_DATE; -- Data corrente per chiusura snapshot
+        v_current_date  CONSTANT timestamptz := CURRENT_TIMESTAMP; -- Data corrente per chiusura snapshot                      
         v_fixed_date    CONSTANT DATE := '1950-01-01'; -- Data fissa per nuovi record storici
         v_rowcount      INTEGER;      -- Contatore righe per operazioni UPDATE
         v_snapshot_open BOOLEAN := FALSE; -- Flag snapshot aperti
@@ -27,16 +28,9 @@ AS $function$
         op_type         SMALLINT;     -- 1=creazione, 2=modifica, 3=eliminazione
         v_id_value      TEXT;       -- Valore ID del record originale
         v_id_col_type  TEXT; -- Tipo della colonna ID nella tabella originale
-       -- v_skip_reset    BOOLEAN := TG_TABLE_NAME = ANY (
-       --                     ARRAY[
-       --                       'parameters',
-       --                       'parameter_overrides',
-       --                       'soggetti',
-       --                       'clienti'
-       --                     ]
-       --                   ); -- Definire le tabelle che non devono essere resettate
-          v_should_reset  BOOLEAN;  -- = NOT v_skip_reset, valorizzata in BEGIN
-          v_skip_reset    BOOLEAN;
+        v_should_reset  BOOLEAN;  -- = NOT v_skip_reset, valorizzata in BEGIN
+        v_skip_reset    BOOLEAN;
+  
       BEGIN
         -- 0) Controllo da tabella di configurazione
           SELECT EXISTS (
@@ -46,8 +40,8 @@ AS $function$
           ) INTO v_skip_reset;
 
         -- Inizializziamo il flag una sola volta
-         v_should_reset := NOT v_skip_reset;
-         
+        v_should_reset := NOT v_skip_reset;
+        
       -- 0.1) Trova il tipo della colonna PK (id) nella tabella origine
         SELECT format_type(a.atttypid, a.atttypmod)
           INTO v_id_col_type
@@ -101,10 +95,6 @@ AS $function$
         -- Cerca e chiude eventuali snapshot precedenti ancora aperti (valid_to IS NULL)
         -- per lo stesso record (stesso ID)
         BEGIN
-        /* EXECUTE format(
-            'UPDATE %I.%I SET valid_to = $1 WHERE %I = $2 AND valid_to IS NULL',
-            hist_schema, hist_table, id_col_hist
-          ) USING v_current_date, v_id_value;  */
           EXECUTE format(
         'UPDATE %I.%I
             SET valid_to = $1
@@ -180,7 +170,8 @@ AS $function$
         RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
       END;
       
-  $function$
+  
+$function$
 ```
 
 ---
