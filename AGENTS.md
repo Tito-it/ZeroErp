@@ -14,6 +14,13 @@
 - `00_schema` and `20_code` are included via `migrations_v2/changelog-autogen.yaml` (autogen script)
 - `80_data`, `85_pgagent`, `90_end` are included via `includeAll` in master
 
+## Regole Documentazione
+- I contenuti concettuali principali sono nella documentazione dell’area tecnica (guide).
+- Prima di strutturare una soluzione, consultare le guide pertinenti (es. soggetti → guida soggetti e ruoli anagrafici).
+- Gli script aggiornati per tabelle/views/funzioni si trovano in `<schema>/tabelle`, `<schema>/views`, `<schema>/funzioni`.
+- Non modificare questi file auto-generati: servono solo come riferimento.
+- Scrivere o aggiornare solo la documentazione concettuale in `<schema>/manual`.
+
 ## SQL Conventions
 - Schemas/tables/columns naming per `linee-guida-sql.md`
 - Prefer UUID for master entities; SERIAL/IDENTITY for technical tables

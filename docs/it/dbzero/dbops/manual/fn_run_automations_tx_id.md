@@ -2,6 +2,11 @@
 
 > 👀 **Vedi anche**
 >
+> Guide:
+>
+> * [Gestione Transaction ID](/guide/tx_id_implementation_guide)
+> * [Automazione DB](/guide/automazione-db)
+>
 > Approfonsimento tabelle:
 >
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
@@ -15,14 +20,12 @@
 > * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 >
-> Guide:
->
-> * [Gestione Transaction ID](guide/tx_id_implementation_guide)
 
 ---
 
 ### 🎯 Scopo Principale
 
+(latest review 26-12-25)
 La funzione **`dbops.fn_run_automations_tx_id(p_exec_mode, p_schemas, p_dry_run)`** automatizza la creazione (o la simulazione) del **trigger di gestione `tx_id`** (`BEFORE INSERT OR UPDATE`) sulle tabelle applicative che possiedono una colonna `tx_id uuid`. Il trigger invoca `dbops.trgfn_tx_id_managed()` per generare/propagare l’ID di transazione.
 
 ---
@@ -31,9 +34,9 @@ La funzione **`dbops.fn_run_automations_tx_id(p_exec_mode, p_schemas, p_dry_run)
 
 | Parametro     | Tipo    | Obbligatorio | Descrizione                                                                  |
 | ------------- | ------- | :----------: | ---------------------------------------------------------------------------- |
-| `p_exec_mode` | text    |      ✔️      | Modalità di esecuzione (`AUTO`, `FORCE`, `CHECK`).                           |
-| `p_schemas`   | text[] |       ❌      | Scope di schemi. Se `NULL`, determinato da `fn_resolve_scope`.               |
-| `p_dry_run`   | boolean |      ✔️      | Se `true`, non crea trigger ma registra un evento **DRYRUN** in `audit_log`. |
+| `p_exec_mode` | text    |      ✔️       | Modalità di esecuzione (`AUTO`, `FORCE`, `CHECK`).                           |
+| `p_schemas`   | text[]  |      ❌       | Scope di schemi. Se `NULL`, determinato da `fn_resolve_scope`.               |
+| `p_dry_run`   | boolean |      ✔️       | Se `true`, non crea trigger ma registra un evento **DRYRUN** in `audit_log`. |
 
 ---
 

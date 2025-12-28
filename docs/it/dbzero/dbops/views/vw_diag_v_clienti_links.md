@@ -1,7 +1,8 @@
-# 🔍 View `diag_v_clienti_links`
+{% include-markdown "it/dbzero/dbops/manual/vw_diag_v_clienti_links.md" %}
+# 🔍 View `vw_diag_v_clienti_links`
 
 ```sql
-CREATE OR REPLACE VIEW dbops.diag_v_clienti_links AS
+CREATE OR REPLACE VIEW dbops.vw_diag_v_clienti_links AS
 SELECT c.id AS cliente_id,
     c.soggetto_ruolo_id AS cliente_soggetto_ruolo_id,
     c.istanza_utility_id AS cliente_istanza_utility_id,

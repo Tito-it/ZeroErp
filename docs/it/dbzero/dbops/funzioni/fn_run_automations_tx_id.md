@@ -22,6 +22,57 @@ DECLARE
   trg_name text;
   exist_strat text;
 BEGIN
+
+
+/*
+  Scopo
+  -----
+  Esegue l'automazione di provisioning dei trigger "TX_ID managed" sulle tabelle in scope,
+  applicando le regole abilitate in dbops.automation_rules_tbl di tipo 'TX_ID'.
+
+  La funzione:
+  1) risolve lo scope degli schemi (dbops.fn_resolve_scope),
+  2) scorre tutte le tabelle fisiche (pg_class.relkind='r') degli schemi target
+    filtrate da dbops.fn_table_in_scope(schema, table),
+  3) per ogni tabella applica le regole TX_ID compatibili con:
+    - enabled = true
+    - rule_type = 'TX_ID'
+    - exec_mode = 'AUTO' oppure exec_mode = p_exec_mode
+    - match su schema (dbops.fn_schema_match)
+    - match su tabella: '*ALL' oppure pattern ILIKE su r.target_table
+  4) verifica la pre-condizione tecnica: la tabella deve avere una colonna tx_id di tipo uuid
+    (information_schema.columns).
+    Se la colonna non esiste, la tabella viene ignorata (non crea colonne, crea solo trigger).
+
+  Trigger generato
+  ----------------
+  Per le tabelle idonee, la funzione assicura l'esistenza del trigger:
+    BEFORE INSERT OR UPDATE
+    EXECUTE FUNCTION dbops.trgfn_tx_id_managed()
+  Il nome del trigger è derivato da un template:
+    - rrule.name_template (default: 'trg_{table}_gen_tx_id_ins_upd')
+    - dbops.fn_name_from_template per generare un nome coerente e standardizzato.
+
+  Esistenza trigger / strategie
+  -----------------------------
+  La creazione del trigger è condizionata da rrule.existence_strategy (default 'BY_NAME'):
+  - BY_NAME     : verifica esistenza per nome trigger
+  - BY_FUNCTION : verifica esistenza per funzione trigger (dbops.trgfn_tx_id_managed)
+  - BOTH        : considera presente se esiste per nome OR per funzione
+  Questo consente migrazioni controllate e previene duplicazioni.
+
+  Modalità DRY RUN
+  ---------------
+  Se p_dry_run=true non esegue DDL (CREATE TRIGGER) e registra invece un audit
+  con dbops.fn_audit_log_once indicando cosa verrebbe creato.
+
+  Error handling
+  --------------
+  In caso di errore nella creazione del trigger, log strutturato e rilancio tramite
+  script.fn_log_and_raise_error includendo tabella, contesto ('TX_ID') e SQLERRM.
+*/
+
+
   v_schemas := dbops.fn_resolve_scope(p_schemas); 
   FOR rtab IN
     SELECT n.nspname AS schema_name,
@@ -41,7 +92,7 @@ BEGIN
       WHERE r.enabled
         AND r.rule_type='TX_ID'
         AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
-        AND (r.target_table IS NULL OR rtab.table_name LIKE r.target_table)
+        AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
         AND (r.exec_mode='AUTO' OR r.exec_mode=p_exec_mode)
       ORDER BY r.priority, r.id
     LOOP
@@ -68,7 +119,7 @@ BEGIN
             PERFORM dbops.fn_audit_log_once(
                   p_function_name => 'dbops.fn_run_automations',
                   p_status        => 'DRYRUN',
-                  p_rule_type     => 'TX_ID',
+                  p_rule_type     => 'E_TX_ID',
                   p_exec_mode     => p_exec_mode,
                   p_parts         => ARRAY['TX_ID'],
                   p_dry_run       => true,

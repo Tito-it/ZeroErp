@@ -25,6 +25,63 @@ AS $function$
       trg_name text;
       exist_strat text;
     BEGIN
+
+      /*
+        Scopo
+        -----
+        Esegue l'automazione di provisioning dei trigger "AUDIT_UPDATE" sulle tabelle in scope,
+        applicando le regole abilitate in dbops.automation_rules_tbl (rule_type = 'AUDIT_UPDATE').
+
+        Obiettivo del trigger:
+        - mantenere aggiornati i campi "data_update" e "user_update" (o equivalenti) ad ogni UPDATE,
+          secondo la convenzione di audit del database.
+
+        Flusso operativo
+        ----------------
+        1) Risolve lo scope degli schemi con dbops.fn_resolve_scope(p_schemas).
+        2) Scorre tutte le tabelle fisiche (pg_class.relkind='r') degli schemi target, filtrate da:
+          - dbops.fn_table_in_scope(schema, table)
+        3) Per ogni tabella applica le regole AUDIT_UPDATE compatibili con:
+          - enabled = true
+          - exec_mode = 'AUTO' oppure exec_mode = p_exec_mode
+          - match su schema (dbops.fn_schema_match)
+          - match su tabella (r.target_table): se NULL vale per tutte; altrimenti pattern LIKE
+        4) Determina i nomi delle colonne audit da gestire:
+          - colonna timestamp (default: 'data_update', overridabile via rrule.params->>'audit_ts' e/o override 'AUDIT_TS')
+          - colonna utente     (default: 'user_update', overridabile via rrule.params->>'audit_user' e/o override 'AUDIT_USER')
+        5) Verifica le pre-condizioni tecniche:
+          - crea trigger solo se entrambe le colonne esistono (dbops.fn_col_exists).
+          - non crea colonne: gestisce solo trigger.
+
+        Trigger generato
+        ----------------
+        Se la tabella è idonea e il trigger non esiste già (secondo existence_strategy),
+        crea un trigger:
+          BEFORE UPDATE
+          EXECUTE FUNCTION script.trgfn_audit_data_user_generic()
+
+        Nome trigger ed esistenza (existence_strategy)
+        ----------------------------------------------
+        Il nome è derivato da rrule.name_template (default 'trg_{table}_audit_data_user_upd')
+        tramite dbops.fn_name_from_template.
+        La creazione è condizionata da rrule.existence_strategy (default 'BY_NAME'):
+        - BY_NAME     : verifica esistenza per nome trigger
+        - BY_FUNCTION : verifica esistenza per funzione trigger (script.trgfn_upd_audit_data_user_generic / generic)
+        - BOTH        : presente se esiste per nome OR per funzione
+        Serve a evitare duplicazioni e a supportare migrazioni graduali.
+
+        Modalità DRY RUN
+        ---------------
+        Se p_dry_run=true non esegue DDL (CREATE TRIGGER) e registra un audit con
+        dbops.fn_audit_log_once indicando cosa verrebbe creato.
+
+        Error handling
+        --------------
+        In caso di errore nella creazione del trigger, log strutturato e rilancio tramite
+        script.fn_log_and_raise_error con contesto ('AUDIT_UPDATE') e SQLERRM.
+      */
+
+
       v_schemas := dbops.fn_resolve_scope(p_schemas);
       FOR rtab IN
         SELECT n.nspname AS schema_name,
@@ -44,7 +101,7 @@ AS $function$
           WHERE r.enabled
             AND r.rule_type='AUDIT_UPDATE'
             AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
-            AND (r.target_table IS NULL OR rtab.table_name LIKE r.target_table)
+            AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
             AND (r.exec_mode='AUTO' OR r.exec_mode=p_exec_mode)
           ORDER BY r.priority, r.id
         LOOP

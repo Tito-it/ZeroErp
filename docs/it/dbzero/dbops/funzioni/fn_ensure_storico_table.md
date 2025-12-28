@@ -33,6 +33,37 @@ DECLARE
   v_ix_fk_name  text := format('ix_%s_%s_fk', p_table_base, p_fk_col);
   v_ix_gin_name text := format('ix_%s_snapshot_gin', p_table_base);
 BEGIN
+
+      /*
+      Scopo
+      -----
+      Provisioning "on demand" della tabella di storico (schema: storico) associata a una tabella base.
+      Crea la tabella storico SOLO se non esiste, con struttura standard (id seriale, fk logica, snapshot jsonb,
+      metadati di audit e finestre di validità).
+
+      Convenzioni
+      ----------
+      - Tabella storico: schema fisso 'storico', nome = stesso nome della tabella base.
+      - PK storico: BIGSERIAL 'id' (indipendente dalla PK del padre).
+      - Collegamento al padre: colonna p_fk_col (tipizzata come PK del padre, se determinabile).
+      - FK fisica verso la tabella base: NON creata volutamente (evita blocchi su delete/cleanup e vincoli operativi).
+
+      Input / Parametri
+      -----------------
+      - p_schema_base: schema della tabella base (es. 'anagrafiche').
+      - p_table_base : nome tabella base.
+      - p_fk_col     : nome della colonna nella tabella storico che conterrà l'id logico del record padre.
+      - p_create_gin_index: se true crea indice GIN su snapshot.
+      - p_dry_run    : se true non esegue DDL, ma registra audit "would be created".
+
+      Note operative
+      --------------
+      - La tipizzazione della colonna fk logica tenta di leggere la PK monocampo del padre; fallback su 'id'.
+      - In caso di errore DDL viene loggato e rilanciato tramite script.fn_log_and_raise_error.
+    */
+
+
+
   -- esiste già la tabella storico?<— esci
   SELECT EXISTS (
     SELECT 1
@@ -80,7 +111,7 @@ BEGIN
         'E_STORICO_PARENT_PK_NOT_FOUND',
         jsonb_build_object('schema',p_schema_base,'table',p_table_base),
         NULL::uuid,
-        ARRAY['Impossibile determinare PK o tipo per tabella padre']
+        p_schema_base, p_table_base
       );
       RETURN;
     END IF;
@@ -107,10 +138,10 @@ BEGIN
     COMMENT ON COLUMN %s.tipo_operazione
       IS 'Tipo operazione (1=insert, 2=update, 3=delete)';
     
-   -- non si genera più la fk perchè bloccerebbe la cancellazione delle righe della tabella e non è corretto
-   -- si crea solo l'indice.
-   -- ALTER TABLE %s
-   --   ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES %s(%I);
+  -- non si genera più la fk perchè bloccerebbe la cancellazione delle righe della tabella e non è corretto
+  -- si crea solo l'indice.
+  -- ALTER TABLE %s
+  --   ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES %s(%I);
 
     CREATE INDEX IF NOT EXISTS %I ON %s (%I);
   $ddl$,
@@ -126,7 +157,7 @@ BEGIN
 
   IF p_create_gin_index THEN
     v_sql := v_sql || format(E'\nCREATE INDEX IF NOT EXISTS %I ON %s USING GIN (snapshot);\n',
-                             v_ix_gin_name, v_full_sto);
+                            v_ix_gin_name, v_full_sto);
   END IF;
 
   IF p_dry_run THEN
@@ -163,7 +194,7 @@ BEGIN
         'fk',     p_fk_col
       ),
       NULL::uuid,
-      ARRAY[SQLERRM]
+      SQLERRM
     );
   END;
 END;

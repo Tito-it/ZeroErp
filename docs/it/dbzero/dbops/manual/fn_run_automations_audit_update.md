@@ -2,6 +2,10 @@
 
 > 👀 **Vedi anche**
 >
+> Guide:
+>
+> * [Automazione DB](/guide/automazione-db)
+>
 > Approfondimento tabelle:
 >
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
@@ -11,13 +15,14 @@
 > * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
 > * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)
 > * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/dbops/funzioni/trgfn_upd_audit_data_user_generic)
+> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
 
 ---
 
 ### 🎯 Scopo Principale
 
-La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico (o simula) la **regola di aggiornamento audit** sulle tabelle in scope, creando – dove mancante secondo le policy – un **trigger BEFORE UPDATE** che aggiorna `data_update` e `user_update` tramite la funzione `script.trgfn_upd_audit_data_user_generic()`.
+(latest review 25-12-26)
+La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico (o simula) la **regola di aggiornamento audit** sulle tabelle in scope, creando – dove mancante secondo le policy – un **trigger BEFORE UPDATE** che aggiorna `data_update` e `user_update` tramite la funzione `script.trgfn_audit_data_user_generic()`.
 
 ---
 
@@ -25,9 +30,9 @@ La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_d
 
 | Parametro     | Tipo    | Obbligatorio | Descrizione                                                                    |
 | ------------- | ------- | :----------: | ------------------------------------------------------------------------------ |
-| `p_exec_mode` | text    |      ✔️      | Modalità di esecuzione (es. `AUTO`, `FORCE`, `CHECK`).                         |
-| `p_schemas`   | text[] |       ❌      | Scope di schemi. Se `NULL`, determinato da `fn_resolve_scope`.                 |
-| `p_dry_run`   | boolean |      ✔️      | Se `true`, non crea i trigger ma registra un evento **DRYRUN** in `audit_log`. |
+| `p_exec_mode` | text    |      ✔️       | Modalità di esecuzione (es. `AUTO`, `FORCE`, `CHECK`).                         |
+| `p_schemas`   | text[]  |      ❌       | Scope di schemi. Se `NULL`, determinato da `fn_resolve_scope`.                 |
+| `p_dry_run`   | boolean |      ✔️       | Se `true`, non crea i trigger ma registra un evento **DRYRUN** in `audit_log`. |
 
 ---
 
@@ -51,7 +56,7 @@ La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_d
 6. **Azione**:
 
    * **`p_dry_run = true`** → scrive evento `DRYRUN` via `fn_audit_log_once` (dettagliando tabella, nome trigger, azione prevista).
-   * **`p_dry_run = false`** → esegue `CREATE TRIGGER ... EXECUTE FUNCTION script.trgfn_upd_audit_data_user_generic()`.
+   * **`p_dry_run = false`** → esegue `CREATE TRIGGER ... EXECUTE FUNCTION script.trgfn_audit_data_user_generic()`.
 7. **Error handling**: in caso di errore, invoca `script.fn_log_and_raise_error` con contesto `E_AUDIT_UPDATE`.
 
 ---
@@ -80,7 +85,7 @@ La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_d
 
 ### 📌 Considerazioni
 
-* Il nome del trigger è derivato da `name_template` (es. `trg_upd_{table}_audit_data_user`), risolto con `fn_name_from_template`.
+* Il nome del trigger è derivato da `name_template` (es. `trg_{table}_audit_data_user_upd`), risolto con `fn_name_from_template`.
 * Gli override consentono di supportare schemi legacy dove le colonne non si chiamano `data_update`/`user_update`.
 * Integrare con policy di **retention** su `audit_log` per non accumulare eccessivi log di `DRYRUN`.
 

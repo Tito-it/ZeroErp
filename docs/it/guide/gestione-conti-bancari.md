@@ -1,5 +1,7 @@
-# 📘 Guida Tecnica – Gestione dei **Conti Bancari** in Zero ERP
+# 📘 Guida Tecnica – Gestione dei **Conti Bancari** 
 
+> (latest review 16-12-25)
+> 
 > 📋 **Destinatari:** sviluppatori database, backend e analisti funzionali
 
 >

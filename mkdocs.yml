@@ -138,9 +138,10 @@ nav:
                   - Soggetti e ruoli anagrafici: it/guide/soggetti-e-ruoli-anagrafici.md
                   - Gestione delle Istanze Utility: it/guide/gestione-delle-istanze-utility.md
                   - Generazione di un cliente: it/guide/generazione-cliente.md
-                  - Gestione conti bancari: it/guide/gestione-conti-bancari.md
                   - Gestione degli indirizzi: it/guide/gestione-degli-indirizzi.md
                   - Gestione dei contatti: it/guide/gestione-dei-contatti.md
+                  - Gestione conti bancari: it/guide/gestione-conti-bancari.md
+
         - Glossario:
                   - Dev&Ops: it/glossario/devops&db.md
                   - Process Analysis: it/glossario/process-analysis.md

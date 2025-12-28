@@ -15,7 +15,6 @@
 | user_update | text | YES |  |
 | data_update | timestamp with time zone | YES |  |
 | tx_id | uuid | YES |  |
-| storicizza | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

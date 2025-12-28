@@ -1,5 +1,7 @@
-# 📘 Guida Tecnica – Soggetti e Ruoli Anagrafici in Zero ERP
+# 🌱 Guida Tecnica – Soggetti e Ruoli Anagrafici
 
+> (latest review 16-12-25)
+>
 > 🎯 **Destinatari:** sviluppatori database, backend e analisti funzionali
 >
 > 🧩 **Fondamentale per comprendere tutte le altre guide anagrafiche (clienti, indirizzi, contatti, conti bancari, istanze)**.
@@ -209,11 +211,11 @@ erDiagram
 
 Questa guida fornisce le basi concettuali per comprendere:
 
+* [`la gestione istanze utility`](/guide/gestione-delle-istanze-utility),
 * [`la generazione di un cliente`](/guide/generazione-cliente),
 * [`la gestione degli indirizzi`](/guide/gestione-degli-indirizzi),
 * [`la logica dei conti bancari`](/guide/gestione-conti-bancari),
 * [`la gestione dei contatti`](/guide/gestione-dei-contatti),
-* la relazione con istanze, utility, contratti.
 
 Le altre guide (clienti, indirizzi, contatti, fatturazione) assumono **come prerequisito** la comprensione di questo modello.
 

@@ -45,6 +45,10 @@ La tabella **`anagrafiche.indirizzi_soggetti`** gestisce gli **indirizzi associa
   * **Normalizzata**: tramite `indirizzo_dettaglio_id`, collegata a `anagrafiche.indirizzi_dettaglio`.
   * **Libera**: tramite `indirizzo_libero` e campi geografici ausiliari, per indirizzi esteri o non normalizzati.
 
+> ⚠️ **Nota Bene**  
+> La modalità **normalizzata** è sempre preferibile.  
+> L’inserimento di indirizzi **liberi** deve essere considerato **solo come opzione estrema** (es. migrazioni da altri database o casi non normalizzabili).
+
 * **Coerenza guidata da configurazione**
   Il tipo di indirizzo ammesso non è hardcoded, ma validato tramite la matrice:
 
@@ -121,6 +125,13 @@ Questa impostazione consente:
   * o sia libero,
 
   ma **mai entrambi**.
+
+* **Completezza indirizzo libero**
+  Se `indirizzo_dettaglio_id` è `NULL`:
+
+  * `indirizzo_libero` e `stato_id` sono obbligatori;
+  * è richiesto **o** (`comune_id` + `codice_postale_id`) **oppure** (`locality` + `postal_box`),
+    con almeno uno tra `administrative_area` e `sublocality`.
 
 * **Unicità soggetto + tipo indirizzo**
   `UNIQUE (soggetto_id, tipo_indirizzo_id)`

@@ -22,6 +22,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 01-12-25)
 `anagrafiche.soggetti_ruoli_conti_bancari` gestisce l’**associazione tra un Ruolo** di un soggetto (CLIENTE, FORNITORE, GESTORE, …) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 
 Questa tabella abilita l’**override a livello ruolo**: se esiste un legame idoneo qui, ha **priorità** su quello di soggetto; in caso contrario, la selezione **ricade** sul **predefinito** di `anagrafiche.soggetti_conti_bancari` grazie a VIEW/FUNCTION di fallback.

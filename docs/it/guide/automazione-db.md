@@ -2,7 +2,17 @@
 
 > **Scope:** aggiorna la guida esistente con le novità su wildcard `*all` e gli ultimi affinamenti senza stravolgere la struttura.
 >
-> **Riferimenti chiave**: `dbops.automation_rules_tbl`, `dbops.automation_overrides_cols`, `dbops.automation_fk_exclusions`, `dbops.automation_scope`, orchestratori `dbops.fn_run_automations_*`, audit `dbops.audit_log`.
+> **Riferimenti chiave**: 
+> > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)      
+> * [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)      
+> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)
+> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)
+> * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)
+>
+> * Orchestratori: 
+> 
+> [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations), [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id), [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update), [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico), [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
+
 
 ---
 
@@ -24,26 +34,26 @@ Automatizzare attività ripetitive (assegnazione `tx_id`, audit update, storico,
 
 ## 3) 🔑 Regole supportate (sintesi)
 
-### 3.1 TX_ID
+ **3.1 TX_ID**
 
 Trigger `BEFORE INSERT OR UPDATE` → `dbops.trgfn_tx_id_managed()`.
 
-### 3.2 AUDIT_UPDATE
+ **3.2 AUDIT_UPDATE**
 
 Trigger `BEFORE UPDATE` → `script.trgfn_upd_audit_data_user_generic()`.
 
-### 3.3 STORICO (trigger)
+ **3.3 STORICO (trigger)**
 
 * Trigger **unico** `BEFORE UPDATE OR DELETE` → `script.trgfn_upd_dlt_storico_generic(fk)`.
 * **Naming default**: `trgx_z90_{table}_upd_dlt_storico` (prefisso per ordinamento).
 * Scrive su **`storico.<stesso_nome_tabella>`** (senza suffisso `_storico`).
 
-### 3.4 STORICO_PROVISION (provisioning tabelle storico)
+ **3.4 STORICO_PROVISION (provisioning tabelle storico)**
 
 * Crea `storico.<tabella>` se mancante con struttura standard (FK → PK padre, `snapshot` JSONB, `change_type`, `tipo_operazione`, ecc.).
 * Param opzionale: `create_gin_index` su `snapshot`.
 
-### 3.5 ATTIVO (soft‑delete funzionale)
+ **3.5 ATTIVO (soft‑delete funzionale)**
 
 * FK `RESTRICT` **o** `NO ACTION` (anche DEFERRABLE): cascade/require/block come da design originale.
 
@@ -51,7 +61,7 @@ Trigger `BEFORE UPDATE` → `script.trgfn_upd_audit_data_user_generic()`.
 
 ## 4) ⚙️ Configurazione
 
-### 4.1 `automation_rules_tbl` (novità `*all`)
+ **4.1 `automation_rules_tbl` (novità `*all`)**
 
 * `target_schema`: ora supporta **`'*all'`** per applicare la regola a **tutti gli schemi** nello scope risolto. Rimangono validi valori specifici (es. `anagrafiche`).
 * `target_table`: pattern `LIKE` (es. `foo_%`).
@@ -64,7 +74,7 @@ Trigger `BEFORE UPDATE` → `script.trgfn_upd_audit_data_user_generic()`.
 * STORICO (trigger): `('STORICO','*all', name_template='trgx_z90_{table}_upd_dlt_storico', params='{"apply_triggers":true}')`.
 * STORICO_PROVISION: `('STORICO_PROVISION','*all', name_template=NULL, params='{"create_gin_index":false}')`.
 
-### 4.2 `automation_scope` (novità `*all`)
+ **4.2 `automation_scope` (novità `*all`)**
 
 * Colonne: `schema_name`, `table_like` (PK composita). **`table_like` non è NULL**: usare il sentinel **`'*all'`** per indicare “tutte le tabelle dello schema”.
 * Il runner usa:
@@ -72,7 +82,7 @@ Trigger `BEFORE UPDATE` → `script.trgfn_upd_audit_data_user_generic()`.
   * `fn_resolve_scope(p_schemas)` → se `NULL` o vuoto: legge `automation_scope`; se assente/vuota: fallback a tutti gli schemi utente **escluso `storico`**.
   * `fn_table_in_scope(schema, table)` → rispetta `'*all'` e i pattern per singole tabelle.
 
-### 4.3 Overrides / Exclusions
+ **4.3 Overrides / Exclusions**
 
 * `automation_overrides_cols`: override colonne (`ATTIVO_COL`, `AUDIT_TS`, `AUDIT_USER`, `STORICO_FK`, `STORICIZZA_COL`).
 * `automation_fk_exclusions`: esclude coppie parent/child per ATTIVO.
@@ -130,7 +140,7 @@ Trigger `BEFORE UPDATE` → `script.trgfn_upd_audit_data_user_generic()`.
 
 Di seguito insert **idempotenti** (usano `WHERE NOT EXISTS`) per le regole più comuni. Adatta `target_schema`/`target_table` alle tue esigenze.
 
-### 10.1 TX_ID
+ **10.1 TX_ID**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
@@ -144,7 +154,7 @@ WHERE NOT EXISTS (
 );
 ```
 
-### 10.2 AUDIT_UPDATE
+ **10.2 AUDIT_UPDATE**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
@@ -160,7 +170,7 @@ WHERE NOT EXISTS (
 );
 ```
 
-### 10.3 STORICO (trigger unico UPDATE+DELETE)
+ **10.3 STORICO (trigger unico UPDATE+DELETE)**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
@@ -178,7 +188,7 @@ WHERE NOT EXISTS (
 
 > **Nota**: la tabella di destinazione deve esistere in `storico.<stesso_nome_tabella>` (creata da STORICO_PROVISION). Override possibili via `automation_overrides_cols` (`STORICIZZA_COL`, `STORICO_FK`).
 
-### 10.4 STORICO_PROVISION (creazione tabelle in `storico`)
+ **10.4 STORICO_PROVISION (creazione tabelle in `storico`)**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
@@ -203,7 +213,7 @@ VALUES (true,'STORICO_PROVISION','catalogo','articoli_%','AUTO',
         NULL,'BOTH','{"create_gin_index": true}'::jsonb,100,'storico: prov catalogo');
 ```
 
-### 10.5 ATTIVO (soft‑delete/consistenza funzionale)
+ **10.5 ATTIVO (soft‑delete/consistenza funzionale)**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
@@ -221,7 +231,7 @@ WHERE NOT EXISTS (
 );
 ```
 
-### 10.6 Esempi di override (colonne non standard)
+ **10.6 Esempi di override (colonne non standard)**
 
 > La tabella `automation_overrides_cols` permette di definire nomi custom per colonna per tabella.
 
@@ -235,7 +245,7 @@ INSERT INTO dbops.automation_overrides_cols(schema_name, table_name, override_ke
 VALUES ('catalogo','articoli_componenti','STORICO_FK','articoli_componenti_id');
 ```
 
-### 10.7 Note pratiche
+ **10.7 Note pratiche**
 
 * Usa `target_schema='*all'` quando vuoi applicare globalmente, altrimenti specifica lo schema.
 * `existence_strategy='BOTH'` minimizza conflitti (nome o funzione).

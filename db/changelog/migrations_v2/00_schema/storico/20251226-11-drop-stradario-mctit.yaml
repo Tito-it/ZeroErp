@@ -1,0 +1,25 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/00_schema/storico/20251226-11-drop-stradario-mctit.yaml
+
+    - changeSet:
+          id: 20251226-11-drop-stradario-mctit.yaml
+          author: mctit
+
+          comment: "Rimuove la tabella storico.stradario"
+
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: true
+                    sql: |
+
+                        DROP TABLE IF EXISTS storico.stradario;

@@ -2,6 +2,10 @@
 
 > 👀 **Vedi anche**
 >
+> Guide:
+>
+> * [Automazione DB](/guide/automazione-db)
+>
 > Approfondimento tabelle:
 >
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
@@ -18,18 +22,19 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 26-12-25)
 La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** del framework di automazioni. Coordina l’applicazione delle regole di sistema (Tx ID, aggiornamento audit, storico, gestione flag attivo) sugli schemi e tabelle in scope.
 
 ---
 
 ### 🔍 Parametri di input
 
-| Parametro     | Tipo    | Default                                        | Descrizione                                                                                        |
-| ------------- | ------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `p_exec_mode` | text    | 'AUTO'                                         | Modalità di esecuzione (es. AUTO, FORCE, CHECK).                                                   |
-| `p_schemas`   | text[] | NULL                                           | Lista di schemi su cui operare. Se nullo, risolto tramite `automation_scope` o fallback.           |
-| `p_dry_run`   | boolean | false                                          | Se true, non applica modifiche ma produce solo log/simulazione.                                    |
-| `p_parts`     | text[] | ['TX_ID','AUDIT_UPDATE','STORICO','ATTIVO'] | Moduli da eseguire. Supporta anche la keyword 'TABLE_RULES' per includere i tre moduli tabellari. |
+| Parametro     | Tipo    | Default                                     | Descrizione                                                                                       |
+| ------------- | ------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `p_exec_mode` | text    | 'AUTO'                                      | Modalità di esecuzione (es. AUTO, FORCE, CHECK).                                                  |
+| `p_schemas`   | text[]  | NULL                                        | Lista di schemi su cui operare. Se nullo, risolto tramite `automation_scope` o fallback.          |
+| `p_dry_run`   | boolean | false                                       | Se true, non applica modifiche ma produce solo log/simulazione.                                   |
+| `p_parts`     | text[]  | ['TX_ID','AUDIT_UPDATE','STORICO','ATTIVO'] | Moduli da eseguire. Supporta anche la keyword 'TABLE_RULES' per includere i tre moduli tabellari. |
 
 ---
 

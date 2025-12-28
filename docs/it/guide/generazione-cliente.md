@@ -1,13 +1,12 @@
-# 🌱 Guida Tecnica – Generazione di un Cliente in Zero ERP
-> (latest review 16-12-25)
+# 🌱 Guida Tecnica – Generazione di un Cliente
 
-> 🧩 **Destinatari:** sviluppatori database, backend e analisti funzionali
+> (latest review 16-12-25)
 >
+> 🧩 **Destinatari:** sviluppatori database, backend e analisti funzionali
 >
 > 👀 **Vedi anche**
 >
 > * [`Guida Soggetti & Ruoli`](/guide/soggetti-e-ruoli-anagrafici)  
-
 >
 > **All'interno si trova l'appendice per le funzionalità subentro cliente,chiusura e attivazione** 
 

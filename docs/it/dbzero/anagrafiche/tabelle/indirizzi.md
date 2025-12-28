@@ -27,6 +27,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_indirizzi_free_requirements |  |
 | CHECK | chk_indirizzi_xor_norm_libero |  |
 | FOREIGN KEY | fk_codici_postali_config | codice_postale_id |
 | FOREIGN KEY | fk_comuni_config | comune_id, comune_id |
