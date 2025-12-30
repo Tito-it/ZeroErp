@@ -6,8 +6,11 @@
 >
 > * [config.stradario](/dbzero/config/tabelle/stradario)      
 > * [config.toponomastica](/dbzero/config/tabelle/toponomastica) 
-
-
+>
+> Approfondimento funzione:   
+>
+> * [config.trgfn_stradario_generale_protect_update](/dbzero/config/funzioni/trgfn_stradario_generale_protect_update)   
+> * [config.trgfn_stradario_generale_normalize](/dbzero/config/funzioni/trgfn_stradario_generale_normalize)   
 
 La tabella **`config.stradario_generale`** elenca i nomi delle vie, strade e piazze, associandoli ai tipi di toponimo definiti in **`config.toponomastica`**. Agisce come base indipendente dalla localizzazione geografica: per ottenere l’indirizzo completo e posizionarlo su un comune specifico, si collega alla tabella **`config.stradario`**.
 
@@ -15,6 +18,7 @@ La tabella **`config.stradario_generale`** elenca i nomi delle vie, strade e pia
 
 ### 🎯 Scopo Principale
 
+(latest review 30-12-25) 
 * **Composizione del toponimo**
   Unisce il prefisso toponomastico (es. `VIA`, `PIAZZA`) al nome specifico (es. `Garibaldi`, `Roma`) per formare la descrizione completa.
 * **Indipendenza geografica**
@@ -49,26 +53,6 @@ erDiagram
 
     toponomastica     { int id PK }
     stradario_generale{ int id PK }
-
-```
-
----
-
-###  Diagramma ER attributi
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    stradario_generale {
-        int      id PK
-        int      toponomastica_id FK
-        varchar  descrizione
-        varchar  descrizione_breve
-        datetime data_insert
-        varchar  user_insert
-        datetime data_update
-        varchar  user_update
-    }
 
 ```
 

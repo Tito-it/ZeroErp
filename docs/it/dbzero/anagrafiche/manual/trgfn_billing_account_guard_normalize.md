@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_billing_account_ins_upd_guard_normalize`
+## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_billing_account_guard_normalize`
 
 > 👀 **Vedi anche**
 >
@@ -14,7 +14,8 @@
 
 ### 🎯 Scopo Principale
 
-Il trigger `anagrafiche.trgfn_billing_account_ins_upd_guard_normalize` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
+(latest review 28-12-25)
+Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
 
 ---
 

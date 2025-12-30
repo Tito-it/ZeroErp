@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_soggetti_upd_protect_codice_soggetto`
+## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_soggetti_protect_codice_soggetto`
 
 > 👀 **Vedi anche**
 >
@@ -14,6 +14,7 @@
 
 ### 🎯 Scopo Principale
 
+(last review 29-12-25)
 Il trigger `anagrafiche.trgfn_soggetti_upd_protect_codice_soggetto`, esploso **prima di ogni UPDATE** sulla tabella `anagrafiche.soggetti`, garantisce che il campo **`codice(soggetto)`** non possa essere modificato una volta assegnato.
 
 ---
@@ -45,13 +46,13 @@ Il trigger `anagrafiche.trgfn_soggetti_upd_protect_codice_soggetto`, esploso **p
 ### ⚙️ Trigger Collegato
 
 ```sql
-DROP TRIGGER IF EXISTS trg_soggetti_upd_protect_codice_soggetto
+DROP TRIGGER IF EXISTS trg_soggetti_protect_codice_soggetto_upd
   ON anagrafiche.soggetti;
 
-CREATE TRIGGER trg_soggetti_upd_protect_codice_soggetto
+CREATE TRIGGER trg_soggetti_protect_codice_soggetto_upd
   BEFORE UPDATE ON anagrafiche.soggetti
   FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_upd_protect_codice_soggetto();
+  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_protect_codice_soggetto();
 ```
 
 ---

@@ -101,21 +101,27 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 
 ## 6. Riclassificazione Vie (Caso A/B)
 
-Questa sezione descrive come gestire variazioni di nome via mantenendo tracciabilita storica e coerenza dei civici.
+Questa sezione descrive una **policy unica** per gestire variazioni di vie/comuni mantenendo coerenza dei dati e storicizzazione completa.
 
-### Caso A: cambio nome completo della via (stesso tracciato)
+### ✅ Policy operativa unica
 
-1. Aggiornare il nome in `config.stradario_generale` oppure l’associazione in `config.stradario` verso il nuovo `stradario_generale_id`.
-2. Verificare che `config.stradario.storicizza = TRUE` per tracciare la modifica.
-3. Non modificare `anagrafiche.indirizzi_dettaglio`: il `stradario_id` resta invariato.
-4. Per audit “as of”, usare `script.fn_get_snapshot_as_of()` su `storico.stradario`.
+Per tutte le casistiche (rinomina parziale, rinomina totale, fusione vie, variazioni comuni) si adotta la stessa logica:
 
-### Caso B: cambio nome parziale della via (solo un tratto)
+1. **Creare il nuovo riferimento in configurazione**
+   * Vie: nuova riga in `config.stradario_generale` e relativo record in `config.stradario`.
+   * Comuni: nuovo riferimento in `config.comuni` (o aggiornamento coerente con le regole di dominio).
+2. **Allineare gli indirizzi coinvolti**
+   * Aggiornare **solo** le righe di `anagrafiche.indirizzi_dettaglio` interessate, puntandole al nuovo riferimento.
+3. **Rinormalizzare**
+   * I trigger di normalizzazione aggiornano `via_norm` e `indirizzo_normalizzato`.
+4. **Storico garantito**
+   * Le modifiche sono tracciate in `storico.stradario` e in `storico.indirizzi_dettaglio` (e, se rilevante, nello storico dei comuni).
 
-1. Creare una nuova via in `config.stradario_generale` e il relativo record in `config.stradario` per il tratto riclassificato.
-2. Aggiornare `anagrafiche.indirizzi_dettaglio.stradario_id` solo per i civici interessati.
-3. Verificare `storicizza = TRUE` su `config.stradario` e su `anagrafiche.indirizzi_dettaglio` per avere tracciabilita completa.
-4. Per audit “as of”, combinare `storico.indirizzi_dettaglio` con `storico.stradario`.
+### Esempi applicativi
+
+* **Rinomina totale via**: nuova via + riallineamento di tutti i civici collegati al vecchio `stradario_id`.
+* **Rinomina parziale via**: nuova via + riallineamento solo dei civici del tratto interessato.
+* **Fusione vie**: riallineamento dei civici su un unico `stradario_id`.
 
 ---
 

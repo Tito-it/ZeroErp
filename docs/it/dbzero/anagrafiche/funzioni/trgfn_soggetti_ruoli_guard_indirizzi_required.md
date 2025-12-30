@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_ruoli_guard_indirizzi_required.md" %}
 # ⚙️ Funzione `trgfn_soggetti_ruoli_guard_indirizzi_required`
 
 ```sql
