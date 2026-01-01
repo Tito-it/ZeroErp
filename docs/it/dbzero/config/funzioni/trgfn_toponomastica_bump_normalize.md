@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/trgfn_toponomastica_bump_normalize.md" %}
 # ⚙️ Funzione `trgfn_toponomastica_bump_normalize`
 
 ```sql

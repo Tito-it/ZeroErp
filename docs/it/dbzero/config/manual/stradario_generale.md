@@ -39,6 +39,13 @@ La tabella **`config.stradario_generale`** elenca i nomi delle vie, strade e pia
 
 ---
 
+### 🧩 Nota su manutenzione toponomastica
+
+Se un toponimo viene corretto, la policy prevede **nuova riga** in `config.toponomastica` e riallineamento dei record di `config.stradario_generale` interessati.  
+Il riallineamento forza la rigenerazione di `indirizzo_normalizzato`, mantenendo coerente il prefisso (es. VIA/PIAZZA).
+
+---
+
 > 🧠 **"Un catalogo neutro di nomi di vie e piazze, pronta base per costruire indirizzi completi e localizzati attraverso l’associazione con i comuni."**
 
 ---

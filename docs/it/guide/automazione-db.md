@@ -1,18 +1,29 @@
 # 📗 Guida Tecnica – Automazioni DB (aggiornata)
 
+>
+> (latest review 01-01-26)
+>
 > **Scope:** aggiorna la guida esistente con le novità su wildcard `*all` e gli ultimi affinamenti senza stravolgere la struttura.
 >
-> **Riferimenti chiave**: 
-> > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)      
-> * [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)      
+> **Riferimenti chiave**:
+>
+> > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
+>
+> * [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)
+>
 > * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)
+>
 > * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)
+>
 > * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)
 >
-> * Orchestratori: 
-> 
-> [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations), [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id), [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update), [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico), [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
-
+> * Orchestratori:
+>
+> [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations),  
+> [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id),  
+>  [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),  
+>  [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
+> [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)  
 
 ---
 
@@ -25,7 +36,7 @@ Automatizzare attività ripetitive (assegnazione `tx_id`, audit update, storico,
 ## 2) 🧩 Architettura (sintesi)
 
 * **Scope** (`automation_scope` + `fn_resolve_scope` / parametro): delimita gli schemi/tabelle.
-* **Rules** (`automation_rules_tbl`): regole per schema/tabella (TX_ID, AUDIT_UPDATE, STORICO, ATTIVO, + STORICO_PROVISION).
+* **Rules** (`automation_rules_tbl`): regole per schema/tabella (TX_ID, AUDIT_UPDATE, STORICO, + STORICO_PROVISION).
 * **Overrides/Exclusions**: colonne non standard e FK da saltare.
 * **Orchestratori**: `fn_run_automations_*` per ogni area.
 * **Audit**: `audit_log` (anche out‑of‑tx via dblink opzionale).
@@ -34,34 +45,61 @@ Automatizzare attività ripetitive (assegnazione `tx_id`, audit update, storico,
 
 ## 3) 🔑 Regole supportate (sintesi)
 
- **3.1 TX_ID**
+**3.1 TX_ID**
 
 Trigger `BEFORE INSERT OR UPDATE` → `dbops.trgfn_tx_id_managed()`.
 
- **3.2 AUDIT_UPDATE**
+**3.2 AUDIT_UPDATE**
 
 Trigger `BEFORE UPDATE` → `script.trgfn_upd_audit_data_user_generic()`.
 
- **3.3 STORICO (trigger)**
+**3.3 STORICO (trigger)**
 
 * Trigger **unico** `BEFORE UPDATE OR DELETE` → `script.trgfn_upd_dlt_storico_generic(fk)`.
 * **Naming default**: `trgx_z90_{table}_upd_dlt_storico` (prefisso per ordinamento).
 * Scrive su **`storico.<stesso_nome_tabella>`** (senza suffisso `_storico`).
 
- **3.4 STORICO_PROVISION (provisioning tabelle storico)**
+**3.4 STORICO_PROVISION (provisioning tabelle storico)**
 
 * Crea `storico.<tabella>` se mancante con struttura standard (FK → PK padre, `snapshot` JSONB, `change_type`, `tipo_operazione`, ecc.).
 * Param opzionale: `create_gin_index` su `snapshot`.
 
- **3.5 ATTIVO (soft‑delete funzionale)**
+**3.5 ATTIVO (soft‑delete funzionale – policy conservativa)**
 
-* FK `RESTRICT` **o** `NO ACTION` (anche DEFERRABLE): cascade/require/block come da design originale.
+L’automazione **ATTIVO** implementa una politica **BLOCK-ONLY** finalizzata a garantire la coerenza logica tra record padre e figli collegati tramite FK.
+
+**Regola applicata**
+
+* La disattivazione (`attivo = false`) di un **record PADRE** è consentita **solo se NON esistono record FIGLI collegati**.
+* **Non viene applicata alcuna cascata automatica** sui figli.
+* **Non viene creato alcun vincolo REQUIRE** sul figlio.
+* La regola si applica esclusivamente se il **PADRE possiede la colonna `attivo`**.
+* Le FK considerate sono `RESTRICT` e `NO ACTION` (anche `DEFERRABLE`).
+
+**Trigger generato**
+
+* **Tabella**: PADRE
+* **Evento**: `BEFORE UPDATE OF attivo`
+* **Funzione**:
+  `dbops.trgfn_prevent_deactivate_if_children(child_schema, child_table, fk_col [, pk_col])`
+
+**Effetto**
+
+Se:
+
+* `OLD.attivo = true`
+* `NEW.attivo = false`
+* esistono record figli collegati tramite FK
+
+➡️ l’operazione viene **bloccata con errore**.
+
+L’automazione **non modifica mai automaticamente i record figli**.
 
 ---
 
 ## 4) ⚙️ Configurazione
 
- **4.1 `automation_rules_tbl` (novità `*all`)**
+**4.1 `automation_rules_tbl` (novità `*all`)**
 
 * `target_schema`: ora supporta **`'*all'`** per applicare la regola a **tutti gli schemi** nello scope risolto. Rimangono validi valori specifici (es. `anagrafiche`).
 * `target_table`: pattern `LIKE` (es. `foo_%`).
@@ -74,7 +112,7 @@ Trigger `BEFORE UPDATE` → `script.trgfn_upd_audit_data_user_generic()`.
 * STORICO (trigger): `('STORICO','*all', name_template='trgx_z90_{table}_upd_dlt_storico', params='{"apply_triggers":true}')`.
 * STORICO_PROVISION: `('STORICO_PROVISION','*all', name_template=NULL, params='{"create_gin_index":false}')`.
 
- **4.2 `automation_scope` (novità `*all`)**
+**4.2 `automation_scope` (novità `*all`)**
 
 * Colonne: `schema_name`, `table_like` (PK composita). **`table_like` non è NULL**: usare il sentinel **`'*all'`** per indicare “tutte le tabelle dello schema”.
 * Il runner usa:
@@ -82,7 +120,7 @@ Trigger `BEFORE UPDATE` → `script.trgfn_upd_audit_data_user_generic()`.
   * `fn_resolve_scope(p_schemas)` → se `NULL` o vuoto: legge `automation_scope`; se assente/vuota: fallback a tutti gli schemi utente **escluso `storico`**.
   * `fn_table_in_scope(schema, table)` → rispetta `'*all'` e i pattern per singole tabelle.
 
- **4.3 Overrides / Exclusions**
+**4.3 Overrides / Exclusions**
 
 * `automation_overrides_cols`: override colonne (`ATTIVO_COL`, `AUDIT_TS`, `AUDIT_USER`, `STORICO_FK`, `STORICIZZA_COL`).
 * `automation_fk_exclusions`: esclude coppie parent/child per ATTIVO.
@@ -128,19 +166,22 @@ Trigger `BEFORE UPDATE` → `script.trgfn_upd_audit_data_user_generic()`.
 * **STORICO** separato da **STORICO_PROVISION**: meno ambiguità tra provisioning e trigger.
 * **Storico table**: stesso nome della base, schema `storico` (niente `_storico`).
 * **Trigger storico**: unificato **UPDATE+DELETE** con default `trgx_z90_{table}_upd_dlt_storico`.
-* **ATTIVO**: copre FK `RESTRICT` e `NO ACTION` (DEFERRABLE consigliato).
+* **ATTIVO**: adottata una **policy conservativa BLOCK-ONLY**:
+
+  * nessuna cascata automatica;
+  * nessun vincolo REQUIRE sul figlio;
+  * un record padre può essere disattivato **solo se privo di figli FK**;
+  * eventuali strategie più aggressive (cascata, archiviazione figli) sono demandate a operazioni esplicite.
 * Runner aggiornati: `fn_resolve_scope`, `fn_table_in_scope`, `fn_schema_match('*all', ...)`.
 * Guard globale: schema `storico` escluso dai runner di storico.
 
 ---
 
-> **In sintesi**: con `*all` su rules/scope, provisioning separato e trigger storico unificato, l’onboarding è più veloce, prevedibile e governabile da config. Conserviamo dry‑run, audit e naming standard per un rollout sicuro.
-
 ## 10) 🧪 Esempi di configurazione (`automation_rules_tbl`)
 
 Di seguito insert **idempotenti** (usano `WHERE NOT EXISTS`) per le regole più comuni. Adatta `target_schema`/`target_table` alle tue esigenze.
 
- **10.1 TX_ID**
+**10.1 TX_ID**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
@@ -154,7 +195,7 @@ WHERE NOT EXISTS (
 );
 ```
 
- **10.2 AUDIT_UPDATE**
+**10.2 AUDIT_UPDATE**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
@@ -170,7 +211,7 @@ WHERE NOT EXISTS (
 );
 ```
 
- **10.3 STORICO (trigger unico UPDATE+DELETE)**
+**10.3 STORICO (trigger unico UPDATE+DELETE)**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
@@ -188,7 +229,7 @@ WHERE NOT EXISTS (
 
 > **Nota**: la tabella di destinazione deve esistere in `storico.<stesso_nome_tabella>` (creata da STORICO_PROVISION). Override possibili via `automation_overrides_cols` (`STORICIZZA_COL`, `STORICO_FK`).
 
- **10.4 STORICO_PROVISION (creazione tabelle in `storico`)**
+**10.4 STORICO_PROVISION (creazione tabelle in `storico`)**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
@@ -213,25 +254,30 @@ VALUES (true,'STORICO_PROVISION','catalogo','articoli_%','AUTO',
         NULL,'BOTH','{"create_gin_index": true}'::jsonb,100,'storico: prov catalogo');
 ```
 
- **10.5 ATTIVO (soft‑delete/consistenza funzionale)**
+**10.5 ATTIVO (soft-delete / consistenza funzionale – BLOCK-ONLY)**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
 (enabled, rule_type, target_schema, target_table, exec_mode,
  name_template, existence_strategy, params, priority, note)
 SELECT true,'ATTIVO','*all',NULL,'AUTO',
-       '{"cascade":"trg_soft_del_{parent}__{child}__{fk}",
-         "require":"trg_chk_{child}_parent_{fk}",
-         "block":"trg_block_deact_{parent}__{child}"}',
-       'BOTH', '{"include_no_action": true}'::jsonb,
-       100,'attivo: RESTRICT/NO ACTION'
+       '{"block":"trg_block_deact_{parent}__{child}"}',
+       'BOTH', '{}'::jsonb,
+       100,'attivo: blocco disattivazione padre se esistono figli'
 WHERE NOT EXISTS (
   SELECT 1 FROM dbops.automation_rules_tbl
   WHERE rule_type='ATTIVO' AND target_schema='*all'
 );
 ```
 
- **10.6 Esempi di override (colonne non standard)**
+**Comportamento**:
+
+* crea **solo** trigger di BLOCCO sul PADRE;
+* nessuna cascata;
+* nessun trigger REQUIRE sul figlio;
+* applicabile a FK `RESTRICT` e `NO ACTION`.
+
+**10.6 Esempi di override (colonne non standard)**
 
 > La tabella `automation_overrides_cols` permette di definire nomi custom per colonna per tabella.
 
@@ -245,7 +291,7 @@ INSERT INTO dbops.automation_overrides_cols(schema_name, table_name, override_ke
 VALUES ('catalogo','articoli_componenti','STORICO_FK','articoli_componenti_id');
 ```
 
- **10.7 Note pratiche**
+**10.7 Note pratiche**
 
 * Usa `target_schema='*all'` quando vuoi applicare globalmente, altrimenti specifica lo schema.
 * `existence_strategy='BOTH'` minimizza conflitti (nome o funzione).
@@ -296,7 +342,11 @@ VALUES ('catalogo','articoli_componenti','STORICO_FK','articoli_componenti_id');
   ```sql
   SELECT dbops.fn_run_automations('CI', ARRAY['lab'], false, ARRAY['TX_ID']);
   ```
-* [ ] In caso di **ATTIVO**, ricordati che copre FK `NO ACTION` e `RESTRICT`.
+* [ ] In caso di **ATTIVO**:
+
+  * è attiva **solo la policy BLOCK-ONLY**;
+  * il padre può essere disattivato **solo se non esistono figli FK**;
+  * non avvengono cascata né modifiche automatiche sui figli.
 
 ## Verifica post‑apply
 
@@ -315,7 +365,7 @@ VALUES ('catalogo','articoli_componenti','STORICO_FK','articoli_componenti_id');
   * **TX_ID**: insert/update → `tx_id` non nullo.
   * **AUDIT_UPDATE**: update → `data_update/user_update` aggiornati.
   * **STORICO**: update/delete → riga in `storico.<t>_storico`.
-  * **ATTIVO**: set padre `attivo=false` → cascade/block/require coerenti.
+  * **ATTIVO**: set padre `attivo=false` → disattivazione consentita solo se privo di figli FK.
 
 ## Osservabilità & log
 

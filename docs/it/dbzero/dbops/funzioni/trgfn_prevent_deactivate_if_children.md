@@ -12,25 +12,131 @@ CREATE OR REPLACE FUNCTION dbops.trgfn_prevent_deactivate_if_children()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-  DECLARE
-    v_child_schema text := TG_ARGV[0];
-    v_child_table  text := TG_ARGV[1];
-    v_fk_col       text := TG_ARGV[2];
-    v_exists       boolean;
-    v_sql          text;
-  BEGIN
-    IF TG_OP='UPDATE' AND OLD.attivo IS TRUE AND NEW.attivo IS FALSE THEN
-      v_sql := format('SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I=$1)', v_child_schema, v_child_table, v_fk_col);
-      EXECUTE v_sql INTO v_exists USING OLD.id;
-      IF v_exists THEN
-        RAISE EXCEPTION 'Non è possibile disattivare %.% (id=%): esistono righe figlio in %.%',
-          TG_TABLE_SCHEMA, TG_TABLE_NAME, OLD.id, v_child_schema, v_child_table
-          USING ERRCODE='23503';
-      END IF;
+DECLARE
+  v_child_schema text;
+  v_child_table  text;
+  v_fk_col       text;
+  v_pk_col       text;     -- opzionale, default 'id'
+
+  v_parent_pk_val_text text;
+  v_fk_type            text;
+
+  v_exists boolean;
+  v_sql    text;
+BEGIN
+  -- Parametri: child_schema, child_table, fk_col [, pk_col]
+  IF array_length(TG_ARGV, 1) < 3 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      TG_NAME,
+      'E_ATTIVO_BLOCK_ARGS',
+      jsonb_build_object(
+        'trigger', TG_NAME,
+        'table',   TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+        'tg_argv',  TG_ARGV
+      ),
+      NULL::uuid,
+      'Attesi: child_schema, child_table, fk_col [, pk_col]'
+    );
+  END IF;
+
+  v_child_schema := TG_ARGV[0];
+  v_child_table  := TG_ARGV[1];
+  v_fk_col       := TG_ARGV[2];
+
+  IF array_length(TG_ARGV, 1) >= 4 AND TG_ARGV[3] IS NOT NULL THEN
+    v_pk_col := TG_ARGV[3];
+  ELSE
+    v_pk_col := 'id';
+    PERFORM script.fn_log_error_only(
+      'trgfn_prevent_deactivate_if_children',
+      format('Usata PK di default ''id'' per %I.%I', TG_TABLE_SCHEMA, TG_TABLE_NAME),
+      'Passa pk_col come 4° parametro per evitare ambiguità'
+    );
+  END IF;
+
+  -- Attivo hardcoded: controlliamo solo transizione TRUE -> FALSE
+  IF TG_OP = 'UPDATE'
+    AND COALESCE(OLD.attivo, FALSE) IS TRUE
+    AND COALESCE(NEW.attivo, FALSE) IS FALSE
+  THEN
+    -- Estrai valore PK dal record OLD in modo robusto
+    EXECUTE format('SELECT ($1).%I::text', v_pk_col)
+      INTO v_parent_pk_val_text
+      USING OLD;
+
+    IF v_parent_pk_val_text IS NULL THEN
+      PERFORM script.fn_log_error_only(
+        'trgfn_prevent_deactivate_if_children',
+        format('PK %I NULL su %I.%I: controllo figli saltato', v_pk_col, TG_TABLE_SCHEMA, TG_TABLE_NAME),
+        NULL
+      );
+      RETURN NEW;
     END IF;
-    RETURN NEW;
-  END;
-  $function$
+
+    -- Ricava tipo della FK del figlio (per cast corretto)
+    SELECT a.atttypid::regtype::text
+      INTO v_fk_type
+      FROM pg_attribute a
+      JOIN pg_class c      ON c.oid = a.attrelid
+      JOIN pg_namespace n  ON n.oid = c.relnamespace
+    WHERE n.nspname = v_child_schema
+      AND c.relname = v_child_table
+      AND a.attname = v_fk_col
+      AND a.attnum > 0
+      AND NOT a.attisdropped;
+
+    IF v_fk_type IS NULL THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database',
+        TG_NAME,
+        'E_ATTIVO_BLOCK_FKCOL_NOT_FOUND',
+        jsonb_build_object(
+          'parent_table', TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+          'child_table',  v_child_schema||'.'||v_child_table,
+          'fk_col',       v_fk_col,
+          'pk_col',       v_pk_col
+        ),
+        NULL::uuid,
+        'Colonna FK del figlio non trovata in catalogo',
+        v_child_schema, v_child_table, v_fk_col
+      );
+    END IF;
+
+    -- Esistono figli collegati?
+    v_sql := format(
+      'SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I = ($1)::%s)',
+      v_child_schema, v_child_table, v_fk_col, v_fk_type
+    );
+
+    EXECUTE v_sql INTO v_exists USING v_parent_pk_val_text;
+
+    IF v_exists THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database',
+        TG_NAME,
+        'E_ATTIVO_BLOCK_CHILDREN_EXIST',
+        jsonb_build_object(
+          'parent_table', TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+          'child_table',  v_child_schema||'.'||v_child_table,
+          'pk_col',       v_pk_col,
+          'pk_val',       v_parent_pk_val_text,
+          'fk_col',       v_fk_col,
+          'fk_type',      v_fk_type
+        ),
+        NULL::uuid,
+        'Non è possibile disattivare il padre: esistono righe figlio collegate',
+        TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+        v_child_schema||'.'||v_child_table,
+        v_pk_col, v_parent_pk_val_text,
+        v_fk_col
+      );
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
 ```
 
 ---

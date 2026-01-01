@@ -1,110 +1,166 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_attivo`
 
-> 👀 **Vedi anche**
->
-> Guide:
->
-> * [Automazione DB](/guide/automazione-db)
->
-> Approdondimento tabelle:
->
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
-> * [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)
->
-> Approfondimento funzioni e trigger:
->
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
-> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)
-> * [dbops.fn_get_child_fk_col](/dbzero/dbops/funzioni/fn_get_child_fk_col)
-> * [dbops.trgfn_soft_delete_cascade](/dbzero/dbops/funzioni/trgfn_soft_delete_cascade)
-> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)
-> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)
+---
+
+### 👀 Vedi anche
+
+**Guide**
+
+* [Automazione DB](/guide/automazione-db)
+
+**Approfondimento tabelle**
+
+* [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
+* [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)
+
+**Approfondimento funzioni e trigger**
+
+* [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
+* [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)
+* [dbops.fn_get_child_fk_col](/dbzero/dbops/funzioni/fn_get_child_fk_col)
+* [dbops.trgfn_soft_delete_cascade](/dbzero/dbops/funzioni/trgfn_soft_delete_cascade) **(deprecata)**
+* [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) **(deprecata)**
+* [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)
 
 ---
 
 ### 🎯 Scopo Principale
 
-(latest review 26-12-25)
-La funzione **`dbops.fn_run_automations_attivo(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico le regole di gestione della colonna **`attivo`** (soft-delete / stato di validità) sulle tabelle e relazioni con vincoli di chiave esterna. È uno dei moduli eseguiti da `fn_run_automations`.
+*(last revision: 31‑12‑2025)*
+
+La funzione **`dbops.fn_run_automations_attivo(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico e coerente le **regole di gestione del campo `attivo`** (soft‑delete / stato di validità) **sulle relazioni di chiave esterna**, creando e riconciliando **esclusivamente trigger di BLOCCO sul padre**.
+
+L’automazione opera **a livello di relazione FK**, non sulla singola tabella isolata, ed è progettata secondo un principio **conservativo e sicuro**:
+
+> 🔒 **Un record padre può essere disattivato (`attivo = false`) solo se NON esistono record figli collegati tramite FK.**
+
+Non viene applicata alcuna cascata automatica né alcun vincolo sul figlio.
 
 ---
 
-### 🔍 Parametri di input
+### 🔍 Ambito di applicazione
 
-| Parametro     | Tipo    | Obbligatorio | Descrizione                                                                     |
-| ------------- | ------- | :----------: | ------------------------------------------------------------------------------- |
-| `p_exec_mode` | text    |      ✔️       | Modalità di esecuzione (AUTO, FORCE, CHECK).                                    |
-| `p_schemas`   | text\[] |      ❌       | Schemi su cui applicare le regole. Se NULL, risolti tramite `fn_resolve_scope`. |
-| `p_dry_run`   | boolean |      ✔️       | Se true, non applica modifiche ma registra solo azioni simulate.                |
+La funzione considera esclusivamente:
+
+* Vincoli **FK (`pg_constraint.contype = 'f'`)**
+* Con **`ON DELETE RESTRICT`** oppure **`NO ACTION`**
+* Con **padre e figlio entrambi nello scope** degli schemi
+* Non esclusi tramite `dbops.automation_fk_exclusions`
+* Escludendo sempre lo schema `storico`
+
+> ⚠️ Se una tabella non partecipa ad alcuna FK eleggibile come **padre**, **nessuna automazione viene applicata**.
 
 ---
 
-### 📤 Valore di ritorno
+### 🧩 Parametri di input
 
-`void` – non restituisce valori ma applica trigger o logga le azioni previste.
+| Parametro     | Tipo      | Obbl. | Descrizione                                                                                                   |
+| ------------- | --------- | :---: | ------------------------------------------------------------------------------------------------------------- |
+| `p_exec_mode` | `text`    |   ✔️   | Modalità di esecuzione. La regola viene applicata se `rule.exec_mode = 'AUTO'` oppure uguale a `p_exec_mode`. |
+| `p_schemas`   | `text[]`  |   ❌   | Schemi target. Se `NULL`, risolti tramite `dbops.fn_resolve_scope`.                                           |
+| `p_dry_run`   | `boolean` |   ✔️   | Se `true`, non crea/droppa trigger ma registra solo audit di simulazione.                                     |
 
 ---
 
 ### ⚙️ Flusso logico
 
-1. Determina lo **scope degli schemi** tramite `fn_resolve_scope`.
-2. Recupera da `automation_rules_tbl` le regole di tipo `ATTIVO` abilitate per lo scope.
-3. Per ogni vincolo FK con `ON DELETE RESTRICT` o `NO ACTION`:
+1. Risolve lo **scope degli schemi** (`dbops.fn_resolve_scope`).
+2. Recupera le **regole ATTIVO abilitate** da `automation_rules_tbl`.
+3. Per ogni **FK compatibile**:
 
-   * Verifica la presenza della colonna `attivo` sul padre e/o sul figlio (anche tramite override configurato).
-   * Costruisce i nomi dei trigger usando i template configurati.
-   * Applica le strategie di creazione (`BY_NAME`, `BY_FUNCTION`, `BOTH`).
-
-### Casi gestiti
-
-* **CASO A**: Padre e Figlio hanno la colonna `attivo` →
-
-  * Padre: trigger `AFTER UPDATE OF attivo` → `trgfn_soft_delete_cascade`.
-  * Figlio: constraint trigger deferrable → `trgfn_child_requires_active_parent`.
-* **CASO B**: Solo il Padre ha la colonna `attivo` →
-
-  * Trigger `BEFORE UPDATE OF attivo` → `trgfn_prevent_deactivate_if_children`.
-
-4. Se `p_dry_run = true`, non crea i trigger ma registra un evento `DRYRUN` in `audit_log` tramite `fn_audit_log_once`.
+   * verifica che la **tabella padre** abbia la colonna `attivo` (con override opzionale);
+   * determina la **colonna FK del figlio**;
+   * calcola la **PK monocolonna del padre** (fallback `id`);
+   * verifica l’esistenza del trigger di blocco secondo la strategia configurata.
+4. Se necessario, **crea o riconcilia** il trigger di blocco sul padre.
 
 ---
 
-### 🧩 Casi d’uso tipici
+### 🧠 Condizione fondamentale
 
-* **Soft-delete controllato**: impedire la disattivazione di record padre con figli attivi.
-* **Allineamento automatico**: garantire che tutte le tabelle rispettino la policy sul campo `attivo`.
-* **Simulazione**: in ambiente di test è possibile verificare le azioni senza applicarle.
+> ✅ **La colonna `attivo` deve essere presente sul PADRE**.
 
----
+Se il padre non ha la colonna `attivo`, la relazione FK viene **ignorata**.
 
-### 🛡️ Permessi e sicurezza
-
-* Richiede privilegi DDL per creare trigger sugli schemi target.
-* In modalità `dry_run` può essere eseguita con permessi ridotti, in quanto non modifica oggetti.
+Il caso **“solo il figlio ha `attivo`”** non è gestito ed è considerato **SKIP intenzionale**.
 
 ---
 
-### 🚀 Esempi di utilizzo
+### 🧩 Regola applicata (unica)
 
-* `SELECT dbops.fn_run_automations_attivo('AUTO', ARRAY['catalogo'], true);` → Simula le regole ATTIVO sullo schema `catalogo` senza creare trigger.
-* `SELECT dbops.fn_run_automations_attivo('FORCE', NULL, false);` → Applica realmente le regole ATTIVO su tutti gli schemi in scope.
+#### 🅱️ BLOCCO della disattivazione del padre
+
+* **Trigger**: `BEFORE UPDATE OF attivo`
+* **Tabella**: PADRE
+* **Funzione**: `dbops.trgfn_prevent_deactivate_if_children(child_schema, child_table, fk_col [, pk_col])`
+
+**Effetto**:
+
+* se `OLD.attivo = true` e `NEW.attivo = false`;
+* e **esistono record figli collegati tramite FK**;
+
+➡️ l’operazione viene **bloccata con errore**.
+
+Nessuna modifica automatica viene applicata ai figli.
 
 ---
 
-### 📌 Considerazioni
+### 🏷️ Naming dei trigger
 
-* Gli **override di colonna** permettono di gestire casi in cui la colonna non si chiama `attivo` ma ha nomi alternativi (es. `enabled`, `is_active`).
-* Le regole possono essere escluse con `automation_fk_exclusions`.
-* La generazione dei nomi trigger è parametrizzabile tramite JSON di `name_template`.
+I nomi dei trigger sono generati tramite template JSON (`automation_rules_tbl.name_template`), utilizzando la chiave `block`:
+
+```json
+{
+  "block": "trg_block_deact_{parent}_{child}"
+}
+```
+
+Il nome finale è risolto tramite `dbops.fn_name_from_template`.
+
+---
+
+### 🔁 Riconciliazione automatica
+
+Se `params.reconcile_on_change = true` (default):
+
+* eventuali trigger di blocco pre‑esistenti con stessi argomenti vengono **rimossi e ricreati**;
+* si evita la duplicazione di trigger in caso di rename o migrazioni progressive.
+
+La riconciliazione **non** introduce cascade né altri comportamenti.
+
+---
+
+### 🧪 Modalità DRY‑RUN
+
+Con `p_dry_run = true`:
+
+* Nessun DDL viene eseguito.
+* Vengono registrati eventi `DRYRUN` tramite `dbops.fn_audit_log_once` per:
+
+  * creazione pianificata del trigger;
+  * skip intenzionali (es. padre senza `attivo`);
+  * nessuna azione se il trigger esiste già.
+
+Questo garantisce **osservabilità completa** del comportamento dell’automazione.
+
+---
+
+### 🔐 Permessi e sicurezza
+
+* Richiede privilegi DDL sugli schemi target.
+* In modalità `dry_run` è sufficiente il permesso di scrittura sull’audit.
+* Gli operatori senza ownership **non possono aggirare** i trigger generati.
 
 ---
 
 ### ✅ Benefici
 
-* **Coerenza**: uniforma la gestione del campo `attivo` in tutte le relazioni.
-* **Automazione**: elimina la necessità di definire manualmente trigger di protezione.
-* **Flessibilità**: supporta configurazioni personalizzate e modalità di simulazione.
+* **Sicurezza massima**: nessun soft‑delete distruttivo o implicito.
+* **Semplicità**: una sola regola chiara e prevedibile.
+* **Coerenza**: applicazione uniforme su tutte le FK rilevanti.
+* **Manutenibilità**: assenza di configurazioni complesse o ambigue.
 
 ---
 
-> 🧠 **In sintesi**: `fn_run_automations_attivo` automatizza la creazione dei trigger legati al campo `attivo`, assicurando che le politiche di soft-delete e validità dei dati siano applicate in modo consistente e controllato.
+> 🧠 **In sintesi**: `fn_run_automations_attivo` implementa una politica ATTIVO volutamente conservativa:
+> un record può essere disattivato **solo quando è logicamente libero da dipendenze FK**, lasciando ogni altra scelta (cascate, archiviazioni, riallocazioni) a operazioni esplicite e consapevoli.

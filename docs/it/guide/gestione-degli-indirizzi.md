@@ -123,6 +123,11 @@ Per tutte le casistiche (rinomina parziale, rinomina totale, fusione vie, variaz
 * **Rinomina parziale via**: nuova via + riallineamento solo dei civici del tratto interessato.
 * **Fusione vie**: riallineamento dei civici su un unico `stradario_id`.
 
+### 🧩 Nota su manutenzione toponomastica
+
+La correzione di un toponimo non avviene modificando la riga in uso:  
+si crea una **nuova** voce in `config.toponomastica`, si riallineano i record di `config.stradario_generale` interessati e si lascia che la normalizzazione aggiorni `indirizzo_normalizzato`.
+
 ---
 
 *Questa guida copre l’intero ciclo di vita e le componenti software per la gestione degli indirizzi in Zero ERP: dalla tabella geografica di base, al dettaglio civico, fino alle funzioni di audit e storicizzazione.*

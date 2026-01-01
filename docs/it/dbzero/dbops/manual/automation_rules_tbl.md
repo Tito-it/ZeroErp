@@ -17,9 +17,15 @@
 > 
 > * Orchestratori: 
 > 
-> [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations), [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id), [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update), [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico), [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations), 
+> * [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id),   
+> * [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),   
+> * [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
+>  * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
 
 ### 🎯 Scopo Principale
+
+(last revision 01-01-26)
 
 Configurare **regole di automazione** per generare/applicare trigger e vincoli in modo dichiarativo. Ogni riga descrive **cosa** applicare (*rule_type*), **dove** (*target_schema/target_table*), **quando** (*exec_mode*), **come chiamarlo** (*name_template*), **come verificare l'esistenza** (*existence_strategy*), e **con quali parametri** (*params*).
 

@@ -17,127 +17,102 @@ DECLARE
   rrule record;
   rfk   record;
 
+  -- strategia esistenza trigger: BY_NAME / BY_FUNCTION / BOTH (default BY_NAME)
   exist_strat text;
 
-  -- template (JSON con 3 nomi)
-  nm_cascade text;
-  nm_require text;
-  nm_block   text;
+  -- template nome trigger BLOCK (da name_template->>'block')
+  nm_block text;
 
-  -- colonne attivo
+  -- colonna attivo sul PADRE (con override)
   col_attivo_parent text;
-  col_attivo_child  text;
 
   parent_has_attivo boolean;
-  child_has_attivo  boolean;
+  fk_col            text;
 
-  fk_col text;
+  -- PK del padre (monocolonna); fallback 'id'
+  v_parent_pk_col text;
 
-  tname_parent_cascade text;
-  tname_child_require  text;
-  tname_parent_block   text;
+  -- nome trigger calcolato
+  tname_parent_block text;
 
-  exists_by_name bool;
-  exists_by_args bool;
+  -- verifiche esistenza trigger
+  exists_by_name boolean;
+  exists_by_args boolean;
 
-  handled_cascade boolean;
-  handled_require  boolean;
-  handled_block    boolean;
+  -- helper
+  v_reconcile boolean;
 BEGIN
-  
-    /*
-        Scopo
-        -----
-        Automazione ATTIVO: applica (o riconcilia) i trigger che implementano le regole di
-        "soft-delete / attivo" su relazioni FK con ON DELETE RESTRICT o NO ACTION, in base
-        alla presenza della colonna attivo su tabella padre e/o figlio.
+  /*
+    Scopo
+    -----
+    Automazione ATTIVO (modalità conservativa: BLOCK-ONLY).
+    Per ogni FK eleggibile nello scope, crea (o riconcilia) sul PADRE un trigger che
+    impedisce la disattivazione (attivo: TRUE -> FALSE) se esistono righe figlie collegate.
 
-        Ambito e selezione
-        ------------------
-        - Risolve lo scope degli schemi con dbops.fn_resolve_scope(p_schemas).
-        - Applica solo regole abilitate in dbops.automation_rules_tbl con:
-            rule_type = 'ATTIVO'
-            exec_mode = 'AUTO' oppure = p_exec_mode
-            target_schema compatibile con lo scope (dbops.fn_schema_in_scope / fn_schema_match)
-            target_table = '*ALL' oppure pattern ILIKE su parent/child table
-        - Considera SOLO FK (pg_constraint contype='f') con confdeltype IN ('r','a'):
-            'r' = RESTRICT, 'a' = NO ACTION
-          e con padre + figlio entrambi nello scope e in table_in_scope.
-        - Esclude sempre lo schema 'storico' e rispetta dbops.automation_fk_exclusions.
+    Importante
+    ----------
+    - Questa funzione NON implementa cascata (soft-delete cascade) e NON impone REQUIRE
+      sul figlio. Applica solo la regola più sicura: "un padre si può disattivare solo
+      se non è referenziato da figli".
 
-        Colonna attivo
-        --------------
-        - Determina il nome della colonna attivo su parent e child tramite override:
-            dbops.fn_get_override_col(<schema>,<table>,'ATTIVO_COL','attivo')
-        - Verifica esistenza delle colonne con dbops.fn_col_exists.
-        - Determina la colonna FK del figlio (fk_col) dal vincolo con dbops.fn_get_child_fk_col(conoid).
+    Ambito e selezione
+    ------------------
+    - Scope schemi: v_schemas := dbops.fn_resolve_scope(p_schemas)
+    - Regole: dbops.automation_rules_tbl con:
+        enabled = true
+        rule_type = 'ATTIVO'
+        exec_mode = 'AUTO' oppure = p_exec_mode
+        target_schema in scope (dbops.fn_schema_in_scope)
+        target_table = '*ALL' oppure pattern ILIKE su parent/child table
+    - FK eleggibili:
+        pg_constraint.contype = 'f'
+        confdeltype IN ('r','a')  -- RESTRICT o NO ACTION
+      padre+figlio nello scope e in fn_table_in_scope
+      esclusione schema 'storico'
+      rispetto dbops.automation_fk_exclusions
 
-        Casi gestiti
-        ------------
-        CASO A: padre e figlio hanno colonna attivo
-          1) Sul PADRE:
-            - trigger AFTER UPDATE OF <attivo_parent>
-            - funzione: dbops.trgfn_soft_delete_cascade(child_schema, child_table, fk_col)
-            - effetto: disattivando il padre (attivo=false) disattiva a cascata i figli collegati.
-          2) Sul FIGLIO:
-            - CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED
-            - AFTER INSERT OR UPDATE OF (<attivo_child>, <fk_col>)
-            - funzione: dbops.trgfn_child_requires_active_parent(parent_schema, parent_table, attivo_parent_col, fk_col)
-            - effetto: impedisce che il figlio risulti attivo se il padre è disattivo (vincolo differibile).
+    Colonna attivo sul padre
+    ------------------------
+    - Il trigger BLOCK si applica solo se la tabella PADRE ha una colonna attivo.
+    - Nome colonna attivo risolto via override:
+        dbops.fn_get_override_col(parent_schema, parent_table, 'ATTIVO_COL', 'attivo')
+    - Esistenza verificata con dbops.fn_col_exists.
 
-        CASO B: solo il padre ha colonna attivo (figlio senza attivo)
-          - trigger BEFORE UPDATE OF <attivo_parent>
-          - funzione: dbops.trgfn_prevent_deactivate_if_children(child_schema, child_table, fk_col)
-          - effetto: blocca la disattivazione del padre se esistono record figlio collegati.
+    Trigger creato
+    --------------
+    - Sul PADRE: BEFORE UPDATE OF <attivo_parent>
+      EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children(child_schema, child_table, fk_col [, pk_col])
 
-        Naming e strategie di esistenza
-        -------------------------------
-        - I nomi dei trigger sono generati da template (rrule.name_template) in formato JSON con 3 chiavi:
-            cascade / require / block
-          con default:
-            cascade = 'trg_soft_del_{parent}_{child}_{fkcol}'
-            require = 'trg_chk_{child}_parent_{fkcol}'
-            block   = 'trg_block_deact_{parent}_{child}'
-        - La creazione è condizionata da rrule.existence_strategy (default 'BY_NAME'):
-            BY_NAME     : verifica esistenza per nome trigger
-            BY_FUNCTION : verifica esistenza "per argomenti" (funzioni helper fn_trigger_exists_*_by_args)
-            BOTH        : presente se esiste per nome OR per argomenti
-          Serve a evitare duplicazioni e a supportare migrazioni/riconciliazioni progressive.
+      dove:
+      - fk_col è la colonna FK del figlio (dbops.fn_get_child_fk_col(conoid))
+      - pk_col è PK monocolonna del padre (auto) oppure fallback 'id'
 
-        Riconciliazione (reconcile_on_change)
-        -------------------------------------
-        Se params->>'reconcile_on_change' è true (default true):
-          - quando si passa al CASO A, vengono rimossi eventuali trigger di BLOCK pre-esistenti sul padre;
-          - quando si passa al CASO B, vengono rimossi eventuali trigger CASCADE (padre) e REQUIRE (figlio).
-        Questo mantiene coerente il set di trigger con la situazione reale delle colonne attivo.
+    Dry-run e audit
+    ---------------
+    - Se p_dry_run = true: non esegue DDL, ma registra in audit:
+        * DRYRUN_CREATE_TRIGGER quando pianifica una creazione
+        * DRYRUN_SKIP_* per i casi principali di skip (es. parent senza attivo)
 
-        Modalità DRY RUN
-        ---------------
-        Se p_dry_run=true non esegue DDL (CREATE/DROP trigger) e registra audit con dbops.fn_audit_log_once
-        indicando le azioni che verrebbero eseguite (CREATE o DROP di trigger).
-
-        Error handling
-        --------------
-        In caso di errore nella creazione dei trigger, log strutturato e rilancio tramite
-        script.fn_log_and_raise_error includendo contesto (ATTIVO_*), tabella/e coinvolte, fk_col e SQLERRM.
-      */
+    Error handling
+    --------------
+    - In caso di errore DDL: log e rilancio con script.fn_log_and_raise_error
+      includendo contesto (parent/child, fk_col, pk_col, trigger name).
+  */
 
   v_schemas := dbops.fn_resolve_scope(p_schemas);
+
   FOR rrule IN
-  SELECT r.*
-  FROM dbops.automation_rules_tbl r
-  WHERE r.enabled
-    AND r.rule_type = 'ATTIVO'
-    AND (r.exec_mode = 'AUTO' OR r.exec_mode = p_exec_mode)
-    AND dbops.fn_schema_in_scope(r.target_schema, v_schemas)  -- <-- r., non rrule
-  ORDER BY r.priority, r.id
-
+    SELECT r.*
+    FROM dbops.automation_rules_tbl r
+    WHERE r.enabled
+      AND upper(btrim(r.rule_type)) = 'ATTIVO'
+      AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
+      AND dbops.fn_schema_in_scope(r.target_schema, v_schemas)
+    ORDER BY r.priority, r.id
   LOOP
-    exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
-
-    nm_cascade := COALESCE((rrule.name_template::jsonb)->>'cascade','trg_soft_del_{parent}_{child}_{fkcol}');
-    nm_require := COALESCE((rrule.name_template::jsonb)->>'require','trg_chk_{child}_parent_{fkcol}');
-    nm_block   := COALESCE((rrule.name_template::jsonb)->>'block','trg_block_deact_{parent}_{child}');
+    exist_strat := COALESCE(rrule.existence_strategy, 'BY_NAME');
+    nm_block := COALESCE((rrule.name_template::jsonb)->>'block', 'trg_block_deact_{parent}_{child}');
+    v_reconcile := COALESCE((rrule.params->>'reconcile_on_change')::boolean, true);
 
     FOR rfk IN
       SELECT
@@ -156,286 +131,184 @@ BEGIN
       JOIN pg_class cp ON cp.oid = c.confrelid
       JOIN pg_namespace np ON np.oid = cp.relnamespace
       WHERE c.contype='f'
-        AND c.confdeltype IN ('r','a')  -- RESTRICT o NO ACTION
-        -- *** Scope effettivo per figlo e padre***
+        AND c.confdeltype IN ('r','a')              -- RESTRICT o NO ACTION
         AND nc.nspname = ANY(v_schemas)
         AND np.nspname = ANY(v_schemas)
         AND dbops.fn_table_in_scope(nc.nspname, cc.relname)
-        AND dbops.fn_table_in_scope(np.nspname, cp.relname)        
-        -- *** Match rule (rispetta *all) ***
+        AND dbops.fn_table_in_scope(np.nspname, cp.relname)
         AND (
-          dbops.fn_schema_match(rrule.target_schema, np.nspname)      -- parent schema
-          OR dbops.fn_schema_match(rrule.target_schema, nc.nspname)      -- child  schema
-       )
-        -- target_table applicata a child OPPURE parent
-        AND (UPPER(rrule.target_table) = '*ALL' OR cc.relname ILIKE rrule.target_table OR cp.relname ILIKE rrule.target_table)
-        -- *** Escludi sempre storico (padre & figlio) ***
-        AND nc.nspname <> 'storico'  -- child
-        AND np.nspname <> 'storico'  -- parent (by safety)
-        
+          dbops.fn_schema_match(rrule.target_schema, np.nspname)    -- parent schema
+          OR dbops.fn_schema_match(rrule.target_schema, nc.nspname) -- child  schema
+        )
+        AND (
+          UPPER(btrim(rrule.target_table)) = '*ALL'
+          OR cc.relname ILIKE rrule.target_table
+          OR cp.relname ILIKE rrule.target_table
+        )
+        AND nc.nspname <> 'storico'
+        AND np.nspname <> 'storico'
         AND NOT EXISTS (
-          SELECT 1 FROM dbops.automation_fk_exclusions e
+          SELECT 1
+          FROM dbops.automation_fk_exclusions e
           WHERE e.parent_schema=np.nspname AND e.parent_table=cp.relname
             AND e.child_schema=nc.nspname  AND e.child_table=cc.relname
         )
     LOOP
-      handled_cascade := false;
-      handled_require := false;
-      handled_block   := false;
-
+      -- 1) serve attivo sul PADRE
       col_attivo_parent := dbops.fn_get_override_col(rfk.parent_schema, rfk.parent_table, 'ATTIVO_COL', 'attivo');
-      col_attivo_child  := dbops.fn_get_override_col(rfk.child_schema,  rfk.child_table,  'ATTIVO_COL', 'attivo');
+      parent_has_attivo := dbops.fn_col_exists(rfk.parent_schema, rfk.parent_table, col_attivo_parent);
 
-      SELECT dbops.fn_col_exists(rfk.parent_schema, rfk.parent_table, col_attivo_parent)
-          , dbops.fn_col_exists(rfk.child_schema,  rfk.child_table,  col_attivo_child)
-        INTO parent_has_attivo, child_has_attivo;
+      IF NOT parent_has_attivo THEN
+        IF p_dry_run THEN
+          PERFORM dbops.fn_audit_log_once(
+            p_function_name => 'fn_run_automations_attivo',
+            p_status        => 'DRYRUN',
+            p_rule_type     => 'ATTIVO_SKIP_PARENT_NO_ATTIVO',
+            p_exec_mode     => p_exec_mode,
+            p_parts         => ARRAY['ATTIVO_BLOCK'],
+            p_dry_run       => true,
+            p_params        => jsonb_build_object(
+                                'action','SKIP',
+                                'reason','PARENT_NO_ATTIVO',
+                                'parent', rfk.parent_schema||'.'||rfk.parent_table,
+                                'child',  rfk.child_schema||'.'||rfk.child_table
+                              ),
+            p_message       => 'Skip: parent table has no attivo column'
+          );
+        END IF;
+        CONTINUE;
+      END IF;
 
+      -- 2) fk_col dal vincolo
       fk_col := dbops.fn_get_child_fk_col(rfk.conoid);
-    
 
-      tname_parent_cascade :=
-        replace(
-          dbops.fn_name_from_template(nm_cascade,
-            rfk.parent_schema, rfk.parent_table,
-            rfk.parent_table, rfk.child_table, rfk.conname, NULL),
-          '{fkcol}', fk_col
-        );
+      -- 3) PK monocolonna del padre (fallback 'id')
+      SELECT a.attname
+        INTO v_parent_pk_col
+      FROM pg_index i
+      JOIN pg_attribute a
+        ON a.attrelid = i.indrelid
+      AND a.attnum   = i.indkey[0]
+      WHERE i.indrelid = rfk.parent_rel
+        AND i.indisprimary
+        AND array_length(i.indkey,1) = 1
+      LIMIT 1;
 
-      tname_child_require :=
-        replace(
-          dbops.fn_name_from_template(nm_require,
-            rfk.child_schema, rfk.child_table,
-            rfk.parent_table, rfk.child_table, rfk.conname, NULL),
-          '{fkcol}', fk_col
-        );
+      v_parent_pk_col := COALESCE(v_parent_pk_col, 'id');
 
+      -- 4) Nome trigger BLOCK
       tname_parent_block :=
-        dbops.fn_name_from_template(nm_block,
+        dbops.fn_name_from_template(
+          nm_block,
           rfk.parent_schema, rfk.parent_table,
-          rfk.parent_table, rfk.child_table, rfk.conname, NULL);
-    
+          rfk.parent_table, rfk.child_table, rfk.conname, NULL
+        );
 
-      -- CASO A: entrambi hanno attivo → cascade + require
-      IF parent_has_attivo AND child_has_attivo THEN
-        -- padre: cascade
-        exists_by_name := dbops.fn_trigger_exists_by_name(rfk.parent_rel, tname_parent_cascade);
-        exists_by_args := dbops.fn_trigger_exists_cascade_by_args(rfk.parent_rel, rfk.child_schema, rfk.child_table, fk_col);
+      -- 5) Esistenza trigger
+      exists_by_name := dbops.fn_trigger_exists_by_name(rfk.parent_rel, tname_parent_block);
+      exists_by_args := dbops.fn_trigger_exists_block_by_args(
+                          rfk.parent_rel, rfk.child_schema, rfk.child_table, fk_col, v_parent_pk_col
+                        );
 
-        IF (exist_strat='BY_NAME'     AND NOT exists_by_name)
-          OR (exist_strat='BY_FUNCTION' AND NOT exists_by_args)
-          OR (exist_strat='BOTH'        AND NOT (exists_by_name OR exists_by_args)) 
-
-        THEN
-
-          -- se prima avevamo il BLOCK sul padre, droppalo
-                  IF COALESCE((rrule.params->>'reconcile_on_change')::boolean, true) THEN
-                    IF p_dry_run THEN
-                      PERFORM dbops.fn_audit_log_once(
-                        p_function_name => 'fn_run_automations_attivo',
-                        p_status        => 'DRYRUN',
-                        p_rule_type     => 'ATTIVO',
-                        p_params        => jsonb_build_object(
-                                            'action','DROP_BLOCK',
-                                            'table', rfk.parent_schema||'.'||rfk.parent_table,
-                                            'fk', fk_col
-                                          ),
-                        p_message       => 'Would drop BLOCK trigger (child gained attivo)'
-                      );
-                    ELSE
-                      PERFORM dbops.fn_drop_triggers_by_function_args(
-                        rfk.parent_rel, 'dbops', 'trgfn_prevent_deactivate_if_children',
-                        rfk.child_schema, rfk.child_table, fk_col
-                      );
-                    END IF;
-                  END IF;
-
-          IF p_dry_run THEN   
-            PERFORM dbops.fn_audit_log_once(
-                    p_function_name => 'dbops.fn_run_automations',
-                    p_status        => 'DRYRUN',
-                    p_rule_type     => 'ATTIVO_CASCADE',
-                    p_exec_mode     => p_exec_mode,
-                    p_parts         => ARRAY['ATTIVO_CASCADE'],
-                    p_dry_run       => true,
-                    p_params        => jsonb_build_object(
-                                        'action','DRYRUN_CREATE_TRIGGER',
-                                      'rule','ATTIVO_CASCADE',
-                                        'table',rfk.parent_schema||'.'||rfk.parent_table,
-                                        'name',tname_parent_cascade,'fk',fk_col
-                                      ),
-                    p_message       => 'TRIGGER would be created'
-                  );   
-          
-          ELSE
-            BEGIN
-              
-              EXECUTE format($f$
-                CREATE TRIGGER %I
-                AFTER UPDATE OF %I ON %I.%I
-                FOR EACH ROW
-                EXECUTE FUNCTION dbops.trgfn_soft_delete_cascade(%L,%L,%L)
-              $f$, tname_parent_cascade, col_attivo_parent, rfk.parent_schema, rfk.parent_table, rfk.child_schema, rfk.child_table, fk_col);
-            EXCEPTION WHEN others THEN
-                
-              PERFORM script.fn_log_and_raise_error(
-                    'dbops',
-                    'run_automations',
-                    'E_ATTIVO_CASCADE',
-                    jsonb_build_object(
-                      'where','ATTIVO_CASCADE',
-                      'table', rtab.schema_name||'.'||rtab.table_name,
-                      'table',rfk.parent_schema||'.'||rfk.parent_table,
-                      'error', SQLERRM
-                    ) , NULL::uuid, SQLERRM
-                  ); 
-            
-            END;
-          END IF;
-          handled_cascade := true; 
-        END IF;
-
-        -- figlio: require (constraint, deferrable)
-        exists_by_name := dbops.fn_trigger_exists_by_name(rfk.child_rel, tname_child_require);
-        exists_by_args := dbops.fn_trigger_exists_require_by_args(rfk.child_rel, rfk.parent_schema, rfk.parent_table, col_attivo_parent, fk_col);
-
-        IF (exist_strat='BY_NAME'     AND NOT exists_by_name)
-          OR (exist_strat='BY_FUNCTION' AND NOT exists_by_args)
-          OR (exist_strat='BOTH'        AND NOT (exists_by_name OR exists_by_args)) 
-
-      
-        THEN
-          IF p_dry_run THEN
-                
-            PERFORM dbops.fn_audit_log_once(
-                    p_function_name => 'dbops.fn_run_automations',
-                    p_status        => 'DRYRUN',
-                    p_rule_type     => 'ATTIVO_REQUIRE',
-                    p_exec_mode     => p_exec_mode,
-                    p_parts         => ARRAY['ATTIVO_REQUIRE'],
-                    p_dry_run       => true,
-                    p_params        => jsonb_build_object(
-                                        'action','DRYRUN_CREATE_TRIGGER',
-                                      'rule','ATTIVO_REQUIRE',
-                                        'table',rfk.child_schema||'.'||rfk.child_table,
-                                        'name',tname_child_require,'fk',fk_col
-                                      ),
-                    p_message       => 'TRIGGER would be created'
-                  ); 
-          ELSE
-            BEGIN
-              EXECUTE format($f$
-                CREATE CONSTRAINT TRIGGER %I
-                AFTER INSERT OR UPDATE OF %I, %I ON %I.%I
-                DEFERRABLE INITIALLY DEFERRED
-                FOR EACH ROW
-                EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(%L,%L,%L,%L)
-              $f$, tname_child_require, col_attivo_child, fk_col, rfk.child_schema, rfk.child_table,
-                  rfk.parent_schema, rfk.parent_table, col_attivo_parent, fk_col);
-            EXCEPTION WHEN others THEN
-            
-                PERFORM script.fn_log_and_raise_error(
-                    'dbops',
-                    'run_automations',
-                    'E_ATTIVO_REQUIRE',
-                    jsonb_build_object(
-                      'where','ATTIVO_REQUIRE',
-                      'table',rfk.parent_schema||'.'||rfk.parent_table,
-                      'error', SQLERRM
-                    ) , NULL::uuid, SQLERRM
-                  ); 
-
-            
-            END;
-          END IF;
-          handled_require := true;
-        END IF;
-
-      -- CASO B: solo padre ha attivo → blocco
-      ELSIF parent_has_attivo AND NOT child_has_attivo THEN
-        
-        exists_by_name := dbops.fn_trigger_exists_by_name(rfk.parent_rel, tname_parent_block);
-        exists_by_args := dbops.fn_trigger_exists_block_by_args(rfk.parent_rel, rfk.child_schema, rfk.child_table, fk_col);
-
-        IF (exist_strat='BY_NAME'     AND NOT exists_by_name)
-          OR (exist_strat='BY_FUNCTION' AND NOT exists_by_args)
-          OR (exist_strat='BOTH'        AND NOT (exists_by_name OR exists_by_args)) 
-          
-        THEN
-          -- se prima avevamo CASCADE+REQUIRE, droppali
-          IF COALESCE((rrule.params->>'reconcile_on_change')::boolean, true) THEN
-            IF p_dry_run THEN
-              PERFORM dbops.fn_audit_log_once(
-                p_function_name => 'fn_run_automations_attivo',
-                p_status        => 'DRYRUN',
-                p_rule_type     => 'ATTIVO',
-                p_params        => jsonb_build_object(
-                                    'action','DROP_CASCADE_REQUIRE',
-                                    'parent', rfk.parent_schema||'.'||rfk.parent_table,
-                                    'child',  rfk.child_schema||'.'||rfk.child_table,
-                                    'fk',     fk_col
-                                  ),
-                p_message       => 'Would drop CASCADE (parent) + REQUIRE (child)'
-              );
-            ELSE
-              -- CASCADE sul padre
+      -- 6) Crea se manca (secondo strategia)
+      IF (exist_strat='BY_NAME'      AND NOT exists_by_name)
+      OR (exist_strat='BY_FUNCTION'  AND NOT exists_by_args)
+      OR (exist_strat='BOTH'         AND NOT (exists_by_name OR exists_by_args))
+      THEN
+        IF p_dry_run THEN
+          PERFORM dbops.fn_audit_log_once(
+            p_function_name => 'fn_run_automations_attivo',
+            p_status        => 'DRYRUN',
+            p_rule_type     => 'ATTIVO_BLOCK',
+            p_exec_mode     => p_exec_mode,
+            p_parts         => ARRAY['ATTIVO_BLOCK'],
+            p_dry_run       => true,
+            p_params        => jsonb_build_object(
+                                'action','DRYRUN_CREATE_TRIGGER',
+                                'name',   tname_parent_block,
+                                'parent', rfk.parent_schema||'.'||rfk.parent_table,
+                                'child',  rfk.child_schema||'.'||rfk.child_table,
+                                'attivo_col', col_attivo_parent,
+                                'fk',     fk_col,
+                                'pk_col', v_parent_pk_col,
+                                'exist_strategy', exist_strat
+                              ),
+            p_message       => 'BLOCK trigger would be created'
+          );
+        ELSE
+          BEGIN
+            -- Riconciliazione: se esistono trigger "block" con stessi args ma nome diverso, li droppiamo.
+            -- (si basa su fn_drop_triggers_by_function_args; è conservativa e non tocca cascade/require)
+            IF v_reconcile THEN
               PERFORM dbops.fn_drop_triggers_by_function_args(
-                rfk.parent_rel, 'dbops', 'trgfn_soft_delete_cascade',
-                rfk.child_schema, rfk.child_table, fk_col
-              );
-              -- REQUIRE sul figlio (ha 4 argomenti)
-              PERFORM dbops.fn_drop_triggers_by_function_args(
-                rfk.child_rel, 'dbops', 'trgfn_child_requires_active_parent',
-                rfk.parent_schema, rfk.parent_table, col_attivo_parent, fk_col
+                rfk.parent_rel,
+                'dbops', 'trgfn_prevent_deactivate_if_children',
+                rfk.child_schema, rfk.child_table, fk_col, v_parent_pk_col
               );
             END IF;
-          END IF;
 
-          IF p_dry_run THEN
-            
-            PERFORM dbops.fn_audit_log_once(
-                    p_function_name => 'dbops.fn_run_automations',
-                    p_status        => 'DRYRUN',
-                    p_rule_type     => 'ATTIVO_BLOCK',
-                    p_exec_mode     => p_exec_mode,
-                    p_parts         => ARRAY['ATTIVO_BLOCK'],
-                    p_dry_run       => true,
-                    p_params        => jsonb_build_object(
-                                        'action','DRYRUN_CREATE_TRIGGER',
-                                      'rule','ATTIVO_BLOCK',
-                                        'table',rfk.parent_schema||'.'||rfk.parent_table,
-                                        'name',tname_parent_block,'fk',fk_col
-                                      ),
-                    p_message       => 'TRIGGER would be created'
-                  ); 
-          ELSE
-            BEGIN
-              EXECUTE format($f$
-                CREATE TRIGGER %I
-                BEFORE UPDATE OF %I ON %I.%I
-                FOR EACH ROW
-                EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children(%L,%L,%L)
-              $f$, tname_parent_block, col_attivo_parent, rfk.parent_schema, rfk.parent_table, rfk.child_schema, rfk.child_table, fk_col);
-            EXCEPTION WHEN others THEN
-                  
-                PERFORM script.fn_log_and_raise_error(
-                    'dbops',
-                    'run_automations',
-                    'E_ATTIVO_BLOCK',
-                    jsonb_build_object(
-                      'where','ATTIVO_BLOCK',
-                      'table',rfk.parent_schema||'.'||rfk.parent_table,
-                      'error', SQLERRM
-                    ) , NULL::uuid, SQLERRM
-                  ); 
-            
-            END;
-          END IF;
-          handled_block := true;
+            -- CREATE TRIGGER (Postgres non supporta CREATE OR REPLACE TRIGGER)
+            EXECUTE format($f$
+              CREATE TRIGGER %I
+              BEFORE UPDATE OF %I ON %I.%I
+              FOR EACH ROW
+              EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children(%L,%L,%L,%L)
+            $f$,
+              tname_parent_block,
+              col_attivo_parent,
+              rfk.parent_schema, rfk.parent_table,
+              rfk.child_schema, rfk.child_table, fk_col, v_parent_pk_col
+            );
+
+          EXCEPTION WHEN others THEN
+            PERFORM script.fn_log_and_raise_error(
+              'dbops',
+              'run_automations',
+              'E_ATTIVO_BLOCK',
+              jsonb_build_object(
+                'where',   'ATTIVO_BLOCK_CREATE',
+                'parent',  rfk.parent_schema||'.'||rfk.parent_table,
+                'child',   rfk.child_schema||'.'||rfk.child_table,
+                'attivo_col', col_attivo_parent,
+                'fk',      fk_col,
+                'pk_col',  v_parent_pk_col,
+                'trigger', tname_parent_block,
+                'error',   SQLERRM
+              ),
+              NULL::uuid,
+              SQLERRM
+            );
+          END;
+        END IF;
+      ELSE
+        -- già presente: opzionale log in dry_run per evitare "silenzio"
+        IF p_dry_run THEN
+          PERFORM dbops.fn_audit_log_once(
+            p_function_name => 'fn_run_automations_attivo',
+            p_status        => 'DRYRUN',
+            p_rule_type     => 'ATTIVO_OK_EXISTS',
+            p_exec_mode     => p_exec_mode,
+            p_parts         => ARRAY['ATTIVO_BLOCK'],
+            p_dry_run       => true,
+            p_params        => jsonb_build_object(
+                                'action','NOOP',
+                                'reason','TRIGGER_EXISTS',
+                                'name',   tname_parent_block,
+                                'parent', rfk.parent_schema||'.'||rfk.parent_table,
+                                'child',  rfk.child_schema||'.'||rfk.child_table,
+                                'fk',     fk_col,
+                                'pk_col', v_parent_pk_col,
+                                'exist_strategy', exist_strat,
+                                'exists_by_name', exists_by_name,
+                                'exists_by_args', exists_by_args
+                              ),
+            p_message       => 'No action: BLOCK trigger already exists'
+          );
         END IF;
       END IF;
 
-    END LOOP; -- fk
-  END LOOP; -- regole ATTIVO
+    END LOOP; -- rfk
+  END LOOP; -- rrule
 END;
 $function$
 ```

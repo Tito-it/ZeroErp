@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/trgfn_stradario_generale_normalize.md" %}
 # ⚙️ Funzione `trgfn_stradario_generale_normalize`
 
 ```sql

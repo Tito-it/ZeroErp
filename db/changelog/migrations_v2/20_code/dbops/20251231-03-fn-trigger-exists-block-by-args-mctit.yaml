@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/dbops/20251231-03-fn-trigger-exists-block-by-args-mctit.yaml
+
+  - changeSet:
+      id: 20251231-03-fn-trigger-exists-block-by-args
+      author: mctit
+      # runAlways: true
+      #  validCheckSum:
+      #     - ANY
+      comment: >
+        Helper (AUTOMATION/ATTIVO): verifica se su una tabella padre (p_parent_rel) 
+            esiste già un trigger BLOCK basato sulla funzione dbops.trgfn_prevent_deactivate_if_children
+             con argomenti specifici (child_schema, child_table, fk_col, pk_col). 
+             Usata da dbops.fn_run_automations_attivo per applicare existence_strategy=BY_FUNCTION/BOTH 
+             evitando duplicazioni.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_block_by_args(
+                p_parent_rel regclass,
+                p_child_schema text,
+                p_child_table text,
+                p_fk_col text,
+                p_pk_col text
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                SELECT EXISTS (
+                  SELECT 1
+                  FROM pg_trigger t
+                  JOIN pg_proc p ON p.oid = t.tgfoid
+                  WHERE t.tgrelid = p_parent_rel
+                    AND NOT t.tgisinternal
+                    AND p.proname = 'trgfn_prevent_deactivate_if_children'
+                    AND pg_get_triggerdef(t.oid) ILIKE
+                      format(
+                        '%%EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children(''%s'',''%s'',''%s'',''%s'')%%',
+                        p_child_schema, p_child_table, p_fk_col, p_pk_col
+                      )
+                );
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_trigger_exists_block_by_args(regclass, text, text, text, text)
+                IS 'Helper (AUTOMATION/ATTIVO): verifica se su una tabella padre (p_parent_rel) 
+                esiste già un trigger BLOCK basato sulla funzione dbops.trgfn_prevent_deactivate_if_children
+                 con argomenti specifici (child_schema, child_table, fk_col, pk_col). 
+                 Usata da dbops.fn_run_automations_attivo per applicare existence_strategy=BY_FUNCTION/BOTH 
+                 evitando duplicazioni.';

@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Trigger Function `config.trgfn_toponomastica_upd_non_permesso()`
+## 📘 Documentazione Concettuale – Trigger Function `config.trgfn_toponomastica_protect_update()`
 
 > 👀 **Vedi anche**
 >
@@ -11,12 +11,13 @@
 >
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
-La trigger function **`config.trgfn_toponomastica_upd_non_permesso()`** impedisce modifiche non consentite sul catalogo delle toponomastiche, bloccando l’**UPDATE** di `descrizione` quando la voce è già in uso in **`config.stradario_generale`**.
+La trigger function **`config.trgfn_toponomastica_protect_update()`** impedisce modifiche non consentite sul catalogo delle toponomastiche, bloccando l’**UPDATE** di `descrizione` quando la voce è già in uso in **`config.stradario_generale`**.
 
 ---
 
 ### 🎯 Scopo Principale
 
+(latest review 31-12-25)
 * **Protezione semantica**: garantire coerenza tra topografia e stradario evitando rinominazioni dirette di toponomastiche già in uso.
 * **Decisione di design**: anziché storicizzare o consentire modifiche parziali, obbligare alla creazione di nuove topografìe per cambiare descrizione.
 * **Centralizzazione**: concentrare la logica di blocco in una sola funzione trigger per ridurre complessità applicativa.
@@ -84,4 +85,4 @@ La trigger function **`config.trgfn_toponomastica_upd_non_permesso()`** impedisc
 
 ---
 
-> 🧠 **“Con `trgfn_toponomastica_upd_non_permesso`, Zero ERP tutela la coerenza dello stradario imponendo la creazione di nuove toponomastiche per ogni cambiamento, piuttosto che modifiche in-place.”**
+> 🧠 **“Con `trgfn_toponomastica_protect_update`, Zero ERP tutela la coerenza dello stradario imponendo la creazione di nuove toponomastiche per ogni cambiamento, piuttosto che modifiche in-place.”**
