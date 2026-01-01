@@ -4,7 +4,7 @@
 -- Toponomastica + stradario_generale (normalizzazione + guard)
 -- ------------------------------------------------------------
 
-SELECT plan(4);
+SELECT plan(6);
 
 -- =========================================================
 -- 1) Crea due toponimi di test
@@ -76,12 +76,39 @@ SELECT throws_ok(
     SET descrizione = descrizione || ' MOD'
     WHERE id = (SELECT id FROM tmp_topo WHERE label = 't1');
     $$,
-    '.*',
+    NULL,
+    NULL,
     'Modifica toponimo in uso bloccata'
 );
 
 -- =========================================================
--- 4) Cambio toponomastica_id e rinormalizzazione
+-- 4) Disattivo toponomastica in uso -> errore
+-- =========================================================
+SELECT throws_ok(
+    $$
+    UPDATE config.toponomastica
+    SET attivo = false
+    WHERE id = (SELECT id FROM tmp_topo WHERE label = 't1');
+    $$,
+    NULL,
+    NULL,
+    'Disattivazione toponimo in uso bloccata'
+);
+
+-- =========================================================
+-- 5) Disattivo toponomastica non in uso -> ok
+-- =========================================================
+SELECT lives_ok(
+    $$
+    UPDATE config.toponomastica
+    SET attivo = false
+    WHERE id = (SELECT id FROM tmp_topo WHERE label = 't2');
+    $$,
+    'Disattivazione toponimo non in uso consentita'
+);
+
+-- =========================================================
+-- 6) Cambio toponomastica_id e rinormalizzazione
 -- =========================================================
 UPDATE config.stradario_generale
 SET toponomastica_id = (SELECT id FROM tmp_topo WHERE label = 't2')

@@ -11,7 +11,6 @@
 >
 > Approfondimento funzioni:  
 > 
->  * Regola **ATTIVO / soft-delete** [dbops.trgfn_soft_delete_cascade](/dbzero/dbops/funzioni/trgfn_soft_delete_cascade)      
 > * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)      
 > * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)      
 > 

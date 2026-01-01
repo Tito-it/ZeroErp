@@ -11,23 +11,19 @@
 **Approfondimento tabelle**
 
 * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
-* [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)
 
 **Approfondimento funzioni e trigger**
 
 * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
 * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)
 * [dbops.fn_get_child_fk_col](/dbzero/dbops/funzioni/fn_get_child_fk_col)
-* [dbops.trgfn_soft_delete_cascade](/dbzero/dbops/funzioni/trgfn_soft_delete_cascade) **(deprecata)**
-* [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) **(deprecata)**
 * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)
 
 ---
 
 ### 🎯 Scopo Principale
 
-*(last revision: 31‑12‑2025)*
-
+*(latest review 31‑12‑2025)*
 La funzione **`dbops.fn_run_automations_attivo(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico e coerente le **regole di gestione del campo `attivo`** (soft‑delete / stato di validità) **sulle relazioni di chiave esterna**, creando e riconciliando **esclusivamente trigger di BLOCCO sul padre**.
 
 L’automazione opera **a livello di relazione FK**, non sulla singola tabella isolata, ed è progettata secondo un principio **conservativo e sicuro**:

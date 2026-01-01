@@ -1,0 +1,31 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP - Cleanup oggetti deprecati (ATTIVO legacy)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/dbops/20260101-01-drop-attivo-legacy-objects.yaml
+
+  - changeSet:
+      id: 20260101-01-drop-attivo-legacy-objects
+      author: mctit
+      comment: >
+        Rimozione oggetti legacy/deprecati della vecchia automazione ATTIVO:
+        tabella dbops.automation_fk_exclusions e funzioni trigger legacy
+        dbops.trgfn_soft_delete_cascade(), dbops.trgfn_child_requires_active_parent().
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Drop tabella exclusions (non più usata con policy ATTIVO BLOCK-ONLY)
+              DROP TABLE IF EXISTS dbops.automation_fk_exclusions CASCADE;
+
+              -- 2) Drop funzioni trigger legacy/deprecate (ATTIVO old design)
+              DROP FUNCTION IF EXISTS dbops.trgfn_soft_delete_cascade() CASCADE;
+              DROP FUNCTION IF EXISTS dbops.trgfn_child_requires_active_parent() CASCADE;
