@@ -24,19 +24,12 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 
    * Tutte le modifiche a `config.stradario` e `anagrafiche.indirizzi` sono salvate in **`storico.*`** con snapshot JSONB, tipi operazione (A/U/D) e transazione **tx_id**, tramite la trigger-function generica [`script.trgfn_storico_generic()`](/dbzero/script/funzioni/trgfn_storico_generic).
 
-4. **Clean & Default centralizzati**
 
-   * Ogni tabella con normalizzazioni o default ha un trigger `trg_<tabella>_clean_fields_ins_upd` che richiama `trgfn_<tabella>_clean_fields()`. Esempio per `soggetti`:
-
-     * Imposta `stato_id` di default (`script.state_iso_code3()`).
-     * Genera `codice(soggetto)` se mancante [`script.fn_generate_codice('soggetto')`](/dbzero/script/funzioni/fn_generate_codice).
-     * Pulisce campi testo (`TRIM`/`UPPER`).
-
-5. **Fallback storico/originario**
+4. **Fallback storico/originario**
 
    * Le helper [`script.fn_get_snapshot_as_of()`](/dbzero/script/funzioni/fn_get_snapshot_as_of) e [`script.fn_get_record_id_as_of()`](/dbzero/script/funzioni/fn_get_record_id_as_of) permettono di leggere il JSONB di un record “as of” una data, utile per audit e rendicontazione.
 
-6. **Supporto indirizzi “liberi”**
+5. **Supporto indirizzi “liberi”**
 
    * In importazioni o migrazioni, [`anagrafiche.indirizzi`](/dbzero/anagrafiche/tabelle/indirizzi) accetta `indirizzo_libero` senza FK, con check constraint che evita mix errati di campi.
 
@@ -67,27 +60,26 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 
 ## 3. Funzioni e Trigger Coinvolti
 
-| **Oggetto**                                                                                                                                         | **Tipo**         | **Descrizione**                                                   |
-| --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------- |
-| [script.fn_get_parameter_full(...)](/dbzero/script/funzioni/fn_get_parameter_full)                                                                  | helper           | Parametri e override (tenant, user, session, funzione)            |
-| [script.fn_get_default_by_param(...)](/dbzero/script/funzioni/fn_get_default_by_param)                                                              | helper           | Default generico da lookup table + parametro                      |
-| [script.fn_get_snapshot_as_of(...)](/dbzero/script/funzioni/fn_get_snapshot_as_of)                                                                  | helper           | JSONB snapshot “as of” data                                       |
-| [script.fn_get_record_id_as_of(...)](/dbzero/script/funzioni/fn_get_record_as_of)                                                                   | helper           | ID record “as of” data, solo storico                              |
-| [script.fn_generate_codice(tipo)](/dbzero/script/funzioni/fn_generate_codice)                                                                       | helper           | Genera codici progressivi da `sistema_codici`                     |
-| [script.trgfn_storico_generic()](/dbzero/script/funzioni/trgfn_storico_generic)                                                                     | trigger function | Storicizzazione generica con JSONB snapshot                       |
-| [script.trgfn_sync_stato_iso2()](/dbzero/script/funzioni/trgfn_sync_stato_iso2)                                                                     | trigger function | Sincronizza `stato_iso2` da `config.stati`                        |
-| [script.trgfn_generate_codice_generic()](/dbzero/script/funzioni/trgfn_generate_codice_generic)                                                     | trigger function | Generica per `codice_<entità>`, usa `fn_generate_codice`          |
-| [anagrafiche.trgfn_indirizzi_dettaglio_norm_indirizzi_dettaglio()](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_norm_indirizzi_dettaglio) | trigger function | Normalizza `via_norm`, `civico_norm`                              |
-| [anagrafiche.trgfn_soggetti_clean_fields()](/dbzero/script/funzioni/fn_get_snapshot_as_of)                                                          | trigger function | Default `stato_id`, generazione `codice(soggetto)`, pulizia testo |
+| **Oggetto**                                                                                                           | **Tipo**         | **Descrizione**                                          |
+| --------------------------------------------------------------------------------------------------------------------- | ---------------- | -------------------------------------------------------- |
+| [script.fn_get_parameter_full(...)](/dbzero/script/funzioni/fn_get_parameter_full)                                    | helper           | Parametri e override (tenant, user, session, funzione)   |
+| [script.fn_get_default_by_param(...)](/dbzero/script/funzioni/fn_get_default_by_param)                                | helper           | Default generico da lookup table + parametro             |
+| [script.fn_get_snapshot_as_of(...)](/dbzero/script/funzioni/fn_get_snapshot_as_of)                                    | helper           | JSONB snapshot “as of” data                              |
+| [script.fn_get_record_id_as_of(...)](/dbzero/script/funzioni/fn_get_record_as_of)                                     | helper           | ID record “as of” data, solo storico                     |
+| [script.fn_generate_codice(tipo)](/dbzero/script/funzioni/fn_generate_codice)                                         | helper           | Genera codici progressivi da `sistema_codici`            |
+| [script.trgfn_storico_generic()](/dbzero/script/funzioni/trgfn_storico_generic)                                       | trigger function | Storicizzazione generica con JSONB snapshot              |
+| [script.trgfn_sync_stato_iso2()](/dbzero/script/funzioni/trgfn_sync_stato_iso2)                                       | trigger function | Sincronizza `stato_iso2` da `config.stati`               |
+| [script.trgfn_generate_codice_generic()](/dbzero/script/funzioni/trgfn_generate_codice_generic)                       | trigger function | Generica per `codice_<entità>`, usa `fn_generate_codice` |
+| [anagrafiche.trgfn_indirizzi_dettaglio_normalize()](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize) | trigger function | Normalizza `via_norm`, `civico_norm`                     |
+
 ---
 
 ## 4. Flusso di Vita di un Indirizzo
 
 1. **Inserimento**: normalizzazione via trigger su `indirizzi_dettaglio` o inserimento di `indirizzo_libero`.
 2. **Associazione**: `anagrafiche.indirizzi` collega soggetto/ruolo a riga di dettaglio o a indirizzo libero.
-3. **Clean & Default**: `clean_fields` imposta `stato_id`, genera codici, pulisce testo.
-4. **Storicizzazione**: `trgfn_storico_generic('indirizzi_id')` registra snapshot.
-5. **Lettura storica**: `fn_get_snapshot_as_of()`/`fn_get_record_id_as_of()` ricostruiscono lo stato di un record a una data.
+3. **Storicizzazione**: `trgfn_storico_generic('indirizzi_id')` registra snapshot.
+4. **Lettura storica**: `fn_get_snapshot_as_of()`/`fn_get_record_id_as_of()` ricostruiscono lo stato di un record a una data.
 
 ---
 
