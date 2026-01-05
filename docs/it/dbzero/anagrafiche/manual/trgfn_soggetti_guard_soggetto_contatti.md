@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti`
+## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_soggetti_guard_soggetto_contatti`
 
 > 👀 **Vedi anche**
 >
@@ -12,12 +12,13 @@
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
 
 
-La trigger function **`anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti()`** verifica, al termine dell’inserimento o aggiornamento di un record in `anagrafiche.soggetti`, che il soggetto associato abbia almeno un contatto valido. Se non trova contatti con `is_default = TRUE` o almeno un canale valorizzato (email, telefono, cellulare, PEC), registra l’evento e solleva un’eccezione centralizzata.
+La trigger function **`anagrafiche.trgfn_soggetti_guard_soggetto_contatti()`** verifica, al termine dell’inserimento o aggiornamento di un record in `anagrafiche.soggetti`, che il soggetto associato abbia almeno un contatto valido. Se non trova contatti con `is_default = TRUE` o almeno un canale valorizzato (email, telefono, cellulare, PEC), registra l’evento e solleva un’eccezione centralizzata.
 
 ---
 
 ### 🎯 Scopo Principale
 
+(latest review 28-12-25)
 * **Validazione di integrità**
   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
 
@@ -34,11 +35,11 @@ La trigger function **`anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatt
 * **Trigger associato**: `AFTER INSERT OR UPDATE` su `anagrafiche.soggetti`, definito come:
 
   ```sql
-  CREATE CONSTRAINT TRIGGER trg_soggetti_ins_upd_check_soggetto_contatti
+  CREATE CONSTRAINT TRIGGER trg_soggetti_guard_soggetto_contatti_ins_upd
     AFTER INSERT OR UPDATE ON anagrafiche.soggetti
     DEFERRABLE INITIALLY DEFERRED
     FOR EACH ROW
-    EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti();
+    EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_soggetto_contatti();
   ```
 * **Deferrable**: permette di posticipare la verifica fino alla fine della transazione per includere eventuali operazioni correlate su `anagrafiche.contatti`.
 

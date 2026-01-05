@@ -1,4 +1,3 @@
-
 ## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`
 
 > 👀 **Vedi anche**
@@ -14,6 +13,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 29-12-25)
 La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** viene eseguita **`BEFORE INSERT OR UPDATE`** sulla tabella **`anagrafiche.soggetti`** e instrada la validazione di codice fiscale e partita IVA in base allo Stato e al dettaglio di soggetto.
 
 ---

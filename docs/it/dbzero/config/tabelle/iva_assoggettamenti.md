@@ -30,5 +30,11 @@
 | pk_config_iva_assoggettamenti | `CREATE UNIQUE INDEX pk_config_iva_assoggettamenti ON config.iva_assoggettamenti USING btree (id)` |
 | uq_cfg_iva_assoggettamenti_codice | `CREATE UNIQUE INDEX uq_cfg_iva_assoggettamenti_codice ON config.iva_assoggettamenti USING btree (codice)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_block_deact_iva_assoggettamenti_iva | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'iva', 'assoggettamento_id', 'id')` |
+| trg_block_deact_iva_assoggettamenti_iva_stati | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'iva_stati', 'assoggettamento_id_override', 'id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

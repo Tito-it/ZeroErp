@@ -10,7 +10,8 @@
 >  * [storico.comuni](/dbzero/storico/tabelle/comuni)  
 >
 > Approfondimento funzione:   
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
+> * [config.trgfn_comuni_protect_update](/dbzero/config/funzioni/trgfn_comuni_protect_update)   
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
 
 La tabella **`config.comuni`** censisce i comuni (italiani ed esteri) all’interno di uno stato, fornendo la base per la geolocalizzazione degli indirizzi e per l’associazione con lo stradario.
 
@@ -18,6 +19,7 @@ La tabella **`config.comuni`** censisce i comuni (italiani ed esteri) all’inte
 
 ### 🎯 Scopo Principale
 
+(last review 30-12-25)
 * **Censimento dei comuni**
   Elenco dei comuni presenti in ciascuno stato, identificati da nome e collegamento gerarchico a provincia e stato.
 * **Attributi specifici per stato**
@@ -27,6 +29,9 @@ La tabella **`config.comuni`** censisce i comuni (italiani ed esteri) all’inte
   Utilizzata per associare i record di **`config.stradario`** al comune di appartenenza, completa il percorso di indirizzamento.
 * **Storicizzazione**
   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.comuni`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
+
+* **Protezione aggiornamenti quando in uso**
+  Se il comune e' gia' utilizzato in `config.stradario`, la modifica dei campi chiave e' bloccata dal guard `config.trgfn_comuni_protect_update()`.
 
 ---
 

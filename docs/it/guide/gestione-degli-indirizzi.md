@@ -1,7 +1,7 @@
 # 🌱 Guida alla Gestione degli Indirizzi
 Questa guida illustra l’architettura, le scelte progettuali e i componenti coinvolti nella gestione degli indirizzi in Zero ERP.
 
-> (latest review 23-12-25)
+> (latest review 02-01-26)
 >
 > 👀 **Vedi anche**
 >
@@ -24,19 +24,12 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 
    * Tutte le modifiche a `config.stradario` e `anagrafiche.indirizzi` sono salvate in **`storico.*`** con snapshot JSONB, tipi operazione (A/U/D) e transazione **tx_id**, tramite la trigger-function generica [`script.trgfn_storico_generic()`](/dbzero/script/funzioni/trgfn_storico_generic).
 
-4. **Clean & Default centralizzati**
 
-   * Ogni tabella con normalizzazioni o default ha un trigger `trg_<tabella>_clean_fields_ins_upd` che richiama `trgfn_<tabella>_clean_fields()`. Esempio per `soggetti`:
-
-     * Imposta `stato_id` di default (`script.state_iso_code3()`).
-     * Genera `codice(soggetto)` se mancante [`script.fn_generate_codice('soggetto')`](/dbzero/script/funzioni/fn_generate_codice).
-     * Pulisce campi testo (`TRIM`/`UPPER`).
-
-5. **Fallback storico/originario**
+4. **Fallback storico/originario**
 
    * Le helper [`script.fn_get_snapshot_as_of()`](/dbzero/script/funzioni/fn_get_snapshot_as_of) e [`script.fn_get_record_id_as_of()`](/dbzero/script/funzioni/fn_get_record_id_as_of) permettono di leggere il JSONB di un record “as of” una data, utile per audit e rendicontazione.
 
-6. **Supporto indirizzi “liberi”**
+5. **Supporto indirizzi “liberi”**
 
    * In importazioni o migrazioni, [`anagrafiche.indirizzi`](/dbzero/anagrafiche/tabelle/indirizzi) accetta `indirizzo_libero` senza FK, con check constraint che evita mix errati di campi.
 
@@ -67,27 +60,26 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 
 ## 3. Funzioni e Trigger Coinvolti
 
-| **Oggetto**                                                                                                                                         | **Tipo**         | **Descrizione**                                                   |
-| --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------- |
-| [script.fn_get_parameter_full(...)](/dbzero/script/funzioni/fn_get_parameter_full)                                                                  | helper           | Parametri e override (tenant, user, session, funzione)            |
-| [script.fn_get_default_by_param(...)](/dbzero/script/funzioni/fn_get_default_by_param)                                                              | helper           | Default generico da lookup table + parametro                      |
-| [script.fn_get_snapshot_as_of(...)](/dbzero/script/funzioni/fn_get_snapshot_as_of)                                                                  | helper           | JSONB snapshot “as of” data                                       |
-| [script.fn_get_record_id_as_of(...)](/dbzero/script/funzioni/fn_get_record_as_of)                                                                   | helper           | ID record “as of” data, solo storico                              |
-| [script.fn_generate_codice(tipo)](/dbzero/script/funzioni/fn_generate_codice)                                                                       | helper           | Genera codici progressivi da `sistema_codici`                     |
-| [script.trgfn_storico_generic()](/dbzero/script/funzioni/trgfn_storico_generic)                                                                     | trigger function | Storicizzazione generica con JSONB snapshot                       |
-| [script.trgfn_sync_stato_iso2()](/dbzero/script/funzioni/trgfn_sync_stato_iso2)                                                                     | trigger function | Sincronizza `stato_iso2` da `config.stati`                        |
-| [script.trgfn_generate_codice_generic()](/dbzero/script/funzioni/trgfn_generate_codice_generic)                                                     | trigger function | Generica per `codice_<entità>`, usa `fn_generate_codice`          |
-| [anagrafiche.trgfn_indirizzi_dettaglio_norm_indirizzi_dettaglio()](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_norm_indirizzi_dettaglio) | trigger function | Normalizza `via_norm`, `civico_norm`                              |
-| [anagrafiche.trgfn_soggetti_clean_fields()](/dbzero/script/funzioni/fn_get_snapshot_as_of)                                                          | trigger function | Default `stato_id`, generazione `codice(soggetto)`, pulizia testo |
+| **Oggetto**                                                                                                           | **Tipo**         | **Descrizione**                                          |
+| --------------------------------------------------------------------------------------------------------------------- | ---------------- | -------------------------------------------------------- |
+| [script.fn_get_parameter_full(...)](/dbzero/script/funzioni/fn_get_parameter_full)                                    | helper           | Parametri e override (tenant, user, session, funzione)   |
+| [script.fn_get_default_by_param(...)](/dbzero/script/funzioni/fn_get_default_by_param)                                | helper           | Default generico da lookup table + parametro             |
+| [script.fn_get_snapshot_as_of(...)](/dbzero/script/funzioni/fn_get_snapshot_as_of)                                    | helper           | JSONB snapshot “as of” data                              |
+| [script.fn_get_record_id_as_of(...)](/dbzero/script/funzioni/fn_get_record_as_of)                                     | helper           | ID record “as of” data, solo storico                     |
+| [script.fn_generate_codice(tipo)](/dbzero/script/funzioni/fn_generate_codice)                                         | helper           | Genera codici progressivi da `sistema_codici`            |
+| [script.trgfn_storico_generic()](/dbzero/script/funzioni/trgfn_storico_generic)                                       | trigger function | Storicizzazione generica con JSONB snapshot              |
+| [script.trgfn_sync_stato_iso2()](/dbzero/script/funzioni/trgfn_sync_stato_iso2)                                       | trigger function | Sincronizza `stato_iso2` da `config.stati`               |
+| [script.trgfn_generate_codice_generic()](/dbzero/script/funzioni/trgfn_generate_codice_generic)                       | trigger function | Generica per `codice_<entità>`, usa `fn_generate_codice` |
+| [anagrafiche.trgfn_indirizzi_dettaglio_normalize()](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize) | trigger function | Normalizza `via_norm`, `civico_norm`                     |
+
 ---
 
 ## 4. Flusso di Vita di un Indirizzo
 
 1. **Inserimento**: normalizzazione via trigger su `indirizzi_dettaglio` o inserimento di `indirizzo_libero`.
 2. **Associazione**: `anagrafiche.indirizzi` collega soggetto/ruolo a riga di dettaglio o a indirizzo libero.
-3. **Clean & Default**: `clean_fields` imposta `stato_id`, genera codici, pulisce testo.
-4. **Storicizzazione**: `trgfn_storico_generic('indirizzi_id')` registra snapshot.
-5. **Lettura storica**: `fn_get_snapshot_as_of()`/`fn_get_record_id_as_of()` ricostruiscono lo stato di un record a una data.
+3. **Storicizzazione**: `trgfn_storico_generic('indirizzi_id')` registra snapshot.
+4. **Lettura storica**: `fn_get_snapshot_as_of()`/`fn_get_record_id_as_of()` ricostruiscono lo stato di un record a una data.
 
 ---
 
@@ -101,21 +93,41 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 
 ## 6. Riclassificazione Vie (Caso A/B)
 
-Questa sezione descrive come gestire variazioni di nome via mantenendo tracciabilita storica e coerenza dei civici.
+Questa sezione descrive una **policy unica** per gestire variazioni di vie/comuni mantenendo coerenza dei dati e storicizzazione completa.
 
-### Caso A: cambio nome completo della via (stesso tracciato)
+### ✅ Policy operativa unica
 
-1. Aggiornare il nome in `config.stradario_generale` oppure l’associazione in `config.stradario` verso il nuovo `stradario_generale_id`.
-2. Verificare che `config.stradario.storicizza = TRUE` per tracciare la modifica.
-3. Non modificare `anagrafiche.indirizzi_dettaglio`: il `stradario_id` resta invariato.
-4. Per audit “as of”, usare `script.fn_get_snapshot_as_of()` su `storico.stradario`.
+Per tutte le casistiche (rinomina parziale, rinomina totale, fusione vie, variazioni comuni) si adotta la stessa logica:
 
-### Caso B: cambio nome parziale della via (solo un tratto)
+1. **Creare il nuovo riferimento in configurazione**
+   * Vie: nuova riga in `config.stradario_generale` e relativo record in `config.stradario`.
+   * Comuni: nuovo riferimento in `config.comuni` (o aggiornamento coerente con le regole di dominio).
+2. **Allineare gli indirizzi coinvolti**
+   * Aggiornare **solo** le righe di `anagrafiche.indirizzi_dettaglio` interessate, puntandole al nuovo riferimento.
+3. **Rinormalizzare**
+   * I trigger di normalizzazione aggiornano `via_norm` e `indirizzo_normalizzato`.
+4. **Storico garantito**
+   * Le modifiche sono tracciate in `storico.stradario` e in `storico.indirizzi_dettaglio` (e, se rilevante, nello storico dei comuni).
 
-1. Creare una nuova via in `config.stradario_generale` e il relativo record in `config.stradario` per il tratto riclassificato.
-2. Aggiornare `anagrafiche.indirizzi_dettaglio.stradario_id` solo per i civici interessati.
-3. Verificare `storicizza = TRUE` su `config.stradario` e su `anagrafiche.indirizzi_dettaglio` per avere tracciabilita completa.
-4. Per audit “as of”, combinare `storico.indirizzi_dettaglio` con `storico.stradario`.
+Per la riclassificazione e' prevista la procedura `maintenance.proc_bump_indirizzi_dettaglio(...)`, che abilita la manutenzione e forza la rinormalizzazione degli indirizzi collegati.
+
+### Esempi applicativi
+
+* **Rinomina totale via**: nuova via + riallineamento di tutti i civici collegati al vecchio `stradario_id`.
+* **Rinomina parziale via**: nuova via + riallineamento solo dei civici del tratto interessato.
+* **Fusione vie**: riallineamento dei civici su un unico `stradario_id`.
+
+### 🧩 Nota su manutenzione toponomastica
+
+La correzione di un toponimo non avviene modificando la riga in uso:  
+si crea una **nuova** voce in `config.toponomastica`, si riallineano i record di `config.stradario_generale` interessati e si lascia che la normalizzazione aggiorni `indirizzo_normalizzato`.
+
+### ⚠️ Manutenzione straordinaria (riclassificazione controllata)
+
+Le seguenti procedure sono riservate a **manutenzione straordinaria** e vanno usate solo in contesti controllati:
+
+* `maintenance.proc_bump_toponomastica(...)` — correzione toponimo con riallineamento automatico di `stradario_generale`.
+* `maintenance.proc_bump_indirizzi_dettaglio(...)` — riallineamento degli indirizzi civici dopo riclassificazione.
 
 ---
 

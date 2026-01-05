@@ -15,6 +15,7 @@
 
 ### 🎯 Scopo Principale
 
+
 La funzione **`dbops.fn_trigger_exists_by_function(p_rel, p_fn_schema, p_fn_name)`** verifica l’esistenza di un trigger su una tabella specifica, identificandolo in base alla **funzione associata**. È pensata come utility per le automazioni, per evitare la duplicazione di trigger già creati.
 
 ---
@@ -23,9 +24,9 @@ La funzione **`dbops.fn_trigger_exists_by_function(p_rel, p_fn_schema, p_fn_name
 
 | Parametro     | Tipo     | Obbligatorio | Descrizione                                    |
 | ------------- | -------- | :----------: | ---------------------------------------------- |
-| `p_rel`       | regclass |      ✔️      | Tabella (relazione) su cui cercare il trigger. |
-| `p_fn_schema` | text     |      ✔️      | Schema della funzione eseguita dal trigger.    |
-| `p_fn_name`   | text     |      ✔️      | Nome della funzione eseguita dal trigger.      |
+| `p_rel`       | regclass |      ✔️       | Tabella (relazione) su cui cercare il trigger. |
+| `p_fn_schema` | text     |      ✔️       | Schema della funzione eseguita dal trigger.    |
+| `p_fn_name`   | text     |      ✔️       | Nome della funzione eseguita dal trigger.      |
 
 ---
 

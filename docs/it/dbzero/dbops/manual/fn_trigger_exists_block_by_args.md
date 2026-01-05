@@ -16,6 +16,7 @@
 
 ### 🎯 Scopo Principale
 
+(last review 31-12-25)
 La funzione **`dbops.fn_trigger_exists_block_by_args(p_parent_rel, p_child_schema, p_child_table, p_fk_col)`** verifica l’esistenza di un **trigger di blocco** basato sulla funzione `trgfn_prevent_deactivate_if_children`, applicato ad una tabella padre per impedire la disattivazione se esistono righe figlio attive.
 
 ---
@@ -24,10 +25,10 @@ La funzione **`dbops.fn_trigger_exists_block_by_args(p_parent_rel, p_child_schem
 
 | Parametro        | Tipo     | Obbligatorio | Descrizione                                 |
 | ---------------- | -------- | :----------: | ------------------------------------------- |
-| `p_parent_rel`   | regclass |      ✔️      | Tabella padre su cui verificare il trigger. |
-| `p_child_schema` | text     |      ✔️      | Schema della tabella figlia.                |
-| `p_child_table`  | text     |      ✔️      | Nome della tabella figlia.                  |
-| `p_fk_col`       | text     |      ✔️      | Nome della colonna FK nella tabella figlia. |
+| `p_parent_rel`   | regclass |      ✔️       | Tabella padre su cui verificare il trigger. |
+| `p_child_schema` | text     |      ✔️       | Schema della tabella figlia.                |
+| `p_child_table`  | text     |      ✔️       | Nome della tabella figlia.                  |
+| `p_fk_col`       | text     |      ✔️       | Nome della colonna FK nella tabella figlia. |
 
 ---
 

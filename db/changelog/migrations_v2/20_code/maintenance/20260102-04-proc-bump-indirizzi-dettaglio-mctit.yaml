@@ -1,0 +1,37 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# procedura bump per indirizzi_dettaglio
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/maintenance/20260102-04-proc-bump-indirizzi-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260102-04-proc-bump-indirizzi-dettaglio-mctit.yaml
+      author: mctit
+      comment: >
+        Procedura per eseguire il bump di indirizzi_dettaglio.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              CREATE OR REPLACE PROCEDURE maintenance.proc_bump_indirizzi_dettaglio(p_stradario_id integer)
+              LANGUAGE plpgsql
+              AS $procedure$
+              BEGIN
+                -- Abilita manutenzione solo per la sessione corrente
+                PERFORM set_config('zeroerp.maintenance_indirizzi_dettaglio', 'on', true);
+
+                UPDATE anagrafiche.indirizzi_dettaglio
+                SET stradario_id = stradario_id
+                WHERE stradario_id = p_stradario_id;
+              END;
+              $procedure$;
+
+              comment on procedure maintenance.proc_bump_indirizzi_dettaglio
+                is 'Procedura di riallineamento indirizzi_dettaglio per cambio stradario_id.';

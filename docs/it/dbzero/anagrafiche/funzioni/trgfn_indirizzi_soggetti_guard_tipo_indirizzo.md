@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_indirizzi_soggetti_guard_tipo_indirizzo.md" %}
 # ⚙️ Funzione `trgfn_indirizzi_soggetti_guard_tipo_indirizzo`
 
 ```sql

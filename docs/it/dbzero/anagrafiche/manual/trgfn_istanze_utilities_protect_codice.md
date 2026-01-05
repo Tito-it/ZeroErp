@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_istanze_utilities_upd_protect_codice`
+## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_istanze_utilities_protect_codice`
 
 > 👀 **Vedi anche**
 >
@@ -14,7 +14,8 @@
 
 ### 🎯 Scopo Principale
 
-Il trigger `anagrafiche.trgfn_istanze_utilities_upd_protect_codice`, eseguito **prima di ogni UPDATE** su `anagrafiche.istanze_utilities`, impedisce modifiche non autorizzate al campo **`codice (istanza)`** una volta impostato.
+(latest review 28-12-25)
+Il trigger `anagrafiche.trgfn_istanze_utilities_protect_codice`, eseguito **prima di ogni UPDATE** su `anagrafiche.istanze_utilities`, impedisce modifiche non autorizzate al campo **`codice (istanza)`** una volta impostato.
 
 ---
 
@@ -49,13 +50,13 @@ Il trigger `anagrafiche.trgfn_istanze_utilities_upd_protect_codice`, eseguito **
 ### ⚙️ Trigger Collegato
 
 ```sql
-DROP TRIGGER IF EXISTS trg_istanze_utilities_upd_protect_codice
+DROP TRIGGER IF EXISTS trg_istanze_utilities_protect_codice
   ON anagrafiche.istanze_utilities;
 
-CREATE TRIGGER trg_istanze_utilities_upd_protect_codice
+CREATE TRIGGER trg_istanze_utilities_protect_codice
   BEFORE UPDATE ON anagrafiche.istanze_utilities
   FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_upd_protect_codice();
+  EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_protect_codice_upd();
 ```
 
 ---

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/vw_istanze_utilities_dettaglio.md" %}
 # 🔍 View `vw_istanze_utilities_dettaglio`
 
 ```sql

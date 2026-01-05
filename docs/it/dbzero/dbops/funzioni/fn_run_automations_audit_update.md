@@ -99,10 +99,11 @@ AS $function$
           SELECT *
             FROM dbops.automation_rules_tbl r
           WHERE r.enabled
-            AND r.rule_type='AUDIT_UPDATE'
+            AND upper(btrim(r.rule_type))='AUDIT_UPDATE'
             AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
             AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
-            AND (r.exec_mode='AUTO' OR r.exec_mode=p_exec_mode)
+            --AND (r.exec_mode='AUTO' OR r.exec_mode=p_exec_mode)
+            AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
           ORDER BY r.priority, r.id
         LOOP
           exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');

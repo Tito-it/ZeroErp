@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Trigger Function `script.trgfn_upd_dlt_storico_generic()`
+## 📘 Documentazione Concettuale – Trigger Function `script.trgfn_storico_generic()`
 
 > 👀 **Vedi anche**
 >
@@ -10,7 +10,7 @@
 >
 > * [Linee Guida SQL](/linee-guida-sql) per convenzioni di changeSet e commenti SQL  
 
-La trigger function **`script.trgfn_upd_dlt_storico_generic()`** centralizza la logica di storicizzazione in qualunque tabella del layer `storico`, gestendo:
+La trigger function **`script.trgfn_storico_generic()`** centralizza la logica di storicizzazione in qualunque tabella del layer `storico`, gestendo:
 
 * Chiusura automatica degli snapshot aperti (`valid_to IS NULL`).
 * Creazione di uno snapshot iniziale con `valid_from` fisso (`1950-01-01`) se non esistevano record storici.
@@ -22,7 +22,8 @@ La trigger function **`script.trgfn_upd_dlt_storico_generic()`** centralizza la 
 
 ### 🎯 Scopo Principale
 
-* **Unificazione logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger.
+(latest review 02-02-26)
+* **Unificazion- logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger.
 * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento.
 * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 
@@ -39,7 +40,7 @@ La trigger function **`script.trgfn_upd_dlt_storico_generic()`** centralizza la 
   CREATE TRIGGER trg_storico
     AFTER UPDATE OR DELETE ON <schema>.<tabella_origine>
     FOR EACH ROW
-    EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic('<colonna_fk>');
+    EXECUTE FUNCTION script.trgfn_storico_generic('<colonna_fk>');
   ```
 * **Dipendenze**:
 
@@ -92,4 +93,4 @@ La trigger function **`script.trgfn_upd_dlt_storico_generic()`** centralizza la 
 
 ---
 
-> 🧠 **“Con `trgfn_upd_dlt_storico_generic`, Zero ERP ha una soluzione unica e versatile per versionare ogni entità storica, riducendo complessità e aumentando l’affidabilità.”**
+> 🧠 **“Con `trgfn_storico_generic`, Zero ERP ha una soluzione unica e versatile per versionare ogni entità storica, riducendo complessità e aumentando l’affidabilità.”**

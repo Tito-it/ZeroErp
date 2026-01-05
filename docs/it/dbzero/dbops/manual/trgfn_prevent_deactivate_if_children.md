@@ -16,6 +16,7 @@
 
 ### 🎯 Scopo Principale
 
+*(last review 31-12-25)*
 La funzione **`trgfn_prevent_deactivate_if_children`** è un **trigger function** che impedisce la disattivazione (`attivo = FALSE`) di un record padre se esistono ancora record figli associati tramite una FK. Garantisce integrità logica tra entità padre e figlio, preservando la coerenza dei dati.
 
 ---

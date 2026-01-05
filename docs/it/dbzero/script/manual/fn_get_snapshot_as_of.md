@@ -20,6 +20,7 @@ La funzione **`script.fn_get_snapshot_as_of(p_schema TEXT, p_table TEXT, p_id TE
 
 ### 🎯 Scopo Principale
 
+(latest review 02-02-26)
 * **Recupero storico/flessibile**: ottenere lo stato di un record in un preciso istante, combinando storicizzazione e serializzazione diretta.
 * **Robustezza**: ogni errore di query viene tracciato con contesto completo, e l'esecuzione viene interrotta per evitare inconsistenze.
 

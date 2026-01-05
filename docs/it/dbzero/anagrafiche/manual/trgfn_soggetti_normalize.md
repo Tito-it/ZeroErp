@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_soggetti_ins_upd_clean_fields()`
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_soggetti_normalize()`
 
 > 👀 **Vedi anche**
 >
@@ -15,6 +15,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 28-12-25)
 * **Impostare valori di default** per campi mancanti in `anagrafiche.soggetti` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`).
 * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 
@@ -25,7 +26,7 @@
 * **`anagrafiche.soggetti`** – tabella su cui si applica il trigger `BEFORE INSERT OR UPDATE`.
 * **`config.stati`** – usata come lookup per recuperare il PK di default tramite `codice_iso3`.
 * **`script.fn_get_default_by_param`** – funzione dinamica che esegue il lookup del valore di default da una tabella di configurazione.
-* **Trigger associato**: `trg_soggetti_ins_upd_clean_fields` (viene creato dal Liquibase changeSet `20250730-07-trgfn_soggetti_ins_upd_clean_fields_v1`).
+* **Trigger associato**: `trg_soggetti_normalize_ins_upd` (viene creato dal  `trgfn_soggetti_normalize`).
 
 ---
 

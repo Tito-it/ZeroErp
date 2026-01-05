@@ -1,6 +1,11 @@
 ## 📘 Parametri Personalizzati (GUC) in PostgreSQL
 
+>
+> (latest review 02-02-26)
+>
 > 👀 **Vedi anche**
+>
+>  * [GUC definite in ZeroErp](/postgresql/guc_reference.md)
 >
 > Approfondimento Tabelle:   
 > - [config.parameters](/dbzero/config/tabelle/parameters)   
@@ -90,7 +95,7 @@ SET myapp.user_language = 'en';
 | Caratteristica       | GUC (`myapp.*`, `dbops.*`)                        | Tabelle (`config.parameters` + overrides)                  |
 | -------------------- | ------------------------------------------------- | ---------------------------------------------------------- |
 | **Scope**            | Cluster/DB/Role/Session                           | Record-level (tenant, utente, funzione, sessione)          |
-| **Versioning/Audit** | No (solo DDL o conf file)                         | Sì (Liquibase, trigger di audit, date_insert, ecc.)       |
+| **Versioning/Audit** | No (solo DDL o conf file)                         | Sì (Liquibase, trigger di audit, date_insert, ecc.)        |
 | **Dinamico**         | Sì (SET/ALTER in sessione)                        | Sì (modificabile in runtime con query)                     |
 | **Use case**         | Configurazioni DB-centriche (lingua, connessioni) | Configurazioni business-centriche (feature-flag, timeouts) |
 
@@ -99,7 +104,7 @@ SET myapp.user_language = 'en';
 ### 🗂️ Documentazione e Allegati
 
 * **Documento Principale** (questo): introduce GUC e best practice.
-* **Elenco GUC Definite**: crea un file separato (`guc_reference.md` o `.xlsx`) contenente tabella con:
+* **Elenco GUC Definite**: vedi il file [`guc_reference.md`](/postgresql/guc_reference) con tabella di riferimento (oppure `.xlsx`) contenente:
 
   * `nome parametro`
   * `default`
@@ -118,7 +123,9 @@ SET myapp.user_language = 'en';
 
 ---
 
+
 ### 🗂️ Comandi Utili
+
 > ```sql
 >
 > -- Mostra la path di postgresql.conf   

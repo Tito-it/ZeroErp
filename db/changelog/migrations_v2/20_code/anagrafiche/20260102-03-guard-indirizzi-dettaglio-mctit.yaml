@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Guard per indirizzi_dettaglio
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/anagrafiche/20260102-03-guard-indirizzi-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260102-03-guard-indirizzi-dettaglio
+      author: mctit
+      comment: >
+        Protegge il cambio di stradario_id su indirizzi_dettaglio e
+        prevede una procedura di riallineamento con GUC di manutenzione.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_protect_update()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Consenti aggiornamenti in manutenzione esplicita
+                IF current_setting('zeroerp.maintenance_indirizzi_dettaglio', true) = 'on' THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Blocca cambio stradario_id se non in manutenzione
+                IF NEW.stradario_id IS DISTINCT FROM OLD.stradario_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_COLONNA_NON_MODIFICABILE',
+                    jsonb_build_object('column','stradario_id','id',OLD.id),
+                    NULL::uuid,
+                    'stradario_id'
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              DROP TRIGGER IF EXISTS trg_indirizzi_dettaglio_a10_protect_update_upd
+                ON anagrafiche.indirizzi_dettaglio;
+
+              CREATE TRIGGER trg_indirizzi_dettaglio_a10_protect_update_upd
+                BEFORE UPDATE
+                ON anagrafiche.indirizzi_dettaglio
+                FOR EACH ROW
+                EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_protect_update();
+
+              COMMENT ON TRIGGER trg_indirizzi_dettaglio_a10_protect_update_upd
+                ON anagrafiche.indirizzi_dettaglio
+                IS 'Blocca cambio stradario_id se non in manutenzione; usare proc di riallineamento.';

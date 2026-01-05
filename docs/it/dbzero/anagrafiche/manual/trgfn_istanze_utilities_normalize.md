@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields`
+## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_istanze_utilities_normalize`
 
 > 👀 **Vedi anche**
 >
@@ -14,7 +14,8 @@
 
 ### 🎯 Scopo Principale
 
-Il trigger `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
+(latest review 28-12-25)
+Il trigger `anagrafiche.trgfn_istanze_utilities_normalize` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
 
 1. **Generazione automatica** di `codice (istanza)` quando non è specificato dall’utente.
 2. **Pulizia** e predisposizione di ulteriori campi, se in futuro fosse necessario estendere la logica di default o normalizzazione.
@@ -46,13 +47,13 @@ Il trigger `anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields` è invocat
 ### ⚙️ Trigger Collegato
 
 ```sql
-DROP TRIGGER IF EXISTS trg_istanze_utilities_ins_upd_clean_fields
+DROP TRIGGER IF EXISTS trg_istanze_utilities_normalize_ins_upd
   ON anagrafiche.istanze_utilities;
 
-CREATE TRIGGER trg_istanze_utilities_ins_upd_clean_fields
+CREATE TRIGGER trg_istanze_utilities_normalize_ins_upd
   BEFORE INSERT OR UPDATE ON anagrafiche.istanze_utilities
   FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_ins_upd_clean_fields();
+  EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_normalize();
 ```
 
 ---
