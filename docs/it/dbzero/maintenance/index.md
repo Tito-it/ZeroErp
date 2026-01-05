@@ -12,6 +12,8 @@
 - [proc_automations_storico_job](funzioni/proc_automations_storico_job.md)
 - [proc_automations_storico_provision_job](funzioni/proc_automations_storico_provision_job.md)
 - [proc_automations_tx_id_job](funzioni/proc_automations_tx_id_job.md)
+- [proc_bump_indirizzi_dettaglio](funzioni/proc_bump_indirizzi_dettaglio.md) — (latest review 02-01-26) Riallineare la normalizzazione degli indirizzi di dettaglio quando cambia la via (stradario) in modo controllato e tracciato.
+- [proc_bump_toponomastica](funzioni/proc_bump_toponomastica.md) — (latest review 02-01-26) Consentire la correzione controllata di un toponimo **in uso**, forzando la rinormalizzazione di `config.stradario_generale` tramite i trigger esistenti.
 - [proc_sync_storico_set_storicizza_job](funzioni/proc_sync_storico_set_storicizza_job.md) — Wrapper di job che **esegue e traccia** la sincronizzazione della tabella `config.storico_set_storicizza`, delegando l’esecuzione alla procedura core `dbops.proc_sync_storico_set_storicizza()` e centralizzando **logging** e **advisory lock** tramite `maintenance.fn_run_and_log`.
 
 ## 🔍 Views

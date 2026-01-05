@@ -27,13 +27,20 @@ La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli ind
 
 ### 🎯 Scopo Principale
 
-(latest review 16-12-25)
+(latest review 02-01-26)
 * **Dettagliare lo stradario**  
   Associare a ciascuna via (memorizzata in `config.stradario`) le singole unità civiche (numeri civici, estensioni, palazzine, interni, piani), ottenendo così l’indirizzo completo e navigabile.  
 * **Geolocalizzazione precisa**  
   Il campo `civic_geoloc` memorizza il punto geografico corrispondente al singolo civico, mentre `street_geoloc` rappresenta la posizione media della via. Questi dati consentono ricerche spaziali e visualizzazioni GIS a livello di civico.  
 * **Indirizzo normalizzato**  
   Il campo calcolato `indirizzo_normalizzato` combina via, civico, palazzina, scala, piano e interno in un’unica stringa formattata in modo coerente, facilitando confronti testuali e ricerche full-text.
+
+---
+
+### 🧩 Regola di riclassificazione
+
+Il cambio di via (`stradario_id`) e' protetto da un guard: la modifica manuale e' bloccata.  
+La riclassificazione va eseguita tramite la procedura `maintenance.proc_bump_indirizzi_dettaglio(...)`, che abilita la manutenzione e forza la rinormalizzazione con storico.
 
 ---
 

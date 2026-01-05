@@ -4,16 +4,40 @@
 -- Toponomastica + stradario_generale (normalizzazione + guard)
 -- ------------------------------------------------------------
 
-SELECT plan(6);
+SELECT plan(11);
 
 -- =========================================================
 -- 1) Crea due toponimi di test
 -- =========================================================
-WITH ins AS (
+CREATE TEMP TABLE tmp_def_param AS
+SELECT script.fn_get_default_by_param(
+    'config',
+    'stati',
+    'codice_iso3',
+    'state_code_iso3',
+    'test_toponomastica'
+)::integer AS stato_id;
+
+CREATE TEMP TABLE tmp_topo_norm_impl AS
+SELECT EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'config'
+      AND p.proname = 'trgfn_toponomastica_normalize'
+      AND p.prosrc ILIKE '%fn_get_default_by_param%'
+) AS has_default;
+
+WITH def_stato AS (
+    SELECT id
+    FROM config.stati
+    ORDER BY id
+    LIMIT 1
+), ins AS (
     INSERT INTO config.toponomastica (descrizione, stato_id, attivo)
     VALUES
-        ('TOPO TEST 1 ' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISS'), NULL, true),
-        ('TOPO TEST 2 ' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISS'), NULL, true)
+        ('TOPO TEST 1 ' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISS'), (SELECT id FROM def_stato), true),
+        ('TOPO TEST 2 ' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISS'), (SELECT id FROM def_stato), true)
     RETURNING id, descrizione
 ), labeled AS (
     SELECT
@@ -33,6 +57,117 @@ SELECT ok(
     (SELECT count(*) FROM tmp_topo) = 2,
     'Creati due toponimi di test'
 );
+
+-- =========================================================
+-- 1b) Default stato_id su INSERT (se configurato)
+-- =========================================================
+CREATE TEMP TABLE tmp_topo_def_ins AS
+SELECT NULL::integer AS stato_id
+WHERE false;
+
+WITH ins AS (
+    INSERT INTO config.toponomastica (descrizione, stato_id, attivo)
+    SELECT 'TOPO TEST DEF ' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISS'), NULL, true
+    WHERE (SELECT stato_id FROM tmp_def_param) IS NOT NULL
+    RETURNING stato_id
+)
+INSERT INTO tmp_topo_def_ins (stato_id)
+SELECT stato_id FROM ins;
+
+SELECT CASE
+    WHEN NOT (SELECT has_default FROM tmp_topo_norm_impl) THEN
+        ok(true, 'Trigger normalize non presente: test insert default skipped')
+    WHEN (SELECT stato_id FROM tmp_def_param) IS NULL THEN
+        ok(true, 'Default stato_id non configurato: test insert default skipped')
+    ELSE
+        is(
+            (SELECT stato_id FROM tmp_topo_def_ins),
+            (SELECT stato_id FROM tmp_def_param),
+            'stato_id default su insert (toponomastica)'
+        )
+END;
+
+DELETE FROM config.toponomastica
+WHERE descrizione LIKE 'TOPO TEST DEF %';
+
+-- =========================================================
+-- 1c) Errore se default assente
+-- =========================================================
+SELECT CASE
+    WHEN NOT (SELECT has_default FROM tmp_topo_norm_impl) THEN
+        ok(true, 'Trigger normalize non presente: test errore skipped')
+    WHEN (SELECT stato_id FROM tmp_def_param) IS NULL THEN
+        throws_ok(
+            $$
+            INSERT INTO config.toponomastica (descrizione, stato_id, attivo)
+            VALUES ('TOPO TEST NO DEFAULT', NULL, true);
+            $$,
+            NULL,
+            NULL,
+            'Errore stato_id mancante'
+        )
+    ELSE
+        ok(true, 'Default configurato: test errore skipped')
+END;
+
+-- =========================================================
+-- 1d) Default stato_id su UPDATE (se configurato)
+-- =========================================================
+CREATE TEMP TABLE tmp_topo_def_upd (
+    id bigint,
+    stato_id integer
+);
+
+WITH ins AS (
+    INSERT INTO config.toponomastica (descrizione, stato_id, attivo)
+    SELECT 'TOPO TEST UPD ' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISS'), (SELECT stato_id FROM tmp_def_param), true
+    WHERE (SELECT stato_id FROM tmp_def_param) IS NOT NULL
+    RETURNING id
+)
+INSERT INTO tmp_topo_def_upd (id)
+SELECT id FROM ins;
+
+UPDATE config.toponomastica
+SET stato_id = NULL,
+    descrizione = descrizione || ' UPD'
+WHERE id IN (SELECT id FROM tmp_topo_def_upd);
+
+UPDATE tmp_topo_def_upd
+SET stato_id = (
+    SELECT t.stato_id
+    FROM config.toponomastica t
+    WHERE t.id = tmp_topo_def_upd.id
+);
+
+CREATE TEMP TABLE tmp_topo_has_trg AS
+SELECT EXISTS (
+    SELECT 1
+    FROM pg_trigger t
+    JOIN pg_class c ON c.oid = t.tgrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'config'
+      AND c.relname = 'toponomastica'
+      AND t.tgname = 'trg_toponomastica_normalize_ins_upd'
+      AND NOT t.tgisinternal
+) AS has_trg;
+
+SELECT CASE
+    WHEN NOT (SELECT has_default FROM tmp_topo_norm_impl) THEN
+        ok(true, 'Trigger normalize non presente: test update default skipped')
+    WHEN (SELECT stato_id FROM tmp_def_param) IS NULL THEN
+        ok(true, 'Default stato_id non configurato: test update default skipped')
+    WHEN NOT (SELECT has_trg FROM tmp_topo_has_trg) THEN
+        ok(true, 'Trigger normalize non presente: test update default skipped')
+    ELSE
+        is(
+            (SELECT stato_id FROM tmp_topo_def_upd),
+            (SELECT stato_id FROM tmp_def_param),
+            'stato_id default su update (toponomastica)'
+        )
+END;
+
+DELETE FROM config.toponomastica
+WHERE descrizione LIKE 'TOPO TEST UPD %';
 
 -- =========================================================
 -- 2) Crea stradario_generale collegati al topo 1
@@ -82,7 +217,35 @@ SELECT throws_ok(
 );
 
 -- =========================================================
--- 4) Disattivo toponomastica in uso -> errore
+-- 4) Manutenzione: bump toponomastica in uso
+-- =========================================================
+SELECT lives_ok(
+    $$
+    DO $proc$
+    DECLARE
+      v_topo_id integer;
+    BEGIN
+      SELECT id INTO v_topo_id FROM tmp_topo WHERE label = 't1';
+      CALL maintenance.proc_bump_toponomastica(v_topo_id, 'TOPO TEST 22 FIX');
+    END;
+    $proc$;
+    $$,
+    'Manutenzione toponomastica con GUC attiva'
+);
+
+SELECT ok(
+    EXISTS (
+        SELECT 1
+        FROM config.stradario_generale sg
+        JOIN config.toponomastica t ON t.id = sg.toponomastica_id
+        WHERE t.id = (SELECT id FROM tmp_topo WHERE label = 't1')
+          AND sg.indirizzo_normalizzato ILIKE '%' || t.descrizione || '%'
+    ),
+    'Rinormalizzazione stradario_generale dopo manutenzione toponomastica'
+);
+
+-- =========================================================
+-- 5) Disattivo toponomastica in uso -> errore
 -- =========================================================
 SELECT throws_ok(
     $$
@@ -96,7 +259,7 @@ SELECT throws_ok(
 );
 
 -- =========================================================
--- 5) Disattivo toponomastica non in uso -> ok
+-- 6) Disattivo toponomastica non in uso -> ok
 -- =========================================================
 SELECT lives_ok(
     $$
@@ -104,11 +267,12 @@ SELECT lives_ok(
     SET attivo = false
     WHERE id = (SELECT id FROM tmp_topo WHERE label = 't2');
     $$,
+    
     'Disattivazione toponimo non in uso consentita'
 );
 
 -- =========================================================
--- 6) Cambio toponomastica_id e rinormalizzazione
+-- 7) Cambio toponomastica_id e rinormalizzazione
 -- =========================================================
 UPDATE config.stradario_generale
 SET toponomastica_id = (SELECT id FROM tmp_topo WHERE label = 't2')

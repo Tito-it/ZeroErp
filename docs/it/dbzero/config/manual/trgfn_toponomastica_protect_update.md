@@ -17,9 +17,9 @@ La trigger function **`config.trgfn_toponomastica_protect_update()`** impedisce 
 
 ### 🎯 Scopo Principale
 
-(latest review 31-12-25)
+(latest review 02-01-26)
 * **Protezione semantica**: garantire coerenza tra topografia e stradario evitando rinominazioni dirette di toponomastiche già in uso.
-* **Decisione di design**: anziché storicizzare o consentire modifiche parziali, obbligare alla creazione di nuove topografìe per cambiare descrizione.
+* **Manutenzione controllata**: consentire correzioni solo tramite GUC di manutenzione e procedura dedicata.
 * **Centralizzazione**: concentrare la logica di blocco in una sola funzione trigger per ridurre complessità applicativa.
 
 ---
@@ -37,7 +37,11 @@ La trigger function **`config.trgfn_toponomastica_protect_update()`** impedisce 
 
 ### ⚙️ Flusso di Esecuzione Dettagliato
 
-1. **Verifica utilizzo**
+1. **Bypass in manutenzione**
+
+   Se la GUC `zeroerp.maintenance_toponomastica` e' impostata a `on`, l'UPDATE e' consentito.
+
+2. **Verifica utilizzo**
 
    ```plpgsql
    IF NOT EXISTS (
@@ -51,7 +55,7 @@ La trigger function **`config.trgfn_toponomastica_protect_update()`** impedisce 
 
    Se la toponomastica non è usata, l’UPDATE di `descrizione` procede normalmente.
 
-2. **Blocco modifica**
+3. **Blocco modifica**
 
    ```plpgsql
    IF OLD.descrizione IS DISTINCT FROM NEW.descrizione THEN
@@ -66,7 +70,7 @@ La trigger function **`config.trgfn_toponomastica_protect_update()`** impedisce 
 
    Se la `descrizione` viene cambiata, la funzione lancia un errore bloccando l’operazione e indicando quale colonna e ID sono coinvolti.
 
-3. **Ritorno**
+4. **Ritorno**
 
    ```plpgsql
    RETURN NEW;
@@ -80,7 +84,7 @@ La trigger function **`config.trgfn_toponomastica_protect_update()`** impedisce 
 
 * **Integrità referenziale logica**: impedendo modifiche di descrizioni in uso, si evita la discrepanza tra entità generali e record associati.
 * **Chiarezza operativa**: chiara segnalazione dell’errore con payload JSON specifico, facilita debug e supporto.
-* **Strategia di manutenzione**: per modificare la descrizione di una toponomastica esistente, è necessario creare un nuovo record, preservando la storia e evitando side effect.
+* **Strategia di manutenzione**: per modificare la descrizione di una toponomastica esistente, è necessario usare la procedura di manutenzione oppure creare un nuovo record, preservando la storia e evitando side effect.
 * **Leggerezza**: rispetto alla storicizzazione completa, questo approccio è più semplice e leggero quando la modifica non è prevista come operazione comune.
 
 ---

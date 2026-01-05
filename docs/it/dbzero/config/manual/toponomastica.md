@@ -23,7 +23,7 @@ La tabella **`config.toponomastica`** raccoglie i tipi di toponimi utilizzati pe
 
 ### 🎯 Scopo Principale
 
-(latest review 31-12-25)
+(latest review 02-01-26)
 * **Censimento dei toponimi**
   Elenco delle tipologie di vie, strade, piazze, viali, ecc., utilizzate come prefisso negli indirizzi.
 * **Fondamentale per lo stradario**
@@ -44,6 +44,15 @@ La colonna `attivo` permette di **disattivare** i toponimi non piu' utilizzati s
 Se un toponimo e' **in uso** nello `stradario_generale`, la modifica della descrizione e' bloccata dal guard.  
 In caso di correzioni (es. refusi), si crea un **nuovo** toponimo e si riallineano i record di `config.stradario_generale` interessati.  
 Il trigger `trgfn_toponomastica_bump_normalize` riallinea `indirizzo_normalizzato` sui record collegati.
+
+In alternativa, per manutenzioni controllate, utilizzare `maintenance.proc_bump_toponomastica(...)` che abilita la GUC di manutenzione e applica la correzione con riallineamento.
+
+---
+
+### 🧩 Default stato_id
+
+Se `stato_id` non e' valorizzato, viene impostato da parametro (`state_code_iso3`) tramite `script.fn_get_default_by_param`.  
+Se il parametro non e' configurato e `stato_id` resta NULL, l'operazione va in errore.
 
 ---
 

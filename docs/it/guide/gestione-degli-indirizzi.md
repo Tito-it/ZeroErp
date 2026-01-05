@@ -1,7 +1,7 @@
 # 🌱 Guida alla Gestione degli Indirizzi
 Questa guida illustra l’architettura, le scelte progettuali e i componenti coinvolti nella gestione degli indirizzi in Zero ERP.
 
-> (latest review 23-12-25)
+> (latest review 02-01-26)
 >
 > 👀 **Vedi anche**
 >
@@ -109,6 +109,8 @@ Per tutte le casistiche (rinomina parziale, rinomina totale, fusione vie, variaz
 4. **Storico garantito**
    * Le modifiche sono tracciate in `storico.stradario` e in `storico.indirizzi_dettaglio` (e, se rilevante, nello storico dei comuni).
 
+Per la riclassificazione e' prevista la procedura `maintenance.proc_bump_indirizzi_dettaglio(...)`, che abilita la manutenzione e forza la rinormalizzazione degli indirizzi collegati.
+
 ### Esempi applicativi
 
 * **Rinomina totale via**: nuova via + riallineamento di tutti i civici collegati al vecchio `stradario_id`.
@@ -119,6 +121,13 @@ Per tutte le casistiche (rinomina parziale, rinomina totale, fusione vie, variaz
 
 La correzione di un toponimo non avviene modificando la riga in uso:  
 si crea una **nuova** voce in `config.toponomastica`, si riallineano i record di `config.stradario_generale` interessati e si lascia che la normalizzazione aggiorni `indirizzo_normalizzato`.
+
+### ⚠️ Manutenzione straordinaria (riclassificazione controllata)
+
+Le seguenti procedure sono riservate a **manutenzione straordinaria** e vanno usate solo in contesti controllati:
+
+* `maintenance.proc_bump_toponomastica(...)` — correzione toponimo con riallineamento automatico di `stradario_generale`.
+* `maintenance.proc_bump_indirizzi_dettaglio(...)` — riallineamento degli indirizzi civici dopo riclassificazione.
 
 ---
 

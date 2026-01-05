@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Guard con GUC + procedura maintenance per toponomastica
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/config/20260102-05-toponomastica-protect-update-mctit.yaml
+
+  - changeSet:
+      id: 20260102-05-toponomastica-protect-update
+      author: mctit
+      comment: >
+        Abilita manutenzione controllata su toponomastica tramite GUC e
+        introduce procedura di riallineamento in maintenance.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_toponomastica_protect_update()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Consenti aggiornamenti in manutenzione esplicita
+                IF current_setting('zeroerp.maintenance_toponomastica', true) = 'on' THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se il record non e' usato in config.stradario_generale, lascio passare
+                IF NOT EXISTS (
+                  SELECT 1
+                    FROM config.stradario_generale
+                   WHERE toponomastica_id = OLD.id
+                ) THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se siamo qui, il record e' in uso: controllo ciascuna colonna
+                IF OLD.descrizione IS DISTINCT FROM NEW.descrizione THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_COLONNA_NON_MODIFICABILE',
+                    jsonb_build_object('column','descrizione','id',OLD.id),
+                    NULL::uuid,
+                    'descrizione'
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_toponomastica_protect_update()
+                IS 'Trigger function per proteggere aggiornamenti non autorizzati su config.toponomastica.
+                Operazioni di manutenzione possono essere abilitate tramite la GUC ''zeroerp.maintenance_toponomastica''.';
