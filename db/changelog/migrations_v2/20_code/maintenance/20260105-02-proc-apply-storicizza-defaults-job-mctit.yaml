@@ -1,0 +1,41 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP - Move storicizza procedures from dbops to maintenance
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/maintenance/20260105-02-proc_apply_storicizza_defaults_job-mctit.yaml
+
+  - changeSet:
+      id: 20260105-02-proc_apply_storicizza_defaults_job
+      author: mctit
+
+      # runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Crea la procedura job maintenance.proc_apply_storicizza_defaults_job
+        che chiama maintenance.proc_apply_storicizza_defaults con logging e lock.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_apply_storicizza_defaults_job(
+                   )
+                 LANGUAGE 'plpgsql'
+                 AS $BODY$
+                   BEGIN
+                     PERFORM maintenance.fn_run_and_log(
+                       p_jobname  := 'apply_storicizza_weekly',
+                       p_stepname := 'run_proc_apply_storicizza',
+                       p_sql      := 'call maintenance.proc_apply_storicizza_defaults();',
+                       p_lock_key := hashtext('proc_apply_storicizza_defaults')  -- evita overlap
+                     );
+                   END;
+                   
+                 $BODY$;
+
+               COMMENT ON PROCEDURE maintenance.proc_apply_storicizza_defaults_job()
+                 IS 'Job wrapper per chiamare proc_apply_storicizza_defaults con logging e lock.';

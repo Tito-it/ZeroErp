@@ -126,19 +126,14 @@ si crea una **nuova** voce in `config.toponomastica`, si riallineano i record di
 
 Le seguenti procedure sono riservate a **manutenzione straordinaria** e vanno usate solo in contesti controllati:
 
-* `maintenance.proc_bump_toponomastica(...)` — correzione toponimo con riallineamento automatico di `stradario_generale`.
-* `maintenance.proc_bump_indirizzi_dettaglio(...)` — riallineamento degli indirizzi civici dopo riclassificazione.
+* [`maintenance.proc_bump_toponomastica`](/dbzero/maintenance/funzioni/proc_bump_toponomastica) — correzione toponimo con riallineamento automatico di `stradario_generale`.
+* **[`maintenance.proc_bump_indirizzi_dettaglio`](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio)** — riallineamento degli indirizzi civici dopo riclassificazione.
 
 ---
 
 *Questa guida copre l’intero ciclo di vita e le componenti software per la gestione degli indirizzi in Zero ERP: dalla tabella geografica di base, al dettaglio civico, fino alle funzioni di audit e storicizzazione.*
 
----
-##
-
-
 ### 7. Diagramma ER
-
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%  
 erDiagram

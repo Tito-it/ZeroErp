@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP - Move storicizza procedures from dbops to maintenance
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/maintenance/20260105-01-move-proc-storicizza-to-maintenance-mctit.yaml
+
+  - changeSet:
+      id: 20260105-01-create-maintenance-procs-storicizza
+      author: mctit
+      comment: "Crea le procedure in maintenance.* (spostate da dbops)"
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - dbms: { type: postgresql }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- maintenance.proc_sync_storico_set_storicizza
+              -- Scansiona le tabelle con colonna 'storicizza' avente DEFAULT true
+              -- e sincronizza la lista in config.storico_set_storicizza.
+              -- ==========================================================
+              CREATE OR REPLACE PROCEDURE maintenance.proc_sync_storico_set_storicizza()
+              LANGUAGE plpgsql
+              AS $procedure$
+                DECLARE
+                  rec RECORD;
+                BEGIN
+                  FOR rec IN
+                    SELECT a.attrelid::regclass::text AS table_name
+                      FROM pg_attribute a
+                      JOIN pg_class c ON a.attrelid = c.oid AND c.relkind = 'r'
+                      JOIN pg_namespace n ON c.relnamespace = n.oid
+                      JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+                    WHERE a.attname = 'storicizza'
+                      -- confronta la stringa dell’espressione, non fai cast
+                      AND pg_get_expr(ad.adbin, ad.adrelid) = 'true'
+                  LOOP
+                    INSERT INTO config.storico_set_storicizza(table_name, insert_manuale)
+                    VALUES (rec.table_name, false)
+                    ON CONFLICT (table_name) DO NOTHING;
+                  END LOOP;
+                END;
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_sync_storico_set_storicizza()
+                IS 'Sincronizza config.storico_set_storicizza rilevando tabelle con colonna storicizza avente DEFAULT true.';
+
+              -- ==========================================================
+              -- maintenance.proc_apply_storicizza_defaults
+              -- Applica DEFAULT true su <schema>.<tabella>.storicizza per le tabelle
+              -- elencate in config.storico_set_storicizza.
+              -- ==========================================================
+              CREATE OR REPLACE PROCEDURE maintenance.proc_apply_storicizza_defaults()
+              LANGUAGE plpgsql
+              AS $procedure$
+                DECLARE
+                  rec RECORD;
+                  sch TEXT;
+                  tbl TEXT;
+                BEGIN
+                  FOR rec IN
+                    SELECT table_name
+                      FROM config.storico_set_storicizza
+                  LOOP
+                    -- separa "schema.tabella" in due parti
+                    sch := split_part(rec.table_name, '.', 1);
+                    tbl := split_part(rec.table_name, '.', 2);
+
+                    -- esegue: ALTER TABLE schema.tabella ALTER COLUMN storicizza SET DEFAULT true
+                    EXECUTE format(
+                      'ALTER TABLE %I.%I ALTER COLUMN storicizza SET DEFAULT true',
+                      sch,
+                      tbl
+                    );
+                  END LOOP;
+                END;
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_apply_storicizza_defaults()
+                IS 'Applica DEFAULT true alla colonna storicizza sulle tabelle elencate in config.storico_set_storicizza.';
+
+              -- Pulizia: rimuove le procedure da dbops
+              DROP PROCEDURE IF EXISTS dbops.proc_sync_storico_set_storicizza();
+              DROP PROCEDURE IF EXISTS dbops.proc_apply_storicizza_defaults();
