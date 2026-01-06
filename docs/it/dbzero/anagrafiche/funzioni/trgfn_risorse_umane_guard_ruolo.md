@@ -24,7 +24,7 @@ BEGIN
     NEW.soggetto_ruolo_id := script.fn_guard_soggetto_ruolo(
                             p_soggetto_id       := NULL,
                             p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
-                            p_cd_int_ruolo      := 'RISORSA_UMANA'
+                            p_cd_int_ruolo      := 'RIS_UMANA'
                             );
 
     SELECT sr.soggetto_id

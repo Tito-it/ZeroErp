@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260107-20-create-trgfn-risorse-umane-guard
       author: mctit
-      # runOnChange: true
+      # runAlways: true
       validCheckSum:
         - ANY
       comment: >
