@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Crea tabella config.unita_organizzative
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20260107-01-create-unita-organizzative-mctit.yaml
+
+  - changeSet:
+      id: 20260107-01-create-unita-organizzative
+      author: mctit
+      comment: >
+        Crea la tabella config.unita_organizzative per gestire reparti/uffici
+        con struttura gerarchica e audit standard.
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: unita_organizzative
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "Identificativo univoco interno (PK)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_unita_organizzative
+                    nullable: false
+
+              - column:
+                  name: codice
+                  type: character varying(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: codice_interno
+                  type: character varying(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: parent_id
+                  type: integer
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              # --- Metadata estendibili -------------------------------------
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili JSONB (note, alias, future estensioni)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: unita_organizzative
+            columnNames: codice
+            constraintName: uq_unita_organizzative_codice
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: unita_organizzative
+            columnNames: codice_interno
+            constraintName: uq_unita_organizzative_codice_interno
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: unita_organizzative
+            baseColumnNames: parent_id
+            referencedTableSchemaName: config
+            referencedTableName: unita_organizzative
+            referencedColumnNames: id
+            constraintName: fk_unita_organizzative_parent
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - createIndex:
+            schemaName: config
+            tableName: unita_organizzative
+            indexName: ix_unita_organizzative_parent_id
+            columns:
+              - column:
+                  name: parent_id
+
+        # CHECK policy (no enum)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.unita_organizzative
+                ADD CONSTRAINT chk_unita_organizzative_parent_not_self
+                CHECK (parent_id IS NULL OR parent_id <> id);

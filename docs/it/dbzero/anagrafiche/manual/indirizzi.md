@@ -57,6 +57,9 @@ Supporta:
 
 * **Tracciabilità e storicizzazione**  
   Con il campo `storicizza` e i trigger associati, le modifiche vengono salvate come snapshot nella tabella `storico.indirizzi`.
+  La generazione dei trigger (TX_ID, AUDIT_UPDATE, STORICO) e' affidata al framework di automazione DB
+  (`dbops.fn_run_automations_*`, vedi [Guida Automazioni DB](/guide/automazione-db)).
+  Se le automazioni non sono state eseguite, i campi restano presenti ma non vengono gestiti automaticamente.
 
 ---
 

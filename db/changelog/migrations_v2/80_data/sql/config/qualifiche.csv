@@ -1,0 +1,6 @@
+id,codice,codice_interno,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
+1,AMMINISTRATORE,AMMINISTRATORE,Amministratore,true,{},2025-04-20 11:19:51.92703+02,postgres,2025-08-22 19:16:31.24125+02,titodb
+2,DIPENDENTE,DIPENDENTE,Dipendente,true,{},2025-04-20 11:19:51.92703+02,postgres,2025-08-22 19:16:31.24125+02,titodb
+3,CONSULENTE,CONSULENTE,Consulente,true,{},2025-04-20 11:19:51.92703+02,postgres,2025-08-22 19:16:31.24125+02,titodb
+4,RESPONSABILE,RESPONSABILE,Responsabile,true,{},2025-04-20 11:19:51.92703+02,postgres,2025-08-22 19:16:31.24125+02,titodb
+5,DIRETTORE,DIRETTORE,Direttore,true,{},2025-04-20 11:19:51.92703+02,postgres,2025-08-22 19:16:31.24125+02,titodb

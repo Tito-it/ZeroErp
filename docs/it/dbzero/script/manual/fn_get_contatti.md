@@ -8,6 +8,7 @@
 > * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 > * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
 > * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)
+> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
 > * [config.utilities](/dbzero/config/tabelle/utilities)
 >
 > Approfondimento funzioni:
@@ -16,7 +17,7 @@
 >
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
-La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BIGINT DEFAULT NULL, p_utility_id INTEGER DEFAULT NULL, p_tipo_contatto_id INTEGER DEFAULT NULL)`** restituisce **al più un contatto per ciascun `tipo_contatto_id`**, applicando una logica di priorità basata sul **contesto** (soggetto / ruolo / utility) e privilegiando, a parità di priorità, i contatti marcati come **`is_default = TRUE`**.
+La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BIGINT DEFAULT NULL, p_utility_id INTEGER DEFAULT NULL, p_tipo_contatto_id INTEGER DEFAULT NULL, p_unita_organizzativa_id INTEGER DEFAULT NULL)`** restituisce **al più un contatto per ciascun `tipo_contatto_id`**, applicando una logica di priorità basata sul **contesto** (soggetto / ruolo / utility) e privilegiando, a parità di priorità, i contatti marcati come **`is_default = TRUE`**.
 
 È pensata come **punto di accesso generico** per il recupero dei contatti e come base per funzioni più specializzate (ad esempio `script.fn_get_contatto_default`).
 
@@ -55,7 +56,8 @@ La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BI
 | `p_soggetto_id`       | `UUID`   | —       | ✅ Sì         | Identificativo del soggetto. Se `NULL`, viene generato un errore tramite `fn_log_and_raise_error`.                                 |
 | `p_soggetto_ruolo_id` | `BIGINT` | `NULL`  | ❌ No         | Se valorizzato, consente di privilegiare/filtrare i contatti legati a uno specifico ruolo del soggetto.                            |
 | `p_utility_id`        | `INT`    | `NULL`  | ❌ No         | Se valorizzato, consente di privilegiare/filtrare i contatti associati a una determinata utility/servizio.                         |
-| `p_tipo_contatto_id`  | `INT`    | `NULL`  | ❌ No         | Se valorizzato, limita il risultato ai contatti di uno specifico `tipo_contatto` (es. Amministrazione, Tecnico, Commerciale, ...). |
+| `p_tipo_contatto_id`  | `INT`    | `NULL`  | ❌ No         | Se valorizzato, limita il risultato ai contatti di uno specifico `tipo_contatto`. |
+| `p_unita_organizzativa_id` | `INT` | `NULL` | ❌ No | Se valorizzato, privilegia/filtra i contatti legati a una unita organizzativa specifica. |
 
 ---
 
@@ -66,7 +68,7 @@ La funzione restituisce una **tabella** con le seguenti colonne:
 | Colonna             | Tipo      | Descrizione                                                                                                             |
 | ------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `id`                | `BIGINT`  | Identificativo del contatto in `anagrafiche.contatti`.                                                                  |
-| `tipo_contatto_id`  | `INT`     | Riferimento a `config.tipi_contatti`.                                                                                   |
+| `tipo_contatto_id`  | `INT`     | Riferimento a `config.tipi_contatti` (opzionale).                                                                       |
 | `soggetto_id`       | `UUID`    | Riferimento al soggetto (`anagrafiche.soggetti.id`).                                                                    |
 | `soggetto_ruolo_id` | `BIGINT`  | Eventuale riferimento al ruolo del soggetto (`anagrafiche.soggetti_ruoli.id`). Può essere `NULL` per contatti generici. |
 | `utility_id`        | `INT`     | Eventuale riferimento a una utility/servizio (`config.utilities.id`). Può essere `NULL`.                                |
@@ -106,6 +108,7 @@ Per ogni `tipo_contatto_id`, è restituita **al più una riga** (la “migliore�
      AND (c.soggetto_ruolo_id IS NULL OR c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id)
      AND (c.utility_id        IS NULL OR c.utility_id        IS NOT DISTINCT FROM p_utility_id)
      AND (p_tipo_contatto_id IS NULL OR c.tipo_contatto_id  = p_tipo_contatto_id)
+     AND (c.unita_organizzativa_id IS NULL OR c.unita_organizzativa_id IS NOT DISTINCT FROM p_unita_organizzativa_id)
      ```
 
    * viene calcolata una colonna `priority` secondo lo schema:
@@ -134,6 +137,11 @@ Per ogni `tipo_contatto_id`, è restituita **al più una riga** (la “migliore�
      PARTITION BY candidates.tipo_contatto_id
      ORDER BY
        candidates.priority,
+       CASE
+         WHEN p_unita_organizzativa_id IS NULL THEN 0
+         WHEN candidates.unita_organizzativa_id IS NOT DISTINCT FROM p_unita_organizzativa_id THEN 0
+         ELSE 1
+       END,
        CASE WHEN candidates.is_default THEN 0 ELSE 1 END,
        candidates.id
    ) AS rn

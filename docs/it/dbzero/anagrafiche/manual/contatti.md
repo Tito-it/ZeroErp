@@ -6,6 +6,7 @@
 > * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
 > * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
 > * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)    
+> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
 > * [config.utilities](/dbzero/config/tabelle/utilities)    
 >
 > Approfondimenti funzioni:   
@@ -34,7 +35,8 @@ In questo modo è possibile definire:
 
 
 ### 🎯 Scopo Principale
-(latest review 02-12-25)
+
+(latest review 06-01-26)
 * **Centralizzare i contatti**  
   Un’unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.
 
@@ -43,6 +45,10 @@ In questo modo è possibile definire:
 
 * **Identificare il contatto “default”**  
   Il flag `is_default` permette di marcare un solo contatto di riferimento per ciascun soggetto.
+
+* **Separare reparto e categoria**  
+  Il reparto/ufficio e' indicato da `unita_organizzativa_id`, mentre `tipo_contatto_id`
+  identifica la categoria del contatto (opzionale). Questo evita di usare `tipi_contatti` come reparto.
 
 ---
 
@@ -54,7 +60,8 @@ In questo modo è possibile definire:
 - **Foreign Keys**  
   - `soggetto_id` → `anagrafiche.soggetti(id)` **ON DELETE CASCADE**  
   - `soggetto_ruolo_id` → `anagrafiche.soggetti_ruoli(id)` **ON DELETE CASCADE**  
-  - `tipo_contatto_id` → `config.tipi_contatti(id)` **ON DELETE RESTRICT**  
+  - `tipo_contatto_id` → `config.tipi_contatti(id)` **ON DELETE RESTRICT** (nullable)  
+  - `unita_organizzativa_id` → `config.unita_organizzative(id)` **ON DELETE RESTRICT**
   - `utility_id` → `config.utilities(id)` **ON DELETE CASCADE**  
 
 ---
@@ -76,6 +83,7 @@ In questo modo è possibile definire:
 
 * `ix_contatti_soggetto` su `soggetto_id` per ricerche rapide per soggetto.
 * `ix_contatti_tipo` su `tipo_contatto_id` per filtrare contatti per tipologia.
+* `ix_contatti_unita_organizzativa_id` su `unita_organizzativa_id` per filtrare contatti per reparto.
 * `ix_contatti_utility` su `utility_id` per isolare contatti per servizio.
 
 Migliorano le performance nelle query di recupero contatti per soggetto, tipo o servizio.
@@ -88,28 +96,28 @@ Migliorano le performance nelle query di recupero contatti per soggetto, tipo o 
 ```sql
 -- 1) Contatto globale per il soggetto UUID '123e4567-e89b-12d3-a456-426614174000'
 INSERT INTO anagrafiche.contatti (
-  tipo_contatto_id, soggetto_id,
+  tipo_contatto_id, unita_organizzativa_id, soggetto_id,
   nominativo, email, telefono, is_default
 ) VALUES (
-  1, '123e4567-e89b-12d3-a456-426614174000',
+  1, 1, '123e4567-e89b-12d3-a456-426614174000',
   'Mario Rossi', 'm.rossi@example.com', '0123456789', TRUE
 );
 
 -- 2) Contatto specifico per ruolo (soggetto_ruolo_id = 10)
 INSERT INTO anagrafiche.contatti (
-  tipo_contatto_id, soggetto_id, soggetto_ruolo_id,
+  tipo_contatto_id, unita_organizzativa_id, soggetto_id, soggetto_ruolo_id,
   nominativo, cellulare
 ) VALUES (
-  2, '123e4567-e89b-12d3-a456-426614174000', 10,
+  2, 2, '123e4567-e89b-12d3-a456-426614174000', 10,
   'Luca Bianchi', '3801234567'
 );
 
 -- 3) Contatto per utility (utility_id = 5)
 INSERT INTO anagrafiche.contatti (
-  tipo_contatto_id, soggetto_id, utility_id,
+  tipo_contatto_id, unita_organizzativa_id, soggetto_id, utility_id,
   nominativo, pec
 ) VALUES (
-  3, '123e4567-e89b-12d3-a456-426614174000', 5,
+  3, 3, '123e4567-e89b-12d3-a456-426614174000', 5,
   'Ufficio Tecnico', 'tecnico@azienda.pec'
 );
 
@@ -154,6 +162,7 @@ erDiagram
     soggetti_ruoli   ||--o{ contatti : scoped_by
     utilities        ||--o{ contatti : for
     tipi_contatti    ||--o{ contatti : typed_as
+    unita_organizzative ||--o{ contatti : belongs_to
     titoli_cortesia  ||--o{ contatti : courtesy
 
     soggetti        { uuid id PK }

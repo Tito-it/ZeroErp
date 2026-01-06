@@ -58,6 +58,9 @@ La tabella **`anagrafiche.indirizzi_soggetti`** gestisce gli **indirizzi associa
 
 * **Audit e storicizzazione**
   Con `storicizza = TRUE`, le modifiche vengono tracciate tramite snapshot storici e `tx_id`.
+  La generazione dei trigger (TX_ID, AUDIT_UPDATE, STORICO) e' affidata al framework di automazione DB
+  (`dbops.fn_run_automations_*`, vedi [Guida Automazioni DB](/guide/automazione-db)).
+  Se le automazioni non sono state eseguite, i campi restano presenti ma non vengono gestiti automaticamente.
 
 ---
 
@@ -142,6 +145,19 @@ Questa impostazione consente:
 
 * **Trigger di normalizzazione**
   Uniforma i campi e applica default geografici.
+
+* **Trigger di sync geoloc**
+  Allinea `geoloc` al dettaglio civico quando `indirizzo_dettaglio_id` e' valorizzato.
+
+---
+
+### 📍 Nota su `geoloc`
+
+* Il campo `geoloc` e' disponibile anche su `indirizzi_soggetti` e viene sincronizzato dal trigger
+  `trg_indirizzi_soggetti_sync_geoloc_ins_upd`, che usa `anagrafiche.trgfn_indirizzi_sync_geoloc`.
+* La geolocalizzazione viene comunque esposta nelle viste resolved
+  (`vw_indirizzi_resolved_*`) tramite `indirizzi_dettaglio` o, in fallback, dal valore presente in tabella.
+* Se `indirizzo_dettaglio_id` e' NULL, il trigger non interviene e lascia invariato `geoloc`.
 
 ---
 

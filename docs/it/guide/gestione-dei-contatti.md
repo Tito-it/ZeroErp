@@ -1,6 +1,6 @@
 # 📘 Guida Tecnica – Gestione dei Contatti
 
-> (latest review 16-12-25)
+> (latest review 06-01-26)
 >
 > 📋 **Destinatari:** sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -17,7 +17,7 @@
 Questa guida definisce:
 
 * il modello dati centralizzato dei contatti (`anagrafiche.contatti`),
-* il ruolo della tabella `config.tipi_contatti`,
+* il ruolo delle tabelle `config.tipi_contatti` e `config.unita_organizzative`,
 * la logica dei contesti (soggetto, ruolo, utility),
 * le regole di default e i trigger associati,
 * le funzioni di lettura (`fn_get_contatti`, `fn_get_contatto_default`),
@@ -65,14 +65,13 @@ La guida sugli indirizzi introduce il concetto di *contesto*. Qui vale lo stesso
 
 ---
 
-## 🏷️ 2. La tabella `config.tipi_contatti`
+## 🏷️ 2. Reparti e categorie
 
-### 2.1 Significato funzionale
+### 2.1 Unita organizzative (reparti)
 
-Questa tabella **non rappresenta il tipo di canale** (email / telefono / PEC / cellulare),
-perché tali colonne esistono già in `anagrafiche.contatti`.
-
-`config.tipi_contatti` rappresenta invece **la categoria o reparto di riferimento**, ad esempio:
+I reparti/uffici sono gestiti nella tabella **`config.unita_organizzative`**.
+Questa tabella identifica la collocazione organizzativa del referente (es. Amministrazione, Tecnico).
+Esempi:
 
 * Amministrazione (AMM)
 * Tecnico (TEC)
@@ -83,13 +82,16 @@ perché tali colonne esistono già in `anagrafiche.contatti`.
 * Supporto (SUP)
 * Marketing (MKT)
 
-Quindi un contatto può essere:
+Il reparto si esprime quindi con `contatti.unita_organizzativa_id`, non con il nominativo.
 
-* *Email commerciale*
-* *Telefono amministrazione*
-* *Pec legale*
+### 2.2 Tipi contatto (categoria)
 
-… ma sempre tramite **le colonne della tabella contatti**, non tramite tipi diversi.
+`config.tipi_contatti` identifica la **categoria del contatto**, non il reparto,
+ed e' opzionale (puo essere NULL).
+Le informazioni di canale rimangono nelle colonne `email`, `telefono`, `pec`, ecc.
+
+> Nota: inizialmente `tipi_contatti` e' stato usato come reparto.
+> Il refactor sposta questo significato in `config.unita_organizzative`.
 
 ### 2.2 Perché non usare tipi “EMAIL / TELEFONO / PEC”?
 
@@ -259,6 +261,10 @@ erDiagram
         int id PK
     }
 
+    unita_organizzative {
+        int id PK
+    }
+
     utilities {
         int id PK
     }
@@ -275,6 +281,7 @@ erDiagram
     soggetti_ruoli  ||--o{ contatti        : scoped_by
     utilities       ||--o{ contatti        : per_utility
     tipi_contatti   ||--o{ contatti        : typed_as
+    unita_organizzative ||--o{ contatti    : belongs_to
     titoli_cortesia ||--o{ contatti        : courtesy_title
     
     %% Relazione soggetti ruoli

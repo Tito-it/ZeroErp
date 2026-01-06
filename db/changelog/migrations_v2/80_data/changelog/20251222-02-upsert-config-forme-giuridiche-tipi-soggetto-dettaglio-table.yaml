@@ -54,4 +54,3 @@ databaseChangeLog:
                   type: STRING
                   defaultValue: "NOW()"
               - column: { name: tx_id, type: text }
-              # - column: { name: storicizza, type: BOOLEAN }

@@ -8,6 +8,7 @@
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
 > • [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)   
 > • [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)   
+> • [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
 > • [config.utilities](/dbzero/config/tabelle/utilities)   
 >
 > **Approfondimento funzioni:**
@@ -22,7 +23,8 @@ La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di
 
 * **ruolo** (`soggetto_ruolo`),
 * **utility** (es. specifica fornitura/servizio),
-* **tipo di contatto** (es. amministrativo, commerciale, tecnico).
+* **tipo di contatto** (categoria opzionale).
+* **unita organizzativa** (reparto/ufficio).
 
 La funzione **riutilizza la logica di `script.fn_get_contatti`** per costruire l’elenco di contatti candidati e applica una selezione che garantisce al massimo **un solo record** come contatto di default, secondo priorità ben definite.
 
@@ -37,7 +39,8 @@ CREATE OR REPLACE FUNCTION script.fn_get_contatto_default(
     p_soggetto_id       uuid,
     p_soggetto_ruolo_id bigint  DEFAULT NULL,
     p_utility_id        integer DEFAULT NULL,
-    p_tipo_contatto_id  integer DEFAULT NULL
+    p_tipo_contatto_id  integer DEFAULT NULL,
+    p_unita_organizzativa_id integer DEFAULT NULL
 )
 RETURNS TABLE (
     id               bigint,
@@ -67,6 +70,7 @@ LANGUAGE sql;
 | `p_soggetto_ruolo_id` | `bigint`  |  No   | Se valorizzato, restringe la ricerca ai contatti legati a **quello specifico ruolo** (`anagrafiche.soggetti_ruoli`). |
 | `p_utility_id`        | `integer` |  No   | Se valorizzato, filtra per una specifica **utility** (es. servizio/fornitura collegata al contatto).                 |
 | `p_tipo_contatto_id`  | `integer` |  No   | Se valorizzato, limita ai contatti di un certo **tipo** (FK a `config.tipi_contatti`).                               |
+| `p_unita_organizzativa_id` | `integer` | No | Se valorizzato, restringe ai contatti del reparto/ufficio (`config.unita_organizzative`). |
 
 > ℹ️ Tutti i parametri opzionali vengono passati “as-is” a `script.fn_get_contatti`, che incapsula la logica di filtro dettagliata.
 
@@ -109,7 +113,8 @@ WITH all_candidates AS (
         p_soggetto_id,
         p_soggetto_ruolo_id,
         p_utility_id,
-        p_tipo_contatto_id
+        p_tipo_contatto_id,
+        p_unita_organizzativa_id
     )
 ),
 only_default AS (
@@ -166,6 +171,7 @@ WHERE rn = 1;
 * `anagrafiche.soggetti_ruoli`
 * `anagrafiche.contatti`
 * `config.tipi_contatti`
+* `config.unita_organizzative`
 * `config.utilities`
 
 ---
