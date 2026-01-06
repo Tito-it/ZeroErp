@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260107-20-create-trgfn-risorse-umane-guard
       author: mctit
-      runOnChange: true
+      # runOnChange: true
       validCheckSum:
         - ANY
       comment: >
@@ -41,7 +41,7 @@ databaseChangeLog:
                   NEW.soggetto_ruolo_id := script.fn_guard_soggetto_ruolo(
                                           p_soggetto_id       := NULL,
                                           p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
-                                          p_cd_int_ruolo      := 'RISORSA_UMANA'
+                                          p_cd_int_ruolo      := 'RIS_UMANA'
                                           );
 
                   SELECT sr.soggetto_id
@@ -70,7 +70,7 @@ databaseChangeLog:
 
 
               COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_guard_ruolo()
-              IS 'Verifica che soggetto_ruolo_id sia di tipo RISORSA_UMANA.';
+              IS 'Verifica che soggetto_ruolo_id sia di tipo RIS_UMANA.';
 
               DROP TRIGGER IF EXISTS trg_risorse_umane_a10_guard_ruolo_ins_upd
               ON anagrafiche.risorse_umane;
@@ -83,4 +83,4 @@ databaseChangeLog:
 
               COMMENT ON TRIGGER trg_risorse_umane_a10_guard_ruolo_ins_upd
               ON anagrafiche.risorse_umane
-              IS 'Guard ruolo: richiede tipo_ruolo RISORSA_UMANA.';
+              IS 'Guard ruolo: richiede tipo_ruolo RIS_UMANA.';

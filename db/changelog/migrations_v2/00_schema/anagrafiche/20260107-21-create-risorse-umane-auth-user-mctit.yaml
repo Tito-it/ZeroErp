@@ -10,6 +10,8 @@ databaseChangeLog:
   - changeSet:
       id: 20260107-21-create-risorse-umane-auth-user
       author: mctit
+      validCheckSum:
+        - ANY
       comment: >
         Tabella ponte 1:1 tra anagrafiche.risorse_umane e django.auth_user.
       changes:
@@ -97,17 +99,6 @@ databaseChangeLog:
             onDelete: RESTRICT
             onUpdate: CASCADE
 
-        - addForeignKeyConstraint:
-            baseTableSchemaName: anagrafiche
-            baseTableName: risorse_umane_auth_user
-            baseColumnNames: auth_user_id
-            referencedTableSchemaName: django
-            referencedTableName: auth_user
-            referencedColumnNames: id
-            constraintName: fk_risorse_umane_auth_user_django
-            onDelete: RESTRICT
-            onUpdate: CASCADE
-
         - createIndex:
             schemaName: anagrafiche
             tableName: risorse_umane_auth_user
@@ -123,3 +114,25 @@ databaseChangeLog:
             columns:
               - column:
                   name: auth_user_id
+
+  - changeSet:
+      id: 20260107-21-01-add-fk-risorse-umane-auth-user-django
+      author: mctit
+      comment: >
+        Aggiunge la FK a django.auth_user solo se la tabella esiste.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: django
+            tableName: auth_user
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: risorse_umane_auth_user
+            baseColumnNames: auth_user_id
+            referencedTableSchemaName: django
+            referencedTableName: auth_user
+            referencedColumnNames: id
+            constraintName: fk_risorse_umane_auth_user_django
+            onDelete: RESTRICT
+            onUpdate: CASCADE

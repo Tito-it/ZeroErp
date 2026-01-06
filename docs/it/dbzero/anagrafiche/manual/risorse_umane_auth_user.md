@@ -36,6 +36,8 @@ tra una risorsa umana e l'utente software Django.
 
 * La presenza del collegamento e' opzionale: non tutte le risorse
   devono avere un account software.
+* La tabella ponte viene creata solo se lo schema `django` e la tabella
+  `auth_user` sono presenti nel database (precondition in Liquibase).
 
 ---
 

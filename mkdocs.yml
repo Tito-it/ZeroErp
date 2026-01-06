@@ -127,6 +127,13 @@ nav:
                   #    - Build & Deploy: dev/frontend/frontend-build-deploy.md
 
         - Guide tecniche:
+                  - Soggetti e ruoli anagrafici: it/guide/soggetti-e-ruoli-anagrafici.md
+                  - Risorse Umane e Accessi al Software: it/guide/risorse-umane-e-accessi.md
+                  - Gestione delle Istanze Utility: it/guide/gestione-delle-istanze-utility.md
+                  - Generazione di un cliente: it/guide/generazione-cliente.md
+                  - Gestione degli indirizzi: it/guide/gestione-degli-indirizzi.md
+                  - Gestione dei contatti: it/guide/gestione-dei-contatti.md
+                  - Gestione conti bancari: it/guide/gestione-conti-bancari.md
                   - Implementazione Transaction ID: it/guide/tx_id_implementation_guide.md
                   - Storicizzazione Tabelle: it/guide/storicizzazione-tabelle.md
                   - Configurazione e gestione parametri: it/guide/configurazione-e-gestione-parametri.md
@@ -135,12 +142,6 @@ nav:
                             - Messaggi di Errore: it/guide/Messaggi-di-Errore-e-Generazione-Log.md
                             - Messaggi di Audit: it/guide/messaggi-audit.md
                             - Processi e Job: it/guide/Analisi-tracciamento-processi-e-job.md
-                  - Soggetti e ruoli anagrafici: it/guide/soggetti-e-ruoli-anagrafici.md
-                  - Gestione delle Istanze Utility: it/guide/gestione-delle-istanze-utility.md
-                  - Generazione di un cliente: it/guide/generazione-cliente.md
-                  - Gestione degli indirizzi: it/guide/gestione-degli-indirizzi.md
-                  - Gestione dei contatti: it/guide/gestione-dei-contatti.md
-                  - Gestione conti bancari: it/guide/gestione-conti-bancari.md
 
         - Glossario:
                   - Dev&Ops: it/glossario/devops&db.md
