@@ -25,5 +25,11 @@
 | ix_ddt_ddt_id_fk | `CREATE INDEX ix_ddt_ddt_id_fk ON storico.ddt USING btree (ddt_id)` |
 | pk_storico_ddt | `CREATE UNIQUE INDEX pk_storico_ddt ON storico.ddt USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_ddt_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_ddt_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

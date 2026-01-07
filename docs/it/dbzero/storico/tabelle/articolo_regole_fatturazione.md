@@ -25,5 +25,11 @@
 | ix_articolo_regole_fatturazione_articolo_regole_fatturazione_id | `CREATE INDEX ix_articolo_regole_fatturazione_articolo_regole_fatturazione_id ON storico.articolo_regole_fatturazione USING btree (articolo_regole_fatturazione_id)` |
 | pk_storico_articolo_regole_fatturazione | `CREATE UNIQUE INDEX pk_storico_articolo_regole_fatturazione ON storico.articolo_regole_fatturazione USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_articolo_regole_fatturazione_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_articolo_regole_fatturazione_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

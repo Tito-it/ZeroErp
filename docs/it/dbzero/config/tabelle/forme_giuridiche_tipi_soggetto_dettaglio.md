@@ -35,6 +35,8 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_forme_giuridiche_tipi_soggetto_dettaglio_audit_data__eaaf9f | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_forme_giuridiche_tipi_soggetto_dettaglio_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_forme_giuridiche_tipi_soggetto_dettaglio_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

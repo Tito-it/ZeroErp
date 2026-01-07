@@ -25,5 +25,11 @@
 | ix_risorse_umane_risorse_umane_id_fk | `CREATE INDEX ix_risorse_umane_risorse_umane_id_fk ON storico.risorse_umane USING btree (risorse_umane_id)` |
 | pk_storico_risorse_umane | `CREATE UNIQUE INDEX pk_storico_risorse_umane ON storico.risorse_umane USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_risorse_umane_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_risorse_umane_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

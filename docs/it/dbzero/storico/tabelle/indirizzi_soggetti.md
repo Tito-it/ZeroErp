@@ -25,5 +25,11 @@
 | ix_indirizzi_soggetti_indirizzi_soggetti_id_fk | `CREATE INDEX ix_indirizzi_soggetti_indirizzi_soggetti_id_fk ON storico.indirizzi_soggetti USING btree (indirizzi_soggetti_id)` |
 | pk_storico_indirizzi_soggetti | `CREATE UNIQUE INDEX pk_storico_indirizzi_soggetti ON storico.indirizzi_soggetti USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_indirizzi_soggetti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_indirizzi_soggetti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

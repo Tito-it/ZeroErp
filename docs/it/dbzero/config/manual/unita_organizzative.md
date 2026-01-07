@@ -16,6 +16,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 07-01-26)
 La tabella **`config.unita_organizzative`** definisce il catalogo dei reparti/uffici
 utilizzabili nell'anagrafica (es. Amministrazione, Tecnico, Commerciale).
 Nasce per separare in modo netto il concetto di **unita organizzativa** dai

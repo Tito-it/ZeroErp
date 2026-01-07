@@ -25,5 +25,11 @@
 | ix_bank_branches_bank_branches_id_fk | `CREATE INDEX ix_bank_branches_bank_branches_id_fk ON storico.bank_branches USING btree (bank_branches_id)` |
 | pk_storico_bank_branches | `CREATE UNIQUE INDEX pk_storico_bank_branches ON storico.bank_branches USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_bank_branches_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_bank_branches_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -25,5 +25,11 @@
 | ix_registri_fatturazione_registri_fatturazione_id_fk | `CREATE INDEX ix_registri_fatturazione_registri_fatturazione_id_fk ON storico.registri_fatturazione USING btree (registri_fatturazione_id)` |
 | pk_storico_registri_fatturazione | `CREATE UNIQUE INDEX pk_storico_registri_fatturazione ON storico.registri_fatturazione USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_registri_fatturazione_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_registri_fatturazione_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

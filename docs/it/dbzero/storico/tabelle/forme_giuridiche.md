@@ -25,5 +25,11 @@
 | ix_forme_giuridiche_forme_giuridiche_id_fk | `CREATE INDEX ix_forme_giuridiche_forme_giuridiche_id_fk ON storico.forme_giuridiche USING btree (forme_giuridiche_id)` |
 | pk_storico_forme_giuridiche | `CREATE UNIQUE INDEX pk_storico_forme_giuridiche ON storico.forme_giuridiche USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_forme_giuridiche_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_forme_giuridiche_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

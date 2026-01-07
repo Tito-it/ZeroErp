@@ -25,5 +25,11 @@
 | ix_tipi_soggetto_dettaglio_tipi_indirizzo_tipi_soggetto_dettagl | `CREATE INDEX ix_tipi_soggetto_dettaglio_tipi_indirizzo_tipi_soggetto_dettagl ON storico.tipi_soggetto_dettaglio_tipi_indirizzo USING btree (tipi_soggetto_dettaglio_tipi_indirizzo_id)` |
 | pk_storico_tipi_soggetto_dettaglio_tipi_indirizzo | `CREATE UNIQUE INDEX pk_storico_tipi_soggetto_dettaglio_tipi_indirizzo ON storico.tipi_soggetto_dettaglio_tipi_indirizzo USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_tipi_soggetto_dettaglio_tipi_indirizzo_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_tipi_soggetto_dettaglio_tipi_indirizzo_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -25,5 +25,11 @@
 | ix_articoli_articoli_id_fk | `CREATE INDEX ix_articoli_articoli_id_fk ON storico.articoli USING btree (articoli_id)` |
 | pk_storico_articoli | `CREATE UNIQUE INDEX pk_storico_articoli ON storico.articoli USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_articoli_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_articoli_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

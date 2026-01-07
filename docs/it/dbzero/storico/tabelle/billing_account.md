@@ -25,5 +25,11 @@
 | ix_billing_account_billing_account_id_fk | `CREATE INDEX ix_billing_account_billing_account_id_fk ON storico.billing_account USING btree (billing_account_id)` |
 | pk_storico_billing_account | `CREATE UNIQUE INDEX pk_storico_billing_account ON storico.billing_account USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_billing_account_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_billing_account_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

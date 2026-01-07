@@ -25,5 +25,11 @@
 | ix_ddt_righe_ddt_righe_id_fk | `CREATE INDEX ix_ddt_righe_ddt_righe_id_fk ON storico.ddt_righe USING btree (ddt_righe_id)` |
 | pk_storico_ddt_righe | `CREATE UNIQUE INDEX pk_storico_ddt_righe ON storico.ddt_righe USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_ddt_righe_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_ddt_righe_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}
