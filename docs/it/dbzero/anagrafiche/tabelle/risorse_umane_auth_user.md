@@ -37,6 +37,7 @@
 |------|--------|--------|--------|
 | trg_risorse_umane_auth_user_a10_guard_gestore_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_guard_gestore()` |
 | trg_risorse_umane_auth_user_a10_guard_gestore_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_guard_gestore()` |
+| trg_risorse_umane_auth_user_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

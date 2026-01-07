@@ -33,5 +33,10 @@
 | uq_unita_organizzative_codice | `CREATE UNIQUE INDEX uq_unita_organizzative_codice ON config.unita_organizzative USING btree (codice)` |
 | uq_unita_organizzative_codice_interno | `CREATE UNIQUE INDEX uq_unita_organizzative_codice_interno ON config.unita_organizzative USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_unita_organizzative_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -51,5 +51,12 @@
 | uq_artuomop_articolo_uom | `CREATE UNIQUE INDEX uq_artuomop_articolo_uom ON catalogo.articoli_uom_operativa USING btree (articolo_id, uom_id)` |
 | uqidx_artuomop_one_base | `CREATE UNIQUE INDEX uqidx_artuomop_one_base ON catalogo.articoli_uom_operativa USING btree (articolo_id) WHERE (is_base IS TRUE)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_articoli_uom_operativa_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_articoli_uom_operativa_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('articoli_uom_operativa_id')` |
+| trg_articoli_uom_operativa_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('articoli_uom_operativa_id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

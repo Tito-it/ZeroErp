@@ -25,11 +25,5 @@
 | ix_soggetti_ruoli_conti_bancari_soggetti_ruoli_conti_bancari_id | `CREATE INDEX ix_soggetti_ruoli_conti_bancari_soggetti_ruoli_conti_bancari_id ON storico.soggetti_ruoli_conti_bancari USING btree (soggetti_ruoli_conti_bancari_id)` |
 | pk_storico_soggetti_ruoli_conti_bancari | `CREATE UNIQUE INDEX pk_storico_soggetti_ruoli_conti_bancari ON storico.soggetti_ruoli_conti_bancari USING btree (id)` |
 
-## 🚨 Trigger
-| Nome | Timing | Evento | Azione |
-|------|--------|--------|--------|
-| trg_soggetti_ruoli_conti_bancari_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_soggetti_ruoli_conti_bancari_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-
 ---
 {% include-markdown "signature-core.md" %}

@@ -52,6 +52,7 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_contatti_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_contatti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_contatti_set_default_contatto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_contatti_set_default_contatto()` |
 | trg_contatti_set_default_contatto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_contatti_set_default_contatto()` |
 | trg_contatti_tx_id_managed_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

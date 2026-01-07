@@ -1,0 +1,29 @@
+# 📚 Tabella `risorse_umane`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO | nextval('storico.risorse_umane_id_seq'::regclass) |
+| risorse_umane_id | bigint | NO |  |
+| change_type | character | YES | 'A'::bpchar |
+| tipo_operazione | smallint | YES |  |
+| snapshot | jsonb | YES |  |
+| user_insert | text | YES | CURRENT_USER |
+| data_insert | timestamp with time zone | YES | now() |
+| tx_id | uuid | YES |  |
+| valid_from | timestamp with time zone | YES | now() |
+| valid_to | timestamp with time zone | YES |  |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| PRIMARY KEY | pk_storico_risorse_umane | id |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_risorse_umane_risorse_umane_id_fk | `CREATE INDEX ix_risorse_umane_risorse_umane_id_fk ON storico.risorse_umane USING btree (risorse_umane_id)` |
+| pk_storico_risorse_umane | `CREATE UNIQUE INDEX pk_storico_risorse_umane ON storico.risorse_umane USING btree (id)` |
+
+---
+{% include-markdown "signature-core.md" %}

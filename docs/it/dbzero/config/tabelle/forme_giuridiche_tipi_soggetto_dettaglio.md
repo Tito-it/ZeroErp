@@ -31,5 +31,10 @@
 | ix_fg_tsd_tipo_soggetto_dettaglio_id | `CREATE INDEX ix_fg_tsd_tipo_soggetto_dettaglio_id ON config.forme_giuridiche_tipi_soggetto_dettaglio USING btree (tipo_soggetto_dettaglio_id)` |
 | pk_forme_giuridiche_tsd | `CREATE UNIQUE INDEX pk_forme_giuridiche_tsd ON config.forme_giuridiche_tipi_soggetto_dettaglio USING btree (forma_giuridica_id, tipo_soggetto_dettaglio_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_forme_giuridiche_tipi_soggetto_dettaglio_audit_data__eaaf9f | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

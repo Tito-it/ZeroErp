@@ -50,6 +50,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_note_preventivo_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_note_preventivo_validate_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.preventivi_righe', 'preventivo_id', 'PREVENTIVO')` |
 | trg_note_preventivo_validate_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.preventivi_righe', 'preventivo_id', 'PREVENTIVO')` |
 

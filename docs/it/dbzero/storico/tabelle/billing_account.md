@@ -3,8 +3,8 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | bigint | NO |  |
-| billing_account_id | integer | NO |  |
+| id | bigint | NO | nextval('storico.billing_account_id_seq'::regclass) |
+| billing_account_id | bigint | NO |  |
 | change_type | character | YES | 'A'::bpchar |
 | tipo_operazione | smallint | YES |  |
 | snapshot | jsonb | YES |  |
@@ -24,12 +24,6 @@
 |------|-------------|
 | ix_billing_account_billing_account_id_fk | `CREATE INDEX ix_billing_account_billing_account_id_fk ON storico.billing_account USING btree (billing_account_id)` |
 | pk_storico_billing_account | `CREATE UNIQUE INDEX pk_storico_billing_account ON storico.billing_account USING btree (id)` |
-
-## 🚨 Trigger
-| Nome | Timing | Evento | Azione |
-|------|--------|--------|--------|
-| trg_billing_account_ins_upd_gen_tx_id | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_billing_account_ins_upd_gen_tx_id | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

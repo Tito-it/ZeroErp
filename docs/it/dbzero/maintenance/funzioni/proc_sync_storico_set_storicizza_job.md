@@ -15,11 +15,12 @@ AS $procedure$
     PERFORM maintenance.fn_run_and_log(
       p_jobname  := 'sync_storico_set_storicizza',
       p_stepname := 'run_sync_storico_set_storicizza',
-      p_sql      := 'call dbops.proc_sync_storico_set_storicizza();',
+      p_sql      := 'call maintenance.proc_sync_storico_set_storicizza();',
       p_lock_key := hashtext('proc_sync_storico_set_storicizza')  -- evita overlap
     );
   END;
-  $procedure$
+  
+$procedure$
 ```
 
 ---

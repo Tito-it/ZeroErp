@@ -41,10 +41,13 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_resellers_a10_protect_codice_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_protect_codice()` |
+| trg_resellers_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_resellers_guard_ruolo_reseller_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_guard_ruolo_reseller()` |
 | trg_resellers_guard_ruolo_reseller_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_guard_ruolo_reseller()` |
 | trg_resellers_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_normalize()` |
 | trg_resellers_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_resellers_normalize()` |
+| trg_resellers_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('resellers_id')` |
+| trg_resellers_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('resellers_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

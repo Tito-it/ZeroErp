@@ -43,6 +43,9 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_articolo_regole_fatturazione_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_articolo_regole_fatturazione_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_articolo_regole_fatturazione_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('articolo_regole_fatturazione_id')` |
+| trg_articolo_regole_fatturazione_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('articolo_regole_fatturazione_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

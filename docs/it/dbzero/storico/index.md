@@ -3,8 +3,10 @@
 ## 📚 Tabelle
 - [articoli](tabelle/articoli.md)
 - [articoli_componenti](tabelle/articoli_componenti.md)
+- [articoli_uom_operativa](tabelle/articoli_uom_operativa.md)
 - [articolo_regole_fatturazione](tabelle/articolo_regole_fatturazione.md)
 - [attivita_fatturabili](tabelle/attivita_fatturabili.md)
+- [bank_branches](tabelle/bank_branches.md)
 - [billing_account](tabelle/billing_account.md)
 - [catasto_unita_immobiliari](tabelle/catasto_unita_immobiliari.md)
 - [clienti](tabelle/clienti.md)
@@ -13,6 +15,8 @@
 - [conti_bancari](tabelle/conti_bancari.md)
 - [dati_catastali](tabelle/dati_catastali.md)
 - [dati_societari](tabelle/dati_societari.md) — * **Versionamento completo**   Acquisire snapshot di ogni record di `anagrafiche.dati_societari` per garantire la tracciabilità delle evoluzioni nel tempo. * **Audit e compliance**   Conservare informazioni su chi (`user_insert`) e quando (`data_insert`) è stata eseguita l’operazione, nonché su quale transazione di business (`tx_id`). * **Intervalli di validità**   Definire periodi di efficacia di ciascuno snapshot con `valid_from` (inclusivo) e `valid_to` (esclusivo), facilitando interrogazioni temporali.
+- [ddt](tabelle/ddt.md)
+- [ddt_righe](tabelle/ddt_righe.md)
 - [emittenti_fiscali](tabelle/emittenti_fiscali.md)
 - [fatture](tabelle/fatture.md)
 - [fatture_righe](tabelle/fatture_righe.md)
@@ -21,18 +25,21 @@
 - [fornitori](tabelle/fornitori.md)
 - [indirizzi](tabelle/indirizzi.md) — * **Versionamento degli indirizzi**     Ogni operazione su `anagrafiche.indirizzi` (INSERT, UPDATE, DELETE) genera un record nello storico che ne conserva lo stato precedente o iniziale.
 - [indirizzi_dettaglio](tabelle/indirizzi_dettaglio.md) — * **Audit Trail**: tracciare ogni modifica ai dettagli degli indirizzi consentendo la ricostruzione dello stato storico. * **Versioning temporale**: supportare query basate su periodi di validità tramite `valid_from` e `valid_to`. * **Schema futuro‑proof**: salvare l’intero stato del record in JSONB senza richiedere aggiornamenti di schema a ogni nuova colonna.
+- [indirizzi_soggetti](tabelle/indirizzi_soggetti.md)
 - [istanze_dati_precontrattuali](tabelle/istanze_dati_precontrattuali.md)
 - [iva](tabelle/iva.md)
 - [iva_assoggettamenti](tabelle/iva_assoggettamenti.md)
 - [note_stili](tabelle/note_stili.md)
 - [ordini](tabelle/ordini.md)
 - [ordini_righe](tabelle/ordini_righe.md)
+- [ordini_righe_fulfillment](tabelle/ordini_righe_fulfillment.md)
 - [parameter_overrides](tabelle/parameter_overrides.md) — * **Versionamento degli override**   Catturare ogni modifica ai record di `config.parameter_overrides`, consentendo di risalire allo stato precedente o iniziale di un override. * **Audit e compliance**   Archivio immutabile di tutte le operazioni, con metadati di utente e timestamp, per garantire tracciabilità e analisi storiche.
 - [parameters](tabelle/parameters.md) — * **Versionamento dei parametri**   Registrare ogni modifica (INSERT, UPDATE, DELETE) sui parametri definiti in `config.parameters`, abilitando rollback e analisi storica. * **Audit e compliance**   Documentare chi (`user_insert`) e quando (`data_insert`) hanno effettuato le modifiche, mantenendo un registro immutabile.
 - [pdp](tabelle/pdp.md) — `storico.pdp` conserva la **timeline** dei Punti di Prelievo: per ogni modifica allo stato corrente (`anagrafiche.pdp`) registra uno **snapshot JSONB**, la **tipologia di operazione** (`I`,`U`,`D`), il **tx_id** e la **finestra di validità** (`valid_from`, `valid_to`). È di fatto una **SCD Type 2** (Slowly Changing Dimension) specializzata per i PDP.
 - [registri_fatturazione](tabelle/registri_fatturazione.md)
 - [regole_fatturazione_articolo](tabelle/regole_fatturazione_articolo.md)
 - [resellers](tabelle/resellers.md)
+- [risorse_umane](tabelle/risorse_umane.md)
 - [soggetti](tabelle/soggetti.md) — * **Versionamento dei soggetti**   Ogni modifica (INSERT, UPDATE, DELETE) su `anagrafiche.soggetti` genera un record in storico con lo stato precedente, il tipo di operazione e i metadati di audit.
 - [soggetti_conti_bancari](tabelle/soggetti_conti_bancari.md)
 - [soggetti_ruoli_conti_bancari](tabelle/soggetti_ruoli_conti_bancari.md)

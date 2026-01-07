@@ -9,13 +9,14 @@
 > Approfondimento funzioni:
 >
 > * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log)
-> * [dbops.proc_sync_storico_set_storicizza](/dbzero/dbops/funzioni/proc_sync_storico_set_storicizza)
+> * [maintenance.proc_sync_storico_set_storicizza](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza)
 
 ---
 
 ### 🎯 Scopo Principale
 
-Wrapper di job che **esegue e traccia** la sincronizzazione della tabella `config.storico_set_storicizza`, delegando l’esecuzione alla procedura core `dbops.proc_sync_storico_set_storicizza()` e centralizzando **logging** e **advisory lock** tramite `maintenance.fn_run_and_log`.
+(last review 07-01-26)
+Wrapper di job che **esegue e traccia** la sincronizzazione della tabella `config.storico_set_storicizza`, delegando l’esecuzione alla procedura core `maintenance.proc_sync_storico_set_storicizza()` e centralizzando **logging** e **advisory lock** tramite `maintenance.fn_run_and_log`.
 
 ---
 
@@ -33,7 +34,7 @@ PROCEDURE maintenance.proc_sync_storico_set_storicizza_job()
 
    * `p_jobname = 'sync_storico_set_storicizza'`
    * `p_stepname = 'run_sync_storico_set_storicizza'`
-   * `p_sql = 'CALL dbops.proc_sync_storico_set_storicizza();'`
+   * `p_sql = 'CALL maintenance.proc_sync_storico_set_storicizza();'`
    * `p_lock_key = hashtext('proc_sync_storico_set_storicizza')` per **evitare overlap**.
 2. `fn_run_and_log` si occupa di:
 

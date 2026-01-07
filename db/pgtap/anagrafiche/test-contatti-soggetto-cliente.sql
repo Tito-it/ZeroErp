@@ -206,7 +206,8 @@ SELECT results_eq(
         (SELECT soggetto_id       FROM tmp_soggetto_ruolo_test),
         (SELECT soggetto_ruolo_id FROM tmp_soggetto_ruolo_test),
         NULL,
-        (SELECT tipo_contatto_id  FROM tmp_tipo_contatto_test)
+        (SELECT tipo_contatto_id  FROM tmp_tipo_contatto_test),
+        NULL
     )
     $$,
     $$
@@ -227,7 +228,8 @@ SELECT results_eq(
         (SELECT soggetto_id       FROM tmp_soggetto_ruolo_test),
         (SELECT soggetto_ruolo_id FROM tmp_soggetto_ruolo_test),
         NULL,
-        (SELECT tipo_contatto_id  FROM tmp_tipo_contatto_test)
+        (SELECT tipo_contatto_id  FROM tmp_tipo_contatto_test),
+        NULL
     )
     $$,
     $$
@@ -243,36 +245,29 @@ SELECT results_eq(
 -- =========================================================
 SELECT ok(
     (
-        SELECT
-            (
-                default_contatto_id IS NULL
-                AND (
-                    SELECT id
-                    FROM script.fn_get_contatto_default(
-                        (SELECT id FROM tmp_soggetto_test),
-                        NULL,
-                        NULL,
-                        NULL
-                    )
-                ) IS NULL
-            )
-            OR
-            (
-                default_contatto_id IS NOT NULL
-                AND (
-                    SELECT id::bigint
-                    FROM script.fn_get_contatto_default(
-                        (SELECT id FROM tmp_soggetto_test),
-                        NULL,
-                        NULL,
-                        NULL
-                    )
-                ) = default_contatto_id::bigint
-            )
-        FROM anagrafiche.soggetti
-        WHERE id = (SELECT id FROM tmp_soggetto_test)
+        SELECT count(*)
+        FROM script.fn_get_contatto_default(
+            (SELECT id FROM tmp_soggetto_test),
+            NULL,
+            NULL,
+            NULL,
+            NULL
+        )
+    ) <= 1
+    AND NOT EXISTS (
+        SELECT 1
+        FROM script.fn_get_contatto_default(
+            (SELECT id FROM tmp_soggetto_test),
+            NULL,
+            NULL,
+            NULL,
+            NULL
+        ) f
+        JOIN anagrafiche.contatti c
+          ON c.id = f.id
+        WHERE c.soggetto_id <> (SELECT id FROM tmp_soggetto_test)
     ),
-    'fn_get_contatto_default(soggetto, NULL, NULL, NULL): coerente con default_contatto_id (anche NULL)'
+    'fn_get_contatto_default(soggetto, NULL, NULL, NULL): al massimo 1 riga e del soggetto'
 );
 
 -- =========================================================
@@ -286,8 +281,9 @@ SELECT ok(
         FROM script.fn_get_contatti(
             (SELECT soggetto_id            FROM tmp_soggetto_ruolo_test),
             (SELECT soggetto_ruolo_id      FROM tmp_soggetto_ruolo_test),
-            (SELECT unita_organizzativa_id FROM tmp_unita_organizzativa_test),
-            NULL
+            NULL,
+            NULL,
+            (SELECT unita_organizzativa_id FROM tmp_unita_organizzativa_test)
         ) AS f
         JOIN anagrafiche.contatti c
           ON c.id = f.id

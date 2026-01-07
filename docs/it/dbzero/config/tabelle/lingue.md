@@ -28,5 +28,10 @@
 | pk_config_lingue | `CREATE UNIQUE INDEX pk_config_lingue ON config.lingue USING btree (id)` |
 | uq_cfg_lingue_codice_iso | `CREATE UNIQUE INDEX uq_cfg_lingue_codice_iso ON config.lingue USING btree (codice_iso)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_lingue_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

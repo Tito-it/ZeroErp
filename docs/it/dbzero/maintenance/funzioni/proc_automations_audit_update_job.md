@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/maintenance/manual/proc_automations_audit_update_job.md" %}
 # ⚙️ Procedura `proc_automations_audit_update_job`
 
 ```sql

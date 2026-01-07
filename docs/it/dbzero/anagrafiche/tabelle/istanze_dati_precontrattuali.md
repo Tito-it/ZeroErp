@@ -41,5 +41,12 @@
 | pk_istanze_dati_precontrattuali | `CREATE UNIQUE INDEX pk_istanze_dati_precontrattuali ON anagrafiche.istanze_dati_precontrattuali USING btree (id)` |
 | uq_istanze_dati_precontrattuali_id_utility_id | `CREATE UNIQUE INDEX uq_istanze_dati_precontrattuali_id_utility_id ON anagrafiche.istanze_dati_precontrattuali USING btree (istanza_utility_id, utility_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_istanze_dati_precontrattuali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_istanze_dati_precontrattuali_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('istanze_dati_precontrattuali_id')` |
+| trg_istanze_dati_precontrattuali_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('istanze_dati_precontrattuali_id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -75,6 +75,9 @@
 |------|--------|--------|--------|
 | trg_fatture_a10_protect_num_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_protect_num()` |
 | trg_fatture_a11_numerata_non_annulabile_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_numerata_non_annulabile()` |
+| trg_fatture_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_fatture_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('fatture_id')` |
+| trg_fatture_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('fatture_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

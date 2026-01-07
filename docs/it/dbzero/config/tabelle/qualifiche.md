@@ -29,5 +29,10 @@
 | uq_qualifiche_codice | `CREATE UNIQUE INDEX uq_qualifiche_codice ON config.qualifiche USING btree (codice)` |
 | uq_qualifiche_codice_interno | `CREATE UNIQUE INDEX uq_qualifiche_codice_interno ON config.qualifiche USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_qualifiche_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

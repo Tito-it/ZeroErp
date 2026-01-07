@@ -4,7 +4,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [`dbops.proc_apply_storicizza_defaults`](/dbzero/dbops/funzioni/proc_apply_storicizza_defaults)
+> * [`maintenance.proc_apply_storicizza_defaults`](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults)
 > * [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
 >
 > Approfondimento guide:
@@ -16,7 +16,8 @@
 
 ### 🎯 Scopo Principale
 
-* **Eseguire in modo schedulato** l’applicazione delle **impostazioni di storicizzazione di default** sull’intero database, incapsulando la chiamata a `dbops.proc_apply_storicizza_defaults()` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
+(latest 07-01-26)
+* **Eseguire in modo schedulato** l’applicazione delle **impostazioni di storicizzazione di default** sull’intero database, incapsulando la chiamata a `maintenance.proc_apply_storicizza_defaults()` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 
 ---
 
@@ -25,7 +26,7 @@
 La procedura:
 
 1. Invoca `maintenance.fn_run_and_log(...)` per tracciare **inizio/fine**, esito e **messaggi** dell’esecuzione.
-2. Esegue la SQL `CALL dbops.proc_apply_storicizza_defaults();` come **step** identificato da `apply_storicizza_weekly / run_proc_apply_storicizza`.
+2. Esegue la SQL `CALL maintenance.proc_apply_storicizza_defaults();` come **step** identificato da `apply_storicizza_weekly / run_proc_apply_storicizza`.
 3. Usa un **advisory lock** (chiave derivata da `hashtext('proc_apply_storicizza_defaults')`) per evitare **sovrapposizioni** se lo scheduler tenta più run contemporanei.
 
 > In caso di errore, `fn_run_and_log` registra l’evento (con eventuale `tx_id` di sessione) e restituisce lo stato d’esito; la gestione delle eccezioni non interrompe lo scheduler, ma consente la diagnosi post‑mortem.
@@ -36,7 +37,7 @@ La procedura:
 
 1. **Acquire lock** tramite `p_lock_key`.
 2. **Log start** (`p_jobname`, `p_stepname`).
-3. **Esecuzione**: `CALL dbops.proc_apply_storicizza_defaults();`.
+3. **Esecuzione**: `CALL maintenance.proc_apply_storicizza_defaults();`.
 4. **Log end** con esito **OK/KO** e dettagli.
 5. **Release lock**.
 
@@ -59,7 +60,7 @@ BEGIN
   PERFORM maintenance.fn_run_and_log(
     p_jobname  := 'apply_storicizza_weekly',
     p_stepname := 'run_proc_apply_storicizza',
-    p_sql      := 'call dbops.proc_apply_storicizza_defaults();',
+    p_sql      := 'call maintenance.proc_apply_storicizza_defaults();',
     p_lock_key := hashtext('proc_apply_storicizza_defaults')  -- evita overlap
   );
 END;
@@ -96,13 +97,13 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux):
   * **status** (success/fail)
   * **message** / **error\_detail**
   * **tx\_id** (correlazione cross‑component)
-* In caso di KO, cerca voci correlate in `dbops.error_log` (se integrato con `script.fn_log_error_only`/`fn_log_and_raise_error`).
+* In caso di KO, cerca voci correlate in `maintenance.error_log` (se integrato con `script.fn_log_error_only`/`fn_log_and_raise_error`).
 
 ---
 
 ### 🔗 Dipendenze
 
-* `dbops.proc_apply_storicizza_defaults` — applica le policy/trigger di storicizzazione di default.
+* `maintenance.proc_apply_storicizza_defaults` — applica le policy/trigger di storicizzazione di default.
 * `maintenance.fn_run_and_log` — esecuzione protetta con logging e advisory lock.
 * (Opzionale) `script.fn_log_error_only` / `script.fn_log_and_raise_error` — logging centralizzato.
 
@@ -117,4 +118,4 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux):
 
 ---
 
-> 🧠 **In breve**: questa procedura offre un punto di ingresso unico, schedulabile e sicuro per applicare le impostazioni di storicizzazione, con tracciamento e prevenzione di run concorrenti. Mantiene pulita l’orchestrazione e delega il lavoro vero alla logica di `dbops.proc_apply_storicizza_defaults()`.
+> 🧠 **In breve**: questa procedura offre un punto di ingresso unico, schedulabile e sicuro per applicare le impostazioni di storicizzazione, con tracciamento e prevenzione di run concorrenti. Mantiene pulita l’orchestrazione e delega il lavoro vero alla logica di `maintenance.proc_apply_storicizza_defaults()`.
