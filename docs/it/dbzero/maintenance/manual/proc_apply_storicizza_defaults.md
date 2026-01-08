@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Procedura `dbops.apply_storicizza_defaults()`
+## 📘 Documentazione Concettuale – Procedura `maintenzance.proc_apply_storicizza_defaults()`
 
 > 🔁 **Collegamenti utili**
 >
@@ -13,7 +13,8 @@
 
 ### 🎯 Scopo Principale
 
-La procedura `dbops.apply_storicizza_defaults()` ha il compito di **impostare il valore di default `true` per la colonna `storicizza`** in tutte le tabelle elencate nella tabella di configurazione `config.storico_set_storicizza`. È utilizzata per **garantire che le nuove righe inserite siano automaticamente storicizzate**, ove previsto.
+(latest review 07/01/26)
+La procedura `maintenzance.proc_apply_storicizza_defaults()` ha il compito di **impostare il valore di default `true` per la colonna `storicizza`** in tutte le tabelle elencate nella tabella di configurazione `config.storico_set_storicizza`. È utilizzata per **garantire che le nuove righe inserite siano automaticamente storicizzate**, ove previsto.
 
 ---
 
@@ -37,7 +38,7 @@ La procedura è **eseguita automaticamente ogni sabato alle ore 07:00** tramite 
 * **Classe job**: `Routine Maintenance`
 * **Nome job**: `apply_storicizza_defaults_weekly`
 * **Descrizione**: Setta `DEFAULT=true` su colonne `storicizza` ogni sabato alle 07:00
-* **Step**: esegue `SELECT dbops.apply_storicizza_defaults();`
+* **Step**: esegue `SELECT maintenance.proc_apply_storicizza_defaults();`
 * **Schedule**: ogni **sabato** alle **07:00** (solo al minuto 0)
 
 #### 🧾 Codice job
@@ -95,7 +96,7 @@ BEGIN
     TRUE,
     's',
     $$
-      SELECT dbops.apply_storicizza_defaults();
+      SELECT maintence.proc_apply_storicizza_defaults();
     $$,
     current_database(),
     FALSE

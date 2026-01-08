@@ -14,13 +14,16 @@
 ---
 ### 🎯 Scopo Principale
 
-La tabella **`config.tipi_contatti`** definisce le categorie di contatto utilizzabili nell’anagrafica dei soggetti, fornendo un codice interno non modificabile e una descrizione estesa.
+(latest review 07-01-26)
+La tabella **`config.tipi_contatti`** definisce le **categorie di contatto** utilizzabili
+nell’anagrafica dei soggetti. Il reparto/ufficio di riferimento e' invece gestito da
+`config.unita_organizzative`.
 
 ---
 
 ### 🔍 Vincoli e Caratteristiche Chiave
 
-* **Codice interno (`cod_int_tipo_contatto`)**: non modificabile, garantisce stabilità dei riferimenti.
+* **Codice interno (`cod_int_tipo_contatto`)**: non modificabile, garantisce stabilita dei riferimenti.
 * **Descrizione obbligatoria**: la `descrizione` non può essere vuota.
 * **Unicità**: ogni codice interno deve essere unico.
 
@@ -28,20 +31,12 @@ La tabella **`config.tipi_contatti`** definisce le categorie di contatto utilizz
 
 ### 📋 Esempi di Tipologie
 
-Alcuni esempi di tipologie di contatto configurabili:
+Alcuni esempi di categorie di contatto:
 
-
-* **Ruoli professionali**:
-
-  * `Amministrazione`
-  * `Tecnico`
-  * `Legale`
-  * `Commerciale`
-* **Altri tipi**:
-
-  * `Assistente`
-  * `Responsabile Clienti`
-  * `Supporto Tecnico`
+* `Principale`
+* `Referente`
+* `Segreteria`
+* `Altro`
 
 ---
 
@@ -77,6 +72,14 @@ Alcuni esempi di tipologie di contatto configurabili:
 * **Integrità dei dati**: constraint e trigger impediscono codici duplicati o vuoti.
 * **Audit completo**: tracciamento automatico delle modifiche.
 * **Centralizzazione**: un’unica fonte per definire tutte le tipologie di contatto.
+
+---
+
+### 🧭 Nota di refactor
+
+In passato `config.tipi_contatti` veniva spesso usata come elenco dei reparti.
+Con l'introduzione di `config.unita_organizzative`, il significato dei reparti
+viene spostato su quella tabella, riducendo ambiguita semantiche.
 
 ---
 

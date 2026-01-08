@@ -1,4 +1,4 @@
-## Funzione `anagrafiche.trgfn_indirizzi_ins_upd_sync_geoloc()`
+## Funzione `anagrafiche.trgfn_indirizzi_sync_geoloc()`
 
 > 
 👀 **Vedi anche**
@@ -9,20 +9,25 @@
 > * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)     
 
 
-> Sincronizza il campo `geoloc` di `anagrafiche.indirizzi` con la geolocalizzazione memorizzata in `anagrafiche.indirizzi_dettaglio`.
+> Sincronizza il campo `geoloc` di `anagrafiche.indirizzi` e `anagrafiche.indirizzi_soggetti`
+> con la geolocalizzazione memorizzata in `anagrafiche.indirizzi_dettaglio`.
 
 ---
 
 ### 🎯 Scopo Principale
 
-Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`. In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.
+Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi` o
+`anagrafiche.indirizzi_soggetti`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera
+dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`.
+In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.
 
 ---
 
 
 ### Parametri del Trigger
 
-* `NEW`: record di riga in inserimento o aggiornamento della tabella `anagrafiche.indirizzi`.
+* `NEW`: record di riga in inserimento o aggiornamento delle tabelle `anagrafiche.indirizzi`
+  o `anagrafiche.indirizzi_soggetti`.
 * `OLD`: non utilizzato in questa funzione.
 
 ### Valore di Ritorno
@@ -34,11 +39,17 @@ Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi`,
 ### 🔗 Trigger Associato
 
 ```sql
-CREATE TRIGGER trg_indirizzi_ins_upd_sync_geoloc
+CREATE TRIGGER trg_indirizzi_sync_geoloc_ins_upd
   BEFORE INSERT OR UPDATE
   ON anagrafiche.indirizzi
   FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_ins_upd_sync_geoloc();
+  EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_sync_geoloc();
+
+CREATE TRIGGER trg_indirizzi_soggetti_sync_geoloc_ins_upd
+  BEFORE INSERT OR UPDATE
+  ON anagrafiche.indirizzi_soggetti
+  FOR EACH ROW
+  EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_sync_geoloc();
 ```
 
 ---

@@ -1,0 +1,41 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Zero ERP - Move storicizza procedures from dbops to maintenance
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/maintenance/20260107-51-proc-sync-storico-set-storicizza-job-mctit.yaml
+
+  - changeSet:
+      id: 20260107-51-proc-sync-storico-set-storicizza-job
+      author: mctit
+
+      # runOnChange: true
+      # validCheckSum:
+      #    - ANY
+      comment: >
+        Crea la procedura job maintenance.proc_sync_storico_set_storicizza_job
+        che chiama maintenance.proc_sync_storico_set_storicizza con logging e lock.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_sync_storico_set_storicizza_job(
+                )
+              LANGUAGE 'plpgsql'
+              AS $BODY$
+                BEGIN
+                  PERFORM maintenance.fn_run_and_log(
+                    p_jobname  := 'sync_storico_set_storicizza',
+                    p_stepname := 'run_sync_storico_set_storicizza',
+                    p_sql      := 'call maintenance.proc_sync_storico_set_storicizza();',
+                    p_lock_key := hashtext('proc_sync_storico_set_storicizza')  -- evita overlap
+                  );
+                END;
+                
+              $BODY$;
+
+               COMMENT ON PROCEDURE maintenance.proc_sync_storico_set_storicizza_job()
+                 IS 'Job wrapper per chiamare proc_sync_storico_set_storicizza con logging e lock.';

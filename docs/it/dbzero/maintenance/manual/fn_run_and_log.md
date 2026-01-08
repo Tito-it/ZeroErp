@@ -14,6 +14,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 07-01-26)
 `maintenance.fn_run_and_log` esegue in modo sicuro uno *statement* SQL arbitrario e ne registra l’esecuzione su `maintenance.job_run_log`, gestendo in modo opzionale un **lock consulente** (advisory lock) per prevenire esecuzioni sovrapposte dello stesso job/step.
 
 ---

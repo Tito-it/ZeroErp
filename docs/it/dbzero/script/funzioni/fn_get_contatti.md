@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_get_contatti`
 
 ```sql
-CREATE FUNCTION fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_utility_id integer, p_tipo_contatto_id integer)
+CREATE FUNCTION fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_utility_id integer, p_tipo_contatto_id integer, p_unita_organizzativa_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_tipo_contatto_id integer DEFAULT NULL::integer)
+CREATE OR REPLACE FUNCTION script.fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_tipo_contatto_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer)
  RETURNS TABLE(id bigint, tipo_contatto_id integer, soggetto_id uuid, soggetto_ruolo_id bigint, utility_id integer, nominativo character varying, email character varying, telefono character varying, cellulare character varying, pec character varying, note text, is_default boolean, default_context character varying)
  LANGUAGE sql
 AS $function$
@@ -44,7 +44,8 @@ WITH validate AS (
             'soggetto_id',        p_soggetto_id,
             'soggetto_ruolo_id',  p_soggetto_ruolo_id,
             'utility_id',         p_utility_id,
-            'tipo_contatto_id',   p_tipo_contatto_id
+            'tipo_contatto_id',   p_tipo_contatto_id,
+            'unita_organizzativa_id', p_unita_organizzativa_id
         ),
         NULL::uuid,                                  -- p_tx_id (NULL → helper lo ricrea)
         COALESCE(p_soggetto_id::text, 'NULL')
@@ -56,6 +57,7 @@ candidates AS (
     SELECT
         c.id,
         c.tipo_contatto_id,
+        c.unita_organizzativa_id,
         c.soggetto_id,
         c.soggetto_ruolo_id,
         c.utility_id,
@@ -91,6 +93,10 @@ candidates AS (
             p_tipo_contatto_id IS NULL
         OR c.tipo_contatto_id = p_tipo_contatto_id
     )
+    AND (
+            c.unita_organizzativa_id IS NULL
+        OR c.unita_organizzativa_id IS NOT DISTINCT FROM p_unita_organizzativa_id
+    )
 ),
 ranked AS (
     -- 3) Una sola riga per tipo_contatto_id:
@@ -101,6 +107,11 @@ ranked AS (
             PARTITION BY candidates.tipo_contatto_id
             ORDER BY
                 candidates.priority,
+                CASE
+                    WHEN p_unita_organizzativa_id IS NULL THEN 0
+                    WHEN candidates.unita_organizzativa_id IS NOT DISTINCT FROM p_unita_organizzativa_id THEN 0
+                    ELSE 1
+                END,
                 CASE WHEN candidates.is_default THEN 0 ELSE 1 END,
                 candidates.id   -- per stabilizzare l'ordinamento
         ) AS rn

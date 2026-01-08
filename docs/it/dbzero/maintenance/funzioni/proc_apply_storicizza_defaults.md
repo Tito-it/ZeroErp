@@ -1,4 +1,4 @@
-{% include-markdown "it/dbzero/dbops/manual/proc_apply_storicizza_defaults.md" %}
+{% include-markdown "it/dbzero/maintenance/manual/proc_apply_storicizza_defaults.md" %}
 # ⚙️ Procedura `proc_apply_storicizza_defaults`
 
 ```sql
@@ -8,7 +8,7 @@ CREATE PROCEDURE proc_apply_storicizza_defaults()
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE PROCEDURE dbops.proc_apply_storicizza_defaults()
+CREATE OR REPLACE PROCEDURE maintenance.proc_apply_storicizza_defaults()
  LANGUAGE plpgsql
 AS $procedure$
   DECLARE
@@ -32,7 +32,7 @@ AS $procedure$
       );
     END LOOP;
   END;
-  $procedure$
+$procedure$
 ```
 
 ---

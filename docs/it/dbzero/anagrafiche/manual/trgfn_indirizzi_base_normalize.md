@@ -60,10 +60,12 @@ CREATE TRIGGER trg_indirizzi_base_normalize
 ### 💡 Note Operative
 
 * Evita la coesistenza di dati normalizzati e liberi nello stesso record.
-* `geoloc` viene sempre ricalcolato a partire dal dettaglio civico quando presente.
+* Il ricalcolo di `geoloc` dal dettaglio civico richiede un trigger dedicato
+  (es. `anagrafiche.trgfn_indirizzi_sync_geoloc` su `anagrafiche.indirizzi`).
+  Su `anagrafiche.indirizzi_soggetti` e' disponibile il trigger
+  `trg_indirizzi_soggetti_sync_geoloc_ins_upd`.
 * Il default di `stato_id` e' guidato dai parametri di configurazione.
 
 ---
 
 > 🧠 **"Coerenza indirizzi: o normalizzato con dettaglio civico, o libero con default minimo."**
-

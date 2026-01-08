@@ -11,15 +11,16 @@ CREATE PROCEDURE proc_apply_storicizza_defaults_job()
 CREATE OR REPLACE PROCEDURE maintenance.proc_apply_storicizza_defaults_job()
  LANGUAGE plpgsql
 AS $procedure$
-  BEGIN
-    PERFORM maintenance.fn_run_and_log(
-      p_jobname  := 'apply_storicizza_weekly',
-      p_stepname := 'run_proc_apply_storicizza',
-      p_sql      := 'call dbops.proc_apply_storicizza_defaults();',
-      p_lock_key := hashtext('proc_apply_storicizza_defaults')  -- evita overlap
-    );
-  END;
-  $procedure$
+     BEGIN
+       PERFORM maintenance.fn_run_and_log(
+         p_jobname  := 'apply_storicizza_weekly',
+         p_stepname := 'run_proc_apply_storicizza',
+         p_sql      := 'call maintenance.proc_apply_storicizza_defaults();',
+         p_lock_key := hashtext('proc_apply_storicizza_defaults')  -- evita overlap
+       );
+     END;
+     
+   $procedure$
 ```
 
 ---

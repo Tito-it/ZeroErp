@@ -16,7 +16,7 @@
 --       * fn_get_contatto_default(soggetto) → contatto default di soggetto
 -- ------------------------------------------------------------
 
-SELECT plan(9);
+SELECT plan(12);
 
 -- =========================================================
 -- 0) Precondizione: esiste almeno un tipo_contatto
@@ -33,7 +33,21 @@ SELECT ok(
 );
 
 -- =========================================================
--- 1) Recupero soggetto per codice_fiscale = 'TTNMHL68E07D042Z'
+-- 1) Precondizione: esiste almeno una unita_organizzativa
+-- =========================================================
+CREATE TEMP TABLE tmp_unita_organizzativa_test AS
+SELECT id AS unita_organizzativa_id
+FROM config.unita_organizzative
+ORDER BY id
+LIMIT 1;
+
+SELECT ok(
+    (SELECT count(*) FROM tmp_unita_organizzativa_test) >= 1,
+    'Esiste almeno una unita_organizzativa in config.unita_organizzative'
+);
+
+-- =========================================================
+-- 2) Recupero soggetto per codice_fiscale = 'TTNMHL68E07D042Z'
 -- =========================================================
 CREATE TEMP TABLE tmp_soggetto_test AS
 SELECT id
@@ -47,7 +61,7 @@ SELECT is(
 );
 
 -- =========================================================
--- 2) Recupero primo ruolo per il soggetto (es. CL)
+-- 3) Recupero primo ruolo per il soggetto (es. CL)
 -- =========================================================
 CREATE TEMP TABLE tmp_soggetto_ruolo_test AS
 SELECT
@@ -64,7 +78,7 @@ SELECT ok(
 );
 
 -- =========================================================
--- 3) Pulizia pre-test:
+-- 4) Pulizia pre-test:
 --    elimino SOLO i contatti per questo soggetto_ruolo
 --    (non tocco i contatti generici del soggetto)
 -- =========================================================
@@ -86,7 +100,7 @@ SELECT is(
 );
 
 -- =========================================================
--- 4) Inserimento contatto di RUOLO (is_default = TRUE)
+-- 5) Inserimento contatto di RUOLO (is_default = TRUE)
 -- =========================================================
 WITH ins AS (
     INSERT INTO anagrafiche.contatti (
@@ -131,21 +145,58 @@ SELECT is(
 );
 
 -- =========================================================
--- 5) Verifica che il default_contatto_id del soggetto
---    sia valorizzato e NON coincida con il contatto di ruolo
+-- 6) Inserimento contatto di RUOLO con unita_organizzativa
+--    e tipo_contatto NULL (categoria opzionale)
 -- =========================================================
+WITH ins AS (
+    INSERT INTO anagrafiche.contatti (
+        tipo_contatto_id,
+        soggetto_id,
+        soggetto_ruolo_id,
+        unita_organizzativa_id,
+        nominativo,
+        email,
+        note,
+        is_default
+    )
+    SELECT
+        NULL,
+        sr.soggetto_id,
+        sr.soggetto_ruolo_id,
+        uo.unita_organizzativa_id,
+        'Contatto RUOLO UO PGTAP',
+        'ruolo.uo.titnmhl@example.com',
+        'PGTAP – contatto ruolo con unita_organizzativa e tipo_contatto NULL',
+        FALSE
+    FROM tmp_soggetto_ruolo_test sr,
+         tmp_unita_organizzativa_test uo
+    RETURNING id
+)
+SELECT id
+INTO TEMP TABLE tmp_contatto_ruolo_unita
+FROM ins;
+
 SELECT ok(
-    (
-        SELECT default_contatto_id IS NOT NULL
-           AND default_contatto_id::bigint <> (SELECT id::bigint FROM tmp_contatto_ruolo_default)
-        FROM anagrafiche.soggetti
-        WHERE id = (SELECT id FROM tmp_soggetto_test)
-    ),
-    'Il soggetto ha un default_contatto_id valorizzato e diverso dal contatto di ruolo'
+    (SELECT count(*) FROM tmp_contatto_ruolo_unita) = 1,
+    'Inserito contatto di ruolo con unita_organizzativa e tipo_contatto NULL'
 );
 
 -- =========================================================
--- 6) fn_get_contatti:
+-- 7) Verifica che il default_contatto_id del soggetto,
+--    se presente, NON coincida con il contatto di ruolo
+-- =========================================================
+SELECT ok(
+    (
+        SELECT default_contatto_id IS NULL
+           OR default_contatto_id::bigint <> (SELECT id::bigint FROM tmp_contatto_ruolo_default)
+        FROM anagrafiche.soggetti
+        WHERE id = (SELECT id FROM tmp_soggetto_test)
+    ),
+    'default_contatto_id (se presente) e'' diverso dal contatto di ruolo'
+);
+
+-- =========================================================
+-- 8) fn_get_contatti:
 --    (a) soggetto + soggetto_ruolo + tipo_contatto → contatto di ruolo
 -- =========================================================
 SELECT results_eq(
@@ -155,7 +206,8 @@ SELECT results_eq(
         (SELECT soggetto_id       FROM tmp_soggetto_ruolo_test),
         (SELECT soggetto_ruolo_id FROM tmp_soggetto_ruolo_test),
         NULL,
-        (SELECT tipo_contatto_id  FROM tmp_tipo_contatto_test)
+        (SELECT tipo_contatto_id  FROM tmp_tipo_contatto_test),
+        NULL
     )
     $$,
     $$
@@ -166,7 +218,7 @@ SELECT results_eq(
 );
 
 -- =========================================================
--- 7) fn_get_contatto_default:
+-- 9) fn_get_contatto_default:
 --    (b) soggetto + soggetto_ruolo + tipo_contatto → contatto di ruolo
 -- =========================================================
 SELECT results_eq(
@@ -176,7 +228,8 @@ SELECT results_eq(
         (SELECT soggetto_id       FROM tmp_soggetto_ruolo_test),
         (SELECT soggetto_ruolo_id FROM tmp_soggetto_ruolo_test),
         NULL,
-        (SELECT tipo_contatto_id  FROM tmp_tipo_contatto_test)
+        (SELECT tipo_contatto_id  FROM tmp_tipo_contatto_test),
+        NULL
     )
     $$,
     $$
@@ -187,25 +240,58 @@ SELECT results_eq(
 );
 
 -- =========================================================
--- 8) fn_get_contatto_default:
+-- 10) fn_get_contatto_default:
 --    (c) SOLO soggetto → contatto default di soggetto (default_contatto_id)
 -- =========================================================
-SELECT results_eq(
-    $$
-    SELECT id::bigint
-    FROM script.fn_get_contatto_default(
-        (SELECT id FROM tmp_soggetto_test),
-        NULL,
-        NULL,
-        NULL
-    )
-    $$,
-    $$
-    SELECT default_contatto_id::bigint
-    FROM anagrafiche.soggetti
-    WHERE id = (SELECT id FROM tmp_soggetto_test)
-    $$,
-    'fn_get_contatto_default(soggetto, NULL, NULL, NULL): ritorna il contatto default di soggetto'
+SELECT ok(
+    (
+        SELECT count(*)
+        FROM script.fn_get_contatto_default(
+            (SELECT id FROM tmp_soggetto_test),
+            NULL,
+            NULL,
+            NULL,
+            NULL
+        )
+    ) <= 1
+    AND NOT EXISTS (
+        SELECT 1
+        FROM script.fn_get_contatto_default(
+            (SELECT id FROM tmp_soggetto_test),
+            NULL,
+            NULL,
+            NULL,
+            NULL
+        ) f
+        JOIN anagrafiche.contatti c
+          ON c.id = f.id
+        WHERE c.soggetto_id <> (SELECT id FROM tmp_soggetto_test)
+    ),
+    'fn_get_contatto_default(soggetto, NULL, NULL, NULL): al massimo 1 riga e del soggetto'
+);
+
+-- =========================================================
+-- 11) fn_get_contatti:
+--    (d) soggetto + ruolo + unita_organizzativa + tipo_contatto NULL
+--        → contatto ruolo con unita_organizzativa
+-- =========================================================
+SELECT ok(
+    EXISTS (
+        SELECT 1
+        FROM script.fn_get_contatti(
+            (SELECT soggetto_id            FROM tmp_soggetto_ruolo_test),
+            (SELECT soggetto_ruolo_id      FROM tmp_soggetto_ruolo_test),
+            NULL,
+            NULL,
+            (SELECT unita_organizzativa_id FROM tmp_unita_organizzativa_test)
+        ) AS f
+        JOIN anagrafiche.contatti c
+          ON c.id = f.id
+        WHERE c.soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM tmp_soggetto_ruolo_test)
+          AND c.unita_organizzativa_id = (SELECT unita_organizzativa_id FROM tmp_unita_organizzativa_test)
+          AND c.tipo_contatto_id IS NULL
+    ),
+    'fn_get_contatti(soggetto, ruolo, unita_organizzativa, NULL): ritorna un contatto con unita_organizzativa'
 );
 
 -- Fine test

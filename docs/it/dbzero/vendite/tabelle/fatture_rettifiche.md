@@ -28,5 +28,10 @@
 | pk_fatture_rettifiche | `CREATE UNIQUE INDEX pk_fatture_rettifiche ON vendite.fatture_rettifiche USING btree (id)` |
 | uq_fatture_rettifiche_pair | `CREATE UNIQUE INDEX uq_fatture_rettifiche_pair ON vendite.fatture_rettifiche USING btree (fattura_id, rettificata_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_fatture_rettifiche_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

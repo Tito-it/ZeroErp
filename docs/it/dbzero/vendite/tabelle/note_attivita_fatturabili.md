@@ -46,5 +46,10 @@
 | note_attivita_fatturabili_target_tipo_target_id_anchor_tipo_idx | `CREATE INDEX note_attivita_fatturabili_target_tipo_target_id_anchor_tipo_idx ON vendite.note_attivita_fatturabili USING btree (target_tipo, target_id, anchor_tipo, posizione, seq)` |
 | note_attivita_fatturabili_target_tipo_target_id_target_riga_idx | `CREATE INDEX note_attivita_fatturabili_target_tipo_target_id_target_riga_idx ON vendite.note_attivita_fatturabili USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_note_attivita_fatturabili_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

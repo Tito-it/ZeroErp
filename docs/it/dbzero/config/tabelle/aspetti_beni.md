@@ -26,5 +26,10 @@
 | ix_aspetti_beni_attivo | `CREATE INDEX ix_aspetti_beni_attivo ON config.aspetti_beni USING btree (attivo)` |
 | pk_aspetti_beni | `CREATE UNIQUE INDEX pk_aspetti_beni ON config.aspetti_beni USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_aspetti_beni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

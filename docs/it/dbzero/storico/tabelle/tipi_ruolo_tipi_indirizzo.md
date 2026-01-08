@@ -25,5 +25,11 @@
 | ix_tipi_ruolo_tipi_indirizzo_tipi_ruolo_tipi_indirizzo_id_fk | `CREATE INDEX ix_tipi_ruolo_tipi_indirizzo_tipi_ruolo_tipi_indirizzo_id_fk ON storico.tipi_ruolo_tipi_indirizzo USING btree (tipi_ruolo_tipi_indirizzo_id)` |
 | pk_storico_tipi_ruolo_tipi_indirizzo | `CREATE UNIQUE INDEX pk_storico_tipi_ruolo_tipi_indirizzo ON storico.tipi_ruolo_tipi_indirizzo USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_tipi_ruolo_tipi_indirizzo_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_tipi_ruolo_tipi_indirizzo_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -26,5 +26,11 @@
 | ix_stradario_stradario_id_fk | `CREATE INDEX ix_stradario_stradario_id_fk ON storico.stradario USING btree (stradario_id)` |
 | pk_storico_stradario | `CREATE UNIQUE INDEX pk_storico_stradario ON storico.stradario USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_stradario_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_stradario_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

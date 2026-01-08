@@ -14,7 +14,7 @@
 > * [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto)   
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
-La funzione **`script.fn_get_contatto_default(p_soggetto_id UUID, p_soggetto_ruolo_id BIGINT DEFAULT NULL, p_utility_id INTEGER DEFAULT NULL, p_tipo_contatto_id INTEGER DEFAULT NULL)`** restituisce **il contatto di default** relativo al contesto richiesto (soggetto / ruolo / utility), riutilizzando la logica di selezione di `script.fn_get_contatti` e limitandosi ai soli record marcati come `is_default = TRUE`.
+La funzione **`script.fn_get_contatto_default(p_soggetto_id UUID, p_soggetto_ruolo_id BIGINT DEFAULT NULL, p_utility_id INTEGER DEFAULT NULL, p_tipo_contatto_id INTEGER DEFAULT NULL, p_unita_organizzativa_id INTEGER DEFAULT NULL)`** restituisce **il contatto di default** relativo al contesto richiesto (soggetto / ruolo / utility), riutilizzando la logica di selezione di `script.fn_get_contatti` e limitandosi ai soli record marcati come `is_default = TRUE`.
 
 A differenza di `fn_get_contatti`, che può restituire **più righe (una per tipo_contatto)**, questa funzione restituisce **al massimo un solo contatto**:
 
@@ -45,9 +45,10 @@ A differenza di `fn_get_contatti`, che può restituire **più righe (una per tip
 | `p_soggetto_id`       | `UUID`   | —       | ✅ Sì         | Identificativo del soggetto. Se `NULL`, la validazione è delegata internamente a `fn_get_contatti` / `fn_log_and_raise_error`.   |
 | `p_soggetto_ruolo_id` | `BIGINT` | `NULL`  | ❌ No         | Se valorizzato, seleziona il contatto di default relativo a uno specifico ruolo del soggetto (es. ruolo Cliente, Gestore, ecc.). |
 | `p_utility_id`        | `INT`    | `NULL`  | ❌ No         | Se valorizzato, specializza il contatto di default per una determinata utility (es. fornitura gas, luce, acqua...).              |
-| `p_tipo_contatto_id`  | `INT`    | `NULL`  | ❌ No         | Se valorizzato, restringe il default ad uno specifico `tipo_contatto` (es. Amministrazione, Tecnico, Commerciale).               |
+| `p_tipo_contatto_id`  | `INT`    | `NULL`  | ❌ No         | Se valorizzato, restringe il default ad uno specifico `tipo_contatto` (categoria).               |
+| `p_unita_organizzativa_id` | `INT` | `NULL` | ❌ No | Se valorizzato, restringe il default al reparto/ufficio (`config.unita_organizzative`). |
 
-> 💡 Se `p_tipo_contatto_id` è `NULL`, la funzione restituisce il **contatto di default principale** per il contesto indicato (soggetto / ruolo / utility). Se è valorizzato, il default è riferito a quello specifico tipo di contatto.
+> 💡 Se `p_tipo_contatto_id` è `NULL`, la funzione restituisce il **contatto di default principale** per il contesto indicato (soggetto / ruolo / utility). Se è valorizzato, il default è riferito a quella categoria.
 
 ---
 
@@ -86,7 +87,8 @@ La funzione restituisce **0 o 1 riga** con la stessa struttura di `fn_get_contat
        p_soggetto_id,
        p_soggetto_ruolo_id,
        p_utility_id,
-       p_tipo_contatto_id
+       p_tipo_contatto_id,
+       p_unita_organizzativa_id
    );
    ```
 

@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Crea tabella anagrafiche.risorse_umane
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260107-19-create-risorse-umane-mctit.yaml
+
+  - changeSet:
+      id: 20260107-19-create-risorse-umane
+      author: mctit
+      validCheckSum:
+        - ANY
+      comment: >
+        Crea la tabella anagrafiche.risorse_umane per associare una persona
+        al ruolo RISORSA_UMANA con qualifica e unita organizzativa.
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: risorse_umane
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "Identificativo univoco interno (PK)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_risorse_umane
+                    nullable: false
+              - column:
+                  name: soggetto_ruolo_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: qualifica_id
+                  type: integer
+                  constraints:
+                    nullable: false
+              - column:
+                  name: unita_organizzativa_id
+                  type: integer
+              - column:
+                  name: valido_dal
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valido_al
+                  type: date
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Se TRUE, abilita snapshot su UPDATE/DELETE (gestito da trigger generico)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID per correlazione audit/log."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_insert
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: risorse_umane
+            columnNames: soggetto_ruolo_id
+            constraintName: uq_risorse_umane_soggetto_ruolo
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: risorse_umane
+            baseColumnNames: soggetto_ruolo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            constraintName: fk_risorse_umane_soggetti_ruoli
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: risorse_umane
+            baseColumnNames: qualifica_id
+            referencedTableSchemaName: config
+            referencedTableName: qualifiche
+            referencedColumnNames: id
+            constraintName: fk_risorse_umane_qualifiche
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: risorse_umane
+            baseColumnNames: unita_organizzativa_id
+            referencedTableSchemaName: config
+            referencedTableName: unita_organizzative
+            referencedColumnNames: id
+            constraintName: fk_risorse_umane_unita_organizzative
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: risorse_umane
+            indexName: ix_risorse_umane_qualifica_id
+            columns:
+              - column:
+                  name: qualifica_id
+
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: risorse_umane
+            indexName: ix_risorse_umane_unita_organizzativa_id
+            columns:
+              - column:
+                  name: unita_organizzativa_id
+
+            # CHECK policy
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.risorse_umane
+                ADD CONSTRAINT chk_risorse_umane_date
+                CHECK (valido_al IS NULL OR valido_al >= valido_dal);
+
+  - changeSet:
+      id: 20260107-19-01-create-risorse-umane
+      author: mctit
+      comment: >
+        Estende anagrafiche.risorse_umane con soggetto_id e vincoli di coerenza.
+      changes:
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: risorse_umane
+            columns:
+              - column:
+                  name: soggetto_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: risorse_umane
+            baseColumnNames: soggetto_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti
+            referencedColumnNames: id
+            constraintName: fk_risorse_umane_soggetti
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: risorse_umane
+            indexName: ix_risorse_umane_soggetto_id
+            columns:
+              - column:
+                  name: soggetto_id

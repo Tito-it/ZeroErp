@@ -25,5 +25,11 @@
 | ix_ordini_righe_ordini_righe_id_fk | `CREATE INDEX ix_ordini_righe_ordini_righe_id_fk ON storico.ordini_righe USING btree (ordini_righe_id)` |
 | pk_storico_ordini_righe | `CREATE UNIQUE INDEX pk_storico_ordini_righe ON storico.ordini_righe USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_ordini_righe_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_ordini_righe_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

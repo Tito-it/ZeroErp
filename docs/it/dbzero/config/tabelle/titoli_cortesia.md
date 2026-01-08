@@ -24,5 +24,10 @@
 | pk_contatto_ruolo | `CREATE UNIQUE INDEX pk_contatto_ruolo ON config.titoli_cortesia USING btree (id)` |
 | uq_contatto_ruolo_contatto_ruolo_descrizione | `CREATE UNIQUE INDEX uq_contatto_ruolo_contatto_ruolo_descrizione ON config.titoli_cortesia USING btree (descrizione)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_titoli_cortesia_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

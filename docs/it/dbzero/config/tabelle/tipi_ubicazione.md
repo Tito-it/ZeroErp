@@ -34,5 +34,10 @@
 | uq_cfg_tipi_ubicazione_codice | `CREATE UNIQUE INDEX uq_cfg_tipi_ubicazione_codice ON config.tipi_ubicazione USING btree (codice)` |
 | uq_cfg_tipi_ubicazione_codice_interno | `CREATE UNIQUE INDEX uq_cfg_tipi_ubicazione_codice_interno ON config.tipi_ubicazione USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_tipi_ubicazione_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

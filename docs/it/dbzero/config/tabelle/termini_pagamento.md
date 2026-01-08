@@ -47,5 +47,10 @@
 | uq_cfg_termini_pagamento_codice_interno | `CREATE UNIQUE INDEX uq_cfg_termini_pagamento_codice_interno ON config.termini_pagamento USING btree (codice_interno)` |
 | uq_termini_pagamento_codice | `CREATE UNIQUE INDEX uq_termini_pagamento_codice ON config.termini_pagamento USING btree (codice)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_termini_pagamento_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

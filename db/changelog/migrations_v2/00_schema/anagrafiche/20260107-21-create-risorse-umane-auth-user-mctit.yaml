@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Crea tabella ponte risorse_umane <-> django.auth_user
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260107-21-create-risorse-umane-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260107-21-create-risorse-umane-auth-user
+      author: mctit
+      validCheckSum:
+        - ANY
+      comment: >
+        Tabella ponte 1:1 tra anagrafiche.risorse_umane e django.auth_user.
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: risorse_umane_auth_user
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "Identificativo univoco interno (PK)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_risorse_umane_auth_user
+                    nullable: false
+              - column:
+                  name: risorsa_umana_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: auth_user_id
+                  type: integer
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: risorse_umane_auth_user
+            columnNames: risorsa_umana_id
+            constraintName: uq_risorse_umane_auth_user_risorsa
+
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: risorse_umane_auth_user
+            columnNames: auth_user_id
+            constraintName: uq_risorse_umane_auth_user_auth_user
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: risorse_umane_auth_user
+            baseColumnNames: risorsa_umana_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: risorse_umane
+            referencedColumnNames: id
+            constraintName: fk_risorse_umane_auth_user_risorse_umane
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: risorse_umane_auth_user
+            indexName: ix_risorse_umane_auth_user_risorsa
+            columns:
+              - column:
+                  name: risorsa_umana_id
+
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: risorse_umane_auth_user
+            indexName: ix_risorse_umane_auth_user_auth_user
+            columns:
+              - column:
+                  name: auth_user_id
+
+  - changeSet:
+      id: 20260107-21-01-add-fk-risorse-umane-auth-user-django
+      author: mctit
+      comment: >
+        Aggiunge la FK a django.auth_user solo se la tabella esiste.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: django
+            tableName: auth_user
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: risorse_umane_auth_user
+            baseColumnNames: auth_user_id
+            referencedTableSchemaName: django
+            referencedTableName: auth_user
+            referencedColumnNames: id
+            constraintName: fk_risorse_umane_auth_user_django
+            onDelete: RESTRICT
+            onUpdate: CASCADE

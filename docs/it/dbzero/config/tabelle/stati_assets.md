@@ -34,5 +34,10 @@
 | uq_stati_assets_codice | `CREATE UNIQUE INDEX uq_stati_assets_codice ON config.stati_assets USING btree (codice)` |
 | uq_stati_assets_codice_interno | `CREATE UNIQUE INDEX uq_stati_assets_codice_interno ON config.stati_assets USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_stati_assets_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

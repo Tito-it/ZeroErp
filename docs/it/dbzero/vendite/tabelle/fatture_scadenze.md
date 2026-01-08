@@ -31,5 +31,14 @@
 | pk_fatture_scadenze | `CREATE UNIQUE INDEX pk_fatture_scadenze ON vendite.fatture_scadenze USING btree (id)` |
 | uq_fatture_scadenze_nr | `CREATE UNIQUE INDEX uq_fatture_scadenze_nr ON vendite.fatture_scadenze USING btree (fattura_id, numero_rata)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_fatture_scadenze_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_fatture_scadenze_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatture_scadenze_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatture_scadenze_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('fatture_scadenze_id')` |
+| trg_fatture_scadenze_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('fatture_scadenze_id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

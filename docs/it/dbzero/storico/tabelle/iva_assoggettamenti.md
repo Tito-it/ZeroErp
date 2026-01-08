@@ -25,5 +25,11 @@
 | ix_iva_assoggettamenti_iva_assoggettamenti_id_fk | `CREATE INDEX ix_iva_assoggettamenti_iva_assoggettamenti_id_fk ON storico.iva_assoggettamenti USING btree (iva_assoggettamenti_id)` |
 | pk_storico_iva_assoggettamenti | `CREATE UNIQUE INDEX pk_storico_iva_assoggettamenti ON storico.iva_assoggettamenti USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_iva_assoggettamenti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_iva_assoggettamenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

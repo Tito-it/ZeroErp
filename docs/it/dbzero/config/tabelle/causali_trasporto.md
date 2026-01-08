@@ -27,5 +27,10 @@
 | ix_causali_trasporto_attivo | `CREATE INDEX ix_causali_trasporto_attivo ON config.causali_trasporto USING btree (attivo)` |
 | pk_causali_trasporto | `CREATE UNIQUE INDEX pk_causali_trasporto ON config.causali_trasporto USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_causali_trasporto_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -38,6 +38,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_bank_branches_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_bank_branches_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_bank_branches_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_bank_branches_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('bank_branches_id')` |
+| trg_bank_branches_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('bank_branches_id')` |
 | trg_bank_guard_ruolo_bank_branches_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_bank_guard_ruolo_bank_branches()` |
 | trg_bank_guard_ruolo_bank_branches_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_bank_guard_ruolo_bank_branches()` |
 

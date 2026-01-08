@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_get_contatto_default`
 
 ```sql
-CREATE FUNCTION fn_get_contatto_default(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_utility_id integer, p_tipo_contatto_id integer)
+CREATE FUNCTION fn_get_contatto_default(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_utility_id integer, p_tipo_contatto_id integer, p_unita_organizzativa_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_get_contatto_default(p_soggetto_id uuid, p_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_tipo_contatto_id integer DEFAULT NULL::integer)
+CREATE OR REPLACE FUNCTION script.fn_get_contatto_default(p_soggetto_id uuid, p_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_tipo_contatto_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer)
  RETURNS TABLE(id bigint, tipo_contatto_id integer, soggetto_id uuid, soggetto_ruolo_id bigint, utility_id integer, nominativo character varying, email character varying, telefono character varying, cellulare character varying, pec character varying, note text, is_default boolean, default_context character varying)
  LANGUAGE sql
 AS $function$
@@ -17,7 +17,7 @@ AS $function$
 fn_get_contatto_default
 
 Restituisce il contatto marcato come DEFAULT per un soggetto
-(e opzionalmente per ruolo, utility, tipo_contatto).
+(e opzionalmente per ruolo, utility, tipo_contatto, unita_organizzativa).
 
 - Riutilizza fn_get_contatti per costruire i candidati.
 - Filtra is_default = TRUE.
@@ -30,7 +30,8 @@ WITH all_candidates AS (
         p_soggetto_id,
         p_soggetto_ruolo_id,
         p_utility_id,
-        p_tipo_contatto_id
+        p_tipo_contatto_id,
+        p_unita_organizzativa_id
     )
 ),
 only_default AS (

@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Refactor dati config.tipi_contatti (categorie base)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260107-13-refactor-config-tipi-contatti-categories-mctit.yaml
+
+  - changeSet:
+      id: 20260107-13-refactor-config-tipi-contatti-categories
+      author: mctit
+      runOnce: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: tipi_contatti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.tipi_contatti
+              DISABLE TRIGGER trg_tipi_contatti_a10_lock_columns_upd;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE anagrafiche.contatti c
+                 SET tipo_contatto_id = NULL
+               WHERE c.tipo_contatto_id IS NOT NULL
+                 AND c.tipo_contatto_id NOT IN (1, 2, 3, 4);
+
+              DELETE FROM config.tipi_contatti
+               WHERE id NOT IN (1, 2, 3, 4);
+
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/tipi_contatti.csv
+            tableName: tipi_contatti
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }
+              - column: { name: codice, type: STRING }
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.tipi_contatti
+              ENABLE TRIGGER trg_tipi_contatti_a10_lock_columns_upd;

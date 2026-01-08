@@ -36,5 +36,12 @@
 | uq_cfg_note_stili_codice | `CREATE UNIQUE INDEX uq_cfg_note_stili_codice ON config.note_stili USING btree (codice)` |
 | uq_cfg_note_stili_codice_interno | `CREATE UNIQUE INDEX uq_cfg_note_stili_codice_interno ON config.note_stili USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_note_stili_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_note_stili_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('note_stili_id')` |
+| trg_note_stili_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('note_stili_id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

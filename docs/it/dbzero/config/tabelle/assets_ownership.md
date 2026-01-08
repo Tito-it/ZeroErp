@@ -33,5 +33,10 @@
 | uq_cfg_assets_ownership_codice | `CREATE UNIQUE INDEX uq_cfg_assets_ownership_codice ON config.assets_ownership USING btree (codice)` |
 | uq_cfg_assets_ownership_codice_interno | `CREATE UNIQUE INDEX uq_cfg_assets_ownership_codice_interno ON config.assets_ownership USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_assets_ownership_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

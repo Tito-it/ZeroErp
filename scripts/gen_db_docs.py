@@ -274,6 +274,21 @@ def write_docs_for_schema(schema, cur):
             f.write(content)
     # Genera indice includendo tabelle, funzioni e view
     write_index(schema_dir, schema)
+    # Genera indice CI con solo contenuti manuali
+    write_index_ci(schema_dir, schema)
+
+def extract_scopo(text):
+    m = re.search(
+        r"###\s*🎯\s*(?:Scopo Principale|Scopo)\s*(.+?)(?=(?:\r?\n###|$))",
+        text,
+        flags=re.DOTALL
+    )
+    if not m:
+        return ""
+    full_scopo = m.group(1).strip()
+    paragraph = full_scopo.split('\n\n', 1)[0]
+    return paragraph.replace('\n', ' ')
+
 
 def add_entries_from_dir(dir_path, title, link_prefix, manual_dir, lines):
     if not os.path.isdir(dir_path):
@@ -285,21 +300,11 @@ def add_entries_from_dir(dir_path, title, link_prefix, manual_dir, lines):
         name = os.path.splitext(fname)[0]
         entry = f"- [{name}]({link_prefix}/{fname})"
 
-        # Cerca il file manuale corrispondente
         manual_file = os.path.join(manual_dir, f"{name}.md")
         if os.path.isfile(manual_file):
             with open(manual_file, encoding='utf-8') as fh:
-                text = fh.read()
-            # Regex che cattura Scopo o Scopo Principale
-            m = re.search(
-                r"###\s*🎯\s*(?:Scopo Principale|Scopo)\s*(.+?)(?=(?:\r?\n###|$))",
-                text,
-                flags=re.DOTALL
-            )
-            if m:
-                full_scopo = m.group(1).strip()
-                paragraph = full_scopo.split('\n\n', 1)[0]
-                scopo = paragraph.replace('\n', ' ')
+                scopo = extract_scopo(fh.read())
+            if scopo:
                 entry += f" — {scopo}"
         lines.append(entry)
     lines.append('')
@@ -327,17 +332,9 @@ def write_index(schema_dir, schema):
             manual_file = os.path.join(manual_dir, f"{name}.md")
             if os.path.isfile(manual_file):
                 text = open(manual_file, encoding='utf-8').read()
-                m = re.search(
-                    r"### 🎯 Scopo Principale\s*(.+?)(?=(?:\r?\n###|$))",
-                    text,
-                    flags=re.DOTALL
-                )
-                if m:
-                    full_scopo = m.group(1).strip()
-                    # prendi il primo paragrafo
-                    paragraph = full_scopo.split('\n\n', 1)[0]
-                    scopo = paragraph.replace('\n', ' ')
-                    entry += f" — {scopo}" 
+                scopo = extract_scopo(text)
+                if scopo:
+                    entry += f" — {scopo}"
             lines.append(entry)
         lines.append('')
     # Uso per funzioni
@@ -390,21 +387,8 @@ def write_index(schema_dir, schema):
             manual_file = os.path.join(manual_dir, f"{name}.md")
             if os.path.isfile(manual_file):
                 text = open(manual_file, encoding='utf-8').read()
-                # Regex che cattura fino alla prossima intestazione o fine file,
-                # gestendo sia \n che \r\n
-                m = re.search(
-                    r"### 🎯 Scopo Principale\s*(.+?)(?=(?:\r?\n###|$))",
-                    text,
-                    flags=re.DOTALL
-                )
-                if m:
-                    # Prendi la prima riga (fino al primo newline) per il sommario
-                    #scopo = m.group(1).strip().splitlines()[0]
-                    full_scopo = m.group(1).strip()
-                    # estrai il primo paragrafo (fino alla riga vuota)
-                    paragraph = full_scopo.split('\n\n', 1)[0]
-                    # unisci le righe di quel paragrafo in un’unica stringa
-                    scopo = paragraph.replace('\n', ' ')
+                scopo = extract_scopo(text)
+                if scopo:
                     entry += f" — {scopo}"
             lines.append(entry)
         lines.append('')
@@ -414,6 +398,62 @@ def write_index(schema_dir, schema):
     with open(index_path, 'w', encoding='utf-8') as f:
         f.write("\n".join(lines))
 
+def write_index_ci(schema_dir, schema):
+    index_path = os.path.join(schema_dir, 'index.ci.md')
+    tables_dir = os.path.join(schema_dir, 'tabelle')
+    funcs_dir = os.path.join(schema_dir, 'funzioni')
+    views_dir = os.path.join(schema_dir, 'views')
+    manual_dir = os.path.join(schema_dir, 'manual')
+
+    lines = [f"# Schema `{schema}`\n"]
+
+    if not os.path.isdir(manual_dir):
+        with open(index_path, 'w', encoding='utf-8') as f:
+            f.write("\n".join(lines))
+        return
+
+    table_names = set()
+    func_names = set()
+    view_names = set()
+    if os.path.isdir(tables_dir):
+        table_names = {os.path.splitext(f)[0] for f in os.listdir(tables_dir) if f.endswith('.md')}
+    if os.path.isdir(funcs_dir):
+        func_names = {os.path.splitext(f)[0] for f in os.listdir(funcs_dir) if f.endswith('.md')}
+    if os.path.isdir(views_dir):
+        view_names = {os.path.splitext(f)[0] for f in os.listdir(views_dir) if f.endswith('.md')}
+
+    manual_files = sorted(
+        os.path.splitext(f)[0]
+        for f in os.listdir(manual_dir)
+        if f.endswith('.md')
+    )
+
+    def add_manual_section(title, names):
+        if not names:
+            return
+        lines.append(title)
+        for name in sorted(names):
+            manual_file = os.path.join(manual_dir, f"{name}.md")
+            entry = f"- [{name}](manual/{name}.md)"
+            if os.path.isfile(manual_file):
+                with open(manual_file, encoding='utf-8') as fh:
+                    scopo = extract_scopo(fh.read())
+                if scopo:
+                    entry += f" — {scopo}"
+            lines.append(entry)
+        lines.append('')
+
+    add_manual_section("## 📚 Tabelle (manuale)", [n for n in manual_files if n in table_names])
+    add_manual_section("## ⚙️ Funzioni (manuale)", [n for n in manual_files if n in func_names])
+    add_manual_section("## 🔍 Views (manuale)", [n for n in manual_files if n in view_names])
+    all_known = table_names | func_names | view_names
+    add_manual_section(
+        "## 📘 Altri contenuti manuali",
+        [n for n in manual_files if n not in all_known],
+    )
+
+    with open(index_path, 'w', encoding='utf-8') as f:
+        f.write("\n".join(lines))
 
 
     

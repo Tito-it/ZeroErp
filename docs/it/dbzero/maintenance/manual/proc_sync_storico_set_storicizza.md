@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Procedura: `dbops.proc_sync_storico_set_storicizza`
+## 📘 Documentazione Concettuale – Procedura: `maintenance.proc_sync_storico_set_storicizza`
 
 > 👀 **Vedi anche:**
 >
@@ -8,13 +8,14 @@
 >
 > Approfondimento funzioni:
 >
-> * [dbops.proc_apply_storicizza_defaults](/dbzero/dbops/funzioni/proc_apply_storicizza_defaults)
+> * [maintenance.proc_apply_storicizza_defaults](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults)
 
 ---
 
 ### 🎯 Scopo Principale
 
-`dbops.proc_sync_storico_set_storicizza` è una procedura di sincronizzazione che individua, all’interno del database, tutte le tabelle che possiedono la colonna `storicizza` con **valore di default `true`** e le registra nella tabella di configurazione `config.storico_set_storicizza`.
+(latest review 07-01-26)
+`maintenance.proc_sync_storico_set_storicizza` è una procedura di sincronizzazione che individua, all’interno del database, tutte le tabelle che possiedono la colonna `storicizza` con **valore di default `true`** e le registra nella tabella di configurazione `config.storico_set_storicizza`.
 
 Questa operazione consente di mantenere allineata la configurazione del sistema con lo stato effettivo delle tabelle che partecipano alla storicizzazione.
 
@@ -55,7 +56,7 @@ Questa operazione consente di mantenere allineata la configurazione del sistema 
 ### 🔎 Esempio di utilizzo
 
 ```sql
-CALL dbops.proc_sync_storico_set_storicizza();
+CALL maintenance.proc_sync_storico_set_storicizza();
 ```
 
 ---

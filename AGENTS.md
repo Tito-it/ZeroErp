@@ -43,3 +43,7 @@
 ## Workflow Safety
 - Ask before running DB migrations locally
 - Avoid destructive commands without explicit approval
+
+## Test (pgtap)
+- Test DB: pgtap
+- Percorso: `db/pgtap/`
