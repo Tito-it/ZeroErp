@@ -160,6 +160,12 @@ jobs:
         run: |
           source .venv/bin/activate
           python scripts/apply_signatures.py
+      
+      - name: Genera MkDocs CI config
+        run: |
+          source .venv/bin/activate
+          python scripts/gen_mkdocs_ci.py
+
 
       - name: Build MkDocs site
         run: |
