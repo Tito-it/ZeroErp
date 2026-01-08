@@ -16,8 +16,8 @@ def add_exclude_docs(text, excludes):
     if re.search(r"^exclude_docs:", text, flags=re.MULTILINE):
         return text
 
-    block_lines = ["exclude_docs:"]
-    block_lines.extend([f"        - {item}" for item in excludes])
+    block_lines = ["exclude_docs: |"]
+    block_lines.extend([f"        {item}" for item in excludes])
     block = "\n".join(block_lines) + "\n"
 
     match = re.search(r"^site_dir:.*$", text, flags=re.MULTILINE)
