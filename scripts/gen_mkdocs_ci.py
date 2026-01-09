@@ -5,7 +5,7 @@
 #   per gli schemi dbzero.
 # - Le esclusioni (exclude_docs) sono opzionali e attive solo con flag
 #   --exclude-ddl/--exclude-views.##
-# 
+# --------------------------------------------------------------
 import argparse
 import pathlib
 import re
