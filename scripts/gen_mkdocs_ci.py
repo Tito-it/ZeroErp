@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
+# 
 # NOTE:
 # - Genera mkdocs.ci.yml da mkdocs.yml sostituendo index.md con index.ci.md
 #   per gli schemi dbzero.
 # - Le esclusioni (exclude_docs) sono opzionali e attive solo con flag
-#   --exclude-ddl/--exclude-views.
-
+#   --exclude-ddl/--exclude-views.##
+# 
 import argparse
 import pathlib
 import re
