@@ -10,7 +10,7 @@
 # - DB_DOCS_MODE=ci (o DOCS_MODE=ci) genera doc "minimal": solo include manuale,
 #   senza sorgenti SQL, per evitare link rotti in CI.
 # - In locale, se DB_DOCS_MODE non e' impostato, la generazione resta completa.
-
+# ------------------------------------------------------------ 
 
 #!/usr/bin/env python3
 import os, re
