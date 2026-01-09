@@ -161,7 +161,10 @@ jobs:
       - name: Applica signature ai documenti
         run: |
           source .venv/bin/activate
-          python scripts/apply_signatures.py
+          
+          echo "DB_DOCS_MODE=$DB_DOCS_MODE"
+          DB_DOCS_MODE=ci python scripts/gen_db_docs.py
+          head -n 20 docs/it/dbzero/maintenance/funzioni/fn_run_and_log.md
       
       - name: Genera MkDocs CI config
         run: |
