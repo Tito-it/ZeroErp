@@ -147,8 +147,10 @@ jobs:
       
       - name: Genera doc DB
         # Qui sopra non serve più caricare i tuoi secrets, ma usiamo quelli del servizio
+        #  Attenzione la documentazione DB usa un env specifico per CI 
         env:
           DATABASE_DSN: "host=localhost port=5432 dbname=zeroerp user=zeroerp password=secret"
+          DB_DOCS_MODE: "ci"
 
         run: |
           # Ora chiamiamo lo script: legge DB_HOST, DB_PORT, ecc. dall'env

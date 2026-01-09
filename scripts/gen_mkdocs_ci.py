@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
+# NOTE:
+# - Genera mkdocs.ci.yml da mkdocs.yml sostituendo index.md con index.ci.md
+#   per gli schemi dbzero.
+# - Le esclusioni (exclude_docs) sono opzionali e attive solo con flag
+#   --exclude-ddl/--exclude-views.
+
 import argparse
 import pathlib
 import re
 
 
-DEFAULT_EXCLUDES = [
+DDL_EXCLUDES = [
     "it/dbzero/**/tabelle/**",
     "it/dbzero/**/funzioni/**",
     "it/dbzero/**/views/**",
-    
 ]
 
 
 def add_exclude_docs(text, excludes):
+    if not excludes:
+        return text
     if re.search(r"^exclude_docs:", text, flags=re.MULTILINE):
         return text
 
@@ -43,6 +50,11 @@ def main():
     parser.add_argument("--source", default="mkdocs.yml")
     parser.add_argument("--dest", default="mkdocs.ci.yml")
     parser.add_argument(
+        "--exclude-ddl",
+        action="store_true",
+        help="Exclude docs under it/dbzero/**/tabelle/** and it/dbzero/**/funzioni/**",
+    )
+    parser.add_argument(
         "--exclude-views",
         action="store_true",
         help="Exclude docs under it/dbzero/**/views/**",
@@ -53,9 +65,13 @@ def main():
     dst = pathlib.Path(args.dest)
 
     text = src.read_text(encoding="utf-8")
-    excludes = list(DEFAULT_EXCLUDES)
-    if args.exclude_views:
-        excludes.append("it/dbzero/**/views/**")
+    excludes = []
+    if args.exclude_ddl:
+        excludes.extend(DDL_EXCLUDES[:2])
+        if args.exclude_views:
+            excludes.append(DDL_EXCLUDES[2])
+    elif args.exclude_views:
+        excludes.append(DDL_EXCLUDES[2])
 
     text = add_exclude_docs(text, excludes)
     text = replace_schema_indexes(text)

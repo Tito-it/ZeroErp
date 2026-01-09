@@ -6,6 +6,10 @@
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# NOTE:
+# - DB_DOCS_MODE=ci (o DOCS_MODE=ci) genera doc "minimal": solo include manuale,
+#   senza sorgenti SQL, per evitare link rotti in CI.
+# - In locale, se DB_DOCS_MODE non e' impostato, la generazione resta completa.
 
 
 #!/usr/bin/env python3
@@ -42,6 +46,9 @@ schemas = [s.strip() for s in db_schemas.split(",") if s.strip()]
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
 OUT_DIR = os.path.join(DOCS_DIR, "it", "dbzero")
 
+DOCS_MODE = (os.getenv("DB_DOCS_MODE") or os.getenv("DOCS_MODE") or "").strip().lower()
+DOCS_MINIMAL = DOCS_MODE in {"ci", "minimal", "manual"}
+
 
 # Include manuale
 def include_manual(schema, kind, name):
@@ -53,6 +60,8 @@ def include_manual(schema, kind, name):
 
 # Genera Markdown tabella con colonne, vincoli, indici, trigger
 def gen_table_md(schema, table, cur):
+    if DOCS_MINIMAL:
+        return ""
     lines = [f"# 📚 Tabella `{table}`\n"]
     # Colonne
     cur.execute(
@@ -125,6 +134,8 @@ def gen_table_md(schema, table, cur):
 # OUT_DIR = os.path.join(BASE_DIR, "docs", "it", "dbzero")
 # Genera Markdown funzione
 def gen_function_md(schema, func, cur):
+    if DOCS_MINIMAL:
+        return ""
     cur.execute("""
         SELECT p.proname,
                p.prokind,  -- 'f' function, 'p' procedure
@@ -174,6 +185,8 @@ def gen_function_md_V1(schema, func, cur):
 
 # NUOVA: Genera Markdown per view
 def gen_view_md(schema, view, cur):
+    if DOCS_MINIMAL:
+        return ""
     # Ottiene la definizione della view
     cur.execute(
         "SELECT definition FROM pg_views WHERE schemaname=%s AND viewname=%s",
