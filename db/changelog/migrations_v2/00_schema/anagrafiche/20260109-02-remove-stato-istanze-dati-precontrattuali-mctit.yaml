@@ -1,0 +1,43 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+databaseChangeLog:
+    - logicalFilePath: db/changelog/migrations_v2/00_schema/anagrafiche/20260109-02-remove-stato-istanze-dati-precontrattuali-mctit.yaml
+    - changeSet:
+          id: 20260109-02-remove-stato-istanze-dati-precontrattuali
+          author: mctit
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        ALTER TABLE IF EXISTS anagrafiche.istanze_dati_precontrattuali 
+                        DROP CONSTRAINT IF EXISTS chk_idp_stato;
+
+              - dropColumn:
+                    schemaName: anagrafiche
+                    tableName: istanze_dati_precontrattuali
+                    columnName: stato
+    - changeSet:
+          id: 20260109-02-01-remove-tipo-utenza-istanze-dati-precontrattuali
+          author: mctit
+          changes:
+              - dropForeignKeyConstraint:
+                    baseTableSchemaName: anagrafiche
+                    baseTableName: istanze_dati_precontrattuali
+                    constraintName: fk_idp_tipi_utenze
+              - dropIndex:
+                    schemaName: anagrafiche
+                    tableName: istanze_dati_precontrattuali
+                    indexName: ix_idp_tipo_utenza_id
+              - dropColumn:
+                    schemaName: anagrafiche
+                    tableName: istanze_dati_precontrattuali
+                    columnName: tipo_utenza_id

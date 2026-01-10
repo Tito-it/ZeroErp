@@ -33,7 +33,6 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_iva_stati_a10_protect_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('aliquota_override', 'E_PERC_IVA_NO_MOD', 'assoggettamento_id_override', 'E_ASSOGGETTAMENTO_NO_MOD')` |
-| trg_iva_stati_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_iva_stati_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_iva_stati_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_iva_stati_normalize()` |
 | trg_iva_stati_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_iva_stati_normalize()` |

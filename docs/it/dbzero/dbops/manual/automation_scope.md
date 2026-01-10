@@ -6,21 +6,22 @@
 >
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)      
 > * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)      
-> * [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)      
->
 > Approfondimento funzioni:  
 > * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)      
 > * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)      
 >
-> * Orchestratori:  `dbops.run_automations_tx_id`, `dbops.run_automations_audit_update`, `dbops.run_automations_storico
-
-
-
-
+> * Orchestratori: 
+> 
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations), 
+> * [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id),   
+> * [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),   
+> * [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
+>  * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
 
 
 ### 🎯 Scopo Principale
 
+(latest review 10-01-26)
 Definire **l’elenco degli schemi** su cui gli orchestratori di automazione devono operare. Funziona come una **allow‑list**: se presente e popolata, limita l’esecuzione alle sole voci elencate.
 
 > Se `automation_scope` è **vuota** o **assente**, gli orchestratori applicano la logica di fallback: tutti gli schemi **user** (non `pg_%`, non `information_schema`) **escludendo** `storico`.

@@ -31,11 +31,10 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_block_deact_toponomastica_stradario_generale | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stradario_generale', 'toponomastica_id', 'id')` |
-| trg_toponomastica_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_toponomastica_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_toponomastica_bump_normalize_aft_upd | AFTER | UPDATE | `EXECUTE FUNCTION config.trgfn_toponomastica_bump_normalize()` |
-| trg_toponomastica_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_toponomastica_normalize()` |
 | trg_toponomastica_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_toponomastica_normalize()` |
+| trg_toponomastica_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_toponomastica_normalize()` |
 | trg_toponomastica_protect_update_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_toponomastica_protect_update()` |
 
 ---

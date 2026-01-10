@@ -46,8 +46,8 @@
 | trg_forme_giuridiche_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_forme_giuridiche_sync_stato_iso2_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_sync_stato_iso2()` |
 | trg_forme_giuridiche_sync_stato_iso2_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_sync_stato_iso2()` |
-| trg_forme_giuridiche_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('forme_giuridiche_id')` |
 | trg_forme_giuridiche_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('forme_giuridiche_id')` |
+| trg_forme_giuridiche_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('forme_giuridiche_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

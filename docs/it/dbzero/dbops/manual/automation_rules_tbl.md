@@ -5,7 +5,6 @@
 > Approfondimento tabelle
 > 
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)      
-> * [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)      
 > * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)
 >       
 >
@@ -25,7 +24,6 @@
 ### 🎯 Scopo Principale
 
 (last revision 01-01-26)
-
 Configurare **regole di automazione** per generare/applicare trigger e vincoli in modo dichiarativo. Ogni riga descrive **cosa** applicare (*rule_type*), **dove** (*target_schema/target_table*), **quando** (*exec_mode*), **come chiamarlo** (*name_template*), **come verificare l'esistenza** (*existence_strategy*), e **con quali parametri** (*params*).
 
 Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **priority** (poi per `id`).

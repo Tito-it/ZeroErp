@@ -49,18 +49,13 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_dati_societari_a10_guard_forma_giuridica_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()` |
 | trg_dati_societari_a10_guard_forma_giuridica_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()` |
-| trg_dati_societari_audit_data_user_generic_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_dati_societari_a10_guard_forma_giuridica_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()` |
 | trg_dati_societari_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_dati_societari_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_dati_societari_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_dati_societari_guard_tipo_soggetto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()` |
 | trg_dati_societari_guard_tipo_soggetto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()` |
-| trg_dati_societari_tx_id_managed_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_dati_societari_tx_id_managed_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_dati_societari_z90_storico_generic_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('dati_societari_id')` |
-| trg_dati_societari_z90_storico_generic_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('dati_societari_id')` |
+| trg_dati_societari_guard_tipo_soggetto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()` |
 | trg_dati_societari_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('dati_societari_id')` |
 | trg_dati_societari_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('dati_societari_id')` |
 

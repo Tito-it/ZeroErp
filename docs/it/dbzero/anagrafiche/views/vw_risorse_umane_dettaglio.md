@@ -1,0 +1,57 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/vw_risorse_umane_dettaglio.md" %}
+# 🔍 View `vw_risorse_umane_dettaglio`
+
+```sql
+CREATE OR REPLACE VIEW anagrafiche.vw_risorse_umane_dettaglio AS
+SELECT ru.id AS risorsa_umana_id,
+    ru.soggetto_id AS risorsa_umana_soggetto_id,
+    ru.soggetto_ruolo_id,
+    ru.qualifica_id,
+    ru.unita_organizzativa_id,
+    ru.valido_dal,
+    ru.valido_al,
+    ru.attivo AS risorsa_umana_attivo,
+    ru.meta AS risorsa_umana_meta,
+    ru.storicizza AS risorsa_umana_storicizza,
+    ru.tx_id AS risorsa_umana_tx_id,
+    ru.data_insert AS risorsa_umana_data_insert,
+    ru.user_insert AS risorsa_umana_user_insert,
+    ru.data_update AS risorsa_umana_data_update,
+    ru.user_update AS risorsa_umana_user_update,
+    s.id AS soggetto_id,
+    s.codice AS soggetto_codice,
+    s.ragione_sociale,
+    s.ragione_sociale_completa,
+    s.cognome,
+    s.nome,
+    s.id_fiscale_univoco_cf_piva,
+    s.partita_iva,
+    s.codice_fiscale,
+    s.stato_id,
+    s.comune_id,
+    s.titolo_cortesia_id,
+    s.default_contatto_id,
+    s.tipo_soggetto_dettaglio_id,
+    s.tx_id AS soggetto_tx_id,
+    s.storicizza AS soggetto_storicizza,
+    s.attivo AS soggetto_attivo,
+    q.id AS qualifica_id_anagrafica,
+    q.codice AS qualifica_codice,
+    q.codice_interno AS qualifica_codice_interno,
+    q.descrizione AS qualifica_descrizione,
+    q.attivo AS qualifica_attivo,
+    uo.id AS unita_organizzativa_id_anagrafica,
+    uo.codice AS unita_organizzativa_codice,
+    uo.codice_interno AS unita_organizzativa_codice_interno,
+    uo.descrizione AS unita_organizzativa_descrizione,
+    uo.parent_id AS unita_organizzativa_parent_id,
+    uo.attivo AS unita_organizzativa_attivo
+   FROM (((anagrafiche.risorse_umane ru
+     JOIN anagrafiche.soggetti s ON ((s.id = ru.soggetto_id)))
+     LEFT JOIN config.qualifiche q ON ((q.id = ru.qualifica_id)))
+     LEFT JOIN config.unita_organizzative uo ON ((uo.id = ru.unita_organizzativa_id)));
+```
+
+
+---
+{% include-markdown "signature-core.md" %}
