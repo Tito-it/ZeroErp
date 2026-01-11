@@ -40,14 +40,14 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_vettori_a10_protect_codice_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_protect_codice()` |
+| trg_vettori_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'CODICE_NON_MODIFICABILE')` |
 | trg_vettori_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_vettori_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_vettori_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_vettori_guard_ruolo_vettore_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_guard_ruolo_vettore()` |
 | trg_vettori_guard_ruolo_vettore_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_guard_ruolo_vettore()` |
-| trg_vettori_norm_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_normalize()` |
 | trg_vettori_norm_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_normalize()` |
+| trg_vettori_norm_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_normalize()` |
 | trg_vettori_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('vettori_id')` |
 | trg_vettori_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('vettori_id')` |
 

@@ -29,5 +29,10 @@
 | uq_stati_doc_ordini_codice | `CREATE UNIQUE INDEX uq_stati_doc_ordini_codice ON config.stati_doc_ordini USING btree (codice)` |
 | uq_stati_doc_ordini_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_ordini_codice_interno ON config.stati_doc_ordini USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_stati_doc_ordini_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+
 ---
 {% include-markdown "signature-core.md" %}

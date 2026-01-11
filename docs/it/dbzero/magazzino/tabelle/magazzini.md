@@ -39,7 +39,6 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_magazzini_a10_protect_codice_upd | BEFORE | UPDATE | `EXECUTE FUNCTION magazzino.trgfn_magazzini_protect_codice()` |
 | trg_magazzini_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION magazzino.trgfn_magazzini_normalize()` |
 | trg_magazzini_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION magazzino.trgfn_magazzini_normalize()` |
 

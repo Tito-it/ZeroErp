@@ -12,7 +12,7 @@
 | status | text | NO |  |
 | message | text | YES |  |
 | duration_ms | integer | YES |  |
-| tx_id | uuid | NO |  |
+| tx_id | uuid | YES |  |
 | exec_mode | text | YES |  |
 | parts | ARRAY | YES |  |
 | rule_type | text | YES |  |

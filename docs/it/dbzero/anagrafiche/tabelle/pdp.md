@@ -45,11 +45,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_pdp_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('pdp', 'CODICE_NON_MODIFICABILE')` |
 | trg_pdp_a10_set_default_stato_ins | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_pdp_set_default_stato()` |
 | trg_pdp_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_pdp_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_pdp_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_pdp_protect_cols_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_pdp_protect_cols()` |
+| trg_pdp_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_pdp_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('pdp_id')` |
 | trg_pdp_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('pdp_id')` |
 

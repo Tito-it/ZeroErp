@@ -1,14 +1,14 @@
 # ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Liquibase changelog per Zero ERP
-# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
 #
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 
 databaseChangeLog:
-  - logicalFilePath: changelog/migrations/90_end/ci_apply/20250627-31-apply_apply_run_automation_all-mctit.yaml 
+  - logicalFilePath: changelog/migrations/90_end/ci_apply/20250627-31-apply_apply_run_automation_all-mctit.yaml
 
   - changeSet:
       id: 220250627-31-apply_apply_run_automation_all
@@ -23,18 +23,19 @@ databaseChangeLog:
             - sqlCheck:
                 expectedResult: "OK"
                 sql: "select case when current_setting('app.env', true)='ci' then 'OK' else 'NO' end"
-           # - runningAs: ci_runner
+            # - runningAs: ci_runner
 
       changes:
         - sql:
             splitStatements: false
             sql: |
-              
+
               SELECT dbops.fn_run_automations_audit_update('CI', NULL, false);
               SELECT dbops.fn_run_automations_storico_provision('CI', NULL, false);
               SELECT dbops.fn_run_automations_storico('CI', NULL, false);
               SELECT dbops.fn_run_automations_tx_id('CI', NULL, false);
               SELECT dbops.fn_run_automations_attivo('CI', NULL, false);
+              SELECT dbops.fn_run_automations_lock_columns('CI', NULL, false);
 
   - changeSet:
       id: 9099-tag-after-automations-ci

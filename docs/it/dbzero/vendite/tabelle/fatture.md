@@ -73,7 +73,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_fatture_a10_protect_num_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_protect_num()` |
+| trg_fatture_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('numero', 'CODICE_NON_MODIFICABILE')` |
 | trg_fatture_a11_numerata_non_annulabile_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_numerata_non_annulabile()` |
 | trg_fatture_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatture_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

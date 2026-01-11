@@ -28,5 +28,10 @@
 | uq_tipi_doc_fiscale_codice_fe | `CREATE UNIQUE INDEX uq_tipi_doc_fiscale_codice_fe ON config.tipi_doc_fiscale USING btree (codice_fe) WHERE (codice_fe IS NOT NULL)` |
 | uq_tipi_doc_fiscale_codice_interno | `CREATE UNIQUE INDEX uq_tipi_doc_fiscale_codice_interno ON config.tipi_doc_fiscale USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_tipi_doc_fiscale_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+
 ---
 {% include-markdown "signature-core.md" %}
