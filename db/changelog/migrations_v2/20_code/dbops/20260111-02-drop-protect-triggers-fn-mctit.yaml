@@ -9,6 +9,8 @@ databaseChangeLog:
   - changeSet:
       id: 20260111-02-drop-protect-triggers-fn
       author: mctit
+      validCheckSum:
+        - ANY
       comment: >
         Rimuove trigger *_protect_* e le rispettive trigger function
         (funzione nello stesso schema del trigger).
@@ -20,6 +22,8 @@ databaseChangeLog:
             sql: |
               -- acquisti
               DROP TRIGGER IF EXISTS trg_ddt_a10_a_protect_num_upd ON acquisti.ddt;
+              DROP TRIGGER IF EXISTS trg_ddt_a10_upd_a_protect_num ON acquisti.ddt;
+
               DROP FUNCTION IF EXISTS acquisti.trgfn_acq_ddt_protect_num();
 
               DROP TRIGGER IF EXISTS trg_ordini_a10_protect_num_upd ON acquisti.ordini;

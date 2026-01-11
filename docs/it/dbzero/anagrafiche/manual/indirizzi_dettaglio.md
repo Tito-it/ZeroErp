@@ -17,7 +17,7 @@
 >
 > Approfondimento funzioni:   
 >
-> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)    
+> * [anagrafiche.trgfn_dettaglio_normalize](/dbzero/anagrafiche/funzioni/trgfn_dettaglio_normalize)    
 > * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
 
@@ -27,7 +27,7 @@ La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli ind
 
 ### 🎯 Scopo Principale
 
-(latest review 02-01-26)
+(latest review 10-01-26)
 * **Dettagliare lo stradario**  
   Associare a ciascuna via (memorizzata in `config.stradario`) le singole unità civiche (numeri civici, estensioni, palazzine, interni, piani), ottenendo così l’indirizzo completo e navigabile.  
 * **Geolocalizzazione precisa**  

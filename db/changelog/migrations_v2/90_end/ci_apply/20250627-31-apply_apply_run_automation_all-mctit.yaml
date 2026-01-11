@@ -13,6 +13,8 @@ databaseChangeLog:
   - changeSet:
       id: 220250627-31-apply_apply_run_automation_all
       author: mctit
+      validCheckSum:
+        - ANY
       comments: "esegue tutti i run di automazione(da aggiungere i futuri)"
       context: ci_apply
       preConditions:

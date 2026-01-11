@@ -17,12 +17,12 @@
 >
 > Approfondimento Funzioni:   
 > 
->  * [anagrafiche.trgfn_soggetti_ins_upd_check_soggetto_contatti](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ins_upd_check_soggetto_contatti)   
+>  * [anagrafiche.trgfn_soggetti_guard_soggetto_contatti](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_soggetto_contatti)   
 >  * [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)   
->  * [anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_ins_upd_check_tipo_soggetto) 
->  * [anagrafiche.trgfn_soggetti_ins_upd_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ins_upd_clean_fields) 
->  * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)   
->  * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+>  * [anagrafiche.trgfn_dati_societari_guard_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_guard_tipo_soggetto) 
+>  * [anagrafiche.trgfn_soggetti_normalize](/dbzero/anagrafiche/funzioni/trgfn_soggetti_normalize) 
+>  * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
+>  * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
 
 Questa documentazione descrive le regole di progettazione e implementazione della tabella anagrafica **`anagrafiche.soggetti`** in Zero ERP, senza ripetere la struttura SQL automatica. Contiene informazioni su vincoli, campi generati e relazioni con altre tabelle.
@@ -31,7 +31,7 @@ Questa documentazione descrive le regole di progettazione e implementazione dell
 
 ### 🎯 Scopo Principale
 
-(latest review 20-11-26)
+(latest review 10-01-26)
 - **Coerenza dei dati**  
   Garantire che ogni soggetto—persona fisica, giuridica o fisica forzata—sia identificato in modo univoco e validato secondo le regole aziendali.
 
@@ -151,7 +151,7 @@ In questa sezione sono descritte le modifiche chiave apportate per allinearsi al
 
 4. **Vincoli e trigger aggiornati**
 
-   * Il trigger di validazione CF/P.IVA (`trg_soggetti_ins_upd_valida_cf_piva`) ora utilizza `tipo_soggetto_dettaglio_id`.
+   * Il trigger di validazione CF/P.IVA (`trg_soggetti_valida_cf_piva_ins_upd`) ora utilizza `tipo_soggetto_dettaglio_id`.
    * È stato aggiunto il vincolo di FK:
 
    ```sql

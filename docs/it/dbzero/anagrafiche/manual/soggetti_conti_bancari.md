@@ -15,14 +15,14 @@
 >
 > **Approfondimento Trigger/Funzioni generiche**   
 > • [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
-> • [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)   
-> • [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
+> • [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
+> • [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
 
 ---
 
 ### 🎯 Scopo Principale
 
-(lateste review 01-12-25)
+(latest review 10-01-26)
 `anagrafiche.soggetti_conti_bancari` gestisce l’**associazione tra un Soggetto** (persona/azienda) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 
 Questa tabella rappresenta il **fallback di default** per il soggetto: se per un dato **Ruolo** (es. Cliente/Fornitore/Gestore) non è definito un conto specifico, verrà usato il **predefinito** definito qui, grazie alla **VIEW** e alla **FUNCTION** di selezione.
@@ -73,17 +73,6 @@ Questa tabella rappresenta il **fallback di default** per il soggetto: se per un
 
 ---
 
-### ⚙️ Trigger e Funzioni coinvolte
-
-| Nome                                             | Tipo                           | Scopo                                                             |
-| ------------------------------------------------ | ------------------------------ | ----------------------------------------------------------------- |
-| `trg_soggetti_conti_bancari_ins_upd_guard`       | Trigger (BEFORE INSERT/UPDATE) | Impedisce collegamenti a conti disattivati; normalizza audit base |
-| `trg_soggetti_conti_bancari_ins_upd_gen_tx_id`   | Trigger                        | Assegna `tx_id` se nullo                                          |
-| `trg_upd_soggetti_conti_bancari_audit_data_user` | Trigger                        | Mantiene `data_update`/`user_update`                              |
-| `trg_z90_soggetti_conti_bancari_upd_dlt_storico` | Trigger                        | Snapshot storico su UPDATE/DELETE se `storicizza=true`            |
-| `script.trgfn_soggetti_conti_guard()`            | Funzione                       | Guard‑rail richiamata dal trigger di tabella                      |
-
----
 
 ### 🔎 Query tipiche
 

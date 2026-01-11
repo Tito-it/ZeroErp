@@ -19,14 +19,14 @@
 > Trigger/Funzioni correlate:
 >
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> * [script.trgfnaudit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
 ---
 
 ### 🎯 Scopo Principale
 
-(last review 09-01-26)
+(latest review 09-01-26)
 La tabella `anagrafiche.istanze_dati_precontrattuali` raccoglie **tutte le informazioni pre‑contrattuali** relative ad una specifica **istanza utility** (fornitura/utenza). Il campo **`meta` (JSONB)** consente di archiviare attributi **specifici per tipo di utility** (es. potenza impegnata, pressione, soglie tecniche, parametri di profilazione).
 
 Tali informazioni, una volta **caricate**, sono considerate **definitive** e:
@@ -71,14 +71,6 @@ Tali informazioni, una volta **caricate**, sono considerate **definitive** e:
 
 ---
 
-### ⚙️ Trigger & Automazioni
-
-* `dbops.trgfn_tx_id_managed` → assegna `tx_id` su INSERT/UPDATE se nullo.
-* `script.trgfn_upd_audit_data_user_generic` → aggiorna `data_update`/`user_update` su UPDATE.
-* *(Consigliato)* `script.trgfn_upd_dlt_storico_generic('istanza_dati_precontrattuali_id')` → snapshot su UPDATE/DELETE quando `storicizza=true`.
-* *(Facoltativo)* `trgfn_lock_after_consolidation` → blocca modifiche a campi core dopo il consolidamento applicativo (eccetto campi note/amministrativi).
-
----
 
 ### 🔎 Query Tipiche
 

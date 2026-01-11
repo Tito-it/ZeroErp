@@ -19,8 +19,8 @@
 >
 > **Approfondimento funzioni e trigger:**
 >
-> * `anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo`
-> * `anagrafiche.trgfn_indirizzi_base_normalize`
+> * [`anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo)  
+> * [`anagrafiche.trgfn_indirizzi_base_normalize`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize)  
 
 ---
 
