@@ -1,15 +1,15 @@
 id,stato_iso2,stato_id,codice,descrizione,rea_policy,capitale_sociale_policy,attivo,meta,user_insert,data_insert,user_update,data_update,tx_id,storicizza
-1,IT,1,DI,"Ditta individuale",OPTIONAL,NONE,true,"{""alias"":[""Ditta Ind."",""Impresa individuale""]}","titodb","2025-12-22 12:00:00+01",,,,false
-2,IT,1,SNC,"Società in nome collettivo",REQUIRED,OPTIONAL,true,"{""alias"":[""S.n.c."",""Snc""]}","titodb","2025-12-22 12:00:00+01",,,,false
-3,IT,1,SAS,"Società in accomandita semplice",REQUIRED,OPTIONAL,true,"{""alias"":[""S.a.s."",""Sas""]}","titodb","2025-12-22 12:00:00+01",,,,false
-4,IT,1,SRL,"Società a responsabilità limitata",REQUIRED,REQUIRED,true,"{""alias"":[""S.r.l."",""Srl""]}","titodb","2025-12-22 12:00:00+01",,,,false
-5,IT,1,SRLS,"Società a responsabilità limitata semplificata",REQUIRED,REQUIRED,true,"{""alias"":[""S.r.l.s."",""Srls""]}","titodb","2025-12-22 12:00:00+01",,,,false
-6,IT,1,SPA,"Società per azioni",REQUIRED,REQUIRED,true,"{""alias"":[""S.p.a."",""Spa""]}","titodb","2025-12-22 12:00:00+01",,,,false
-7,IT,1,SAPA,"Società in accomandita per azioni",REQUIRED,REQUIRED,true,"{""alias"":[""S.a.p.a."",""Sapa""]}","titodb","2025-12-22 12:00:00+01",,,,false
-8,IT,1,SOC_COOP,"Società cooperativa",REQUIRED,OPTIONAL,true,"{""alias"":[""Cooperativa""]}","titodb","2025-12-22 12:00:00+01",,,,false
-9,IT,1,CONSORZIO,"Consorzio",REQUIRED,OPTIONAL,true,"{""alias"":[]}","titodb","2025-12-22 12:00:00+01",,,,false
-10,IT,1,ASSOC,"Associazione",OPTIONAL,NONE,true,"{""alias"":[""Associazione riconosciuta"",""Associazione non riconosciuta""]}","titodb","2025-12-22 12:00:00+01",,,,false
-11,IT,1,FONDAZIONE,"Fondazione",OPTIONAL,NONE,true,"{""alias"":[]}","titodb","2025-12-22 12:00:00+01",,,,false
-12,IT,1,ENTE_PUBBLICO,"Ente pubblico",OPTIONAL,NONE,true,"{""alias"":[""PA"",""Pubblica Amministrazione""]}","titodb","2025-12-22 12:00:00+01",,,,false
-13,IT,1,ONLUS,"ONLUS",OPTIONAL,NONE,true,"{""alias"":[]}","titodb","2025-12-22 12:00:00+01",,,,false
-14,IT,1,IMPRESA_SOCIALE,"Impresa sociale",REQUIRED,OPTIONAL,true,"{""alias"":[]}","titodb","2025-12-22 12:00:00+01",,,,false
+1,IT,1,DI,Ditta individuale,OPTIONAL,NONE,t,"{""alias"": [""Ditta Ind."", ""Impresa individuale""]}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f
+2,IT,1,SNC,Società in nome collettivo,REQUIRED,OPTIONAL,t,"{""alias"": [""S.n.c."", ""Snc""]}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f
+3,IT,1,SAS,Società in accomandita semplice,REQUIRED,OPTIONAL,t,"{""alias"": [""S.a.s."", ""Sas""]}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f
+4,IT,1,SRL,Società a responsabilità limitata,REQUIRED,REQUIRED,t,"{""alias"": [""S.r.l."", ""Srl""]}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f
+5,IT,1,SRLS,Società a responsabilità limitata semplificata,REQUIRED,REQUIRED,t,"{""alias"": [""S.r.l.s."", ""Srls""]}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f
+6,IT,1,SPA,Società per azioni,REQUIRED,REQUIRED,t,"{""alias"": [""S.p.a."", ""Spa""]}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f
+7,IT,1,SAPA,Società in accomandita per azioni,REQUIRED,REQUIRED,t,"{""alias"": [""S.a.p.a."", ""Sapa""]}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f
+8,IT,1,SOC_COOP,Società cooperativa,REQUIRED,OPTIONAL,t,"{""alias"": [""Cooperativa""]}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f
+9,IT,1,CONSORZIO,Consorzio,REQUIRED,OPTIONAL,t,"{""alias"": []}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f
+10,IT,1,ASSOC,Associazione,OPTIONAL,NONE,t,"{""alias"": [""Associazione riconosciuta"", ""Associazione non riconosciuta""]}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f
+11,IT,1,FONDAZIONE,Fondazione,OPTIONAL,NONE,t,"{""alias"": []}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f
+12,IT,1,ENTE_PUBBLICO,Ente pubblico,OPTIONAL,NONE,t,"{""alias"": [""PA"", ""Pubblica Amministrazione""]}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f
+13,IT,1,ONLUS,ONLUS,OPTIONAL,NONE,t,"{""alias"": []}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f
+14,IT,1,IMPRESA_SOCIALE,Impresa sociale,REQUIRED,OPTIONAL,t,"{""alias"": []}",titodb,2025-12-22 12:00:00+01,"",2025-12-22 15:50:01.865642+01,,f

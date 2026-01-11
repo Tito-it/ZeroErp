@@ -34,7 +34,7 @@ databaseChangeLog:
               - column: { name: codice, type: STRING }
               - column: { name: codice_interno, type: STRING }
               - column: { name: descrizione, type: STRING }
-              - column: { name: parent_id, type: STRING }
+              - column: { name: parent_id, type: INTEGER }
               - column: { name: attivo, type: BOOLEAN }
               - column:
                   name: meta

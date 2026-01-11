@@ -38,6 +38,7 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
   * `TX_ID` → trigger `BEFORE INSERT/UPDATE` con `dbops.trgfn_tx_id_managed()` su tabelle che hanno `tx_id uuid`.
   * `AUDIT_UPDATE` → trigger `BEFORE UPDATE` con `script.trgfn_upd_audit_data_user_generic()`.
   * `STORICO` → trigger su `BEFORE UPDATE` e `BEFORE DELETE` verso `storico.<table>_storico` con `script.trgfn_upd_dlt_storico_generic(...)`.
+  * `LOCK_COLUMNS` → trigger `BEFORE UPDATE OF ...` con `script.trgfn_lock_columns(...)` su colonne critiche.
   * `ATTIVO` → set di trigger basati su FK **NO ACTION/RESTRICT** (cascade/require/block).
 * **target_schema** *(text)* – schema di destinazione.
 * **target_table** *(text, opzionale)* – nome tabella **o pattern LIKE** (`%`) per filtrare. Se **NULL**, tutte le tabelle dello schema per quel *rule_type*.
@@ -75,6 +76,8 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
   (Sovrascrivibile anche via `automation_overrides_cols`)
 * **STORICO**: *(tipicamente vuoto)*
   La FK dello storico può essere data da override `STORICO_FK` in `automation_overrides_cols`.
+* **LOCK_COLUMNS**: *(tipicamente vuoto)*
+  Usa `name_template` ed `existence_strategy` per il naming e l'idempotenza dei trigger di lock.
 * **ATTIVO**:
 
   * `include_no_action` *(boolean, default true)* → considera anche FK `NO ACTION` oltre a `RESTRICT`.

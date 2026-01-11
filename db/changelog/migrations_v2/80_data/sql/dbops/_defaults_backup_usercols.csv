@@ -1,2 +1,74 @@
 id,schema_name,table_name,column_name,old_default_expr,captured_at
 1,config,stati_pratiche,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+2,config,stati_pratiche,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+3,config,tipi_attivita,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+4,config,tipi_attivita,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+5,config,tipi_documenti,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+6,config,tipi_documenti,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+7,config,tipi_ruoli,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+8,config,tipi_ruoli,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+9,config,utilities,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+10,config,utilities,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+11,config,stati,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+12,config,stati,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+13,config,toponomastica,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+14,config,toponomastica,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+15,config,stradario_generale,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+16,config,stradario_generale,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+17,config,regioni,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+18,config,regioni,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+19,config,province,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+20,config,province,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+21,config,ambiti,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+22,config,ambiti,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+23,config,comuni,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+24,config,comuni,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+25,config,codici_postali,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+26,config,codici_postali,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+27,config,sistema_codici,user_insert,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+28,config,sistema_codici,user_update,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+29,config,titoli_cortesia,user_insert,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+30,config,titoli_cortesia,user_update,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+31,config,valute,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+32,config,valute,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+33,config,tipi_contatti,user_insert,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+34,config,tipi_contatti,user_update,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+35,config,tipi_indirizzi,user_insert,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+36,config,tipi_indirizzi,user_update,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+37,config,modalita_pagamento,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+38,config,modalita_pagamento,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+39,config,stati_cliente,user_insert,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+40,config,stati_cliente,user_update,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+41,config,conti_contabili,user_insert,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+42,config,conti_contabili,user_update,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+43,config,iva_stati,user_insert,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+44,config,iva_stati,user_update,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+45,config,stradario,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+46,config,stradario,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+47,anagrafiche,soggetti,user_insert,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+48,anagrafiche,soggetti,user_update,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+49,anagrafiche,gestori_utilities,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+50,anagrafiche,gestori_utilities,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+51,anagrafiche,contatti,user_insert,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+52,anagrafiche,contatti,user_update,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+53,anagrafiche,istanze_utilities,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+54,anagrafiche,istanze_utilities,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+55,anagrafiche,billing_account,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+56,anagrafiche,billing_account,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+57,anagrafiche,clienti,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+58,anagrafiche,clienti,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+59,anagrafiche,dati_societari,user_insert,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+60,anagrafiche,dati_societari,user_update,'CURRENT_USER'::text,2025-10-08 16:46:31.62657+02
+61,anagrafiche,indirizzi_dettaglio,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+62,anagrafiche,indirizzi_dettaglio,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+63,anagrafiche,indirizzi,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+64,anagrafiche,indirizzi,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+65,storico,comuni,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+66,storico,comune_trasformazioni,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+67,storico,stradario,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+68,storico,stradario_trasformazioni,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+69,storico,indirizzi,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+70,config,parameters,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+71,config,parameters,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+72,config,parameter_overrides,user_insert,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
+73,config,parameter_overrides,user_update,'CURRENT_USER'::character varying,2025-10-08 16:46:31.62657+02
