@@ -23,10 +23,10 @@ databaseChangeLog:
               -- acquisti
               DROP TRIGGER IF EXISTS trg_ddt_a10_a_protect_num_upd ON acquisti.ddt;
               DROP TRIGGER IF EXISTS trg_ddt_a10_upd_a_protect_num ON acquisti.ddt;
-
               DROP FUNCTION IF EXISTS acquisti.trgfn_acq_ddt_protect_num();
 
               DROP TRIGGER IF EXISTS trg_ordini_a10_protect_num_upd ON acquisti.ordini;
+              DROP TRIGGER IF EXISTS trg_ordini_a10_upd_protect_num ON acquisti.ordini;
               DROP FUNCTION IF EXISTS acquisti.trgfn_acq_ordini_protect_num();
 
               -- anagrafiche
