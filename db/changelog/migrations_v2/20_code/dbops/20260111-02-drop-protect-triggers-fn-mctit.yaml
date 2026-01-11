@@ -55,7 +55,7 @@ databaseChangeLog:
               DROP FUNCTION IF EXISTS anagrafiche.trgfn_resellers_protect_codice();
 
               DROP TRIGGER IF EXISTS trg_soggetti_protect_codice_soggetto_upd ON anagrafiche.soggetti;
-              DROP TRIGGER IF EXISTS trg_soggetti_protect_codice_soggetto_upd ON anagrafiche.soggetti;
+              DROP TRIGGER IF EXISTS trg_soggetti_upd_protect_codice_soggetto ON anagrafiche.soggetti;
               DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_protect_codice_soggetto();
 
               DROP TRIGGER IF EXISTS trg_vettori_a10_protect_codice_upd ON anagrafiche.vettori;
