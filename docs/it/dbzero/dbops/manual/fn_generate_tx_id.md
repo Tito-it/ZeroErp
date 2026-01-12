@@ -17,6 +17,7 @@ La funzione **`dbops.fn_generate_tx_id(p_generating_function TEXT, p_session_inf
 
 ### 🎯 Scopo Principale
 
+(latest review 10-01-26)
 * **Unico punto di generazione**
   Evitare duplicazioni di logica ed errori creando sempre il `tx_id` tramite una function dedicata.
 * **Contestualizzazione**

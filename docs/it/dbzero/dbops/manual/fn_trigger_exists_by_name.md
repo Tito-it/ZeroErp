@@ -14,6 +14,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 10-01-26)
 La funzione **`dbops.fn_trigger_exists_by_name(p_rel, p_trigger_name)`** verifica l’esistenza di un **trigger non interno** su una tabella specifica **in base al nome** del trigger.
 
 ---
@@ -22,8 +23,8 @@ La funzione **`dbops.fn_trigger_exists_by_name(p_rel, p_trigger_name)`** verific
 
 | Parametro        | Tipo     | Obbligatorio | Descrizione                                        |
 | ---------------- | -------- | :----------: | -------------------------------------------------- |
-| `p_rel`          | regclass |      ✔️      | Tabella (relazione) su cui controllare il trigger. |
-| `p_trigger_name` | text     |      ✔️      | Nome del trigger da verificare.                    |
+| `p_rel`          | regclass |      ✔️       | Tabella (relazione) su cui controllare il trigger. |
+| `p_trigger_name` | text     |      ✔️       | Nome del trigger da verificare.                    |
 
 ---
 

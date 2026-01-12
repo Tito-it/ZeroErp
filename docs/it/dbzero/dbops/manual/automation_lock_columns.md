@@ -14,7 +14,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest update 10-01-26)
+(latest review 10-01-26)
 Centralizzare la configurazione delle **colonne extra** da bloccare con `script.trgfn_lock_columns`.
 
 La colonna **`codice_interno` non si configura qui**: se presente nella tabella target,

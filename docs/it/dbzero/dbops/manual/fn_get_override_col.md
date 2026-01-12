@@ -15,6 +15,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 10-01-26)
 La funzione **`dbops.fn_get_override_col(p_schema, p_table, p_role, p_default)`** permette di ottenere in modo centralizzato il nome di una colonna “override” per un ruolo specifico, qualora sia stato definito nella tabella di configurazione `dbops.automation_overrides_cols`. Se non esiste un override registrato, viene restituito il valore di default passato come parametro.
 
 ---
@@ -23,10 +24,10 @@ La funzione **`dbops.fn_get_override_col(p_schema, p_table, p_role, p_default)`*
 
 | Parametro   | Tipo | Obbligatorio | Descrizione                                                     |
 | ----------- | ---- | :----------: | --------------------------------------------------------------- |
-| `p_schema`  | text |      ✔️      | Nome dello schema contenente la tabella target.                 |
-| `p_table`   | text |      ✔️      | Nome della tabella target.                                      |
-| `p_role`    | text |      ✔️      | Ruolo/etichetta della colonna (es. `fk`, `pk`, `code`).         |
-| `p_default` | text |      ✔️      | Valore predefinito da restituire se non è presente un override. |
+| `p_schema`  | text |      ✔️       | Nome dello schema contenente la tabella target.                 |
+| `p_table`   | text |      ✔️       | Nome della tabella target.                                      |
+| `p_role`    | text |      ✔️       | Ruolo/etichetta della colonna (es. `fk`, `pk`, `code`).         |
+| `p_default` | text |      ✔️       | Valore predefinito da restituire se non è presente un override. |
 
 ---
 

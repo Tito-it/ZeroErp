@@ -20,6 +20,7 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
 
 ### 🎯 Scopo Principale
 
+(latest review 10-01-26)
 * Monitorare e storicizzare ogni chiamata a funzioni, job e API interne.
 * Fornire dettagli su utente, parametri e performance di esecuzione.
 * Collegare gli eventi di audit agli errori e ad altri log tramite `tx_id` gestito dal trigger.
@@ -28,16 +29,16 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
 
 ### 🔍 Significato dei Campi
 
-| Campo           | Tipo                | Descrizione                                                                                                          |
-| --------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `id`            | `bigint`            | Chiave primaria, sequenza automatica.                                                                                |
-| `function_name` | `text`              | Nome della funzione/method/app che è stata eseguita.                                                                 |
-| `executed_by`   | `text`              | Utente o ruolo che ha avviato l’esecuzione (default `CURRENT_USER`).                                                 |
-| `executed_at`   | `timestamp with tz` | Timestamp di inizio esecuzione (default `now()`).                                                                    |
-| `params`        | `jsonb`             | Parametri in ingresso o contesto di esecuzione (JSONB).                                                              |
-| `status`        | `text`              | Esito dell’esecuzione (`SUCCESS`, `FAILED`, `WARNING`).                                                              |
-| `message`       | `text`              | Messaggio descrittivo dell’esito.                                                                                    |
-| `duration_ms`   | `integer`           | Durata dell’esecuzione in millisecondi.                                                                              |
+| Campo           | Tipo                | Descrizione                                                                              |
+| --------------- | ------------------- | ---------------------------------------------------------------------------------------- |
+| `id`            | `bigint`            | Chiave primaria, sequenza automatica.                                                    |
+| `function_name` | `text`              | Nome della funzione/method/app che è stata eseguita.                                     |
+| `executed_by`   | `text`              | Utente o ruolo che ha avviato l’esecuzione (default `CURRENT_USER`).                     |
+| `executed_at`   | `timestamp with tz` | Timestamp di inizio esecuzione (default `now()`).                                        |
+| `params`        | `jsonb`             | Parametri in ingresso o contesto di esecuzione (JSONB).                                  |
+| `status`        | `text`              | Esito dell’esecuzione (`SUCCESS`, `FAILED`, `WARNING`).                                  |
+| `message`       | `text`              | Messaggio descrittivo dell’esito.                                                        |
+| `duration_ms`   | `integer`           | Durata dell’esecuzione in millisecondi.                                                  |
 | `tx_id`         | `uuid`              | Identificativo di transazione: valorizzato **dal trigger**  con `trgfn_tx_id_managed()`. |
 
 ---

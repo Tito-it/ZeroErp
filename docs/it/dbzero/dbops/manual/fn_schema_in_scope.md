@@ -16,16 +16,17 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 10-01-26)
 La funzione **`dbops.fn_schema_in_scope(p_rule_target, p_schemas)`** è un **helper booleano** utilizzato dalle automazioni per verificare se uno schema specificato da una regola (`p_rule_target`) appartiene all’insieme di schemi effettivamente in scope (`p_schemas`).
 
 ---
 
 ### 🔍 Parametri di input
 
-| Parametro       | Tipo    | Obbligatorio | Descrizione                                                         |
-| --------------- | ------- | :----------: | ------------------------------------------------------------------- |
-| `p_rule_target` | text    |      ✔️      | Schema target della regola (può includere keyword speciale `*all`). |
-| `p_schemas`     | text[]  |      ✔️      | Array di schemi da considerare come scope.                          |
+| Parametro       | Tipo   | Obbligatorio | Descrizione                                                         |
+| --------------- | ------ | :----------: | ------------------------------------------------------------------- |
+| `p_rule_target` | text   |      ✔️       | Schema target della regola (può includere keyword speciale `*all`). |
+| `p_schemas`     | text[] |      ✔️       | Array di schemi da considerare come scope.                          |
 
 ---
 
