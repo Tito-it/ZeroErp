@@ -17,6 +17,7 @@
 | storicizza | boolean | NO | true |
 | extra_info | jsonb | NO | '{}'::jsonb |
 | stato_pdp_id | bigint | NO |  |
+| attivo | boolean | NO | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -45,6 +46,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_pdp_a10_clienti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'clienti', 'pdp_id', 'id')` |
+| trg_pdp_a10_istanze_utilities_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'istanze_utilities', 'pdp_id', 'id')` |
 | trg_pdp_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('pdp', 'CODICE_NON_MODIFICABILE')` |
 | trg_pdp_a10_set_default_stato_ins | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_pdp_set_default_stato()` |
 | trg_pdp_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

@@ -1,7 +1,7 @@
 # 📗 Guida Tecnica – Automazioni DB (aggiornata)
 
 >
-> (latest review 01-01-26)
+> (latest review 13-01-26)
 >
 > **Scope:** aggiorna la guida esistente con le novità su wildcard `*all` e gli ultimi affinamenti senza stravolgere la struttura.
 >
@@ -261,7 +261,7 @@ INSERT INTO dbops.automation_rules_tbl
 (enabled, rule_type, target_schema, target_table, exec_mode,
  name_template, existence_strategy, params, priority, note)
 SELECT true,'ATTIVO','*all',NULL,'AUTO',
-       '{"block":"trg_block_deact_{parent}__{child}"}',
+       '{"block":"trg_{parent}_a10_{child}_block_deact_upd"}',
        'BOTH', '{}'::jsonb,
        100,'attivo: blocco disattivazione padre se esistono figli'
 WHERE NOT EXISTS (

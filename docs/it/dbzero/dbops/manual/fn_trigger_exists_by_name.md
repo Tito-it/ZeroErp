@@ -60,7 +60,7 @@ La funzione **`dbops.fn_trigger_exists_by_name(p_rel, p_trigger_name)`** verific
 ### 🚀 Esempi di utilizzo
 
 * `SELECT dbops.fn_trigger_exists_by_name('anagrafiche.clienti','trg_clienti_ins_upd_gen_tx_id');`
-* `SELECT dbops.fn_trigger_exists_by_name('catalogo.articoli','trg_block_deact_catalogo_articoli');`
+* `SELECT dbops.fn_trigger_exists_by_name('catalogo.articoli','trg_articoli_a10_componenti_block_deact_upd');`
 
 ---
 

@@ -3,14 +3,14 @@
 > 👀 **Vedi anche**
 >
 > **Approfondimento Tabelle**
-> • [`catalogo.articoli`](/dbzero/catalogo/tabelle/articoli)
-> • *(opz.)* [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)
+> • [`catalogo.articoli`](/dbzero/catalogo/tabelle/articoli)   
+> • *(opz.)* [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)   
 >
 > **Approfondimento Trigger/Funzioni**
-> • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
-> • [`dbops.trgfn_child_requires_active_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)
-> • [`script.trgfn_upd_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
-> • [`script.trgfn_upd_dlt_storico_generic`](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+> • [`dbops.trgfn_child_requires_active_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)   
+> • [`script.trgfn_upd_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)   
+> • [`script.trgfn_upd_dlt_storico_generic`](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)  
 
 ---
 

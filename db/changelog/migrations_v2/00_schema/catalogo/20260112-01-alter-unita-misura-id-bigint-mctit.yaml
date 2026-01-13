@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260112-01-alter-unita-misura-id-bigint-mctit.yaml
+
+  - changeSet:
+      id: 20260112-01-alter-unita-misura-id-bigint
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE acquisti.ddt_righe
+                DROP CONSTRAINT IF EXISTS fk_ddt_acquisto_r_uom;
+              ALTER TABLE acquisti.ordini_righe
+                DROP CONSTRAINT IF EXISTS fk_ao_r_uom;
+              ALTER TABLE catalogo.articoli_uom_operativa
+                DROP CONSTRAINT IF EXISTS fk_artuomop_uom;
+              ALTER TABLE catalogo.articoli
+                DROP CONSTRAINT IF EXISTS fk_articoli_unita_misura;
+              ALTER TABLE magazzino.movimenti
+                DROP CONSTRAINT IF EXISTS fk_mag_movimenti_uom;
+              ALTER TABLE vendite.fatture_righe
+                DROP CONSTRAINT IF EXISTS fk_fatture_righe_uom;
+              ALTER TABLE vendite.attivita_fatturabili
+                DROP CONSTRAINT IF EXISTS fk_attivita_fatturabili_uom_id;
+
+              ALTER TABLE catalogo.unita_misura
+                ALTER COLUMN id TYPE BIGINT
+                USING id::bigint;
+
+              ALTER TABLE acquisti.ddt_righe
+                ADD CONSTRAINT fk_ddt_acquisto_r_uom
+                FOREIGN KEY (uom_id)
+                REFERENCES catalogo.unita_misura(id);
+              ALTER TABLE acquisti.ordini_righe
+                ADD CONSTRAINT fk_ao_r_uom
+                FOREIGN KEY (uom_id)
+                REFERENCES catalogo.unita_misura(id);
+              ALTER TABLE catalogo.articoli_uom_operativa
+                ADD CONSTRAINT fk_artuomop_uom
+                FOREIGN KEY (uom_id)
+                REFERENCES catalogo.unita_misura(id);
+              ALTER TABLE catalogo.articoli
+                ADD CONSTRAINT fk_articoli_unita_misura
+                FOREIGN KEY (uom_id)
+                REFERENCES catalogo.unita_misura(id);
+              ALTER TABLE magazzino.movimenti
+                ADD CONSTRAINT fk_mag_movimenti_uom
+                FOREIGN KEY (uom_id)
+                REFERENCES catalogo.unita_misura(id);
+              ALTER TABLE vendite.fatture_righe
+                ADD CONSTRAINT fk_fatture_righe_uom
+                FOREIGN KEY (uom_id)
+                REFERENCES catalogo.unita_misura(id);
+              ALTER TABLE vendite.attivita_fatturabili
+                ADD CONSTRAINT fk_attivita_fatturabili_uom_id
+                FOREIGN KEY (uom_id)
+                REFERENCES catalogo.unita_misura(id);

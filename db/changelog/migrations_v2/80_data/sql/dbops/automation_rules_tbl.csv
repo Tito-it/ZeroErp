@@ -1,7 +1,7 @@
 id,enabled,rule_type,target_schema,target_table,exec_mode,name_template,existence_strategy,params,priority,note
 2,t,AUDIT_UPDATE,*all,*all,AUTO,trg_{table}_audit_data_user_upd,BOTH,"{""audit_ts"": ""data_update"", ""audit_user"": ""user_update""}",100,audit
 1,t,TX_ID,*all,*all,AUTO,trg_{table}_gen_tx_id_ins_upd,BOTH,{},100,txid
-4,t,ATTIVO,*all,*all,AUTO,"{""block"": ""trg_block_deact_{parent}_{child}_{fkhash6_if_long}"", ""cascade"": ""trg_soft_del_{parent}_{child}_{fk}_{fkhash6_if_long}"", ""require"": ""trg_chk_{child}_parent_{fk}_{fkhash6_if_long}""}",BOTH,"{""mode"": ""auto"", ""cascade_children"": true, ""include_no_action"": true, ""require_active_parent"": true, ""block_if_child_no_attivo"": true}",100,lab attivo
+4,t,ATTIVO,*all,*all,AUTO,"{""block"": ""trg_{parent}_a10_{child}_block_deact_upd_{fkhash6_if_long}""}",BOTH,"{""mode"": ""auto"", ""cascade_children"": true, ""include_no_action"": true, ""require_active_parent"": true, ""block_if_child_no_attivo"": true}",100,lab attivo
 6,t,STORICO_PROVISION,*all,*all,AUTO,"",BOTH,"{""create_gin_index"": false}",100,storico: provisioning
 7,t,STORICO,*all,*all,AUTO,trg_{table}_z90_storico_upd_dlt,BOTH,"{""apply_triggers"": true}",100,storico: trigger UPDATE/DELETE
 8,t,LOCK_COLUMNS,*all,*all,AUTO,trg_{table}_a10_lock_columns_upd,BOTH,{},100,lock columns: trigger UPDATE OF (codice_interno + extra)

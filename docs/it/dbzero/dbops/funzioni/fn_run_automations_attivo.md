@@ -66,7 +66,12 @@ BEGIN
         target_table = '*ALL' oppure pattern ILIKE su parent/child table
     - FK eleggibili:
         pg_constraint.contype = 'f'
+
+      -- Modifica del 13/01/2026:
+        Non esegue più ilfiltro per RESTRICT/NO ACTION   
         confdeltype IN ('r','a')  -- RESTRICT o NO ACTION
+       -- obsoleta            
+
       padre+figlio nello scope e in fn_table_in_scope
       esclusione schema 'storico'
       rispetto dbops.automation_fk_exclusions  
@@ -131,7 +136,7 @@ BEGIN
       JOIN pg_class cp ON cp.oid = c.confrelid
       JOIN pg_namespace np ON np.oid = cp.relnamespace
       WHERE c.contype='f'
-        AND c.confdeltype IN ('r','a')              -- RESTRICT o NO ACTION
+        -- AND c.confdeltype IN ('r','a')   -- RESTRICT o NO ACTION OBSOLETA
         AND nc.nspname = ANY(v_schemas)
         AND np.nspname = ANY(v_schemas)
         AND dbops.fn_table_in_scope(nc.nspname, cc.relname)
@@ -145,15 +150,17 @@ BEGIN
           OR cc.relname ILIKE rrule.target_table
           OR cp.relname ILIKE rrule.target_table
         ) 
-         /*   Non eseguito non più utilizzato 
-         AND nc.nspname <> 'storico'
-         AND np.nspname <> 'storico'
-         AND NOT EXISTS (
+        -----
+        /*   Non eseguito non più utilizzato 
+        AND nc.nspname <> 'storico'
+        AND np.nspname <> 'storico'
+        AND NOT EXISTS (
           SELECT 1
           FROM dbops.automation_fk_exclusions e
           WHERE e.parent_schema=np.nspname AND e.parent_table=cp.relname
             AND e.child_schema=nc.nspname  AND e.child_table=cc.relname
-         )   */
+        )   */
+        -----
     LOOP
       -- 1) serve attivo sul PADRE
       col_attivo_parent := dbops.fn_get_override_col(rfk.parent_schema, rfk.parent_table, 'ATTIVO_COL', 'attivo');

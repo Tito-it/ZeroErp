@@ -21,6 +21,9 @@ DECLARE
   v_parent_pk_val_text text;
   v_fk_type            text;
 
+  v_child_attivo_col text;
+  v_child_has_attivo boolean;
+
   v_exists boolean;
   v_sql    text;
 BEGIN
@@ -103,11 +106,21 @@ BEGIN
       );
     END IF;
 
-    -- Esistono figli collegati?
-    v_sql := format(
-      'SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I = ($1)::%s)',
-      v_child_schema, v_child_table, v_fk_col, v_fk_type
-    );
+    -- Se il figlio ha una colonna attivo, blocca solo se esistono figli attivi
+    v_child_attivo_col := dbops.fn_get_override_col(v_child_schema, v_child_table, 'ATTIVO_COL', 'attivo');
+    v_child_has_attivo := dbops.fn_col_exists(v_child_schema, v_child_table, v_child_attivo_col);
+
+    IF v_child_has_attivo THEN
+      v_sql := format(
+        'SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I = ($1)::%s AND %I IS DISTINCT FROM FALSE)',
+        v_child_schema, v_child_table, v_fk_col, v_fk_type, v_child_attivo_col
+      );
+    ELSE
+      v_sql := format(
+        'SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I = ($1)::%s)',
+        v_child_schema, v_child_table, v_fk_col, v_fk_type
+      );
+    END IF;
 
     EXECUTE v_sql INTO v_exists USING v_parent_pk_val_text;
 
@@ -122,10 +135,12 @@ BEGIN
           'pk_col',       v_pk_col,
           'pk_val',       v_parent_pk_val_text,
           'fk_col',       v_fk_col,
-          'fk_type',      v_fk_type
+          'fk_type',      v_fk_type,
+          'child_attivo_col', v_child_attivo_col,
+          'child_has_attivo', v_child_has_attivo
         ),
         NULL::uuid,
-        'Non è possibile disattivare il padre: esistono righe figlio collegate',
+        'Non e'' possibile disattivare il padre: esistono righe figlio attive collegate',
         TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
         v_child_schema||'.'||v_child_table,
         v_pk_col, v_parent_pk_val_text,

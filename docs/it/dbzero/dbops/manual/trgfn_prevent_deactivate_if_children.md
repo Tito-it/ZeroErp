@@ -16,8 +16,8 @@
 
 ### 🎯 Scopo Principale
 
-*(last review 31-12-25)*
-La funzione **`trgfn_prevent_deactivate_if_children`** è un **trigger function** che impedisce la disattivazione (`attivo = FALSE`) di un record padre se esistono ancora record figli associati tramite una FK. Garantisce integrità logica tra entità padre e figlio, preservando la coerenza dei dati.
+*(last review 13-11-26)*
+La funzione **`trgfn_prevent_deactivate_if_children`** è un **trigger function** che impedisce la disattivazione (`attivo = FALSE`) di un record padre se esistono record figli **attivi** associati tramite una FK. Se la tabella figlia **non** ha la colonna `attivo`, il blocco scatta alla semplice presenza di figli collegati. Garantisce integrità logica tra entità padre e figlio, preservando la coerenza dei dati.
 
 ---
 
@@ -36,13 +36,15 @@ La funzione **`trgfn_prevent_deactivate_if_children`** è un **trigger function*
   1. `child_schema` – schema della tabella figlia
   2. `child_table` – tabella figlia
   3. `fk_col` – colonna di FK che collega la tabella figlia alla PK della tabella padre
+  4. *(opzionale)* `pk_col` – colonna PK del padre (default `id`)
 
 * **Logica interna**
 
   * Valida solo per operazioni `UPDATE`.
   * Se `OLD.attivo = TRUE` e `NEW.attivo = FALSE` → controllo blocca disattivazione.
-  * Costruisce query dinamica per verificare la presenza di righe figlio correlate (`EXISTS`).
-  * Se esistono record figli → solleva `RAISE EXCEPTION` con `ERRCODE 23503` (*foreign_key_violation*).
+  * Se la tabella figlia ha una colonna `attivo` (con override), cerca **solo figli attivi** (`attivo IS DISTINCT FROM FALSE`).
+  * Se la tabella figlia non ha `attivo`, verifica la semplice presenza di figli correlati (`EXISTS`).
+  * Se esistono figli che soddisfano il criterio → solleva `RAISE EXCEPTION` con `ERRCODE 23503` (*foreign_key_violation*).
 
 * **Ritorno**: `trigger` → `NEW` (se i controlli sono superati).
 
@@ -50,7 +52,7 @@ La funzione **`trgfn_prevent_deactivate_if_children`** è un **trigger function*
 
 ### 🔧 Utilizzo tipico
 
-1. Evitare che un padre con figli attivi venga disattivato impropriamente.
+1. Evitare che un padre con figli **attivi** venga disattivato impropriamente.
 2. Applicabile su entità di dominio con attributo booleano `attivo`.
 3. Utile in scenari multi‑tabella (es. `gestori` → `soggetti`).
 
@@ -65,7 +67,7 @@ La funzione **`trgfn_prevent_deactivate_if_children`** è un **trigger function*
 
 ### 💡 Esempio pratico
 
-Impedire la disattivazione di un record in `config.gestori` se esistono soggetti collegati:
+Impedire la disattivazione di un record in `config.gestori` se esistono soggetti **attivi** collegati (o qualsiasi soggetto se la tabella figlia non ha `attivo`):
 
 ```sql
 CREATE TRIGGER trg_prevent_gestore_deactivate
@@ -78,8 +80,8 @@ EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children(
 );
 ```
 
-➡️ Se un `gestore` ha ancora `soggetti` collegati, l’operazione viene bloccata con errore.
+➡️ Se un `gestore` ha ancora `soggetti` attivi collegati, l’operazione viene bloccata con errore.
 
 ---
 
-> 🧠 **In sintesi**: `trgfn_prevent_deactivate_if_children` impedisce che un padre venga disattivato mentre esistono figli associati, rafforzando la coerenza dei dati e prevenendo stati incoerenti nel database.
+> 🧠 **In sintesi**: `trgfn_prevent_deactivate_if_children` impedisce che un padre venga disattivato mentre esistono figli **attivi** associati (o figli in generale se manca `attivo` sul figlio), rafforzando la coerenza dei dati e prevenendo stati incoerenti nel database.

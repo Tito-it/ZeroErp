@@ -33,6 +33,8 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_stati_doc_ordini_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+| trg_stati_doc_ordini_a10_ordini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini', 'stato_doc_ordine_id', 'id')` |
+| trg_stati_doc_ordini_a10_ordini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini_righe', 'stato_doc_ordine_id', 'id')` |
 
 ---
 {% include-markdown "signature-core.md" %}
