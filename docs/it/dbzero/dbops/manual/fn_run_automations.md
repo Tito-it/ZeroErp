@@ -16,25 +16,26 @@
 > * [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id)
 > * [dbops.fn_run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update)
 > * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico)
+> * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)
 > * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
 
 ---
 
 ### 🎯 Scopo Principale
 
-(latest review 26-12-25)
-La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** del framework di automazioni. Coordina l’applicazione delle regole di sistema (Tx ID, aggiornamento audit, storico, gestione flag attivo) sugli schemi e tabelle in scope.
+(latest review 10-01-26)
+La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** del framework di automazioni. Coordina l’applicazione delle regole di sistema (Tx ID, aggiornamento audit, storico, lock colonne, gestione flag attivo) sugli schemi e tabelle in scope.
 
 ---
 
 ### 🔍 Parametri di input
 
-| Parametro     | Tipo    | Default                                     | Descrizione                                                                                       |
-| ------------- | ------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `p_exec_mode` | text    | 'AUTO'                                      | Modalità di esecuzione (es. AUTO, FORCE, CHECK).                                                  |
-| `p_schemas`   | text[]  | NULL                                        | Lista di schemi su cui operare. Se nullo, risolto tramite `automation_scope` o fallback.          |
-| `p_dry_run`   | boolean | false                                       | Se true, non applica modifiche ma produce solo log/simulazione.                                   |
-| `p_parts`     | text[]  | ['TX_ID','AUDIT_UPDATE','STORICO','ATTIVO'] | Moduli da eseguire. Supporta anche la keyword 'TABLE_RULES' per includere i tre moduli tabellari. |
+| Parametro     | Tipo    | Default                                                    | Descrizione                                                                                   |
+| ------------- | ------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `p_exec_mode` | text    | 'AUTO'                                                     | Modalità di esecuzione (es. AUTO, FORCE, CHECK).                                              |
+| `p_schemas`   | text[]  | NULL                                                       | Lista di schemi su cui operare. Se nullo, risolto tramite `automation_scope` o fallback.      |
+| `p_dry_run`   | boolean | false                                                      | Se true, non applica modifiche ma produce solo log/simulazione.                               |
+| `p_parts`     | text[]  | ['TX_ID','AUDIT_UPDATE','STORICO','LOCK_COLUMNS','ATTIVO'] | Moduli da eseguire. Supporta anche la keyword 'TABLE_RULES' per includere i moduli tabellari. |
 
 ---
 
@@ -47,12 +48,13 @@ La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** d
 ### ⚙️ Flusso logico
 
 1. Determina lo **scope degli schemi**: usa `p_schemas`, oppure `automation_scope`, oppure fallback a tutti gli schemi utente.
-2. Valuta se abilitare la modalità compatibile `TABLE_RULES` → esegue i tre moduli tabellari (TX_ID, AUDIT_UPDATE, STORICO).
+2. Valuta se abilitare la modalità compatibile `TABLE_RULES` → esegue i moduli tabellari (TX_ID, AUDIT_UPDATE, STORICO, LOCK_COLUMNS).
 3. Esegue i moduli richiesti:
 
    * `fn_run_automations_tx_id`
    * `fn_run_automations_audit_update`
    * `fn_run_automations_storico`
+   * `fn_run_automations_lock_columns`
    * `fn_run_automations_attivo`
 4. Ogni modulo applica trigger/funzioni sulle tabelle target secondo le regole.
 
@@ -96,4 +98,4 @@ La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** d
 
 ---
 
-> 🧠 **In sintesi**: `fn_run_automations` è il cuore del sistema di automazione, che assicura l’applicazione coerente e modulare delle policy (Tx ID, audit, storico, attivo) su tutti gli schemi gestiti.
+> 🧠 **In sintesi**: `fn_run_automations` è il cuore del sistema di automazione, che assicura l’applicazione coerente e modulare delle policy (Tx ID, audit, storico, lock colonne, attivo) su tutti gli schemi gestiti.

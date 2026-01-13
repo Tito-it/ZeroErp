@@ -23,23 +23,23 @@
 
 ### 🎯 Scopo Principale
 
-*(latest review 31‑12‑2025)*
-La funzione **`dbops.fn_run_automations_attivo(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico e coerente le **regole di gestione del campo `attivo`** (soft‑delete / stato di validità) **sulle relazioni di chiave esterna**, creando e riconciliando **esclusivamente trigger di BLOCCO sul padre**.
+*(latest review 13‑11‑2026)*
+La funzione **`dbops.fn_run_automations_attivo(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico e coerente le **regole di gestione del campo `attivo`** (soft‑delete / stato di validità) **sulle relazioni di chiave esterna**, creando e riconciliando **trigger di BLOCCO sul padre** e **trigger REQUIRE sul figlio**.
 
 L’automazione opera **a livello di relazione FK**, non sulla singola tabella isolata, ed è progettata secondo un principio **conservativo e sicuro**:
 
-> 🔒 **Un record padre può essere disattivato (`attivo = false`) solo se NON esistono record figli collegati tramite FK.**
+> 🔒 **Un record padre può essere disattivato (`attivo = false`) solo se NON esistono record figli attivi collegati tramite FK (o figli in generale se il figlio non ha `attivo`).**
+> Inoltre, un record figlio puo' essere inserito/aggiornato **solo se il padre e' attivo**.
 
-Non viene applicata alcuna cascata automatica né alcun vincolo sul figlio.
+Non viene applicata alcuna cascata automatica.
 
 ---
 
 ### 🔍 Ambito di applicazione
 
-La funzione considera esclusivamente:
+La funzione considera:
 
 * Vincoli **FK (`pg_constraint.contype = 'f'`)**
-* Con **`ON DELETE RESTRICT`** oppure **`NO ACTION`**
 * Con **padre e figlio entrambi nello scope** degli schemi
 * Non esclusi tramite `dbops.automation_fk_exclusions`
 * Escludendo sempre lo schema `storico`
@@ -68,7 +68,7 @@ La funzione considera esclusivamente:
    * determina la **colonna FK del figlio**;
    * calcola la **PK monocolonna del padre** (fallback `id`);
    * verifica l’esistenza del trigger di blocco secondo la strategia configurata.
-4. Se necessario, **crea o riconcilia** il trigger di blocco sul padre.
+4. Se necessario, **crea o riconcilia** il trigger di blocco sul padre e il trigger require sul figlio.
 
 ---
 
@@ -82,7 +82,7 @@ Il caso **“solo il figlio ha `attivo`”** non è gestito ed è considerato **
 
 ---
 
-### 🧩 Regola applicata (unica)
+### 🧩 Regole applicate
 
 #### 🅱️ BLOCCO della disattivazione del padre
 
@@ -93,21 +93,35 @@ Il caso **“solo il figlio ha `attivo`”** non è gestito ed è considerato **
 **Effetto**:
 
 * se `OLD.attivo = true` e `NEW.attivo = false`;
-* e **esistono record figli collegati tramite FK**;
+* e **esistono record figli attivi collegati tramite FK** (o figli in generale se non c’è `attivo` sul figlio);
 
 ➡️ l’operazione viene **bloccata con errore**.
 
 Nessuna modifica automatica viene applicata ai figli.
 
+#### 🅱️ REQUIRE sul figlio (padre attivo)
+
+* **Trigger**: `AFTER INSERT OR UPDATE OF <fk_col>[, attivo]` (constraint, DEFERRABLE)
+* **Tabella**: FIGLIO
+* **Funzione**: `dbops.trgfn_child_requires_active_parent(parent_schema, parent_table, attivo_parent_col, fk_col)`
+
+**Effetto**:
+
+* se il figlio ha `attivo`, il controllo si applica quando `attivo = true`;
+* il padre referenziato deve risultare **attivo**.
+
+➡️ l’operazione viene **bloccata con errore** se il padre non è attivo.
+
 ---
 
 ### 🏷️ Naming dei trigger
 
-I nomi dei trigger sono generati tramite template JSON (`automation_rules_tbl.name_template`), utilizzando la chiave `block`:
+I nomi dei trigger sono generati tramite template JSON (`automation_rules_tbl.name_template`), utilizzando le chiavi `block` e `require`:
 
 ```json
 {
-  "block": "trg_block_deact_{parent}_{child}"
+  "block": "trg_{parent}_a10_{child}_block_deact_upd",
+  "require": "trg_{child}_a10_{parent}_require_attivo_ins_upd"
 }
 ```
 
@@ -153,10 +167,10 @@ Questo garantisce **osservabilità completa** del comportamento dell’automazio
 
 * **Sicurezza massima**: nessun soft‑delete distruttivo o implicito.
 * **Semplicità**: una sola regola chiara e prevedibile.
-* **Coerenza**: applicazione uniforme su tutte le FK rilevanti.
+* **Coerenza**: applicazione uniforme su tutte le FK rilevanti, indipendentemente dal tipo di `ON DELETE`.
 * **Manutenibilità**: assenza di configurazioni complesse o ambigue.
 
 ---
 
-> 🧠 **In sintesi**: `fn_run_automations_attivo` implementa una politica ATTIVO volutamente conservativa:
-> un record può essere disattivato **solo quando è logicamente libero da dipendenze FK**, lasciando ogni altra scelta (cascate, archiviazioni, riallocazioni) a operazioni esplicite e consapevoli.
+> 🧠 **In sintesi**: `fn_run_automations_attivo` implementa una politica ATTIVO conservativa:
+> il padre si disattiva **solo quando è libero da dipendenze FK attive**, e il figlio può puntare al padre **solo se attivo**.

@@ -4,20 +4,21 @@
 
 > 👀 **Vedi anche**
 >
+> Approfondimento tabelle:
+>
+> * [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)
+>
 > Approfondimento funzioni:
 >
 > * [`dbops.fn_trigger_exists_by_function`](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)
 > * [`dbops.fn_trigger_exists_by_name`](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)
 > * [`dbops.fn_trigger_exists_cascade_by_args`](/dbzero/dbops/funzioni/fn_trigger_exists_cascade_by_args)
->
-> Approfondimento tabelle:
->
-> * [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)
 
 ---
 
 ### 🎯 Scopo Principale
 
+(latest review 13-01-26)
 La funzione **`fn_drop_triggers_by_function_args`** elimina tutti i **trigger associati a una tabella** che invocano una determinata funzione di trigger, filtrando in base a **schema**, **nome funzione** e **lista di argomenti**.
 
 ---
@@ -32,10 +33,11 @@ La funzione **`fn_drop_triggers_by_function_args`** elimina tutti i **trigger as
   * `VARIADIC p_args text[]` → lista degli argomenti della funzione.
 
 * Scansiona `pg_trigger` per la tabella `p_rel`.
+* **Esclude** i trigger interni (`tgisinternal = true`) e le tabelle partizione (`relispartition = true`), così opera solo sui trigger utente del parent.
 
 * Confronta il corpo della definizione del trigger (`pg_get_triggerdef`) con i parametri forniti.
 
-* Per ogni match trovato, esegue `DROP TRIGGER`.
+* Per ogni match trovato, esegue `DROP TRIGGER` sulla tabella target.
 
 * Restituisce il **numero di trigger eliminati**.
 

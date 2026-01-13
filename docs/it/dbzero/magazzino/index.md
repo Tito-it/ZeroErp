@@ -31,7 +31,6 @@
 ## ⚙️ Funzioni
 - [fn_get_magazzino_note](funzioni/fn_get_magazzino_note.md)
 - [trgfn_magazzini_normalize](funzioni/trgfn_magazzini_normalize.md)
-- [trgfn_magazzini_protect_codice](funzioni/trgfn_magazzini_protect_codice.md)
 
 ## 🔍 Views
 - [vw_costo_medio](views/vw_costo_medio.md)

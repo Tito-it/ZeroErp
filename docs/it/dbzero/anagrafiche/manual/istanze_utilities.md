@@ -23,6 +23,7 @@
 ---
 
 ### 🎯 Scopo Principale
+
 (latest review 08-12-25)
 * Registrare ogni **attivazione** di servizio (volta) per un soggetto su un punto di erogazione.
 * Gestire la **gerarchia** delle attivazioni successive (subentri/volture) tramite `parent_istanza_id`.

@@ -66,7 +66,7 @@ AS $function$
         tramite dbops.fn_name_from_template.
         La creazione è condizionata da rrule.existence_strategy (default 'BY_NAME'):
         - BY_NAME     : verifica esistenza per nome trigger
-        - BY_FUNCTION : verifica esistenza per funzione trigger (script.trgfn_upd_audit_data_user_generic / generic)
+        - BY_FUNCTION : verifica esistenza per funzione trigger (script.trgfn_audit_data_user_generic / generic)
         - BOTH        : presente se esiste per nome OR per funzione
         Serve a evitare duplicazioni e a supportare migrazioni graduali.
 
@@ -80,7 +80,6 @@ AS $function$
         In caso di errore nella creazione del trigger, log strutturato e rilancio tramite
         script.fn_log_and_raise_error con contesto ('AUDIT_UPDATE') e SQLERRM.
       */
-
 
       v_schemas := dbops.fn_resolve_scope(p_schemas);
       FOR rtab IN
@@ -120,9 +119,9 @@ AS $function$
             trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL,NULL);
 
             IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
-            OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel,'script','trgfn_upd_audit_data_user_generic'))
+            OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel,'script','trgfn_audit_data_user_generic'))
             OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rel, trg_name)
-                                              OR dbops.fn_trigger_exists_by_function(rel,'script','trgfn_upd_audit_data_user_generic')))
+                                              OR dbops.fn_trigger_exists_by_function(rel,'script','trgfn_audit_data_user_generic')))
             THEN
               IF p_dry_run THEN
                 

@@ -1,0 +1,213 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/dbops/20260113-03-create-trgfn-child-requires-active-parent-mctit.yaml
+
+  - changeSet:
+      id: 20260113-03-create-trgfn-child-requires-active-parent
+      author: mctit
+      # runAlways: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Trigger function (ATTIVO/REQUIRE): impedisce inserimenti/aggiornamenti sul figlio
+        se il padre collegato non e' attivo. Se il figlio ha la colonna attivo, il
+        controllo si applica solo quando il figlio e' attivo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.trgfn_child_requires_active_parent()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_parent_schema     text;
+                v_parent_table      text;
+                v_parent_attivo_col text;
+                v_fk_col            text;
+                v_parent_pk_col     text;        -- PK del padre (default 'id')
+                v_fk_val_text       text;        -- valore FK dal figlio (come text)
+                v_parent_pk_type    text;        -- tipo della PK del padre (per cast)
+                v_sql               text;
+                v_active            boolean;
+                v_child_attivo_col  text;
+                v_child_has_attivo  boolean;
+              BEGIN
+                /*
+                  Trigger function (ATTIVO/REQUIRE): impedisce inserimenti/aggiornamenti sul figlio
+                  se il padre collegato non e' attivo. Se il figlio ha la colonna attivo, il
+                  controllo si applica solo quando il figlio e' attivo.
+                */
+               
+                -- Parametri: parent_schema, parent_table, parent_attivo_col, fk_col [, parent_pk_col]
+                IF array_length(TG_ARGV, 1) < 4 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_ATTIVO_REQUIRE',
+                    jsonb_build_object(
+                      'trigger', TG_NAME,
+                      'table',   TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                      'tg_argv',  TG_ARGV
+                    ),
+                    NULL::uuid,
+                    'Attesi: parent_schema, parent_table, parent_attivo_col, fk_col [, parent_pk_col]'
+                  );
+                END IF;
+
+                v_parent_schema     := TG_ARGV[0];
+                v_parent_table      := TG_ARGV[1];
+                v_parent_attivo_col := TG_ARGV[2];
+                v_fk_col            := TG_ARGV[3];
+                v_parent_pk_col     := COALESCE(TG_ARGV[4], 'id');
+
+                IF TG_ARGV[4] IS NULL THEN
+                  PERFORM script.fn_log_error_only(
+                    'database',
+                    'trgfn_child_requires_active_parent',
+                    'E_ATTIVO_REQUIRE',
+                    jsonb_build_object(
+                      'parent_table', v_parent_schema||'.'||v_parent_table,
+                      'pk_col', v_parent_pk_col,
+                      'note', 'Usata PK di default id'
+                    ),
+                    NULL::uuid,
+                    'Passa pk_col come 5° parametro per evitare ambiguita'''
+                  );
+                END IF;
+
+                IF NOT (TG_OP = 'INSERT' OR TG_OP = 'UPDATE') THEN
+                  RETURN NEW;
+                END IF;
+
+                v_child_attivo_col := dbops.fn_get_override_col(TG_TABLE_SCHEMA, TG_TABLE_NAME, 'ATTIVO_COL', 'attivo');
+                v_child_has_attivo := dbops.fn_col_exists(TG_TABLE_SCHEMA, TG_TABLE_NAME, v_child_attivo_col);
+
+                -- Se il figlio ha attivo e non e' attivo, nessun controllo
+                IF v_child_has_attivo THEN
+                  DECLARE
+                    v_child_attivo boolean;
+                  BEGIN
+                    EXECUTE format('SELECT ($1).%I::boolean', v_child_attivo_col)
+                      INTO v_child_attivo
+                      USING NEW;
+                    IF COALESCE(v_child_attivo, FALSE) IS NOT TRUE THEN
+                      RETURN NEW;
+                    END IF;
+                  END;
+                END IF;
+
+                -- Estrai in modo robusto il valore della FK dal record NEW
+                EXECUTE format('SELECT ($1).%I::text', v_fk_col)
+                  INTO v_fk_val_text
+                  USING NEW;
+
+                -- FK nulla? Non ammesso con figlio attivo o senza colonna attivo
+                IF v_fk_val_text IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_ATTIVO_REQUIRE',
+                    jsonb_build_object(
+                      'parent_table', v_parent_schema||'.'||v_parent_table,
+                      'child_table',  TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                      'fk_col',       v_fk_col
+                    ),
+                    NULL::uuid,
+                    'FK NULL non ammessa per figlio attivo'
+                  );
+                END IF;
+
+                -- Ricava il tipo della PK del padre per cast corretto (uuid/bigint/...)
+                SELECT a.atttypid::regtype::text
+                  INTO v_parent_pk_type
+                  FROM pg_attribute a
+                  JOIN pg_class c  ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = v_parent_schema
+                  AND c.relname = v_parent_table
+                  AND a.attname = v_parent_pk_col
+                  AND a.attnum > 0
+                  AND NOT a.attisdropped;
+
+                IF v_parent_pk_type IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_ATTIVO_REQUIRE',
+                    jsonb_build_object(
+                      'parent_table', v_parent_schema||'.'||v_parent_table,
+                      'pk_col',       v_parent_pk_col
+                    ),
+                    NULL::uuid,
+                    'Colonna PK padre non trovata'
+                  );
+                END IF;
+
+                -- Verifica esistenza e stato del padre (cast del parametro al tipo PK)
+                v_sql := format(
+                  'SELECT %I FROM %I.%I WHERE %I = ($1)::%s',
+                  v_parent_attivo_col, v_parent_schema, v_parent_table,
+                  v_parent_pk_col, v_parent_pk_type
+                );
+
+                BEGIN
+                  EXECUTE v_sql INTO v_active USING v_fk_val_text;
+
+                  IF NOT FOUND THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      TG_NAME,
+                      'E_ATTIVO_REQUIRE',
+                      jsonb_build_object(
+                        'parent_table', v_parent_schema||'.'||v_parent_table,
+                        'pk_col',       v_parent_pk_col,
+                        'pk_val',       v_fk_val_text
+                      ),
+                      NULL::uuid,
+                      'Padre non trovato per figlio attivo'
+                    );
+                  END IF;
+
+                  IF NOT COALESCE(v_active, FALSE) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      TG_NAME,
+                      'E_ATTIVO_REQUIRE',
+                      jsonb_build_object(
+                        'parent_table', v_parent_schema||'.'||v_parent_table,
+                        'pk_col',       v_parent_pk_col,
+                        'pk_val',       v_fk_val_text
+                      ),
+                      NULL::uuid,
+                      'Padre non attivo: figlio attivo non consentito'
+                    );
+                  END IF;
+
+                EXCEPTION
+                  WHEN undefined_column OR undefined_table THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      TG_NAME,
+                      'E_ATTIVO_REQUIRE',
+                      jsonb_build_object(
+                        'parent_table', v_parent_schema||'.'||v_parent_table,
+                        'fk_col',       v_fk_col
+                      ),
+                      NULL::uuid,
+                      'Configurazione errata: tabella/colonna non esistente'
+                    );
+                END;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.trgfn_child_requires_active_parent()
+                IS 'Trigger function (ATTIVO/REQUIRE): impedisce INSERT/UPDATE sul figlio se il padre non e'' attivo. Se il figlio ha la colonna attivo, il controllo vale solo per figlio attivo.';

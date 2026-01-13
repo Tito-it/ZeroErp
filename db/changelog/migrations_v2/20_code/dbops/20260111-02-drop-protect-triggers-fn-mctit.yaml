@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/dbops/20260111-02-drop-protect-triggers-fn-mctit.yaml
+
+  - changeSet:
+      id: 20260111-02-drop-protect-triggers-fn
+      author: mctit
+      validCheckSum:
+        - ANY
+      comment: >
+        Rimuove trigger *_protect_* e le rispettive trigger function
+        (funzione nello stesso schema del trigger).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- acquisti
+              DROP TRIGGER IF EXISTS trg_ddt_a10_a_protect_num_upd ON acquisti.ddt;
+              DROP TRIGGER IF EXISTS trg_ddt_a10_upd_a_protect_num ON acquisti.ddt;
+              DROP FUNCTION IF EXISTS acquisti.trgfn_acq_ddt_protect_num();
+
+              DROP TRIGGER IF EXISTS trg_ordini_a10_protect_num_upd ON acquisti.ordini;
+              DROP TRIGGER IF EXISTS trg_ordini_a10_upd_protect_num ON acquisti.ordini;
+              DROP FUNCTION IF EXISTS acquisti.trgfn_acq_ordini_protect_num();
+
+              -- anagrafiche
+              DROP TRIGGER IF EXISTS trg_billing_account_a10_protect_account_code_upd ON anagrafiche.billing_account;
+              DROP TRIGGER IF EXISTS trg_billing_account_a10_upd_protect_account_code ON anagrafiche.billing_account;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_billing_account_protect_account_code();
+
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_a10_protect_codice_upd ON anagrafiche.emittenti_fiscali;
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_a10_upd_protect_codice ON anagrafiche.emittenti_fiscali;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_emittenti_fiscali_protect_codice();
+
+              DROP TRIGGER IF EXISTS trg_fornitori_a10_protect_account_code_upd ON anagrafiche.fornitori;
+              DROP TRIGGER IF EXISTS trg_fornitori_a10_upd_protect_account_code ON anagrafiche.fornitori;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_fornitori_protect_account_code();
+
+              DROP TRIGGER IF EXISTS trg_istanze_utilities_protect_codice_upd ON anagrafiche.istanze_utilities;
+              DROP TRIGGER IF EXISTS trg_istanze_utilities_upd_protect_codice ON anagrafiche.istanze_utilities;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_istanze_utilities_protect_codice();
+
+              DROP TRIGGER IF EXISTS trg_pdp_protect_cols_upd ON anagrafiche.pdp;
+              DROP TRIGGER IF EXISTS trg_pdp_upd_protect_cols ON anagrafiche.pdp;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_pdp_protect_cols();
+
+              DROP TRIGGER IF EXISTS trg_resellers_a10_protect_codice_upd ON anagrafiche.resellers;
+              DROP TRIGGER IF EXISTS trg_resellers_a10_upd_protect_codice ON anagrafiche.resellers;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_resellers_protect_codice();
+
+              DROP TRIGGER IF EXISTS trg_soggetti_protect_codice_soggetto_upd ON anagrafiche.soggetti;
+              DROP TRIGGER IF EXISTS trg_soggetti_upd_protect_codice_soggetto ON anagrafiche.soggetti;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_protect_codice_soggetto();
+
+              DROP TRIGGER IF EXISTS trg_vettori_a10_protect_codice_upd ON anagrafiche.vettori;
+              DROP TRIGGER IF EXISTS trg_vettori_a10_upd_protect_codice ON anagrafiche.vettori;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_vettori_protect_codice();
+
+              -- magazzino
+              DROP TRIGGER IF EXISTS trg_magazzini_a10_protect_codice_upd ON magazzino.magazzini;
+              DROP TRIGGER IF EXISTS trg_magazzini_a10_upd_protect_codice ON magazzino.magazzini; 
+              DROP FUNCTION IF EXISTS magazzino.trgfn_magazzini_protect_codice();
+
+              -- vendite
+              DROP TRIGGER IF EXISTS trg_contratti_a10_v_protect_num_upd ON vendite.contratti;
+              DROP TRIGGER IF EXISTS trg_contratti_a10_v_upd_protect_num ON vendite.contratti;
+
+              DROP FUNCTION IF EXISTS vendite.trgfn_v_contratti_protect_num();
+
+              DROP TRIGGER IF EXISTS trg_ddt_a10_v_protect_num_upd ON vendite.ddt;
+              DROP TRIGGER IF EXISTS trg_ddt_a10_v_upd_protect_num ON vendite.ddt;
+              DROP FUNCTION IF EXISTS vendite.trgfn_v_ddt_protect_num();
+
+              DROP TRIGGER IF EXISTS trg_fatture_a10_protect_num_upd ON vendite.fatture;
+              DROP TRIGGER IF EXISTS trg_fatture_a10_upd_protect_num ON vendite.fatture;
+              DROP FUNCTION IF EXISTS vendite.trgfn_fatture_protect_num();
+
+              DROP TRIGGER IF EXISTS trg_ordini_a10_v_protect_num_upd ON vendite.ordini;
+              DROP TRIGGER IF EXISTS trg_ordini_a10_v_upd_protect_num ON vendite.ordini;
+              DROP FUNCTION IF EXISTS vendite.trgfn_ordini_v_protect_num();
+
+              DROP TRIGGER IF EXISTS trg_preventivi_a10_v_protect_num_upd ON vendite.preventivi;
+              DROP TRIGGER IF EXISTS trg_preventivi_a10_v_upd_protect_num ON vendite.preventivi;
+              DROP FUNCTION IF EXISTS vendite.trgfn_v_preventivi_protect_num();

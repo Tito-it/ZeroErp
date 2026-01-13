@@ -49,16 +49,11 @@
 - [trgfn_ddt_normalize](funzioni/trgfn_ddt_normalize.md)
 - [trgfn_dlt_block_ordrig_ddtrig](funzioni/trgfn_dlt_block_ordrig_ddtrig.md)
 - [trgfn_fatture_numerata_non_annulabile](funzioni/trgfn_fatture_numerata_non_annulabile.md)
-- [trgfn_fatture_protect_num](funzioni/trgfn_fatture_protect_num.md)
 - [trgfn_fatture_righe_guard_normalize](funzioni/trgfn_fatture_righe_guard_normalize.md)
 - [trgfn_note_validate_generic](funzioni/trgfn_note_validate_generic.md)
 - [trgfn_ordini_ful_guard_consistenza](funzioni/trgfn_ordini_ful_guard_consistenza.md)
 - [trgfn_ordini_normalize](funzioni/trgfn_ordini_normalize.md)
-- [trgfn_ordini_v_protect_num](funzioni/trgfn_ordini_v_protect_num.md)
 - [trgfn_preventivi_normalize](funzioni/trgfn_preventivi_normalize.md)
 - [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md)
-- [trgfn_v_contratti_protect_num](funzioni/trgfn_v_contratti_protect_num.md)
-- [trgfn_v_ddt_protect_num](funzioni/trgfn_v_ddt_protect_num.md)
-- [trgfn_v_preventivi_protect_num](funzioni/trgfn_v_preventivi_protect_num.md)
 
 ## 🔍 Views

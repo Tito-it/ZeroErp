@@ -5,7 +5,6 @@
 > Approfondimento tabelle
 > 
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)      
-> * [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)      
 > * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)
 >       
 >
@@ -24,8 +23,7 @@
 
 ### 🎯 Scopo Principale
 
-(last revision 01-01-26)
-
+**(latest review 13-01-26)**
 Configurare **regole di automazione** per generare/applicare trigger e vincoli in modo dichiarativo. Ogni riga descrive **cosa** applicare (*rule_type*), **dove** (*target_schema/target_table*), **quando** (*exec_mode*), **come chiamarlo** (*name_template*), **come verificare l'esistenza** (*existence_strategy*), e **con quali parametri** (*params*).
 
 Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **priority** (poi per `id`).
@@ -40,22 +38,22 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
   * `TX_ID` → trigger `BEFORE INSERT/UPDATE` con `dbops.trgfn_tx_id_managed()` su tabelle che hanno `tx_id uuid`.
   * `AUDIT_UPDATE` → trigger `BEFORE UPDATE` con `script.trgfn_upd_audit_data_user_generic()`.
   * `STORICO` → trigger su `BEFORE UPDATE` e `BEFORE DELETE` verso `storico.<table>_storico` con `script.trgfn_upd_dlt_storico_generic(...)`.
-  * `ATTIVO` → set di trigger basati su FK **NO ACTION/RESTRICT** (cascade/require/block).
+  * `LOCK_COLUMNS` → trigger `BEFORE UPDATE OF ...` con `script.trgfn_lock_columns(...)` su colonne critiche.
+* `ATTIVO` → set di trigger basati su FK: **block** sul padre + **require** sul figlio (no cascade).
 * **target_schema** *(text)* – schema di destinazione.
 * **target_table** *(text, opzionale)* – nome tabella **o pattern LIKE** (`%`) per filtrare. Se **NULL**, tutte le tabelle dello schema per quel *rule_type*.
 * **exec_mode** *(text)* – `AUTO` | `CI` | `SCHEDULED`. L'orchestratore applica le regole con `exec_mode=p_exec_mode` **o** `AUTO`.
 * **name_template** *(text)* – template del **nome trigger**. Placeholders disponibili:
 
   * `{schema}` `{table}` `{parent}` `{child}` `{fk}` `{op}` (`op` ∈ `upd|dlt`).
-  * Per `ATTIVO` è un **JSON** con tre chiavi: `{ "cascade": "...", "require": "...", "block": "..." }`.
+  * Per `ATTIVO` è un **JSON** con le chiavi operative `block` e `require` (la chiave `cascade` resta legacy/non operativa).
   * Default consigliati:
 
     * `TX_ID`: `trg_{table}_ins_upd_gen_tx_id`
     * `AUDIT_UPDATE`: `trg_upd_{table}_audit_data_user`
     * `STORICO`: `trg_{table}_{op}_storico`
-    * `ATTIVO/cascade`: `trg_soft_del_{parent}__{child}__{fk}`
-    * `ATTIVO/require`: `trg_chk_{child}_parent_{fk}`
-    * `ATTIVO/block`: `trg_block_deact_{parent}__{child}`
+    * `ATTIVO/block`: `trg_{parent}_a10_{child}_block_deact_upd`
+    * `ATTIVO/require`: `trg_{child}_a10_{parent}_require_attivo_ins_upd`
 * **existence_strategy** *(text)* – come determinare se il trigger esiste già:
 
   * `BY_NAME` → cerca per nome (derivato dal template);
@@ -77,10 +75,13 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
   (Sovrascrivibile anche via `automation_overrides_cols`)
 * **STORICO**: *(tipicamente vuoto)*
   La FK dello storico può essere data da override `STORICO_FK` in `automation_overrides_cols`.
+* **LOCK_COLUMNS**: *(tipicamente vuoto)*
+  Usa `name_template` ed `existence_strategy` per il naming e l'idempotenza dei trigger di lock.
 * **ATTIVO**:
 
   * `include_no_action` *(boolean, default true)* → considera anche FK `NO ACTION` oltre a `RESTRICT`.
   * (eventuali flag boolean: `cascade_children`, `require_active_parent`, `block_if_child_no_attivo` – default `true`).
+  * **Nota**: nella policy ATTIVO corrente, questi flag non vengono letti dall’orchestratore; sono mantenuti per retro‑compatibilità e non influenzano il comportamento attuale (block + require).
 
 ---
 
@@ -95,10 +96,10 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 
 * Scopo schemi: da `p_schemas` o tabella `dbops.automation_scope` (se presente), altrimenti tutti gli schemi *user* escluso `storico`.
 * Per **TX_ID / AUDIT_UPDATE / STORICO**: loop per tabelle che matchano la regola (schema + table/pattern), valutano pre‑requisiti (colonne, storico presente), costruiscono nome via template, verificano esistenza secondo `existence_strategy`, **creano il trigger** se mancante (o **DRYRUN** se `p_dry_run=true`).
-* Per **ATTIVO**: loop sulle **FK** con `confdeltype IN ('a','r')` (NO ACTION/RESTRICT), filtra con `automation_fk_exclusions`, risolve colonne `attivo` su parent/child via overrides, poi applica:
+* Per **ATTIVO**: loop su **tutte** le FK nello scope (indipendentemente da `confdeltype`), filtra con `automation_fk_exclusions`, risolve colonne `attivo` su parent/child via overrides, poi applica:
 
-  * *CASO A* (parent & child con `attivo`): trigger **cascade** (padre) + **require** (figlio, DEFERRABLE);
-  * *CASO B* (solo parent con `attivo`): trigger **block** (padre).
+  * **BLOCK** sul padre: impedisce `attivo=true -> false` se esistono figli **attivi** (o figli in generale se la colonna `attivo` sul figlio non esiste).
+  * **REQUIRE** sul figlio: impedisce insert/update verso un padre non attivo. Se il figlio ha `attivo`, il controllo vale solo quando `attivo=true`.
 
 Tutti i passaggi loggati in `dbops.audit_log` (`DRYRUN`/`OK`/`ERROR`).
 
@@ -113,16 +114,15 @@ INSERT INTO dbops.automation_rules_tbl(enabled, rule_type, target_schema, exec_m
 VALUES (true, 'TX_ID', 'anagrafiche', 'AUTO', 'trg_{table}_ins_upd_gen_tx_id', 'BY_NAME', '{}'::jsonb, 100, 'txid di default');
 ```
 
-* Regola **ATTIVO** per `vendite.%` includendo FK NO ACTION:
+* Regola **ATTIVO** per `vendite.%` (policy block):
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl(enabled, rule_type, target_schema, target_table, exec_mode, name_template, existence_strategy, params, priority)
 VALUES (
   true, 'ATTIVO', 'vendite', '%%', 'AUTO',
-  '{"cascade":"trg_soft_del_{parent}__{child}__{fk}",
-    "require":"trg_chk_{child}_parent_{fk}",
-    "block":"trg_block_deact_{parent}__{child}"}',
-  'BY_NAME', '{"include_no_action": true}'::jsonb, 100
+  '{"block":"trg_{parent}_a10_{child}_block_deact_upd",
+    "require":"trg_{child}_a10_{parent}_require_attivo_ins_upd"}',
+  'BY_NAME', '{}'::jsonb, 100
 );
 ```
 
@@ -142,12 +142,12 @@ VALUES (
 * Ordinamento applicazione: `ORDER BY priority, id`.
 * *exec_mode* filtro: la regola è valida se `exec_mode = p_exec_mode` **o** `exec_mode='AUTO'`.
 * *target_table* può essere `NULL` → tutte le tabelle dello schema per quel *rule_type*.
-* Per `ATTIVO`, `name_template` è JSON con tre modelli (cascade/require/block).
+* Per `ATTIVO`, `name_template` è JSON con i modelli `block` e `require`.
 
 ### 🧠 Best practice
 
 * Mantieni template corti (<63 char finali) e coerenti con lo standard di progetto.
-* Usa `params` per comportamenti opzionali (es. `include_no_action` in `ATTIVO`).
+* Usa `params` per comportamenti opzionali specifici dei rule_type.
 * Se servono eccezioni di naming, preferisci `automation_overrides_cols`.
 * Tieni le regole **specifiche** (per schema e, se possibile, tabella) per evitare sorprese.
 

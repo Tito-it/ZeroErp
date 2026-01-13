@@ -20,6 +20,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 10-01-26)
 La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di filtro tabellare** che determina se una specifica tabella appartiene allo scope di automazione, basandosi sulle regole definite in `dbops.automation_scope`. In questo modo, le automazioni possono applicarsi solo alle tabelle consentite.
 
 ---
@@ -28,8 +29,8 @@ La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di f
 
 | Parametro  | Tipo | Obbligatorio | Descrizione                                    |
 | ---------- | ---- | :----------: | ---------------------------------------------- |
-| `p_schema` | text |      ✔️      | Nome dello schema della tabella da verificare. |
-| `p_table`  | text |      ✔️      | Nome della tabella da verificare.              |
+| `p_schema` | text |      ✔️       | Nome dello schema della tabella da verificare. |
+| `p_table`  | text |      ✔️       | Nome della tabella da verificare.              |
 
 ---
 

@@ -18,6 +18,7 @@ La funzione **`dbops.fn_get_or_create_session_tx_id()`** fornisce un **UUID di t
 
 ### 🎯 Scopo Principale
 
+(latest review 10-01-26)
 * **Unicità per sessione**: restituisce un `tx_id` costante per la durata della connessione, evitando chiamate ripetute a generatori esterni.
 * **Fallback sicuro**: in caso di errori di connessione o in contesti di migrazione/test, restituisce un UUID “nil” per non bloccare i processi.
 * **Contesto centralizzato**: memorizza il `tx_id` in una GUC di sessione (`dbops.tx_id`) per accessi successivi.

@@ -3,19 +3,20 @@
 > 👀 **Vedi anche**
 >
 > **Approfondimento Tabelle**
-> • [`catalogo.articoli`](/dbzero/catalogo/tabelle/articoli)
-> • *(opz.)* [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)
+> • [`catalogo.articoli`](/dbzero/catalogo/tabelle/articoli)   
+> • *(opz.)* [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)   
 >
 > **Approfondimento Trigger/Funzioni**
-> • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
-> • [`dbops.trgfn_child_requires_active_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)
-> • [`script.trgfn_upd_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
-> • [`script.trgfn_upd_dlt_storico_generic`](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+> • [`dbops.trgfn_child_requires_active_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)   
+> • [`script.trgfn_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
+> • [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)  
 
 ---
 
 ### 🎯 Scopo Principale
 
+(latest review 13-01-26)
 `catalogo.articoli_componenti` rappresenta la **distinta base (BoM)** lato **vendita**, con **versionamento temporale**: ogni riga lega un **prodotto** a un **componente** con una finestra di validità (`valid_from`..`valid_to`).
 
 Supporta:
@@ -70,17 +71,6 @@ Supporta:
 
 ---
 
-### ⚙️ Trigger e Funzioni coinvolte
-
-| Nome                                                              | Tipo                                                  | Scopo                                   |
-| ----------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------- |
-| `trg_articoli_componenti_ins_upd_gen_tx_id`                       | BEFORE INS/UPD                                        | Assegna `tx_id` se nullo                |
-| `trg_chk_articoli_componenti_parent_fk_articoli_component_388af3` | AFTER INS/UPD OF `prodotto_id, attivo` (DEFERRABLE)   | Impone **articolo padre attivo**        |
-| `trg_chk_articoli_componenti_parent_fk_articoli_component_86ae92` | AFTER INS/UPD OF `componente_id, attivo` (DEFERRABLE) | Impone **componente attivo**            |
-| `trg_upd_articoli_componenti_audit_data_user`                     | BEFORE UPDATE                                         | Aggiorna `data_update`/`user_update`    |
-| `trg_z90_articoli_componenti_upd_dlt_storico`                     | BEFORE UPDATE/DELETE                                  | Snapshot storico (se `storicizza=true`) |
-
----
 
 ### 🔎 Query tipiche
 

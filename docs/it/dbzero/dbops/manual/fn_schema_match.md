@@ -15,6 +15,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 10-01-26)
 La funzione **`dbops.fn_schema_match(p_rule_target, p_schema)`** è un **helper booleano** che verifica se uno schema specifico (`p_schema`) corrisponde al target di una regola (`p_rule_target`). Gestisce anche la keyword speciale `*all` per indicare corrispondenza universale.
 
 ---
@@ -23,8 +24,8 @@ La funzione **`dbops.fn_schema_match(p_rule_target, p_schema)`** è un **helper 
 
 | Parametro       | Tipo | Obbligatorio | Descrizione                                        |
 | --------------- | ---- | :----------: | -------------------------------------------------- |
-| `p_rule_target` | text |      ✔️      | Schema target della regola (può includere `*all`). |
-| `p_schema`      | text |      ✔️      | Nome dello schema da verificare.                   |
+| `p_rule_target` | text |      ✔️       | Schema target della regola (può includere `*all`). |
+| `p_schema`      | text |      ✔️       | Nome dello schema da verificare.                   |
 
 ---
 

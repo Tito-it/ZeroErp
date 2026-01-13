@@ -17,6 +17,7 @@
 | storicizza | boolean | NO | true |
 | extra_info | jsonb | NO | '{}'::jsonb |
 | stato_pdp_id | bigint | NO |  |
+| attivo | boolean | NO | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -45,17 +46,19 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_pdp_a10_clienti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'clienti', 'pdp_id', 'id')` |
+| trg_pdp_a10_indirizzi_dettaglio_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'indirizzi_dettaglio', 'attivo', 'indirizzo_dettaglio_id')` |
+| trg_pdp_a10_indirizzi_dettaglio_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'indirizzi_dettaglio', 'attivo', 'indirizzo_dettaglio_id')` |
+| trg_pdp_a10_istanze_utilities_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'istanze_utilities', 'pdp_id', 'id')` |
+| trg_pdp_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('pdp', 'CODICE_NON_MODIFICABILE')` |
 | trg_pdp_a10_set_default_stato_ins | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_pdp_set_default_stato()` |
+| trg_pdp_a10_stati_pdp_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_pdp', 'attivo', 'stato_pdp_id')` |
+| trg_pdp_a10_stati_pdp_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_pdp', 'attivo', 'stato_pdp_id')` |
 | trg_pdp_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_pdp_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_pdp_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_pdp_protect_cols_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_pdp_protect_cols()` |
-| trg_pdp_tx_id_managed_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_pdp_tx_id_managed_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_pdp_z90_storico_generic_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('pdp_id')` |
-| trg_pdp_z90_storico_generic_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('pdp_id')` |
-| trg_pdp_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('pdp_id')` |
 | trg_pdp_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('pdp_id')` |
+| trg_pdp_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('pdp_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

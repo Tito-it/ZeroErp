@@ -13,10 +13,8 @@
 >
 > **Approfondimento Trigger/Funzioni**   
 > • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
-> • [`dbops.trgfn_child_requires_active_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)   
-> • [`dbops.trgfn_soft_delete_cascade`](/dbzero/dbops/funzioni/trgfn_soft_delete_cascade)    
-> • [`script.trgfn_upd_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)   
-> • [`script.trgfn_upd_dlt_storico_generic`](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
+> • [`script.trgfn_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
+> • [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)   
 
 ---
 
@@ -34,18 +32,15 @@
 
 ### 🔗 Relazioni
 
-| Tipo      | Tabella ↔ Campo                                              | Descrizione                                                   |
-| --------- | ------------------------------------------------------------ | ------------------------------------------------------------- |
-| FK →      | `catalogo.unita_misura(id)` ← `uom_id`                       | Unità di misura principale                                    |
-| FK →      | `vendite.articoli_tipologie(id)` ← `tipo_voce_id`            | Tipologia articolo/voce                                       |
-| FK →      | `vendite.articoli_gruppi(id)` ← `gruppo_voce_id`             | Raggruppamento merceologico                                   |
-| FK →      | `vendite.articoli_spesa(id)` ← `spesa_id`                    | Collegamento a voce di spesa                                  |
-| FK →      | `config.iva(id)` ← `iva_id`                                  | Aliquota IVA                                                  |
-| FK →      | `config.conti_contabili(id)` ← `conto_contabile_vendita_id`  | Conto vendite                                                 |
-| FK →      | `config.conti_contabili(id)` ← `conto_contabile_acquisto_id` | Conto acquisti                                                |
-| (trigger) | `catalogo.articoli_componenti`                               | Soft‑delete cascade su `attivo` (sia prodotto sia componente) |
-
-> **Nota:** il trigger `trg_chk_articoli_parent_fk_articoli_unita_misura` garantisce che l’**unità di misura** collegata sia **attiva**.
+| Tipo | Tabella ↔ Campo                                              | Descrizione                  |
+| ---- | ------------------------------------------------------------ | ---------------------------- |
+| FK → | `catalogo.unita_misura(id)` ← `uom_id`                       | Unità di misura principale   |
+| FK → | `vendite.articoli_tipologie(id)` ← `tipo_voce_id`            | Tipologia articolo/voce      |
+| FK → | `vendite.articoli_gruppi(id)` ← `gruppo_voce_id`             | Raggruppamento merceologico  |
+| FK → | `vendite.articoli_spesa(id)` ← `spesa_id`                    | Collegamento a voce di spesa |
+| FK → | `config.iva(id)` ← `iva_id`                                  | Aliquota IVA                 |
+| FK → | `config.conti_contabili(id)` ← `conto_contabile_vendita_id`  | Conto vendite                |
+| FK → | `config.conti_contabili(id)` ← `conto_contabile_acquisto_id` | Conto acquisti               |
 
 ---
 
@@ -65,7 +60,6 @@
 * **Univocità**: `uq_articoli_codice (codice)` → un codice per articolo.
 * **Integrità referenziale**: tutte le FK sono `ON UPDATE CASCADE` / `ON DELETE NO ACTION`.
 * **Coerenza UoM attiva**: trigger **constraint** (deferrable) impedisce legami con UoM disattive.
-* **Soft‑delete componenti**: al cambio di `attivo` sull’articolo, i legami su `catalogo.articoli_componenti` vengono aggiornati via trigger (`dbops.trgfn_soft_delete_cascade`).
 
 > 🔒 Consigliato: proteggere l’**immutabilità** del `codice` con un trigger `BEFORE UPDATE` dedicato (se è business‑key) e con GRANT mirati.
 
@@ -78,15 +72,6 @@
 
 ---
 
-### ⚙️ Trigger e Funzioni coinvolte
-
-| Nome                                               | Tipo                                           | Scopo                                                                               |
-| -------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `trg_articoli_ins_upd_gen_tx_id`                   | BEFORE INS/UPD                                 | Assegna `tx_id` se nullo (tracciamento transazioni)                                 |
-| `trg_chk_articoli_parent_fk_articoli_unita_misura` | AFTER INS/UPD OF `uom_id, attivo` (DEFERRABLE) | Impone UoM **attiva** sul legame                                                    |
-| `trg_soft_del_*articoli_componenti*` (2x)          | AFTER UPDATE OF `attivo`                       | Propaga soft‑delete su tabella componenti (come **prodotto** e come **componente**) |
-| `trg_upd_articoli_audit_data_user`                 | BEFORE UPDATE                                  | Aggiorna `data_update`/`user_update`                                                |
-| `trg_z90_articoli_upd_dlt_storico`                 | BEFORE UPDATE/DELETE                           | Snapshot storico (se `storicizza=true`)                                             |
 
 ---
 

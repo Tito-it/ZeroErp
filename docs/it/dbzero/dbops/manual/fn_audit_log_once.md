@@ -19,6 +19,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 10-01-26)
 La funzione **`fn_audit_log_once`** registra un singolo evento di audit senza richiedere una sessione completa (`fn_audit_begin`/`fn_audit_end`). È utile per eventi puntuali o messaggi informativi.
 
 ---

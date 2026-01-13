@@ -71,7 +71,7 @@
 |------|--------|--------|--------|
 | trg_ordini_a10_ao_only_consegna_tipo_con_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION acquisti.trgfn_acq_ordini_only_consegna_tipo_con()` |
 | trg_ordini_a10_ao_only_consegna_tipo_con_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_acq_ordini_only_consegna_tipo_con()` |
-| trg_ordini_a10_protect_num_upd | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_acq_ordini_protect_num()` |
+| trg_ordini_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('numero', 'CODICE_NON_MODIFICABILE')` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,0 +1,43 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260110-15-upsert-dbops-automation-lock-columns-table.yaml
+
+  - changeSet:
+      id: 20260110-15-upsert-dbops-automation-lock-columns-table
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: automation_lock_columns
+      changes:
+        # Upsert dei dati nella tabella automation_lock_columns
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/automation_lock_columns.csv
+            tableName: automation_lock_columns
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "target_schema,target_table,column_name"
+            columns:
+              - column: { name: target_schema, type: STRING }
+              - column: { name: target_table, type: STRING }
+              - column: { name: column_name, type: STRING }
+              - column: { name: error_code, type: STRING }
+              - column: { name: exec_mode, type: STRING }
+              - column: { name: enabled, type: BOOLEAN }
+              - column: { name: note, type: STRING }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }

@@ -18,7 +18,7 @@
 ---
 
 ### 🎯 Scopo Principale
-
+(latest review 10-01-26)
 La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista effettiva di schemi da considerare come *scope* per l’esecuzione delle automazioni. Serve a normalizzare e centralizzare la logica di determinazione dello scope operativo, evitando duplicazioni e incoerenze.
 
 ---
@@ -27,7 +27,7 @@ La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista 
 
 | Parametro   | Tipo    | Obbligatorio | Descrizione                                                                                               |
 | ----------- | ------- | :----------: | --------------------------------------------------------------------------------------------------------- |
-| `p_schemas` | text\[] |       ❌      | Lista opzionale di schemi. Se assente o vuota, la funzione ricorre a fonti alternative di configurazione. |
+| `p_schemas` | text\[] |      ❌       | Lista opzionale di schemi. Se assente o vuota, la funzione ricorre a fonti alternative di configurazione. |
 
 ---
 

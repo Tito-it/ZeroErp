@@ -1,0 +1,44 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260110-13-insert-automation-rule-lock-columns-mctit.yaml
+
+  - changeSet:
+      id: 20260110-13-insert-automation-rule-lock-columns
+      author: mctit
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: automation_rules_tbl
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              INSERT INTO dbops.automation_rules_tbl
+                (enabled, rule_type, target_schema, target_table, exec_mode,
+                 name_template, existence_strategy, params, priority, note)
+              SELECT
+                true,
+                'LOCK_COLUMNS',
+                '*all',
+                '*all',
+                'AUTO',
+                'trg_{table}_a10_lock_columns_upd',
+                'BOTH',
+                '{}'::jsonb,
+                100,
+                'lock columns: trigger UPDATE OF (codice_interno + extra)'
+              WHERE NOT EXISTS (
+                SELECT 1
+                  FROM dbops.automation_rules_tbl
+                 WHERE rule_type = 'LOCK_COLUMNS'
+                   AND target_schema = '*all'
+                   AND target_table = '*all'
+              );

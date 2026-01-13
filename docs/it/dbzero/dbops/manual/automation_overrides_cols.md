@@ -11,6 +11,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 10-01-26)
 Centralizzare le **eccezioni di naming delle colonne** usate dagli automatismi (audit, soft‑delete, storico, ecc.).
 Quando il tuo schema usa nomi diversi dagli standard (es. `attivo` → `is_enabled`, `data_update` → `modified_at`), qui definisci l’override **per tabella**.
 

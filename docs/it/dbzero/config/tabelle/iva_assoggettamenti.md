@@ -33,8 +33,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_block_deact_iva_assoggettamenti_iva | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'iva', 'assoggettamento_id', 'id')` |
-| trg_block_deact_iva_assoggettamenti_iva_stati | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'iva_stati', 'assoggettamento_id_override', 'id')` |
+| trg_iva_assoggettamenti_a10_iva_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'iva', 'assoggettamento_id', 'id')` |
+| trg_iva_assoggettamenti_a10_iva_stati_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'iva_stati', 'assoggettamento_id_override', 'id')` |
 | trg_iva_assoggettamenti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_iva_assoggettamenti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('iva_assoggettamenti_id')` |
 | trg_iva_assoggettamenti_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('iva_assoggettamenti_id')` |

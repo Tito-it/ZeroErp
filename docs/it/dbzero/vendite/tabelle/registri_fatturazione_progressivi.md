@@ -26,5 +26,11 @@
 | uq_registri_progressivi_scope | `CREATE UNIQUE INDEX uq_registri_progressivi_scope ON vendite.registri_fatturazione_progressivi USING btree (registro_id, anno, COALESCE((mese)::integer, 0), COALESCE(serie, ''::character varying))` |
 | uq_regprog_key | `CREATE UNIQUE INDEX uq_regprog_key ON vendite.registri_fatturazione_progressivi USING btree (registro_id, anno, mese, serie)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_registri_fatturazione_progressivi_a10_registri_fattu_285752 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id')` |
+| trg_registri_fatturazione_progressivi_a10_registri_fattu_285752 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,4 +1,4 @@
 id,codice_interno,codice,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
-1,ASSET_OWNED,owned,"Asset di proprietà del gestore",t,{},2025-11-15 10:00:00+01,titodb,2025-11-15 10:00:00+01,titodb
-2,ASSET_CONSIGNMENT,consignment,"Asset in conto visione/consignment",t,{},2025-11-15 10:00:00+01,titodb,2025-11-15 10:00:00+01,titodb
-3,ASSET_CUSTOMER,customer,"Asset di proprietà del cliente",t,{},2025-11-15 10:00:00+01,titodb,2025-11-15 10:00:00+01,titodb
+1,ASSET_OWNED,owned,Asset di proprietà del gestore,t,{},2025-11-15 10:00:00+01,titodb,2025-11-15 10:00:00+01,titodb
+2,ASSET_CONSIGNMENT,consignment,Asset in conto visione/consignment,t,{},2025-11-15 10:00:00+01,titodb,2025-11-15 10:00:00+01,titodb
+3,ASSET_CUSTOMER,customer,Asset di proprietà del cliente,t,{},2025-11-15 10:00:00+01,titodb,2025-11-15 10:00:00+01,titodb
