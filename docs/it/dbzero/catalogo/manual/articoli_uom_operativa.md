@@ -39,7 +39,7 @@ Mappa, per ciascun **articolo**, le **unità di misura operative** ammesse e il 
 
 * [ ] Per **ogni articolo** esiste **esattamente una** riga con `is_ba
 se=TRUE` e `factor_to_base=1`.
-* [ ] Nessun **overlap di validità** per la stessa `(articolo_id, uom_id)`; una sola riga attiva alla data.
+* [ ] **Una sola riga per (articolo_id, uom_id)**: l’univocità impedisce versioni multiple per la stessa coppia.
 * [ ] `rounding_mode` tra {UP, DOWN, HALF_UP, HALF_DOWN, HALF_EVEN}.
 * [ ] Se `forbid_fraction=TRUE` ⇒ `max_decimals=0` e `qty_step=1`.
 * [ ] Le API/trigger rispettano `qty_step`, `max_decimals` e **copiano** il `factor_to_base` nei documenti.
@@ -57,8 +57,8 @@ se=TRUE` e `factor_to_base=1`.
 
    (l’uso di `is_sell_uom`/`is_purchase_uom`/`is_logistic_uom` sulla riga base è opzionale; se vuoi tenerli separati, valuta `CHECK (NOT is_base OR (is_sell_uom OR is_purchase_uom OR is_logistic_uom) IS NOT TRUE)`.)
 
-2. **Integrità temporale** *(opzionale ma utile)*
-   Il modello consente più righe per la stessa `(articolo_id, uom_id)` con diverse finestre di validità: per evitare **overlap** attivi nello stesso periodo, valuta una **esclusione** a livello applicativo/trigger o una *constraint* con range `daterange` (richiede refactoring a colonna range).
+2. **Integrità temporale**
+   Con l’univocità su `(articolo_id, uom_id)` non sono previste versioni multiple per la stessa coppia; se in futuro si vuole versionare nel tempo, sarà necessario rivedere il vincolo e introdurre un range/constraint di esclusione.
 
 3. **Default e stile indici**
    Negli indici è usato `deduplicate_items=True` (maiuscolo). Per coerenza con lo stile del progetto, usare `true` minuscolo.

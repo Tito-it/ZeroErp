@@ -4,6 +4,7 @@
 >
 > **Approfondimento Tabelle**
 > • [`catalogo.articoli`](/dbzero/catalogo/tabelle/articoli)   
+> • [`catalogo.note`](/dbzero/catalogo/tabelle/note)   
 > • *(opz.)* [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)   
 >
 > **Approfondimento Trigger/Funzioni**
@@ -46,6 +47,7 @@ Supporta:
 * **Legame**: `prodotto_id UUID` (FK), `componente_id UUID` (FK)
 * **Versioning**: `valid_from DATE` (**obbligatorio**), `valid_to DATE` *(NULL = infinito)*
 * **Quantità & logica**: `coeff_qta NUMERIC(18,6) ≥ 0`, `partecipa_qta BOOLEAN`, `obbligatorio BOOLEAN`
+* **Note**: `note_target_tipo`, `note_id` (FK composita verso `catalogo.note`)
 * **Meta & Audit**: `meta JSONB`, `attivo`, `storicizza`, `tx_id`, `user_*`, `data_*`
 
 ---
@@ -59,7 +61,7 @@ Supporta:
 * **Nessuna sovrapposizione nel tempo** per la **stessa coppia** `(prodotto, componente)`:
   `EXCLUDE USING gist (prodotto_id WITH =, componente_id WITH =, daterange(valid_from, COALESCE(valid_to, 'infinity'), '[]') WITH &&)`
   ➜ **richiede estensione** `btree_gist` per supportare `uuid` su GiST.
-* **Parent attivi** (via trigger **deferrable**): sia `prodotto_id` sia `componente_id` devono puntare ad articoli **attivi**.
+* **Parent attivi**: sia `prodotto_id` sia `componente_id` devono puntare ad articoli **attivi** (policy ATTIVO: require sul figlio).
 
 ---
 
@@ -67,7 +69,7 @@ Supporta:
 
 * `ix_articoli_componenti_prodotto_from_to (prodotto_id, valid_from, valid_to)` → espansione distinta per prodotto e per data.
 * `ix_articoli_componenti_componente_from_to (componente_id, valid_from, valid_to)` → “dove è usato” il componente.
-* **Exclusion** GiST per prevenire **overlap** temporali (vedi sopra).
+* **Exclusion** GiST per prevenire **overlap** temporali (vedi sopra) + indice `ix_articoli_componenti_no_overlap_gist`.
 
 ---
 

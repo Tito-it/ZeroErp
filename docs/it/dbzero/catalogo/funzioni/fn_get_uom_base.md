@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/catalogo/manual/fn_get_uom_base.md" %}
 # ⚙️ Funzione `fn_get_uom_base`
 
 ```sql

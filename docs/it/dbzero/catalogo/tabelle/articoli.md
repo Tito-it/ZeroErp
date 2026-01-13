@@ -27,16 +27,22 @@
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
 | attivo | boolean | NO | true |
+| note_target_tipo | character varying | YES |  |
+| note_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_articoli_note_target_tipo |  |
 | FOREIGN KEY | fk_articoli_articoli_gruppi | gruppo_voce_id |
 | FOREIGN KEY | fk_articoli_articoli_spesa | spesa_id |
 | FOREIGN KEY | fk_articoli_articoli_tipologie | tipo_voce_id |
 | FOREIGN KEY | fk_articoli_conti_contabili_acquisto | conto_contabile_acquisto_id |
 | FOREIGN KEY | fk_articoli_conti_contabili_vendita | conto_contabile_vendita_id |
 | FOREIGN KEY | fk_articoli_iva | iva_id |
+| FOREIGN KEY | fk_articoli_note | note_id, note_target_tipo |
+| FOREIGN KEY | fk_articoli_note_1 | note_target_tipo, note_id |
+| FOREIGN KEY | fk_articoli_note_2 | note_target_tipo, note_id |
 | FOREIGN KEY | fk_articoli_unita_misura | uom_id |
 | PRIMARY KEY | pk_articoli | id |
 | UNIQUE | uq_articoli_codice | codice |

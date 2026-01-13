@@ -1,0 +1,37 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260113-07-create-catalogo-note-part-articoli-mctit.yaml
+
+  - changeSet:
+      id: 20260113-07-create-catalogo-note-part-articoli
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: catalogo, tableName: note }
+        - tableExists: { schemaName: catalogo, tableName: articoli }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE TABLE IF NOT EXISTS catalogo.note_articoli
+              PARTITION OF catalogo.note
+              FOR VALUES IN ('ARTICOLI');
+
+              COMMENT ON TABLE catalogo.note_articoli IS
+              'Partizione note per catalogo.articoli.';
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: note_articoli
+            baseColumnNames: target_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            constraintName: fk_cat_note_articoli_target
+            onUpdate: CASCADE
+            onDelete: CASCADE
