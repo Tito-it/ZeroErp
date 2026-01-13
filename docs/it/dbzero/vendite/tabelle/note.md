@@ -42,5 +42,11 @@
 | ix_vendite_note_by_riga | `CREATE INDEX ix_vendite_note_by_riga ON ONLY vendite.note USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 | pk_note | `CREATE UNIQUE INDEX pk_note ON ONLY vendite.note USING btree (target_tipo, id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_note_a10_note_stili_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'note_stili', 'attivo', 'id_stile')` |
+| trg_note_a10_note_stili_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'note_stili', 'attivo', 'id_stile')` |
+
 ---
 {% include-markdown "signature-core.md" %}

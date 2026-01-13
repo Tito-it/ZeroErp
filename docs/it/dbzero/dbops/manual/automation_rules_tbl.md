@@ -23,7 +23,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 01-01-26)
+**(latest review 13-01-26)**
 Configurare **regole di automazione** per generare/applicare trigger e vincoli in modo dichiarativo. Ogni riga descrive **cosa** applicare (*rule_type*), **dove** (*target_schema/target_table*), **quando** (*exec_mode*), **come chiamarlo** (*name_template*), **come verificare l'esistenza** (*existence_strategy*), e **con quali parametri** (*params*).
 
 Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **priority** (poi per `id`).
@@ -39,20 +39,21 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
   * `AUDIT_UPDATE` → trigger `BEFORE UPDATE` con `script.trgfn_upd_audit_data_user_generic()`.
   * `STORICO` → trigger su `BEFORE UPDATE` e `BEFORE DELETE` verso `storico.<table>_storico` con `script.trgfn_upd_dlt_storico_generic(...)`.
   * `LOCK_COLUMNS` → trigger `BEFORE UPDATE OF ...` con `script.trgfn_lock_columns(...)` su colonne critiche.
-* `ATTIVO` → set di trigger basati su FK (block sul padre; eventuali chiavi `cascade/require` nel template non usate nella policy attuale).
+* `ATTIVO` → set di trigger basati su FK: **block** sul padre + **require** sul figlio (no cascade).
 * **target_schema** *(text)* – schema di destinazione.
 * **target_table** *(text, opzionale)* – nome tabella **o pattern LIKE** (`%`) per filtrare. Se **NULL**, tutte le tabelle dello schema per quel *rule_type*.
 * **exec_mode** *(text)* – `AUTO` | `CI` | `SCHEDULED`. L'orchestratore applica le regole con `exec_mode=p_exec_mode` **o** `AUTO`.
 * **name_template** *(text)* – template del **nome trigger**. Placeholders disponibili:
 
   * `{schema}` `{table}` `{parent}` `{child}` `{fk}` `{op}` (`op` ∈ `upd|dlt`).
-  * Per `ATTIVO` è un **JSON**: la policy attuale usa **solo** la chiave `block` (le chiavi `cascade/require` sono legacy/non operative).
+  * Per `ATTIVO` è un **JSON** con le chiavi operative `block` e `require` (la chiave `cascade` resta legacy/non operativa).
   * Default consigliati:
 
     * `TX_ID`: `trg_{table}_ins_upd_gen_tx_id`
     * `AUDIT_UPDATE`: `trg_upd_{table}_audit_data_user`
     * `STORICO`: `trg_{table}_{op}_storico`
     * `ATTIVO/block`: `trg_{parent}_a10_{child}_block_deact_upd`
+    * `ATTIVO/require`: `trg_{child}_a10_{parent}_require_attivo_ins_upd`
 * **existence_strategy** *(text)* – come determinare se il trigger esiste già:
 
   * `BY_NAME` → cerca per nome (derivato dal template);
@@ -80,7 +81,7 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 
   * `include_no_action` *(boolean, default true)* → considera anche FK `NO ACTION` oltre a `RESTRICT`.
   * (eventuali flag boolean: `cascade_children`, `require_active_parent`, `block_if_child_no_attivo` – default `true`).
-  * **Nota**: nella policy ATTIVO semplificata, questi flag non vengono più letti dall’orchestratore; sono mantenuti per retro‑compatibilità e non influenzano il comportamento attuale (block‑only).
+  * **Nota**: nella policy ATTIVO corrente, questi flag non vengono letti dall’orchestratore; sono mantenuti per retro‑compatibilità e non influenzano il comportamento attuale (block + require).
 
 ---
 
@@ -98,6 +99,7 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 * Per **ATTIVO**: loop su **tutte** le FK nello scope (indipendentemente da `confdeltype`), filtra con `automation_fk_exclusions`, risolve colonne `attivo` su parent/child via overrides, poi applica:
 
   * **BLOCK** sul padre: impedisce `attivo=true -> false` se esistono figli **attivi** (o figli in generale se la colonna `attivo` sul figlio non esiste).
+  * **REQUIRE** sul figlio: impedisce insert/update verso un padre non attivo. Se il figlio ha `attivo`, il controllo vale solo quando `attivo=true`.
 
 Tutti i passaggi loggati in `dbops.audit_log` (`DRYRUN`/`OK`/`ERROR`).
 
@@ -118,7 +120,8 @@ VALUES (true, 'TX_ID', 'anagrafiche', 'AUTO', 'trg_{table}_ins_upd_gen_tx_id', '
 INSERT INTO dbops.automation_rules_tbl(enabled, rule_type, target_schema, target_table, exec_mode, name_template, existence_strategy, params, priority)
 VALUES (
   true, 'ATTIVO', 'vendite', '%%', 'AUTO',
-  '{"block":"trg_{parent}_a10_{child}_block_deact_upd"}',
+  '{"block":"trg_{parent}_a10_{child}_block_deact_upd",
+    "require":"trg_{child}_a10_{parent}_require_attivo_ins_upd"}',
   'BY_NAME', '{}'::jsonb, 100
 );
 ```
@@ -139,7 +142,7 @@ VALUES (
 * Ordinamento applicazione: `ORDER BY priority, id`.
 * *exec_mode* filtro: la regola è valida se `exec_mode = p_exec_mode` **o** `exec_mode='AUTO'`.
 * *target_table* può essere `NULL` → tutte le tabelle dello schema per quel *rule_type*.
-* Per `ATTIVO`, `name_template` è JSON con il modello `block`.
+* Per `ATTIVO`, `name_template` è JSON con i modelli `block` e `require`.
 
 ### 🧠 Best practice
 

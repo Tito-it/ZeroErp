@@ -5,7 +5,7 @@
 -- Caso: config.toponomastica (padre) -> config.stradario_generale (figlio senza attivo)
 -- ------------------------------------------------------------
 
-SELECT plan(7);
+SELECT plan(9);
 
 CREATE TEMP TABLE tmp_test_keys AS
 SELECT to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS') AS ts;
@@ -131,3 +131,43 @@ END;
 DELETE FROM config.toponomastica
 WHERE id = (SELECT id FROM tmp_topo);
 
+-- =========================================================
+-- 5) REQUIRE: figlio non puo' puntare a padre non attivo
+-- =========================================================
+WITH ins AS (
+    INSERT INTO config.toponomastica (descrizione, stato_id, attivo)
+    VALUES (
+        'TOPO TEST INATTIVO ' || (SELECT ts FROM tmp_test_keys),
+        NULL,
+        false
+    )
+    RETURNING id
+)
+SELECT id
+INTO TEMP TABLE tmp_topo_inattivo
+FROM ins;
+
+SELECT ok(
+    (SELECT count(*) FROM tmp_topo_inattivo) = 1,
+    'Creato toponomastica inattiva di test'
+);
+
+SELECT throws_ok(
+    $$
+    BEGIN;
+      INSERT INTO config.stradario_generale (toponomastica_id, descrizione, descrizione_breve)
+      VALUES (
+          (SELECT id FROM tmp_topo_inattivo),
+          'STRADARIO TEST INATTIVO ' || (SELECT ts FROM tmp_test_keys),
+          'SI'
+      );
+    COMMIT;
+    END;
+    $$,
+    NULL,
+    NULL,
+    'Inserimento figlio con padre inattivo: bloccato'
+);
+
+DELETE FROM config.toponomastica
+WHERE id = (SELECT id FROM tmp_topo_inattivo);

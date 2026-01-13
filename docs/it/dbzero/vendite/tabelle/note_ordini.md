@@ -50,9 +50,13 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_note_a10_note_stili_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'note_stili', 'attivo', 'id_stile')` |
+| trg_note_a10_note_stili_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'note_stili', 'attivo', 'id_stile')` |
+| trg_note_ordini_a10_note_stili_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'note_stili', 'attivo', 'id_stile')` |
+| trg_note_ordini_a10_note_stili_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'note_stili', 'attivo', 'id_stile')` |
 | trg_note_ordini_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_note_ordini_validate_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.ordini_righe', 'ordine_id', 'ORDINE')` |
 | trg_note_ordini_validate_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.ordini_righe', 'ordine_id', 'ORDINE')` |
+| trg_note_ordini_validate_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.ordini_righe', 'ordine_id', 'ORDINE')` |
 
 ---
 {% include-markdown "signature-core.md" %}

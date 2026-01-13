@@ -8,7 +8,7 @@
 >
 > Approfondimenti funzioni:
 >
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
 
 La tabella **`catalogo.unita_misura`** contiene il catalogo delle unità di misura utilizzabili nel sistema. Ogni unità definisce la modalità di contabilizzazione, movimentazione e fatturazione degli articoli (es. pezzo, chilogrammo, standard metro cubo, kilowattora).
 
@@ -16,6 +16,7 @@ La tabella **`catalogo.unita_misura`** contiene il catalogo delle unità di misu
 
 ### 🎯 Scopo Principale
 
+(latest review 13-01-26)
 * Centralizzare le **unità di misura** in un unico repository.
 * Fornire sia una **descrizione tecnica interna** sia una **descrizione breve** per la stampa in documenti fiscali e commerciali.
 * Garantire la **coerenza** tra articoli, movimenti di magazzino e righe di fattura.
@@ -36,14 +37,6 @@ La tabella **`catalogo.unita_misura`** contiene il catalogo delle unità di misu
 * **FK**: utilizzata come chiave esterna in `catalogo.articoli` e in tutte le tabelle di movimenti/fatturazione.
 * **Indice**: `IX_UNITA_MISURA_CODICE_UPPER` su `upper(codice)` per ricerche case-insensitive.
 
----
-
-### ⚙️ Trigger Associati
-
-* **`trg_upd_unita_misura_audit_data_user`**
-
-  * **Quando**: `BEFORE UPDATE`
-  * **Cosa**: aggiorna automaticamente i campi `data_upd` e `user_upd` tramite la funzione generica `script.trgfn_upd_audit_data_user_generic()`.
 
 ---
 

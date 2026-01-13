@@ -48,7 +48,11 @@
 | trg_iva_a10_clienti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'clienti', 'iva_id', 'id')` |
 | trg_iva_a10_fatture_riepiloghi_iva_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_riepiloghi_iva', 'iva_id', 'id')` |
 | trg_iva_a10_fatture_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_righe', 'iva_id', 'id')` |
+| trg_iva_a10_iva_assoggettamenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva_assoggettamenti', 'attivo', 'assoggettamento_id')` |
+| trg_iva_a10_iva_assoggettamenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva_assoggettamenti', 'attivo', 'assoggettamento_id')` |
 | trg_iva_a10_iva_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'iva', 'id_iva_split', 'id')` |
+| trg_iva_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'id_iva_split')` |
+| trg_iva_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'id_iva_split')` |
 | trg_iva_a10_iva_stati_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'iva_stati', 'iva_id', 'id')` |
 | trg_iva_a10_ordini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini_righe', 'iva_id', 'id')` |
 | trg_iva_a10_preventivi_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe', 'iva_id', 'id')` |

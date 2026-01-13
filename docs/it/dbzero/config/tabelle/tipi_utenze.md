@@ -29,5 +29,11 @@
 | pk_tipi_utenze | `CREATE UNIQUE INDEX pk_tipi_utenze ON config.tipi_utenze USING btree (id)` |
 | uq_tipi_utenze_codice | `CREATE UNIQUE INDEX uq_tipi_utenze_codice ON config.tipi_utenze USING btree (codice)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_tipi_utenze_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id')` |
+| trg_tipi_utenze_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

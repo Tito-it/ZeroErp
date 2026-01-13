@@ -10,6 +10,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 13-01-26)
 Mappa, per ciascun **articolo**, le **unità di misura operative** ammesse e il **fattore di conversione** verso la **UoM base**. Permette di lavorare con confezioni (es. *cartone 6 bottiglie*, *scatola 50 pz*) mantenendo **coerenza contabile e di stock** in **UoM base**.
 
 * Ogni articolo ha **una sola** UoM **base** (`is_base = TRUE`, `factor_to_base = 1`).
@@ -36,7 +37,8 @@ Mappa, per ciascun **articolo**, le **unità di misura operative** ammesse e il 
 
 ### ✅ Checklist operativa
 
-* [ ] Per **ogni articolo** esiste **esattamente una** riga con `is_base=TRUE` e `factor_to_base=1`.
+* [ ] Per **ogni articolo** esiste **esattamente una** riga con `is_ba
+se=TRUE` e `factor_to_base=1`.
 * [ ] Nessun **overlap di validità** per la stessa `(articolo_id, uom_id)`; una sola riga attiva alla data.
 * [ ] `rounding_mode` tra {UP, DOWN, HALF_UP, HALF_DOWN, HALF_EVEN}.
 * [ ] Se `forbid_fraction=TRUE` ⇒ `max_decimals=0` e `qty_step=1`.

@@ -73,8 +73,14 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_clienti_a20_sync_stato_pdp_aft_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp()` |
+| trg_clienti_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id')` |
+| trg_clienti_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id')` |
+| trg_clienti_a10_pdp_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'pdp', 'attivo', 'pdp_id')` |
+| trg_clienti_a10_pdp_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'pdp', 'attivo', 'pdp_id')` |
+| trg_clienti_a10_termini_pagamento_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'termini_pagamento', 'attivo', 'termine_pagamento_id')` |
+| trg_clienti_a10_termini_pagamento_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'termini_pagamento', 'attivo', 'termine_pagamento_id')` |
 | trg_clienti_a20_sync_stato_pdp_aft_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp()` |
+| trg_clienti_a20_sync_stato_pdp_aft_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp()` |
 | trg_clienti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_clienti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_clienti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
@@ -84,12 +90,12 @@
 | trg_clienti_set_periodo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_periodo()` |
 | trg_clienti_sync_pdp_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_pdp()` |
 | trg_clienti_sync_pdp_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_pdp()` |
-| trg_clienti_sync_utility_from_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba()` |
 | trg_clienti_sync_utility_from_ba_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba()` |
-| trg_clienti_z10_set_parent_istanza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_parent_istanza()` |
+| trg_clienti_sync_utility_from_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba()` |
 | trg_clienti_z10_set_parent_istanza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_parent_istanza()` |
-| trg_clienti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('clienti_id')` |
+| trg_clienti_z10_set_parent_istanza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_parent_istanza()` |
 | trg_clienti_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('clienti_id')` |
+| trg_clienti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('clienti_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}
