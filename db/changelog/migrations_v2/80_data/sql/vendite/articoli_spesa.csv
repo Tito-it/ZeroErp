@@ -1,2 +1,2 @@
-id,codice,descrizione,descrizione_fattura,attivo,user_insert,user_update,data_insert,data_update
-1,ALTRO,Voci non catalogate,,t,titodb,titodb,2026-01-14 16:46:06.239228+01,2026-01-14 16:46:06.239228+01
+id,codice,descrizione,descrizione_fattura,attivo,data_insert,user_insert,data_update,user_update
+9001,TEST_SPESA,Spesa Test,Spesa Test,t,2026-01-14 10:00:00+01,seed,2026-01-14 10:00:00+01,seed

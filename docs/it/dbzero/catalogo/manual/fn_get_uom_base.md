@@ -2,12 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle**
-> • [`catalogo.articoli`](/dbzero/catalogo/tabelle/articoli)  
-> • [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)  
+> **Approfondimento Tabelle**   
+> • [`catalogo.articoli`](/dbzero/catalogo/tabelle/articoli)    
+> • [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)    
 >
-> **Approfondimento Funzioni**
-> • [`catalogo.fn_get_uom_factor`](/dbzero/catalogo/funzioni/fn_get_uom_factor)  
+> **Approfondimento Funzioni**  
+> • [`catalogo.fn_get_uom_factor`](/dbzero/catalogo/funzioni/fn_get_uom_factor)     
 
 ---
 

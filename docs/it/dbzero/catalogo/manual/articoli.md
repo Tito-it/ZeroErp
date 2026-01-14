@@ -51,7 +51,7 @@
 * **Identità**: `id UUID` (PK), `codice VARCHAR(50)` (**UNIQUE**), `descrizione VARCHAR(150)`, `descrizione_breve VARCHAR(80)`
 * **Classificazione**: `uom_id`, `tipo_voce_id`, `gruppo_voce_id`, `spesa_id`
 * **Fiscale/Contabile**: `iva_id`, `conto_contabile_vendita_id`, `conto_contabile_acquisto_id`
-* **Flag funzionali**: `is_composito` (distinta), `requires_serial` (serializzazione), `voce_utility` (voce utility), `fondo_fattura` (stampa in calce)
+* **Flag funzionali**: `is_composito` (distinta), `is_solo_componente` (solo componente), `requires_serial` (serializzazione), `voce_utility` (voce utility), `fondo_fattura` (stampa in calce)
 * **Note**: `note_target_tipo`, `note_id` (FK composita verso `catalogo.note`)
 * **Tecnico**: `meta JSONB`, `attivo BOOLEAN` (default `true`), `storicizza BOOLEAN` (default `true`), `tx_id UUID`
 * **Audit**: `user_insert`, `user_update`, `data_insert`, `data_update`
@@ -63,6 +63,7 @@
 * **Univocità**: `uq_articoli_codice (codice)` → un codice per articolo.
 * **Integrità referenziale**: tutte le FK sono `ON UPDATE CASCADE` / `ON DELETE NO ACTION` (salvo diversa policy su note).
 * **Note**: `note_target_tipo` è vincolato a `ARTICOLI` quando valorizzato.
+* **Solo componente**: se `is_solo_componente=true` l’articolo non può essere usato come prodotto in `articoli_componenti`.
 
 > 🔒 Consigliato: proteggere l’**immutabilità** del `codice` con un trigger `BEFORE UPDATE` dedicato (se è business‑key) e con GRANT mirati.
 

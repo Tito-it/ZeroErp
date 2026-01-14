@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# View: catalogo.vw_articoli_componenti_dettaglio
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/catalogo/20260114-10-create-vw-articoli-componenti-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260114-10-create-vw-articoli-componenti-dettaglio
+      author: mctit
+      comment: >
+        Vista dettaglio dei componenti articolo con riferimenti a prodotto e componente.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_componenti_dettaglio AS
+              SELECT
+                ac.id,
+                ac.prodotto_id,
+                ac.componente_id,
+                ac.coeff_qta,
+                ac.partecipa_qta,
+                ac.obbligatorio,
+                ac.valid_from,
+                ac.valid_to,
+                ac.meta,
+                ac.user_insert,
+                ac.user_update,
+                ac.data_insert,
+                ac.data_update,
+                ac.tx_id,
+                ac.storicizza,
+                ac.attivo,
+                ac.note_target_tipo,
+                ac.note_id,
+                ap.codice AS prodotto_codice,
+                ap.descrizione AS prodotto_descrizione,
+                acmp.codice AS componente_codice,
+                acmp.descrizione AS componente_descrizione
+              FROM catalogo.articoli_componenti ac
+              LEFT JOIN catalogo.articoli ap
+                ON ap.id = ac.prodotto_id
+              LEFT JOIN catalogo.articoli acmp
+                ON acmp.id = ac.componente_id;
+
+              COMMENT ON VIEW catalogo.vw_articoli_componenti_dettaglio IS
+                'Vista dettaglio componenti articolo con codici/descrizioni di prodotto e componente.';

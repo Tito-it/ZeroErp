@@ -1,0 +1,28 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260114-13-add-articoli-solo-componente-mctit.yaml
+
+  - changeSet:
+      id: 20260114-13-add-articoli-solo-componente
+      author: mctit
+      changes:
+        - addColumn:
+            schemaName: catalogo
+            tableName: articoli
+            columns:
+              - column:
+                  name: is_solo_componente
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON COLUMN catalogo.articoli.is_solo_componente IS
+                'Flag: articolo utilizzabile solo come componente (non puo'' essere prodotto in distinta base).';

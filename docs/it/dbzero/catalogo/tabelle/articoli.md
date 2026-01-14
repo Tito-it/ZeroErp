@@ -29,6 +29,7 @@
 | attivo | boolean | NO | true |
 | note_target_tipo | character varying | YES |  |
 | note_id | bigint | YES |  |
+| is_solo_componente | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

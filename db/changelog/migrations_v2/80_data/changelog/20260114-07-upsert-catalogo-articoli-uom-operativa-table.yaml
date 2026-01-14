@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260114-07-upsert-catalogo-articoli-uom-operativa-table.yaml
+
+  - changeSet:
+      id: 20260114-07-upsert-catalogo-articoli-uom-operativa-table
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: catalogo
+            tableName: articoli_uom_operativa
+      changes:
+        # Upsert dei dati nella tabella articoli_uom_operativa
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/catalogo/articoli_uom_operativa.csv
+            tableName: articoli_uom_operativa
+            schemaName: catalogo
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: articolo_id, type: UUID }
+              - column: { name: uom_id, type: STRING }
+              - column: { name: is_base, type: BOOLEAN }
+              - column: { name: factor_to_base, type: NUMERIC }
+              - column: { name: is_sell_uom, type: BOOLEAN }
+              - column: { name: is_purchase_uom, type: BOOLEAN }
+              - column: { name: is_logistic_uom, type: BOOLEAN }
+              - column: { name: valido_dal, type: DATE }
+              - column: { name: valido_al, type: DATE }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+
+              - column: { name: user_update, type: STRING }

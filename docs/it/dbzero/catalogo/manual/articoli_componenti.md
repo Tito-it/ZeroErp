@@ -62,6 +62,7 @@ Supporta:
   `EXCLUDE USING gist (prodotto_id WITH =, componente_id WITH =, daterange(valid_from, COALESCE(valid_to, 'infinity'), '[]') WITH &&)`
   ➜ **richiede estensione** `btree_gist` per supportare `uuid` su GiST.
 * **Parent attivi**: sia `prodotto_id` sia `componente_id` devono puntare ad articoli **attivi** (policy ATTIVO: require sul figlio).
+* **Solo componente**: un articolo con `is_solo_componente=true` non può essere usato come `prodotto_id`.
 
 ---
 
@@ -124,6 +125,63 @@ JOIN catalogo.articoli_componenti ac2
 * **Chiusure automatiche**: se vuoi evitare “open‑ended” duplicati, implementa una procedura che chiude la riga precedente (imposta `valid_to`) quando inserisci una nuova versione.
 * **Estensione `btree_gist`**: assicurati che sia installata (`CREATE EXTENSION IF NOT EXISTS btree_gist;`).
 * **Storicizza** le modifiche e usa `attivo=false` per dismissioni logiche.
+
+---
+
+### 🧩 Esempio realistico (distinta base)
+
+Esempio: prodotto **SEDIA** con componenti **piedi**, **schienale**, **sedile**, **viti**.
+
+In `catalogo.articoli` esistono:
+
+* `SEDIA` (prodotto finito)
+* `PIEDE_SX`, `PIEDE_DX`, `PIEDE_POST_SX`, `PIEDE_POST_DX`
+* `SCHIENALE`
+* `SEDILE`
+* `VITE_M6`
+
+In `catalogo.articoli_componenti` avrai una riga per ciascun componente:
+
+* `prodotto_id = SEDIA`, `componente_id = PIEDE_SX`, `coeff_qta = 1`
+* `prodotto_id = SEDIA`, `componente_id = PIEDE_DX`, `coeff_qta = 1`
+* `prodotto_id = SEDIA`, `componente_id = PIEDE_POST_SX`, `coeff_qta = 1`
+* `prodotto_id = SEDIA`, `componente_id = PIEDE_POST_DX`, `coeff_qta = 1`
+* `prodotto_id = SEDIA`, `componente_id = SCHIENALE`, `coeff_qta = 1`
+* `prodotto_id = SEDIA`, `componente_id = SEDILE`, `coeff_qta = 1`
+* `prodotto_id = SEDIA`, `componente_id = VITE_M6`, `coeff_qta = 8`
+
+---
+
+### 🧩 Esempio realistico (utility gas)
+
+Esempio: prodotto **GAS_FACILE** composto da **MATERIA_PRIMA**, **QVD** e **SPREAD**.
+
+In `catalogo.articoli` esistono:
+
+* `GAS_FACILE` (prodotto/servizio finale)
+* `MATERIA_PRIMA`
+* `QVD`
+* `SPREAD`
+
+In `catalogo.articoli_componenti` avrai una riga per ciascun componente:
+
+* `prodotto_id = GAS_FACILE`, `componente_id = MATERIA_PRIMA`, `coeff_qta = 1`
+* `prodotto_id = GAS_FACILE`, `componente_id = QVD`, `coeff_qta = 1`
+* `prodotto_id = GAS_FACILE`, `componente_id = SPREAD`, `coeff_qta = 1`
+
+---
+
+### 🕒 Esempio utilizzo temporale
+
+Se la composizione cambia nel tempo, si inserisce **una nuova riga** con un nuovo
+`valid_from` e si chiude la precedente con `valid_to`.
+
+Esempio: la quota **SPREAD** aumenta dal 2026-03-01.
+
+* Versione attuale:
+  * `prodotto_id = GAS_FACILE`, `componente_id = SPREAD`, `coeff_qta = 1`, `valid_from = 2026-01-01`, `valid_to = 2026-02-28`
+* Nuova versione:
+  * `prodotto_id = GAS_FACILE`, `componente_id = SPREAD`, `coeff_qta = 1.2`, `valid_from = 2026-03-01`, `valid_to = NULL`
 
 ---
 

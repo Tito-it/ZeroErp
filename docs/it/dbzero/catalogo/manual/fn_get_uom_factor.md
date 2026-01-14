@@ -2,11 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle**
-> • [`catalogo.articoli_uom_operativa`](/dbzero/catalogo/tabelle/articoli_uom_operativa)  
-> • [`catalogo.unita_misura_conversioni`](/dbzero/catalogo/tabelle/unita_misura_conversioni)  
+> **Approfondimento Tabelle**   
+> • [`catalogo.articoli_uom_operativa`](/dbzero/catalogo/tabelle/articoli_uom_operativa)     
+> • [`catalogo.unita_misura_conversioni`](/dbzero/catalogo/tabelle/unita_misura_conversioni)     
 >
-> **Approfondimento Funzioni**
+> **Approfondimento Funzioni**   
 > • [`catalogo.fn_get_uom_base`](/dbzero/catalogo/funzioni/fn_get_uom_base)  
 
 ---
