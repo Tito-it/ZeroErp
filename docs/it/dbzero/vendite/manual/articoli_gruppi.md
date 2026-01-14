@@ -5,10 +5,8 @@
 > Approfondimenti tabelle:
 >
 > * [vendite.articoli](/dbzero/vendite/tabelle/articoli)
->
-> Approfondimenti funzioni:
->
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+> * [vendite.articoli_spesa](/dbzero/vendite/tabelle/articoli_spesa)
+> * [vendite.articoli_tipologie](/dbzero/vendite/tabelle/articoli_tipologie)
 
 La tabella **`vendite.articoli_gruppi`** gestisce la classificazione di **livello superiore** degli articoli.
 Ogni gruppo rappresenta un insieme logico di articoli con finalità di catalogazione, controllo gestionale, reporting e totalizzazione nei documenti di vendita e fatturazione.
@@ -17,10 +15,11 @@ Ogni gruppo rappresenta un insieme logico di articoli con finalità di catalogaz
 
 ### 🎯 Scopo Principale
 
+(latest review 13-01-26)
 * Consentire la **classificazione gerarchica** degli articoli in gruppi omogenei.
 * Facilitare **statistiche e analisi di vendita** per categoria.
 * Supportare **criteri di stampa e raggruppamento** nei documenti fiscali e gestionali.
-* Offrire un **meccanismo di attivazione/disattivazione** senza perdere lo storico.
+* In modo pratico il gruppo può rappresentare un totalizzatore simile a quello di conto contabile. 
 
 ---
 
@@ -54,7 +53,7 @@ Ogni gruppo rappresenta un insieme logico di articoli con finalità di catalogaz
 
 * **Gestione flessibile**: possibilità di attivare/disattivare gruppi senza perdita dati.
 * **Supporto analitico**: agevola la produzione di report per categorie merceologiche.
-* **Allineamento documentale**: semplifica la stampa di riepiloghi e la totalizzazione di righe di fattura.
+* **Allineamento documentale**: semplifica la stampa di riepiloghi e la totalizzazione di righe di fattura. Se impostato correttamente può essere usato per riscontri contabili.
 * **Governance**: garantisce consistenza e integrità logica sugli articoli.
 
 ---

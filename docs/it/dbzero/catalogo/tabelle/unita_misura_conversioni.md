@@ -35,5 +35,13 @@
 | ix_uom_conv_to_from | `CREATE INDEX ix_uom_conv_to_from ON catalogo.unita_misura_conversioni USING btree (uom_to_id, uom_from_id, valido_dal, valido_al)` |
 | pk_unita_misura_conversioni | `CREATE UNIQUE INDEX pk_unita_misura_conversioni ON catalogo.unita_misura_conversioni USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_unita_misura_conversioni_a10_unita_misura_require_at_2627db | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_to_id')` |
+| trg_unita_misura_conversioni_a10_unita_misura_require_at_2627db | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_to_id')` |
+| trg_unita_misura_conversioni_a10_unita_misura_require_at_3ec9a9 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_from_id')` |
+| trg_unita_misura_conversioni_a10_unita_misura_require_at_3ec9a9 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_from_id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

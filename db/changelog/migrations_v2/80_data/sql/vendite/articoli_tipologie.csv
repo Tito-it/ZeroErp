@@ -1,0 +1,5 @@
+id,codice,descrizione,descrizione_breve,attivo,user_insert,user_update,data_insert,data_update
+1,Altro,Voci non catalogate,Altro,t,titodb,titodb,2026-01-14 16:48:41.487608+01,2026-01-14 16:48:41.487608+01
+2,MP,Materia prima,Materia prima,t,titodb,titodb,2026-01-14 16:52:39.641393+01,2026-01-14 16:52:39.641393+01
+3,Servizi,Servizi,Servizi,t,titodb,titodb,2026-01-14 16:53:27.236011+01,2026-01-14 16:53:27.236011+01
+4,Bulloneria,Bulloneria,Bulloneria,t,titodb,titodb,2026-01-14 16:53:53.8611+01,2026-01-14 16:53:53.8611+01

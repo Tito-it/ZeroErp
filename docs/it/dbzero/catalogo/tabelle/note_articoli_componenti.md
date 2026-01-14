@@ -40,5 +40,19 @@
 | note_articoli_componenti_pkey | `CREATE UNIQUE INDEX note_articoli_componenti_pkey ON catalogo.note_articoli_componenti USING btree (target_tipo, id)` |
 | note_articoli_componenti_target_tipo_target_id_anchor_tipo__idx | `CREATE INDEX note_articoli_componenti_target_tipo_target_id_anchor_tipo__idx ON catalogo.note_articoli_componenti USING btree (target_tipo, target_id, anchor_tipo, posizione, seq)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_note_a10_lingue_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'lingue', 'attivo', 'id_lingua')` |
+| trg_note_a10_lingue_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'lingue', 'attivo', 'id_lingua')` |
+| trg_note_a10_note_stili_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'note_stili', 'attivo', 'id_stile')` |
+| trg_note_a10_note_stili_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'note_stili', 'attivo', 'id_stile')` |
+| trg_note_articoli_componenti_a10_articoli_componenti_req_eb4cdc | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli_componenti', 'attivo', 'target_id')` |
+| trg_note_articoli_componenti_a10_articoli_componenti_req_eb4cdc | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli_componenti', 'attivo', 'target_id')` |
+| trg_note_articoli_componenti_a10_lingue_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'lingue', 'attivo', 'id_lingua')` |
+| trg_note_articoli_componenti_a10_lingue_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'lingue', 'attivo', 'id_lingua')` |
+| trg_note_articoli_componenti_a10_note_stili_require_atti_1e53f8 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'note_stili', 'attivo', 'id_stile')` |
+| trg_note_articoli_componenti_a10_note_stili_require_atti_1e53f8 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'note_stili', 'attivo', 'id_stile')` |
+
 ---
 {% include-markdown "signature-core.md" %}
