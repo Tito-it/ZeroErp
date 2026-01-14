@@ -28,6 +28,7 @@
 - Audit fields: `date_insert`, `user_insert`, `date_update`, `user_update`
 - Index naming: `ix_<table>_<column>`; check duplicates via `dbops.vw_duplicate_indexes`
 - FK index policy applied in `90_end` with `dbops.apply_fk_index_policy()`
+- Per variabili PL/pgSQL che riflettono colonne, usare `%TYPE` della colonna (es. `v_uom_base_id catalogo.unita_misura.id%TYPE`)
 
 ## Trigger Conventions
 - Trigger name: `trg_<schema_opzionale>_<tabella>_<fase>_<descrizione>_<eventi>`

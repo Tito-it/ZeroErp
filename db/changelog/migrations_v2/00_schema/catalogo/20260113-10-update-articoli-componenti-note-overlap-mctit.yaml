@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260113-10-update-articoli-componenti-note-overlap-mctit.yaml
+
+  - changeSet:
+      id: 20260113-10-update-articoli-componenti-note-overlap
+      author: mctit
+      changes:
+        - dropColumn:
+            schemaName: catalogo
+            tableName: articoli_componenti
+            columns:
+              - column:
+                  name: note
+                  remarks: "Campo note sostituito da note_id (tabella note partizionata)."
+        - addColumn:
+            schemaName: catalogo
+            tableName: articoli_componenti
+            columns:
+              - column:
+                  name: note_target_tipo
+                  type: VARCHAR(32)
+                  remarks: "Tipo target per nota (FK composita verso catalogo.note)."
+              - column:
+                  name: note_id
+                  type: BIGINT
+                  remarks: "Nota associata alla riga componente (FK composita verso catalogo.note)."
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: articoli_componenti
+            baseColumnNames: note_target_tipo, note_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: note
+            referencedColumnNames: target_tipo, id
+            constraintName: fk_articoli_componenti_note
+            onUpdate: CASCADE
+            onDelete: SET NULL
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              ALTER TABLE catalogo.articoli_componenti
+                ADD CONSTRAINT chk_articoli_componenti_note_target_tipo
+                CHECK (note_target_tipo IS NULL OR note_target_tipo = 'ARTICOLI_COMPONENTI');
+
+              ALTER TABLE catalogo.articoli_componenti
+                DROP CONSTRAINT IF EXISTS ex_articoli_componenti_no_overlap;
+
+              ALTER TABLE catalogo.articoli_componenti
+                ADD CONSTRAINT ex_articoli_componenti_no_overlap
+                EXCLUDE USING gist (
+                  prodotto_id WITH =,
+                  componente_id WITH =,
+                  daterange(valid_from, COALESCE(valid_to, 'infinity'::date), '[]') WITH &&
+                );
+
+              COMMENT ON CONSTRAINT ex_articoli_componenti_no_overlap ON catalogo.articoli_componenti
+                IS 'Evita sovrapposizioni temporali per la stessa coppia (prodotto, componente).';
+
+              CREATE INDEX IF NOT EXISTS ix_articoli_componenti_no_overlap_gist
+              ON catalogo.articoli_componenti
+              USING gist (prodotto_id, componente_id, daterange(valid_from, COALESCE(valid_to, 'infinity'::date), '[]'));

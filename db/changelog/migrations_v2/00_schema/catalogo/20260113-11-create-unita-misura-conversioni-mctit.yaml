@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260113-11-create-unita-misura-conversioni-mctit.yaml
+
+  - changeSet:
+      id: 20260113-11-create-unita-misura-conversioni
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: catalogo
+            tableName: unita_misura_conversioni
+            remarks: "Conversioni globali tra unita' di misura, valide nel tempo."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_unita_misura_conversioni
+                    nullable: false
+              - column:
+                  name: uom_from_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: uom_to_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: fattore
+                  type: NUMERIC(18,6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valido_dal
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valido_al
+                  type: DATE
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: JSONB
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: TEXT
+                  defaultValueComputed: CURRENT_USER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: TEXT
+                  defaultValueComputed: CURRENT_USER
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: unita_misura_conversioni
+            baseColumnNames: uom_from_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            constraintName: fk_uom_conv_from
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: unita_misura_conversioni
+            baseColumnNames: uom_to_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            constraintName: fk_uom_conv_to
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              ALTER TABLE catalogo.unita_misura_conversioni
+                ADD CONSTRAINT chk_uom_conv_fattore_pos
+                CHECK (fattore > 0);
+
+              ALTER TABLE catalogo.unita_misura_conversioni
+                ADD CONSTRAINT chk_uom_conv_no_self
+                CHECK (uom_from_id <> uom_to_id);
+
+              ALTER TABLE catalogo.unita_misura_conversioni
+                ADD CONSTRAINT chk_uom_conv_valid_dates
+                CHECK (valido_al IS NULL OR valido_al > valido_dal);
+
+              ALTER TABLE catalogo.unita_misura_conversioni
+                ADD CONSTRAINT ex_uom_conv_no_overlap
+                EXCLUDE USING gist (
+                  uom_from_id WITH =,
+                  uom_to_id WITH =,
+                  daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]') WITH &&
+                );
+
+              COMMENT ON TABLE catalogo.unita_misura_conversioni
+                IS 'Conversioni globali tra unita di misura con validita temporale.';
+              COMMENT ON CONSTRAINT ex_uom_conv_no_overlap ON catalogo.unita_misura_conversioni
+                IS 'Evita sovrapposizioni temporali per la stessa coppia di unita di misura.';
+
+        - createIndex:
+            schemaName: catalogo
+            tableName: unita_misura_conversioni
+            indexName: ix_uom_conv_from_to
+            columns:
+              - column: { name: uom_from_id }
+              - column: { name: uom_to_id }
+              - column: { name: valido_dal }
+              - column: { name: valido_al }
+
+        - createIndex:
+            schemaName: catalogo
+            tableName: unita_misura_conversioni
+            indexName: ix_uom_conv_to_from
+            columns:
+              - column: { name: uom_to_id }
+              - column: { name: uom_from_id }
+              - column: { name: valido_dal }
+              - column: { name: valido_al }

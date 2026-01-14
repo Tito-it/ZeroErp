@@ -20,6 +20,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 13-01-26)
 `catalogo.articoli` è l’anagrafica **centrale** di articoli/voci, utilizzabile sia per il **catalogo prodotti** tradizionale sia per **voci utility** (canoni, oneri, misurazioni, ecc.). Supporta:
 
 * **classificazione** (tipologia, gruppo, voce di spesa);
@@ -32,15 +33,16 @@
 
 ### 🔗 Relazioni
 
-| Tipo | Tabella ↔ Campo                                              | Descrizione                  |
-| ---- | ------------------------------------------------------------ | ---------------------------- |
-| FK → | `catalogo.unita_misura(id)` ← `uom_id`                       | Unità di misura principale   |
-| FK → | `vendite.articoli_tipologie(id)` ← `tipo_voce_id`            | Tipologia articolo/voce      |
-| FK → | `vendite.articoli_gruppi(id)` ← `gruppo_voce_id`             | Raggruppamento merceologico  |
-| FK → | `vendite.articoli_spesa(id)` ← `spesa_id`                    | Collegamento a voce di spesa |
-| FK → | `config.iva(id)` ← `iva_id`                                  | Aliquota IVA                 |
-| FK → | `config.conti_contabili(id)` ← `conto_contabile_vendita_id`  | Conto vendite                |
-| FK → | `config.conti_contabili(id)` ← `conto_contabile_acquisto_id` | Conto acquisti               |
+| Tipo | Tabella ↔ Campo                                                  | Descrizione                  |
+| ---- | ---------------------------------------------------------------- | ---------------------------- |
+| FK → | `catalogo.unita_misura(id)` ← `uom_id`                           | Unità di misura principale   |
+| FK → | `vendite.articoli_tipologie(id)` ← `tipo_voce_id`                | Tipologia articolo/voce      |
+| FK → | `vendite.articoli_gruppi(id)` ← `gruppo_voce_id`                 | Raggruppamento merceologico  |
+| FK → | `vendite.articoli_spesa(id)` ← `spesa_id`                        | Collegamento a voce di spesa |
+| FK → | `config.iva(id)` ← `iva_id`                                      | Aliquota IVA                 |
+| FK → | `config.conti_contabili(id)` ← `conto_contabile_vendita_id`      | Conto vendite                |
+| FK → | `config.conti_contabili(id)` ← `conto_contabile_acquisto_id`     | Conto acquisti               |
+| FK → | `catalogo.note(target_tipo, id)` ← `(note_target_tipo, note_id)` | Nota associata all’articolo  |
 
 ---
 
@@ -49,7 +51,8 @@
 * **Identità**: `id UUID` (PK), `codice VARCHAR(50)` (**UNIQUE**), `descrizione VARCHAR(150)`, `descrizione_breve VARCHAR(80)`
 * **Classificazione**: `uom_id`, `tipo_voce_id`, `gruppo_voce_id`, `spesa_id`
 * **Fiscale/Contabile**: `iva_id`, `conto_contabile_vendita_id`, `conto_contabile_acquisto_id`
-* **Flag funzionali**: `is_composito` (distinta), `requires_serial` (serializzazione), `voce_utility` (voce utility), `fondo_fattura` (stampa in calce)
+* **Flag funzionali**: `is_composito` (distinta), `is_solo_componente` (solo componente), `requires_serial` (serializzazione), `voce_utility` (voce utility), `fondo_fattura` (stampa in calce)
+* **Note**: `note_target_tipo`, `note_id` (FK composita verso `catalogo.note`)
 * **Tecnico**: `meta JSONB`, `attivo BOOLEAN` (default `true`), `storicizza BOOLEAN` (default `true`), `tx_id UUID`
 * **Audit**: `user_insert`, `user_update`, `data_insert`, `data_update`
 
@@ -58,8 +61,9 @@
 ### 🚦 Vincoli & Regole
 
 * **Univocità**: `uq_articoli_codice (codice)` → un codice per articolo.
-* **Integrità referenziale**: tutte le FK sono `ON UPDATE CASCADE` / `ON DELETE NO ACTION`.
-* **Coerenza UoM attiva**: trigger **constraint** (deferrable) impedisce legami con UoM disattive.
+* **Integrità referenziale**: tutte le FK sono `ON UPDATE CASCADE` / `ON DELETE NO ACTION` (salvo diversa policy su note).
+* **Note**: `note_target_tipo` è vincolato a `ARTICOLI` quando valorizzato.
+* **Solo componente**: se `is_solo_componente=true` l’articolo non può essere usato come prodotto in `articoli_componenti`.
 
 > 🔒 Consigliato: proteggere l’**immutabilità** del `codice` con un trigger `BEFORE UPDATE` dedicato (se è business‑key) e con GRANT mirati.
 

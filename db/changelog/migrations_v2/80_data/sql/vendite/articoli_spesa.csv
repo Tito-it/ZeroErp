@@ -1,0 +1,2 @@
+id,codice,descrizione,descrizione_fattura,attivo,data_insert,user_insert,data_update,user_update
+9001,TEST_SPESA,Spesa Test,Spesa Test,t,2026-01-14 10:00:00+01,seed,2026-01-14 10:00:00+01,seed

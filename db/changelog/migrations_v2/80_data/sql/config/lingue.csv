@@ -1,4 +1,4 @@
-id,codice_iso,descrizione,descrizione_locale,attiva,data_insert,user_insert,data_update,user_update
+id,codice_iso,descrizione,descrizione_locale,attivo,data_insert,user_insert,data_update,user_update
 1,it,Italiano,Italiano,t,2025-10-21 18:27:39.697851+02,titodb,2025-10-21 18:27:39.697851+02,titodb
 2,en,Inglese,English,t,2025-10-21 18:27:39.697851+02,titodb,2025-10-21 18:27:39.697851+02,titodb
 3,fr,Francese,Français,t,2025-10-21 18:27:39.697851+02,titodb,2025-10-21 18:27:39.697851+02,titodb

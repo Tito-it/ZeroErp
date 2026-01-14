@@ -8,9 +8,6 @@
 > * [vendite.articoli_gruppi](/dbzero/vendite/tabelle/articoli_gruppi)
 > * [vendite.articoli_spesa](/dbzero/vendite/tabelle/articoli_spesa)
 >
-> Approfondimenti funzioni:
->
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
 
 La tabella **`vendite.articoli_tipologie`** definisce le categorie di appartenenza degli articoli, utili per raggruppamenti omogenei, analisi statistiche e applicazione di regole di fatturazione.
 
@@ -18,9 +15,12 @@ La tabella **`vendite.articoli_tipologie`** definisce le categorie di appartenen
 
 ### 🎯 Scopo Principale
 
+(latest review 14-01-26)
 * Classificare gli articoli secondo **tipologie funzionali** (es. materia prima, servizi, accessori).
 * Distinguere tra **descrizione estesa** e **descrizione breve**, per gestire contesti documentali differenti.
 * Fornire uno strumento di aggregazione per reportistica e controlli gestionali.
+
+**Rappresenta un modo diverso di raggruppare articoli rispetto a articoli_gruppi/spesa.**
 
 ---
 
@@ -37,15 +37,6 @@ La tabella **`vendite.articoli_tipologie`** definisce le categorie di appartenen
 
 * **FK**: può essere referenziata da `vendite.articoli` per classificare ogni articolo in una tipologia.
 * **Indice**: `IX_ARTICOLI_TIPOLOGIE_CODICE_UPPER` su `upper(codice)` per ricerche case-insensitive.
-
----
-
-### ⚙️ Trigger Associati
-
-* **`trg_upd_articoli_tipologie_audit_data_user`**
-
-  * **Quando**: `BEFORE UPDATE`
-  * **Cosa**: aggiorna automaticamente i campi `data_update` e `user_update` tramite la funzione generica `script.trgfn_upd_audit_data_user_generic()`.
 
 ---
 

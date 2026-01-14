@@ -1,0 +1,2 @@
+id,codice,descrizione,attivo,data_insert,user_insert,data_update,user_update
+9001,TEST_GRUPPO,Gruppo Test,t,2026-01-14 10:00:00+01,seed,2026-01-14 10:00:00+01,seed

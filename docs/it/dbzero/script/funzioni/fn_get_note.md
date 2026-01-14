@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_get_note.md" %}
 # ⚙️ Funzione `fn_get_note`
 
 ```sql

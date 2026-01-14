@@ -24,5 +24,11 @@
 | pk_messaggi_errore | `CREATE UNIQUE INDEX pk_messaggi_errore ON config.messaggi_errore USING btree (id)` |
 | uq_messaggi_errore_codice_lingua | `CREATE UNIQUE INDEX uq_messaggi_errore_codice_lingua ON config.messaggi_errore USING btree (codice, lingua)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_messaggi_errore_a10_lingue_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'lingue', 'attivo', 'lingua')` |
+| trg_messaggi_errore_a10_lingue_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'lingue', 'attivo', 'lingua')` |
+
 ---
 {% include-markdown "signature-core.md" %}

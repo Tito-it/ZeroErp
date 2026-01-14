@@ -90,18 +90,18 @@ nav:
         - DB Zero:
                   - Panoramica: it/dbzero/index.md
                   - Schemi:
+                            - Acquisti: it/dbzero/acquisti/index.md
                             - Anagrafiche: it/dbzero/anagrafiche/index.md
                             - Catalogo: it/dbzero/catalogo/index.md
                             - Config: it/dbzero/config/index.md
                             - Dbops: it/dbzero/dbops/index.md
                             - Magazzino: it/dbzero/magazzino/index.md
-                            - Vendite: it/dbzero/vendite/index.md
-                            - Acquisti: it/dbzero/acquisti/index.md
+                            - Maintenance: it/dbzero/maintenance/index.md
                             - Pagamenti: it/dbzero/pagamenti/index.md
+                            - Public: it/dbzero/public/index.md
                             - Storico: it/dbzero/storico/index.md
                             - Script: it/dbzero/script/index.md
-                            - Maintenance: it/dbzero/maintenance/index.md
-                            - Public: it/dbzero/public/index.md
+                            - Vendite: it/dbzero/vendite/index.md
 
         - Guide tecniche:
                   - Soggetti e ruoli anagrafici: it/guide/soggetti-e-ruoli-anagrafici.md
