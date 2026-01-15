@@ -26,9 +26,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_stati_doc_ddt_attivo | `CREATE INDEX ix_stati_doc_ddt_attivo ON config.stati_doc_ddt USING btree (attivo)` |
-| ix_stati_doc_ddt_codice_interno_upper | `CREATE INDEX ix_stati_doc_ddt_codice_interno_upper ON config.stati_doc_ddt USING btree (upper((codice_interno)::text))` |
-| ix_stati_doc_ddt_codice_upper | `CREATE INDEX ix_stati_doc_ddt_codice_upper ON config.stati_doc_ddt USING btree (upper((codice)::text))` |
-| ix_stati_doc_ddt_descrizione_upper | `CREATE INDEX ix_stati_doc_ddt_descrizione_upper ON config.stati_doc_ddt USING btree (upper((descrizione)::text))` |
 | pk_stati_doc_ddt | `CREATE UNIQUE INDEX pk_stati_doc_ddt ON config.stati_doc_ddt USING btree (id)` |
 | uq_stati_doc_ddt_codice | `CREATE UNIQUE INDEX uq_stati_doc_ddt_codice ON config.stati_doc_ddt USING btree (codice)` |
 | uq_stati_doc_ddt_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_ddt_codice_interno ON config.stati_doc_ddt USING btree (codice_interno)` |

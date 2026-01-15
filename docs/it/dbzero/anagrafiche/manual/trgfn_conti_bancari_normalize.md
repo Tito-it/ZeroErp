@@ -11,6 +11,7 @@
 ---
 
 ### 🎯 Scopo Principale
+
 (latest review 15-12-26)
 La trigger function **`anagrafiche.trgfn_conti_bancari_normalize()`** normalizza i campi bancari principali prima della persistenza, applicando regole semplici e deterministicamente ripetibili:
 

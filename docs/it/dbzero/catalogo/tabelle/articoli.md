@@ -51,7 +51,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_articoli_codice_upper | `CREATE INDEX ix_articoli_codice_upper ON catalogo.articoli USING btree (upper((codice)::text))` |
 | pk_articoli | `CREATE UNIQUE INDEX pk_articoli ON catalogo.articoli USING btree (id)` |
 | uq_articoli_codice | `CREATE UNIQUE INDEX uq_articoli_codice ON catalogo.articoli USING btree (codice)` |
 

@@ -33,8 +33,6 @@
 |------|-------------|
 | ix_mag_inventari_righe_ubicazione | `CREATE INDEX ix_mag_inventari_righe_ubicazione ON magazzino.inventari_righe USING btree (ubicazione_id)` |
 | ix_mag_invetario_r_articolo | `CREATE INDEX ix_mag_invetario_r_articolo ON magazzino.inventari_righe USING btree (articolo_id)` |
-| ix_mag_invetario_r_lotto_upper | `CREATE INDEX ix_mag_invetario_r_lotto_upper ON magazzino.inventari_righe USING btree (upper((lotto)::text))` |
-| ix_mag_invetario_r_seriale_upper | `CREATE INDEX ix_mag_invetario_r_seriale_upper ON magazzino.inventari_righe USING btree (upper((seriale)::text))` |
 | pk_mag_invetario_righe | `CREATE UNIQUE INDEX pk_mag_invetario_righe ON magazzino.inventari_righe USING btree (id)` |
 
 ---

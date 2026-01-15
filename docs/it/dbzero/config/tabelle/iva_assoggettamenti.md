@@ -25,8 +25,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_cfg_iva_assoggettamenti_attivo | `CREATE INDEX ix_cfg_iva_assoggettamenti_attivo ON config.iva_assoggettamenti USING btree (attivo)` |
-| ix_iva_assoggettamenti_codice_upper | `CREATE INDEX ix_iva_assoggettamenti_codice_upper ON config.iva_assoggettamenti USING btree (upper((codice)::text))` |
-| ix_iva_assoggettamenti_descrizione_upper | `CREATE INDEX ix_iva_assoggettamenti_descrizione_upper ON config.iva_assoggettamenti USING btree (upper((descrizione)::text))` |
 | pk_config_iva_assoggettamenti | `CREATE UNIQUE INDEX pk_config_iva_assoggettamenti ON config.iva_assoggettamenti USING btree (id)` |
 | uq_cfg_iva_assoggettamenti_codice | `CREATE UNIQUE INDEX uq_cfg_iva_assoggettamenti_codice ON config.iva_assoggettamenti USING btree (codice)` |
 

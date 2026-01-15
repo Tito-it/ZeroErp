@@ -68,15 +68,27 @@ SELECT
     WHERE n.nspname = 'catalogo'
       AND c.relname = 'articoli_componenti'
       AND NOT t.tgisinternal
-      AND pg_get_triggerdef(t.oid) ILIKE '%is_composito%'
-  ) AS has_req_composito;
+      AND pg_get_triggerdef(t.oid) ILIKE '%trgfn_articoli_componenti_guard_is_composito%'
+  ) AS has_guard_composito;
 
 SELECT diag(
   format(
-    'Trigger check: req_prodotto=%s req_componente=%s req_is_composito=%s',
+    'Trigger check: req_prodotto=%s req_componente=%s guard_is_composito=%s',
     CASE WHEN (SELECT has_req_prodotto FROM tmp_trg) THEN 'true' ELSE 'false' END,
     CASE WHEN (SELECT has_req_componente FROM tmp_trg) THEN 'true' ELSE 'false' END,
-    CASE WHEN (SELECT has_req_composito FROM tmp_trg) THEN 'true' ELSE 'false' END
+    CASE WHEN (SELECT has_guard_composito FROM tmp_trg) THEN 'true' ELSE 'false' END
+  )
+);
+
+SELECT diag(
+  format(
+    'Prerequisiti: can_run=%s uom=%s tipo=%s gruppo=%s spesa=%s iva=%s',
+    CASE WHEN (SELECT can_run FROM tmp_can_run) THEN 'true' ELSE 'false' END,
+    COALESCE((SELECT uom_id::text FROM tmp_seed), 'NULL'),
+    COALESCE((SELECT tipo_id::text FROM tmp_seed), 'NULL'),
+    COALESCE((SELECT gruppo_id::text FROM tmp_seed), 'NULL'),
+    COALESCE((SELECT spesa_id::text FROM tmp_seed), 'NULL'),
+    COALESCE((SELECT iva_id::text FROM tmp_seed), 'NULL')
   )
 );
 
@@ -85,11 +97,6 @@ SELECT to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS') AS ts;
 
 CREATE TEMP TABLE tmp_art AS
 SELECT NULL::uuid AS prodotto_id, NULL::uuid AS componente_id;
-
-CREATE TEMP TABLE tmp_result AS
-SELECT NULL::boolean AS prodotto_err,
-       NULL::boolean AS componente_err,
-       NULL::boolean AS composito_err;
 
 DO $$
 DECLARE
@@ -149,53 +156,72 @@ SELECT ok(
   'Articoli di test creati'
 );
 
+CREATE OR REPLACE FUNCTION pg_temp.fn_try_insert_componenti(
+  p_prodotto_id uuid,
+  p_componente_id uuid,
+  p_valid_from date,
+  p_valid_to date
+) RETURNS boolean
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_id uuid;
+BEGIN
+  EXECUTE 'SET CONSTRAINTS ALL IMMEDIATE';
+  BEGIN
+    INSERT INTO catalogo.articoli_componenti (
+      prodotto_id,
+      componente_id,
+      coeff_qta,
+      partecipa_qta,
+      obbligatorio,
+      valid_from,
+      valid_to,
+      attivo
+    )
+    VALUES (
+      p_prodotto_id,
+      p_componente_id,
+      1,
+      false,
+      true,
+      p_valid_from,
+      p_valid_to,
+      true
+    )
+    RETURNING id INTO v_id;
+
+    DELETE FROM catalogo.articoli_componenti WHERE id = v_id;
+    RETURN false;
+  EXCEPTION WHEN OTHERS THEN
+    RETURN true;
+  END;
+END;
+$$;
+
 -- Prodotto non attivo
 UPDATE catalogo.articoli
 SET attivo = false
 WHERE id = (SELECT prodotto_id FROM tmp_art);
 
-DO $$
-DECLARE
-  v_id uuid;
-BEGIN
-  IF (SELECT can_run FROM tmp_can_run) AND (SELECT has_req_prodotto FROM tmp_trg) THEN
-    UPDATE tmp_result SET prodotto_err = false;
-    BEGIN
-      INSERT INTO catalogo.articoli_componenti (
-        prodotto_id,
-        componente_id,
-        coeff_qta,
-        partecipa_qta,
-        obbligatorio,
-        valid_from,
-        valid_to,
-        attivo
-      )
-      VALUES (
-        (SELECT prodotto_id FROM tmp_art),
-        (SELECT componente_id FROM tmp_art),
-        1,
-        false,
-        true,
-        DATE '2026-06-01',
-        DATE '2026-06-30',
-        true
-      )
-      RETURNING id INTO v_id;
+SELECT diag('Skip prodotto non attivo: prerequisiti mancanti')
+WHERE NOT (SELECT can_run FROM tmp_can_run);
 
-      DELETE FROM catalogo.articoli_componenti WHERE id = v_id;
-    EXCEPTION WHEN OTHERS THEN
-      UPDATE tmp_result SET prodotto_err = true;
-    END;
-  END IF;
-END $$;
+SELECT diag('Skip prodotto non attivo: trigger REQUIRE su prodotto_id assente')
+WHERE (SELECT can_run FROM tmp_can_run)
+  AND NOT (SELECT has_req_prodotto FROM tmp_trg);
 
 SELECT CASE
   WHEN NOT (SELECT can_run FROM tmp_can_run) THEN
     ok(true, 'Prodotto non attivo: prerequisiti mancanti, test skipped')
   WHEN (SELECT has_req_prodotto FROM tmp_trg) THEN
     is(
-      (SELECT prodotto_err FROM tmp_result),
+      pg_temp.fn_try_insert_componenti(
+        (SELECT prodotto_id FROM tmp_art),
+        (SELECT componente_id FROM tmp_art),
+        DATE '2026-06-01',
+        DATE '2026-06-30'
+      ),
       true,
       'Prodotto non attivo: bloccato'
     )
@@ -212,48 +238,24 @@ UPDATE catalogo.articoli
 SET attivo = false
 WHERE id = (SELECT componente_id FROM tmp_art);
 
-DO $$
-DECLARE
-  v_id uuid;
-BEGIN
-  IF (SELECT can_run FROM tmp_can_run) AND (SELECT has_req_componente FROM tmp_trg) THEN
-    UPDATE tmp_result SET componente_err = false;
-    BEGIN
-      INSERT INTO catalogo.articoli_componenti (
-        prodotto_id,
-        componente_id,
-        coeff_qta,
-        partecipa_qta,
-        obbligatorio,
-        valid_from,
-        valid_to,
-        attivo
-      )
-      VALUES (
-        (SELECT prodotto_id FROM tmp_art),
-        (SELECT componente_id FROM tmp_art),
-        1,
-        false,
-        true,
-        DATE '2026-07-01',
-        DATE '2026-07-31',
-        true
-      )
-      RETURNING id INTO v_id;
+SELECT diag('Skip componente non attivo: prerequisiti mancanti')
+WHERE NOT (SELECT can_run FROM tmp_can_run);
 
-      DELETE FROM catalogo.articoli_componenti WHERE id = v_id;
-    EXCEPTION WHEN OTHERS THEN
-      UPDATE tmp_result SET componente_err = true;
-    END;
-  END IF;
-END $$;
+SELECT diag('Skip componente non attivo: trigger REQUIRE su componente_id assente')
+WHERE (SELECT can_run FROM tmp_can_run)
+  AND NOT (SELECT has_req_componente FROM tmp_trg);
 
 SELECT CASE
   WHEN NOT (SELECT can_run FROM tmp_can_run) THEN
     ok(true, 'Componente non attivo: prerequisiti mancanti, test skipped')
   WHEN (SELECT has_req_componente FROM tmp_trg) THEN
     is(
-      (SELECT componente_err FROM tmp_result),
+      pg_temp.fn_try_insert_componenti(
+        (SELECT prodotto_id FROM tmp_art),
+        (SELECT componente_id FROM tmp_art),
+        DATE '2026-07-01',
+        DATE '2026-07-31'
+      ),
       true,
       'Componente non attivo: bloccato'
     )
@@ -270,48 +272,24 @@ UPDATE catalogo.articoli
 SET is_composito = false
 WHERE id = (SELECT prodotto_id FROM tmp_art);
 
-DO $$
-DECLARE
-  v_id uuid;
-BEGIN
-  IF (SELECT can_run FROM tmp_can_run) AND (SELECT has_req_composito FROM tmp_trg) THEN
-    UPDATE tmp_result SET composito_err = false;
-    BEGIN
-      INSERT INTO catalogo.articoli_componenti (
-        prodotto_id,
-        componente_id,
-        coeff_qta,
-        partecipa_qta,
-        obbligatorio,
-        valid_from,
-        valid_to,
-        attivo
-      )
-      VALUES (
-        (SELECT prodotto_id FROM tmp_art),
-        (SELECT componente_id FROM tmp_art),
-        1,
-        false,
-        true,
-        DATE '2026-08-01',
-        DATE '2026-08-31',
-        true
-      )
-      RETURNING id INTO v_id;
+SELECT diag('Skip prodotto non composito: prerequisiti mancanti')
+WHERE NOT (SELECT can_run FROM tmp_can_run);
 
-      DELETE FROM catalogo.articoli_componenti WHERE id = v_id;
-    EXCEPTION WHEN OTHERS THEN
-      UPDATE tmp_result SET composito_err = true;
-    END;
-  END IF;
-END $$;
+SELECT diag('Skip prodotto non composito: trigger is_composito assente')
+WHERE (SELECT can_run FROM tmp_can_run)
+  AND NOT (SELECT has_guard_composito FROM tmp_trg);
 
 SELECT CASE
   WHEN NOT (SELECT can_run FROM tmp_can_run) THEN
     ok(true, 'Prodotto non composito: prerequisiti mancanti, test skipped')
-  WHEN (SELECT has_req_composito FROM tmp_trg) THEN
+  WHEN (SELECT has_guard_composito FROM tmp_trg) THEN
     is(
-      (SELECT composito_err FROM tmp_result),
+      pg_temp.fn_try_insert_componenti(
+        (SELECT prodotto_id FROM tmp_art),
+        (SELECT componente_id FROM tmp_art),
+        DATE '2026-08-01',
+        DATE '2026-08-31'
+      ),
       true,
       'Prodotto non composito: bloccato'
     )

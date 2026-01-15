@@ -30,7 +30,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_magazzini_codice_upper | `CREATE INDEX ix_magazzini_codice_upper ON magazzino.magazzini USING btree (upper((codice)::text))` |
 | ix_magazzini_indirizzo_dettaglio | `CREATE INDEX ix_magazzini_indirizzo_dettaglio ON magazzino.magazzini USING btree (indirizzo_dettaglio_id)` |
 | pk_magazzini | `CREATE UNIQUE INDEX pk_magazzini ON magazzino.magazzini USING btree (id)` |
 | uq_magazzini_codice | `CREATE UNIQUE INDEX uq_magazzini_codice ON magazzino.magazzini USING btree (codice)` |

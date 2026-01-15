@@ -32,8 +32,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_mag_rettifiche_r_articolo | `CREATE INDEX ix_mag_rettifiche_r_articolo ON magazzino.rettifiche_righe USING btree (articolo_id)` |
-| ix_mag_rettifiche_r_lotto_upper | `CREATE INDEX ix_mag_rettifiche_r_lotto_upper ON magazzino.rettifiche_righe USING btree (upper((lotto)::text))` |
-| ix_mag_rettifiche_r_seriale_upper | `CREATE INDEX ix_mag_rettifiche_r_seriale_upper ON magazzino.rettifiche_righe USING btree (upper((seriale)::text))` |
 | ix_mag_rettifiche_righe_ubicazione | `CREATE INDEX ix_mag_rettifiche_righe_ubicazione ON magazzino.rettifiche_righe USING btree (ubicazione_id)` |
 | pk_mag_rettifiche_righe | `CREATE UNIQUE INDEX pk_mag_rettifiche_righe ON magazzino.rettifiche_righe USING btree (id)` |
 

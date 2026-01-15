@@ -31,7 +31,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_resellers_attivo | `CREATE INDEX ix_resellers_attivo ON anagrafiche.resellers USING btree (attivo)` |
-| ix_resellers_codice_upper | `CREATE INDEX ix_resellers_codice_upper ON anagrafiche.resellers USING btree (upper((codice)::text))` |
 | pk_resellers | `CREATE UNIQUE INDEX pk_resellers ON anagrafiche.resellers USING btree (id)` |
 | uq_resellers_codice | `CREATE UNIQUE INDEX uq_resellers_codice ON anagrafiche.resellers USING btree (codice)` |
 | uq_resellers_ruolo | `CREATE UNIQUE INDEX uq_resellers_ruolo ON anagrafiche.resellers USING btree (soggetto_ruolo_id)` |

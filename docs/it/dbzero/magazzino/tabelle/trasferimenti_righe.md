@@ -29,8 +29,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_mag_trasferimenti_r_articolo | `CREATE INDEX ix_mag_trasferimenti_r_articolo ON magazzino.trasferimenti_righe USING btree (articolo_id)` |
-| ix_mag_trasferimenti_r_lotto_upper | `CREATE INDEX ix_mag_trasferimenti_r_lotto_upper ON magazzino.trasferimenti_righe USING btree (upper((lotto)::text))` |
-| ix_mag_trasferimenti_r_seriale_upper | `CREATE INDEX ix_mag_trasferimenti_r_seriale_upper ON magazzino.trasferimenti_righe USING btree (upper((seriale)::text))` |
 | pk_mag_trasferimenti_righe | `CREATE UNIQUE INDEX pk_mag_trasferimenti_righe ON magazzino.trasferimenti_righe USING btree (id)` |
 
 ---

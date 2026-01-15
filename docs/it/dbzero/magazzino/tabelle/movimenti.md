@@ -54,10 +54,8 @@
 | ix_mag_movimenti_articolo | `CREATE INDEX ix_mag_movimenti_articolo ON magazzino.movimenti USING btree (articolo_id)` |
 | ix_mag_movimenti_causale | `CREATE INDEX ix_mag_movimenti_causale ON magazzino.movimenti USING btree (causale_id)` |
 | ix_mag_movimenti_data | `CREATE INDEX ix_mag_movimenti_data ON magazzino.movimenti USING btree (data_mov)` |
-| ix_mag_movimenti_lotto_upper | `CREATE INDEX ix_mag_movimenti_lotto_upper ON magazzino.movimenti USING btree (upper((lotto)::text))` |
 | ix_mag_movimenti_magazzino | `CREATE INDEX ix_mag_movimenti_magazzino ON magazzino.movimenti USING btree (magazzino_id)` |
 | ix_mag_movimenti_magazzino_dest | `CREATE INDEX ix_mag_movimenti_magazzino_dest ON magazzino.movimenti USING btree (magazzino_id_dest)` |
-| ix_mag_movimenti_seriale_upper | `CREATE INDEX ix_mag_movimenti_seriale_upper ON magazzino.movimenti USING btree (upper((seriale)::text))` |
 | ix_mag_movimenti_sorgente | `CREATE INDEX ix_mag_movimenti_sorgente ON magazzino.movimenti USING btree (doc_schema, doc_table, doc_id, doc_riga_id)` |
 | ix_mag_movimenti_ubicazione_from | `CREATE INDEX ix_mag_movimenti_ubicazione_from ON magazzino.movimenti USING btree (ubicazione_id_from)` |
 | ix_mag_movimenti_ubicazione_to | `CREATE INDEX ix_mag_movimenti_ubicazione_to ON magazzino.movimenti USING btree (ubicazione_id_to)` |

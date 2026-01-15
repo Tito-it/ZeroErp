@@ -36,7 +36,6 @@ La tabella **`vendite.articoli_tipologie`** definisce le categorie di appartenen
 ### 🔗 Relazioni e Indici
 
 * **FK**: può essere referenziata da `vendite.articoli` per classificare ogni articolo in una tipologia.
-* **Indice**: `IX_ARTICOLI_TIPOLOGIE_CODICE_UPPER` su `upper(codice)` per ricerche case-insensitive.
 
 ---
 

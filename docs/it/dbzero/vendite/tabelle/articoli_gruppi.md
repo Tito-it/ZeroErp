@@ -22,7 +22,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_articoli_gruppi_codice_upper | `CREATE INDEX ix_articoli_gruppi_codice_upper ON vendite.articoli_gruppi USING btree (upper((codice)::text))` |
 | pk_articoli_gruppi | `CREATE UNIQUE INDEX pk_articoli_gruppi ON vendite.articoli_gruppi USING btree (id)` |
 | uq_articoli_gruppi_codice | `CREATE UNIQUE INDEX uq_articoli_gruppi_codice ON vendite.articoli_gruppi USING btree (codice)` |
 

@@ -1,0 +1,29 @@
+databaseChangeLog:
+  - logicalFilePath: db/changelog/migrations_v2/20_code/dbops/20260115-11-drop-upper-indexes-mctit.yaml
+  - changeSet:
+      id: 20260115-11-drop-upper-indexes
+      author: mctit
+      runOnce: true
+      runOnChange: false
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                r RECORD;
+              BEGIN
+                FOR r IN
+                  SELECT
+                    n.nspname AS schema_name,
+                    i.relname AS index_name
+                  FROM pg_index idx
+                  JOIN pg_class i ON i.oid = idx.indexrelid
+                  JOIN pg_class t ON t.oid = idx.indrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                  WHERE pg_get_indexdef(idx.indexrelid) ILIKE '%upper(%'
+                  ORDER BY 1, 2
+                LOOP
+                  EXECUTE format('DROP INDEX IF EXISTS %I.%I', r.schema_name, r.index_name);
+                END LOOP;
+              END $$;

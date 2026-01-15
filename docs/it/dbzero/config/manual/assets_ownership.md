@@ -2,10 +2,11 @@
 
 > 👀 **Vedi anche**
 >
+> Approfondimento tabelle:
+>
 > * [magazzino.assets](/dbzero/magazzino/tabelle/assets)
 > * [config.stati_assets](/dbzero/config/tabelle/stati_assets)
 > * [config.lingue](/dbzero/config/tabelle/lingue)
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
 
 ---
 
@@ -79,7 +80,6 @@ Esempi tipici di proprietà:
 * **Indici**:
 
   * `ix_cfg_assets_ownership_attivo` per filtrare le modalità attive;
-  * indici `upper(...)` per ricerche case-insensitive su codice, codice_interno e descrizione.
 
 ---
 
@@ -105,21 +105,6 @@ Usato per definire la proprietà effettiva dell’asset.
 * **manutenzione** (responsabilità e SLA basati sulla proprietà),
 * eventuali moduli futuri (ammortamenti, cespiti, inventari patrimoniali).
 
----
-
-### ⚙️ Trigger Associati (previsti)
-
-> La tabella può beneficiare degli stessi trigger standard degli altri domini CONFIG.
-
-**1. Trigger di audit (`BEFORE UPDATE`)**
-
-* Aggiorna `data_update` e `user_update`.
-* Basato su: `script.trgfn_upd_audit_data_user_generic()`.
-
-**2. Trigger di protezione codice interno (opzionale)**
-
-* Impedisce modifiche a `codice_interno` dopo l’inserimento.
-* Utile se vuoi modellare la colonna come invariabile.
 
 ---
 

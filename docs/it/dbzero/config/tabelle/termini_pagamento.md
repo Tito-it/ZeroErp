@@ -40,9 +40,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_cfg_termini_pagamento_attivo | `CREATE INDEX ix_cfg_termini_pagamento_attivo ON config.termini_pagamento USING btree (attivo)` |
-| ix_termini_pagamento_codice_interno_upper | `CREATE INDEX ix_termini_pagamento_codice_interno_upper ON config.termini_pagamento USING btree (upper((codice_interno)::text))` |
-| ix_termini_pagamento_codice_upper | `CREATE INDEX ix_termini_pagamento_codice_upper ON config.termini_pagamento USING btree (upper((codice)::text))` |
-| ix_termini_pagamento_descrizione_upper | `CREATE INDEX ix_termini_pagamento_descrizione_upper ON config.termini_pagamento USING btree (upper((descrizione)::text))` |
 | pk_termini_pagamento | `CREATE UNIQUE INDEX pk_termini_pagamento ON config.termini_pagamento USING btree (id)` |
 | uq_cfg_termini_pagamento_codice_interno | `CREATE UNIQUE INDEX uq_cfg_termini_pagamento_codice_interno ON config.termini_pagamento USING btree (codice_interno)` |
 | uq_termini_pagamento_codice | `CREATE UNIQUE INDEX uq_termini_pagamento_codice ON config.termini_pagamento USING btree (codice)` |

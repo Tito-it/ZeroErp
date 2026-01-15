@@ -7,7 +7,7 @@
 >
 > **Riferimenti chiave**:
 >
-> > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
 >
 > * [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)
 >
@@ -17,19 +17,24 @@
 >
 > * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)
 >
-> * Orchestratori:
+> * *Orchestratori:*
 >
-> [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations),  
-> [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id),  
->  [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),  
->  [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
-> [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)  
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations),  
+> * [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id),  
+>  * [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),  
+>  * [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
+>  * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)  
 
 ---
 
 ## 1) 🎯 Perché un framework di automazione
 
 Automatizzare attività ripetitive (assegnazione `tx_id`, audit update, storico, soft‑delete/`attivo`) riduce errori manuali e accelera i rilasci. Le regole dichiarative descrivono **cosa** e **dove** applicare; gli orchestratori generano trigger/oggetti in modo **idempotente**, con **dry‑run** e **audit**.
+
+> ⚠️ **Avvertenza**
+>
+> Per garantire il corretto funzionamento del framework e delle regole di applicazione, nello sviluppo è **obbligatorio** rispettare le convenzioni di naming indicate  nella apposita sezione **[Linee guida sql](/linee-guida-sql)** .    
+> In caso contrario le automazioni possono **non essere applicate**, con conseguenti interventi manuali, debug non necessari e perdita di tempo nel capire perché il framework non abbia agito.
 
 ---
 
@@ -75,6 +80,8 @@ L’automazione **ATTIVO** implementa una politica **BLOCK-ONLY** finalizzata a 
 * **Non viene creato alcun vincolo REQUIRE** sul figlio.
 * La regola si applica esclusivamente se il **PADRE possiede la colonna `attivo`**.
 * Le FK considerate sono `RESTRICT` e `NO ACTION` (anche `DEFERRABLE`).
+
+**Nota**: **l’automazione ATTIVO viene applicata solo alle FK con colonna che termina in `_id`**; in caso contrario la regola viene saltata per evitare riferimenti a codici testuali o chiavi non id.
 
 **Trigger generato**
 

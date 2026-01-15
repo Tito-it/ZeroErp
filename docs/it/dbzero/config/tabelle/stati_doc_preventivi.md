@@ -26,9 +26,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_stati_doc_preventivi_attivo | `CREATE INDEX ix_stati_doc_preventivi_attivo ON config.stati_doc_preventivi USING btree (attivo)` |
-| ix_stati_doc_preventivi_codice_interno_upper | `CREATE INDEX ix_stati_doc_preventivi_codice_interno_upper ON config.stati_doc_preventivi USING btree (upper((codice_interno)::text))` |
-| ix_stati_doc_preventivi_codice_upper | `CREATE INDEX ix_stati_doc_preventivi_codice_upper ON config.stati_doc_preventivi USING btree (upper((codice)::text))` |
-| ix_stati_doc_preventivi_descrizione_upper | `CREATE INDEX ix_stati_doc_preventivi_descrizione_upper ON config.stati_doc_preventivi USING btree (upper((descrizione)::text))` |
 | pk_stati_doc_preventivi | `CREATE UNIQUE INDEX pk_stati_doc_preventivi ON config.stati_doc_preventivi USING btree (id)` |
 | uq_stati_doc_preventivi_codice | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_codice ON config.stati_doc_preventivi USING btree (codice)` |
 | uq_stati_doc_preventivi_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_codice_interno ON config.stati_doc_preventivi USING btree (codice_interno)` |

@@ -12,9 +12,6 @@
 > * [config.lingue](/dbzero/config/tabelle/lingue)     
 > * [config.sorgenti](/dbzero/config/tabelle/sorgenti)    
 >
-> Approfondimenti funzioni/trigger generici:
->
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
 
 ---
 
@@ -35,6 +32,7 @@ Gli stati descrivono la **posizione funzionale e logistica** dell’asset lungo 
 
 ### 🎯 Scopo Principale
 
+(latest review 16-01-26)
 * Fornire un **catalogo centralizzato e stabile** degli stati in cui può trovarsi un asset.
 * Supportare la gestione del **ciclo di vita degli asset**, inclusi:
 
@@ -69,8 +67,7 @@ Gli stati descrivono la **posizione funzionale e logistica** dell’asset lungo 
 
 * **Descrizione** (`descrizione`):
 
-  * testo leggibile per operatori e schermate di configurazione;
-  * indicizzata tramite `ix_stati_assets_descrizione_upper` per ricerche case-insensitive.
+  * testo leggibile per operatori e schermate di configurazione.
 
 * **Stato di attivazione** (`attivo`):
 
@@ -96,13 +93,6 @@ Gli stati descrivono la **posizione funzionale e logistica** dell’asset lungo 
 
   * `data_insert`, `user_insert`, `data_update`, `user_update` tracciano la storia delle modifiche al dominio;
   * in linea con gli altri domini `config`, la gestione può essere centralizzata tramite trigger di audit generico.
-
-* **Indici per ricerche case-insensitive**:
-
-  * `ix_stati_assets_codice_interno_upper`, `ix_stati_assets_codice_upper`, `ix_stati_assets_descrizione_upper`:
-
-    * permettono ricerche veloci per codice/descrizione senza distinzione tra maiuscole/minuscole;
-    * fondamentali quando gli input arrivano da UI, file o integrazioni non normalizzate.
 
 ---
 
@@ -132,25 +122,6 @@ Gli stati descrivono la **posizione funzionale e logistica** dell’asset lungo 
 
 ---
 
-### ⚙️ Trigger Associati (attesi/suggeriti)
-
-Al momento non sono definiti trigger specifici nella DDL riportata, ma è consigliabile introdurre:
-
-1. **Trigger di audit** (es. `trg_upd_stati_assets_audit_data_user`)
-
-   * **Quando**: `BEFORE UPDATE`.
-   * **Cosa fa**: aggiorna `data_update` e `user_update`.
-   * **Come**: delega a `script.trgfn_upd_audit_data_user_generic()`.
-
-2. **Trigger di protezione del codice interno** (es. `trg_stati_assets_protect_codice_interno`)
-
-   * **Quando**: `BEFORE UPDATE`.
-   * **Cosa fa**: impedisce la modifica di `codice_interno` una volta creato il record.
-   * **Obiettivo**: garantire la **stabilità semantica** del dominio, evitando che cambi di codice rompano logiche applicative o storici.
-
-> ✅ In questo modo, il dominio degli stati diventa affidabile anche in contesti dove l’asset viene tracciato per molti anni.
-
----
 
 ### 💡 Vantaggi Operativi
 
@@ -158,7 +129,6 @@ Al momento non sono definiti trigger specifici nella DDL riportata, ma è consig
 * **Coerenza cross-modulo**: tutti i moduli (magazzino, impianti, manutenzione, fatturazione basata su asset/contatori) condividono lo stesso dominio di stati.
 * **Supporto a UI e reportistica**: grazie a `meta` è possibile definire label multilingua, icone e colori per rendere immediata la lettura dello stato da parte degli operatori.
 * **Flessibilità configurabile**: nuovi stati possono essere introdotti (es. per workflow specifici di un gestore) senza rompere il modello esistente.
-* **Ricerca efficiente**: gli indici in upper permettono ricerche rapide anche su basi dati di grandi dimensioni.
 
 ---
 

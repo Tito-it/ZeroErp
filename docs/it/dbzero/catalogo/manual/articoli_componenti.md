@@ -2,12 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle**
+> **Approfondimento Tabelle**  
 > • [`catalogo.articoli`](/dbzero/catalogo/tabelle/articoli)   
 > • [`catalogo.note`](/dbzero/catalogo/tabelle/note)   
 > • *(opz.)* [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)   
 >
-> **Approfondimento Trigger/Funzioni**
+> **Approfondimento Trigger/Funzioni**   
 > • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 > • [`dbops.trgfn_child_requires_active_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)   
 > • [`script.trgfn_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
@@ -61,8 +61,21 @@ Supporta:
 * **Nessuna sovrapposizione nel tempo** per la **stessa coppia** `(prodotto, componente)`:
   `EXCLUDE USING gist (prodotto_id WITH =, componente_id WITH =, daterange(valid_from, COALESCE(valid_to, 'infinity'), '[]') WITH &&)`
   ➜ **richiede estensione** `btree_gist` per supportare `uuid` su GiST.
-* **Parent attivi**: sia `prodotto_id` sia `componente_id` devono puntare ad articoli **attivi** (policy ATTIVO: require sul figlio).
+* **Parent attivi**: sia `prodotto_id` sia `componente_id` devono puntare ad articoli **attivi**.
 * **Solo componente**: un articolo con `is_solo_componente=true` non può essere usato come `prodotto_id`.
+* **Prodotto composito**: un articolo con `is_composito=false` non può essere usato come `prodotto_id`.
+
+> **Nota tecnica (trigger manuali)**
+>
+> Questi vincoli sono **applicati tramite trigger dedicati** su `articoli_componenti`:
+>
+> * REQUIRE su `prodotto_id` (padre attivo)
+> * REQUIRE su `componente_id` (figlio attivo)
+> * GUARD su `is_composito`
+>
+> Non rientrano nella generazione automatica `automations` perché la tabella
+> usa **due FK verso la stessa entità** (`catalogo.articoli`) con ruoli diversi
+> (prodotto vs componente), e la logica richiede controlli **distinti e specifici**.
 
 ---
 

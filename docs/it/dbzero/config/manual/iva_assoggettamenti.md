@@ -48,20 +48,12 @@ Obiettivi:
 * **Indici**:
 
   * `ix_cfg_iva_assoggettamenti_attivo` → filtri per stato attivo.
-  * `ix_iva_assoggettamenti_codice_upper` → ricerche case-insensitive su codice.
-  * `ix_iva_assoggettamenti_descrizione_upper` → ricerche case-insensitive su descrizione.
 
 ---
 
 ### 🧪 Esempi d’uso (query applicative)
 
 ```sql
--- Ricerca per codice (case-insensitive)
-SELECT *
-FROM config.iva_assoggettamenti a
-WHERE upper(a.codice) = upper(:codice);
-
--- Elenco attivi per UI
 SELECT id, codice, descrizione
 FROM config.iva_assoggettamenti
 WHERE attivo

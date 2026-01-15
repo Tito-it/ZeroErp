@@ -9,6 +9,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260113-04-update-fn-run-automations-attivo-require
       author: mctit
+      # runAlways: true
       validCheckSum:
         - ANY
       comment: >
@@ -178,6 +179,29 @@ databaseChangeLog:
 
                     -- 2) fk_col dal vincolo
                     fk_col := dbops.fn_get_child_fk_col(rfk.conoid);
+
+                    -- 2.1) applica automations solo su FK con suffisso _id
+                    IF lower(fk_col) NOT LIKE '%_id' THEN
+                      IF p_dry_run THEN
+                        PERFORM dbops.fn_audit_log_once(
+                          p_function_name => 'fn_run_automations_attivo',
+                          p_status        => 'DRYRUN',
+                          p_rule_type     => 'ATTIVO_SKIP_FK_NO_ID',
+                          p_exec_mode     => p_exec_mode,
+                          p_parts         => ARRAY['ATTIVO_BLOCK','ATTIVO_REQUIRE'],
+                          p_dry_run       => true,
+                          p_params        => jsonb_build_object(
+                                              'action','SKIP',
+                                              'reason','FK_NO_ID_SUFFIX',
+                                              'parent', rfk.parent_schema||'.'||rfk.parent_table,
+                                              'child',  rfk.child_schema||'.'||rfk.child_table,
+                                              'fk',     fk_col
+                                            ),
+                          p_message       => 'Skip: FK column has no _id suffix'
+                        );
+                      END IF;
+                      CONTINUE;
+                    END IF;
 
                     -- 3) PK monocolonna del padre (fallback 'id')
                     SELECT a.attname

@@ -6,9 +6,6 @@
 >
 > * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)
 >
-> Approfondimenti funzioni:
->
-> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
 
 La tabella **`catalogo.unita_misura`** contiene il catalogo delle unità di misura utilizzabili nel sistema. Ogni unità definisce la modalità di contabilizzazione, movimentazione e fatturazione degli articoli (es. pezzo, chilogrammo, standard metro cubo, kilowattora).
 
@@ -35,7 +32,6 @@ La tabella **`catalogo.unita_misura`** contiene il catalogo delle unità di misu
 ### 🔗 Relazioni e Indici
 
 * **FK**: utilizzata come chiave esterna in `catalogo.articoli` e in tutte le tabelle di movimenti/fatturazione.
-* **Indice**: `IX_UNITA_MISURA_CODICE_UPPER` su `upper(codice)` per ricerche case-insensitive.
 
 
 ---

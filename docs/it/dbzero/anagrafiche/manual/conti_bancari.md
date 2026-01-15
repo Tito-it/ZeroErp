@@ -13,14 +13,11 @@
 > • [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/view/vw_conti_bancari_per_ruolo)   
 > • [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito)   
 >
-> **Approfondimento Trigger/Funzioni generiche**   
-> • [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
-> • [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
-> • [script.trgfn_dlt_storico_generic](/dbzero/script/funzioni/trgfn_dlt_storico_generic)   
 
 ---
 
 ### 🎯 Scopo Principale
+
 (latest review 02-12-25)
 `anagrafiche.conti_bancari` è l’**anagrafe unica degli IBAN**. Centralizza e **deduplica** i conti correnti, li **normalizza** (uppercase, senza spazi) e li rende riusabili da **qualsiasi soggetto** e **ruolo**. Questo disaccoppiamento:
 
@@ -78,16 +75,6 @@
 * **Selezione semplificata** → con `vw_conti_bancari_per_ruolo` e `fn_get_conto_bancario_predefinito` ottieni il **conto corretto** per uso (`INCASSO|PAGAMENTO|RIMBORSO|GENERICO`) senza logiche duplicate.
 * **Governance** → validazioni formali, flag `attivo`/`verificato`, audit e storico centralizzati.
 
----
-
-### ⚙️ Trigger e Funzioni Coinvolte
-
-| Trigger                                 | Tabella         | Scopo                                                                                 |
-| --------------------------------------- | --------------- | ------------------------------------------------------------------------------------- |
-| `trg_conti_bancari_normalize_ins_upd`   | `conti_bancari` | Normalizza IBAN/BIC (uppercase, rimuovi spazi) e deriva `paese`; aggiorna audit base. |
-| `trg_conti_bancari_gen_tx_id_ins_upd`   | `conti_bancari` | Assegna `tx_id` se nullo (`dbops.trgfn_tx_id_managed`).                               |
-| `trg_conti_bancari_audit_data_user_upd` | `conti_bancari` | Aggiorna `data_update`/`user_update` su UPDATE.                                       |
-| `trg_z90_conti_bancari_storico_upd_dlt` | `conti_bancari` | Crea snapshot storico su UPDATE/DELETE (`script.trgfn_storico_generic_upd_dlt`).      |
 
 > **Nota**: la selezione del conto “effettivo” per ruolo/uso avviene tramite:
 > • `anagrafiche.vw_conti_bancari_per_ruolo` (priorità **RUOLO → SOGGETTO**, validità odierna, non bloccato, conto attivo)
