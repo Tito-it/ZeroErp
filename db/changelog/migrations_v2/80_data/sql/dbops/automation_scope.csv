@@ -4,3 +4,7 @@ catalogo,*all
 config,*all
 storico,*all
 vendite,*all
+acquisti,*all
+contabilita,*all
+magazzino,*all
+pagamenti,*all

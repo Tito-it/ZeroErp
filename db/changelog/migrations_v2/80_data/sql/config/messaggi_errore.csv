@@ -1,14 +1,16 @@
 codice,lingua,messaggio,id,causa,soluzione
 E_STORICIZZAZIONE,it,Errore storicizzazione per la tabella: %s in fase di: %s per il codice: %s valore: %s .  SQL ERROR: %s  ,21,Operazione non prevista in fase di storicizzazione ,""
 MESSAGGIO_NON_DEFINITO,it,Definire il messaggio con codice : %s,14,Non è presente il messaggio nella tabella config.messaggi_errore.,Definire il messaggio nella tabella config.messaggi_errore
-ERRORE_PARAMETRI_TABELLA,it,Parametro:%s  non trovato nella tabella: %s,16,Il parametro segnalato non è stato caricato nella tabella indicata.,Caricare il parametro nella rispettiva tabella
 E_SNAPSHOT_CLOSE_ERROR,it,Errore chiusura snapshot: %s (SQLSTATE: %s),23,I valori dello snapshot in chiusura sono errati,""
-E_TXID_GENERATION,it,Fallita generazione tx_id: %s,18,Non è stato possibile assegnare un id transaction,Andare nella tabella dei log per verificare il problema
 E_SOGGETTO_NO_CONTATTI,it,"Il soggetto non ha contatti validi: è necessario almeno un contatto con email, telefono, cellulare o PEC.",2,"",""
+E_ARTICOLO_NON_COMPOSITO,it,Articolo deve essere composito = true . (%s),127,,
+ERRORE_PARAMETRI_TABELLA,it,Parametro:%s  non trovato nella tabella: %s,16,Il parametro segnalato non è stato caricato nella tabella indicata.,Caricare il parametro nella rispettiva tabella
+E_TXID_GENERATION,it,Fallita generazione tx_id: %s,18,Non è stato possibile assegnare un id transaction,Andare nella tabella dei log per verificare il problema
 E_TABELLA_OP_NON_CONSENTITA,it,Operazione non consentita sulla tabella %s: %s non permessa,17,Si sta cercando di effettuare una operazione che non è permessa su questa tabella. ,L'attività non è permessa
 CODICE_NON_MODIFICABILE,it,Impossibile modificare il valore interno della colonna %s,6,si sta cercando di aggiornare un valore definito per una colonna con utilizzo interno (di sistema) non modificabile,Il valore non può essere aggiornato. 
 E_INVALID_SNAPSHOT,it,Dati snapshot non validi per la tabella %s.%s,22,I valori che si stanno storicizzando sono nulli. ,""
 CF_NON_VALIDO,it,Codice Fiscale non valido: %s,5,"",""
+E_ATTIVO_BLOCK_ARGS,it,%s,124,"",""
 E_IVA_CONTO_ACQ_ERR,it,Il conto %s IVA acquisti non è un conto di tipo Acquisto.,3,"",""
 PIVA_NON_VALIDA,it,Partita IVA non valida: %s,7,"",""
 SEQUENZA_NON_CONFIGURATA,it,Nessuna sequenza configurata per codice_tipo: %s,8,"",""
@@ -35,61 +37,60 @@ E_QUERY_FAILED_SCHEMA_TABLE,it,Errore nella ricerca dai dati nella tabella %s.%s
 E_QUERY_FAILED,it,Errore di esecuzione della query per la tabella: schema %s  tabella %s. SQLSTATE(%s),31,La query è errata,""
 E_DEFAULT_ERRATO,it,la tabella %s parametro %s non ha valori per %s,28,Il codice impostato nella tabella dei parametri non ha un valore valido,Verificare la tabella dei parametri di default e reimpostare il codice correttamente
 E_STORICO_PROVISION,it,Errore generazione della tabella nello schema storico,44,"",""
-E_NUMERAZIONE_IMMUTABILE,it,"La numerazione non può essere modificata. Tabella %s , id %s.",70,,
-E_TIPO_INDIRIZZO,it,"Tipo indirizzo non consentito: id=%s, codice=%s,  per %s consentiti: %s ",71,,
-E_PERC_IVA_NO_MOD,it,La percentuale Iva non può essere modificata,72,,
-E_ASSOGGETTAMENTO_NO_MOD,it,Assoggettamento Iva non può essere modificato,73,,
-E_NOTE_TARGET_ID,it,"Target_riga_id mancante per nota ancorata alla riga. Anchor_tipo(%s) , target(%s)",74,,
+E_NUMERAZIONE_IMMUTABILE,it,"La numerazione non può essere modificata. Tabella %s , id %s.",70,"",""
+E_TIPO_INDIRIZZO,it,"Tipo indirizzo non consentito: id=%s, codice=%s,  per %s consentiti: %s ",71,"",""
+E_PERC_IVA_NO_MOD,it,La percentuale Iva non può essere modificata,72,"",""
+E_ASSOGGETTAMENTO_NO_MOD,it,Assoggettamento Iva non può essere modificato,73,"",""
+E_NOTE_TARGET_ID,it,"Target_riga_id mancante per nota ancorata alla riga. Anchor_tipo(%s) , target(%s)",74,"",""
 E_DATA_FINE_NON_MAGGIORE_DI_INIZIO,it,Il valore della data finale %s è minore uguale alla data iniziale %S,33,Data finale inferiore uguale alla data finale,Modificare la data finale con un valore maggiore di iniziale
 E_ATTIVO_CASCADE,it,Errore generazione regola ATTIVO_cascade. Sqlerrm: %s,41,"",""
 E_ATTIVO_REQUIRE,it,Errore generazione regola ATTIVO_require. Sqlerrm: %s,42,"",""
 E_ATTIVO_BLOCK,it,Errore generazione regola ATTIVO_block. Sqlerrm: %s,43,"",""
 E_STATO_SCONOSCIUTO,it,Errore Stato errato o mancante: id = %s,9,"",""
-E_NOTE_CONFIG,it,Configurazione trigger errata: tabella %s inesistente,75,,
-E_NOTE_RIGA_MISMATCH',it,La riga %s non appartiene a %s %s,76,,
-E_SORG_CONF,it,Configurazione sorgente mancante/errata.Sorgente_tipo_id(%s),77,,
-E_SORG_KEY_MISSING,it,Chiave sorgente mancante: atteso sorgente_riga %s(%s),78,,
-E_SORG_KEYSEL,it,key_selector non supportato. (%s),79,,
-E_SORG_NOT_FOUND,it,Riferimento sorgente non trovato nella tabella target. (%s),80,,
-E_QTA_NON_POSITIVA,it,La quantità deve essere positiva. Valore(%s),81,,
-E_FULFILL_NOT_FOUND,it,"Mancano i legami fulfillment. Tabella %s id %s , con tabella %s id %s. ",82,,
-E_ARTICOLO_MISMATCH,it,"Articolo non corrispondente.Tabella %s id %s , con tabella %s id %s. ",83,,
-E_UOM_MISMATCH,it,"Unità di misura non corrispondente.Tabella %s id %s  Uom %s, con tabella %s id %s UOM %s. ",84,,
-E_QTA_SUPERA_RESIDUO,it,"Quantità supera residuo. Tabella %s id %s.  Quantità ordine %s , quantità evasa%s , qtà nuova%s, residuo %s",85,,
-E_REFRESH_LOCK_TIMEOUT,it,"Timeout di aggiornamento lock per %s , tentativi %s",86,,
-E_DELETE_BLOCKED_FUL,it,"Cancellazione bloccata, esistono riferimenti fullfilment. Tabella %s,  id %s",90,,
-E_DELETE_NOT_ALLOWED,it,"Cancellazione non permessa. Tabella %s,  id %s",91,,
-E_UOM_MISSING,it,Unità misura mancante.(%s  %s),92,,
-E_QTA_MISSING,it,"Quantità nulla o mancante. (%s %s, %s %s)",95,,
-E_QTA_OPER_STEP_INVALIDO,it,"Quantità operativa step invalido. (%s %s , %s %s )",94,,
-E_QTA_OPERATIVA_NON_INTERA,it,"Quantità operativa non intera. (%s %s, %s %s )",93,,
-E_SOGGETTO_NULL,it,soggetto_id (%s)  mancante per il ruolo   %s.,98,,
-E_SOGGETTI_RUOLI_RACE,it,"Race condition su soggetti_ruoli per soggetto %s, id ruolo %s , cod_int_ruolo %."" .",99,,
-E_BILLING_ACCOUNT_UTILITY_NULL,it,Billing account %s senza utility associata.,100,,
-E_CLIENTE_UTILITY_MISMATCH_BA,it,Billing account id %s: Utility del cliente (%s) diversa da quella del billing_account (%s).,101,,
-E_DBLINK_LOG_CONN_MISSING,it,Impostare il parametro a livello DATABASE/ROLE o ALTER SYSTEM. (%s),102,,
-E_TXID_DBLINK_NULL,it,"dblink ha restituito NULL, uso uuidv7() locale.(%s) ",103,,
-E_TXID_DBLINK_ERROR,it,Errore Function %s sqlerrm %s,104,,
-E_RUOLO_RICHIEDE_PIVA,it,"Il ruolo %s  deve essere associato a un soggetto con partita_iva valorizzata. Soggetto_id %s , Soggetto_ruolo_id %s",106,,
-E_GESTORE_SOGGETTO_RUOLO_MANCANTE,it,Il gestore deve riferirsi a un soggetto_ruolo esistente(id %s).,105,,
-E_GESTORE_SINGLETON_VIOLATO,it,Esiste già un record di gestore. Non è possibile crearne un secondo. (id %s),107,,
-E_TIPO_INDIRIZZO_NON_PERMESSO,it,Tipo indirizzo %s non permesso per tipo_ruolo_id %s (soggetto_ruolo_id=%s),108,,Verificare la configurazione in config.tipi_ruolo_tipi_indirizzo.
-E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO,it,Il soggetto richiede dati societari. Soggetto_id %s,109,,
-E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO,it,"Non è stato configurata la policy per il tipo_soggetto. Soggetto_id %s , cod_tipo_soggetto_int %s",110,,
+E_NOTE_CONFIG,it,Configurazione trigger errata: tabella %s inesistente,75,"",""
+E_NOTE_RIGA_MISMATCH',it,La riga %s non appartiene a %s %s,76,"",""
+E_SORG_CONF,it,Configurazione sorgente mancante/errata.Sorgente_tipo_id(%s),77,"",""
+E_SORG_KEY_MISSING,it,Chiave sorgente mancante: atteso sorgente_riga %s(%s),78,"",""
+E_SORG_KEYSEL,it,key_selector non supportato. (%s),79,"",""
+E_SORG_NOT_FOUND,it,Riferimento sorgente non trovato nella tabella target. (%s),80,"",""
+E_QTA_NON_POSITIVA,it,La quantità deve essere positiva. Valore(%s),81,"",""
+E_FULFILL_NOT_FOUND,it,"Mancano i legami fulfillment. Tabella %s id %s , con tabella %s id %s. ",82,"",""
+E_ARTICOLO_MISMATCH,it,"Articolo non corrispondente.Tabella %s id %s , con tabella %s id %s. ",83,"",""
+E_UOM_MISMATCH,it,"Unità di misura non corrispondente.Tabella %s id %s  Uom %s, con tabella %s id %s UOM %s. ",84,"",""
+E_QTA_SUPERA_RESIDUO,it,"Quantità supera residuo. Tabella %s id %s.  Quantità ordine %s , quantità evasa%s , qtà nuova%s, residuo %s",85,"",""
+E_REFRESH_LOCK_TIMEOUT,it,"Timeout di aggiornamento lock per %s , tentativi %s",86,"",""
+E_DELETE_BLOCKED_FUL,it,"Cancellazione bloccata, esistono riferimenti fullfilment. Tabella %s,  id %s",90,"",""
+E_DELETE_NOT_ALLOWED,it,"Cancellazione non permessa. Tabella %s,  id %s",91,"",""
+E_UOM_MISSING,it,Unità misura mancante.(%s  %s),92,"",""
+E_QTA_MISSING,it,"Quantità nulla o mancante. (%s %s, %s %s)",95,"",""
+E_QTA_OPER_STEP_INVALIDO,it,"Quantità operativa step invalido. (%s %s , %s %s )",94,"",""
+E_QTA_OPERATIVA_NON_INTERA,it,"Quantità operativa non intera. (%s %s, %s %s )",93,"",""
+E_SOGGETTO_NULL,it,soggetto_id (%s)  mancante per il ruolo   %s.,98,"",""
+E_SOGGETTI_RUOLI_RACE,it,"Race condition su soggetti_ruoli per soggetto %s, id ruolo %s , cod_int_ruolo %."" .",99,"",""
+E_BILLING_ACCOUNT_UTILITY_NULL,it,Billing account %s senza utility associata.,100,"",""
+E_CLIENTE_UTILITY_MISMATCH_BA,it,Billing account id %s: Utility del cliente (%s) diversa da quella del billing_account (%s).,101,"",""
+E_DBLINK_LOG_CONN_MISSING,it,Impostare il parametro a livello DATABASE/ROLE o ALTER SYSTEM. (%s),102,"",""
+E_TXID_DBLINK_NULL,it,"dblink ha restituito NULL, uso uuidv7() locale.(%s) ",103,"",""
+E_TXID_DBLINK_ERROR,it,Errore Function %s sqlerrm %s,104,"",""
+E_RUOLO_RICHIEDE_PIVA,it,"Il ruolo %s  deve essere associato a un soggetto con partita_iva valorizzata. Soggetto_id %s , Soggetto_ruolo_id %s",106,"",""
+E_GESTORE_SOGGETTO_RUOLO_MANCANTE,it,Il gestore deve riferirsi a un soggetto_ruolo esistente(id %s).,105,"",""
+E_GESTORE_SINGLETON_VIOLATO,it,Esiste già un record di gestore. Non è possibile crearne un secondo. (id %s),107,"",""
+E_TIPO_INDIRIZZO_NON_PERMESSO,it,Tipo indirizzo %s non permesso per tipo_ruolo_id %s (soggetto_ruolo_id=%s),108,"",Verificare la configurazione in config.tipi_ruolo_tipi_indirizzo.
+E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO,it,Il soggetto richiede dati societari. Soggetto_id %s,109,"",""
+E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO,it,"Non è stato configurata la policy per il tipo_soggetto. Soggetto_id %s , cod_tipo_soggetto_int %s",110,"",""
 E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO,it,Non sono richiesti dati societari per soggetto_id %s e codice tipo soggetto %s,27,Informazioni della tabella anagrafiche.dati_societari non collegate ad un soggetto ti tipo Aziendale.,Collegare le informazioni ad un soggetto di tipo aziendale
-E_DATI_SOCIETARI_REQUIRED_MANCANTI,it,"Sono richiesti dati societari per soggetto_id %s e codice tipo soggetto %s""",111,,
-E_CODICE,it,Il codice %s non è stato trovato nella tabella %s,112,,
-E_DATA_CHIUSURA,it,data_chiusura (%s) < data_attivazione (%s) per cliente %s,113,,
-E_DATA_APERTURA,it,per il cliente %s non è stato indicata una data apertura ma lo stato è attivo,114,,
-CATASTO_SOURCE_NOT_FOUND,it,Clone catasto impossibile: parent_istanza_id (%s) nullo o parent senza catasto agganciato. Istanza_id %s,115,,
+E_DATI_SOCIETARI_REQUIRED_MANCANTI,it,"Sono richiesti dati societari per soggetto_id %s e codice tipo soggetto %s""",111,"",""
+E_CODICE,it,Il codice %s non è stato trovato nella tabella %s,112,"",""
+E_DATA_CHIUSURA,it,data_chiusura (%s) < data_attivazione (%s) per cliente %s,113,"",""
+E_DATA_APERTURA,it,per il cliente %s non è stato indicata una data apertura ma lo stato è attivo,114,"",""
+CATASTO_SOURCE_NOT_FOUND,it,Clone catasto impossibile: parent_istanza_id (%s) nullo o parent senza catasto agganciato. Istanza_id %s,115,"",""
 E_DATA_FINE_INFERIORE_DI_INIZIO,it,Il valore della data finale %s è inferiore  alla data iniziale %s,34,Data finale inferiore uguale alla data finale,Modificare la data finale con un valore maggiore o uguale di iniziale
-E_DATA_AL_MINORE_DAL,it,Il valore della data al %s è inferiore  alla data dal %s,118,,
-E_CONTO_BANCARIO,it,Il conto bancario (id %s) che si sta associando non è attivo,119,,
-E_INDIRIZZO_OBBLIGATORIO_MANCANTE,it,"Indirizzo obbligatorio mancante per soggetto %s  per %s %s ,  fallback id %s",116,,
-E_FORMA_GIURIDICA_PAESE,it,Forma giuridica (%s) non coerente con il paese del soggetto (%s).,120,,
-E_DATA_ERRATA,it,Data %s errata o mancante.,122,,
-E_ATTIVO_BLOCK_ARGS,it,%s,124,,
-E_ATTIVO_BLOCK_FKCOL_NOT_FOUND,it,%s,123,,
-E_ATTIVO_BLOCK_CHILDREN_EXIST,it,%s,125,,
-E_STORICO_PARENT_PK_NOT_FOUND,it,"Impossibile determinare PK o tipo per tabella padre. Schema %s , tabella %s",121,,
-E_RISORSA_UMANA_SOGGETTO_MISMATCH,it,Il soggetto  a cui è collegata la risorsa non è un gestore (soggetto_ruolo id %s).,126,,
+E_DATA_AL_MINORE_DAL,it,Il valore della data al %s è inferiore  alla data dal %s,118,"",""
+E_CONTO_BANCARIO,it,Il conto bancario (id %s) che si sta associando non è attivo,119,"",""
+E_INDIRIZZO_OBBLIGATORIO_MANCANTE,it,"Indirizzo obbligatorio mancante per soggetto %s  per %s %s ,  fallback id %s",116,"",""
+E_FORMA_GIURIDICA_PAESE,it,Forma giuridica (%s) non coerente con il paese del soggetto (%s).,120,"",""
+E_DATA_ERRATA,it,Data %s errata o mancante.,122,"",""
+E_ATTIVO_BLOCK_FKCOL_NOT_FOUND,it,%s,123,"",""
+E_ATTIVO_BLOCK_CHILDREN_EXIST,it,%s,125,"",""
+E_STORICO_PARENT_PK_NOT_FOUND,it,"Impossibile determinare PK o tipo per tabella padre. Schema %s , tabella %s",121,"",""
+E_RISORSA_UMANA_SOGGETTO_MISMATCH,it,Il soggetto  a cui è collegata la risorsa non è un gestore (soggetto_ruolo id %s).,126,"",""

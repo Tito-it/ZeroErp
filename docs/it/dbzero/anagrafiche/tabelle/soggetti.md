@@ -46,7 +46,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_anagrafiche_soggetti_comune_id | `CREATE INDEX ix_anagrafiche_soggetti_comune_id ON anagrafiche.soggetti USING btree (comune_id)` |
-| ix_anagrafiche_soggetti_contatto_ruolo_id | `CREATE INDEX ix_anagrafiche_soggetti_contatto_ruolo_id ON anagrafiche.soggetti USING btree (titolo_cortesia_id)` |
 | ix_anagrafiche_soggetti_ragione_sociale_completa | `CREATE INDEX ix_anagrafiche_soggetti_ragione_sociale_completa ON anagrafiche.soggetti USING btree (ragione_sociale_completa)` |
 | ix_anagrafiche_soggetti_stato_id | `CREATE INDEX ix_anagrafiche_soggetti_stato_id ON anagrafiche.soggetti USING btree (stato_id)` |
 | ix_anagrafiche_soggetti_titolo_cortesia_id | `CREATE INDEX ix_anagrafiche_soggetti_titolo_cortesia_id ON anagrafiche.soggetti USING btree (titolo_cortesia_id)` |

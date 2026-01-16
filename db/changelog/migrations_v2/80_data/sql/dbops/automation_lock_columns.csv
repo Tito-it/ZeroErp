@@ -1,4 +1,6 @@
 target_schema,target_table,column_name,error_code,exec_mode,enabled,note,data_insert,user_insert,data_update,user_update
+anagrafiche,resellers,codice,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_resellers_a10_protect_codice_upd (trgfn_resellers_protect_codice),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
+anagrafiche,soggetti,codice,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_soggetti_protect_codice_soggetto_upd (trgfn_soggetti_protect_codice_soggetto),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
 anagrafiche,pdp,pdp,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_pdp_protect_cols_upd (trgfn_pdp_protect_cols),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
 acquisti,ddt,numero,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_ddt_a10_a_protect_num_upd (trgfn_acq_ddt_protect_num),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
 acquisti,ordini,numero,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_ordini_a10_protect_num_upd (trgfn_acq_ordini_protect_num),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
@@ -6,8 +8,6 @@ anagrafiche,billing_account,codice,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg
 anagrafiche,emittenti_fiscali,codice,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_emittenti_fiscali_a10_protect_codice_upd (trgfn_emittenti_fiscali_protect_codice),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
 anagrafiche,fornitori,codice,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_fornitori_a10_protect_account_code_upd (trgfn_fornitori_protect_account_code),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
 anagrafiche,istanze_utilities,codice,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_istanze_utilities_protect_codice_upd (trgfn_istanze_utilities_protect_codice),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
-anagrafiche,resellers,codice,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_resellers_a10_protect_codice_upd (trgfn_resellers_protect_codice),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
-anagrafiche,soggetti,codice,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_soggetti_protect_codice_soggetto_upd (trgfn_soggetti_protect_codice_soggetto),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
 anagrafiche,vettori,codice,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_vettori_a10_protect_codice_upd (trgfn_vettori_protect_codice),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
 vendite,contratti,numero,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_contratti_a10_v_protect_num_upd (trgfn_v_contratti_protect_num),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
 magazzino,magazzini,codice,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_magazzini_a10_protect_codice_upd (trgfn_magazzini_protect_codice),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb

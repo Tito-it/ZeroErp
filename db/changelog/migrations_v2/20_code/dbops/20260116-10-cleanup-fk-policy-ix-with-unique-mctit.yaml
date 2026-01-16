@@ -100,3 +100,30 @@ databaseChangeLog:
                   EXECUTE format('DROP INDEX IF EXISTS %I.%I', r.schema_name, r.index_name);
                 END LOOP;
               END $$;
+
+  - changeSet:
+      id: 20260116-10-01-Drop-indici-doppi
+      author: mctit
+      runAlways: false
+      runOnChange: false
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+
+
+              drop INDEX IF EXISTS anagrafiche.ix_anagrafiche_gestori_utilities_ruoli_gestore_id;
+
+              drop INDEX IF EXISTS anagrafiche.ix_anagrafiche_soggetti_contatto_ruolo_id;
+
+              drop INDEX IF EXISTS anagrafiche.ix_anagrafiche_soggetti_ruoli_ruolo_id;
+
+              drop INDEX IF EXISTS catalogo.ix_anagrafiche_soggetti_ruoli_ruolo_id;
+
+              drop INDEX IF EXISTS catalogo.ix_catalogo_articoli_uom_operativa_articolo_id;
+
+
+              drop INDEX IF EXISTS storico.idx_storico_pdp_open;
+
+
+              drop INDEX IF EXISTS vendite.ix_vendite_fatture_riepiloghi_iva_fattura_id;

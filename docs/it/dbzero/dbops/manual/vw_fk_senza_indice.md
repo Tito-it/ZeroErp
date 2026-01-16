@@ -9,7 +9,7 @@
 > Approfondimento funzioni:   
 >
 > * [dbops.fn_populate_fk_index_policy](/dbzero/dbops/manual/fn_populate_fk_index_policy)   
-> * [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)   
+> * [dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_con_indice_missing_policy)   
 > * [dbops.vw_duplicate_indexes](/dbzero/dbops/views/vw_duplicate_indexes)     
 > 
 > * Catalogo dei vincoli FK in PostgreSQL (`pg_constraint`, `pg_class`, `pg_namespace`)
