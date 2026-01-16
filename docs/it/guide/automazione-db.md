@@ -184,6 +184,42 @@ L’automazione **non modifica mai automaticamente i record figli**.
 
 ---
 
+## 9bis) 🔍 Policy indici FK (governance)
+
+**Obiettivo**: evitare la creazione manuale di indici FK e centralizzare la decisione in `dbops.fk_index_policy`.
+
+**Componenti principali**
+
+* **Tabella policy**: [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy) (flag `consentito` + `dll_command`).
+* **View di supporto**:
+  * [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/views/vw_fk_con_indice_missing_policy) → FK con indice esistente ma **senza** policy (filtrata per `automation_scope`).
+  * [dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice)→ FK **senza** indice (filtrata per `automation_scope` e **considera anche UNIQUE**).
+  * [dbops.vw_duplicate_indexes](/dbzero/dbops/views/vw_duplicate_indexes) → rileva indici duplicati per schema/tabella.
+* **Funzioni**:
+  * [dbops.fn_seed_fk_index_policy()](/dbzero/dbops/funzioni/fn_seed_fk_index_policy) → registra in policy le FK gia' indicizzate (`consentito=true`).
+  * [dbops.fn_populate_fk_index_policy()](/dbzero/dbops/funzioni/fn_populate_fk_index_policy) → registra in policy le FK senza indice (`consentito=false`).
+  * [dbops.fn_populate_fk_index_policy()](/dbzero/dbops/funzioni/fn_populate_fk_index_policy) → crea/rimuove indici in base alla policy.
+
+**Regola operativa**
+
+* **Non creare indici FK manualmente**: se servono, usa la policy e il naming coerente, poi registra in `fk_index_policy`.
+* **Scope schemi**: le view lavorano solo sugli schemi presenti in `dbops.automation_scope`.
+
+**Flusso consigliato**
+
+1. **Seed** (indici gia' presenti):
+   `SELECT dbops.fn_seed_fk_index_policy();`
+2. **Populate** (indici mancanti):
+   `SELECT dbops.fn_populate_fk_index_policy();`
+3. **Apply**:
+   `CALL dbops.apply_fk_index_policy();`
+
+**Job schedulabile**
+
+* Wrapper in maintenance: `maintenance.proc_apply_fk_index_policy_job()` (logging + lock).
+
+---
+
 ## 10) 🧪 Esempi di configurazione (`automation_rules_tbl`)
 
 Di seguito insert **idempotenti** (usano `WHERE NOT EXISTS`) per le regole più comuni. Adatta `target_schema`/`target_table` alle tue esigenze.

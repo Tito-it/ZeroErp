@@ -13,7 +13,7 @@
 - [transaction_ids](tabelle/transaction_ids.md) — (latest review 10-01-26) La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti gli identificativi di transazione (UUID) utilizzati in Zero ERP: ogni volta che viene avviata un’operazione di modifica dati (inserimento, aggiornamento o cancellazione) che coinvolge più tabelle, si genera un nuovo **`tx_id`** in questa tabella e lo si propaga a tutte le righe interessate, garantendo la **tracciabilità** e il **raggruppamento** coerente delle modifiche.
 
 ## ⚙️ Funzioni
-- [apply_fk_index_policy](funzioni/apply_fk_index_policy.md) — Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:   
+- [apply_fk_index_policy](funzioni/apply_fk_index_policy.md) — (latest update 16-01-26) Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:   
 - [fn_admin_merge_comune](funzioni/fn_admin_merge_comune.md)
 - [fn_admin_merge_stradario](funzioni/fn_admin_merge_stradario.md)
 - [fn_audit_begin](funzioni/fn_audit_begin.md) — La funzione **`fn_audit_begin`** avvia una nuova sessione di auditing registrando un evento iniziale nella tabella `dbops.audit_log`. È utilizzata come punto di partenza per tracciare processi o automazioni che richiedono visibilità sull’intero ciclo di esecuzione.
