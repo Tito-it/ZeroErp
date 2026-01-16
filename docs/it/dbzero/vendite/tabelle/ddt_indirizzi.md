@@ -28,9 +28,9 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_ddt_indirizzi_ddt | `CREATE INDEX ix_ddt_indirizzi_ddt ON vendite.ddt_indirizzi USING btree (ddt_id)` |
-| ix_ddt_indirizzi_origine_indirizzo | `CREATE INDEX ix_ddt_indirizzi_origine_indirizzo ON vendite.ddt_indirizzi USING btree (origine_indirizzo_id)` |
-| ix_ddt_indirizzi_origine_sog_ruolo | `CREATE INDEX ix_ddt_indirizzi_origine_sog_ruolo ON vendite.ddt_indirizzi USING btree (origine_soggetto_ruolo_id)` |
+| ix_vendite_ddt_indirizzi_ddt_id | `CREATE INDEX ix_vendite_ddt_indirizzi_ddt_id ON vendite.ddt_indirizzi USING btree (ddt_id)` |
+| ix_vendite_ddt_indirizzi_origine_indirizzo_id | `CREATE INDEX ix_vendite_ddt_indirizzi_origine_indirizzo_id ON vendite.ddt_indirizzi USING btree (origine_indirizzo_id)` |
+| ix_vendite_ddt_indirizzi_origine_soggetto_ruolo_id | `CREATE INDEX ix_vendite_ddt_indirizzi_origine_soggetto_ruolo_id ON vendite.ddt_indirizzi USING btree (origine_soggetto_ruolo_id)` |
 | pk_ddt_indirizzi | `CREATE UNIQUE INDEX pk_ddt_indirizzi ON vendite.ddt_indirizzi USING btree (id)` |
 | uq_ddt_indirizzi_uno_per_tipo | `CREATE UNIQUE INDEX uq_ddt_indirizzi_uno_per_tipo ON vendite.ddt_indirizzi USING btree (ddt_id, tipo_indirizzo_id)` |
 

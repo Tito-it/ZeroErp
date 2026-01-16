@@ -25,7 +25,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_mag_cmedio_articolo | `CREATE INDEX ix_mag_cmedio_articolo ON magazzino.costo_medio USING btree (articolo_id)` |
-| ix_mag_cmedio_magazzino | `CREATE INDEX ix_mag_cmedio_magazzino ON magazzino.costo_medio USING btree (magazzino_id)` |
+| ix_magazzino_costo_medio_magazzino_id | `CREATE INDEX ix_magazzino_costo_medio_magazzino_id ON magazzino.costo_medio USING btree (magazzino_id)` |
 | pk_mag_costo_medio | `CREATE UNIQUE INDEX pk_mag_costo_medio ON magazzino.costo_medio USING btree (id)` |
 | uq_mag_costo_medio_art_mag | `CREATE UNIQUE INDEX uq_mag_costo_medio_art_mag ON magazzino.costo_medio USING btree (articolo_id, magazzino_id)` |
 

@@ -36,8 +36,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_prevrighe_articolo | `CREATE INDEX ix_prevrighe_articolo ON vendite.preventivi_righe USING btree (articolo_id)` |
-| ix_prevrighe_preventivo | `CREATE INDEX ix_prevrighe_preventivo ON vendite.preventivi_righe USING btree (preventivo_id)` |
+| ix_vendite_preventivi_righe_articolo_id | `CREATE INDEX ix_vendite_preventivi_righe_articolo_id ON vendite.preventivi_righe USING btree (articolo_id)` |
+| ix_vendite_preventivi_righe_preventivo_id | `CREATE INDEX ix_vendite_preventivi_righe_preventivo_id ON vendite.preventivi_righe USING btree (preventivo_id)` |
 | pk_preventivi_righe | `CREATE UNIQUE INDEX pk_preventivi_righe ON vendite.preventivi_righe USING btree (id)` |
 
 ## 🚨 Trigger

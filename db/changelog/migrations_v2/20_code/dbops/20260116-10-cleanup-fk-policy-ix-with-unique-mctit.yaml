@@ -1,0 +1,102 @@
+databaseChangeLog:
+  - logicalFilePath: db/changelog/migrations_v2/20_code/dbops/20260116-10-cleanup-fk-policy-ix-with-unique-mctit.yaml
+  - changeSet:
+      id: 20260116-10-cleanup-fk-policy-ix-with-unique
+      author: mctit
+      runAlways: false
+      runOnChange: false
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              WITH fk_cols AS (
+                SELECT
+                  p.schema_name,
+                  p.table_name,
+                  p.constraint_name,
+                  array_agg(a.attname ORDER BY k.ordinality) AS fk_cols
+                FROM dbops.fk_index_policy p
+                JOIN pg_namespace n ON n.nspname = p.schema_name
+                JOIN pg_class t ON t.relname = p.table_name AND t.relnamespace = n.oid
+                JOIN pg_constraint c ON c.conrelid = t.oid
+                                     AND c.conname = p.constraint_name
+                                     AND c.contype = 'f'
+                JOIN unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality) ON true
+                JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+                WHERE p.dll_command ILIKE '%ix_%'
+                GROUP BY p.schema_name, p.table_name, p.constraint_name
+              ),
+              uq_cols AS (
+                SELECT
+                  n.nspname AS schema_name,
+                  t.relname AS table_name,
+                  array_agg(a.attname ORDER BY k.ordinality) AS uq_cols
+                FROM pg_constraint c
+                JOIN pg_class t ON t.oid = c.conrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                JOIN unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality) ON true
+                JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+                WHERE c.contype = 'u'
+                GROUP BY n.nspname, t.relname, c.conname
+              )
+              DELETE FROM dbops.fk_index_policy p
+              USING fk_cols f
+              JOIN uq_cols u
+                ON u.schema_name = f.schema_name
+               AND u.table_name  = f.table_name
+               AND u.uq_cols     = f.fk_cols
+              WHERE p.schema_name = f.schema_name
+                AND p.table_name = f.table_name
+                AND p.constraint_name = f.constraint_name;
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                r RECORD;
+              BEGIN
+                FOR r IN
+                  WITH uq_cols AS (
+                    SELECT
+                      n.nspname AS schema_name,
+                      t.relname AS table_name,
+                      array_agg(a.attname ORDER BY k.ordinality) AS uq_cols
+                    FROM pg_constraint c
+                    JOIN pg_class t ON t.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                    JOIN unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality) ON true
+                    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+                    WHERE c.contype = 'u'
+                    GROUP BY n.nspname, t.relname, c.conname
+                  ),
+                  idx_cols AS (
+                    SELECT
+                      n.nspname AS schema_name,
+                      t.relname AS table_name,
+                      i.relname AS index_name,
+                      ix.indisunique AS is_unique,
+                      array_agg(a.attname ORDER BY x.ordinality) AS indexed_cols
+                    FROM pg_index ix
+                    JOIN pg_class i ON i.oid = ix.indexrelid
+                    JOIN pg_class t ON t.oid = ix.indrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                    JOIN unnest(ix.indkey) WITH ORDINALITY AS x(attnum, ordinality) ON true
+                    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = x.attnum
+                    WHERE i.relkind = 'i'
+                    GROUP BY n.nspname, t.relname, i.relname, ix.indisunique
+                  )
+                  SELECT
+                    i.schema_name,
+                    i.index_name
+                  FROM idx_cols i
+                  JOIN uq_cols u
+                    ON u.schema_name = i.schema_name
+                   AND u.table_name = i.table_name
+                   AND u.uq_cols = i.indexed_cols
+                  WHERE i.index_name LIKE 'ix_%'
+                    AND i.is_unique = false
+                  ORDER BY 1, 2
+                LOOP
+                  EXECUTE format('DROP INDEX IF EXISTS %I.%I', r.schema_name, r.index_name);
+                END LOOP;
+              END $$;

@@ -19,7 +19,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_categoria_accisa_descrizione | `CREATE INDEX ix_categoria_accisa_descrizione ON config.categoria_accisa USING btree (descrizione)` |
-| ix_categoria_accisa_utility_id | `CREATE INDEX ix_categoria_accisa_utility_id ON config.categoria_accisa USING btree (utility_id)` |
+| ix_config_categoria_accisa_utility_id | `CREATE INDEX ix_config_categoria_accisa_utility_id ON config.categoria_accisa USING btree (utility_id)` |
 | pk_categoria_accisa | `CREATE UNIQUE INDEX pk_categoria_accisa ON config.categoria_accisa USING btree (id)` |
 | uq_categoria_accisa_codice_utility | `CREATE UNIQUE INDEX uq_categoria_accisa_codice_utility ON config.categoria_accisa USING btree (codice, utility_id)` |
 

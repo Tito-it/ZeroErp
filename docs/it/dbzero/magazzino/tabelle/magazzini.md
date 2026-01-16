@@ -30,7 +30,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_magazzini_indirizzo_dettaglio | `CREATE INDEX ix_magazzini_indirizzo_dettaglio ON magazzino.magazzini USING btree (indirizzo_dettaglio_id)` |
+| ix_magazzino_magazzini_indirizzo_dettaglio_id | `CREATE INDEX ix_magazzino_magazzini_indirizzo_dettaglio_id ON magazzino.magazzini USING btree (indirizzo_dettaglio_id)` |
 | pk_magazzini | `CREATE UNIQUE INDEX pk_magazzini ON magazzino.magazzini USING btree (id)` |
 | uq_magazzini_codice | `CREATE UNIQUE INDEX uq_magazzini_codice ON magazzino.magazzini USING btree (codice)` |
 | uq_magazzini_uid | `CREATE UNIQUE INDEX uq_magazzini_uid ON magazzino.magazzini USING btree (uid)` |

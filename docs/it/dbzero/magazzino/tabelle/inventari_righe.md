@@ -31,8 +31,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_mag_inventari_righe_ubicazione | `CREATE INDEX ix_mag_inventari_righe_ubicazione ON magazzino.inventari_righe USING btree (ubicazione_id)` |
-| ix_mag_invetario_r_articolo | `CREATE INDEX ix_mag_invetario_r_articolo ON magazzino.inventari_righe USING btree (articolo_id)` |
+| ix_magazzino_inventari_righe_articolo_id | `CREATE INDEX ix_magazzino_inventari_righe_articolo_id ON magazzino.inventari_righe USING btree (articolo_id)` |
+| ix_magazzino_inventari_righe_ubicazione_id | `CREATE INDEX ix_magazzino_inventari_righe_ubicazione_id ON magazzino.inventari_righe USING btree (ubicazione_id)` |
 | pk_mag_invetario_righe | `CREATE UNIQUE INDEX pk_mag_invetario_righe ON magazzino.inventari_righe USING btree (id)` |
 
 ---

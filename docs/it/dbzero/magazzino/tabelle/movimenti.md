@@ -49,16 +49,14 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_mag_mov_docref | `CREATE INDEX ix_mag_mov_docref ON magazzino.movimenti USING btree (doc_schema, doc_table, doc_id, doc_riga_id)` |
 | ix_mag_mov_transfer_uid | `CREATE INDEX ix_mag_mov_transfer_uid ON magazzino.movimenti USING btree (transfer_uid)` |
-| ix_mag_movimenti_articolo | `CREATE INDEX ix_mag_movimenti_articolo ON magazzino.movimenti USING btree (articolo_id)` |
-| ix_mag_movimenti_causale | `CREATE INDEX ix_mag_movimenti_causale ON magazzino.movimenti USING btree (causale_id)` |
 | ix_mag_movimenti_data | `CREATE INDEX ix_mag_movimenti_data ON magazzino.movimenti USING btree (data_mov)` |
-| ix_mag_movimenti_magazzino | `CREATE INDEX ix_mag_movimenti_magazzino ON magazzino.movimenti USING btree (magazzino_id)` |
-| ix_mag_movimenti_magazzino_dest | `CREATE INDEX ix_mag_movimenti_magazzino_dest ON magazzino.movimenti USING btree (magazzino_id_dest)` |
-| ix_mag_movimenti_sorgente | `CREATE INDEX ix_mag_movimenti_sorgente ON magazzino.movimenti USING btree (doc_schema, doc_table, doc_id, doc_riga_id)` |
-| ix_mag_movimenti_ubicazione_from | `CREATE INDEX ix_mag_movimenti_ubicazione_from ON magazzino.movimenti USING btree (ubicazione_id_from)` |
-| ix_mag_movimenti_ubicazione_to | `CREATE INDEX ix_mag_movimenti_ubicazione_to ON magazzino.movimenti USING btree (ubicazione_id_to)` |
+| ix_magazzino_movimenti_articolo_id | `CREATE INDEX ix_magazzino_movimenti_articolo_id ON magazzino.movimenti USING btree (articolo_id)` |
+| ix_magazzino_movimenti_causale_id | `CREATE INDEX ix_magazzino_movimenti_causale_id ON magazzino.movimenti USING btree (causale_id)` |
+| ix_magazzino_movimenti_magazzino_id | `CREATE INDEX ix_magazzino_movimenti_magazzino_id ON magazzino.movimenti USING btree (magazzino_id)` |
+| ix_magazzino_movimenti_magazzino_id_dest | `CREATE INDEX ix_magazzino_movimenti_magazzino_id_dest ON magazzino.movimenti USING btree (magazzino_id_dest)` |
+| ix_magazzino_movimenti_ubicazione_id_from | `CREATE INDEX ix_magazzino_movimenti_ubicazione_id_from ON magazzino.movimenti USING btree (ubicazione_id_from)` |
+| ix_magazzino_movimenti_ubicazione_id_to | `CREATE INDEX ix_magazzino_movimenti_ubicazione_id_to ON magazzino.movimenti USING btree (ubicazione_id_to)` |
 | pk_mag_movimenti | `CREATE UNIQUE INDEX pk_mag_movimenti ON magazzino.movimenti USING btree (id)` |
 | uq_mag_movimenti_docref | `CREATE UNIQUE INDEX uq_mag_movimenti_docref ON magazzino.movimenti USING btree (doc_schema, doc_table, doc_id, doc_riga_id)` |
 

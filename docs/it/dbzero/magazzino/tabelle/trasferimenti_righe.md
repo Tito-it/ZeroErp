@@ -28,7 +28,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_mag_trasferimenti_r_articolo | `CREATE INDEX ix_mag_trasferimenti_r_articolo ON magazzino.trasferimenti_righe USING btree (articolo_id)` |
+| ix_magazzino_trasferimenti_righe_articolo_id | `CREATE INDEX ix_magazzino_trasferimenti_righe_articolo_id ON magazzino.trasferimenti_righe USING btree (articolo_id)` |
 | pk_mag_trasferimenti_righe | `CREATE UNIQUE INDEX pk_mag_trasferimenti_righe ON magazzino.trasferimenti_righe USING btree (id)` |
 
 ---

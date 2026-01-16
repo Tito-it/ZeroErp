@@ -53,7 +53,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_ddt_vendita_dest_stato_data | `CREATE INDEX ix_ddt_vendita_dest_stato_data ON vendite.ddt USING btree (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, data)` |
-| ix_ddt_vendita_stato | `CREATE INDEX ix_ddt_vendita_stato ON vendite.ddt USING btree (stato_doc_ddt_id)` |
+| ix_vendite_ddt_stato_doc_ddt_id | `CREATE INDEX ix_vendite_ddt_stato_doc_ddt_id ON vendite.ddt USING btree (stato_doc_ddt_id)` |
 | pk_ddtv | `CREATE UNIQUE INDEX pk_ddtv ON vendite.ddt USING btree (id)` |
 | uq_ddt_v_anno_serie_numero | `CREATE UNIQUE INDEX uq_ddt_v_anno_serie_numero ON vendite.ddt USING btree (anno, serie, numero) WHERE (numero IS NOT NULL)` |
 | uq_ddt_v_sorgente_fk | `CREATE UNIQUE INDEX uq_ddt_v_sorgente_fk ON vendite.ddt USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |

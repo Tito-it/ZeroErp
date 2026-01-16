@@ -17,7 +17,9 @@ WITH index_cols AS (
              JOIN pg_namespace n ON ((n.oid = t.relnamespace)))
              JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY x(attnum, ordinality) ON (true))
              JOIN pg_attribute a ON (((a.attrelid = t.oid) AND (a.attnum = x.attnum))))
-          WHERE ((NOT ix.indisprimary) AND (i.relkind = 'i'::"char"))
+          WHERE ((NOT ix.indisprimary) AND (i.relkind = 'i'::"char") AND (EXISTS ( SELECT 1
+                   FROM dbops.automation_scope sc
+                  WHERE (sc.schema_name = n.nspname))))
           GROUP BY i.oid, n.nspname, t.relname, i.relname, ix.indisunique, ix.indisprimary
         )
  SELECT schema_name,

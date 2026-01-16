@@ -6,7 +6,7 @@
 > * [Liquibase Setup & Workflow](liquibase-setup-workflow.md)   
 > * [Storicizzazione Tabelle](/guide/storicizzazione-tabelle)   
 > * [Transaction ID](/guide/tx_id_implementation_guide) 
-> * [Configurazione e Gestione Parametri](/guide/configurazione-e-gestione-parametri) 
+> * [Configurazione e Gestione Parametri](/guide/configurazione-e-gestione-parametri)   
 > * [Messaggi di errore e Gestione Log](/guide/Messaggi-di-Errore-e-Generazione-Log) 
 >
 > Approfondimento estensioni:   
@@ -182,6 +182,8 @@ I trigger o constraint di sistema possono aggiornare `date_update/user_update` s
 * **Naming**: `ix_<table>_<column>`
 * **Tipologia**: B-Tree per default; GIN/GIST per JSONB/Geometrie.
 * **Parziali**: `CREATE UNIQUE INDEX ix_contatti_default ON contatti(soggetto_id) WHERE is_default;` per default logic
+* **Indici `upper(...)`**: non usarli in modo generico; introdurli solo per query case‑insensitive specifiche e con beneficio prestazionale misurabile.
+* **Ricerche case‑insensitive**: usare `ILIKE` lato query; l’indice serve solo se compatibile con la forma del predicato.
 
 ---
 

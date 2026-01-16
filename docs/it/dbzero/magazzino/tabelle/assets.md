@@ -40,11 +40,11 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_mag_assets_articolo | `CREATE INDEX ix_mag_assets_articolo ON magazzino.assets USING btree (articolo_id)` |
-| ix_mag_assets_magazzino | `CREATE INDEX ix_mag_assets_magazzino ON magazzino.assets USING btree (magazzino_id)` |
-| ix_mag_assets_ownership_id | `CREATE INDEX ix_mag_assets_ownership_id ON magazzino.assets USING btree (ownership_id)` |
-| ix_mag_assets_stato_id | `CREATE INDEX ix_mag_assets_stato_id ON magazzino.assets USING btree (stato_id)` |
-| ix_mag_assets_ubicazione | `CREATE INDEX ix_mag_assets_ubicazione ON magazzino.assets USING btree (ubicazione_id)` |
+| ix_magazzino_assets_articolo_id | `CREATE INDEX ix_magazzino_assets_articolo_id ON magazzino.assets USING btree (articolo_id)` |
+| ix_magazzino_assets_magazzino_id | `CREATE INDEX ix_magazzino_assets_magazzino_id ON magazzino.assets USING btree (magazzino_id)` |
+| ix_magazzino_assets_ownership_id | `CREATE INDEX ix_magazzino_assets_ownership_id ON magazzino.assets USING btree (ownership_id)` |
+| ix_magazzino_assets_stato_id | `CREATE INDEX ix_magazzino_assets_stato_id ON magazzino.assets USING btree (stato_id)` |
+| ix_magazzino_assets_ubicazione_id | `CREATE INDEX ix_magazzino_assets_ubicazione_id ON magazzino.assets USING btree (ubicazione_id)` |
 | pk_mag_assets | `CREATE UNIQUE INDEX pk_mag_assets ON magazzino.assets USING btree (id)` |
 | uq_mag_assets_seriale | `CREATE UNIQUE INDEX uq_mag_assets_seriale ON magazzino.assets USING btree (seriale)` |
 

@@ -35,9 +35,9 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_pdp_cliente_id | `CREATE INDEX ix_pdp_cliente_id ON anagrafiche.pdp USING btree (cliente_id)` |
-| ix_pdp_indirizzo_dettaglio_id | `CREATE INDEX ix_pdp_indirizzo_dettaglio_id ON anagrafiche.pdp USING btree (indirizzo_dettaglio_id)` |
-| ix_pdp_utilities_id | `CREATE INDEX ix_pdp_utilities_id ON anagrafiche.pdp USING btree (utilities_id)` |
+| ix_anagrafiche_pdp_cliente_id | `CREATE INDEX ix_anagrafiche_pdp_cliente_id ON anagrafiche.pdp USING btree (cliente_id)` |
+| ix_anagrafiche_pdp_indirizzo_dettaglio_id | `CREATE INDEX ix_anagrafiche_pdp_indirizzo_dettaglio_id ON anagrafiche.pdp USING btree (indirizzo_dettaglio_id)` |
+| ix_anagrafiche_pdp_utilities_id | `CREATE INDEX ix_anagrafiche_pdp_utilities_id ON anagrafiche.pdp USING btree (utilities_id)` |
 | pk_pdp | `CREATE UNIQUE INDEX pk_pdp ON anagrafiche.pdp USING btree (id)` |
 | uq_pdp_addr_utility | `CREATE UNIQUE INDEX uq_pdp_addr_utility ON anagrafiche.pdp USING btree (indirizzo_dettaglio_id, utilities_id)` |
 | uq_pdp_codice | `CREATE UNIQUE INDEX uq_pdp_codice ON anagrafiche.pdp USING btree (pdp)` |

@@ -10,99 +10,21 @@
 >
 > * [dbops.fn_populate_fk_index_policy](/dbzero/dbops/manual/fn_populate_fk_index_policy)   
 > * [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)   
-> * [dbops.vw_duplicate_indexes](/dbzero/dbops/manual/vw_duplicate_indexes)  
+> * [dbops.vw_duplicate_indexes](/dbzero/dbops/views/vw_duplicate_indexes)     
 > 
 > * Catalogo dei vincoli FK in PostgreSQL (`pg_constraint`, `pg_class`, `pg_namespace`)
 
-La view **`dbops.vw_fk_senza_indice`** elenca tutte le foreign key definite negli schemi monitorati che **non hanno un indice associato** sulle colonne di riferimento, suggerendo lo statement `CREATE INDEX` corrispondente e rispettando eventuali eccezioni definite in `dbops.fk_index_policy`.
+La view **`dbops.vw_fk_senza_indice`** elenca tutte le foreign key definite **solo negli schemi presenti in `dbops.automation_scope`** che **non hanno un indice associato** sulle colonne di riferimento, suggerendo lo statement `CREATE INDEX` corrispondente e rispettando eventuali eccezioni definite in `dbops.fk_index_policy`. La view considera anche i **vincoli UNIQUE** esistenti: se una FK e` gia` coperta da un `UNIQUE` con le stesse colonne, non viene proposta.
 
 ---
 
 ### 🎯 Scopo Principale
 
+(latest review 16-01-26)
 * Individuare automaticamente vincoli di integrità referenziale (FK) privi di indice, potenziali colli di bottiglia nelle operazioni di JOIN e DELETE.
 * Fornire suggerimenti di creazione indice coerenti, facilitando l’ottimizzazione delle performance.
 * Applicare eventuali policy di esclusione gestite in `dbops.fk_index_policy`.
 
----
-
-### 🔍 Definizione (DDL)
-
-```sql
-CREATE OR REPLACE VIEW dbops.vw_fk_senza_indice AS
-WITH fk_columns AS (
-  SELECT con.oid AS constraint_oid,
-         con.conname AS constraint_name,
-         nsp.nspname AS schema_name,
-         rel.relname AS table_name,
-         unnest(con.conkey) AS attnum,
-         con.conrelid
-    FROM pg_constraint con
-    JOIN pg_class rel ON rel.oid = con.conrelid
-    JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
-   WHERE con.contype = 'f'
-), fk_fields AS (
-  SELECT fk.constraint_name,
-         fk.schema_name,
-         fk.table_name,
-         a.attname AS column_name,
-         fk.conrelid,
-         fk.constraint_oid
-    FROM fk_columns fk
-    JOIN pg_attribute a ON a.attrelid = fk.conrelid AND a.attnum = fk.attnum
-), indexed_columns AS (
-  SELECT i.relname AS index_name,
-         n.nspname AS schema_name,
-         t.relname AS table_name,
-         array_agg(a.attname ORDER BY x.ordinality) AS indexed_cols
-    FROM pg_index ix
-    JOIN pg_class i ON i.oid = ix.indexrelid
-    JOIN pg_class t ON t.oid = ix.indrelid
-    JOIN pg_namespace n ON n.oid = t.relnamespace
-    JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY x(attnum, ordinality) ON true
-    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = x.attnum
-GROUP BY i.relname, n.nspname, t.relname
-), fk_grouped AS (
-  SELECT fk.constraint_name,
-         fk.schema_name,
-         fk.table_name,
-         array_agg(fk.column_name ORDER BY fk.column_name) AS fk_cols
-    FROM fk_fields fk
-GROUP BY fk.constraint_name, fk.schema_name, fk.table_name
-)
-SELECT
-  fk.schema_name,
-  fk.table_name,
-  fk.constraint_name,
-  fk.fk_cols,
-  format(
-    'CREATE INDEX ix_%I_%I_%s ON %I.%I(%s);',
-    fk.schema_name,
-    fk.table_name,
-    array_to_string(fk.fk_cols, '_'),
-    fk.schema_name,
-    fk.table_name,
-    array_to_string(fk.fk_cols, ', ')
-  ) AS create_index_suggestion
-FROM fk_grouped fk
-LEFT JOIN indexed_columns idx
-  ON fk.schema_name = idx.schema_name
- AND fk.table_name  = idx.table_name
- AND fk.fk_cols      = idx.indexed_cols
-LEFT JOIN dbops.fk_index_policy pol
-  ON fk.schema_name     = pol.schema_name
- AND fk.table_name      = pol.table_name
- AND fk.constraint_name = pol.constraint_name
-WHERE idx.index_name IS NULL
-  AND COALESCE(pol.consentito, true) = true
-ORDER BY fk.schema_name, fk.table_name;
-```
-
-**Owner**: `postgres`
-
-**Commento**: "Elenco delle foreign key senza indice esplicito, con suggerimento CREATE INDEX e rispetto policy da dbops.fk\_index\_policy"
-
----
 
 ### 🔍 Colonne e Descrizione
 

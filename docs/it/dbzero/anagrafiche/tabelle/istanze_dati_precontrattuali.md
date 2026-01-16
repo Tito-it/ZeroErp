@@ -30,9 +30,9 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_idp_classe_utenza_id | `CREATE INDEX ix_idp_classe_utenza_id ON anagrafiche.istanze_dati_precontrattuali USING btree (classe_utenza_id)` |
-| ix_idp_istanza_utility_id | `CREATE INDEX ix_idp_istanza_utility_id ON anagrafiche.istanze_dati_precontrattuali USING btree (istanza_utility_id)` |
-| ix_idp_utility_id | `CREATE INDEX ix_idp_utility_id ON anagrafiche.istanze_dati_precontrattuali USING btree (utility_id)` |
+| ix_anagrafiche_istanze_dati_precontrattuali_classe_utenza_id | `CREATE INDEX ix_anagrafiche_istanze_dati_precontrattuali_classe_utenza_id ON anagrafiche.istanze_dati_precontrattuali USING btree (classe_utenza_id)` |
+| ix_anagrafiche_istanze_dati_precontrattuali_istanza_utility_id | `CREATE INDEX ix_anagrafiche_istanze_dati_precontrattuali_istanza_utility_id ON anagrafiche.istanze_dati_precontrattuali USING btree (istanza_utility_id)` |
+| ix_anagrafiche_istanze_dati_precontrattuali_utility_id | `CREATE INDEX ix_anagrafiche_istanze_dati_precontrattuali_utility_id ON anagrafiche.istanze_dati_precontrattuali USING btree (utility_id)` |
 | pk_istanze_dati_precontrattuali | `CREATE UNIQUE INDEX pk_istanze_dati_precontrattuali ON anagrafiche.istanze_dati_precontrattuali USING btree (id)` |
 | uq_istanze_dati_precontrattuali_id_utility_id | `CREATE UNIQUE INDEX uq_istanze_dati_precontrattuali_id_utility_id ON anagrafiche.istanze_dati_precontrattuali USING btree (istanza_utility_id, utility_id)` |
 

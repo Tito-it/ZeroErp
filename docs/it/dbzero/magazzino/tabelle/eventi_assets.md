@@ -40,11 +40,11 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_mag_eventi_assets_asset | `CREATE INDEX ix_mag_eventi_assets_asset ON magazzino.eventi_assets USING btree (asset_id)` |
 | ix_mag_eventi_assets_data | `CREATE INDEX ix_mag_eventi_assets_data ON magazzino.eventi_assets USING btree (data_evento)` |
 | ix_mag_eventi_assets_stato_a_id | `CREATE INDEX ix_mag_eventi_assets_stato_a_id ON magazzino.eventi_assets USING btree (stato_a_id)` |
 | ix_mag_eventi_assets_stato_da_id | `CREATE INDEX ix_mag_eventi_assets_stato_da_id ON magazzino.eventi_assets USING btree (stato_da_id)` |
-| ix_mag_eventi_assets_tipo_evento_id | `CREATE INDEX ix_mag_eventi_assets_tipo_evento_id ON magazzino.eventi_assets USING btree (tipo_evento_id)` |
+| ix_magazzino_eventi_assets_asset_id | `CREATE INDEX ix_magazzino_eventi_assets_asset_id ON magazzino.eventi_assets USING btree (asset_id)` |
+| ix_magazzino_eventi_assets_tipo_evento_id | `CREATE INDEX ix_magazzino_eventi_assets_tipo_evento_id ON magazzino.eventi_assets USING btree (tipo_evento_id)` |
 | pk_mag_eventi_assets | `CREATE UNIQUE INDEX pk_mag_eventi_assets ON magazzino.eventi_assets USING btree (id)` |
 | uq_mag_eventi_assets_sorgente_fk | `CREATE UNIQUE INDEX uq_mag_eventi_assets_sorgente_fk ON magazzino.eventi_assets USING btree (sorgente_tipo_id, sorgente_uid) WHERE (sorgente_tipo_id IS NOT NULL)` |
 

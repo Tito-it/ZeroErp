@@ -27,10 +27,10 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_classi_utenze_categoria_accisa_id | `CREATE INDEX ix_classi_utenze_categoria_accisa_id ON config.classi_utenze USING btree (categoria_accisa_id)` |
 | ix_classi_utenze_descrizione | `CREATE INDEX ix_classi_utenze_descrizione ON config.classi_utenze USING btree (descrizione)` |
-| ix_classi_utenze_tipi_tariffa_ee_id | `CREATE INDEX ix_classi_utenze_tipi_tariffa_ee_id ON config.classi_utenze USING btree (tipi_tariffa_ee_id)` |
-| ix_classi_utenze_tipo_utenza_id | `CREATE INDEX ix_classi_utenze_tipo_utenza_id ON config.classi_utenze USING btree (tipo_utenza_id)` |
+| ix_config_classi_utenze_categoria_accisa_id | `CREATE INDEX ix_config_classi_utenze_categoria_accisa_id ON config.classi_utenze USING btree (categoria_accisa_id)` |
+| ix_config_classi_utenze_tipi_tariffa_ee_id | `CREATE INDEX ix_config_classi_utenze_tipi_tariffa_ee_id ON config.classi_utenze USING btree (tipi_tariffa_ee_id)` |
+| ix_config_classi_utenze_tipo_utenza_id | `CREATE INDEX ix_config_classi_utenze_tipo_utenza_id ON config.classi_utenze USING btree (tipo_utenza_id)` |
 | pk_classi_utenze | `CREATE UNIQUE INDEX pk_classi_utenze ON config.classi_utenze USING btree (id)` |
 | uq_classi_utenze_codice | `CREATE UNIQUE INDEX uq_classi_utenze_codice ON config.classi_utenze USING btree (codice)` |
 

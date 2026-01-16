@@ -34,8 +34,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_tipi_ruolo_tipi_indirizzo_tipo | `CREATE INDEX ix_tipi_ruolo_tipi_indirizzo_tipo ON config.tipi_ruolo_tipi_indirizzo USING btree (tipo_indirizzo_id)` |
-| ix_tipi_ruolo_tipi_indirizzo_tipo_ruolo | `CREATE INDEX ix_tipi_ruolo_tipi_indirizzo_tipo_ruolo ON config.tipi_ruolo_tipi_indirizzo USING btree (tipo_ruolo_id)` |
+| ix_config_tipi_ruolo_tipi_indirizzo_tipo_indirizzo_id | `CREATE INDEX ix_config_tipi_ruolo_tipi_indirizzo_tipo_indirizzo_id ON config.tipi_ruolo_tipi_indirizzo USING btree (tipo_indirizzo_id)` |
+| ix_config_tipi_ruolo_tipi_indirizzo_tipo_ruolo_id | `CREATE INDEX ix_config_tipi_ruolo_tipi_indirizzo_tipo_ruolo_id ON config.tipi_ruolo_tipi_indirizzo USING btree (tipo_ruolo_id)` |
 | pk_ruoli_tipi_indirizzo | `CREATE UNIQUE INDEX pk_ruoli_tipi_indirizzo ON config.tipi_ruolo_tipi_indirizzo USING btree (id)` |
 | uq_tipi_ruolo_tipi_indirizzo_tipo_ruolo_tipo | `CREATE UNIQUE INDEX uq_tipi_ruolo_tipi_indirizzo_tipo_ruolo_tipo ON config.tipi_ruolo_tipi_indirizzo USING btree (tipo_ruolo_id, tipo_indirizzo_id)` |
 

@@ -32,8 +32,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_config_forme_giuridiche_stato_id | `CREATE INDEX ix_config_forme_giuridiche_stato_id ON config.forme_giuridiche USING btree (stato_id)` |
 | ix_forme_giuridiche_codice | `CREATE INDEX ix_forme_giuridiche_codice ON config.forme_giuridiche USING btree (codice)` |
-| ix_forme_giuridiche_stato_id | `CREATE INDEX ix_forme_giuridiche_stato_id ON config.forme_giuridiche USING btree (stato_id)` |
 | pk_forme_giuridiche | `CREATE UNIQUE INDEX pk_forme_giuridiche ON config.forme_giuridiche USING btree (id)` |
 | uq_forme_giuridiche_statoiso2_codice | `CREATE UNIQUE INDEX uq_forme_giuridiche_statoiso2_codice ON config.forme_giuridiche USING btree (stato_iso2, codice)` |
 

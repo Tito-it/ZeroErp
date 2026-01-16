@@ -59,7 +59,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_ao_stato_doc_ordine | `CREATE INDEX ix_ao_stato_doc_ordine ON acquisti.ordini USING btree (stato_doc_ordine_id)` |
+| ix_acquisti_ordini_stato_doc_ordine_id | `CREATE INDEX ix_acquisti_ordini_stato_doc_ordine_id ON acquisti.ordini USING btree (stato_doc_ordine_id)` |
 | ix_ordini_ao_fornitore_stato_data | `CREATE INDEX ix_ordini_ao_fornitore_stato_data ON acquisti.ordini USING btree (soggetto_ruolo_id, stato_doc_ordine_id, data)` |
 | pk_ordini_a | `CREATE UNIQUE INDEX pk_ordini_a ON acquisti.ordini USING btree (id)` |
 | uq_ordini_ao_anno_serie_numero | `CREATE UNIQUE INDEX uq_ordini_ao_anno_serie_numero ON acquisti.ordini USING btree (anno, serie, numero) WHERE (numero IS NOT NULL)` |

@@ -43,9 +43,9 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_ao_r_articolo | `CREATE INDEX ix_ao_r_articolo ON acquisti.ordini_righe USING btree (articolo_id)` |
-| ix_ao_r_stato_doc | `CREATE INDEX ix_ao_r_stato_doc ON acquisti.ordini_righe USING btree (stato_doc_ordine_id)` |
-| ix_ao_r_testata | `CREATE INDEX ix_ao_r_testata ON acquisti.ordini_righe USING btree (ordine_id)` |
+| ix_acquisti_ordini_righe_articolo_id | `CREATE INDEX ix_acquisti_ordini_righe_articolo_id ON acquisti.ordini_righe USING btree (articolo_id)` |
+| ix_acquisti_ordini_righe_ordine_id | `CREATE INDEX ix_acquisti_ordini_righe_ordine_id ON acquisti.ordini_righe USING btree (ordine_id)` |
+| ix_acquisti_ordini_righe_stato_doc_ordine_id | `CREATE INDEX ix_acquisti_ordini_righe_stato_doc_ordine_id ON acquisti.ordini_righe USING btree (stato_doc_ordine_id)` |
 | pk_ao_righe | `CREATE UNIQUE INDEX pk_ao_righe ON acquisti.ordini_righe USING btree (id)` |
 | uq_ao_r_riga_nr | `CREATE UNIQUE INDEX uq_ao_r_riga_nr ON acquisti.ordini_righe USING btree (ordine_id, riga_nr)` |
 | uq_ordini_righe_v_sorgente_fk | `CREATE UNIQUE INDEX uq_ordini_righe_v_sorgente_fk ON acquisti.ordini_righe USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |

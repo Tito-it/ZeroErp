@@ -7,7 +7,7 @@
 > * [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_senza_indice)   
 > * [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)     
 
-La view **`dbops.vw_duplicate_indexes`** identifica gli **indici duplicati** all’interno dello stesso schema e tabella, cioè quegli indici che coprono esattamente lo stesso insieme di colonne (`cols`). Per ciascun gruppo di colonne con più indici, la view restituisce i nomi degli indici coinvolti e il numero totale di occorrenze.
+La view **`dbops.vw_duplicate_indexes`** identifica gli **indici duplicati** all’interno dello stesso schema e tabella, cioè quegli indici che coprono esattamente lo stesso insieme di colonne (`cols`). La view è **limitata agli schemi presenti in `dbops.automation_scope`**; per ciascun gruppo di colonne con più indici restituisce i nomi degli indici coinvolti e il numero totale di occorrenze.
 
 ---
 

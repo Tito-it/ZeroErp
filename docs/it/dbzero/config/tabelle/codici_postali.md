@@ -22,7 +22,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_codici_postali_codice | `CREATE INDEX ix_codici_postali_codice ON config.codici_postali USING btree (codice)` |
-| ix_codici_postali_comune_id | `CREATE INDEX ix_codici_postali_comune_id ON config.codici_postali USING btree (comune_id)` |
+| ix_config_codici_postali_comune_id | `CREATE INDEX ix_config_codici_postali_comune_id ON config.codici_postali USING btree (comune_id)` |
 | pk_codici_postali | `CREATE UNIQUE INDEX pk_codici_postali ON config.codici_postali USING btree (id)` |
 
 ## 🚨 Trigger

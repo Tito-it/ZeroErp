@@ -41,13 +41,13 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_anagrafiche_indirizzi_codice_postale_id | `CREATE INDEX ix_anagrafiche_indirizzi_codice_postale_id ON anagrafiche.indirizzi USING btree (codice_postale_id)` |
+| ix_anagrafiche_indirizzi_comune_id | `CREATE INDEX ix_anagrafiche_indirizzi_comune_id ON anagrafiche.indirizzi USING btree (comune_id)` |
 | ix_anagrafiche_indirizzi_indirizzo_dettaglio_id | `CREATE INDEX ix_anagrafiche_indirizzi_indirizzo_dettaglio_id ON anagrafiche.indirizzi USING btree (indirizzo_dettaglio_id)` |
-| ix_indirizzi_codice_postale_id | `CREATE INDEX ix_indirizzi_codice_postale_id ON anagrafiche.indirizzi USING btree (codice_postale_id)` |
-| ix_indirizzi_comune_id | `CREATE INDEX ix_indirizzi_comune_id ON anagrafiche.indirizzi USING btree (comune_id)` |
+| ix_anagrafiche_indirizzi_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_indirizzi_soggetto_ruolo_id ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id)` |
+| ix_anagrafiche_indirizzi_stato_id | `CREATE INDEX ix_anagrafiche_indirizzi_stato_id ON anagrafiche.indirizzi USING btree (stato_id)` |
+| ix_anagrafiche_indirizzi_tipo_indirizzo_id | `CREATE INDEX ix_anagrafiche_indirizzi_tipo_indirizzo_id ON anagrafiche.indirizzi USING btree (tipo_indirizzo_id)` |
 | ix_indirizzi_geoloc_gist | `CREATE INDEX ix_indirizzi_geoloc_gist ON anagrafiche.indirizzi USING btree (geoloc)` |
-| ix_indirizzi_soggetto_ruolo_id | `CREATE INDEX ix_indirizzi_soggetto_ruolo_id ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id)` |
-| ix_indirizzi_stato_id | `CREATE INDEX ix_indirizzi_stato_id ON anagrafiche.indirizzi USING btree (stato_id)` |
-| ix_indirizzi_tipo_indirizzo_id | `CREATE INDEX ix_indirizzi_tipo_indirizzo_id ON anagrafiche.indirizzi USING btree (tipo_indirizzo_id)` |
 | pk_indirizzi | `CREATE UNIQUE INDEX pk_indirizzi ON anagrafiche.indirizzi USING btree (id)` |
 | uq_indirizzi_ruolo_tipo | `CREATE UNIQUE INDEX uq_indirizzi_ruolo_tipo ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, tipo_indirizzo_id)` |
 

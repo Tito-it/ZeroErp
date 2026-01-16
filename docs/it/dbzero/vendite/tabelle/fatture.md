@@ -64,7 +64,7 @@
 | ix_fatture_ba_data | `CREATE INDEX ix_fatture_ba_data ON vendite.fatture USING btree (billing_account_id, data)` |
 | ix_fatture_data_contabile | `CREATE INDEX ix_fatture_data_contabile ON vendite.fatture USING btree (data_contabilizzazione)` |
 | ix_fatture_emitt_data | `CREATE INDEX ix_fatture_emitt_data ON vendite.fatture USING btree (emittente_soggetto_ruolo_id, data)` |
-| ix_fatture_stato_doc | `CREATE INDEX ix_fatture_stato_doc ON vendite.fatture USING btree (stato_doc_fiscale_id)` |
+| ix_vendite_fatture_stato_doc_fiscale_id | `CREATE INDEX ix_vendite_fatture_stato_doc_fiscale_id ON vendite.fatture USING btree (stato_doc_fiscale_id)` |
 | pk_fatture | `CREATE UNIQUE INDEX pk_fatture ON vendite.fatture USING btree (id)` |
 | uq_fatture_numero | `CREATE UNIQUE INDEX uq_fatture_numero ON vendite.fatture USING btree (registro_id, anno, COALESCE(serie, ''::character varying), numero) WHERE (numero IS NOT NULL)` |
 | uq_fatture_uid | `CREATE UNIQUE INDEX uq_fatture_uid ON vendite.fatture USING btree (uid)` |

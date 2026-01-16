@@ -33,7 +33,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_ddt_acquisto_r_articolo | `CREATE INDEX ix_ddt_acquisto_r_articolo ON acquisti.ddt_righe USING btree (articolo_id)` |
+| ix_acquisti_ddt_righe_articolo_id | `CREATE INDEX ix_acquisti_ddt_righe_articolo_id ON acquisti.ddt_righe USING btree (articolo_id)` |
 | pk_ddtar | `CREATE UNIQUE INDEX pk_ddtar ON acquisti.ddt_righe USING btree (id)` |
 | uq_ddt_acquisto_r_riga_nr | `CREATE UNIQUE INDEX uq_ddt_acquisto_r_riga_nr ON acquisti.ddt_righe USING btree (ddt_id, riga_nr)` |
 

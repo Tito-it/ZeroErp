@@ -33,9 +33,9 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_mag_ubicazioni_magazzino | `CREATE INDEX ix_mag_ubicazioni_magazzino ON magazzino.ubicazioni USING btree (magazzino_id)` |
-| ix_mag_ubicazioni_parent | `CREATE INDEX ix_mag_ubicazioni_parent ON magazzino.ubicazioni USING btree (parent_id)` |
-| ix_mag_ubicazioni_tipo | `CREATE INDEX ix_mag_ubicazioni_tipo ON magazzino.ubicazioni USING btree (tipo_id)` |
+| ix_magazzino_ubicazioni_magazzino_id | `CREATE INDEX ix_magazzino_ubicazioni_magazzino_id ON magazzino.ubicazioni USING btree (magazzino_id)` |
+| ix_magazzino_ubicazioni_parent_id | `CREATE INDEX ix_magazzino_ubicazioni_parent_id ON magazzino.ubicazioni USING btree (parent_id)` |
+| ix_magazzino_ubicazioni_tipo_id | `CREATE INDEX ix_magazzino_ubicazioni_tipo_id ON magazzino.ubicazioni USING btree (tipo_id)` |
 | pk_mag_ubicazioni | `CREATE UNIQUE INDEX pk_mag_ubicazioni ON magazzino.ubicazioni USING btree (id)` |
 | uq_mag_ubicazioni_mag_codice | `CREATE UNIQUE INDEX uq_mag_ubicazioni_mag_codice ON magazzino.ubicazioni USING btree (magazzino_id, codice)` |
 
