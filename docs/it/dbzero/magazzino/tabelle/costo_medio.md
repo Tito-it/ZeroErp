@@ -29,5 +29,12 @@
 | pk_mag_costo_medio | `CREATE UNIQUE INDEX pk_mag_costo_medio ON magazzino.costo_medio USING btree (id)` |
 | uq_mag_costo_medio_art_mag | `CREATE UNIQUE INDEX uq_mag_costo_medio_art_mag ON magazzino.costo_medio USING btree (articolo_id, magazzino_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_costo_medio_a10_magazzini_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'magazzini', 'attivo', 'magazzino_id')` |
+| trg_costo_medio_a10_magazzini_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'magazzini', 'attivo', 'magazzino_id')` |
+| trg_costo_medio_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

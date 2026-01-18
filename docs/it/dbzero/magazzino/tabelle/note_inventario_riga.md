@@ -42,5 +42,10 @@
 | note_inventario_riga_target_tipo_target_id_anchor_tipo_posi_idx | `CREATE INDEX note_inventario_riga_target_tipo_target_id_anchor_tipo_posi_idx ON magazzino.note_inventario_riga USING btree (target_tipo, target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
 | note_inventario_riga_target_tipo_target_id_target_riga_id_a_idx | `CREATE INDEX note_inventario_riga_target_tipo_target_id_target_riga_id_a_idx ON magazzino.note_inventario_riga USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_note_inventario_riga_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

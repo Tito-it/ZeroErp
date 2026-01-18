@@ -62,8 +62,17 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_fatture_ba_data | `CREATE INDEX ix_fatture_ba_data ON vendite.fatture USING btree (billing_account_id, data)` |
+| ix_fatture_billing_account_id | `CREATE INDEX ix_fatture_billing_account_id ON vendite.fatture USING btree (billing_account_id)` |
 | ix_fatture_data_contabile | `CREATE INDEX ix_fatture_data_contabile ON vendite.fatture USING btree (data_contabilizzazione)` |
 | ix_fatture_emitt_data | `CREATE INDEX ix_fatture_emitt_data ON vendite.fatture USING btree (emittente_soggetto_ruolo_id, data)` |
+| ix_fatture_emittente_soggetto_ruolo_id | `CREATE INDEX ix_fatture_emittente_soggetto_ruolo_id ON vendite.fatture USING btree (emittente_soggetto_ruolo_id)` |
+| ix_fatture_modalita_pagamento_id | `CREATE INDEX ix_fatture_modalita_pagamento_id ON vendite.fatture USING btree (modalita_pagamento_id)` |
+| ix_fatture_registro_id | `CREATE INDEX ix_fatture_registro_id ON vendite.fatture USING btree (registro_id)` |
+| ix_fatture_reseller_soggetto_ruolo_id | `CREATE INDEX ix_fatture_reseller_soggetto_ruolo_id ON vendite.fatture USING btree (reseller_soggetto_ruolo_id)` |
+| ix_fatture_sorgente_tipo_id | `CREATE INDEX ix_fatture_sorgente_tipo_id ON vendite.fatture USING btree (sorgente_tipo_id)` |
+| ix_fatture_termine_pagamento_id | `CREATE INDEX ix_fatture_termine_pagamento_id ON vendite.fatture USING btree (termine_pagamento_id)` |
+| ix_fatture_tipo_doc_fiscale_id | `CREATE INDEX ix_fatture_tipo_doc_fiscale_id ON vendite.fatture USING btree (tipo_doc_fiscale_id)` |
+| ix_fatture_valuta_id | `CREATE INDEX ix_fatture_valuta_id ON vendite.fatture USING btree (valuta_id)` |
 | ix_vendite_fatture_stato_doc_fiscale_id | `CREATE INDEX ix_vendite_fatture_stato_doc_fiscale_id ON vendite.fatture USING btree (stato_doc_fiscale_id)` |
 | pk_fatture | `CREATE UNIQUE INDEX pk_fatture ON vendite.fatture USING btree (id)` |
 | uq_fatture_numero | `CREATE UNIQUE INDEX uq_fatture_numero ON vendite.fatture USING btree (registro_id, anno, COALESCE(serie, ''::character varying), numero) WHERE (numero IS NOT NULL)` |

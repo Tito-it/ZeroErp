@@ -31,5 +31,14 @@
 | pk_fula | `CREATE UNIQUE INDEX pk_fula ON acquisti.ordini_righe_fulfillment USING btree (id)` |
 | uq_ordini_ful_a_pair | `CREATE UNIQUE INDEX uq_ordini_ful_a_pair ON acquisti.ordini_righe_fulfillment USING btree (ordine_riga_id, ddt_riga_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_ordini_righe_fulfillment_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_ordini_righe_fulfillment_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_ordini_righe_fulfillment_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_ordini_righe_fulfillment_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('ordini_righe_fulfillment_id')` |
+| trg_ordini_righe_fulfillment_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('ordini_righe_fulfillment_id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

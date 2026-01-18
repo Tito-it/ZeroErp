@@ -41,5 +41,10 @@
 | note_costo_medio_target_tipo_target_id_anchor_tipo_posizion_idx | `CREATE INDEX note_costo_medio_target_tipo_target_id_anchor_tipo_posizion_idx ON magazzino.note_costo_medio USING btree (target_tipo, target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
 | note_costo_medio_target_tipo_target_id_target_riga_id_ancho_idx | `CREATE INDEX note_costo_medio_target_tipo_target_id_target_riga_id_ancho_idx ON magazzino.note_costo_medio USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_note_costo_medio_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

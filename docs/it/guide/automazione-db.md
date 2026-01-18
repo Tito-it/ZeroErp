@@ -17,12 +17,15 @@
 >
 > * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)
 >
+> * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns)
+>
 > * *Orchestratori:*
 >
 > * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations),  
 > * [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id),  
 >  * [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),  
 >  * [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
+>  * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns),  
 >  * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)  
 
 ---
@@ -41,7 +44,7 @@ Automatizzare attività ripetitive (assegnazione `tx_id`, audit update, storico,
 ## 2) 🧩 Architettura (sintesi)
 
 * **Scope** (`automation_scope` + `fn_resolve_scope` / parametro): delimita gli schemi/tabelle.
-* **Rules** (`automation_rules_tbl`): regole per schema/tabella (TX_ID, AUDIT_UPDATE, STORICO, + STORICO_PROVISION).
+* **Rules** (`automation_rules_tbl`): regole per schema/tabella (TX_ID, AUDIT_UPDATE, STORICO, LOCK_COLUMNS, + STORICO_PROVISION).
 * **Overrides/Exclusions**: colonne non standard e FK da saltare.
 * **Orchestratori**: `fn_run_automations_*` per ogni area.
 * **Audit**: `audit_log` (anche out‑of‑tx via dblink opzionale).
@@ -69,7 +72,15 @@ Trigger `BEFORE UPDATE` → `script.trgfn_upd_audit_data_user_generic()`.
 * Crea `storico.<tabella>` se mancante con struttura standard (FK → PK padre, `snapshot` JSONB, `change_type`, `tipo_operazione`, ecc.).
 * Param opzionale: `create_gin_index` su `snapshot`.
 
-**3.5 ATTIVO (soft‑delete funzionale – policy conservativa)**
+**3.5 LOCK_COLUMNS (blocco colonne critiche)**
+
+Trigger `BEFORE UPDATE OF ...` → `script.trgfn_lock_columns(...)`.
+
+* Usa `automation_rules_tbl` per `name_template` ed `existence_strategy`.
+* La colonna **`codice_interno`** e' implicita: se presente in tabella viene sempre inclusa.
+* Le colonne extra si configurano in `dbops.automation_lock_columns`.
+
+**3.6 ATTIVO (soft‑delete funzionale – policy conservativa)**
 
 L’automazione **ATTIVO** implementa una politica **BLOCK-ONLY** finalizzata a garantire la coerenza logica tra record padre e figli collegati tramite FK.
 
@@ -132,6 +143,12 @@ L’automazione **non modifica mai automaticamente i record figli**.
 * `automation_overrides_cols`: override colonne (`ATTIVO_COL`, `AUDIT_TS`, `AUDIT_USER`, `STORICO_FK`, `STORICIZZA_COL`).
 * `automation_fk_exclusions`: esclude coppie parent/child per ATTIVO.
 
+**4.4 `automation_lock_columns`**
+
+* Configura **colonne extra** da bloccare per singola `schema.tabella`.
+* Campi chiave: `target_schema`, `target_table`, `column_name`, `error_code`, `exec_mode`, `enabled`.
+* Se la colonna non esiste fisicamente nella tabella target, il runner la ignora.
+
 ---
 
 ## 5) 🧠 Naming & idempotenza
@@ -161,7 +178,7 @@ L’automazione **non modifica mai automaticamente i record figli**.
 
 1. Inserisci/aggiorna **rules** (usa `'*all'` dove serve).
 2. (Opzionale) Popola **scope**: righe `('<schema>','*all')` o pattern puntuali.
-3. Esegui **dry‑run** del/i runner interessati (es. `fn_run_automations_storico(..., true)`).
+3. Esegui **dry‑run** del/i runner interessati (es. `fn_run_automations_storico(..., true)` o `fn_run_automations_lock_columns(..., true)`).
 4. Verifica audit → poi **apply** (`p_dry_run=false`).
 5. Controlla i trigger creati (`pg_trigger`) e, per STORICO, la presenza della tabella `storico.<tabella>`.
 
@@ -173,6 +190,7 @@ L’automazione **non modifica mai automaticamente i record figli**.
 * **STORICO** separato da **STORICO_PROVISION**: meno ambiguità tra provisioning e trigger.
 * **Storico table**: stesso nome della base, schema `storico` (niente `_storico`).
 * **Trigger storico**: unificato **UPDATE+DELETE** con default `trgx_z90_{table}_upd_dlt_storico`.
+* **LOCK_COLUMNS**: trigger unico per tabella con `UPDATE OF` sulle colonne effettive e `script.trgfn_lock_columns(...)`.
 * **ATTIVO**: adottata una **policy conservativa BLOCK-ONLY**:
 
   * nessuna cascata automatica;
