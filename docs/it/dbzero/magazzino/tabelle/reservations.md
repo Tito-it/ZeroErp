@@ -37,13 +37,27 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_mag_res_articolo | `CREATE INDEX ix_mag_res_articolo ON magazzino.reservations USING btree (articolo_id)` |
-| ix_mag_res_magazzino | `CREATE INDEX ix_mag_res_magazzino ON magazzino.reservations USING btree (magazzino_id)` |
-| ix_mag_res_sorgente | `CREATE INDEX ix_mag_res_sorgente ON magazzino.reservations USING btree (doc_schema, doc_table, doc_id, doc_riga_id)` |
 | ix_mag_res_stato | `CREATE INDEX ix_mag_res_stato ON magazzino.reservations USING btree (stato_reservation)` |
-| ix_mag_reservations_ubicazione | `CREATE INDEX ix_mag_reservations_ubicazione ON magazzino.reservations USING btree (ubicazione_id)` |
+| ix_magazzino_reservations_articolo_id | `CREATE INDEX ix_magazzino_reservations_articolo_id ON magazzino.reservations USING btree (articolo_id)` |
+| ix_magazzino_reservations_magazzino_id | `CREATE INDEX ix_magazzino_reservations_magazzino_id ON magazzino.reservations USING btree (magazzino_id)` |
+| ix_magazzino_reservations_ubicazione_id | `CREATE INDEX ix_magazzino_reservations_ubicazione_id ON magazzino.reservations USING btree (ubicazione_id)` |
 | pk_mag_reservations | `CREATE UNIQUE INDEX pk_mag_reservations ON magazzino.reservations USING btree (id)` |
 | uq_mag_reservations_docref | `CREATE UNIQUE INDEX uq_mag_reservations_docref ON magazzino.reservations USING btree (doc_schema, doc_table, doc_id, doc_riga_id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_reservations_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id')` |
+| trg_reservations_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id')` |
+| trg_reservations_a10_magazzini_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'magazzini', 'attivo', 'magazzino_id')` |
+| trg_reservations_a10_magazzini_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'magazzini', 'attivo', 'magazzino_id')` |
+| trg_reservations_a10_ubicazioni_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'ubicazioni', 'attivo', 'ubicazione_id')` |
+| trg_reservations_a10_ubicazioni_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'ubicazioni', 'attivo', 'ubicazione_id')` |
+| trg_reservations_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_reservations_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_reservations_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_reservations_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('reservations_id')` |
+| trg_reservations_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('reservations_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

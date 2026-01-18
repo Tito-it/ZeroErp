@@ -12,6 +12,7 @@
 > * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)  
 > * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)    
 > * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
+> * [vendite.contratti](/dbzero/vendite/tabelle/contratti)  
 > * [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)  
 > * [config.modalita_pagamento](/dbzero/config/tabelle/modalita_pagamento)  
 > * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)  
@@ -20,15 +21,13 @@
 >
 >**Approfondimeto funzioni:**
 >
-> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
-> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
-> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+> * [config.sistema_codici](/dbzero/config/manual/sistema_codici)
 
 
 ---
 
 ### 🎯 Scopo Principale
+
 (latest review 02-12-25)
 La tabella `anagrafiche.clienti` memorizza le informazioni contrattuali e di fatturazione di un soggetto per una specifica *istanza* di servizio. Rappresenta la fase in cui un'attivazione (istanza) diventa un cliente ufficiale, includendo dettagli di scadenze, pagamento e classificazioni speciali (PA, split payment).
 

@@ -6,12 +6,15 @@ La tabella **`config.sistema_codici`** definisce le regole per la generazione au
 
 ### 🎯 Scopo Principale
 
+(latest review 18-01-26)
 * **Definizione del formato codice**
-  Consente di specificare per ogni tipo di codice (`codice_tipo`) un **prefisso**, un **separatore** e la **lunghezza numerica** totale, rendendo parametrica la struttura dei codici generati.
+  Consente di specificare per ogni tipo di codice (`codice_interno`) un **prefisso**, un **separatore** e la **lunghezza numerica** totale, rendendo parametrica la struttura dei codici generati.
 * **Configurazione del meccanismo di sequenza**
-  Tramite il flag `usa_sequenza` e l’attributo `nome_sequenza`, si abilita o meno l’utilizzo di una progressione automatica basata su sequenza di database, a garanzia di unicità e ordinarietà.
-* **Attivazione o disattivazione**
-  Il campo `attivo` permette di abilitare o disabilitare temporaneamente il sistema di generazione per un tipo di codice, senza cancellare la configurazione.
+  Tramite il flag `usa_sequenza` si abilita o meno l’utilizzo di una progressione automatica basata su sequenza di database, a garanzia di unicità e ordinarietà.
+* **Aggancio alla tabella target**
+  Le colonne `schema_tabella`, `nome_tabella` e `nome_colonna` definiscono la destinazione del codice e permettono di derivare automaticamente il nome sequenza standard.
+* **Automazione trigger**
+  Le righe con `usa_sequenza = TRUE` attivano automaticamente la creazione di un trigger sulla tabella target che genera il codice quando il campo risulta nullo (o vuoto/0 secondo il tipo).
 
 ---
 
@@ -25,8 +28,8 @@ La tabella **`config.sistema_codici`** definisce le regole per la generazione au
   Numero totale di cifre della parte numerica (es. `6` → da `000001` a `999999`). Se la sequenza supera lo spazio, si deve aggiornare il parametro.
 * **`usa_sequenza`**
   Booleano che, se **true**, indica che il codice numerico è generato tramite una sequenza di database; se **false**, occorre gestire manualmente l’incremento.
-* **`nome_sequenza`**
-  Nome della sequenza di database (es. `seq_ordine`) da cui attingere il valore numerico.
+* **`schema_tabella`**, **`nome_tabella`**, **`nome_colonna`**
+  Identificano la tabella e la colonna a cui si applica la numerazione e servono per calcolare il nome sequenza automatico `<schema>.<tabella>_<colonna>_seq`.
 
 ---
 
@@ -39,7 +42,7 @@ La tabella **`config.sistema_codici`** definisce le regole per la generazione au
 * **Affidabilità della sequenza**
   L’uso di una sequenza di database (quando `usa_sequenza` è **true**) evita collisioni e garantisce incrementi atomici, utili in contesti ad alto carico.
 * **Gestione dinamica**
-  Il flag `attivo` permette di sospendere la generazione di un dato tipo di codice senza rimuoverne la configurazione, utile per archiviare vecchie configurazioni o per esigenze temporanee.
+  Il flag `usa_sequenza` permette di sospendere la generazione di un dato tipo di codice senza rimuoverne la configurazione, utile per archiviare vecchie configurazioni o per esigenze temporanee.
 
 ---
 

@@ -22,7 +22,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| idx_storico_pdp_open | `CREATE INDEX idx_storico_pdp_open ON storico.pdp USING btree (pdp_id) WHERE (valid_to IS NULL)` |
 | idx_storico_pdp_pdp_id | `CREATE INDEX idx_storico_pdp_pdp_id ON storico.pdp USING btree (pdp_id)` |
 | pdp_pkey | `CREATE UNIQUE INDEX pdp_pkey ON storico.pdp USING btree (id)` |
 

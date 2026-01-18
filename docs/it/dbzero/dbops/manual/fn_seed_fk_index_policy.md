@@ -11,12 +11,13 @@
 > * [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)  
 
 
-La funzione **`dbops.fn_seed_fk_index_policy()`** popola automaticamente la tabella `dbops.fk_index_policy` con le foreign key **già indicizzate** ma **non ancora presenti** in policy, marcandole come `consentito = true` e `generated_by_script = true`.
+La funzione **`dbops.fn_seed_fk_index_policy()`** popola automaticamente la tabella `dbops.fk_index_policy` con le foreign key **già indicizzate** ma **non ancora presenti** in policy, **limitandosi agli schemi presenti in `dbops.automation_scope`**, marcandole come `consentito = true` e `generated_by_script = true`.
 
 ---
 
 ### 🎯 Scopo Principale
 
+(latest review 16-01-26)
 * **Sincronizzazione iniziale**
   Aggiunge in `fk_index_policy` tutte le FK con indice esistente rilevate in `vw_fk_con_indice_missing_policy`.
 * **Automazione**
@@ -42,9 +43,6 @@ Questa funzione **non** richiede parametri: agisce su tutti i record presenti ne
    * `consentito = true`
    * `generated_by_script = true`
    * mantenere qualsiasi `note` o valore preesistente se già presente.
-
----
-
 
 ---
 

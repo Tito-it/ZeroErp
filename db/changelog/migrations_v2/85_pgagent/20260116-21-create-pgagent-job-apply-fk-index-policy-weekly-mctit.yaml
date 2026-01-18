@@ -1,0 +1,96 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/85_pgagent/20260116-21-create-pgagent-job-apply-fk-index-policy-weekly-mctit.yaml
+
+  - changeSet:
+      id: 20260116-21-create-pgagent-job-apply-fk-index-policy-weekly
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+        Crea/aggiorna un job pgAgent che esegue ogni domenica alle 23:00
+        il wrapper maintenance.proc_apply_fk_index_policy_job(true).
+      preConditions:
+        - onFail: MARK_RAN
+          onError: CONTINUE
+          sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+              FROM pg_extension
+              WHERE extname = 'pgagent'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+                 DECLARE
+                   v_jobid   INTEGER;
+                   v_classid INTEGER;
+                 BEGIN
+                   -- 1) Classe 'Routine Maintenance'
+                   SELECT jclid INTO v_classid
+                     FROM pgagent.pga_jobclass
+                     WHERE jclname = 'Routine Maintenance'
+                     LIMIT 1;
+
+                     IF v_classid IS NULL THEN
+                       INSERT INTO pgagent.pga_jobclass (jclname, jcldesc)
+                       VALUES ('Routine Maintenance', 'Default job class')
+                       RETURNING jclid INTO v_classid;
+                     END IF;
+
+                   -- 2) Elimina eventuale job omonimo
+                   DELETE FROM pgagent.pga_job
+                   WHERE jobname = 'automations_apply_fk_indexes_policy';
+
+                   -- 3) Crea il job
+                   INSERT INTO pgagent.pga_job(
+                     jobjclid, jobname, jobdesc, jobenabled
+                   ) VALUES (
+                     v_classid,
+                     'automations_apply_fk_indexes_policy',
+                     'Applica policy indici FK ogni domenica ore 23:00 (populate=true)',
+                     true
+                   )
+                   RETURNING jobid INTO v_jobid;
+
+                   -- 4) Schedule: domenica alle 23:00 precise
+                   INSERT INTO pgagent.pga_schedule(
+                     jscjobid, jscname, jscenabled,
+                     jscminutes, jschours, jscweekdays,
+                     jscmonthdays, jscmonths, jscstart
+                   ) VALUES (
+                     v_jobid,
+                     'sun_23',
+                     true,
+                     (SELECT array_agg((i = 0)::boolean)  FROM generate_series(0,59) AS g(i)),
+                     (SELECT array_agg((i = 23)::boolean) FROM generate_series(0,23) AS g(i)),
+                     ARRAY[TRUE,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE]::boolean[],
+                     array_fill(TRUE, ARRAY[32])::boolean[],
+                     array_fill(TRUE, ARRAY[12])::boolean[],
+                     now()
+                   );
+
+                   -- 5) Step: wrapper maintenance
+                   INSERT INTO pgagent.pga_jobstep(
+                     jstjobid, jstname, jstkind, jstcode, jstdbname
+                   ) VALUES (
+                     v_jobid,
+                     'run_apply_fk_index_policy',
+                     's',
+                     $step$
+                        CALL maintenance.proc_apply_fk_index_policy_job(true);
+                     $step$,
+                     current_database()
+                   );
+                 END;
+                 $$;
+
+  - changeSet:
+      id: 20260116-90-create-pgagent-job-apply-fk-index-policy-weekly
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20260116-01-create-pgagent-job-apply-fk-index-policy-weekly

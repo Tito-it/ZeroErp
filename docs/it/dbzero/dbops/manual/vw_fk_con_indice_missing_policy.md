@@ -8,15 +8,16 @@
 >
 > Approfondimento funzioni:   
 >
-> * [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_senza_indice)    
-> * [dbops.vw_duplicate_indexes](/dbzero/dbops/manual/vw_duplicate_indexes)    
+> * [dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice)    
+> * [dbops.vw_duplicate_indexes](/dbzero/dbops/views/vw_duplicate_indexes)    
 
-La view **`dbops.vw_fk_con_indice_missing_policy`** elenca tutte le **foreign key** che **hanno un indice** (prefisso `ix_`) ma **non** sono ancora gestite dalla tabella di policy `dbops.fk_index_policy`. Per ciascuna FK, viene suggerito il comando SQL di creazione dell’indice.
+La view **`dbops.vw_fk_con_indice_missing_policy`** elenca tutte le **foreign key** che **hanno un indice** (prefisso `ix_`) ma **non** sono ancora gestite dalla tabella di policy `dbops.fk_index_policy`, limitandosi **agli schemi presenti in `dbops.automation_scope`**. Per ciascuna FK, viene suggerito il comando SQL di creazione dell’indice.
 
 ---
 
 ### 🎯 Scopo Principale
 
+(latest review 16-01-26)
 * **Identificare gli indici esistenti**
   Trova le FK già indicizzate che non dispongono di una policy dedicata.
 * **Suggerimento DDL**
@@ -49,48 +50,6 @@ La view **`dbops.vw_fk_con_indice_missing_policy`** elenca tutte le **foreign ke
      ```sql
      CREATE INDEX ix_<schema>_<table>_<columns> ON <schema>.<table>(<columns>);
      ```
-
----
-
-### 🔖 DDL della View
-
-```sql
-CREATE OR REPLACE VIEW dbops.vw_fk_con_indice_missing_policy AS
-WITH
-  fk_columns AS (...),
-  fk_fields  AS (...),
-  indexed_columns AS (...),
-  fk_grouped AS (...)
-SELECT
-  fk.schema_name,
-  fk.table_name,
-  fk.constraint_name,
-  fk.fk_cols,
-  idx.index_name,
-  format(
-    'CREATE INDEX ix_%I_%I_%s ON %I.%I(%s);',
-    fk.schema_name,
-    fk.table_name,
-    array_to_string(fk.fk_cols, '_'),
-    fk.schema_name,
-    fk.table_name,
-    array_to_string(fk.fk_cols, ', ')
-  ) AS create_index_suggestion
-FROM fk_grouped fk
-  JOIN indexed_columns idx
-    ON fk.schema_name = idx.schema_name
-   AND fk.table_name  = idx.table_name
-   AND fk.fk_cols     = idx.indexed_cols
-  LEFT JOIN dbops.fk_index_policy pol
-    ON fk.schema_name     = pol.schema_name
-   AND fk.table_name      = pol.table_name
-   AND fk.constraint_name = pol.constraint_name
-WHERE pol.constraint_name IS NULL
-ORDER BY fk.schema_name, fk.table_name;
-
-COMMENT ON VIEW dbops.vw_fk_con_indice_missing_policy IS
-  'Elenco dei vincoli foreign key già indicizzati (prefisso ix_) che non sono ancora definiti in fk_index_policy';
-```
 
 ---
 

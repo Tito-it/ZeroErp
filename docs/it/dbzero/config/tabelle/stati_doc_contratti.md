@@ -26,9 +26,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_stati_doc_contratti_attivo | `CREATE INDEX ix_stati_doc_contratti_attivo ON config.stati_doc_contratti USING btree (attivo)` |
-| ix_stati_doc_contratti_codice_interno_upper | `CREATE INDEX ix_stati_doc_contratti_codice_interno_upper ON config.stati_doc_contratti USING btree (upper((codice_interno)::text))` |
-| ix_stati_doc_contratti_codice_upper | `CREATE INDEX ix_stati_doc_contratti_codice_upper ON config.stati_doc_contratti USING btree (upper((codice)::text))` |
-| ix_stati_doc_contratti_descrizione_upper | `CREATE INDEX ix_stati_doc_contratti_descrizione_upper ON config.stati_doc_contratti USING btree (upper((descrizione)::text))` |
 | pk_stati_doc_contratti | `CREATE UNIQUE INDEX pk_stati_doc_contratti ON config.stati_doc_contratti USING btree (id)` |
 | uq_stati_doc_contratti_codice | `CREATE UNIQUE INDEX uq_stati_doc_contratti_codice ON config.stati_doc_contratti USING btree (codice)` |
 | uq_stati_doc_contratti_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_contratti_codice_interno ON config.stati_doc_contratti USING btree (codice_interno)` |

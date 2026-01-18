@@ -11,6 +11,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 15-01-26)
 `config.termini_pagamento` definisce i **termini (piani) di pagamento** riutilizzabili nel sistema. Ogni record rappresenta una regola parametrica per generare **rate/scadenze** a partire dalla data documento (o da altra data base), con controllo su intervalli, fine mese e ripartizione degli importi.
 
 "Termini" qui sostituisce il concetto di *piano rate* ed è richiamabile da **Cliente / Ordine / Preventivo / Fattura** (con eventuale snapshot sulla fattura) per produrre le righe in `vendite.fatture_scadenze`.
@@ -57,7 +58,6 @@
   * `chk_termini_pagamento_arrotondamento_metodo` → metodi arrotondamento ammessi.
   * `chk_termini_pagamento_intervallo_range` → `0..365` (o `NULL`).
   * `chk_termini_pagamento_intervallo_uso` → lega `tipo_offset` e presenza di `intervallo`.
-* **Indici**: ricerca per `attivo`, `codice(_interno)` e `descrizione` in upper-case per lookup UI.
 
 ---
 

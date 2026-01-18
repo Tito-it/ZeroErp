@@ -28,7 +28,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_ordini_r_ful_v_ddt_riga | `CREATE INDEX ix_ordini_r_ful_v_ddt_riga ON vendite.ordini_righe_fulfillment USING btree (ddt_riga_id)` |
+| ix_vendite_ordini_righe_fulfillment_ddt_riga_id | `CREATE INDEX ix_vendite_ordini_righe_fulfillment_ddt_riga_id ON vendite.ordini_righe_fulfillment USING btree (ddt_riga_id)` |
 | pk_fulv | `CREATE UNIQUE INDEX pk_fulv ON vendite.ordini_righe_fulfillment USING btree (id)` |
 | uq_ordini_r_ful_v_pair | `CREATE UNIQUE INDEX uq_ordini_r_ful_v_pair ON vendite.ordini_righe_fulfillment USING btree (ordine_riga_id, ddt_riga_id)` |
 

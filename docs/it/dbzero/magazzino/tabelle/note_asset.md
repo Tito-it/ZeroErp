@@ -41,5 +41,12 @@
 | note_asset_target_tipo_target_id_anchor_tipo_posizione_seq_idx | `CREATE INDEX note_asset_target_tipo_target_id_anchor_tipo_posizione_seq_idx ON magazzino.note_asset USING btree (target_tipo, target_id, anchor_tipo, posizione, seq) WITH (fillfactor='100', deduplicate_items='true')` |
 | note_asset_target_tipo_target_id_target_riga_id_anchor_tipo_idx | `CREATE INDEX note_asset_target_tipo_target_id_target_riga_id_anchor_tipo_idx ON magazzino.note_asset USING btree (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, seq) WHERE (target_riga_id IS NOT NULL)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_note_asset_a10_assets_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'assets', 'attivo', 'target_id')` |
+| trg_note_asset_a10_assets_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'assets', 'attivo', 'target_id')` |
+| trg_note_asset_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

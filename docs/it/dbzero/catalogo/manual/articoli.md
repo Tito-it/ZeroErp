@@ -71,7 +71,6 @@
 
 ### 🔍 Indicizzazione
 
-* **Ricerca case‑insensitive per codice**: `ix_articoli_codice_upper` su `upper(codice)`.
 * *(Valuta se necessario)* indici su FK usate spesso in filtro: `tipo_voce_id`, `gruppo_voce_id`, `spesa_id`, `iva_id`, `attivo`.
 
 ---
@@ -81,15 +80,7 @@
 
 ### 🔎 Query tipiche
 
-**1) Ricerca per codice case‑insensitive**
-
-```sql
-SELECT a.*
-FROM catalogo.articoli a
-WHERE upper(a.codice) = upper(:codice);
-```
-
-**2) Articoli attivi per tipologia e gruppo**
+**1) Articoli attivi per tipologia e gruppo**
 
 ```sql
 SELECT a.id, a.codice, a.descrizione
@@ -100,7 +91,7 @@ WHERE a.attivo = true
 ORDER BY a.descrizione;
 ```
 
-**3) Articoli compositi con componenti (schema indicativo)**
+**2) Articoli compositi con componenti (schema indicativo)**
 
 ```sql
 SELECT p.codice   AS prodotto,
@@ -113,7 +104,7 @@ WHERE p.is_composito = true
 ORDER BY p.codice, c.codice;
 ```
 
-**4) Verifica coerenza UoM attiva (diagnostica)**
+**3) Verifica coerenza UoM attiva (diagnostica)**
 
 ```sql
 SELECT a.id, a.codice

@@ -11,14 +11,10 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
- BEGIN
-   IF NEW.codice IS NOT NULL THEN
-     NEW.codice := upper(btrim(NEW.codice));
-   ELSE
-     NEW.codice := script.fn_generate_codice('emittenti_fiscali');
-   END IF;
-   RETURN NEW;
- END$function$
+BEGIN
+  RETURN NEW;
+END;
+$function$
 ```
 
 ---

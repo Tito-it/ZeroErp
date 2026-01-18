@@ -6,16 +6,16 @@
 >
 > * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
 >
-> Approfondimenti fuzioni: 
+> Approfondimenti funzioni:
 >
-> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
+> * [config.sistema_codici](/dbzero/config/manual/sistema_codici)
 
 ---
 
 ### 🎯 Scopo Principale
 
 (latest review 28-12-25)
-Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` assicura che ogni record di **`billing_account`** abbia un **`codice (account)`** valido, generandolo automaticamente quando non viene specificato in fase di INSERT o UPDATE.
+Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` applica le **validazioni di business** e normalizza i campi, mentre la generazione del `codice` e' demandata al sistema automatico basato su `config.sistema_codici`.
 
 ---
 
@@ -29,9 +29,9 @@ Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` assicura che ogni
 
 ### 📋 Logica Operativa
 
-1. **Verifica `codice (account)`**
+1. **Normalizzazione `codice (account)`**
 
-   * Se `NEW.codice` è `NULL`, si invoca la funzione `script.fn_generate_codice('billing_account')` per ottenere un nuovo codice.
+   * Se `NEW.codice` è valorizzato, viene normalizzato (trim).
 
 2. **Restituzione record**
 
@@ -42,15 +42,15 @@ Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` assicura che ogni
 ### 🔍 Impatto e Vantaggi
 
 * **Consistenza**: garantisce che nessun record venga creato senza un codice di fatturazione.
-* **Automazione**: solleva l’applicazione dal dover calcolare manualmente i codici, riducendo errori.
-* **Estendibilità**: cambiando il parametro passato a `fn_generate_codice`, è possibile utilizzare lo stesso pattern di generazione su tabelle diverse.
+* **Automazione**: la generazione del codice e' gestita dal trigger automatico su `config.sistema_codici`.
+* **Estendibilita**: la configurazione e' centralizzata in `config.sistema_codici` per tutte le tabelle.
 
 ---
 
 ### ⚠️ Note Operative
 
-* La funzione `script.fn_generate_codice` deve supportare il contesto `'billing_account'` e restituire un valore univoco.
-* In caso di collisione di codici (rare), il trigger non gestisce retry; è consigliabile che `fn_generate_codice` includa un meccanismo di controllo collisione.
+* Assicurarsi che in `config.sistema_codici` sia presente la riga per `codice_interno = 'billing_account'` con `usa_sequenza = TRUE`.
+* La generazione del codice avviene nel trigger automatico sulla tabella target.
 
 ---
 

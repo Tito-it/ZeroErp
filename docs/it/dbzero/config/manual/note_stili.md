@@ -30,6 +30,7 @@ Esempi di stili tipici:
 
 ### 🎯 Scopo Principale
 
+(latest review 15-01-26)
 * Fornire un **catalogo centralizzato** degli stili che possono essere applicati alle note (formattazione e/o semantica).
 * Separare la **semantica dello stile** (es. AVVISO, AVVERTENZA, INFO) dalla renderizzazione effettiva lato UI/templating.
 * Supportare la definizione di **regole visuali e di priorità** per note e messaggi (es. stile per warning, info, errori, note di servizio).
@@ -42,7 +43,7 @@ Esempi di stili tipici:
 
   * campo `varchar(16)` univoco (`uq_cfg_note_stili_codice`);
   * è il **codice utilizzabile da UI, configurazioni e integrazioni** (es. `NORMALE`, `WARN`, `SMALL`);
-  * indicizzato anche in maiuscolo (`ix_cfg_note_stili_codice_upper`) per ottimizzare ricerche case-insensitive.
+  * utilizzato per ricerche e filtri in UI e integrazioni.
 
 * **Codice interno** (`codice_interno`):
 
@@ -54,7 +55,7 @@ Esempi di stili tipici:
 * **Descrizione** (`descrizione`):
 
   * testo leggibile che descrive lo stile (es. "Testo normale", "Avviso importante", "Testo piccolo");
-  * indicizzato tramite `ix_cfg_note_stili_descrizione_upper` per velocizzare ricerche case-insensitive.
+  * usata per ricerca e presentazione in UI e template.
 
 * **Stato di attivazione** (`attivo`):
 
@@ -123,7 +124,6 @@ Sebbene non siano definiti nel DDL riportato, è consigliabile introdurre i segu
 
 * **Uniformità di presentazione**: tutte le componenti che usano note e messaggi condividono lo stesso catalogo stili.
 * **Separa logica da presentazione**: la semantica (NORMALE, AVVISO, ECC.) viene configurata a livello di dominio; la resa grafica viene gestita da frontend/templates.
-* **Ricerca efficiente**: gli indici su `upper(...)` permettono ricerche veloci per codice e descrizione, anche in presenza di input case-insensitive.
 * **Governance**: tramite `attivo`, `note` e `storicizza` è possibile governare in modo fine il ciclo di vita e l’uso degli stili.
 * **Estendibilità futura**: eventuali nuovi stili (es. per canali specifici, mobile vs desktop, stampe fiscali) possono essere introdotti senza impattare le tabelle che li usano.
 

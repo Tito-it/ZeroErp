@@ -47,9 +47,9 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_ordrig_articolo | `CREATE INDEX ix_ordrig_articolo ON vendite.ordini_righe USING btree (articolo_id)` |
-| ix_ordrig_stato_doc | `CREATE INDEX ix_ordrig_stato_doc ON vendite.ordini_righe USING btree (stato_doc_ordine_id)` |
-| ix_ordrig_testata | `CREATE INDEX ix_ordrig_testata ON vendite.ordini_righe USING btree (ordine_id)` |
+| ix_vendite_ordini_righe_articolo_id | `CREATE INDEX ix_vendite_ordini_righe_articolo_id ON vendite.ordini_righe USING btree (articolo_id)` |
+| ix_vendite_ordini_righe_ordine_id | `CREATE INDEX ix_vendite_ordini_righe_ordine_id ON vendite.ordini_righe USING btree (ordine_id)` |
+| ix_vendite_ordini_righe_stato_doc_ordine_id | `CREATE INDEX ix_vendite_ordini_righe_stato_doc_ordine_id ON vendite.ordini_righe USING btree (stato_doc_ordine_id)` |
 | pk_ordrig | `CREATE UNIQUE INDEX pk_ordrig ON vendite.ordini_righe USING btree (id)` |
 | uq_ordini_righe_v_sorgente_fk | `CREATE UNIQUE INDEX uq_ordini_righe_v_sorgente_fk ON vendite.ordini_righe USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |
 | uq_ordrig_riga_nr | `CREATE UNIQUE INDEX uq_ordrig_riga_nr ON vendite.ordini_righe USING btree (ordine_id, riga_nr)` |

@@ -29,9 +29,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_cfg_note_stili_attivo | `CREATE INDEX ix_cfg_note_stili_attivo ON config.note_stili USING btree (attivo)` |
-| ix_cfg_note_stili_codice_interno_upper | `CREATE INDEX ix_cfg_note_stili_codice_interno_upper ON config.note_stili USING btree (upper((codice_interno)::text))` |
-| ix_cfg_note_stili_codice_upper | `CREATE INDEX ix_cfg_note_stili_codice_upper ON config.note_stili USING btree (upper((codice)::text))` |
-| ix_cfg_note_stili_descrizione_upper | `CREATE INDEX ix_cfg_note_stili_descrizione_upper ON config.note_stili USING btree (upper((descrizione)::text))` |
 | pk_config_note_stili | `CREATE UNIQUE INDEX pk_config_note_stili ON config.note_stili USING btree (id)` |
 | uq_cfg_note_stili_codice | `CREATE UNIQUE INDEX uq_cfg_note_stili_codice ON config.note_stili USING btree (codice)` |
 | uq_cfg_note_stili_codice_interno | `CREATE UNIQUE INDEX uq_cfg_note_stili_codice_interno ON config.note_stili USING btree (codice_interno)` |

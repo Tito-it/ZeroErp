@@ -59,14 +59,13 @@
 | Nome | Definizione |
 |------|-------------|
 | ex_clienti_no_overlap_stesso_pdp | `CREATE INDEX ex_clienti_no_overlap_stesso_pdp ON anagrafiche.clienti USING gist (pdp_id, periodo) WHERE ((pdp_id IS NOT NULL) AND (periodo IS NOT NULL))` |
-| ix_anagrafiche_clienti_istanza_id | `CREATE INDEX ix_anagrafiche_clienti_istanza_id ON anagrafiche.clienti USING btree (istanza_utility_id)` |
 | ix_anagrafiche_clienti_iva_id | `CREATE INDEX ix_anagrafiche_clienti_iva_id ON anagrafiche.clienti USING btree (iva_id)` |
 | ix_anagrafiche_clienti_modalita_pagamento_id | `CREATE INDEX ix_anagrafiche_clienti_modalita_pagamento_id ON anagrafiche.clienti USING btree (modalita_pagamento_id)` |
+| ix_anagrafiche_clienti_pdp_id | `CREATE INDEX ix_anagrafiche_clienti_pdp_id ON anagrafiche.clienti USING btree (pdp_id)` |
 | ix_anagrafiche_clienti_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_clienti_soggetto_ruolo_id ON anagrafiche.clienti USING btree (soggetto_ruolo_id)` |
 | ix_anagrafiche_clienti_stato_cliente_id | `CREATE INDEX ix_anagrafiche_clienti_stato_cliente_id ON anagrafiche.clienti USING btree (stato_cliente_id)` |
-| ix_cliente_utility | `CREATE INDEX ix_cliente_utility ON anagrafiche.clienti USING btree (utility_id)` |
+| ix_anagrafiche_clienti_utility_id | `CREATE INDEX ix_anagrafiche_clienti_utility_id ON anagrafiche.clienti USING btree (utility_id)` |
 | ix_clienti_cd_importato | `CREATE INDEX ix_clienti_cd_importato ON anagrafiche.clienti USING btree (codice_cliente_importato)` |
-| ix_clienti_pdp_id | `CREATE INDEX ix_clienti_pdp_id ON anagrafiche.clienti USING btree (pdp_id)` |
 | pk_clienti | `CREATE UNIQUE INDEX pk_clienti ON anagrafiche.clienti USING btree (id)` |
 | uq_clienti_istanza_utility | `CREATE UNIQUE INDEX uq_clienti_istanza_utility ON anagrafiche.clienti USING btree (istanza_utility_id)` |
 

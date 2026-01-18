@@ -23,7 +23,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_articoli_spesa_codice_upper | `CREATE INDEX ix_articoli_spesa_codice_upper ON vendite.articoli_spesa USING btree (upper((codice)::text))` |
 | pk_articoli_spesa | `CREATE UNIQUE INDEX pk_articoli_spesa ON vendite.articoli_spesa USING btree (id)` |
 | uq_articoli_spesa_codice | `CREATE UNIQUE INDEX uq_articoli_spesa_codice ON vendite.articoli_spesa USING btree (codice)` |
 

@@ -35,7 +35,6 @@ Ogni gruppo rappresenta un insieme logico di articoli con finalità di catalogaz
 ### 🔗 Relazioni e Indici
 
 * **Indice univoco**: `uq_articoli_gruppi_codice` garantisce l’unicità del codice.
-* **Indice funzionale**: `ix_articoli_gruppi_codice_upper` abilita ricerche case-insensitive sul campo `codice`.
 * **Relazioni**: utilizzata come riferimento in `vendite.articoli` per la classificazione.
 
 ---

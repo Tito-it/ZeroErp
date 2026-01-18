@@ -15,9 +15,7 @@
 >
 > Approfondimeto funzioni:
 >
-> * [anagrafiche.trgfn_billing_account_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_billing_account_clean_fields)
-> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+> * [anagrafiche.trgfn_billing_account_guard_normalize](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_normalize)
 
 > **Aggiornamenti dicembre 2025:** 
 > Per i dettagli completi, le motivazioni progettuali e tutti i vincoli formali introdotti, consulta la sezione **7** dedicata nella documentazione :
@@ -29,7 +27,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 02-12-25)
+(latest review 16-01-26)
 La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici cliente** per ciascuna `utility`, consentendo:
 
 * **Generazione anticipata** del `codice (account)` in fase precontrattuale.
@@ -72,14 +70,6 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 
 ---
 
-### 🔍 Indicizzazione
-
-* **`ix_billing_account_parent_account_id`**: supporta gerarchie di account tramite `parent_account_id`.
-* **`ix_billing_account_soggetto_ruolo_id`**: ricerca dei codici per soggetto.
-* **`ix_billing_account_utility_id`**: filtri per tipo di servizio.
-
----
-
 ### 💡 Vantaggi Operativi
 
 * **Fatturazione precontrattuale**: codice disponibile anche prima del customer finale.
@@ -104,17 +94,6 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 3. **Coerenza fiscale**
 
    * il `codice (account)` del padre e dei figli deve condividere lo stesso `id_fiscale_univoco_cf_piva` del soggetto.
-
-
----
-
-### ⚙️ Trigger e Funzioni Coinvolte
-
-| Trigger                                        | Evento                  | Funzione                                                   |
-| ---------------------------------------------- | ----------------------- | ---------------------------------------------------------- |
-| `trg_billing_account_clean_fields_ins_upd`     | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_billing_account_clean_fields_ins_upd()` |
-| `trg_billing_account_gen_account_code_ins_upd` | BEFORE INSERT OR UPDATE | `script.fn_generate_codice('billing_account')`             |
-| `trg_billing_account_audit_data_user_upd`      | BEFORE UPDATE           | `script.trgfn_audit_data_user_generic()`                   |
 
 ---
 

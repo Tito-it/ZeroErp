@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - logicalFilePath: db/changelog/migrations_v2/20_code/dbops/20260116-07-populate-fk-index-policy-mctit.yaml
+  - changeSet:
+      id: 20260116-07-populate-fk-index-policy
+      author: mctit
+      runAlways: false
+      runOnChange: false
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT dbops.fn_populate_fk_index_policy();

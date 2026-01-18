@@ -28,7 +28,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_unita_organizzative_parent_id | `CREATE INDEX ix_unita_organizzative_parent_id ON config.unita_organizzative USING btree (parent_id)` |
+| ix_config_unita_organizzative_parent_id | `CREATE INDEX ix_config_unita_organizzative_parent_id ON config.unita_organizzative USING btree (parent_id)` |
 | pk_unita_organizzative | `CREATE UNIQUE INDEX pk_unita_organizzative ON config.unita_organizzative USING btree (id)` |
 | uq_unita_organizzative_codice | `CREATE UNIQUE INDEX uq_unita_organizzative_codice ON config.unita_organizzative USING btree (codice)` |
 | uq_unita_organizzative_codice_interno | `CREATE UNIQUE INDEX uq_unita_organizzative_codice_interno ON config.unita_organizzative USING btree (codice_interno)` |

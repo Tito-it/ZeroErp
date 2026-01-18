@@ -155,6 +155,10 @@ Questo garantisce **osservabilità completa** del comportamento dell’automazio
 
 ---
 
+**Nota**: **l’automazione ATTIVO viene applicata solo alle FK con colonna che termina in `_id`**; in caso contrario la regola viene saltata per evitare riferimenti a codici testuali o chiavi non id.
+
+---
+
 ### 🔐 Permessi e sicurezza
 
 * Richiede privilegi DDL sugli schemi target.

@@ -23,7 +23,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_articoli_tipologie_codice_upper | `CREATE INDEX ix_articoli_tipologie_codice_upper ON vendite.articoli_tipologie USING btree (upper((codice)::text))` |
 | pk_articoli_tipologie | `CREATE UNIQUE INDEX pk_articoli_tipologie ON vendite.articoli_tipologie USING btree (id)` |
 | uq_articoli_tipologie_codice | `CREATE UNIQUE INDEX uq_articoli_tipologie_codice ON vendite.articoli_tipologie USING btree (codice)` |
 

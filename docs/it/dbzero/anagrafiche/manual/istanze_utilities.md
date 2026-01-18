@@ -17,7 +17,7 @@
 >
 > * [anagrafiche.trgfn_istanze_utilities_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_clean_fields)   
 > * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
-> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)   
+> * [config.sistema_codici](/dbzero/config/manual/sistema_codici)   
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
@@ -61,7 +61,7 @@
 
 * **Tracciabilità subentri**: `parent_istanza_id` consente di ricostruire facilmente la sequenza di attivazioni.
 * **Flessibilità**: supporto per istanze senza indirizzo tramite flag `fittizia`.
-* **Coerenza**: `codice_istanza` e `tx_id` generati automaticamente via trigger.
+* **Coerenza**: `codice_istanza` e `tx_id` generati automaticamente via trigger (sistema_codici + tx_id).
 
 ---
 

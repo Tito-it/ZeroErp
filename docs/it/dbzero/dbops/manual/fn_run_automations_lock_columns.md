@@ -3,17 +3,15 @@
 > 👀 **Vedi anche**
 >
 > Guide:
-> * [Automazione DB](/guide/automazione-db)
+> * [Automazione DB](/guide/automazione-db)   
 >
-> Approfondimento tabelle:
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
-> * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns)
+> Approfondimento tabelle:  
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
+> * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns)   
 >
-> Approfondimento funzioni:
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
->
-> Approfondimento trigger:
-> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
+> Approfondimento funzioni:    
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)    
+> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)    
 
 ---
 

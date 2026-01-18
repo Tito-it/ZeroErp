@@ -43,5 +43,16 @@
 | uq_mag_trasf_sorgente_fk | `CREATE UNIQUE INDEX uq_mag_trasf_sorgente_fk ON magazzino.trasferimenti USING btree (sorgente_tipo_id, sorgente_uid) WHERE (sorgente_tipo_id IS NOT NULL)` |
 | uq_mag_trasferimenti_sorgenti_fk | `CREATE UNIQUE INDEX uq_mag_trasferimenti_sorgenti_fk ON magazzino.trasferimenti USING btree (sorgenti_tipo_id, sorgenti_uid) WHERE ((sorgenti_tipo_id IS NOT NULL) AND (sorgenti_uid IS NOT NULL))` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_trasferimenti_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgenti_tipo_id')` |
+| trg_trasferimenti_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgenti_tipo_id')` |
+| trg_trasferimenti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_trasferimenti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_trasferimenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_trasferimenti_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('trasferimenti_id')` |
+| trg_trasferimenti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('trasferimenti_id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

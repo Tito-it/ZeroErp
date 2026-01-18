@@ -23,9 +23,9 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_config_tipi_utenze_iva_id | `CREATE INDEX ix_config_tipi_utenze_iva_id ON config.tipi_utenze USING btree (iva_id)` |
+| ix_config_tipi_utenze_utility_id | `CREATE INDEX ix_config_tipi_utenze_utility_id ON config.tipi_utenze USING btree (utility_id)` |
 | ix_tipi_utenze_descrizione | `CREATE INDEX ix_tipi_utenze_descrizione ON config.tipi_utenze USING btree (descrizione)` |
-| ix_tipi_utenze_iva_id | `CREATE INDEX ix_tipi_utenze_iva_id ON config.tipi_utenze USING btree (iva_id)` |
-| ix_tipi_utenze_utility_id | `CREATE INDEX ix_tipi_utenze_utility_id ON config.tipi_utenze USING btree (utility_id)` |
 | pk_tipi_utenze | `CREATE UNIQUE INDEX pk_tipi_utenze ON config.tipi_utenze USING btree (id)` |
 | uq_tipi_utenze_codice | `CREATE UNIQUE INDEX uq_tipi_utenze_codice ON config.tipi_utenze USING btree (codice)` |
 

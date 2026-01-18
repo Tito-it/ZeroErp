@@ -91,7 +91,7 @@ WHERE n.nspname = ANY (ARRAY['dbops', 'script']);
 
 ### 💡 Vantaggi Operativi
 
-* **Rapidità di analisi**: evita join manuali su `pg_class`, `pg_namespace` e `pg_roles`.
+* **Rapidità di analisi**: evita join viewsi su `pg_class`, `pg_namespace` e `pg_roles`.
 * **Auditing e documentazione**: consente di scoprire oggetti orfani o privi di commento.
 * **Scripting**: facilita la generazione di report ad-hoc sul catalogo di sistema.
 

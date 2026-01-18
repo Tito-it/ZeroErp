@@ -1,9 +1,0 @@
-id,codice,descrizione,codice_interno,data_insert,user_insert,data_update,user_update
-1,CLIENTE,Cliente,CL,2025-04-02 22:59:55.15616+02,postgres,2025-09-12 15:21:03.181122+02,titodb
-2,FORNITORE,Fornitore,FO,2025-04-02 22:59:55.15616+02,postgres,2025-09-12 15:21:03.181122+02,titodb
-3,GESTORE,Gestore,GE,2025-04-02 22:59:55.15616+02,postgres,2025-09-12 15:21:03.181122+02,titodb
-4,VENDITORE,Venditore,VE,2025-04-05 21:01:33.884337+02,postgres,2025-09-12 15:21:03.181122+02,titodb
-5,DISTRIBUT,Distributore,DI,2025-04-05 21:02:13.92874+02,postgres,2025-09-12 15:21:03.181122+02,titodb
-6,EMIT-FIS,Emittente fiscale,EMIT-FIS,2025-09-04 11:10:14.973904+02,postgres,2025-09-12 15:21:03.181122+02,titodb
-7,VETTORE,Vettore,VET,2025-09-04 11:31:25.324261+02,postgres,2025-09-12 15:21:03.181122+02,titodb
-8,RESELLER,Reseller,RES,2025-09-04 11:31:47.566658+02,postgres,2025-09-12 15:21:03.181122+02,titodb

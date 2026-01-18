@@ -59,7 +59,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_ao_stato_doc_ordine | `CREATE INDEX ix_ao_stato_doc_ordine ON acquisti.ordini USING btree (stato_doc_ordine_id)` |
+| ix_acquisti_ordini_stato_doc_ordine_id | `CREATE INDEX ix_acquisti_ordini_stato_doc_ordine_id ON acquisti.ordini USING btree (stato_doc_ordine_id)` |
 | ix_ordini_ao_fornitore_stato_data | `CREATE INDEX ix_ordini_ao_fornitore_stato_data ON acquisti.ordini USING btree (soggetto_ruolo_id, stato_doc_ordine_id, data)` |
 | pk_ordini_a | `CREATE UNIQUE INDEX pk_ordini_a ON acquisti.ordini USING btree (id)` |
 | uq_ordini_ao_anno_serie_numero | `CREATE UNIQUE INDEX uq_ordini_ao_anno_serie_numero ON acquisti.ordini USING btree (anno, serie, numero) WHERE (numero IS NOT NULL)` |
@@ -71,7 +71,22 @@
 |------|--------|--------|--------|
 | trg_ordini_a10_ao_only_consegna_tipo_con_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION acquisti.trgfn_acq_ordini_only_consegna_tipo_con()` |
 | trg_ordini_a10_ao_only_consegna_tipo_con_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION acquisti.trgfn_acq_ordini_only_consegna_tipo_con()` |
+| trg_ordini_a10_aspetti_beni_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aspetti_beni', 'attivo', 'aspetto_bene_id')` |
+| trg_ordini_a10_aspetti_beni_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aspetti_beni', 'attivo', 'aspetto_bene_id')` |
+| trg_ordini_a10_causali_trasporto_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'causali_trasporto', 'attivo', 'causale_trasporto_id')` |
+| trg_ordini_a10_causali_trasporto_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'causali_trasporto', 'attivo', 'causale_trasporto_id')` |
 | trg_ordini_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('numero', 'CODICE_NON_MODIFICABILE')` |
+| trg_ordini_a10_modalita_addebito_trasporto_require_attiv_dc2c74 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'modalita_addebito_trasporto', 'attivo', 'modalita_addebito_trasporto_id')` |
+| trg_ordini_a10_modalita_addebito_trasporto_require_attiv_dc2c74 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'modalita_addebito_trasporto', 'attivo', 'modalita_addebito_trasporto_id')` |
+| trg_ordini_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
+| trg_ordini_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
+| trg_ordini_a10_stati_doc_ordini_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ordini', 'attivo', 'stato_doc_ordine_id')` |
+| trg_ordini_a10_stati_doc_ordini_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ordini', 'attivo', 'stato_doc_ordine_id')` |
+| trg_ordini_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_ordini_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_ordini_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_ordini_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('ordini_id')` |
+| trg_ordini_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('ordini_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

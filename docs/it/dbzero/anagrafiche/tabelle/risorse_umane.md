@@ -34,9 +34,9 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_risorse_umane_qualifica_id | `CREATE INDEX ix_risorse_umane_qualifica_id ON anagrafiche.risorse_umane USING btree (qualifica_id)` |
-| ix_risorse_umane_soggetto_id | `CREATE INDEX ix_risorse_umane_soggetto_id ON anagrafiche.risorse_umane USING btree (soggetto_id)` |
-| ix_risorse_umane_unita_organizzativa_id | `CREATE INDEX ix_risorse_umane_unita_organizzativa_id ON anagrafiche.risorse_umane USING btree (unita_organizzativa_id)` |
+| ix_anagrafiche_risorse_umane_qualifica_id | `CREATE INDEX ix_anagrafiche_risorse_umane_qualifica_id ON anagrafiche.risorse_umane USING btree (qualifica_id)` |
+| ix_anagrafiche_risorse_umane_soggetto_id | `CREATE INDEX ix_anagrafiche_risorse_umane_soggetto_id ON anagrafiche.risorse_umane USING btree (soggetto_id)` |
+| ix_anagrafiche_risorse_umane_unita_organizzativa_id | `CREATE INDEX ix_anagrafiche_risorse_umane_unita_organizzativa_id ON anagrafiche.risorse_umane USING btree (unita_organizzativa_id)` |
 | pk_risorse_umane | `CREATE UNIQUE INDEX pk_risorse_umane ON anagrafiche.risorse_umane USING btree (id)` |
 | uq_risorse_umane_soggetto_ruolo | `CREATE UNIQUE INDEX uq_risorse_umane_soggetto_ruolo ON anagrafiche.risorse_umane USING btree (soggetto_ruolo_id)` |
 

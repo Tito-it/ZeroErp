@@ -28,9 +28,9 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_fatture_indir_fattura | `CREATE INDEX ix_fatture_indir_fattura ON vendite.fatture_indirizzi USING btree (fattura_id)` |
-| ix_fatture_indirizzi_origine_indirizzo | `CREATE INDEX ix_fatture_indirizzi_origine_indirizzo ON vendite.fatture_indirizzi USING btree (origine_indirizzo_id)` |
-| ix_fatture_indirizzi_origine_sog_ruolo | `CREATE INDEX ix_fatture_indirizzi_origine_sog_ruolo ON vendite.fatture_indirizzi USING btree (origine_soggetto_ruolo_id)` |
+| ix_vendite_fatture_indirizzi_fattura_id | `CREATE INDEX ix_vendite_fatture_indirizzi_fattura_id ON vendite.fatture_indirizzi USING btree (fattura_id)` |
+| ix_vendite_fatture_indirizzi_origine_indirizzo_id | `CREATE INDEX ix_vendite_fatture_indirizzi_origine_indirizzo_id ON vendite.fatture_indirizzi USING btree (origine_indirizzo_id)` |
+| ix_vendite_fatture_indirizzi_origine_soggetto_ruolo_id | `CREATE INDEX ix_vendite_fatture_indirizzi_origine_soggetto_ruolo_id ON vendite.fatture_indirizzi USING btree (origine_soggetto_ruolo_id)` |
 | pk_fatture_indirizzi | `CREATE UNIQUE INDEX pk_fatture_indirizzi ON vendite.fatture_indirizzi USING btree (id)` |
 | uq_fatture_indirizzi_uno_per_tipo_ | `CREATE UNIQUE INDEX uq_fatture_indirizzi_uno_per_tipo_ ON vendite.fatture_indirizzi USING btree (fattura_id, tipo_indirizzo_id)` |
 

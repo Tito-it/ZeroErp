@@ -13,7 +13,9 @@ WITH fk_columns AS (
            FROM ((pg_constraint con
              JOIN pg_class rel ON ((rel.oid = con.conrelid)))
              JOIN pg_namespace nsp ON ((nsp.oid = rel.relnamespace)))
-          WHERE (con.contype = 'f'::"char")
+          WHERE ((con.contype = 'f'::"char") AND (EXISTS ( SELECT 1
+                   FROM dbops.automation_scope sc
+                  WHERE (sc.schema_name = nsp.nspname))))
         ), fk_fields AS (
          SELECT fk_1.constraint_name,
             fk_1.schema_name,
@@ -34,7 +36,24 @@ WITH fk_columns AS (
              JOIN pg_namespace n ON ((n.oid = t.relnamespace)))
              JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY x(attnum, ordinality) ON (true))
              JOIN pg_attribute a ON (((a.attrelid = t.oid) AND (a.attnum = x.attnum))))
+          WHERE (EXISTS ( SELECT 1
+                   FROM dbops.automation_scope sc
+                  WHERE (sc.schema_name = n.nspname)))
           GROUP BY i.relname, n.nspname, t.relname
+        UNION
+         SELECT c.conname AS index_name,
+            n.nspname AS schema_name,
+            t.relname AS table_name,
+            array_agg(a.attname ORDER BY k.ordinality) AS indexed_cols
+           FROM ((((pg_constraint c
+             JOIN pg_class t ON ((t.oid = c.conrelid)))
+             JOIN pg_namespace n ON ((n.oid = t.relnamespace)))
+             JOIN LATERAL unnest(c.conkey) WITH ORDINALITY k(attnum, ordinality) ON (true))
+             JOIN pg_attribute a ON (((a.attrelid = t.oid) AND (a.attnum = k.attnum))))
+          WHERE ((c.contype = 'u'::"char") AND (EXISTS ( SELECT 1
+                   FROM dbops.automation_scope sc
+                  WHERE (sc.schema_name = n.nspname))))
+          GROUP BY c.conname, n.nspname, t.relname
         ), fk_grouped AS (
          SELECT fk_fields.constraint_name,
             fk_fields.schema_name,

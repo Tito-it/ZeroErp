@@ -94,20 +94,9 @@ BEGIN
     INTO v_fk_val_text
     USING NEW;
 
-  -- FK nulla? Non ammesso con figlio attivo o senza colonna attivo
+  -- FK NULL ammessa: se non valorizzata, non applicare il controllo sul padre
   IF v_fk_val_text IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database',
-      TG_NAME,
-      'E_ATTIVO_REQUIRE',
-      jsonb_build_object(
-        'parent_table', v_parent_schema||'.'||v_parent_table,
-        'child_table',  TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
-        'fk_col',       v_fk_col
-      ),
-      NULL::uuid,
-      'FK NULL non ammessa per figlio attivo'
-    );
+    RETURN NEW;
   END IF;
 
   -- Ricava il tipo della PK del padre per cast corretto (uuid/bigint/...)

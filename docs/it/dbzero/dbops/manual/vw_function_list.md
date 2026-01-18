@@ -6,7 +6,7 @@
 >
 > Altre view di catalogazione:
 >  
-> * [dbops.vw_catalogo_oggetti](/dbzero/dbops/manual/vw_catalogo_oggetti)  
+> * [dbops.vw_catalogo_oggetti](/dbzero/dbops/views/vw_catalogo_oggetti)  
 
 La view **`dbops.vw_function_list`** fornisce un inventario completo delle funzioni definite negli schemi **`dbops`** e **`script`**, mostrando firma, tipo di ritorno, numero di parametri e commenti associati.
 

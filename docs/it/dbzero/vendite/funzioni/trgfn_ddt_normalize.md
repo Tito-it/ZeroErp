@@ -13,13 +13,14 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_normalize()
 AS $function$
 BEGIN
   ----------------------------------------------------------------
-  -- Generazione codice/anno/data SOLO in INSERT e SOLO se numero mancante
-  IF TG_OP = 'INSERT' AND (NEW.numero IS NULL OR btrim(NEW.numero) = '') THEN
-    NEW.numero := script.fn_generate_codice('ddt');
-   
-    -- imposta anno e data ai valori correnti di sistema
-    NEW.anno := EXTRACT(YEAR FROM CURRENT_DATE)::smallint;
-    NEW.data := CURRENT_DATE;
+  -- Imposta anno/data se numero e' presente e anno/data mancanti
+  IF TG_OP = 'INSERT' AND (NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '') THEN
+    IF NEW.anno IS NULL OR NEW.anno = 0 THEN
+      NEW.anno := EXTRACT(YEAR FROM CURRENT_DATE)::smallint;
+    END IF;
+    IF NEW.data IS NULL OR NEW.data = 0 THEN
+      NEW.data := CURRENT_DATE;
+    END IF;
   END IF;
 
   RETURN NEW;

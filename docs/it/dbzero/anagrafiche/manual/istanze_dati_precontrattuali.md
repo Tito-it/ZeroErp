@@ -9,6 +9,7 @@
 > Approfondimento tabelle:
 >
 > * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
 > * [config.utilities](/dbzero/config/tabelle/utilities)
 > * [config.tipi_utenze](/dbzero/config/tabelle/tipi_utenze)
 > * [config.classi_utenze](/dbzero/config/tabelle/classi_utenze)
@@ -16,11 +17,6 @@
 > * [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)
 > * [vendite.regole_fatturazione_articolo](/dbzero/vendite/tabelle/regole_fatturazione_articolo)
 >
-> Trigger/Funzioni correlate:
->
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
-> * [script.trgfnaudit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
-> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
 ---
 

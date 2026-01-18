@@ -38,7 +38,6 @@ La tabella **`vendite.articoli_spesa`** mappa gli **articoli** su specifiche **v
 
 * **Relazioni**: utilizzata come riferimento in `vendite.articoli` per associare ogni articolo alla propria voce di spesa.
 * **Indice univoco**: `uq_articoli_spesa_codice` garantisce l’unicità del codice.
-* **Indice funzionale**: `ix_articoli_spesa_codice_upper` abilita ricerche **case-insensitive** su `codice`.
 
 
 ---

@@ -36,7 +36,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_ddt_vendita_r_articolo | `CREATE INDEX ix_ddt_vendita_r_articolo ON vendite.ddt_righe USING btree (articolo_id)` |
+| ix_vendite_ddt_righe_articolo_id | `CREATE INDEX ix_vendite_ddt_righe_articolo_id ON vendite.ddt_righe USING btree (articolo_id)` |
 | pk_ddtvr | `CREATE UNIQUE INDEX pk_ddtvr ON vendite.ddt_righe USING btree (id)` |
 | uq_ddt_vendita_r_riga_nr | `CREATE UNIQUE INDEX uq_ddt_vendita_r_riga_nr ON vendite.ddt_righe USING btree (ddt_id, riga_nr)` |
 

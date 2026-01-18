@@ -43,7 +43,7 @@ La funzione **`trgfn_child_requires_active_parent`** è una **trigger function**
 
   * Valida per `INSERT` e `UPDATE`.
   * Se il figlio ha `attivo`, il controllo vale **solo** quando `NEW.attivo = TRUE`.
-  * Se la FK è `NULL` mentre il figlio è attivo → errore.
+  * Se la FK è `NULL` il controllo sul padre viene **bypassato** (FK opzionale).
   * Verifica che il padre esista e che `parent_attivo_col = TRUE`.
   * Se il padre non esiste o è disattivo → errore.
 
@@ -79,4 +79,3 @@ EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(
 ---
 
 > 🧠 **In sintesi**: `trgfn_child_requires_active_parent` garantisce che un figlio **attivo** possa puntare **solo** a un padre attivo, rafforzando la coerenza tra relazioni padre‑figlio.
-

@@ -33,8 +33,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_tsd_tipi_indirizzo_tipo_indirizzo | `CREATE INDEX ix_tsd_tipi_indirizzo_tipo_indirizzo ON config.tipi_soggetto_dettaglio_tipi_indirizzo USING btree (tipo_indirizzo_id)` |
-| ix_tsd_tipi_indirizzo_tipo_soggetto_dettaglio | `CREATE INDEX ix_tsd_tipi_indirizzo_tipo_soggetto_dettaglio ON config.tipi_soggetto_dettaglio_tipi_indirizzo USING btree (tipo_soggetto_dettaglio_id)` |
+| ix_config_tipi_soggetto_dettaglio_tipi_indirizzo_tipo_indirizzo | `CREATE INDEX ix_config_tipi_soggetto_dettaglio_tipi_indirizzo_tipo_indirizzo ON config.tipi_soggetto_dettaglio_tipi_indirizzo USING btree (tipo_indirizzo_id)` |
+| ix_config_tipi_soggetto_dettaglio_tipi_indirizzo_tipo_soggetto_ | `CREATE INDEX ix_config_tipi_soggetto_dettaglio_tipi_indirizzo_tipo_soggetto_ ON config.tipi_soggetto_dettaglio_tipi_indirizzo USING btree (tipo_soggetto_dettaglio_id)` |
 | pk_tipi_soggetto_dettaglio_tipi_indirizzo | `CREATE UNIQUE INDEX pk_tipi_soggetto_dettaglio_tipi_indirizzo ON config.tipi_soggetto_dettaglio_tipi_indirizzo USING btree (id)` |
 | uq_tipi_soggetto_dettaglio_tipi_indirizzo_tipo_soggetto_tipo | `CREATE UNIQUE INDEX uq_tipi_soggetto_dettaglio_tipi_indirizzo_tipo_soggetto_tipo ON config.tipi_soggetto_dettaglio_tipi_indirizzo USING btree (tipo_soggetto_dettaglio_id, tipo_indirizzo_id)` |
 

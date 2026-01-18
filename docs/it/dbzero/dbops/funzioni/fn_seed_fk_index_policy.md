@@ -20,7 +20,6 @@ AS $function$
         dll_command,
         consentito,
         generated_by_script
-        
       )
       SELECT
         vw.schema_name,
@@ -29,8 +28,12 @@ AS $function$
         vw.create_index_suggestion,
         true,
         true
-        
       FROM dbops.vw_fk_con_indice_missing_policy vw
+      WHERE EXISTS (
+        SELECT 1
+          FROM dbops.automation_scope sc
+         WHERE sc.schema_name = vw.schema_name
+      )
       ON CONFLICT (schema_name, table_name, constraint_name) DO NOTHING;
     END;
     $function$

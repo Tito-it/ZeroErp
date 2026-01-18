@@ -38,8 +38,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_contrighe_articolo | `CREATE INDEX ix_contrighe_articolo ON vendite.contratti_righe USING btree (articolo_id)` |
-| ix_contrighe_contratto | `CREATE INDEX ix_contrighe_contratto ON vendite.contratti_righe USING btree (contratto_id)` |
+| ix_vendite_contratti_righe_articolo_id | `CREATE INDEX ix_vendite_contratti_righe_articolo_id ON vendite.contratti_righe USING btree (articolo_id)` |
+| ix_vendite_contratti_righe_contratto_id | `CREATE INDEX ix_vendite_contratti_righe_contratto_id ON vendite.contratti_righe USING btree (contratto_id)` |
 | pk_contratti_righe | `CREATE UNIQUE INDEX pk_contratti_righe ON vendite.contratti_righe USING btree (id)` |
 
 ## 🚨 Trigger

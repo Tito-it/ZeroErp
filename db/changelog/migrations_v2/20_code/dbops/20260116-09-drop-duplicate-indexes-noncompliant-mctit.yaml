@@ -1,0 +1,71 @@
+databaseChangeLog:
+  - logicalFilePath: db/changelog/migrations_v2/20_code/dbops/20260116-09-drop-duplicate-indexes-noncompliant-mctit.yaml
+  - changeSet:
+      id: 20260116-09-drop-duplicate-indexes-noncompliant
+      author: mctit
+      runAlways: false
+      runOnChange: false
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                r RECORD;
+              BEGIN
+                FOR r IN
+                  WITH dup AS (
+                    SELECT d.*
+                    FROM dbops.vw_duplicate_indexes d
+                  ),
+                  expanded AS (
+                    SELECT
+                      d.schema_name,
+                      d.table_name,
+                      d.index_columns,
+                      unnest(d.duplicate_index_names) AS index_name
+                    FROM dup d
+                  ),
+                  idxinfo AS (
+                    SELECT
+                      e.schema_name,
+                      e.table_name,
+                      e.index_columns,
+                      e.index_name,
+                      ix.indisunique AS is_unique,
+                      (e.index_name LIKE format('ix_%s_%%', e.schema_name)) AS is_compliant
+                    FROM expanded e
+                    JOIN pg_namespace n
+                      ON n.nspname = e.schema_name
+                    JOIN pg_class i
+                      ON i.relname = e.index_name
+                     AND i.relnamespace = n.oid
+                    JOIN pg_index ix
+                      ON ix.indexrelid = i.oid
+                  ),
+                  has_compliant AS (
+                    SELECT
+                      schema_name,
+                      table_name,
+                      index_columns,
+                      bool_or(is_compliant) AS any_compliant
+                    FROM idxinfo
+                    GROUP BY schema_name, table_name, index_columns
+                  )
+                  SELECT
+                    i.schema_name,
+                    i.index_name
+                  FROM idxinfo i
+                  JOIN has_compliant hc
+                    ON hc.schema_name = i.schema_name
+                   AND hc.table_name = i.table_name
+                   AND hc.index_columns = i.index_columns
+                  WHERE i.index_name LIKE 'ix_%'
+                    AND i.is_unique = false
+                    AND hc.any_compliant = true
+                    AND i.is_compliant = false
+                  ORDER BY 1, 2
+                LOOP
+                  EXECUTE format('DROP INDEX IF EXISTS %I.%I', r.schema_name, r.index_name);
+                END LOOP;
+              END $$;

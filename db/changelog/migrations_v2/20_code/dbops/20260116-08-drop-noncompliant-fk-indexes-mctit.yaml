@@ -1,0 +1,26 @@
+databaseChangeLog:
+  - logicalFilePath: db/changelog/migrations_v2/20_code/dbops/20260116-08-drop-noncompliant-fk-indexes-mctit.yaml
+  - changeSet:
+      id: 20260116-08-drop-noncompliant-fk-indexes
+      author: mctit
+      runAlways: false
+      runOnChange: false
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                r RECORD;
+              BEGIN
+                FOR r IN
+                  SELECT DISTINCT
+                    v.schema_name,
+                    v.index_name
+                  FROM dbops.vw_fk_con_indice_missing_policy v
+                  WHERE v.index_name LIKE 'ix_%'
+                  ORDER BY 1, 2
+                LOOP
+                  EXECUTE format('DROP INDEX IF EXISTS %I.%I', r.schema_name, r.index_name);
+                END LOOP;
+              END $$;

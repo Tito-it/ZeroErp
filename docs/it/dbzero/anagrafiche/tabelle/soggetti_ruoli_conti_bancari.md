@@ -35,9 +35,9 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_soggetti_ruoli_conti_bancari_conto_bancario_id | `CREATE INDEX ix_soggetti_ruoli_conti_bancari_conto_bancario_id ON anagrafiche.soggetti_ruoli_conti_bancari USING btree (conto_bancario_id)` |
+| ix_anagrafiche_soggetti_ruoli_conti_bancari_conto_bancario_id | `CREATE INDEX ix_anagrafiche_soggetti_ruoli_conti_bancari_conto_bancario_id ON anagrafiche.soggetti_ruoli_conti_bancari USING btree (conto_bancario_id)` |
+| ix_anagrafiche_soggetti_ruoli_conti_bancari_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_soggetti_ruoli_conti_bancari_soggetto_ruolo_id ON anagrafiche.soggetti_ruoli_conti_bancari USING btree (soggetto_ruolo_id)` |
 | ix_soggetti_ruoli_conti_bancari_predef_per_uso | `CREATE UNIQUE INDEX ix_soggetti_ruoli_conti_bancari_predef_per_uso ON anagrafiche.soggetti_ruoli_conti_bancari USING btree (soggetto_ruolo_id, uso) WHERE (predefinito = true)` |
-| ix_soggetti_ruoli_conti_bancari_soggetto_ruolo_id | `CREATE INDEX ix_soggetti_ruoli_conti_bancari_soggetto_ruolo_id ON anagrafiche.soggetti_ruoli_conti_bancari USING btree (soggetto_ruolo_id)` |
 | pk_soggetti_ruoli_conti_bancari | `CREATE UNIQUE INDEX pk_soggetti_ruoli_conti_bancari ON anagrafiche.soggetti_ruoli_conti_bancari USING btree (id)` |
 | uq_soggetti_ruoli_conti_bancari_soggetto_ruolo_id_conto_bancari | `CREATE UNIQUE INDEX uq_soggetti_ruoli_conti_bancari_soggetto_ruolo_id_conto_bancari ON anagrafiche.soggetti_ruoli_conti_bancari USING btree (soggetto_ruolo_id, conto_bancario_id, uso)` |
 

@@ -26,8 +26,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_risorse_umane_auth_user_auth_user | `CREATE INDEX ix_risorse_umane_auth_user_auth_user ON anagrafiche.risorse_umane_auth_user USING btree (auth_user_id)` |
-| ix_risorse_umane_auth_user_risorsa | `CREATE INDEX ix_risorse_umane_auth_user_risorsa ON anagrafiche.risorse_umane_auth_user USING btree (risorsa_umana_id)` |
 | pk_risorse_umane_auth_user | `CREATE UNIQUE INDEX pk_risorse_umane_auth_user ON anagrafiche.risorse_umane_auth_user USING btree (id)` |
 | uq_risorse_umane_auth_user_auth_user | `CREATE UNIQUE INDEX uq_risorse_umane_auth_user_auth_user ON anagrafiche.risorse_umane_auth_user USING btree (auth_user_id)` |
 | uq_risorse_umane_auth_user_risorsa | `CREATE UNIQUE INDEX uq_risorse_umane_auth_user_risorsa ON anagrafiche.risorse_umane_auth_user USING btree (risorsa_umana_id)` |

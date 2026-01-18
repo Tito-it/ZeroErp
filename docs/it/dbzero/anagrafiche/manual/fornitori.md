@@ -10,10 +10,6 @@
 > • [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)    
 > • [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)    
 >
-> **Approfondimento Trigger/Funzioni generiche**    
-> • [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
-> • [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)   
-> • [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)    
 
 ---
 
@@ -76,25 +72,6 @@ Questo disaccoppiamento consente di mantenere separati i **dati di identità** d
 * **Referential Integrity**
   Cancellazione **NO ACTION** su FK per evitare orfani; usare `attivo=false` o storicizzazione per dismettere.
 
----
-
-### 🔍 Indicizzazione
-
-* `ix_fornitori_codice (codice)` → ricerche per codice interno.
-* `ix_fornitori_soggetto_ruolo_id (soggetto_ruolo_id)` → join frequenti.
-* `ix_fornitori_attivo_stato (attivo, stato_operativo)` → filtri amministrativi/reportistica.
-
----
-
-### ⚙️ Trigger e Funzioni coinvolte
-
-| Nome                                | Tipo                           | Scopo                                                  |
-| ----------------------------------- | ------------------------------ | ------------------------------------------------------ |
-| `trg_fornitori_ins_upd_guard`       | Trigger (BEFORE INSERT/UPDATE) | Normalizza `canale_fe`; aggiorna audit base            |
-| `trg_fornitori_ins_upd_gen_tx_id`   | Trigger                        | Assegna `tx_id` se nullo                               |
-| `trg_upd_fornitori_audit_data_user` | Trigger                        | Mantiene `data_update`/`user_update`                   |
-| `trg_z90_fornitori_upd_dlt_storico` | Trigger                        | Snapshot storico su UPDATE/DELETE se `storicizza=true` |
-| `script.trgfn_fornitori_guard()`    | Funzione                       | Logica di normalizzazione e audit base                 |
 
 ---
 

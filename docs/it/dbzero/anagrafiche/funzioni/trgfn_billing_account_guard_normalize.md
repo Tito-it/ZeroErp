@@ -19,13 +19,12 @@ AS $function$
       ------------------------------------------------------------------
       -- 1) NORMALIZE (pulizie/derive)
       ------------------------------------------------------------------
-      -- Generazione codice se assente
-      IF NEW.codice IS NULL OR btrim(NEW.codice) = '' THEN
-        NEW.codice := script.fn_generate_codice('billing_account');
-      ELSE
+      -- Normalizza codice se presente
+      /*                  
+      IF NEW.codice IS NOT NULL AND btrim(NEW.codice) <> '' THEN
         NEW.codice := btrim(NEW.codice);
       END IF;
-
+      */
       -- (Esempi di altre normalizzazioni eventuali)
       -- NEW.note := nullif(btrim(NEW.note), '');
 
@@ -41,7 +40,7 @@ AS $function$
         );
       END IF;
 
-      -- 2.1) Se c'è parent, valid_from è obbligatorio
+      -- 2.1) Se c'e parent, valid_from e' obbligatorio
       IF NEW.parent_account_id IS NOT NULL AND NEW.valid_from IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
           'database', TG_NAME, 'E_VALORE_MANCANTE',
@@ -50,7 +49,7 @@ AS $function$
         );
       END IF;
 
-      -- 2.2) Coerenza CF parent/child quando c'è parent
+      -- 2.2) Coerenza CF parent/child quando c'e parent
       IF NEW.parent_account_id IS NOT NULL THEN
         SELECT s.id_fiscale_univoco_cf_piva
           INTO v_cf_child
@@ -80,7 +79,7 @@ AS $function$
         END IF;
       END IF;
 
-      -- 2.3) Coerenza date validità
+      -- 2.3) Coerenza date validita
       IF NEW.valid_to IS NOT NULL THEN
         IF NEW.valid_from IS NULL THEN
           PERFORM script.fn_log_and_raise_error(
@@ -97,7 +96,6 @@ AS $function$
         END IF;
       END IF;
 
-      
       RETURN NEW;
     END;
     $function$
