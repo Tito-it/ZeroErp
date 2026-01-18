@@ -16,15 +16,16 @@ BEGIN
   IF NEW.canale_fe IS NOT NULL THEN
     NEW.canale_fe := upper(regexp_replace(NEW.canale_fe, '\s+', '', 'g'));
   END IF;
-  -- Generazione codice se assente
-  IF NEW.codice IS NULL OR btrim(NEW.codice) = '' THEN
-          NEW.codice := script.fn_generate_codice('fornitori');
-  ELSE
-          NEW.codice := btrim(NEW.codice);
+  -- Normalizza codice se presente
+  /*
+  IF NEW.codice IS NOT NULL AND btrim(NEW.codice) <> '' THEN
+    NEW.codice := btrim(NEW.codice);
   END IF;
+  */  
 
   RETURN NEW;
-END$function$
+END;
+$function$
 ```
 
 ---

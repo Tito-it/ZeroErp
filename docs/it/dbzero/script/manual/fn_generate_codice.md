@@ -8,31 +8,32 @@
 >
 > Approfondimento funzioni :    
 >
-> * [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)    
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
 
 
-La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametrico un nuovo codice alfanumerico per uno specifico “tipo” (es. `ORDINE`, `CLIENTE`, `FATTURA`), basandosi sui parametri definiti nella tabella **`config.sistema_codici`**. Se la configurazione per quel tipo non esiste o è disattivata, viene sollevata un’eccezione.
+La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametrico un nuovo codice alfanumerico per uno specifico “tipo” (es. `ORDINE`, `CLIENTE`, `FATTURA`), basandosi sui parametri definiti nella tabella **`config.sistema_codici`**. Se la configurazione per quel tipo non esiste, viene sollevata un’eccezione.
 
 ---
 
 ### 🎯 Scopo Principale
 
+(latest review 18-01-26)
 * **Generazione di codici configurabili**
-  Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_tipo` passato in input.
+  Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
 
 * **Unicità tramite sequenza**
-  Invoca la sequenza database indicata in `nome_sequenza` per ottenere un valore numerico progressivo, garantendo codici unici e ordinati.
+  Invoca la sequenza database derivata da `schema_tabella/nome_tabella/nome_colonna` per ottenere un valore numerico progressivo, garantendo codici unici e ordinati.
 
 * **Verifica configurazione**
-  Se la riga corrispondente a `codice_tipo = tipo` non esiste o `attivo = FALSE`, o se `nome_sequenza` è `NULL`, la funzione solleva un’eccezione con messaggio di errore.
+  Se la riga corrispondente a `codice_interno = tipo` non esiste, la funzione solleva un’eccezione con messaggio di errore. Se `usa_sequenza = FALSE`, la funzione restituisce `NULL`.
 
 ---
 
 ### 📥 Parametri di input
 
-| Nome   | Tipo   | Descrizione                                                                                              |
-| ------ | ------ | -------------------------------------------------------------------------------------------------------- |
-| `tipo` | `TEXT` | Identificativo del `codice_tipo` nella tabella `config.sistema_codici`. Esempi: `"ORDINE"`, `"CLIENTE"`. |
+| Nome   | Tipo   | Descrizione                                                                                                 |
+| ------ | ------ | ----------------------------------------------------------------------------------------------------------- |
+| `tipo` | `TEXT` | Identificativo del `codice_interno` nella tabella `config.sistema_codici`. Esempi: `"ORDINE"`, `"CLIENTE"`. |
 
 ---
 
@@ -53,11 +54,22 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 1. **Lettura dei parametri**
 
    ```plpgsql
-   SELECT prefisso, separatore, lunghezza_numero, nome_sequenza
-     INTO prefix, sep, len, seq_name
+   SELECT prefisso,
+          separatore,
+          lunghezza_numero,
+          usa_sequenza,
+          schema_tabella,
+          nome_tabella,
+          nome_colonna
+     INTO prefix,
+          sep,
+          len,
+          v_usa_sequenza,
+          v_schema_tabella,
+          v_nome_tabella,
+          v_nome_colonna
      FROM config.sistema_codici
-    WHERE codice_tipo = tipo
-      AND attivo = TRUE;
+    WHERE codice_interno = tipo;
    ```
 
    * Recupera da **`config.sistema_codici`** i valori di:
@@ -65,30 +77,28 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
      * `prefisso` (testo da anteporre)
      * `separatore` (stringa di separazione)
      * `lunghezza_numero` (numero di cifre per la parte numerica)
-     * `nome_sequenza` (nome della sequenza database)
-   * Se non trova alcuna riga attiva per quel tipo, `seq_name` sarà `NULL`.
+     * `usa_sequenza` (abilitazione sequenza)
+     * `schema_tabella`, `nome_tabella`, `nome_colonna` (metadati per il nome sequenza)
+   * Se non trova alcuna riga per quel tipo, la funzione solleva un’eccezione.
 
 2. **Generazione del numero tramite sequenza**
 
    ```plpgsql
-   IF seq_name IS NOT NULL THEN
-     EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
-     risultato := prefix || sep || lpad(seq_val::TEXT, len, '0');
-     RETURN risultato;
-   ELSE
-     RAISE EXCEPTION '%',
-       script.fn_get_messaggio('SEQUENZA_NON_CONFIGURATA', tipo);
+   IF v_usa_sequenza IS DISTINCT FROM TRUE THEN
+     RETURN NULL;
    END IF;
+
+   seq_name := format('%I.%I_%I_seq', v_schema_tabella, v_nome_tabella, v_nome_colonna);
+
+   EXECUTE format('CREATE SEQUENCE IF NOT EXISTS %s', seq_name);
+   EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
+   risultato := prefix || sep || lpad(seq_val::TEXT, len, '0');
+   RETURN risultato;
    ```
 
-   * Se `nome_sequenza` è valorizzato:
-
-     1. Esegue dinamicamente `SELECT nextval('nome_sequenza')` per ottenere il prossimo valore numerico (`seq_val`).
-     2. Converte `seq_val` in testo e lo riempie a sinistra con zeri fino a raggiungere la lunghezza `len`.
-     3. Concatena `prefisso`, `separatore` e `numero_formattato`, restituendo il risultato.
-   * Altrimenti:
-
-     * Solleva un’eccezione con il messaggio da `script.fn_get_messaggio('SEQUENZA_NON_CONFIGURATA', tipo)`.
+   * La sequenza viene creata se mancante e usata per ottenere il prossimo valore numerico.
+   * Converte `seq_val` in testo e lo riempie a sinistra con zeri fino a raggiungere la lunghezza `len`.
+   * Concatena `prefisso`, `separatore` e `numero_formattato`, restituendo il risultato.
 
 ---
 
@@ -97,13 +107,13 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 * **SEQUENZA_NON_CONFIGURATA**
   Viene sollevata quando:
 
-  * Non esiste un record in **`config.sistema_codici`** per `codice_tipo = tipo` con `attivo = TRUE`.
-  * Il campo `nome_sequenza` è `NULL` (anche se la riga esiste e `attivo = TRUE`).
+  * Non esiste un record in **`config.sistema_codici`** per `codice_interno = tipo`.
+  * `usa_sequenza = TRUE` ma non è possibile determinare una sequenza valida.
 
   Il messaggio di errore è generato da:
 
   ```plpgsql
-  script.fn_get_messaggio('SEQUENZA_NON_CONFIGURATA', tipo)
+  script.fn_log_and_raise_error(...)
   ```
 
 ---
@@ -112,26 +122,21 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 
 * **Tabella di configurazione**
 
-  * **`config.sistema_codici`** deve contenere una riga per ciascun `codice_tipo` con almeno:
+  * **`config.sistema_codici`** deve contenere una riga per ciascun `codice_interno` con almeno:
 
     * `prefisso`: stringa testuale (es. `"ORD-"`).
     * `separatore`: carattere o stringa (es. `"-"`).
     * `lunghezza_numero`: numero intero (es. `6`).
-    * `nome_sequenza`: nome di una sequenza SQL esistente (es. `"seq_ordine"`).
-    * `attivo = TRUE`
+    * `schema_tabella`, `nome_tabella`, `nome_colonna`: usati per derivare il nome sequenza di default.
 
 * **Sequenza database**
 
-  * La sequenza indicata in `nome_sequenza` deve esistere, ad esempio:
-
-    ```sql
-    CREATE SEQUENCE seq_ordine;
-    ```
+  * Se la sequenza calcolata non esiste, viene creata automaticamente.
 
 * **Funzione di supporto**
 
-  * **`script.fn_get_messaggio(codice_errore TEXT, elemento TEXT)`**
-    Restituisce il testo del messaggio di errore associato al codice di errore e all’elemento specificato.
+  * **`script.fn_log_and_raise_error(...)`**
+    Registra e solleva l’errore con il contesto della funzione e i dettagli del codice interno.
 
 ---
 
@@ -142,10 +147,10 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 * **Unicità garantita**
   L’uso della sequenza database (`nextval`) assicura incrementi atomici e codici unici anche in contesti concorrenti.
 * **Controllo di configurazione**
-  Se `attivo = FALSE` o manca la riga di configurazione, viene immediatamente segnalato un errore, evitando generazioni spurie.
+  Se manca la riga di configurazione viene immediatamente segnalato un errore; se `usa_sequenza = FALSE` la funzione restituisce `NULL`, evitando generazioni spurie.
 * **Estendibilità**
   Per nuovi tipi di codice, basta inserire in **`config.sistema_codici`** una nuova riga; la funzione li gestirà automaticamente.
 
 ---
 
-> 🧠 **“Questa funzione restituisce un codice conforme alle specifiche di `config.sistema_codici`. Se la configurazione non è presente o è disattivata, solleva un’eccezione descrittiva.”**
+> 🧠 **“Questa funzione restituisce un codice conforme alle specifiche di `config.sistema_codici`. Se la configurazione non è presente o non è possibile determinare la sequenza, solleva un’eccezione descrittiva.”**

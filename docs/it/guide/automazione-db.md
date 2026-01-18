@@ -1,9 +1,9 @@
-# 📗 Guida Tecnica – Automazioni DB (aggiornata)
+# 📗 Guida Tecnica – Framework DB (aggiornata)
 
 >
-> **(latest review 13-01-26)**
+> **(latest review 18-01-26)**
 >
-> **Scope:** aggiorna la guida esistente con le novità su wildcard `*all` e gli ultimi affinamenti senza stravolgere la struttura.
+> **Scope:** descrive il framework DB. Le automazioni sono una parte del framework, incluse le novità su wildcard `*all` e gli ultimi affinamenti senza stravolgere la struttura.
 >
 > **Riferimenti chiave**:
 >
@@ -238,11 +238,55 @@ L’automazione **non modifica mai automaticamente i record figli**.
 
 ---
 
-## 10) 🧪 Esempi di configurazione (`automation_rules_tbl`)
+## 10) 🔢 Generazione automatica codici/numero
+
+Questa parte del framework gestisce la **generazione automatica di codici o numeri** sulle tabelle applicative tramite configurazione declarativa e trigger generati automaticamente.
+
+### 10.1 Componenti principali
+
+**Tabella di configurazione**
+
+* [config.sistema_codici](/dbzero/config/manual/sistema_codici)
+
+**Funzioni**
+
+* [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice) → genera il codice in base alla configurazione, crea la sequenza se mancante.
+* [script.trgfn_config_sistema_codici_sync_gen_codice](/dbzero/script/funzioni/trgfn_config_sistema_codici_sync_gen_codice) → sincronizza i trigger sulle tabelle target.
+
+### 10.2 Regole operative
+
+* La generazione avviene **solo** se `usa_sequenza = TRUE`.
+* Il nome sequenza e' **sempre derivato** come `<schema>.<tabella>_<colonna>_seq`.
+* Il trigger applicato alla tabella target e' `BEFORE INSERT OR UPDATE OF <colonna>`.
+* La generazione avviene solo se il campo target e' **nullo** o **vuoto**:
+  * numerici: `NULL` o `0`
+  * alfanumerici: `NULL` o stringa vuota
+
+### 10.3 Naming e posizione oggetti
+
+* **Trigger**: `trg_<tabella>_a10_gen_codice_ins_upd`
+* **Trigger function**: `trgfn_<tabella>_gen_codice`
+* La trigger function viene creata **nello stesso schema** della tabella target.
+
+### 10.4 Flusso di sincronizzazione
+
+1. Inserimento/aggiornamento/cancellazione in `config.sistema_codici`.
+2. Il trigger su `config.sistema_codici` chiama `script.trgfn_config_sistema_codici_sync_gen_codice()`.
+3. La funzione crea/aggiorna/rimuove trigger e trigger function sulla tabella target.
+
+### 10.5 Checklist
+
+* Verificare che esista la riga in `config.sistema_codici` per `codice_interno`.
+* Popolare `schema_tabella`, `nome_tabella`, `nome_colonna`.
+* Impostare `usa_sequenza = TRUE` per attivare la generazione.
+
+---
+
+## 11) 🧪 Esempi di configurazione (`automation_rules_tbl`)
 
 Di seguito insert **idempotenti** (usano `WHERE NOT EXISTS`) per le regole più comuni. Adatta `target_schema`/`target_table` alle tue esigenze.
 
-**10.1 TX_ID**
+**11.1 TX_ID**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
@@ -256,7 +300,7 @@ WHERE NOT EXISTS (
 );
 ```
 
-**10.2 AUDIT_UPDATE**
+**11.2 AUDIT_UPDATE**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
@@ -272,7 +316,7 @@ WHERE NOT EXISTS (
 );
 ```
 
-**10.3 STORICO (trigger unico UPDATE+DELETE)**
+**11.3 STORICO (trigger unico UPDATE+DELETE)**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
@@ -290,7 +334,7 @@ WHERE NOT EXISTS (
 
 > **Nota**: la tabella di destinazione deve esistere in `storico.<stesso_nome_tabella>` (creata da STORICO_PROVISION). Override possibili via `automation_overrides_cols` (`STORICIZZA_COL`, `STORICO_FK`).
 
-**10.4 STORICO_PROVISION (creazione tabelle in `storico`)**
+**11.4 STORICO_PROVISION (creazione tabelle in `storico`)**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl
@@ -315,7 +359,7 @@ VALUES (true,'STORICO_PROVISION','catalogo','articoli_%','AUTO',
         NULL,'BOTH','{"create_gin_index": true}'::jsonb,100,'storico: prov catalogo');
 ```
 
-**10.5 ATTIVO (soft-delete / consistenza funzionale – BLOCK-ONLY)**
+**11.5 ATTIVO (soft-delete / consistenza funzionale – BLOCK-ONLY)**
 
 ```sql
 INSERT INTO dbops.automation_rules_tbl

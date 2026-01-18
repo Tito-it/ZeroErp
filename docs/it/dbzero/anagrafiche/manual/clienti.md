@@ -21,7 +21,7 @@
 >
 >**Approfondimeto funzioni:**
 >
-> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
+> * [config.sistema_codici](/dbzero/config/manual/sistema_codici)
 
 
 ---

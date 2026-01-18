@@ -14,39 +14,75 @@ CREATE OR REPLACE FUNCTION script.fn_generate_codice(tipo text)
 AS $function$
 DECLARE
   seq_val    BIGINT;
-  prefix     TEXT;
-  sep        TEXT;
-  len        INT;
+  prefix     config.sistema_codici.prefisso%TYPE;
+  sep        config.sistema_codici.separatore%TYPE;
+  len        config.sistema_codici.lunghezza_numero%TYPE;
   seq_name   TEXT;
   risultato  TEXT;
   v_context_name text := 'script.fn_generate_codice';
+  v_usa_sequenza config.sistema_codici.usa_sequenza%TYPE;
+  v_schema_tabella config.sistema_codici.schema_tabella%TYPE;
+  v_nome_tabella config.sistema_codici.nome_tabella%TYPE;
+  v_nome_colonna config.sistema_codici.nome_colonna%TYPE;
 BEGIN
   /*	Crea la funzione generica script.fn_generate_codice(tipo TEXT) che:
         - legge da config.sistema_codici i parametri per quel tipo
-        - invoca nextval sul nome di sequenza
+        - rispetta il flag usa_sequenza (se false restituisce NULL)
+        - crea la sequenza se manca, usando default <schema>.<tabella>_<colonna>_seq
         - concatena prefisso, separatore e numero formattato
   */
-  SELECT prefisso, separatore, lunghezza_numero, nome_sequenza
-    INTO prefix, sep, len, seq_name
+  SELECT prefisso,
+         separatore,
+         lunghezza_numero,
+         usa_sequenza,
+         schema_tabella,
+         nome_tabella,
+         nome_colonna
+    INTO prefix,
+         sep,
+         len,
+         v_usa_sequenza,
+         v_schema_tabella,
+         v_nome_tabella,
+         v_nome_colonna
     FROM config.sistema_codici
-  WHERE codice_tipo = tipo
-    AND attivo = TRUE;
+  WHERE codice_interno = tipo;
 
-  IF seq_name IS NOT NULL THEN
-    EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
-    risultato := prefix || sep || lpad(seq_val::TEXT, len, '0');
-    RETURN risultato;
-  ELSE
-    -- Se non esiste una sequenza per questo tipo, lancia un errore
-      PERFORM script.fn_log_and_raise_error(
-          'database',
-          v_context_name,
-          'SEQUENZA_NON_CONFIGURATA',
-          jsonb_build_object('codice_tipo',tipo),
-          NULL::uuid,
-          tipo::TEXT
-        );
+  IF NOT FOUND THEN
+    PERFORM script.fn_log_and_raise_error(
+        'database',
+        v_context_name,
+        'SEQUENZA_NON_CONFIGURATA',
+        jsonb_build_object('codice_interno',tipo),
+        NULL::uuid,
+        tipo::TEXT
+      );
   END IF;
+
+  IF v_usa_sequenza IS DISTINCT FROM TRUE THEN
+    RETURN NULL;
+  END IF;
+
+  IF v_schema_tabella IS NULL OR v_nome_tabella IS NULL OR v_nome_colonna IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+        'database',
+        v_context_name,
+        'SEQUENZA_NON_CONFIGURATA',
+        jsonb_build_object('codice_interno',tipo),
+        NULL::uuid,
+        tipo::TEXT
+      );
+  END IF;
+
+  seq_name := format('%I.%I_%I_seq', v_schema_tabella, v_nome_tabella, v_nome_colonna);
+
+  IF to_regclass(seq_name) IS NULL THEN
+    EXECUTE format('CREATE SEQUENCE IF NOT EXISTS %s', seq_name);
+  END IF;
+
+  EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
+  risultato := prefix || sep || lpad(seq_val::TEXT, len, '0');
+  RETURN risultato;
 END;
 $function$
 ```

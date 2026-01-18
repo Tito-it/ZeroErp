@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/config/20260118-01-refactor-sistema-codici-mctit.yaml
+
+    - changeSet:
+          id: 20260118-01-refactor-sistema-codici
+          author: mctit
+          changes:
+              - dropUniqueConstraint:
+                    schemaName: config
+                    tableName: sistema_codici
+                    constraintName: uq_sistema_codici_codice_tipo
+
+              - renameColumn:
+                    schemaName: config
+                    tableName: sistema_codici
+                    oldColumnName: codice_tipo
+                    newColumnName: codice_interno
+                    columnDataType: text
+              - dropColumn:
+                    schemaName: config
+                    tableName: sistema_codici
+                    columnName: attivo
+              - dropColumn:
+                    schemaName: config
+                    tableName: sistema_codici
+                    columnName: nome_sequenza
+              - addColumn:
+                    schemaName: config
+                    tableName: sistema_codici
+                    columns:
+                        - column:
+                              name: schema_tabella
+                              type: text
+                        - column:
+                              name: nome_tabella
+                              type: text
+                        - column:
+                              name: nome_colonna
+                              type: text
+              - addUniqueConstraint:
+                    schemaName: config
+                    tableName: sistema_codici
+                    columnNames: codice_interno
+                    constraintName: uq_sistema_codici_codice_interno

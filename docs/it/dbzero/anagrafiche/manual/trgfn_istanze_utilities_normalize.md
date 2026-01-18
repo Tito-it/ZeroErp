@@ -8,7 +8,7 @@
 >
 >  Approfondimento funzioni:
 >
-> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
+> * [config.sistema_codici](/dbzero/config/manual/sistema_codici)
 
 ---
 
@@ -17,8 +17,7 @@
 (latest review 28-12-25)
 Il trigger `anagrafiche.trgfn_istanze_utilities_normalize` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
 
-1. **Generazione automatica** di `codice (istanza)` quando non è specificato dall’utente.
-2. **Pulizia** e predisposizione di ulteriori campi, se in futuro fosse necessario estendere la logica di default o normalizzazione.
+1. **Pulizia** e predisposizione di ulteriori campi, se in futuro fosse necessario estendere la logica di default o normalizzazione.
 
 ---
 
@@ -26,21 +25,16 @@ Il trigger `anagrafiche.trgfn_istanze_utilities_normalize` è invocato **prima d
 
 * **Evento**: `BEFORE INSERT OR UPDATE` sulla tabella `anagrafiche.istanze_utilities`.
 * **Record interessato**: oggetto `NEW`, che rappresenta la riga prima del commit.
-* **Dipendenze**: utilizza `script.fn_generate_codice('istanze_utilties')` per calcolare il codice.
+* **Dipendenze**: la generazione del codice e' demandata al trigger automatico basato su `config.sistema_codici`.
 
 ---
 
 
 ### 🔍 Logica Operativa
 
-1. **Verifica `codice (istanza)`**
+1. **Restituzione**
 
-   * Se `NEW.codice` è `NULL` o vuoto, chiama `script.fn_generate_codice('istanze_utilties')`.
-   * Il valore restituito è assegnato a `NEW.codice`.
-
-2. **Restituzione**
-
-   * Ritorna il record `NEW`, arricchito del codice, pronto per la persistenza.
+   * Ritorna il record `NEW` senza alterare il codice; la generazione avviene nel trigger automatico della tabella target.
 
 ---
 
@@ -60,15 +54,14 @@ CREATE TRIGGER trg_istanze_utilities_normalize_ins_upd
 
 ### 💡 Vantaggi Operativi
 
-* **Uniformità**: tutti i record di istanze hanno un `codice (istanza)` generato secondo lo stesso schema, eliminando errori manuali.
-* **Estendibilità**: la funzione può essere arricchita con ulteriori pulizie (e.g. normalizzazione di testo, assegnazione di default) senza modifiche all’applicazione.
+* **Uniformita**: tutti i record di istanze hanno un `codice (istanza)` generato secondo lo stesso schema, eliminando errori manuali.
+* **Estendibilita**: la funzione può essere arricchita con ulteriori pulizie (e.g. normalizzazione di testo, assegnazione di default) senza modifiche all’applicazione.
 
 ---
 
 ### 📌 Best Practice
 
-* Verificare che esista in `config.sistema_codici` la configurazione per `codice_tipo = 'istanze_utilties'`.
-* Assicurarsi che `script.fn_generate_codice` gestisca correttamente collisioni e sia performante.
+* Verificare che esista in `config.sistema_codici` la configurazione per `codice_interno = 'istanze_utilties'` e `usa_sequenza = TRUE`.
 * Evitare di inserire logica complessa o chiamate a tabelle esterne in questo trigger: mantenerlo rapido e focalizzato.
 
 ---

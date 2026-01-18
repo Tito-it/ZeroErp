@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260118-03-trgfn-sistema-codici-sync-gen-codice-mctit.yaml
+
+  - changeSet:
+      id: 20260118-03-trgfn-sistema-codici-sync-gen-codice
+      author: mctit
+      runAlways: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              CREATE OR REPLACE FUNCTION script.trgfn_config_sistema_codici_sync_gen_codice()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $TRG$
+              DECLARE
+                v_context_name text := 'script.trgfn_config_sistema_codici_sync_gen_codice';
+                v_codice_interno config.sistema_codici.codice_interno%TYPE;
+                v_schema_tabella config.sistema_codici.schema_tabella%TYPE;
+                v_nome_tabella config.sistema_codici.nome_tabella%TYPE;
+                v_nome_colonna config.sistema_codici.nome_colonna%TYPE;
+                v_usa_sequenza config.sistema_codici.usa_sequenza%TYPE;
+                v_trg_name text;
+                v_fn_name text;
+                v_typcategory text;
+                v_condition text;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_schema_tabella := OLD.schema_tabella;
+                  v_nome_tabella := OLD.nome_tabella;
+                  v_nome_colonna := OLD.nome_colonna;
+                  v_trg_name := format('trg_%s_a10_gen_codice_ins_upd', v_nome_tabella);
+                  v_fn_name := format('trgfn_%s_gen_codice', v_nome_tabella);
+
+                  IF v_schema_tabella IS NOT NULL AND v_nome_tabella IS NOT NULL THEN
+                    EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, v_schema_tabella, v_nome_tabella);
+                    EXECUTE format('DROP FUNCTION IF EXISTS %I.%I();', v_schema_tabella, v_fn_name);
+                  END IF;
+
+                  RETURN NULL;
+                END IF;
+
+                IF TG_OP = 'UPDATE' THEN
+                  IF OLD.schema_tabella IS DISTINCT FROM NEW.schema_tabella
+                     OR OLD.nome_tabella IS DISTINCT FROM NEW.nome_tabella
+                     OR OLD.nome_colonna IS DISTINCT FROM NEW.nome_colonna THEN
+                    v_trg_name := format('trg_%s_a10_gen_codice_ins_upd', OLD.nome_tabella);
+                    v_fn_name := format('trgfn_%s_gen_codice', OLD.nome_tabella);
+
+                    IF OLD.schema_tabella IS NOT NULL AND OLD.nome_tabella IS NOT NULL THEN
+                      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, OLD.schema_tabella, OLD.nome_tabella);
+                      EXECUTE format('DROP FUNCTION IF EXISTS %I.%I();', OLD.schema_tabella, v_fn_name);
+                    END IF;
+                  END IF;
+                END IF;
+
+                v_codice_interno := NEW.codice_interno;
+                v_schema_tabella := NEW.schema_tabella;
+                v_nome_tabella := NEW.nome_tabella;
+                v_nome_colonna := NEW.nome_colonna;
+                v_usa_sequenza := NEW.usa_sequenza;
+
+                v_trg_name := format('trg_%s_a10_gen_codice_ins_upd', v_nome_tabella);
+                v_fn_name := format('trgfn_%s_gen_codice', v_nome_tabella);
+
+                IF v_usa_sequenza IS DISTINCT FROM TRUE THEN
+                  IF v_schema_tabella IS NOT NULL AND v_nome_tabella IS NOT NULL THEN
+                    EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, v_schema_tabella, v_nome_tabella);
+                    EXECUTE format('DROP FUNCTION IF EXISTS %I.%I();', v_schema_tabella, v_fn_name);
+                  END IF;
+                  RETURN NULL;
+                END IF;
+
+                IF v_schema_tabella IS NULL OR v_nome_tabella IS NULL OR v_nome_colonna IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      v_context_name,
+                      'SEQUENZA_NON_CONFIGURATA',
+                      jsonb_build_object('codice_interno',v_codice_interno),
+                      NULL::uuid,
+                      v_codice_interno::TEXT
+                    );
+                END IF;
+
+                SELECT t.typcategory
+                  INTO v_typcategory
+                  FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  JOIN pg_type t ON t.oid = a.atttypid
+                WHERE n.nspname = v_schema_tabella
+                  AND c.relname = v_nome_tabella
+                  AND a.attname = v_nome_colonna
+                  AND a.attnum > 0
+                  AND NOT a.attisdropped;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      v_context_name,
+                      'E_QUERY_FAILED_SCHEMA_TABLE',
+                      jsonb_build_object(
+                        'schema', v_schema_tabella,
+                        'tabella', v_nome_tabella,
+                        'colonna', v_nome_colonna
+                      ),
+                      NULL::uuid,
+                      v_codice_interno::TEXT
+                    );
+                END IF;
+
+                IF v_typcategory = 'N' THEN
+                  v_condition := format('(NEW.%I IS NULL OR NEW.%I = 0)', v_nome_colonna, v_nome_colonna);
+                ELSE
+                  v_condition := format('(NEW.%I IS NULL OR btrim(NEW.%I::text) = '''')', v_nome_colonna, v_nome_colonna);
+                END IF;
+
+                EXECUTE format(
+                  'CREATE OR REPLACE FUNCTION %I.%I() ' ||
+                  'RETURNS trigger LANGUAGE plpgsql AS $FN$ ' ||
+                  'BEGIN ' ||
+                  '  IF %s THEN ' ||
+                  '    NEW.%I := script.fn_generate_codice(%L); ' ||
+                  '  END IF; ' ||
+                  '  RETURN NEW; ' ||
+                  'END; ' ||
+                  '$FN$;',
+                  v_schema_tabella,
+                  v_fn_name,
+                  v_condition,
+                  v_nome_colonna,
+                  v_codice_interno
+                );
+
+                EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, v_schema_tabella, v_nome_tabella);
+                EXECUTE format(
+                  'CREATE TRIGGER %I ' ||
+                  'BEFORE INSERT OR UPDATE OF %I ON %I.%I ' ||
+                  'FOR EACH ROW EXECUTE FUNCTION %I.%I();',
+                  v_trg_name,
+                  v_nome_colonna,
+                  v_schema_tabella,
+                  v_nome_tabella,
+                  v_schema_tabella,
+                  v_fn_name
+                );
+
+                RETURN NULL;
+              END;
+              $TRG$;
+
+              COMMENT ON FUNCTION script.trgfn_config_sistema_codici_sync_gen_codice()
+              IS 'Sincronizza trigger di generazione codici in base a config.sistema_codici (crea/aggiorna/distrugge per usa_sequenza).';
+
+              DROP TRIGGER IF EXISTS trg_sistema_codici_z90_sync_gen_codice_ins_upd_dlt
+                ON config.sistema_codici;
+
+              CREATE TRIGGER trg_sistema_codici_z90_sync_gen_codice_ins_upd_dlt
+                AFTER INSERT OR UPDATE OR DELETE ON config.sistema_codici
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_config_sistema_codici_sync_gen_codice();
+
+              COMMENT ON TRIGGER trg_sistema_codici_z90_sync_gen_codice_ins_upd_dlt
+                ON config.sistema_codici
+                IS 'Crea/rimuove i trigger di generazione codici sulle tabelle target in base alla configurazione.';

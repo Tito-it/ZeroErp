@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260118-05-trgfn-vendite-normalize-cleanup-mctit.yaml
+
+  - changeSet:
+      id: 20260118-05-trgfn-vendite-normalize-cleanup
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_gen_codice()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_contratti_gen_codice()
+                IS 'No-op: generazione numero demandata al sistema_codici.';
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                ----------------------------------------------------------------
+                -- Imposta anno/data se numero e' presente e anno/data mancanti
+                IF TG_OP = 'INSERT' AND (NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '') THEN
+                  IF NEW.anno IS NULL OR NEW.anno = 0 THEN
+                    NEW.anno := EXTRACT(YEAR FROM CURRENT_DATE)::smallint;
+                  END IF;
+                  IF NEW.data IS NULL OR NEW.data = 0 THEN
+                    NEW.data := CURRENT_DATE;
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ordini_normalize()
+                IS 'Normalize: imposta anno/data se numero presente e valori mancanti.';
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                ----------------------------------------------------------------
+                -- Imposta data se numero e' presente e data mancante
+                IF TG_OP = 'INSERT' AND (NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '') THEN
+                  IF NEW.data IS NULL OR NEW.data = 0 THEN
+                    NEW.data := CURRENT_DATE;
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_preventivi_normalize()
+                IS 'Normalize: imposta data se numero presente e valore mancante.';
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                ----------------------------------------------------------------
+                -- Imposta data se numero e' presente e data mancante
+                IF TG_OP = 'INSERT' AND (NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '') THEN
+                  IF NEW.data IS NULL OR NEW.data = 0 THEN
+                    NEW.data := CURRENT_DATE;
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_contratti_normalize()
+                IS 'Normalize: imposta data se numero presente e valore mancante.';
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                ----------------------------------------------------------------
+                -- Imposta anno/data se numero e' presente e anno/data mancanti
+                IF TG_OP = 'INSERT' AND (NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '') THEN
+                  IF NEW.anno IS NULL OR NEW.anno = 0 THEN
+                    NEW.anno := EXTRACT(YEAR FROM CURRENT_DATE)::smallint;
+                  END IF;
+                  IF NEW.data IS NULL OR NEW.data = 0 THEN
+                    NEW.data := CURRENT_DATE;
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_normalize()
+                IS 'Normalize: imposta anno/data se numero presente e valori mancanti.';

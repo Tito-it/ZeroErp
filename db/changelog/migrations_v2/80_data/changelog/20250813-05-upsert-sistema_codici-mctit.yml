@@ -1,7 +1,7 @@
 # ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Liquibase changelog per Zero ERP
-# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
 #
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
@@ -31,27 +31,26 @@ databaseChangeLog:
             encoding: UTF-8
             # nullValue: ""
             nullValue: "NULL"
-            primaryKey:
-              - id
+            primaryKey: "id"
             columns:
-              - column: { name: id,           type: STRING }
-              - column: { name: codice_tipo,    type: STRING }
-              - column: { name: descrizione_stato_cliente,  type: STRING }
-              - column: { name: prefisso,  type: STRING }
-              - column: { name: separatore,    type: STRING }
-              - column: { name: lunghezza_numero,    type: STRING }
-              - column: { name: usa_sequenza,    type: STRING }
-              - column: { name: nome_sequenza,    type: STRING }
-              - column: { name: attivo,    type: STRING }
-              - column: { name: data_insert,  type: STRING }
-              - column: { name: user_insert,  type: STRING }
+              - column: { name: id, type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: prefisso, type: STRING }
+              - column: { name: separatore, type: STRING }
+              - column: { name: lunghezza_numero, type: STRING }
+              - column: { name: usa_sequenza, type: STRING }
+              - column: { name: schema_tabella, type: STRING }
+              - column: { name: nome_tabella, type: STRING }
+              - column: { name: nome_colonna, type: STRING }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
               - column:
                   name: data_update
                   type: STRING
                   defaultValue: "NOW()"
-              - column: { name: user_update,  type: STRING }
-              - column: { name: tx_id,    type: uuid  }
-              
+              - column: { name: user_update, type: STRING }
+              - column: { name: tx_id, type: uuid }
 
   - changeSet:
       id: 20250813-90-upsert-sistema_codici

@@ -13,7 +13,7 @@ CF_NON_VALIDO,it,Codice Fiscale non valido: %s,5,"",""
 E_ATTIVO_BLOCK_ARGS,it,%s,124,"",""
 E_IVA_CONTO_ACQ_ERR,it,Il conto %s IVA acquisti non è un conto di tipo Acquisto.,3,"",""
 PIVA_NON_VALIDA,it,Partita IVA non valida: %s,7,"",""
-SEQUENZA_NON_CONFIGURATA,it,Nessuna sequenza configurata per codice_tipo: %s,8,"",""
+SEQUENZA_NON_CONFIGURATA,it,Nessuna sequenza configurata per codice_interno: %s,8,"",""
 ERRORE_PARAMETRI,it,Parametri obbligatori : %s,15,Non sono stati indicati tutti i parametri necessari,Inserire tutti i parametri obbligatori
 E_IVA_CONTO_VEN_ERR,it,Il conto %s IVA vendita non è un conto di tipo Vendita.,4,"",""
 E_COD_INT_RUOLO,it,Ruolo con cd_int_ruolo = %s non trovato in config.tipi_ruoli,11,"",""

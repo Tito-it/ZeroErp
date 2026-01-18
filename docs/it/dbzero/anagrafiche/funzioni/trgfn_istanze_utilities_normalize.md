@@ -13,17 +13,8 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_istanze_utilities_normalize()
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-
-
---  --------------------------------------------------------------
-    -- 1) Generazione codice automatico
-    IF NEW.codice IS NULL THEN
-        NEW.codice := script.fn_generate_codice('istanze_utilities');
-    END IF;
-
-RETURN NEW;
+  RETURN NEW;
 END;
-
 $function$
 ```
 

@@ -23,6 +23,7 @@
 ---
 
 ### 🎯 Scopo Principale
+
 (latest update 09-12-25)
 La funzione `script.fn_subentro_cliente()` implementa **l’operazione di subentro standardizzata** su un PDP, incapsulando in un unico punto tutta la logica tecnica e commerciale che, altrimenti, sarebbe demandata al frontend.
 
@@ -172,7 +173,7 @@ La funzione crea una nuova riga in `anagrafiche.istanze_utilities` per il sogget
 * `proprietario_inquilino` impostato secondo regole di dominio (ad es. `'P'` o `'I'`);
 * `parent_istanza_id` inizialmente NULL (sarà poi calcolato via trigger su `clienti`, o valorizzato direttamente).
 
-Il `codice` dell’istanza può essere generato tramite `script.fn_generate_codice` o logica analoga.
+Il `codice` dell’istanza è generato automaticamente dal trigger basato su `config.sistema_codici`, se configurato per l’istanza.
 
 ---
 
