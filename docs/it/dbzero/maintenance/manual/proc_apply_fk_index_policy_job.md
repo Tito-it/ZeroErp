@@ -19,7 +19,7 @@
 ### 🧩 Firma
 
 ```sql
-PROCEDURE maintenance.proc_apply_fk_index_policy_job()
+PROCEDURE maintenance.proc_apply_fk_index_policy_job(p_populate boolean DEFAULT false)
 ```
 
 ---
@@ -29,12 +29,23 @@ PROCEDURE maintenance.proc_apply_fk_index_policy_job()
 La procedura:
 
 1. Invoca `maintenance.fn_run_and_log(...)` per registrare **inizio/fine**, esito e dettagli.
-2. Esegue la SQL:
+2. Se `p_populate = true`, esegue prima:
+
+   `SELECT dbops.fn_populate_fk_index_policy();`
+
+   poi:
+
+   `CALL dbops.apply_fk_index_policy();`
+
+3. Se `p_populate = false`, esegue solo:
 
    `CALL dbops.apply_fk_index_policy();`
 
    come **step** identificato da `apply_fk_index_policy / run_apply_fk_index_policy`.
-3. Usa un **advisory lock** (`hashtext('apply_fk_index_policy')`) per evitare **esecuzioni concorrenti**.
+4. Usa un **advisory lock** (`hashtext('apply_fk_index_policy')`) per evitare **esecuzioni concorrenti**.
+
+Esempio :
+ `CALL maintenance.proc_apply_fk_index_policy_job(true);` esegue il populate della tabella; `CALL maintenance.proc_apply_fk_index_policy_job();` non lo esegue
 
 ---
 
