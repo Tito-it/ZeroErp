@@ -17,7 +17,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
+| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id |
 | FOREIGN KEY | fk_valute_config | valuta_id |
 | PRIMARY KEY | pk_gestori | id |
 

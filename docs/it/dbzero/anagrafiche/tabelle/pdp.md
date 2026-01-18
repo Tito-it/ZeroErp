@@ -28,9 +28,9 @@
 | FOREIGN KEY | fk_pdp_stati_pdp | stato_pdp_id |
 | FOREIGN KEY | fk_pdp_utilities | utilities_id |
 | PRIMARY KEY | pk_pdp | id |
-| UNIQUE | uq_pdp_addr_utility | utilities_id, indirizzo_dettaglio_id |
+| UNIQUE | uq_pdp_addr_utility | indirizzo_dettaglio_id, utilities_id |
 | UNIQUE | uq_pdp_codice | pdp |
-| UNIQUE | uq_pdp_id_addr | indirizzo_dettaglio_id, id |
+| UNIQUE | uq_pdp_id_addr | id, indirizzo_dettaglio_id |
 
 ## 📑 Indici
 | Nome | Definizione |

@@ -49,9 +49,9 @@
 | FOREIGN KEY | fk_clienti_termini_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_iva_config | iva_id |
 | FOREIGN KEY | fk_modalita_pagamento_config | modalita_pagamento_id |
-| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
+| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id |
 | FOREIGN KEY | fk_stati_cliente_config | stato_cliente_id |
-| FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
+| FOREIGN KEY | fk_utilities_config | utility_id |
 | PRIMARY KEY | pk_clienti | id |
 | UNIQUE | uq_clienti_istanza_utility | istanza_utility_id |
 

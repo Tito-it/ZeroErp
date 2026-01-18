@@ -32,6 +32,7 @@ La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli ind
   Associare a ciascuna via (memorizzata in `config.stradario`) le singole unità civiche (numeri civici, estensioni, palazzine, interni, piani), ottenendo così l’indirizzo completo e navigabile.  
 * **Geolocalizzazione precisa**  
   Il campo `civic_geoloc` memorizza il punto geografico corrispondente al singolo civico, mentre `street_geoloc` rappresenta la posizione media della via. Questi dati consentono ricerche spaziali e visualizzazioni GIS a livello di civico.  
+  Per le ricerche spaziali sul civico e' previsto un indice **GiST** su `civic_geoloc`.  
 * **Indirizzo normalizzato**  
   Il campo calcolato `indirizzo_normalizzato` combina via, civico, palazzina, scala, piano e interno in un’unica stringa formattata in modo coerente, facilitando confronti testuali e ricerche full-text.
 

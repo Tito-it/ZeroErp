@@ -30,8 +30,8 @@
 | CHECK | chk_note_seq_pos |  |
 | CHECK | chk_note_target_tipo |  |
 | FOREIGN KEY | fk_cat_note_articoli_target | target_id |
-| FOREIGN KEY | fk_cat_note_id_lingua | id_lingua, id_lingua, id_lingua |
-| FOREIGN KEY | fk_cat_note_id_stile | id_stile, id_stile, id_stile |
+| FOREIGN KEY | fk_cat_note_id_lingua | id_lingua |
+| FOREIGN KEY | fk_cat_note_id_stile | id_stile |
 | PRIMARY KEY | note_articoli_pkey | target_tipo, id |
 
 ## 📑 Indici

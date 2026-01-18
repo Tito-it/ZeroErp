@@ -36,7 +36,7 @@
 | FOREIGN KEY | fk_articoli_componenti_note_1 | note_target_tipo, note_id |
 | FOREIGN KEY | fk_articoli_componenti_note_2 | note_target_tipo, note_id |
 | PRIMARY KEY | pk_articoli_componenti | id |
-| UNIQUE | uq_articoli_componenti_prodotto_componente_from | valid_from, prodotto_id, componente_id |
+| UNIQUE | uq_articoli_componenti_prodotto_componente_from | prodotto_id, componente_id, valid_from |
 
 ## 📑 Indici
 | Nome | Definizione |

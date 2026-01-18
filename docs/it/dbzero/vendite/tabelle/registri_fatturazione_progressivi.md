@@ -17,7 +17,7 @@
 | CHECK | chk_regprog_mese_valid |  |
 | FOREIGN KEY | fk_registri_progressivi_registro | registro_id |
 | PRIMARY KEY | pk_registri_progressivi | id |
-| UNIQUE | uq_regprog_key | serie, anno, registro_id, mese |
+| UNIQUE | uq_regprog_key | registro_id, anno, mese, serie |
 
 ## 📑 Indici
 | Nome | Definizione |

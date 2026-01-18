@@ -24,12 +24,12 @@
 |------|------|---------|
 | FOREIGN KEY | fk_billing_account_anagrafiche | parent_account_id |
 | FOREIGN KEY | fk_billing_account_istanze_utilities | istanza_utility_id |
-| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
-| FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
+| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id |
+| FOREIGN KEY | fk_utilities_config | utility_id |
 | PRIMARY KEY | pk_billing_account | id |
 | UNIQUE | uq_billing_account_codice | codice |
-| UNIQUE | uq_billing_account_id_istanza_utility | istanza_utility_id, id |
-| UNIQUE | uq_billing_instance_utility | utility_id, istanza_utility_id |
+| UNIQUE | uq_billing_account_id_istanza_utility | id, istanza_utility_id |
+| UNIQUE | uq_billing_instance_utility | istanza_utility_id, utility_id |
 
 ## 📑 Indici
 | Nome | Definizione |

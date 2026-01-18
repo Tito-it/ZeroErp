@@ -33,11 +33,11 @@
 | CHECK | chk_acq_ordini_note_anchor |  |
 | CHECK | chk_note_testo_non_vuoto |  |
 | CHECK | chk_ordnote_testo_non_vuoto |  |
-| FOREIGN KEY | fk_acq_note_id_lingua | id_lingua, id_lingua, id_lingua |
-| FOREIGN KEY | fk_acq_note_id_stile | id_stile, id_stile, id_stile |
+| FOREIGN KEY | fk_acq_note_id_lingua | id_lingua |
+| FOREIGN KEY | fk_acq_note_id_stile | id_stile |
 | FOREIGN KEY | fk_acq_ordini_note_riga | target_riga_id |
 | FOREIGN KEY | fk_acq_ordini_note_testata | target_id |
-| PRIMARY KEY | note_ordini_pkey | id, target_tipo |
+| PRIMARY KEY | note_ordini_pkey | target_tipo, id |
 
 ## 📑 Indici
 | Nome | Definizione |

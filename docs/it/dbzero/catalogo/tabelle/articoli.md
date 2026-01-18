@@ -41,7 +41,7 @@
 | FOREIGN KEY | fk_articoli_conti_contabili_acquisto | conto_contabile_acquisto_id |
 | FOREIGN KEY | fk_articoli_conti_contabili_vendita | conto_contabile_vendita_id |
 | FOREIGN KEY | fk_articoli_iva | iva_id |
-| FOREIGN KEY | fk_articoli_note | note_id, note_target_tipo |
+| FOREIGN KEY | fk_articoli_note | note_target_tipo, note_id |
 | FOREIGN KEY | fk_articoli_note_1 | note_target_tipo, note_id |
 | FOREIGN KEY | fk_articoli_note_2 | note_target_tipo, note_id |
 | FOREIGN KEY | fk_articoli_unita_misura | uom_id |
