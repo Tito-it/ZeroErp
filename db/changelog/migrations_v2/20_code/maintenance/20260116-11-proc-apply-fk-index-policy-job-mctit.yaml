@@ -36,5 +36,5 @@ databaseChangeLog:
                 END;
               $BODY$;
 
-              COMMENT ON PROCEDURE maintenance.proc_apply_fk_index_policy_job()
+              COMMENT ON PROCEDURE maintenance.proc_apply_fk_index_policy_job(boolean)
                 IS 'Job wrapper per chiamare apply_fk_index_policy con logging e lock.';

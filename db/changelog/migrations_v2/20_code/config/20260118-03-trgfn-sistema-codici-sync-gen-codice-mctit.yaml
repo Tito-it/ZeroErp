@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260118-03-trgfn-sistema-codici-sync-gen-codice
       author: mctit
-      runAlways: true
+      runAlways: false
       validCheckSum:
         - ANY
       changes:
