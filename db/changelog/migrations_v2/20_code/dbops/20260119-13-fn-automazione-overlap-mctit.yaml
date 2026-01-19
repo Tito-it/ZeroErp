@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260119-13-fn-automazione-overlap
       author: mctit
-      runAlways: true
+      runAlways: false
       validCheckSum:
         - ANY
       changes:

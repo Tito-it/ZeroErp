@@ -28,7 +28,7 @@ databaseChangeLog:
               - renameColumn:
                     schemaName: anagrafiche
                     tableName: billing_account
-                    oldColumnName: valido_from
+                    oldColumnName: valid_from
                     newColumnName: valido_dal
                     columnDataType: date
               - renameColumn:
