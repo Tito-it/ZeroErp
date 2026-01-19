@@ -10,8 +10,8 @@
 | coeff_qta | numeric | NO | 1 |
 | partecipa_qta | boolean | NO | false |
 | obbligatorio | boolean | NO | true |
-| valid_from | date | NO |  |
-| valid_to | date | YES |  |
+| valido_dal | date | NO |  |
+| valido_al | date | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | user_insert | text | NO | CURRENT_USER |
 | user_update | text | YES | CURRENT_USER |
@@ -36,17 +36,17 @@
 | FOREIGN KEY | fk_articoli_componenti_note_1 | note_target_tipo, note_id |
 | FOREIGN KEY | fk_articoli_componenti_note_2 | note_target_tipo, note_id |
 | PRIMARY KEY | pk_articoli_componenti | id |
-| UNIQUE | uq_articoli_componenti_prodotto_componente_from | prodotto_id, componente_id, valid_from |
+| UNIQUE | uq_articoli_componenti_prodotto_componente_from | prodotto_id, componente_id, valido_dal |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ex_articoli_componenti_no_overlap | `CREATE INDEX ex_articoli_componenti_no_overlap ON catalogo.articoli_componenti USING gist (prodotto_id, componente_id, daterange(valid_from, COALESCE(valid_to, 'infinity'::date), '[]'::text))` |
-| ix_articoli_componenti_componente_from_to | `CREATE INDEX ix_articoli_componenti_componente_from_to ON catalogo.articoli_componenti USING btree (componente_id, valid_from, valid_to)` |
-| ix_articoli_componenti_no_overlap_gist | `CREATE INDEX ix_articoli_componenti_no_overlap_gist ON catalogo.articoli_componenti USING gist (prodotto_id, componente_id, daterange(valid_from, COALESCE(valid_to, 'infinity'::date), '[]'::text))` |
-| ix_articoli_componenti_prodotto_from_to | `CREATE INDEX ix_articoli_componenti_prodotto_from_to ON catalogo.articoli_componenti USING btree (prodotto_id, valid_from, valid_to)` |
+| ex_articoli_componenti_no_overlap | `CREATE INDEX ex_articoli_componenti_no_overlap ON catalogo.articoli_componenti USING gist (prodotto_id, componente_id, daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]'::text))` |
+| ix_articoli_componenti_componente_from_to | `CREATE INDEX ix_articoli_componenti_componente_from_to ON catalogo.articoli_componenti USING btree (componente_id, valido_dal, valido_al)` |
+| ix_articoli_componenti_no_overlap_gist | `CREATE INDEX ix_articoli_componenti_no_overlap_gist ON catalogo.articoli_componenti USING gist (prodotto_id, componente_id, daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]'::text))` |
+| ix_articoli_componenti_prodotto_from_to | `CREATE INDEX ix_articoli_componenti_prodotto_from_to ON catalogo.articoli_componenti USING btree (prodotto_id, valido_dal, valido_al)` |
 | pk_articoli_componenti | `CREATE UNIQUE INDEX pk_articoli_componenti ON catalogo.articoli_componenti USING btree (id)` |
-| uq_articoli_componenti_prodotto_componente_from | `CREATE UNIQUE INDEX uq_articoli_componenti_prodotto_componente_from ON catalogo.articoli_componenti USING btree (prodotto_id, componente_id, valid_from)` |
+| uq_articoli_componenti_prodotto_componente_from | `CREATE UNIQUE INDEX uq_articoli_componenti_prodotto_componente_from ON catalogo.articoli_componenti USING btree (prodotto_id, componente_id, valido_dal)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

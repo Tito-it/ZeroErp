@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Rinomina colonne valid_from/valid_to -> valido_dal/valido_al
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260119-01-rename-billing-account-valid-dal-al-mctit.yaml
+
+    - changeSet:
+          id: 20260119-01-rename-billing-account-valid-dal-al
+          author: mctit
+          runAlways: false
+          validCheckSum:
+              - ANY
+          preConditions:
+              - onFail: MARK_RAN
+              - onError: MARK_RAN
+              - columnExists:
+                    schemaName: anagrafiche
+                    tableName: billing_account
+                    columnName: valid_to
+              # - not:
+              #        - sqlCheck:
+              #               expectedResult: 1
+          #                sql: "SELECT 1 FROM pg_constraint WHERE conname = 'chk_billing_account_validita'"
+          changes:
+              - renameColumn:
+                    schemaName: anagrafiche
+                    tableName: billing_account
+                    oldColumnName: valido_from
+                    newColumnName: valido_dal
+                    columnDataType: date
+              - renameColumn:
+                    schemaName: anagrafiche
+                    tableName: billing_account
+                    oldColumnName: valid_to
+                    newColumnName: valido_al
+                    columnDataType: date
+
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        ALTER TABLE anagrafiche.billing_account
+                            ADD CONSTRAINT chk_billing_account_validita
+                        CHECK (valido_al IS NULL OR valido_al >= valido_dal);

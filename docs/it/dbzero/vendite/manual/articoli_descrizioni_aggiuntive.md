@@ -6,9 +6,6 @@
 >
 > * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)
 >
-> Approfondimenti funzioni:
->
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
 
 La tabella **`vendite.articoli_descrizioni_aggiuntive`** consente di associare agli articoli una o più **descrizioni opzionali** da utilizzare in cataloghi, documenti di vendita o comunicazioni commerciali. Ogni descrizione è **ordinabile** e **attivabile/disattivabile** senza perdita di storico.
 
@@ -16,6 +13,7 @@ La tabella **`vendite.articoli_descrizioni_aggiuntive`** consente di associare a
 
 ### 🎯 Scopo Principale
 
+(latest review 19-01-26)
 * Estendere le informazioni dell’articolo con **testi aggiuntivi** riutilizzabili.
 * Governare la **sequenza di presentazione** tramite un campo di ordinamento.
 * Abilitare **varianti di testo** per contesti differenti (catalogo vs. documento fiscale).
@@ -36,15 +34,6 @@ La tabella **`vendite.articoli_descrizioni_aggiuntive`** consente di associare a
 
 * **FK**: `articolo_id` → `catalogo.articoli.id` (aggiornamento in cascata, cancellazione ristretta).
 * **Indice**: `ix_articoli_descrizioni_aggiuntive_articolo_ordine` per ottenere rapidamente le descrizioni di un articolo nell’**ordine definito**.
-
----
-
-### ⚙️ Trigger Associati
-
-* **`trg_upd_articoli_descrizioni_aggiuntive_audit_data_user`**
-
-  * **Quando**: `BEFORE UPDATE`
-  * **Cosa**: aggiorna automaticamente `data_update` e `user_update` tramite `script.trgfn_upd_audit_data_user_generic()`.
 
 ---
 

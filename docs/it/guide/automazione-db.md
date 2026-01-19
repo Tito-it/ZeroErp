@@ -19,6 +19,8 @@
 >
 > * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns)
 >
+> * [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap)
+>
 > * *Orchestratori:*
 >
 > * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations),  
@@ -112,6 +114,23 @@ Se:
 ➡️ l’operazione viene **bloccata con errore**.
 
 L’automazione **non modifica mai automaticamente i record figli**.
+
+**3.7 OVERLAP (anti-sovrapposizione temporale)**
+
+L'automazione **OVERLAP** centralizza la gestione dei vincoli **EXCLUDE GiST** per evitare sovrapposizioni
+su tabelle **versionate** con colonne periodo (`valido_dal/valido_al` o `valid_from/valid_to`).
+
+Componenti principali:
+
+* **Config**: `dbops.automazione_overlap` con chiavi logiche, colonne periodo e flag `active`.
+* **Seed**: `dbops.fn_seed_automazione_overlap()` rileva tabelle eleggibili e imposta `active=true` solo se versionate.
+* **Apply**: `dbops.fn_apply_automazione_overlap()` crea i vincoli `EXCLUDE` sulle tabelle `active=true`.
+
+Note operative:
+
+* Se `key_columns` non e' valorizzato, il vincolo non viene creato.
+* Per chiavi UUID e' richiesta l'estensione `btree_gist`.
+* Le tabelle non versionate restano `active=false`.
 
 ---
 

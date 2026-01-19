@@ -8,10 +8,10 @@
 > * [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)    
 >
 
-
 ---
 
 ### 🎯 Scopo Principale
+
 (latest review 16-12-25)
 La trigger function **`anagrafiche.trgfn_soggetti_conti_bancari_guard()`** applica controlli di guardia (coerenza e ammissibilità) sui legami tra soggetti e conti bancari, con due obiettivi principali:
 

@@ -2,18 +2,18 @@
 >
 > 👀 **Vedi anche**
 > 
-> Guide generali: 
+> Guide generali:    
 >
->  * [Generazione di un cliente](/guide/generazione-cliente)
+>  * [Generazione di un cliente](/guide/generazione-cliente)    
 > 
-> Approfondimento tabelle :
+> Approfondimento tabelle :   
 >
->   * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
->   * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
->   * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
->   * [config.utilities](/dbzero/config/tabelle/utilities)
+>   * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)    
+>   * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)    
+>   * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
+>   * [config.utilities](/dbzero/config/tabelle/utilities)     
 >
-> Approfondimeto funzioni:
+> Approfondimeto funzioni:    
 >
 > * [anagrafiche.trgfn_billing_account_guard_normalize](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_normalize)
 
@@ -25,7 +25,7 @@
 
 ---
 
-### 🎯 Scopo Principale
+### 🎯 Scopo Principale    
 
 (latest review 16-01-26)
 La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici cliente** per ciascuna `utility`, consentendo:
@@ -66,7 +66,7 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
    * Non possono esistere due billing account per la stessa coppia (`istanza_utility_id`, `utility_id`).
 3. **Range di validità**
 
-   * Periodi di validità: valid_from è obbligatorio se parent_account_id non è NULL; valid_to, se presente, deve essere ≥    valid_from
+   * Periodi di validità: valido_dal è obbligatorio se parent_account_id non è NULL; valido_al, se presente, deve essere ≥    valido_dal
 
 ---
 
@@ -86,10 +86,10 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
    * Se `parent_account_id IS NULL`, la fattura è emessa per l’account stesso.
    * Se non NULL, la fattura somma i consumi di tutti i figli e li addebita al padre.
 
-2. **`valid_from` / `valid_to`**
+2. **`valido_dal` / `valido_al`**
 
-   * `valid_from`: data inizio validità dell’associazione al parent (obbligatoria se `parent_account_id` è presente).
-   * `valid_to`: data fine validità, se NULL l’associazione è ancora in corso.
+   * `valido_dal`: data inizio validità dell’associazione al parent (obbligatoria se `parent_account_id` è presente).
+   * `valido_al`: data fine validità, se NULL l’associazione è ancora in corso.
 
 3. **Coerenza fiscale**
 
@@ -99,7 +99,7 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 
 ### ✅ Controlli di Coerenza
 
-* FK e vincoli CHECK assicurano la validità dei periodi (`valid_from`, `valid_to`) e delle gerarchie.
+* FK e vincoli CHECK assicurano la validità dei periodi (`valido_dal`, `valido_al`) e delle gerarchie.
 * Il trigger `clean_fields` genera `codice` se mancante.
 
 ---

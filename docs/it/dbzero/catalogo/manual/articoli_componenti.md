@@ -15,10 +15,10 @@
 
 ---
 
-### 🎯 Scopo Principale
+### 🎯 Scopo Principale   
 
 (latest review 13-01-26)
-`catalogo.articoli_componenti` rappresenta la **distinta base (BoM)** lato **vendita**, con **versionamento temporale**: ogni riga lega un **prodotto** a un **componente** con una finestra di validità (`valid_from`..`valid_to`).
+`catalogo.articoli_componenti` rappresenta la **distinta base (BoM)** lato **vendita**, con **versionamento temporale**: ogni riga lega un **prodotto** a un **componente** con una finestra di validità (`valido_dal`..`valido_al`).
 
 Supporta:
 
@@ -45,7 +45,7 @@ Supporta:
 
 * **Identità**: `id UUID` (PK)
 * **Legame**: `prodotto_id UUID` (FK), `componente_id UUID` (FK)
-* **Versioning**: `valid_from DATE` (**obbligatorio**), `valid_to DATE` *(NULL = infinito)*
+* **Versioning**: `valido_dal DATE` (**obbligatorio**), `valido_al DATE` *(NULL = infinito)*
 * **Quantità & logica**: `coeff_qta NUMERIC(18,6) ≥ 0`, `partecipa_qta BOOLEAN`, `obbligatorio BOOLEAN`
 * **Note**: `note_target_tipo`, `note_id` (FK composita verso `catalogo.note`)
 * **Meta & Audit**: `meta JSONB`, `attivo`, `storicizza`, `tx_id`, `user_*`, `data_*`
@@ -54,12 +54,12 @@ Supporta:
 
 ### 🚦 Vincoli & Regole
 
-* **Univocità puntuale**: `UNIQUE (prodotto_id, componente_id, valid_from)` → identifica l’**inizio versione**.
-* **Date coerenti**: `valid_to IS NULL OR valid_to > valid_from`.
+* **Univocità puntuale**: `UNIQUE (prodotto_id, componente_id, valido_dal)` → identifica l’**inizio versione**.
+* **Date coerenti**: `valido_al IS NULL OR valido_al > valido_dal`.
 * **Quantità non negative**: `coeff_qta ≥ 0`.
 * **No self‑reference**: `prodotto_id <> componente_id`.
 * **Nessuna sovrapposizione nel tempo** per la **stessa coppia** `(prodotto, componente)`:
-  `EXCLUDE USING gist (prodotto_id WITH =, componente_id WITH =, daterange(valid_from, COALESCE(valid_to, 'infinity'), '[]') WITH &&)`
+  `EXCLUDE USING gist (prodotto_id WITH =, componente_id WITH =, daterange(valido_dal, COALESCE(valido_al, 'infinity'), '[]') WITH &&)`
   ➜ **richiede estensione** `btree_gist` per supportare `uuid` su GiST.
 * **Parent attivi**: sia `prodotto_id` sia `componente_id` devono puntare ad articoli **attivi**.
 * **Solo componente**: un articolo con `is_solo_componente=true` non può essere usato come `prodotto_id`.
@@ -81,8 +81,8 @@ Supporta:
 
 ### 🔍 Indicizzazione
 
-* `ix_articoli_componenti_prodotto_from_to (prodotto_id, valid_from, valid_to)` → espansione distinta per prodotto e per data.
-* `ix_articoli_componenti_componente_from_to (componente_id, valid_from, valid_to)` → “dove è usato” il componente.
+* `ix_articoli_componenti_prodotto_from_to (prodotto_id, valido_dal, valido_al)` → espansione distinta per prodotto e per data.
+* `ix_articoli_componenti_componente_from_to (componente_id, valido_dal, valido_al)` → “dove è usato” il componente.
 * **Exclusion** GiST per prevenire **overlap** temporali (vedi sopra) + indice `ix_articoli_componenti_no_overlap_gist`.
 
 ---
@@ -97,9 +97,9 @@ SELECT ac.*
 FROM catalogo.articoli_componenti ac
 WHERE ac.prodotto_id = :prodotto
   AND ac.attivo = true
-  AND ac.valid_from <= :data_rif
-  AND (ac.valid_to IS NULL OR ac.valid_to >= :data_rif)
-ORDER BY ac.obbligatorio DESC, ac.coeff_qta DESC, ac.valid_from DESC;
+  AND ac.valido_dal <= :data_rif
+  AND (ac.valido_al IS NULL OR ac.valido_al >= :data_rif)
+ORDER BY ac.obbligatorio DESC, ac.coeff_qta DESC, ac.valido_dal DESC;
 ```
 
 **2) Dove viene usato un componente (oggi)**
@@ -111,8 +111,8 @@ JOIN catalogo.articoli p ON p.id = ac.prodotto_id
 JOIN catalogo.articoli c ON c.id = ac.componente_id
 WHERE ac.componente_id = :componente
   AND ac.attivo = true
-  AND ac.valid_from <= CURRENT_DATE
-  AND (ac.valid_to IS NULL OR ac.valid_to >= CURRENT_DATE)
+  AND ac.valido_dal <= CURRENT_DATE
+  AND (ac.valido_al IS NULL OR ac.valido_al >= CURRENT_DATE)
 ORDER BY p.codice;
 ```
 
@@ -125,17 +125,17 @@ JOIN catalogo.articoli_componenti ac2
   ON ac1.prodotto_id = ac2.prodotto_id
  AND ac1.componente_id = ac2.componente_id
  AND ac1.id <> ac2.id
- AND daterange(ac1.valid_from, COALESCE(ac1.valid_to, 'infinity'), '[]') &&
-     daterange(ac2.valid_from, COALESCE(ac2.valid_to, 'infinity'), '[]');
+ AND daterange(ac1.valido_dal, COALESCE(ac1.valido_al, 'infinity'), '[]') &&
+     daterange(ac2.valido_dal, COALESCE(ac2.valido_al, 'infinity'), '[]');
 ```
 
 ---
 
 ### 🧭 Best practice
 
-* **Versioning esplicito**: apri una **nuova riga** con nuovo `valid_from` per variare `coeff_qta` o altri attributi; **non** aggiornare in‑place se vuoi tracciare la storia.
+* **Versioning esplicito**: apri una **nuova riga** con nuovo `valido_dal` per variare `coeff_qta` o altri attributi; **non** aggiornare in‑place se vuoi tracciare la storia.
 * **Controlli applicativi**: impedisci componenti su articoli che **non sono** `is_composito=true` (vincolo applicativo opzionale).
-* **Chiusure automatiche**: se vuoi evitare “open‑ended” duplicati, implementa una procedura che chiude la riga precedente (imposta `valid_to`) quando inserisci una nuova versione.
+* **Chiusure automatiche**: se vuoi evitare “open‑ended” duplicati, implementa una procedura che chiude la riga precedente (imposta `valido_al`) quando inserisci una nuova versione.
 * **Estensione `btree_gist`**: assicurati che sia installata (`CREATE EXTENSION IF NOT EXISTS btree_gist;`).
 * **Storicizza** le modifiche e usa `attivo=false` per dismissioni logiche.
 
@@ -187,14 +187,14 @@ In `catalogo.articoli_componenti` avrai una riga per ciascun componente:
 ### 🕒 Esempio utilizzo temporale
 
 Se la composizione cambia nel tempo, si inserisce **una nuova riga** con un nuovo
-`valid_from` e si chiude la precedente con `valid_to`.
+`valido_dal` e si chiude la precedente con `valido_al`.
 
 Esempio: la quota **SPREAD** aumenta dal 2026-03-01.
 
 * Versione attuale:
-  * `prodotto_id = GAS_FACILE`, `componente_id = SPREAD`, `coeff_qta = 1`, `valid_from = 2026-01-01`, `valid_to = 2026-02-28`
+  * `prodotto_id = GAS_FACILE`, `componente_id = SPREAD`, `coeff_qta = 1`, `valido_dal = 2026-01-01`, `valido_al = 2026-02-28`
 * Nuova versione:
-  * `prodotto_id = GAS_FACILE`, `componente_id = SPREAD`, `coeff_qta = 1.2`, `valid_from = 2026-03-01`, `valid_to = NULL`
+  * `prodotto_id = GAS_FACILE`, `componente_id = SPREAD`, `coeff_qta = 1.2`, `valido_dal = 2026-03-01`, `valido_al = NULL`
 
 ---
 

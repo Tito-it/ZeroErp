@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Crea tabella dbops.automazione_overlap
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/dbops/20260119-12-create-automazione-overlap-mctit.yaml
+
+  - changeSet:
+      id: 20260119-12-create-automazione-overlap
+      author: mctit
+      comment: >
+        Crea la tabella dbops.automazione_overlap per configurare
+        l'anti-overlap temporale (EXCLUDE GiST) sulle tabelle versionate.
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: automazione_overlap
+            remarks: Configura anti-overlap temporale per tabelle con valido_dal/valido_al o valid_from/valid_to.
+            columns:
+              - column:
+                  name: target_schema
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: target_table
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: key_columns
+                  type: text[]
+              - column:
+                  name: valido_dal_col
+                  type: text
+                  defaultValue: valido_dal
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valido_al_col
+                  type: text
+                  defaultValue: valido_al
+                  constraints:
+                    nullable: false
+              - column:
+                  name: range_bounds
+                  type: text
+                  defaultValue: "[]"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: constraint_name
+                  type: text
+              - column:
+                  name: active
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: exec_mode
+                  type: text
+                  defaultValue: AUTO
+                  constraints:
+                    nullable: false
+              - column:
+                  name: note
+                  type: text
+              - column:
+                  name: data_insert
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addPrimaryKey:
+            schemaName: dbops
+            tableName: automazione_overlap
+            columnNames: target_schema,target_table
+            constraintName: pk_automazione_overlap

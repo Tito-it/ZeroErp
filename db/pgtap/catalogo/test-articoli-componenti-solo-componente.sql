@@ -35,8 +35,8 @@ SELECT throws_ok(
     coeff_qta,
     partecipa_qta,
     obbligatorio,
-    valid_from,
-    valid_to,
+    valido_dal,
+    valido_al,
     attivo
   )
   VALUES (
@@ -74,8 +74,8 @@ SELECT lives_ok(
       coeff_qta,
       partecipa_qta,
       obbligatorio,
-      valid_from,
-      valid_to,
+      valido_dal,
+      valido_al,
       attivo
     )
     VALUES (
@@ -111,8 +111,8 @@ SELECT lives_ok(
       coeff_qta,
       partecipa_qta,
       obbligatorio,
-      valid_from,
-      valid_to,
+      valido_dal,
+      valido_al,
       attivo
     )
     VALUES (

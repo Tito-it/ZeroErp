@@ -10,8 +10,8 @@
 | utility_id | integer | NO |  |
 | parent_account_id | bigint | YES |  |
 | codice | character varying | NO |  |
-| valid_from | date | YES | CURRENT_DATE |
-| valid_to | date | YES |  |
+| valido_dal | date | YES | CURRENT_DATE |
+| valido_al | date | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
@@ -22,6 +22,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_billing_account_validita |  |
 | FOREIGN KEY | fk_billing_account_anagrafiche | parent_account_id |
 | FOREIGN KEY | fk_billing_account_istanze_utilities | istanza_utility_id |
 | FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id |
