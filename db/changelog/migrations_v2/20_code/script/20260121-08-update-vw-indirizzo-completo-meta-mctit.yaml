@@ -24,6 +24,9 @@ databaseChangeLog:
 
               DROP TRIGGER IF EXISTS trg_indirizzi_dettaglio_normalize_ins_upd
                 ON anagrafiche.indirizzi_dettaglio;
+              DROP TRIGGER IF EXISTS trg_indirizzi_dettaglio_ins_upd_norm
+                ON anagrafiche.indirizzi_dettaglio;
+
               DROP FUNCTION IF EXISTS anagrafiche.trgfn_indirizzi_dettaglio_normalize();
 
 
