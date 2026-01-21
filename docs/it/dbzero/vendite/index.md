@@ -35,7 +35,6 @@
 - [preventivi_righe](tabelle/preventivi_righe.md)
 - [registri_fatturazione](tabelle/registri_fatturazione.md)
 - [registri_fatturazione_progressivi](tabelle/registri_fatturazione_progressivi.md)
-- [regole_fatturazione_articolo](tabelle/regole_fatturazione_articolo.md)
 
 ## ⚙️ Funzioni
 - [fn_get_vendite_note](funzioni/fn_get_vendite_note.md)

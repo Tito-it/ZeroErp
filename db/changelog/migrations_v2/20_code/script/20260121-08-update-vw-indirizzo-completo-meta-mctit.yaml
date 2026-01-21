@@ -10,6 +10,9 @@ databaseChangeLog:
   - changeSet:
       id: 20260121-08-update-vw-indirizzo-completo-meta
       author: mctit
+      runAlways: false
+      validCheckSum:
+        - ANY
       comment: >
         Aggiorna script.vw_indirizzo_completo per usare config.stradario.meta.
 
@@ -18,6 +21,11 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
             sql: |
+
+              DROP TRIGGER IF EXISTS trg_indirizzi_dettaglio_normalize_ins_upd
+                ON anagrafiche.indirizzi_dettaglio;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_indirizzi_dettaglio_normalize();
+
 
               -- Drop dipendenze dirette/indirette prima di rigenerare la view base
               -- (evita errori di dipendenza in fase di DROP/CREATE).
@@ -36,9 +44,6 @@ databaseChangeLog:
               DROP VIEW IF EXISTS anagrafiche.vw_istanze_utilities_dettaglio;
               DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_dettaglio;
 
-              DROP TRIGGER IF EXISTS trg_indirizzi_dettaglio_normalize_ins_upd
-                ON anagrafiche.indirizzi_dettaglio;
-              DROP FUNCTION IF EXISTS anagrafiche.trgfn_indirizzi_dettaglio_normalize();
 
               DROP VIEW IF EXISTS script.vw_indirizzo_completo;
 
