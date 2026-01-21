@@ -1,4 +1,4 @@
-id,codice,descrizione,segno,richiede_lotto,richiede_seriale,richiede_magazzino_dest,abilita_billing,impatto_valorizzazione,ordine,attivo,extra_info,tx_id,user_insert,user_update,data_insert,data_update,storicizza,ambito_causale_id,is_installazione_asset,is_rettifica,consente_stock_negativo,richiede_odl,contabilizza_cdc,codice_interno
+id,codice,descrizione,segno,richiede_lotto,richiede_seriale,richiede_magazzino_dest,abilita_billing,impatto_valorizzazione,ordine,attivo,meta,tx_id,user_insert,user_update,data_insert,data_update,storicizza,ambito_causale_id,is_installazione_asset,is_rettifica,consente_stock_negativo,richiede_odl,contabilizza_cdc,codice_interno
 13,CARICO_ACQ,Carico da DDT acquisto,1,f,f,f,f,cmp,10,t,{},,,,2025-10-05 10:54:20.332608+02,,f,,f,f,f,f,f,CARICO_ACQ
 14,SCARICO_VEN,Scarico per DDT vendita,-1,f,f,f,t,cmp,20,t,{},,,,2025-10-05 10:54:20.332608+02,,f,,f,f,f,f,f,SCARICO_VEN
 15,TRASF_OUT,Trasferimento uscita (da A),-1,f,f,t,f,none,30,t,{},,,,2025-10-05 10:54:20.332608+02,,f,,f,f,f,f,f,TRASF_OUT

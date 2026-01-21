@@ -1,4 +1,4 @@
-id,comune_id,stradario_generale_id,geoloc,extra_info,data_insert,user_insert,data_update,user_update,codice_postale_id,storicizza,tx_id
+id,comune_id,stradario_generale_id,geoloc,meta,data_insert,user_insert,data_update,user_update,codice_postale_id,storicizza,tx_id
 4142,5516,3151,,{},2022-01-01 18:55:01+01, *INI ,2026-01-16 15:59:29.730966+01,titodb,5516,f,019bc751-5874-7e68-b1de-13190d1d59b0
 203,1641,201,,{},2022-01-01 18:55:01+01, *INI ,2026-01-16 15:59:29.730966+01,titodb,1641,f,019bc751-5874-7e68-b1de-13190d1d59b0
 204,1641,202,,{},2022-01-01 18:55:01+01, *INI ,2026-01-16 15:59:29.730966+01,titodb,1641,f,019bc751-5874-7e68-b1de-13190d1d59b0
