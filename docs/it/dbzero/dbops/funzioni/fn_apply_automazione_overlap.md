@@ -23,7 +23,9 @@ DECLARE
   v_constraint text;
   v_constraint_exists boolean;
   v_any_exclusion boolean;
+  v_skip_status text;
 BEGIN
+  v_skip_status := CASE WHEN p_dry_run THEN 'DRYRUN' ELSE 'WARN' END;
   FOR rconf IN
     SELECT *
       FROM dbops.automazione_overlap
@@ -34,11 +36,39 @@ BEGIN
     v_rel := (quote_ident(rconf.target_schema)||'.'||quote_ident(rconf.target_table))::regclass;
 
     IF rconf.key_columns IS NULL OR array_length(rconf.key_columns, 1) IS NULL THEN
+      PERFORM dbops.fn_audit_log_once(
+        p_function_name => 'dbops.fn_apply_automazione_overlap',
+        p_status        => v_skip_status,
+        p_rule_type     => 'OVERLAP',
+        p_exec_mode     => p_exec_mode,
+        p_parts         => ARRAY['OVERLAP'],
+        p_dry_run       => p_dry_run,
+        p_params        => jsonb_build_object(
+                            'table', rconf.target_schema||'.'||rconf.target_table,
+                            'reason', 'NO_KEY_COLUMNS'
+                          ),
+        p_message       => 'Skip: key_columns missing'
+      );
       CONTINUE;
     END IF;
 
     IF NOT dbops.fn_col_exists(rconf.target_schema, rconf.target_table, rconf.valido_dal_col)
        OR NOT dbops.fn_col_exists(rconf.target_schema, rconf.target_table, rconf.valido_al_col) THEN
+      PERFORM dbops.fn_audit_log_once(
+        p_function_name => 'dbops.fn_apply_automazione_overlap',
+        p_status        => v_skip_status,
+        p_rule_type     => 'OVERLAP',
+        p_exec_mode     => p_exec_mode,
+        p_parts         => ARRAY['OVERLAP'],
+        p_dry_run       => p_dry_run,
+        p_params        => jsonb_build_object(
+                            'table', rconf.target_schema||'.'||rconf.target_table,
+                            'valido_dal_col', rconf.valido_dal_col,
+                            'valido_al_col', rconf.valido_al_col,
+                            'reason', 'PERIOD_COLUMNS_MISSING'
+                          ),
+        p_message       => 'Skip: period columns missing'
+      );
       CONTINUE;
     END IF;
 
@@ -51,6 +81,20 @@ BEGIN
     END LOOP;
 
     IF array_length(v_cols, 1) IS NULL THEN
+      PERFORM dbops.fn_audit_log_once(
+        p_function_name => 'dbops.fn_apply_automazione_overlap',
+        p_status        => v_skip_status,
+        p_rule_type     => 'OVERLAP',
+        p_exec_mode     => p_exec_mode,
+        p_parts         => ARRAY['OVERLAP'],
+        p_dry_run       => p_dry_run,
+        p_params        => jsonb_build_object(
+                            'table', rconf.target_schema||'.'||rconf.target_table,
+                            'key_columns', rconf.key_columns,
+                            'reason', 'KEY_COLUMNS_NOT_FOUND'
+                          ),
+        p_message       => 'Skip: key_columns not found in table'
+      );
       CONTINUE;
     END IF;
 
@@ -98,6 +142,20 @@ BEGIN
     INTO v_any_exclusion;
 
     IF v_constraint_exists OR v_any_exclusion THEN
+      PERFORM dbops.fn_audit_log_once(
+        p_function_name => 'dbops.fn_apply_automazione_overlap',
+        p_status        => v_skip_status,
+        p_rule_type     => 'OVERLAP',
+        p_exec_mode     => p_exec_mode,
+        p_parts         => ARRAY['OVERLAP'],
+        p_dry_run       => p_dry_run,
+        p_params        => jsonb_build_object(
+                            'table', rconf.target_schema||'.'||rconf.target_table,
+                            'constraint', v_constraint,
+                            'reason', 'EXCLUDE_EXISTS'
+                          ),
+        p_message       => 'Skip: exclude constraint already present'
+      );
       CONTINUE;
     END IF;
 
@@ -130,6 +188,24 @@ BEGIN
       v_constraint,
       v_key_expr,
       v_range_expr
+    );
+    PERFORM dbops.fn_audit_log_once(
+      p_function_name => 'dbops.fn_apply_automazione_overlap',
+      p_status        => 'OK',
+      p_rule_type     => 'OVERLAP',
+      p_exec_mode     => p_exec_mode,
+      p_parts         => ARRAY['OVERLAP'],
+      p_dry_run       => false,
+      p_params        => jsonb_build_object(
+                          'table', rconf.target_schema||'.'||rconf.target_table,
+                          'constraint', v_constraint,
+                          'key_columns', rconf.key_columns,
+                          'valido_dal_col', rconf.valido_dal_col,
+                          'valido_al_col', rconf.valido_al_col,
+                          'range_bounds', v_bounds,
+                          'action', 'CREATE_EXCLUDE'
+                        ),
+      p_message       => 'Exclude constraint created'
     );
   END LOOP;
 END;

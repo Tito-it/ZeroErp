@@ -153,6 +153,23 @@ BEGIN
       v_note := 'non_versionata_o_non_rilevabile';
     END IF;
 
+    -- 4) Fallback: mappa chiavi note per tabelle versionate senza indizi strutturali
+    IF v_key_cols IS NULL OR array_length(v_key_cols, 1) IS NULL THEN
+      IF rtab.schema_name = 'vendite' AND rtab.table_name = 'contratti' THEN
+        v_key_cols := ARRAY['billing_account_id','istanza_utility_id','utility_id','ambito'];
+        v_active := true;
+        v_note := 'default_keys_assigned';
+      ELSIF rtab.schema_name = 'catalogo' AND rtab.table_name = 'articoli_componenti' THEN
+        v_key_cols := ARRAY['prodotto_id','componente_id'];
+        v_active := true;
+        v_note := 'default_keys_assigned';
+      ELSIF rtab.schema_name = 'catalogo' AND rtab.table_name = 'unita_misura_conversioni' THEN
+        v_key_cols := ARRAY['uom_from_id','uom_to_id'];
+        v_active := true;
+        v_note := 'default_keys_assigned';
+      END IF;
+    END IF;
+
     INSERT INTO dbops.automazione_overlap (
       target_schema,
       target_table,

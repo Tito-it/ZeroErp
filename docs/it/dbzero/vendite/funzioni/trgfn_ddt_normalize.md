@@ -18,7 +18,7 @@ BEGIN
     IF NEW.anno IS NULL OR NEW.anno = 0 THEN
       NEW.anno := EXTRACT(YEAR FROM CURRENT_DATE)::smallint;
     END IF;
-    IF NEW.data IS NULL OR NEW.data = 0 THEN
+    IF NEW.data IS NULL  THEN
       NEW.data := CURRENT_DATE;
     END IF;
   END IF;

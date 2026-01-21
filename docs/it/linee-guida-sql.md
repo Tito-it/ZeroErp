@@ -1,4 +1,4 @@
-**Best Practice e Convenzioni in Zero ERP**
+**Best Practice e Convenzioni**
 
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -220,9 +220,256 @@ SELECT *
 ```
 
 
+## 8. Indici
+
+Gli indici rappresentano uno strumento fondamentale per garantire performance, scalabilità e prevedibilità delle query in Zero ERP.
+Devono essere progettati secondo regole uniformi, evitando proliferazioni inutili e mantenendo coerenza con i pattern applicativi.
+
 ---
 
-### 11. Transaction ID Centralizzato
+### 8.1 Naming
+
+**Convenzione generale:**
+
+```
+ix_<table>_<column>
+```
+
+Esempi:
+
+* `ix_contatti_soggetto`
+* `ix_soggetti_codice`
+
+Per indici specializzati:
+
+| Tipologia      | Naming                             |
+| -------------- | ---------------------------------- |
+| pg_trgm        | `ix_<table>_<column>_trgm`         |
+| FTS (tsvector) | `ix_<table>_<column>_fts`          |
+| Parziale       | `ix_<table>_<column>_<condizione>` |
+
+Se l’indice è applicato a una colonna normalizzata, è consigliato esplicitarlo nel nome:
+
+```
+ix_soggetti_ragione_sociale_norm_trgm
+```
+
+---
+
+### 8.2 Tipologie
+
+| Tipo   | Uso consigliato                     |
+| ------ | ----------------------------------- |
+| B-Tree | Default per =, ORDER BY, range, FK  |
+| GIN    | JSONB, FTS, pg_trgm                 |
+| GiST   | Geometrie, casi particolari pg_trgm |
+| BRIN   | Tabelle molto grandi e append-only  |
+
+⚠️ Non sostituire mai il B-Tree con GIN/GiST: sono complementari, non alternativi.
+
+---
+
+### 8.3 Policy di Ricerca Testuale (pg_trgm e FTS)
+
+Questa policy definisce quando e come usare indici per ricerca testuale e fuzzy in Zero ERP.
+
+#### 8.3.1 Quando usare pg_trgm (GIN)
+
+Utilizzare **GIN + gin_trgm_ops** per colonne che:
+
+* sono ricercate con `ILIKE '%...%'`
+* supportano ricerche parziali e refusi
+* sono usate come campo principale di ricerca utente
+
+Esempi tipici:
+
+* `anagrafiche.soggetti.ragione_sociale_normalizzata`
+* `config.stradario_generale.indirizzo_normalizzato`
+* denominazioni, titoli brevi, riferimenti descrittivi
+
+Indice standard:
+
+```
+CREATE INDEX ix_<table>_<column>_trgm
+ON <schema>.<table>
+USING gin (<column> gin_trgm_ops);
+```
+
+#### 8.3.2 Quando NON usare pg_trgm
+
+Non usare pg_trgm su:
+
+* identificativi strutturati: P.IVA, CF, POD/PDR
+* codici documento
+* campi tecnici o enumerativi
+
+Per questi casi preferire:
+
+* B-Tree
+* UNIQUE
+
+#### 8.3.3 Colonne normalizzate
+
+Gli indici pg_trgm devono preferibilmente essere applicati su colonne **normalizzate**:
+
+* lowercase
+* spazi singoli
+* punteggiatura rimossa
+
+Esempio naming:
+
+```
+ragione_sociale_normalizzata
+indirizzo_normalizzato
+```
+
+Questo garantisce:
+
+* maggiore qualità dei risultati
+* stabilità delle query
+* maggiore riutilizzo dell’indice
+
+---
+
+#### 8.3.4 Full Text Search (FTS)
+
+Utilizzare FTS solo per:
+
+* testo libero
+* descrizioni lunghe
+* note, commenti, pratiche
+
+Pattern consigliato:
+
+* colonna `tsvector` dedicata
+* indice GIN
+
+```
+descrizione_fts tsvector
+
+CREATE INDEX ix_<table>_descrizione_fts
+ON <schema>.<table>
+USING gin (descrizione_fts);
+```
+
+⚠️ Non usare FTS per:
+
+* codici
+* filtri di business
+* dati strutturati
+
+---
+
+#### 8.3.5 GIN vs GiST per pg_trgm
+
+Scelta consigliata:
+
+| Motivo                         | Scelta                        |
+| ------------------------------ | ----------------------------- |
+| Ricerca contains/fuzzy         | GIN                           |
+| Massime performance in lettura | GIN                           |
+| Minore spazio / meno write     | GiST (valutare con benchmark) |
+
+👉 In Zero ERP la scelta predefinita è **GIN**.
+
+---
+
+#### 8.3.6 Parametri GIN
+
+I parametri vanno impostati solo se motivati:
+
+| Parametro              | Quando usarlo                  |
+| ---------------------- | ------------------------------ |
+| fastupdate             | Tabelle molto scritte          |
+| gin_pending_list_limit | Bulk insert o flussi intensivi |
+
+In assenza di esigenze specifiche, usare i default.
+
+---
+
+#### 8.3.7 Regole UI / Servizi
+
+Per rendere efficaci gli indici pg_trgm:
+
+* imporre minimo 3 caratteri per la ricerca fuzzy
+* per query < 3 caratteri usare:
+
+  * prefissi (B-tree)
+  * suggerimenti
+
+---
+
+### 8.4 Indici Parziali
+
+Usare indici parziali per:
+
+* logica di default
+* flag booleani
+
+Esempio:
+
+```
+CREATE UNIQUE INDEX ix_contatti_default
+ON contatti(soggetto_id)
+WHERE is_default;
+```
+
+---
+
+### 8.5 Case-Insensitive
+
+Evitare indici su `upper()` o `lower()` se non motivati.
+Preferire:
+
+* colonne normalizzate
+* predicati compatibili con la forma dell’indice
+
+---
+
+### 8.6 Gestione Indici Duplicati
+
+Utilizzare la view:
+
+```
+SELECT *
+FROM dbops.vw_duplicate_indexes;
+```
+
+per razionalizzare la struttura e prevenire overhead inutili.
+
+---
+
+### 8.7 Automazione Indici FK
+
+Gli indici sulle FK sono gestiti tramite policy centralizzata.
+
+Nel changelog `90_end/` deve essere presente:
+
+```yaml
+- changeSet:
+    id: 90-end-apply-fk-policy
+    author: mctit
+    runAlways: true
+    sql:
+      splitStatements: false
+      sql: |
+        CALL dbops.apply_fk_index_policy();
+```
+
+La tabella `dbops.fk_index_policy` governa:
+
+* quali FK indicizzare
+* quali escludere
+
+La view di supporto:
+
+```
+SELECT * FROM dbops.vw_fk_senza_indice;
+```
+
+---
+
+### 9. Transaction ID Centralizzato
 
 Per garantire **coerenza transazionale** fra tutte le tabelle che registrano modifiche, ogni entità deve avere la colonna `tx_id UUID` che accetta anche valori nulli:
 

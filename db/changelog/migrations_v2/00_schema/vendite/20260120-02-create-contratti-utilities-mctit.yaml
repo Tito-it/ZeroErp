@@ -1,0 +1,181 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Creazione tabella vendite.contratti_utilities (snapshot precontrattuali)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260120-02-create-contratti-utilities-mctit.yaml
+
+  - changeSet:
+      id: 20260120-02-create-contratti-utilities
+      author: mctit
+      comment: >
+        Crea tabella vendite.contratti_utilities (snapshot precontrattuali 1:1 con contratti).
+
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: contratti_utilities
+            remarks: "Snapshot precontrattuali per contratti utilities (1:1 con vendite.contratti)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "Identificativo interno (PK)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_contratti_utilities
+                    nullable: false
+
+              - column:
+                  name: contratto_id
+                  type: bigint
+                  remarks: "FK → vendite.contratti(id)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: istanza_utility_id
+                  type: bigint
+                  remarks: "FK → anagrafiche.istanze_utilities(id)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: utility_id
+                  type: integer
+                  remarks: "FK → config.utilities(id)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: istanza_dati_precontrattuali_id
+                  type: bigint
+                  remarks: "FK → anagrafiche.istanze_dati_precontrattuali(id)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: classe_utenza_id
+                  type: integer
+                  remarks: "Snapshot classe utenza (FK → config.classi_utenze)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: param_1_num
+                  type: numeric
+                  remarks: "Snapshot param_1_num dai precontrattuali."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: param_2_txt
+                  type: character varying
+                  remarks: "Snapshot param_2_txt dai precontrattuali."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Snapshot meta precontrattuale."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento riga."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente che ha creato la riga."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente ultima modifica."
+                  constraints:
+                    nullable: true
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: contratti_utilities
+            columnNames: contratto_id
+            constraintName: uq_contratti_utilities_contratto_id
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: contratti_utilities
+            baseColumnNames: contratto_id
+            referencedTableSchemaName: vendite
+            referencedTableName: contratti
+            referencedColumnNames: id
+            constraintName: fk_contratti_utilities_contratti
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: contratti_utilities
+            baseColumnNames: istanza_utility_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            constraintName: fk_contratti_utilities_istanze_utilities
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: contratti_utilities
+            baseColumnNames: utility_id
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            constraintName: fk_contratti_utilities_utilities
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: contratti_utilities
+            baseColumnNames: istanza_dati_precontrattuali_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_dati_precontrattuali
+            referencedColumnNames: id
+            constraintName: fk_contratti_utilities_istanze_dati_precontrattuali
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: contratti_utilities
+            baseColumnNames: classe_utenza_id
+            referencedTableSchemaName: config
+            referencedTableName: classi_utenze
+            referencedColumnNames: id
+            constraintName: fk_contratti_utilities_classi_utenze
+            onUpdate: CASCADE
+            onDelete: RESTRICT
