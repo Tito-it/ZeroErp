@@ -28,8 +28,8 @@ databaseChangeLog:
                 ON anagrafiche.indirizzi_dettaglio;
 
               DROP FUNCTION IF EXISTS anagrafiche.trgfn_indirizzi_dettaglio_normalize();
-              DROP FUNCTION IF EXISTS script.fn_get_indirizzi_by_soggetto();
-              DROP FUNCTION IF EXISTS script.fn_get_indirizzi_by_soggetti();
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzo_by_soggetto(uuid, character varying);
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzi_by_soggetto(uuid);
 
 
               -- Drop dipendenze dirette/indirette prima di rigenerare la view base
