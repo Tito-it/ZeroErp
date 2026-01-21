@@ -7,7 +7,7 @@
 | id | bigint | NO |  |
 | gestore_id | bigint | NO |  |
 | utility_id | integer | NO |  |
-| extra | jsonb | YES | '{}'::jsonb |
+| meta | jsonb | YES | '{}'::jsonb |
 | user_insert | text | NO | CURRENT_USER |
 | user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |

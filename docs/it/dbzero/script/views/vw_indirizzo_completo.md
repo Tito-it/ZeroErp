@@ -10,7 +10,7 @@ SELECT s.id AS id_stradario,
     cp.codice AS codice_postale,
     ve.indirizzo_generale,
     s.geoloc,
-    s.extra_info,
+    s.meta,
     ve.id_via,
     ve.tipo_toponimo,
     ve.nome_strada

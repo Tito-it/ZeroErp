@@ -14,9 +14,11 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 21-01-2026)
 Questa tabella definisce, **per ciascun articolo**, le regole di business che governano:
 
-* **Visibilità delle componenti** nei documenti (preventivi, ordini, DDT, fatture) per articoli **kit/BOM**.
+* **Generazione delle righe** (esistenza effettiva nel DB) per articoli **kit/BOM**.
+* **Visibilità delle componenti** nei documenti (preventivi, ordini, DDT, fatture).
 * **Calcolo della quantità del padre** (se fissa o calcolata dalla somma delle componenti flaggate).
 * **Arrotondamenti** (numero di decimali e metodo) per **importi** e **quantità**.
 
@@ -29,7 +31,9 @@ Il vincolo `UNIQUE (articolo_id)` garantisce una relazione **1:1** tra articolo 
 Le regole vengono lette dal motore documentale durante:
 
 1. **Generazione righe documento** (preventivo → ordine → DDT → fattura).
-2. **Esplosione kit/BOM**: determinano se mostrare solo il **padre**, il **padre + componenti**, o **solo le componenti**.
+2. **Esplosione kit/BOM**:
+   * definisce **quali righe vengono generate** in DB (padre, componenti, entrambi);
+   * definisce anche **come vengono mostrate** in stampa/visibilità.
 3. **Determinazione quantità padre**:
 
    * `fissa` → quantità del padre invariata.
@@ -40,16 +44,29 @@ Le regole vengono lette dal motore documentale durante:
 
 ---
 
+### 🔍 Visibilità vs generazione
+
+È importante distinguere:
+
+* **Generazione** → determina **se la riga esiste nel DB** (`fatture_righe`, `ordini_righe`, ecc.).
+* **Visibilità** → determina **come la riga viene presentata** in stampa o UI.
+
+In fatturazione può accadere di **generare righe componenti** (per calcolo e tracciabilità)
+e **aggregarle in stampa** (visibilità), mantenendo nel DB il dettaglio completo.
+
+
+**Per visibilità su stampa e UI sarà generata un apposita tabella**
+---
+
 ### 🔑 Campi chiave
 
 * `visibilita_componenti`: `solo_padre` | `padre_componenti` | `solo_componenti`
-  → controlla la visibilità dei componenti.
+  → controlla la visibilità dei componenti (non necessariamente la loro generazione).
 * `calcolo_qta_padre`: `fissa` | `somma_componenti_flaggate`
   → stabilisce la logica di calcolo della quantità padre.
 * `arrotondamento_importi_dec`, `metodo_arrotondamento_importi`: precisione e metodo per gli importi.
 * `arrotondamento_quantita_dec`, `metodo_arrotondamento_quantita`: precisione e metodo per le quantità.
 * `meta`: campo estensibile (criteri speciali, regole di esclusione, override per canale, ecc.).
-* `trg_articolo_regole_fatturazione_upd_audit_data_user_generic`: trigger che aggiorna `data_update` e `user_update` (audit standard).
 
 ---
 
@@ -102,4 +119,3 @@ Le regole vengono lette dal motore documentale durante:
 
 Tabella cruciale per la **consistenza dei calcoli** e la **leggibilità dei documenti**.
 Stabilisce come un articolo composito viene visualizzato e valorizzato, garantendo uniformità nei calcoli di quantità e importi in tutto il ciclo documentale (`preventivo → ordine → DDT → fattura`).
-

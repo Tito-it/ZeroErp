@@ -8,7 +8,7 @@
 | comune_id | integer | NO |  |
 | stradario_generale_id | integer | NO |  |
 | geoloc | USER-DEFINED | YES |  |
-| extra_info | jsonb | YES |  |
+| meta | jsonb | YES |  |
 | data_insert | timestamp with time zone | YES | now() |
 | user_insert | text | YES | CURRENT_USER |
 | data_update | timestamp with time zone | YES | now() |

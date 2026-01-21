@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Aggiorna view script.vw_indirizzo_completo (extra_info -> meta)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260121-08-update-vw-indirizzo-completo-meta-mctit.yaml
+
+  - changeSet:
+      id: 20260121-08-update-vw-indirizzo-completo-meta
+      author: mctit
+      comment: >
+        Aggiorna script.vw_indirizzo_completo per usare config.stradario.meta.
+
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              -- Drop dipendenze dirette/indirette prima di rigenerare la view base
+              -- (evita errori di dipendenza in fase di DROP/CREATE).
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_all;
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_ruolo;
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_soggetto;
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_base;
+
+              DROP VIEW IF EXISTS anagrafiche.vw_pdp;
+
+              DROP FUNCTION IF EXISTS anagrafiche.fn_search_indirizzi_dettaglio(
+                integer, integer, text, text, text, text, text, text, integer
+              );
+
+              DROP VIEW IF EXISTS anagrafiche.vw_istanze_dati_precontrattuali_dettaglio;
+              DROP VIEW IF EXISTS anagrafiche.vw_istanze_utilities_dettaglio;
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_dettaglio;
+
+              DROP TRIGGER IF EXISTS trg_indirizzi_dettaglio_normalize_ins_upd
+                ON anagrafiche.indirizzi_dettaglio;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_indirizzi_dettaglio_normalize();
+
+              DROP VIEW IF EXISTS script.vw_indirizzo_completo;
+
+               CREATE OR REPLACE VIEW script.vw_indirizzo_completo AS
+               SELECT
+                 s.id                AS id_stradario,
+                 c.id                AS id_comune,
+                 c.descrizione       AS comune,
+                 p.sigla             AS provincia,
+                 cp.codice           AS codice_postale,
+                 ve.indirizzo_generale,
+                 s.geoloc,
+                 s.meta,
+                 ve.id_via           AS id_via,
+                 ve.tipo_toponimo,
+                 ve.nome_strada
+               FROM config.stradario s
+                 JOIN config.comuni c
+                   ON s.comune_id = c.id
+                 JOIN config.province p
+                   ON c.provincia_id = p.id
+                 JOIN config.codici_postali cp
+                   ON s.codice_postale_id = cp.id
+                 JOIN script.vw_stradario_esteso ve
+                   ON s.stradario_generale_id = ve.id_via;
+
+               COMMENT ON VIEW script.vw_indirizzo_completo
+                 IS 'View che estende config.stradario con dati di comune, provincia,
+                 codice postale e dettaglio via dalla view script.vw_stradario_esteso';

@@ -1,0 +1,22 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Rinomina colonne extra_info in meta (schema config)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260121-06-rename-extra-to-meta-mctit.yaml
+
+  - changeSet:
+      id: 20260121-06-rename-extra-to-meta-config
+      author: mctit
+      comment: >
+        Standardizza la colonna JSONB su meta in config.stradario.
+
+      changes:
+        - renameColumn:
+            schemaName: config
+            tableName: stradario
+            oldColumnName: extra_info
+            newColumnName: meta
+            columnDataType: jsonb

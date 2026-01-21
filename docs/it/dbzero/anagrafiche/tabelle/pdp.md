@@ -15,7 +15,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | user_update | text | NO | CURRENT_USER |
 | storicizza | boolean | NO | true |
-| extra_info | jsonb | NO | '{}'::jsonb |
+| meta | jsonb | NO | '{}'::jsonb |
 | stato_pdp_id | bigint | NO |  |
 | attivo | boolean | NO | true |
 
