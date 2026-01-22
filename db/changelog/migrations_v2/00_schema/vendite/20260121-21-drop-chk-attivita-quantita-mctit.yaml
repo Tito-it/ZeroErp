@@ -1,0 +1,29 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260121-21-drop-chk-attivita-quantita-mctit.yaml
+
+  # 20260121-21 — Rimuove il check quantità > 0 su vendite.attivita_fatturabili
+  - changeSet:
+      id: 20260121-21-drop-chk-attivita-quantita
+      author: mctit
+      preConditions:
+        - onFail: CONTINUE
+        - onError: CONTINUE
+        - tableExists:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+              DROP CONSTRAINT IF EXISTS chk_attivita_quantita_pos;

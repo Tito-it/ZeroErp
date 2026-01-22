@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_attivita_fatturabili_normalize.md" %}
 # ⚙️ Funzione `trgfn_attivita_fatturabili_normalize`
 
 ```sql
@@ -17,11 +18,10 @@ BEGIN
     NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
   END IF;
 
-   
-  IF NEW.sorgente_tipo IS NOT NULL THEN
-    NEW.sorgente_tipo := upper(btrim(NEW.sorgente_tipo));
+  
+  IF NEW.sorgente_tipo_id IS NOT NULL THEN
     IF NEW.sorgente_riga IS NULL THEN
-      NEW.sorgente_riga := 0;  
+      NEW.sorgente_riga := 0;
     END IF;
   END IF;
 
