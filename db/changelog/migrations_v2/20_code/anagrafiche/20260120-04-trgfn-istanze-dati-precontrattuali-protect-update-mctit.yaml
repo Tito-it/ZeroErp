@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Protezione aggiornamenti su istanze_dati_precontrattuali
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260120-04-trgfn-istanze-dati-precontrattuali-protect-update-mctit.yaml
+
+  - changeSet:
+      id: 20260120-04-trgfn-istanze-dati-precontrattuali-protect-update
+      author: mctit
+      comment: >
+        Blocca UPDATE/DELETE su anagrafiche.istanze_dati_precontrattuali se esiste
+        uno snapshot in vendite.contratti_utilities.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1
+                    FROM vendite.contratti_utilities cu
+                   WHERE cu.istanza_dati_precontrattuali_id = OLD.id
+                ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_COLONNA_NON_MODIFICABILE',
+                    jsonb_build_object('table','anagrafiche.istanze_dati_precontrattuali','id',OLD.id),
+                    NULL::uuid,
+                    'record'
+                  );
+                END IF;
+
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update()
+                IS 'Blocca UPDATE/DELETE su istanze_dati_precontrattuali se esistono snapshot in vendite.contratti_utilities.';
+
+              DROP TRIGGER IF EXISTS trg_istanze_dati_precontrattuali_a10_protect_update_upd_dlt
+                ON anagrafiche.istanze_dati_precontrattuali;
+
+              CREATE TRIGGER trg_istanze_dati_precontrattuali_a10_protect_update_upd_dlt
+                BEFORE UPDATE OR DELETE
+                ON anagrafiche.istanze_dati_precontrattuali
+                FOR EACH ROW
+                EXECUTE FUNCTION anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update();
+
+              COMMENT ON TRIGGER trg_istanze_dati_precontrattuali_a10_protect_update_upd_dlt
+                ON anagrafiche.istanze_dati_precontrattuali
+                IS 'Blocca modifiche/cancellazioni se il record è usato in contratti_utilities.';

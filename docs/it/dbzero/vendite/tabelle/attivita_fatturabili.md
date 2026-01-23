@@ -40,7 +40,6 @@
 |------|------|---------|
 | CHECK | chk_attivita_competenza_data_logica |  |
 | CHECK | chk_attivita_competenza_mese_primo |  |
-| CHECK | chk_attivita_quantita_pos |  |
 | FOREIGN KEY | fk_attivita_fatturabili_articoli | articolo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_billing_account | billing_account_id |
 | FOREIGN KEY | fk_attivita_fatturabili_istanze_utilities | istanza_utility_id |

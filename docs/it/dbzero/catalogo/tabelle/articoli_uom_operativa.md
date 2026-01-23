@@ -49,7 +49,7 @@
 | ix_artuomop_meta_gin | `CREATE INDEX ix_artuomop_meta_gin ON catalogo.articoli_uom_operativa USING gin (meta)` |
 | pk_articoli_uom_operativa | `CREATE UNIQUE INDEX pk_articoli_uom_operativa ON catalogo.articoli_uom_operativa USING btree (id)` |
 | uq_artuomop_articolo_uom | `CREATE UNIQUE INDEX uq_artuomop_articolo_uom ON catalogo.articoli_uom_operativa USING btree (articolo_id, uom_id)` |
-| uqidx_artuomop_one_base | `CREATE UNIQUE INDEX uqidx_artuomop_one_base ON catalogo.articoli_uom_operativa USING btree (articolo_id) WHERE (is_base IS TRUE)` |
+| uq_artuomop_one_base | `CREATE UNIQUE INDEX uq_artuomop_one_base ON catalogo.articoli_uom_operativa USING btree (articolo_id) WHERE (is_base IS TRUE)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

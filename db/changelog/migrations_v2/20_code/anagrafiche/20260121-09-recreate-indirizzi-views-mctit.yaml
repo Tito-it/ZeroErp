@@ -1,0 +1,517 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Ricrea funzione/trigger e viste indirizzi dopo update vw_indirizzo_completo
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260121-09-recreate-indirizzi-views-mctit.yaml
+
+  - changeSet:
+      id: 20260121-09-recreate-indirizzi-views
+      author: mctit
+      comment: >
+        Ricrea funzione/trigger e viste indirizzi dopo aggiornamento di script.vw_indirizzo_completo.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ------------------------------------------------------------
+              -- Funzione + trigger normalize indirizzi_dettaglio
+              -- (ricreati dopo vw_indirizzo_completo per ripristinare la catena)
+              -- ------------------------------------------------------------
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_normalize()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Normalizza la descrizione della via da vw_indirizzo_completo
+                SELECT UPPER(TRIM(iv.tipo_toponimo || ' ' || iv.nome_strada))
+                  INTO STRICT NEW.via_norm
+                  FROM script.vw_indirizzo_completo iv
+                 WHERE iv.id_stradario = NEW.stradario_id
+                 LIMIT 1;
+
+                -- Normalizzazione del numero civico con eventuale estensione
+                IF NEW.civico IS NOT NULL AND NEW.civico <> 0 THEN
+                  IF NEW.estensione_civico IS NOT NULL AND NEW.estensione_civico <> '' THEN
+                    IF LEFT(NEW.estensione_civico,1) <> '/' THEN
+                      NEW.estensione_civico := '/' || NEW.estensione_civico;
+                    END IF;
+                    NEW.civico_norm := UPPER(NEW.civico::text || NEW.estensione_civico);
+                  ELSE
+                    NEW.civico_norm := UPPER(NEW.civico::text);
+                  END IF;
+                ELSE
+                  NEW.civico_norm := 'SNC';
+                END IF;
+
+                -- Costruzione dell'indirizzo completo normalizzato
+                NEW.indirizzo_normalizzato := TRIM(BOTH ' ' FROM (
+                    NEW.via_norm
+                  || CASE WHEN NEW.civico_norm <> '' THEN ', ' || NEW.civico_norm ELSE '' END
+                  || CASE WHEN NEW.palazzina IS NOT NULL AND NEW.palazzina <> ''
+                          THEN ', Pal.' || NEW.palazzina ELSE '' END
+                  || CASE WHEN NEW.scala IS NOT NULL AND NEW.scala <> ''
+                          THEN ', Scala ' || NEW.scala ELSE '' END
+                  || CASE WHEN NEW.piano IS NOT NULL AND NEW.piano <> ''
+                          THEN ', Piano ' || NEW.piano ELSE '' END
+                  || CASE WHEN NEW.interno IS NOT NULL AND NEW.interno <> ''
+                          THEN ', Int.' || NEW.interno ELSE '' END
+                ));
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_normalize()
+                IS 'Normalizza via/civico/indirizzo_normalizzato su anagrafiche.indirizzi_dettaglio usando script.vw_indirizzo_completo.';
+
+              DROP TRIGGER IF EXISTS trg_indirizzi_dettaglio_normalize_ins_upd
+                ON anagrafiche.indirizzi_dettaglio;
+
+              CREATE TRIGGER trg_indirizzi_dettaglio_normalize_ins_upd
+                BEFORE INSERT OR UPDATE
+                ON anagrafiche.indirizzi_dettaglio
+                FOR EACH ROW
+                EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_normalize();
+
+              COMMENT ON TRIGGER trg_indirizzi_dettaglio_normalize_ins_upd
+                ON anagrafiche.indirizzi_dettaglio
+                IS 'Normalizza via/civico/indirizzo in INSERT/UPDATE.';
+
+              -- ------------------------------------------------------------
+              -- View anagrafiche.vw_indirizzi_dettaglio
+              -- (base per ricerca e per altre view resolved)
+              -- ------------------------------------------------------------
+              CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_dettaglio AS
+              SELECT
+                idd.id                      AS indirizzo_dettaglio_id,
+                idd.stradario_id,
+                s.comune_id,
+                idd.indirizzo_normalizzato,
+                idd.via_norm,
+                idd.civico,
+                idd.estensione_civico,
+                idd.palazzina,
+                idd.scala,
+                idd.piano,
+                idd.interno,
+                idd.altro,
+                idd.civic_geoloc,
+                idd.street_geoloc,
+                idd.attivo,
+                idd.storicizza,
+                idd.tx_id,
+                idd.data_insert,
+                idd.user_insert,
+                idd.data_update,
+                idd.user_update,
+                ic.comune                   AS descrizione_comune,
+                ic.codice_postale           AS cap,
+                ic.provincia                AS provincia
+              FROM anagrafiche.indirizzi_dettaglio idd
+              JOIN config.stradario s
+                ON s.id = idd.stradario_id
+              JOIN script.vw_indirizzo_completo ic
+                ON ic.id_stradario = idd.stradario_id;
+
+              COMMENT ON VIEW anagrafiche.vw_indirizzi_dettaglio
+                IS 'Vista di comodo per la ricerca e consultazione degli indirizzi di dettaglio normalizzati.
+                Espone i campi chiave di anagrafiche.indirizzi_dettaglio, include comune / provincia / CAP
+                (via script.vw_indirizzo_completo).';
+
+              -- ------------------------------------------------------------
+              -- Funzione di ricerca anagrafiche.fn_search_indirizzi_dettaglio
+              -- (dipende da vw_indirizzi_dettaglio, ricreata dopo la view)
+              -- ------------------------------------------------------------
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_search_indirizzi_dettaglio(
+                p_stradario_id       integer DEFAULT NULL,
+                p_civico             integer DEFAULT NULL,
+                p_estensione_civico  text    DEFAULT NULL,
+                p_palazzina          text    DEFAULT NULL,
+                p_scala              text    DEFAULT NULL,
+                p_piano              text    DEFAULT NULL,
+                p_interno            text    DEFAULT NULL,
+                p_indirizzo_norm     text    DEFAULT NULL,
+                p_limit              integer DEFAULT 50
+              )
+              RETURNS SETOF anagrafiche.vw_indirizzi_dettaglio
+              LANGUAGE plpgsql
+              STABLE
+              PARALLEL SAFE
+              COST 100
+              AS
+              $BODY$
+              DECLARE
+                v_limit integer := COALESCE(p_limit, 50);
+                v_pattern text;
+              BEGIN
+                IF p_indirizzo_norm IS NOT NULL THEN
+                  v_pattern := NULLIF(btrim(p_indirizzo_norm), '');
+                ELSE
+                  v_pattern := NULL;
+                END IF;
+
+                IF p_stradario_id IS NULL AND v_pattern IS NULL THEN
+                  RAISE EXCEPTION
+                    'fn_search_indirizzi_dettaglio: valorizzare almeno p_stradario_id o p_indirizzo_norm (non vuoto)'
+                    USING HINT = 'Per ricerche fuzzy usare p_indirizzo_norm, per ricerche esatte usare p_stradario_id + dettagli civico.';
+                END IF;
+
+                IF p_stradario_id IS NOT NULL THEN
+                  RETURN QUERY
+                  SELECT *
+                  FROM anagrafiche.vw_indirizzi_dettaglio v
+                  WHERE
+                    v.attivo = TRUE
+                    AND v.stradario_id = p_stradario_id
+                    AND (p_civico IS NULL OR v.civico = p_civico)
+                    AND (p_estensione_civico IS NULL OR COALESCE(v.estensione_civico, '') = COALESCE(p_estensione_civico, ''))
+                    AND (p_palazzina IS NULL         OR COALESCE(v.palazzina,        '') = COALESCE(p_palazzina,        ''))
+                    AND (p_scala IS NULL             OR COALESCE(v.scala,            '') = COALESCE(p_scala,            ''))
+                    AND (p_piano IS NULL             OR COALESCE(v.piano,            '') = COALESCE(p_piano,            ''))
+                    AND (p_interno IS NULL           OR COALESCE(v.interno,          '') = COALESCE(p_interno,          ''))
+                    AND (
+                      v_pattern IS NULL
+                      OR UPPER(v.indirizzo_normalizzato) LIKE UPPER('%' || v_pattern || '%')
+                    )
+                  ORDER BY
+                    v.indirizzo_normalizzato,
+                    v.indirizzo_dettaglio_id
+                  LIMIT v_limit;
+
+                  RETURN;
+                END IF;
+
+                RETURN QUERY
+                SELECT *
+                FROM anagrafiche.vw_indirizzi_dettaglio v
+                WHERE
+                  v.attivo = TRUE
+                  AND UPPER(v.indirizzo_normalizzato) LIKE UPPER('%' || v_pattern || '%')
+                ORDER BY
+                  v.indirizzo_normalizzato,
+                  v.indirizzo_dettaglio_id
+                LIMIT v_limit;
+
+                RETURN;
+              END;
+              $BODY$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_search_indirizzi_dettaglio(
+                integer, integer, text, text, text, text, text, text, integer
+              )
+              IS
+              'Funzione di ricerca indirizzi di dettaglio:
+               - Se p_stradario_id è valorizzato → ricerca per stradario_id (+ eventuali dettagli civico e pattern).
+               - Se p_stradario_id è NULL       → ricerca fuzzy su indirizzo_normalizzato (pattern case-insensitive).
+               Ritorna righe da anagrafiche.vw_indirizzi_dettaglio, solo attive, limitate da p_limit.';
+
+              -- ------------------------------------------------------------
+              -- View anagrafiche.vw_istanze_utilities_dettaglio
+              -- (dipende da vw_indirizzi_dettaglio e vw_indirizzo_completo)
+              -- ------------------------------------------------------------
+              CREATE OR REPLACE VIEW anagrafiche.vw_istanze_utilities_dettaglio AS
+              SELECT
+                iu.id                          AS istanza_id,
+                iu.codice                      AS istanza_codice,
+                iu.proprietario_inquilino,
+                iu.fittizia,
+                iu.soggetto_id,
+                s.ragione_sociale_completa,
+                s.id_fiscale_univoco_cf_piva,
+                iu.pdp_id,
+                p.pdp                          AS pdp_codice,
+                p.stato_pdp_id,
+                sp.codice_interno              AS stato_pdp_codice,
+                sp.codice                      AS stato_pdp_descrizione,
+                p.utilities_id,
+                u.codice_interno               AS utility_codice,
+                u.descrizione                  AS utility_descrizione,
+                iu.parent_istanza_id,
+                iu.indirizzo_dettaglio_id,
+                idv.indirizzo_normalizzato,
+                idv.via_norm,
+                idv.civico,
+                idv.estensione_civico,
+                idv.palazzina,
+                idv.scala,
+                idv.piano,
+                idv.interno,
+                idv.altro,
+                idv.civic_geoloc,
+                idv.street_geoloc,
+                idv.comune_id                  AS indirizzo_comune_id,
+                ic.comune                      AS comune_descrizione,
+                ic.provincia                   AS provincia_sigla,
+                ic.codice_postale              AS cap,
+                ic.indirizzo_generale,
+                ic.tipo_toponimo,
+                ic.nome_strada,
+                iu.tx_id,
+                iu.data_insert,
+                iu.user_insert,
+                iu.data_update,
+                iu.user_update
+              FROM anagrafiche.istanze_utilities iu
+              JOIN anagrafiche.soggetti s
+                ON s.id = iu.soggetto_id
+              LEFT JOIN anagrafiche.pdp p
+                ON p.id = iu.pdp_id
+              LEFT JOIN config.stati_pdp sp
+                ON sp.id = p.stato_pdp_id
+              LEFT JOIN config.utilities u
+                ON u.id = p.utilities_id
+              LEFT JOIN anagrafiche.vw_indirizzi_dettaglio idv
+                ON idv.indirizzo_dettaglio_id = iu.indirizzo_dettaglio_id
+              LEFT JOIN script.vw_indirizzo_completo ic
+                ON ic.id_stradario = idv.stradario_id;
+
+              COMMENT ON VIEW anagrafiche.vw_istanze_utilities_dettaglio
+                IS 'Vista di dettaglio sulle istanze utility: include soggetto, PDP, stato tecnico, utility e indirizzo completo.';
+
+              -- ------------------------------------------------------------
+              -- View anagrafiche.vw_indirizzi_resolved_base + derivate
+              -- (dipendono da vw_indirizzi_dettaglio e vw_indirizzo_completo)
+              -- ------------------------------------------------------------
+              CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_base AS
+              SELECT
+                b.scope,
+                b.indirizzo_id,
+                b.soggetto_id,
+                b.soggetto_ruolo_id,
+                b.tipo_indirizzo_id::integer           AS tipo_indirizzo_id,
+                ti.codice_interno                      AS tipo_indirizzo_codice,
+                ti.descrizione                         AS tipo_indirizzo_descrizione,
+                (b.indirizzo_dettaglio_id IS NOT NULL) AS is_normalizzato,
+                b.indirizzo_dettaglio_id               AS indirizzo_dettaglio_id,
+                COALESCE(
+                  vidd.indirizzo_normalizzato,
+                  NULLIF(btrim(b.indirizzo_libero), ''),
+                  NULLIF(btrim(
+                    concat_ws(', ',
+                      NULLIF(btrim(b.postal_box), ''),
+                      NULLIF(btrim(b.sublocality), ''),
+                      NULLIF(btrim(b.locality), ''),
+                      NULLIF(btrim(b.administrative_area), '')
+                    )
+                  ), '')
+                )                                       AS indirizzo_display,
+                b.indirizzo_libero,
+                b.administrative_area,
+                b.locality,
+                b.sublocality,
+                b.postal_box,
+                COALESCE(vidd.comune_id, b.comune_id)                          AS comune_id,
+                COALESCE(vidd.descrizione_comune, co_ai.descrizione, co_s.descrizione, ic.comune)
+                                                                              AS comune_descrizione,
+                COALESCE(vidd.cap, ic.codice_postale)                          AS cap,
+                COALESCE(vidd.provincia, ic.provincia)                         AS provincia,
+                COALESCE(pr_ai.id, pr_s.id)                                    AS provincia_id,
+                COALESCE(pr_ai.sigla, pr_s.sigla)                              AS provincia_sigla,
+                COALESCE(pr_ai.descrizione, pr_s.descrizione)                  AS provincia_descrizione,
+                COALESCE(re_ai.id, re_s.id)                                    AS regione_id,
+                COALESCE(re_ai.descrizione, re_s.descrizione)                  AS regione_descrizione,
+                COALESCE(b.stato_id, re_ai.stato_id, re_s.stato_id)            AS stato_id,
+                st.descrizione                                                 AS stato_descrizione,
+                st.codice_iso2                                                 AS stato_iso2,
+                COALESCE(b.codice_postale_id, cp_s.id)                         AS codice_postale_id,
+                COALESCE(cp_ai.codice, cp_s.codice)                            AS cap_codice,
+                vidd.stradario_id,
+                vidd.via_norm,
+                vidd.civico,
+                vidd.estensione_civico,
+                vidd.palazzina,
+                vidd.scala,
+                vidd.piano,
+                vidd.interno,
+                vidd.altro,
+                COALESCE(vidd.civic_geoloc, vidd.street_geoloc, b.geoloc)       AS geoloc,
+                b.storicizza,
+                b.tx_id,
+                b.data_insert,
+                b.user_insert,
+                b.data_update,
+                b.user_update
+              FROM (
+                SELECT
+                  'RUOLO'::text      AS scope,
+                  i.id              AS indirizzo_id,
+                  sr.soggetto_id    AS soggetto_id,
+                  i.soggetto_ruolo_id AS soggetto_ruolo_id,
+                  i.tipo_indirizzo_id AS tipo_indirizzo_id,
+                  i.indirizzo_dettaglio_id,
+                  i.indirizzo_libero,
+                  i.stato_id,
+                  i.administrative_area,
+                  i.locality,
+                  i.sublocality,
+                  i.postal_box,
+                  i.comune_id,
+                  i.codice_postale_id,
+                  i.geoloc,
+                  i.storicizza,
+                  i.tx_id,
+                  i.data_insert,
+                  i.user_insert,
+                  i.data_update,
+                  i.user_update
+                FROM anagrafiche.indirizzi i
+                JOIN anagrafiche.soggetti_ruoli sr
+                  ON sr.id = i.soggetto_ruolo_id
+                UNION ALL
+                SELECT
+                  'SOGGETTO'::text   AS scope,
+                  isg.id             AS indirizzo_id,
+                  isg.soggetto_id    AS soggetto_id,
+                  NULL::bigint       AS soggetto_ruolo_id,
+                  isg.tipo_indirizzo_id AS tipo_indirizzo_id,
+                  isg.indirizzo_dettaglio_id,
+                  isg.indirizzo_libero,
+                  isg.stato_id,
+                  isg.administrative_area,
+                  isg.locality,
+                  isg.sublocality,
+                  isg.postal_box,
+                  isg.comune_id,
+                  isg.codice_postale_id,
+                  isg.geoloc,
+                  isg.storicizza,
+                  isg.tx_id,
+                  isg.data_insert,
+                  isg.user_insert,
+                  isg.data_update,
+                  isg.user_update
+                FROM anagrafiche.indirizzi_soggetti isg
+              ) b
+              JOIN config.tipi_indirizzi ti
+                ON ti.id = b.tipo_indirizzo_id
+              LEFT JOIN anagrafiche.vw_indirizzi_dettaglio vidd
+                ON vidd.indirizzo_dettaglio_id = b.indirizzo_dettaglio_id
+              LEFT JOIN script.vw_indirizzo_completo ic
+                ON ic.id_comune = b.comune_id
+              LEFT JOIN config.stradario s
+                ON s.id = vidd.stradario_id
+              LEFT JOIN config.comuni co_s
+                ON co_s.id = s.comune_id
+              LEFT JOIN config.codici_postali cp_s
+                ON cp_s.id = s.codice_postale_id
+              LEFT JOIN config.comuni co_ai
+                ON co_ai.id = b.comune_id
+              LEFT JOIN config.codici_postali cp_ai
+                ON cp_ai.id = b.codice_postale_id
+              LEFT JOIN config.province pr_ai
+                ON pr_ai.id = co_ai.provincia_id
+              LEFT JOIN config.province pr_s
+                ON pr_s.id = co_s.provincia_id
+              LEFT JOIN config.regioni re_ai
+                ON re_ai.id = pr_ai.regione_id
+              LEFT JOIN config.regioni re_s
+                ON re_s.id = pr_s.regione_id
+              LEFT JOIN config.stati st
+                ON st.id = COALESCE(b.stato_id, re_ai.stato_id, re_s.stato_id);
+
+              COMMENT ON VIEW anagrafiche.vw_indirizzi_resolved_base
+                IS 'Vista base resolved: indirizzi soggetto/ruolo con output standard condiviso (display + campi strutturati).';
+
+              CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_ruolo AS
+              SELECT *
+              FROM anagrafiche.vw_indirizzi_resolved_base
+              WHERE scope = 'RUOLO';
+
+              COMMENT ON VIEW anagrafiche.vw_indirizzi_resolved_ruolo
+                IS 'Vista resolved: indirizzi associati a soggetto_ruolo, con output standard.';
+
+              CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_soggetto AS
+              SELECT *
+              FROM anagrafiche.vw_indirizzi_resolved_base
+              WHERE scope = 'SOGGETTO';
+
+              COMMENT ON VIEW anagrafiche.vw_indirizzi_resolved_soggetto
+                IS 'Vista resolved: indirizzi associati direttamente al soggetto, con output standard.';
+
+              CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_all AS
+              SELECT *
+              FROM anagrafiche.vw_indirizzi_resolved_base;
+
+              COMMENT ON VIEW anagrafiche.vw_indirizzi_resolved_all
+                IS 'Vista unificata degli indirizzi resolved: scope SOGGETTO + RUOLO.';
+
+              -- ------------------------------------------------------------
+              -- View anagrafiche.vw_istanze_dati_precontrattuali_dettaglio
+              -- (dipende da vw_istanze_utilities_dettaglio)
+              -- ------------------------------------------------------------
+              CREATE OR REPLACE VIEW anagrafiche.vw_istanze_dati_precontrattuali_dettaglio AS
+              SELECT
+                idp.id AS istanza_dati_precontrattuali_id,
+                idp.istanza_utility_id,
+                idp.utility_id AS istanza_dati_utility_id,
+                idp.classe_utenza_id,
+                cu.descrizione AS classe_utenza_descrizione,
+                cu.codice AS classe_utenza_codice,
+                tu.id AS tipo_utenza_id,
+                tu.descrizione AS tipo_utenza_descrizione,
+                tu.codice AS tipo_utenza_codice,
+                idp.param_1_num,
+                idp.param_2_txt,
+                idp.meta,
+                idp.tx_id,
+                idp.storicizza,
+                idp.data_insert,
+                idp.user_insert,
+                idp.data_update,
+                idp.user_update,
+                iud.istanza_id,
+                iud.istanza_codice,
+                iud.proprietario_inquilino,
+                iud.fittizia,
+                iud.soggetto_id,
+                iud.ragione_sociale_completa,
+                iud.id_fiscale_univoco_cf_piva,
+                iud.pdp_id,
+                iud.pdp_codice,
+                iud.stato_pdp_id,
+                iud.stato_pdp_codice,
+                iud.stato_pdp_descrizione,
+                iud.utilities_id,
+                iud.utility_codice,
+                iud.utility_descrizione,
+                iud.parent_istanza_id,
+                iud.indirizzo_dettaglio_id,
+                iud.indirizzo_normalizzato,
+                iud.via_norm,
+                iud.civico,
+                iud.estensione_civico,
+                iud.palazzina,
+                iud.scala,
+                iud.piano,
+                iud.interno,
+                iud.altro,
+                iud.civic_geoloc,
+                iud.street_geoloc,
+                iud.indirizzo_comune_id,
+                iud.comune_descrizione,
+                iud.provincia_sigla,
+                iud.cap,
+                iud.indirizzo_generale,
+                iud.tipo_toponimo,
+                iud.nome_strada,
+                iud.tx_id AS istanza_tx_id,
+                iud.data_insert AS istanza_data_insert,
+                iud.user_insert AS istanza_user_insert,
+                iud.data_update AS istanza_data_update,
+                iud.user_update AS istanza_user_update
+              FROM anagrafiche.istanze_dati_precontrattuali idp
+              JOIN anagrafiche.vw_istanze_utilities_dettaglio iud
+                ON iud.istanza_id = idp.istanza_utility_id
+              LEFT JOIN config.classi_utenze cu
+                ON cu.id = idp.classe_utenza_id
+              LEFT JOIN config.tipi_utenze tu
+                ON tu.id = cu.tipo_utenza_id;
+
+              COMMENT ON VIEW anagrafiche.vw_istanze_dati_precontrattuali_dettaglio
+                IS 'Vista di dettaglio delle istanze dati precontrattuali con classe/tipo utenza e dati istanza utilities.';

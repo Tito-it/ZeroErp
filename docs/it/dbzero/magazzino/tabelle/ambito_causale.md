@@ -9,7 +9,7 @@
 | descrizione | character varying | NO |  |
 | ordine | smallint | NO | 0 |
 | attivo | boolean | NO | true |
-| extra_info | jsonb | YES | '{}'::jsonb |
+| meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | user_insert | text | YES |  |
 | user_update | text | YES |  |

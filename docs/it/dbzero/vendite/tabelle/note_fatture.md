@@ -35,9 +35,9 @@
 | CHECK | chk_note_testo_non_vuoto |  |
 | FOREIGN KEY | fk_fatture_note_riga | target_riga_id |
 | FOREIGN KEY | fk_fatture_note_testata | target_id |
-| FOREIGN KEY | fk_vendite_note_id_lingua | id_lingua, id_lingua, id_lingua, id_lingua, id_lingua, id_lingua, id_lingua |
-| FOREIGN KEY | fk_vendite_note_id_stile | id_stile, id_stile, id_stile, id_stile, id_stile, id_stile, id_stile |
-| PRIMARY KEY | note_fatture_pkey | id, target_tipo |
+| FOREIGN KEY | fk_vendite_note_id_lingua | id_lingua |
+| FOREIGN KEY | fk_vendite_note_id_stile | id_stile |
+| PRIMARY KEY | note_fatture_pkey | target_tipo, id |
 
 ## 📑 Indici
 | Nome | Definizione |

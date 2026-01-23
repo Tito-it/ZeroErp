@@ -29,7 +29,7 @@
 | FOREIGN KEY | fk_tipi_ruolo_tipi_indirizzo_fallback_tipo | fallback_tipo_indirizzo_id |
 | FOREIGN KEY | fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo | tipo_ruolo_id |
 | PRIMARY KEY | pk_ruoli_tipi_indirizzo | id |
-| UNIQUE | uq_tipi_ruolo_tipi_indirizzo_tipo_ruolo_tipo | tipo_indirizzo_id, tipo_ruolo_id |
+| UNIQUE | uq_tipi_ruolo_tipi_indirizzo_tipo_ruolo_tipo | tipo_ruolo_id, tipo_indirizzo_id |
 
 ## 📑 Indici
 | Nome | Definizione |

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/contratti_righe.md" %}
 # 📚 Tabella `contratti_righe`
 
 ## 🗂️ Campi principali

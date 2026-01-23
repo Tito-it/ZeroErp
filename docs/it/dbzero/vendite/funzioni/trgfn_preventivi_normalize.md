@@ -15,7 +15,7 @@ BEGIN
   ----------------------------------------------------------------
   -- Imposta data se numero e' presente e data mancante
   IF TG_OP = 'INSERT' AND (NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '') THEN
-    IF NEW.data IS NULL OR NEW.data = 0 THEN
+    IF NEW.data IS NULL  THEN
       NEW.data := CURRENT_DATE;
     END IF;
   END IF;

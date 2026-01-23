@@ -13,7 +13,7 @@
 | doc_id | bigint | YES |  |
 | doc_riga_id | bigint | YES |  |
 | attivo | boolean | NO | true |
-| extra_info | jsonb | YES | '{}'::jsonb |
+| meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | user_insert | text | YES |  |
 | user_update | text | YES |  |

@@ -10,11 +10,13 @@
 > • [config.sorgenti](/dbzero/config/tabelle/sorgenti)   
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
 > • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)   
+> • [vendite.note](/dbzero/vendite/tabelle/note)   
 
 ---
 
 ### 🎯 Scopo Principale
 
+(latest review 21-01-2026)
 `vendite.attivita_fatturabili` è il **registro centrale delle prestazioni/attività da fatturare** (time & material, canoni, una‑tantum, letture/consumi valorizzati, import batch, ecc.).
 Ogni riga rappresenta **una voce fatturabile** riferita a un *articolo/servizio*, a una *istanza tecnica/utility* e, opzionalmente, a un *billing account*.
 Queste righe sono **pre‑documentali**: quando il ciclo di fatturazione le preleva, diventano **righe di fattura** (`vendite.fatture_righe`).
@@ -63,7 +65,7 @@ Tipico filtro di eleggibilità per il motore:
 * **Identificazione & riferimenti**:
   `articolo_id` (servizio/voce), `istanza_utility_id` (punto tecnico), `billing_account_id` (opz. intestazione economica).
 * **Dati attività**:
-  `data_attivita`, `quantita` (> 0), `note`, `meta` (estensioni specifiche: matricole, rilevazioni, tariffa applicata, ecc.).
+  `data_attivita`, `quantita` (> 0),  `meta` (estensioni specifiche: matricole, rilevazioni, tariffa applicata, ecc.).
 * **Competenza & gating**:
   `competenza_mese`, `competenza_data`, `posticipa_al`, `sospesa`.
 * **Stato di processo**:
@@ -72,6 +74,8 @@ Tipico filtro di eleggibilità per il motore:
   `sorgente_tipo_id`, `sorgente_uid` (vincolo unico parziale per evitare duplicazioni dai sistemi esterni).
 * **Governance**:
   `tx_id`, `storicizza`, `user_*`, `data_*`.
+* **Misure & dettaglio sorgente**:
+  `sorgente_riga` (riferimento tecnico riga sorgente), `uom_id` (u.m. base), `qta_operativa` (quantita operativa), `uom_operativa_id` (u.m. operativa), `factor_to_base` (fattore conversione verso base).
 
 ---
 
@@ -79,7 +83,6 @@ Tipico filtro di eleggibilità per il motore:
 
 * **Vincoli**:
 
-  * `chk_attivita_quantita_pos`: quantità strettamente positiva.
   * `chk_attivita_competenza_mese_primo`: il giorno di `competenza_mese` deve essere **1**.
   * `chk_attivita_competenza_data_logica`: `competenza_data` ≥ `data_attivita` (se presente).
 * **FK principali**:
@@ -97,10 +100,10 @@ Tipico filtro di eleggibilità per il motore:
   * **Unique parziale** `uq_attivita_fatturabili_v_sorgente_fk` su (`sorgente_tipo_id`, `sorgente_uid`) *WHEN* `sorgente_tipo_id IS NOT NULL` → **idempotenza import**.
 * **Trigger**:
 
-  * `trg_attivita_fatturabili_ins_upd_norm` → **normalizza** `competenza_mese` al 1° del mese (YYYY‑MM‑01).
-  * `trg_attivita_fatturabili_a10_ins_upd_guard_ba_coerenza` → **coerenze BA/istanza/articolo** (regole di dominio).
-  * `trg_attivita_fatturabili_a10_ins_upd_guard_fonte` → **validazione sorgente** (`sorgente_tipo_id`/`sorgente_uid`).
-  * `trg_attivita_fatturabili_a10_upd_dlt_guard_fatturato` → **fail‑fast**: blocca update/delete se già collegate a fattura.
+  * `trg_attivita_fatturabili_normalize_ins_upd` → **normalizza** `competenza_mese` al 1° del mese (YYYY‑MM‑01) e, se `sorgente_tipo_id` è valorizzato, imposta `sorgente_riga` a `0` quando mancante.
+  * `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` → **coerenze BA/istanza/articolo** (regole di dominio).
+  * `trg_attivita_fatturabili_a10_guard_fonte_ins_upd` → **validazione sorgente** (`sorgente_tipo_id`/`sorgente_uid`).
+  * `trg_attivita_fatturabili_a10_guard_fatturato_upd_dlt` → **fail‑fast**: blocca update/delete se già collegate a fattura.
 
 ---
 
@@ -136,7 +139,6 @@ WHERE id = ANY(:ids);
 * Usare `posticipa_al` per rinviare selettivamente righe **senza** perdere la tracciabilità del motivo (`exclude_reason`).
 * Evitare update manuali su righe già collegate a `fattura_riga_id`; i trigger **bloccano** modifiche distruttive.
 * Per import esterni, popolare **sempre** `sorgente_tipo_id` + `sorgente_uid` per ottenere **idempotenza** e facilitare il retry.
-* Considerare `meta` **NOT NULL DEFAULT '{}'::jsonb` per allineare la governance JSONB al resto del modello.
 
 ---
 

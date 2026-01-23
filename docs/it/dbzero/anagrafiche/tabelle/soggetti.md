@@ -33,11 +33,11 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_comuni_config | comune_id, comune_id |
+| FOREIGN KEY | fk_comuni_config | comune_id |
 | FOREIGN KEY | fk_contatti_anagrafiche | default_contatto_id |
 | FOREIGN KEY | fk_soggetti_tipo_soggetto_dettaglio | tipo_soggetto_dettaglio_id |
-| FOREIGN KEY | fk_stati_config | stato_id, stato_id |
-| FOREIGN KEY | fk_titoli_cortesia_config | titolo_cortesia_id, titolo_cortesia_id |
+| FOREIGN KEY | fk_stati_config | stato_id |
+| FOREIGN KEY | fk_titoli_cortesia_config | titolo_cortesia_id |
 | PRIMARY KEY | pk_soggetto | id |
 | UNIQUE | uq_soggetto_codice | codice |
 | UNIQUE | uq_soggetto_idstato_id_fiscale_univoco | stato_id, id_fiscale_univoco_cf_piva |
@@ -49,6 +49,7 @@
 | ix_anagrafiche_soggetti_ragione_sociale_completa | `CREATE INDEX ix_anagrafiche_soggetti_ragione_sociale_completa ON anagrafiche.soggetti USING btree (ragione_sociale_completa)` |
 | ix_anagrafiche_soggetti_stato_id | `CREATE INDEX ix_anagrafiche_soggetti_stato_id ON anagrafiche.soggetti USING btree (stato_id)` |
 | ix_anagrafiche_soggetti_titolo_cortesia_id | `CREATE INDEX ix_anagrafiche_soggetti_titolo_cortesia_id ON anagrafiche.soggetti USING btree (titolo_cortesia_id)` |
+| ix_soggetti_ragione_sociale_completa_trgm | `CREATE INDEX ix_soggetti_ragione_sociale_completa_trgm ON anagrafiche.soggetti USING gin (ragione_sociale_completa gin_trgm_ops) WITH (fastupdate='true', gin_pending_list_limit='4194304')` |
 | pk_soggetto | `CREATE UNIQUE INDEX pk_soggetto ON anagrafiche.soggetti USING btree (id)` |
 | uq_soggetto_codice | `CREATE UNIQUE INDEX uq_soggetto_codice ON anagrafiche.soggetti USING btree (codice)` |
 | uq_soggetto_idstato_id_fiscale_univoco | `CREATE UNIQUE INDEX uq_soggetto_idstato_id_fiscale_univoco ON anagrafiche.soggetti USING btree (stato_id, id_fiscale_univoco_cf_piva)` |

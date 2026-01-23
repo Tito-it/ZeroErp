@@ -8,7 +8,7 @@
 | comune_id | integer | NO |  |
 | stradario_generale_id | integer | NO |  |
 | geoloc | USER-DEFINED | YES |  |
-| extra_info | jsonb | YES |  |
+| meta | jsonb | YES |  |
 | data_insert | timestamp with time zone | YES | now() |
 | user_insert | text | YES | CURRENT_USER |
 | data_update | timestamp with time zone | YES | now() |
@@ -24,7 +24,7 @@
 | FOREIGN KEY | fk_stradario_comune_id | comune_id |
 | FOREIGN KEY | fk_stradario_stradario_generale_id | stradario_generale_id |
 | PRIMARY KEY | pk_stradario | id |
-| UNIQUE | uq_stradario_comune_stradario_gen_cp | codice_postale_id, comune_id, stradario_generale_id |
+| UNIQUE | uq_stradario_comune_stradario_gen_cp | comune_id, stradario_generale_id, codice_postale_id |
 
 ## 📑 Indici
 | Nome | Definizione |

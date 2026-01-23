@@ -19,6 +19,8 @@
 >
 > * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns)
 >
+> * [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap)
+>
 > * *Orchestratori:*
 >
 > * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations),  
@@ -26,7 +28,8 @@
 >  * [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),  
 >  * [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
 >  * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns),  
->  * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)  
+>  * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo),  
+>  * [dbops.fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block)  
 
 ---
 
@@ -112,6 +115,33 @@ Se:
 ➡️ l’operazione viene **bloccata con errore**.
 
 L’automazione **non modifica mai automaticamente i record figli**.
+
+**3.7 OVERLAP (anti-sovrapposizione temporale)**
+
+L'automazione **OVERLAP** centralizza la gestione dei vincoli **EXCLUDE GiST** per evitare sovrapposizioni
+su tabelle **versionate** con colonne periodo (`valido_dal/valido_al` o `valid_from/valid_to`).
+
+Componenti principali:
+
+* **Config**: `dbops.automazione_overlap` con chiavi logiche, colonne periodo e flag `active`.
+* **Seed**: `dbops.fn_seed_automazione_overlap()` rileva tabelle eleggibili e imposta `active=true` solo se versionate.
+* **Apply**: `dbops.fn_apply_automazione_overlap()` crea i vincoli `EXCLUDE` sulle tabelle `active=true`.
+
+Note operative:
+
+* Se `key_columns` non e' valorizzato, il vincolo non viene creato.
+* Per chiavi UUID e' richiesta l'estensione `btree_gist`.
+* Le tabelle non versionate restano `active=false`.
+
+**3.8 DELETE_BLOCK (blocco DELETE con GUC)**
+
+Automazione dedicata a tabelle sensibili (es. ruoli) per **bloccare la DELETE** salvo bypass esplicito via GUC.
+
+Componenti principali:
+
+* **Config**: `dbops.automation_delete_block` con schema/tabella, GUC e flag `enabled`.
+* **Trigger**: `script.trgfn_delete_block_by_guc(guc_key)`.
+* **Apply**: `dbops.fn_run_automations_delete_block()` applica i trigger.
 
 ---
 

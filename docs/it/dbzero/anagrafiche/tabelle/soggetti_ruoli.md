@@ -7,7 +7,7 @@
 | id | bigint | NO |  |
 | soggetto_id | uuid | NO |  |
 | tipo_ruolo_id | integer | NO |  |
-| extra | jsonb | YES | '{}'::jsonb |
+| meta | jsonb | YES | '{}'::jsonb |
 | user_insert | text | NO | CURRENT_USER |
 | user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
@@ -17,7 +17,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id, soggetto_id, soggetto_id |
+| FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id |
 | FOREIGN KEY | fk_tipi_ruoli_config | tipo_ruolo_id |
 | PRIMARY KEY | pk_soggetti_ruoli | id |
 | UNIQUE | uq_soggetto_ruolo | soggetto_id, tipo_ruolo_id |

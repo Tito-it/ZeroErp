@@ -80,12 +80,23 @@ def gen_table_md(schema, table, cur):
     # Vincoli
     cur.execute(
         """
-        SELECT tc.constraint_type, tc.constraint_name,
-               string_agg(kcu.column_name, ', ') AS columns
+        SELECT tc.constraint_type,
+               tc.constraint_name,
+               string_agg(kcu.column_name, ', ' ORDER BY kcu.ordinal_position) AS columns
         FROM information_schema.table_constraints tc
-        LEFT JOIN information_schema.key_column_usage kcu
+        LEFT JOIN (
+            SELECT DISTINCT constraint_schema,
+                            constraint_name,
+                            table_schema,
+                            table_name,
+                            column_name,
+                            ordinal_position
+            FROM information_schema.key_column_usage
+        ) kcu
           ON tc.constraint_name = kcu.constraint_name
+         AND tc.constraint_schema = kcu.constraint_schema
          AND tc.table_schema = kcu.table_schema
+         AND tc.table_name = kcu.table_name
         WHERE tc.table_schema=%s AND tc.table_name=%s
         AND NOT (tc.constraint_type = 'CHECK' AND 
                 tc.constraint_name LIKE '%%_not_null') 

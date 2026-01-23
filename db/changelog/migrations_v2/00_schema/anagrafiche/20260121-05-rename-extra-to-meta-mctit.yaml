@@ -1,0 +1,36 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Rinomina colonne extra/extra_info in meta (schema anagrafiche)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260121-05-rename-extra-to-meta-mctit.yaml
+
+  - changeSet:
+      id: 20260121-05-rename-extra-to-meta-anagrafiche
+      author: mctit
+      comment: >
+        Standardizza le colonne JSONB su meta in schema anagrafiche.
+
+      changes:
+        - renameColumn:
+            schemaName: anagrafiche
+            tableName: gestori_utilities
+            oldColumnName: extra
+            newColumnName: meta
+            columnDataType: jsonb
+
+        - renameColumn:
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli
+            oldColumnName: extra
+            newColumnName: meta
+            columnDataType: jsonb
+
+        - renameColumn:
+            schemaName: anagrafiche
+            tableName: pdp
+            oldColumnName: extra_info
+            newColumnName: meta
+            columnDataType: jsonb

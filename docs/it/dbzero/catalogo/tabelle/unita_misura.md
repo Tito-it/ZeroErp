@@ -23,6 +23,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_catalogo_unita_misura_descrizione | `CREATE INDEX ix_catalogo_unita_misura_descrizione ON catalogo.unita_misura USING btree (descrizione) WITH (fillfactor='100', deduplicate_items='true')` |
 | pk_unita_misura | `CREATE UNIQUE INDEX pk_unita_misura ON catalogo.unita_misura USING btree (id)` |
 | uq_unita_misura_codice | `CREATE UNIQUE INDEX uq_unita_misura_codice ON catalogo.unita_misura USING btree (codice)` |
 

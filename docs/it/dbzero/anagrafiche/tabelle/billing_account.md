@@ -10,8 +10,8 @@
 | utility_id | integer | NO |  |
 | parent_account_id | bigint | YES |  |
 | codice | character varying | NO |  |
-| valid_from | date | YES | CURRENT_DATE |
-| valid_to | date | YES |  |
+| valido_dal | date | YES | CURRENT_DATE |
+| valido_al | date | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
@@ -22,14 +22,15 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_billing_account_validita |  |
 | FOREIGN KEY | fk_billing_account_anagrafiche | parent_account_id |
 | FOREIGN KEY | fk_billing_account_istanze_utilities | istanza_utility_id |
-| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
-| FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
+| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id |
+| FOREIGN KEY | fk_utilities_config | utility_id |
 | PRIMARY KEY | pk_billing_account | id |
 | UNIQUE | uq_billing_account_codice | codice |
-| UNIQUE | uq_billing_account_id_istanza_utility | istanza_utility_id, id |
-| UNIQUE | uq_billing_instance_utility | utility_id, istanza_utility_id |
+| UNIQUE | uq_billing_account_id_istanza_utility | id, istanza_utility_id |
+| UNIQUE | uq_billing_instance_utility | istanza_utility_id, utility_id |
 
 ## 📑 Indici
 | Nome | Definizione |

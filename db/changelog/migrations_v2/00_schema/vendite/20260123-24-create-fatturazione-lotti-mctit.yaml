@@ -1,0 +1,202 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260123-24-create-fatturazione-lotti-mctit.yaml
+
+  - changeSet:
+      id: 20260123-24-create-fatturazione-lotti
+      author: mctit
+      comment: "Tabella lotto fatturazione con stato job/documenti e lock uuid"
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: fatturazione_lotti
+            remarks: "Lotti di fatturazione con parametri di calcolo e stati operativi."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_fatturazione_lotti
+                    nullable: false
+
+              - column:
+                  name: lock_batch_id
+                  type: uuid
+                  defaultValueComputed: "uuidv7()"
+                  remarks: "UUID univoco del lotto (lock_batch_id)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: codice
+                  type: character varying
+                  remarks: "Codice lotto (es. LOT-YYYYMM-NN)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: competenza_mese
+                  type: date
+                  remarks: "Competenza mensile (YYYY-MM-01)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: utility_id
+                  type: integer
+                  remarks: "FK -> config.utilities.id (opzionale)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: registro_id
+                  type: bigint
+                  remarks: "FK -> vendite.registri_fatturazione.id (opzionale)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: billing_account_id
+                  type: bigint
+                  remarks: "FK -> anagrafiche.billing_account.id (opzionale)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: stato_job
+                  type: text
+                  defaultValue: "IN_ESECUZIONE"
+                  remarks: "Stato job lotto (IN_ESECUZIONE|COMPLETATO|ERRORE)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: stato_documenti
+                  type: text
+                  defaultValue: "DRAFT"
+                  remarks: "Stato documenti lotto (DRAFT|EMESSA|INVIATA)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Abilita storicizzazione."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction id (policy)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: fatturazione_lotti
+            columnNames: lock_batch_id
+            constraintName: uq_fatturazione_lotti_lock_batch_id
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: fatturazione_lotti
+            columnNames: codice
+            constraintName: uq_fatturazione_lotti_codice
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatturazione_lotti
+            baseColumnNames: utility_id
+            constraintName: fk_fatturazione_lotti_utility
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatturazione_lotti
+            baseColumnNames: registro_id
+            constraintName: fk_fatturazione_lotti_registro
+            referencedTableSchemaName: vendite
+            referencedTableName: registri_fatturazione
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatturazione_lotti
+            baseColumnNames: billing_account_id
+            constraintName: fk_fatturazione_lotti_ba
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti
+                ADD CONSTRAINT chk_fatturazione_lotti_stato_job
+                CHECK (stato_job IN ('IN_ESECUZIONE','COMPLETATO','ERRORE'));
+
+              ALTER TABLE vendite.fatturazione_lotti
+                ADD CONSTRAINT chk_fatturazione_lotti_stato_documenti
+                CHECK (stato_documenti IN ('DRAFT','EMESSA','INVIATA'));
+
+              COMMENT ON TABLE vendite.fatturazione_lotti
+                IS 'Lotti di fatturazione con parametri, lock uuid e stati operativi.';

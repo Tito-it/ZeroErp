@@ -1,0 +1,36 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Rinomina colonne extra_info in meta (schema magazzino)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260121-07-rename-extra-to-meta-mctit.yaml
+
+  - changeSet:
+      id: 20260121-07-rename-extra-to-meta-magazzino
+      author: mctit
+      comment: >
+        Standardizza le colonne JSONB su meta in schema magazzino.
+
+      changes:
+        - renameColumn:
+            schemaName: magazzino
+            tableName: ambito_causale
+            oldColumnName: extra_info
+            newColumnName: meta
+            columnDataType: jsonb
+
+        - renameColumn:
+            schemaName: magazzino
+            tableName: causali
+            oldColumnName: extra_info
+            newColumnName: meta
+            columnDataType: jsonb
+
+        - renameColumn:
+            schemaName: magazzino
+            tableName: eventi_assets
+            oldColumnName: extra_info
+            newColumnName: meta
+            columnDataType: jsonb

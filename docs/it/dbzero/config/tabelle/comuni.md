@@ -24,6 +24,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_config_comuni_descrizione_trgm | `CREATE INDEX ix_config_comuni_descrizione_trgm ON config.comuni USING gin (descrizione gin_trgm_ops) WITH (fastupdate='true', gin_pending_list_limit='4194304')` |
 | ix_config_comuni_provincia_id | `CREATE INDEX ix_config_comuni_provincia_id ON config.comuni USING btree (provincia_id)` |
 | ix_descrizione_comune | `CREATE INDEX ix_descrizione_comune ON config.comuni USING btree (descrizione)` |
 | pk_comuni | `CREATE UNIQUE INDEX pk_comuni ON config.comuni USING btree (id)` |

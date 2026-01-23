@@ -1,4 +1,4 @@
-id,codice,codice_interno,descrizione,ordine,attivo,extra_info,tx_id,user_insert,user_update,data_insert,data_update,storicizza
+id,codice,codice_interno,descrizione,ordine,attivo,meta,tx_id,user_insert,user_update,data_insert,data_update,storicizza
 1,VENDITE,MAG_AMB_VENDITE,Movimenti connessi a vendite,10,t,{},,,,2025-10-01 17:33:32.892458+02,,f
 2,ACQUISTI,MAG_AMB_ACQUISTI,Movimenti connessi ad acquisti,20,t,{},,,,2025-10-01 17:33:32.892458+02,,f
 3,ODL,MAG_AMB_ODL,Movimenti da Ordini di Lavoro,30,t,{},,,,2025-10-01 17:33:32.892458+02,,f

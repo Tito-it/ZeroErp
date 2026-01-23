@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/dbops/20260120-01-create-ix-trgm-mctit.yaml
+
+    - changeSet:
+          id: 20260120-01-create-ix-anagrafiche-soggetti-ragione-sociale-completa-trgm
+          author: mctit
+          preConditions:
+              - onFail: MARK_RAN
+              - onError: HALT
+              - tableExists:
+                    schemaName: anagrafiche
+                    tableName: soggetti
+              - columnExists:
+                    schemaName: anagrafiche
+                    tableName: soggetti
+                    columnName: ragione_sociale_completa
+          sql:
+              splitStatements: false
+              sql: |
+                  CREATE INDEX IF NOT EXISTS ix_soggetti_ragione_sociale_completa_trgm
+                  ON anagrafiche.soggetti
+                  USING gin (ragione_sociale_completa gin_trgm_ops)
+                  WITH (fastupdate = true, gin_pending_list_limit = 4194304)
+                  TABLESPACE pg_default;
+
+    - changeSet:
+          id: 20260120-01-02-create-ix-config-comuni-descrizione-trgm
+          author: mctit
+          preConditions:
+              - onFail: MARK_RAN
+              - onError: HALT
+              - tableExists:
+                    schemaName: config
+                    tableName: comuni
+              - columnExists:
+                    schemaName: config
+                    tableName: comuni
+                    columnName: descrizione
+          sql:
+              splitStatements: false
+              sql: |
+                  CREATE INDEX IF NOT EXISTS ix_config_comuni_descrizione_trgm
+                  ON config.comuni
+                  USING gin (descrizione gin_trgm_ops)
+                  WITH (fastupdate = true, gin_pending_list_limit = 4194304)
+                  TABLESPACE pg_default;
+
+    - changeSet:
+          id: 20260120-01-03-create-ix-catalogo-articoli-descrizione-trgm
+          author: mctit
+          preConditions:
+              - onFail: MARK_RAN
+              - onError: HALT
+              - tableExists:
+                    schemaName: catalogo
+                    tableName: articoli
+              - columnExists:
+                    schemaName: catalogo
+                    tableName: articoli
+                    columnName: descrizione
+          sql:
+              splitStatements: false
+              sql: |
+                  CREATE INDEX IF NOT EXISTS ix_catalogo_articoli_descrizione_trgm
+                  ON catalogo.articoli
+                  USING gin (descrizione gin_trgm_ops)
+                  WITH (fastupdate = true, gin_pending_list_limit = 4194304)
+                  TABLESPACE pg_default;
+
+
+                  CREATE INDEX IF NOT EXISTS ix_catalogo_articoli_descrizione
+                    ON catalogo.articoli USING btree
+                    (descrizione COLLATE pg_catalog."default" ASC NULLS LAST)
+                    WITH (fillfactor=100, deduplicate_items=True)
+                    TABLESPACE pg_default;
+
+                   CREATE INDEX IF NOT EXISTS ix_catalogo_unita_misura_descrizione
+                    ON catalogo.unita_misura USING btree
+                    (descrizione COLLATE pg_catalog."default" ASC NULLS LAST)
+                    WITH (fillfactor=100, deduplicate_items=True)
+                    TABLESPACE pg_default;
+
+    - changeSet:
+          id: 20260120-01-04-create-ix-vendite-articoli-descrizione-aggiuntiva-trgm
+          author: mctit
+          # runAlways: true
+          validCheckSum:
+              - ANY
+
+          preConditions:
+              - onFail: MARK_RAN
+              - onError: HALT
+              - tableExists:
+                    schemaName: vendite
+                    tableName: articoli_descrizioni_aggiuntive
+              - columnExists:
+                    schemaName: vendite
+                    tableName: articoli_descrizioni_aggiuntive
+                    columnName: descrizione
+          sql:
+              splitStatements: false
+              sql: |
+                  CREATE INDEX IF NOT EXISTS ix_vendite_articoli_descrizione_aggiuntiva_trgm
+                  ON vendite.articoli_descrizioni_aggiuntive
+                  USING gin (descrizione gin_trgm_ops)
+                  WITH (fastupdate = true, gin_pending_list_limit = 4194304)
+                  TABLESPACE pg_default;
+
+                    CREATE INDEX IF NOT EXISTS ix_articoli_descrizione_aggiuntiva  
+                    ON vendite.articoli_descrizioni_aggiuntive USING btree
+                    (descrizione COLLATE pg_catalog."default" ASC NULLS LAST)
+                    WITH (fillfactor=100, deduplicate_items=True)
+                    TABLESPACE pg_default;

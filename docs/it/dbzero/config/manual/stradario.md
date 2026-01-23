@@ -9,10 +9,6 @@
 > * [config.codici_postali](/dbzero/config/tabelle/codici_postali)  
 > * [storico.stradario](/dbzero/storico/tabelle/stradario)
 > 
-> Approfondimento funzioni:    
->
->* [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
- * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 
 La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciascun comune, completando il processo di indirizzamento con informazioni di localizzazione e dettagli aggiuntivi.
@@ -20,7 +16,8 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
 ---
 
 ### 🎯 Scopo Principale
-(latest revision 06-12-25)
+
+(latest review 21-01-2026)
 * **Mappa comunale delle vie**
   Contiene l’elenco delle strade e vie di ogni comune, con riferimento al prefisso e al nome forniti da `config.stradario_generale`.
 * **Geolocalizzazione**
@@ -28,7 +25,7 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
 * **Associazione CAP**
   Collega ogni via a un codice postale obbligatorio (`codice_postale_id`), gestito nella tabella `config.codici_postali`.
 * **Informazioni estese**
-  Il campo `extra_info` (JSONB) permette di memorizzare dati aggiuntivi, come eventuali frazioni, indicazioni o note specifiche.
+  Il campo `meta` (JSONB) permette di memorizzare dati aggiuntivi, come eventuali frazioni, indicazioni o note specifiche.
 * **Storicizzazione**
   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.stradario`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
   
@@ -53,7 +50,7 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
 * **Supporto GIS**
   Grazie al campo di geometria, rende disponibili servizi di geocoding, routing e rappresentazione cartografica.
 * **Flessibilità di estensione**
-  Il JSONB `extra_info` consente di aggiungere attributi specifici (es. frazioni, note storiche) senza modificare lo schema.
+  Il JSONB `meta` consente di aggiungere attributi specifici (es. frazioni, note storiche) senza modificare lo schema.
 * **Auditing e storicizzazione**
   Trigger automatici mantengono traccia di modifiche e cancellazioni, garantendo consistenza storica dei dati.
 
@@ -92,7 +89,7 @@ erDiagram
         int       comune_id FK
         int       stradario_generale_id FK
         point4326 geoloc
-        jsonb     extra_info
+        jsonb     meta
         datetime  data_insert
         varchar   user_insert
         datetime  data_update

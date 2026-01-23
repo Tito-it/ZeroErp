@@ -30,7 +30,7 @@
 | FOREIGN KEY | fk_soggetti_conti_bancari_conti_bancari | conto_bancario_id |
 | FOREIGN KEY | fk_soggetti_conti_bancari_soggetti | soggetto_id |
 | PRIMARY KEY | pk_soggetti_conti_bancari | id |
-| UNIQUE | uq_soggetti_conti_bancari_soggetto_id_conto_id_uso | conto_bancario_id, uso, soggetto_id |
+| UNIQUE | uq_soggetti_conti_bancari_soggetto_id_conto_id_uso | soggetto_id, conto_bancario_id, uso |
 
 ## 📑 Indici
 | Nome | Definizione |

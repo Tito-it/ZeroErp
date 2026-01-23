@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/contratti.md" %}
 # 📚 Tabella `contratti`
 
 ## 🗂️ Campi principali
@@ -9,8 +10,8 @@
 | istanza_utility_id | bigint | NO |  |
 | utility_id | integer | NO |  |
 | ambito | character varying | YES | 'COMMODITY'::character varying |
-| valid_from | date | NO | CURRENT_DATE |
-| valid_to | date | YES |  |
+| valido_dal | date | NO | CURRENT_DATE |
+| valido_al | date | YES |  |
 | parent_contratto_id | bigint | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
@@ -24,6 +25,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_contratti_validita |  |
 | FOREIGN KEY | fk_contratti_billing_account | billing_account_id |
 | FOREIGN KEY | fk_contratti_istanza | istanza_utility_id |
 | FOREIGN KEY | fk_contratti_parent | parent_contratto_id |
@@ -35,7 +37,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ex_contratti_no_overlap | `CREATE INDEX ex_contratti_no_overlap ON vendite.contratti USING gist (billing_account_id, istanza_utility_id, utility_id, ambito, daterange(valid_from, COALESCE(valid_to, 'infinity'::date), '[]'::text))` |
+| ex_contratti_no_overlap | `CREATE INDEX ex_contratti_no_overlap ON vendite.contratti USING gist (billing_account_id, istanza_utility_id, utility_id, ambito, daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]'::text))` |
 | ix_contratti_ambito | `CREATE INDEX ix_contratti_ambito ON vendite.contratti USING btree (ambito)` |
 | ix_contratti_ba_istanza | `CREATE INDEX ix_contratti_ba_istanza ON vendite.contratti USING btree (billing_account_id, istanza_utility_id)` |
 | pk_contratti | `CREATE UNIQUE INDEX pk_contratti ON vendite.contratti USING btree (id)` |
@@ -53,6 +55,7 @@
 | trg_contratti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_contratti_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_normalize()` |
 | trg_contratti_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_normalize()` |
+| trg_contratti_z90_snapshot_precontrattuali_ins | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_snapshot_precontrattuali()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -20,7 +20,7 @@ AS $function$
       -- 1) NORMALIZE (pulizie/derive)
       ------------------------------------------------------------------
       -- Normalizza codice se presente
-      /*                  
+      /*
       IF NEW.codice IS NOT NULL AND btrim(NEW.codice) <> '' THEN
         NEW.codice := btrim(NEW.codice);
       END IF;
@@ -40,12 +40,12 @@ AS $function$
         );
       END IF;
 
-      -- 2.1) Se c'e parent, valid_from e' obbligatorio
-      IF NEW.parent_account_id IS NOT NULL AND NEW.valid_from IS NULL THEN
+      -- 2.1) Se c'e parent, valido_dal e' obbligatorio
+      IF NEW.parent_account_id IS NOT NULL AND NEW.valido_dal IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
           'database', TG_NAME, 'E_VALORE_MANCANTE',
-          jsonb_build_object('codice', NEW.codice, 'column', 'valid_from'),
-          NULL::uuid, 'valid_from'
+          jsonb_build_object('codice', NEW.codice, 'column', 'valido_dal'),
+          NULL::uuid, 'valido_dal'
         );
       END IF;
 
@@ -80,18 +80,18 @@ AS $function$
       END IF;
 
       -- 2.3) Coerenza date validita
-      IF NEW.valid_to IS NOT NULL THEN
-        IF NEW.valid_from IS NULL THEN
+      IF NEW.valido_al IS NOT NULL THEN
+        IF NEW.valido_dal IS NULL THEN
           PERFORM script.fn_log_and_raise_error(
             'database', TG_NAME, 'E_VALORE_MANCANTE',
-            jsonb_build_object('codice', NEW.codice, 'column', 'valid_to_requires_valid_from'),
-            NULL::uuid, 'valid_to'
+            jsonb_build_object('codice', NEW.codice, 'column', 'valido_al_requires_valido_dal'),
+            NULL::uuid, 'valido_al'
           );
-        ELSIF NEW.valid_to <= NEW.valid_from THEN
+        ELSIF NEW.valido_al < NEW.valido_dal THEN
           PERFORM script.fn_log_and_raise_error(
             'database', TG_NAME, 'E_DATA_FINE_NON_MAGGIORE_DI_INIZIO',
-            jsonb_build_object('valid_from', NEW.valid_from, 'valid_to', NEW.valid_to),
-            NULL::uuid, NEW.valid_to::text, NEW.valid_from::text
+            jsonb_build_object('valido_dal', NEW.valido_dal, 'valido_al', NEW.valido_al),
+            NULL::uuid, NEW.valido_al::text, NEW.valido_dal::text
           );
         END IF;
       END IF;

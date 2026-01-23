@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260205-07-create-fn-get-emittente-fiscale-id-mctit.yaml
+
+  - changeSet:
+      id: 20260205-07-create-fn-get-emittente-fiscale-id
+      author: mctit
+      runAlways: false
+      validCheckSum:
+        - ANY
+      comment: "Risoluzione emittente fiscale per billing_account con fallback default"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_get_emittente_fiscale_id(
+                p_billing_account_id anagrafiche.billing_account.id%TYPE
+              )
+              RETURNS anagrafiche.soggetti_ruoli.id%TYPE
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_emittente_id anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                -- 1) Mapping specifico per billing_account
+                SELECT m.emittente_soggetto_ruolo_id
+                  INTO v_emittente_id
+                  FROM anagrafiche.emittenti_fiscali_billing_account m
+                 WHERE m.billing_account_id = p_billing_account_id;
+
+                IF v_emittente_id IS NOT NULL THEN
+                  RETURN v_emittente_id;
+                END IF;
+
+                -- 2) Fallback su default globale
+                SELECT m.emittente_soggetto_ruolo_id
+                  INTO v_emittente_id
+                  FROM anagrafiche.emittenti_fiscali_billing_account m
+                 WHERE m.is_default = true;
+
+                IF v_emittente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'anagrafiche',
+                    'fn_get_emittente_fiscale_id',
+                    'E_EMITTENTE_DEFAULT_MISSING',
+                    jsonb_build_object(
+                      'detail', 'Emittente fiscale di default mancante',
+                      'billing_account_id', p_billing_account_id
+                    ),
+                    NULL::uuid,
+                    concat('Emittente fiscale di default mancante ',
+                      'billing_account_id ', p_billing_account_id::text)
+                    
+                  );
+                END IF;
+
+                RETURN v_emittente_id;
+              END
+              $$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_get_emittente_fiscale_id(anagrafiche.billing_account.id%TYPE)
+              IS 'Restituisce l''emittente fiscale per billing_account; fallback su default globale.';

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/trgfn_config_sistema_codici_sync_gen_codice.md" %}
 # ⚙️ Funzione `trgfn_config_sistema_codici_sync_gen_codice`
 
 ```sql

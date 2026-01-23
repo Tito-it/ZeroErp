@@ -29,13 +29,13 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_contatti_unita_organizzative_config | unita_organizzativa_id |
-| FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id, soggetto_id, soggetto_id |
-| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id, soggetto_ruolo_id |
+| FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id |
+| FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id |
 | FOREIGN KEY | fk_tipi_contatti_config | tipo_contatto_id |
-| FOREIGN KEY | fk_titoli_cortesia_config | titolo_cortesia_id, titolo_cortesia_id |
-| FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
+| FOREIGN KEY | fk_titoli_cortesia_config | titolo_cortesia_id |
+| FOREIGN KEY | fk_utilities_config | utility_id |
 | PRIMARY KEY | pk_contatti | id |
-| UNIQUE | uq_contatti_multilevel | utility_id, tipo_contatto_id, soggetto_id, soggetto_ruolo_id |
+| UNIQUE | uq_contatti_multilevel | soggetto_id, soggetto_ruolo_id, utility_id, tipo_contatto_id |
 
 ## 📑 Indici
 | Nome | Definizione |

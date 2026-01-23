@@ -23,7 +23,9 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_articoli_descrizione_aggiuntiva | `CREATE INDEX ix_articoli_descrizione_aggiuntiva ON vendite.articoli_descrizioni_aggiuntive USING btree (descrizione) WITH (fillfactor='100', deduplicate_items='true')` |
 | ix_articoli_descrizioni_aggiuntive_articolo_ordine | `CREATE INDEX ix_articoli_descrizioni_aggiuntive_articolo_ordine ON vendite.articoli_descrizioni_aggiuntive USING btree (articolo_id, ordine)` |
+| ix_vendite_articoli_descrizione_aggiuntiva_trgm | `CREATE INDEX ix_vendite_articoli_descrizione_aggiuntiva_trgm ON vendite.articoli_descrizioni_aggiuntive USING gin (descrizione gin_trgm_ops) WITH (fastupdate='true', gin_pending_list_limit='4194304')` |
 | pk_articoli_descrizioni_aggiuntive | `CREATE UNIQUE INDEX pk_articoli_descrizioni_aggiuntive ON vendite.articoli_descrizioni_aggiuntive USING btree (id)` |
 
 ## 🚨 Trigger

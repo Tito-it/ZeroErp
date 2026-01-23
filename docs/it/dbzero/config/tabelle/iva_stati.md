@@ -21,7 +21,7 @@
 | FOREIGN KEY | fk_iva_stati_assoggettamento_override | assoggettamento_id_override |
 | FOREIGN KEY | fk_iva_stati_iva | iva_id |
 | FOREIGN KEY | fk_iva_stati_stato | stato_id |
-| PRIMARY KEY | pk_iva_stati | stato_id, iva_id |
+| PRIMARY KEY | pk_iva_stati | iva_id, stato_id |
 
 ## 📑 Indici
 | Nome | Definizione |

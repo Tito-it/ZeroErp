@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260123-09-create-automation-delete-block-mctit.yaml
+
+  - changeSet:
+      id: 20260123-09-create-automation-delete-block
+      author: mctit
+      comment: "Tabella config per automazione delete-block con GUC"
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: automation_delete_block
+            remarks: "Configurazione trigger delete-block per tabelle sensibili (ruoli)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_automation_delete_block
+                    nullable: false
+
+              - column:
+                  name: schema_name
+                  type: text
+                  remarks: "Schema della tabella target."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: table_name
+                  type: text
+                  remarks: "Tabella target."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: guc_key
+                  type: text
+                  remarks: "GUC per bypass (es. zeroerp.maintenance_ruoli_delete)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: enabled
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Se TRUE, applica il trigger."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: trigger_name
+                  type: text
+                  remarks: "Nome trigger (se NULL usa template)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: dbops
+            tableName: automation_delete_block
+            columnNames: schema_name, table_name
+            constraintName: uq_automation_delete_block_table
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE dbops.automation_delete_block
+                IS 'Configurazione trigger delete-block per tabelle sensibili (ruoli).';

@@ -28,7 +28,7 @@
 | FOREIGN KEY | fk_overrides_django_user | django_user_id |
 | FOREIGN KEY | fk_overrides_parameter | parameter_id |
 | PRIMARY KEY | parameter_overrides_pkey | id |
-| UNIQUE | uq_overrides_full_scope_v2 | django_group_id, session_key, django_user_id, tenant_id, parameter_id, function_name |
+| UNIQUE | uq_overrides_full_scope_v2 | parameter_id, tenant_id, django_user_id, django_group_id, session_key, function_name |
 
 ## 📑 Indici
 | Nome | Definizione |

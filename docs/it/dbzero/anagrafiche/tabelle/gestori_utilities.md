@@ -7,7 +7,7 @@
 | id | bigint | NO |  |
 | gestore_id | bigint | NO |  |
 | utility_id | integer | NO |  |
-| extra | jsonb | YES | '{}'::jsonb |
+| meta | jsonb | YES | '{}'::jsonb |
 | user_insert | text | NO | CURRENT_USER |
 | user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
@@ -17,9 +17,9 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_gestori_anagrafiche | gestore_id |
-| FOREIGN KEY | fk_utilities_config | utility_id, utility_id, utility_id, utility_id |
+| FOREIGN KEY | fk_utilities_config | utility_id |
 | PRIMARY KEY | pk_gestori_utilities_ruoli | id |
-| UNIQUE | uq_gestore_utility | utility_id, gestore_id |
+| UNIQUE | uq_gestore_utility | gestore_id, utility_id |
 
 ## 📑 Indici
 | Nome | Definizione |
