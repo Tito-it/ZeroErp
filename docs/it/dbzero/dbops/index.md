@@ -3,6 +3,7 @@
 ## 📚 Tabelle
 - [_defaults_backup_usercols](tabelle/_defaults_backup_usercols.md)
 - [audit_log](tabelle/audit_log.md) — (latest review 10-01-26) * Monitorare e storicizzare ogni chiamata a funzioni, job e API interne. * Fornire dettagli su utente, parametri e performance di esecuzione. * Collegare gli eventi di audit agli errori e ad altri log tramite `tx_id` gestito dal trigger.
+- [automation_delete_block](tabelle/automation_delete_block.md) — `dbops.automation_delete_block` centralizza la configurazione dei trigger che **bloccano** le DELETE sulle tabelle sensibili (es. ruoli), con possibilità di bypass tramite **GUC**.
 - [automation_lock_columns](tabelle/automation_lock_columns.md) — (latest review 10-01-26) Centralizzare la configurazione delle **colonne extra** da bloccare con `script.trgfn_lock_columns`.
 - [automation_overrides_cols](tabelle/automation_overrides_cols.md) — (latest review 10-01-26) Centralizzare le **eccezioni di naming delle colonne** usate dagli automatismi (audit, soft‑delete, storico, ecc.). Quando il tuo schema usa nomi diversi dagli standard (es. `attivo` → `is_enabled`, `data_update` → `modified_at`), qui definisci l’override **per tabella**.
 - [automation_rules_tbl](tabelle/automation_rules_tbl.md) — **(latest review 13-01-26)** Configurare **regole di automazione** per generare/applicare trigger e vincoli in modo dichiarativo. Ogni riga descrive **cosa** applicare (*rule_type*), **dove** (*target_schema/target_table*), **quando** (*exec_mode*), **come chiamarlo** (*name_template*), **come verificare l'esistenza** (*existence_strategy*), e **con quali parametri** (*params*).
@@ -18,6 +19,7 @@
 - [fn_admin_merge_comune](funzioni/fn_admin_merge_comune.md)
 - [fn_admin_merge_stradario](funzioni/fn_admin_merge_stradario.md)
 - [fn_apply_automazione_overlap](funzioni/fn_apply_automazione_overlap.md) — (latest review 19-01-26) La funzione **`dbops.fn_apply_automazione_overlap(p_exec_mode, p_dry_run)`** applica i vincoli `EXCLUDE USING gist` alle tabelle marcate `active=true` in `dbops.automazione_overlap`.
+- [fn_apply_delete_block_trigger](funzioni/fn_apply_delete_block_trigger.md)
 - [fn_audit_begin](funzioni/fn_audit_begin.md) — La funzione **`fn_audit_begin`** avvia una nuova sessione di auditing registrando un evento iniziale nella tabella `dbops.audit_log`. È utilizzata come punto di partenza per tracciare processi o automazioni che richiedono visibilità sull’intero ciclo di esecuzione.
 - [fn_audit_end](funzioni/fn_audit_end.md) — La funzione **`fn_audit_end`** chiude una sessione di auditing avviata da `fn_audit_begin`, registrando lo stato finale nel record corrispondente in `dbops.audit_log`.
 - [fn_audit_log_once](funzioni/fn_audit_log_once.md) — (latest review 10-01-26) La funzione **`fn_audit_log_once`** registra un singolo evento di audit senza richiedere una sessione completa (`fn_audit_begin`/`fn_audit_end`). È utile per eventi puntuali o messaggi informativi.

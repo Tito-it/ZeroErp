@@ -14,6 +14,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 22-01-2026)
 `vendite.fatture_righe` contiene le **righe economiche** di una fattura: descrizione, articolo (opzionale), UoM, quantità, prezzo, sconti, IVA e **importi congelati** (*snapshot*) al momento della generazione. Ogni riga è ordinata tramite `riga_nr` ed è collegata a una testata `vendite.fatture` (FK `fattura_id`). Supporta la **destinazione a BA diverso** dalla testata e l’idempotenza di import riga‑per‑riga.
 
 Obiettivi principali:
@@ -37,7 +38,7 @@ Obiettivi principali:
 ### 🔑 Campi chiave (semantica)
 
 * **Identità e collegamenti**: `fattura_id` (testata), `riga_nr` (ordine), `articolo_id` (opzionale), `uom_id` (unità misura), `dest_billing_account_id` (attribuzione economica a BA figlio).
-* **Dati merce/servizio**: `descrizione`, `qta` (≥ 0), `prezzo_unitario` (≥ 0), `sconto_perc` (0–100).
+* **Dati merce/servizio**: `descrizione`, `qta` , `prezzo_unitario` , `sconto_perc` (0–100). Per q.ta e prezzo leggere le note contenute nel documento
 * **IVA e fiscali**: `iva_id` (aliquota), `iva_perc`, `iva_natura` (snapshot), `esigibilita` (I|D|S), `split_payment`.
 * **Importi congelati**: `imponibile_riga`, `imposta_riga`, `totale_riga` (sempre valorizzati al closing della riga).
 * **Governance**: `meta` (JSONB, NOT NULL), `storicizza`, `tx_id`, audit `data_*`/`user_*`.
@@ -103,7 +104,7 @@ WHERE r.sorgente_tipo_id = :src_tipo
 * **Snapshot completo**: valorizzare sempre  `iva_natura`, `imponibile_riga`, `imposta_riga`, `totale_riga` al termine del calcolo riga.
 * **Progressivo riga**: assegnare `riga_nr` in modo **contiguo** e consolidato prima della numerazione della fattura.
 * **Override BA**: usare `dest_billing_account_id` solo quando necessario (es. ripartizioni o refatturazioni intra‑BA).
-* **Validazioni**: bloccare quantità negative e prezzi negativi a livello applicativo (qui sono consentiti `≥ 0`).
+* **Validazioni**: bloccare quantità negative e prezzi negativi a livello applicativo (qui sono consentiti consetiti tutti i valori).
 * **Esigibilità/split**: impostare solo quando differiscono dal default della testata/cliente.
 
 ---

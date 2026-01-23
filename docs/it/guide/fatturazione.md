@@ -228,3 +228,246 @@ flowchart TD
   AF --> FR
   FR --> F
 ```
+
+---
+
+## 📎 Appendice – Lotto, raggruppamenti e stati (design operativo)
+
+### 1) Lotto di fatturazione
+
+Il **lotto** diventa l’elemento centrale per:
+
+* ricalcolo controllato,
+* tracciabilita` dei job,
+* orchestrazione dei processi successivi (emissione, invio, statistiche).
+
+**Campi proposti (minimi)**:
+
+* `id` (bigint, PK)
+* `uuid` (lock_batch_id)
+* `codice` (es. LOT-YYYYMM-NN)
+* `competenza_mese` (date, YYYY-MM-01)
+* `utility_id` (opzionale)
+* `registro_id` (opzionale)
+* `billing_account_id` (opzionale)
+* `stato_job` (IN_ESECUZIONE | COMPLETATO | ERRORE)
+* `stato_documenti` (DRAFT | EMESSA | INVIATA)
+* audit + `meta`
+
+> Nota: `utility_id` e `registro_id` **non sono obbligatori**, ma entrano nel **raggruppamento** quando valorizzati.
+> Lo stato del lotto segue un **ordine** e supporta `stato_precedente_ammesso` per eventuali rollback.
+
+---
+
+### 2) Parametri funzione di calcolo (proposta)
+
+* `p_competenza_mese` (obbligatorio, YYYY-MM-01)
+* `p_billing_account_id` (opzionale)
+* `p_utility_id` (opzionale)
+* `p_registro_id` (opzionale)
+* `p_lotto_id` (opzionale; se NULL/0 -> crea lotto)
+* `p_preview` (opzionale)
+
+**Regole**:
+
+* se `p_lotto_id` e` valorizzato, il ricalcolo si aggancia al lotto (e ai suoi parametri).
+* il lotto contiene **tutti i parametri** necessari per ricalcoli futuri.
+
+---
+
+### 3) Raggruppamento fatture
+
+Chiavi di raggruppamento:
+
+* `billing_account_id`
+* `competenza_mese`
+* `utility_id` (se valorizzato)
+* `registro_id` (se valorizzato)
+* `valuta_id`
+* `emittente_soggetto_ruolo_id`
+
+La funzione **aggrega** su fattura bozza esistente con stessa chiave.
+
+---
+
+### 4) Stati documento e stati SDI (separati)
+
+Lo **stato SDI** deve essere **per documento**, non per lotto.
+Si propone quindi lo **sdoppiamento** dello stato:
+
+**A) Stato documento** (ciclo fiscale interno):
+
+* DRAFT (Bozza)
+* EMESSA
+* INVIATA
+* REGISTRATA
+* ANNULLATA
+
+**B) Stato SDI** (Italia, esito canale):
+
+* NON_INVIATA
+* INVIATA
+* CONSEGNATA
+* SCARTATA
+
+Questa separazione evita sovrapposizioni tra **stato fiscale** e **stato di invio**.
+
+**Operativamente**:
+
+* gli stati `INVIATA`, `CONSEGNATA`, `SCARTATA` **escono** da `config.stati_doc_fiscale`
+* si crea `config.stati_sdi` e si collega a `vendite.fatturazione_lotti_fatture.stato_sdi_id`
+
+---
+
+### 5) Regole di rollback (da definire in policy)
+
+Proposta di base:
+
+* da **EMESSA** → **DRAFT** ammesso per consentire ricalcolo (prima dell’invio)
+* **REGISTRATA** e **ANNULLATA** non sono rollbackabili (salvo processo amministrativo dedicato)
+
+**Regola proposta (config)**:
+
+* in `config.stati_doc_fiscale` aggiungere `stato_precedente_ammesso boolean`
+* la retrocessione e` consentita **solo** verso lo stato immediatamente precedente (per ordine), se il flag e` `true`
+
+---
+
+### 6) Registro di fatturazione (regola proposta)
+
+* `vendite.attivita_fatturabili` **deve** avere `registro_id`.
+* Se l’attivita` deriva da una sorgente **RIGA** (`config.sorgenti`), il `registro_id` viene ereditato dalla sorgente.
+* Per attivita` inserite manualmente (auto‑sorgente), il `registro_id` deve essere valorizzato direttamente.
+* **Fallback**: se non e` presente, usare il **registro di default della utility** (`config.utilities.registro_id`).
+
+Questa regola rende il raggruppamento deterministico e permette casi semplificati con **un solo registro per utility**.
+
+---
+
+### 7) Ricalcolo e note (policy)
+
+**Ricalcolo:**
+
+* Consentito solo per fatture **BOZZA**.
+* Strategia: **delete & regen** delle righe fattura per lotto/BA/competenza.
+* Le righe manuali **non sono ammesse** in fattura: eventuali inserimenti manuali devono passare da `attivita_fatturabili`.
+
+**Note:**
+
+* Le note associate a `attivita_fatturabili` confluiscono in `note_fatture_righe`.
+* Il trasferimento avviene **in fase di emissione/numerazione**, tramite **processo dedicato** richiamabile.
+
+---
+
+### 8) Regole kit/BOM (flag componenti)
+
+Quando `calcolo_qta_padre = somma_componenti_flaggate`, serve un flag **esplicito** sulle componenti
+per definire quali righe contribuiscono alla quantita` del padre.
+
+**Proposta**:
+
+* aggiungere in `catalogo.articoli_componenti` il campo `determina_qta_padre boolean`
+* la somma delle componenti con `determina_qta_padre = true` determina `qta_padre`
+
+---
+
+### 9) Emittente e valuta (regole di risoluzione)
+
+Se in `attivita_fatturabili` non sono espliciti:
+
+* **Emittente**: derivare da configurazione legata a `utility_id` (o a `billing_account`), con fallback su emittente di default.
+* **Valuta**: derivare da `billing_account` o da default di utility; fallback su valuta di sistema.
+
+Queste regole devono essere **deterministiche** e centralizzate (tabella/config dedicata),
+per evitare fatture miste o ambiguita`.
+
+---
+
+### 10) Audit/Log di processo (modello job)
+
+I processi di fatturazione vanno tracciati con il modello **job** previsto in guide:
+
+* `dbops.jobs` (definizione)
+* `dbops.job_runs` (esecuzione)
+* `dbops.job_steps` (step)
+* integrazione con `dbops.audit_log` ed `dbops.error_log`
+
+In questo modo ogni esecuzione e` **monitorabile** e correlata al `lotto_id`.
+
+> Nota: al momento queste tabelle **non risultano presenti** nelle migrazioni; vanno introdotte prima di adottare il modello.
+
+---
+
+### 11) Emittente fiscale e valuta in `attivita_fatturabili` (proposta)
+
+**Emittente fiscale (ruolo):**
+
+* introdurre una tabella di mapping **billing_account → emittente fiscale** (ruolo).
+* l’emittente fiscale va **sempre valorizzato** per coerenza, anche quando coincide con il gestore.
+* se un **billing_account** non e` associato, usare un **emittente di default** (per evitare configurazioni manuali in presenza di un solo emittente).
+
+**Valuta + prezzo in attivita_fatturabili:**
+
+* aggiungere `valuta_id` su `vendite.attivita_fatturabili`.
+* aggiungere `prezzo_unitario numeric(20,8)`.
+* la valuta di default resta derivabile da configurazione (utility/azienda), ma la riga deve avere il valore **esplicito** per calcoli deterministici.
+
+---
+
+### 12) Sottoprocessi richiamabili (scomposizione)
+
+Per evitare monoliti, la pipeline deve essere composta da procedure richiamabili:
+
+* `cleanup_righe_fattura(fattura_id)` → elimina righe e dipendenze in bozza
+* `calcolo_righe_fattura(lotto_id, ...)` → genera righe da `attivita_fatturabili`
+* `trasferisci_note(lotto_id | fattura_id)` → note da attivita` a righe fattura
+* `emetti_fatture(lotto_id)` → numerazione + stato documento
+* `invio_sdi(lotto_id)` → processo canale (solo Italia)
+
+---
+
+### 13) Tabelle da introdurre o modificare (prima della logica)
+
+**Nuove tabelle (proposte):**
+
+* `vendite.fatturazione_lotti` (lotto + stato job/documenti + lock uuid)
+* `vendite.fatturazione_lotti_fatture` (relazione lotto ↔ fattura + stato SDI + esclusione)
+* `config.stati_sdi` (stati canale SDI)
+* `config.stati_lotto_documenti` (ordine + stato_precedente_ammesso per lotto)
+* `anagrafiche.emittenti_fiscali_billing_account` (mapping **billing_account → emittente fiscale**)
+  * aggiungere `default boolean` con **unicita`** del valore `true`
+* `dbops.jobs`, `dbops.job_runs`, `dbops.job_steps` (modello job)
+* `vendite.fatture_log` (log anomalie documento)
+
+**Tabelle da modificare (proposte):**
+
+* `vendite.attivita_fatturabili` → aggiungere `registro_id`, `valuta_id`, `prezzo_unitario`
+* `config.sorgenti` → aggiungere `registro_id` (per sorgenti RIGA)
+* `config.utilities` → aggiungere `registro_id` default
+* `vendite.fatture` → aggiungere `registro_id` e `critical`
+* `config.stati_doc_fiscale` → rimuovere stati SDI e aggiungere `stato_precedente_ammesso`
+* `catalogo.articoli_componenti` → aggiungere `determina_qta_padre`
+
+---
+
+### 14) Collegamento lotto ↔ fatture e esclusioni
+
+La relazione tra lotto e fatture deve essere esplicita:
+
+* tabella `vendite.fatturazione_lotti_fatture` con `lotto_id`, `fattura_id`, `stato_sdi_id`
+* flag `esclusa boolean` per escludere una fattura dal lotto
+  * `esclusa = true` ammesso **solo** se `stato_doc_fiscale = DRAFT`
+
+Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fatture.
+
+---
+
+### 15) Log anomalie fattura e blocco numerazione/invio
+
+* tabella `vendite.fatture_log` con:
+  * `id`, `fattura_id`, `data_ora`, `messaggio`, `status` (W=warning, C=critical), `disabilitato`
+  * audit + `meta`
+* piu` messaggi per documento.
+* un operatore autorizzato puo` **disabilitare** un errore ritenuto accettabile.
+* se esiste almeno un log **critical** attivo, `fatture.critical = true` e la numerazione/invio devono essere bloccati.
+* `disabilitato = true` esclude il log dal calcolo del flag `critical` sulla fattura.

@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260123-03-create-trgfn-emittenti-fiscali-default-bootstrap-mctit.yaml
+
+  - changeSet:
+      id: 20260123-03-create-trgfn-emittenti-fiscali-default-bootstrap
+      author: mctit
+      comment: "Crea automaticamente il default emittente fiscale al primo inserimento"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+
+                /*
+                Crea automaticamente il default emittente fiscale al primo inserimento o se non esiste
+                */
+                IF NOT EXISTS (
+                  SELECT 1
+                    FROM anagrafiche.emittenti_fiscali_billing_account
+                   WHERE is_default = true
+                ) THEN
+                  INSERT INTO anagrafiche.emittenti_fiscali_billing_account (
+                    billing_account_id,
+                    emittente_soggetto_ruolo_id,
+                    is_default,
+                    meta
+                  )
+                  VALUES (
+                    NULL,
+                    NEW.soggetto_ruolo_id,
+                    true,
+                    '{}'::jsonb
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()
+              IS 'Crea automaticamente il default emittente fiscale al primo inserimento';  
+
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_a10_default_bootstrap_ins
+              ON anagrafiche.emittenti_fiscali;
+
+              CREATE TRIGGER trg_emittenti_fiscali_a10_default_bootstrap_ins
+              AFTER INSERT
+              ON anagrafiche.emittenti_fiscali
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_bootstrap();

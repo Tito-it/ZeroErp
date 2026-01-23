@@ -2,6 +2,7 @@
 
 ## 📚 Tabelle (manuale)
 - [audit_log](manual/audit_log.md) — (latest review 10-01-26) * Monitorare e storicizzare ogni chiamata a funzioni, job e API interne. * Fornire dettagli su utente, parametri e performance di esecuzione. * Collegare gli eventi di audit agli errori e ad altri log tramite `tx_id` gestito dal trigger.
+- [automation_delete_block](manual/automation_delete_block.md) — `dbops.automation_delete_block` centralizza la configurazione dei trigger che **bloccano** le DELETE sulle tabelle sensibili (es. ruoli), con possibilità di bypass tramite **GUC**.
 - [automation_lock_columns](manual/automation_lock_columns.md) — (latest review 10-01-26) Centralizzare la configurazione delle **colonne extra** da bloccare con `script.trgfn_lock_columns`.
 - [automation_overrides_cols](manual/automation_overrides_cols.md) — (latest review 10-01-26) Centralizzare le **eccezioni di naming delle colonne** usate dagli automatismi (audit, soft‑delete, storico, ecc.). Quando il tuo schema usa nomi diversi dagli standard (es. `attivo` → `is_enabled`, `data_update` → `modified_at`), qui definisci l’override **per tabella**.
 - [automation_rules_tbl](manual/automation_rules_tbl.md) — **(latest review 13-01-26)** Configurare **regole di automazione** per generare/applicare trigger e vincoli in modo dichiarativo. Ogni riga descrive **cosa** applicare (*rule_type*), **dove** (*target_schema/target_table*), **quando** (*exec_mode*), **come chiamarlo** (*name_template*), **come verificare l'esistenza** (*existence_strategy*), e **con quali parametri** (*params*).

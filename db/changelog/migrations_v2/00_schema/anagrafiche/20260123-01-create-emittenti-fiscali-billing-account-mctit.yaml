@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260205-04-create-emittenti-fiscali-billing-account-mctit.yaml
+
+  - changeSet:
+      id: 20260205-04-create-emittenti-fiscali-billing-account
+      author: mctit
+      comment: "Mapping billing_account -> emittente fiscale (con default globale)"
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: emittenti_fiscali_billing_account
+            remarks: "Associazione billing_account -> emittente fiscale (ruolo). Prevede un default globale."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_emittenti_fiscali_billing_account
+                    nullable: false
+
+              - column:
+                  name: billing_account_id
+                  type: bigint
+                  remarks: "FK → anagrafiche.billing_account.id (NULL per emittente di default)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: emittente_soggetto_ruolo_id
+                  type: bigint
+                  remarks: "FK → anagrafiche.soggetti_ruoli.id (emittente fiscale)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: is_default
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "TRUE = emittente di default (solo una riga)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni in formato JSONB."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente che ha effettuato l'inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente che ha effettuato l'ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: emittenti_fiscali_billing_account
+            baseColumnNames: billing_account_id
+            constraintName: fk_emittenti_fiscali_billing_account_ba
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: emittenti_fiscali_billing_account
+            baseColumnNames: emittente_soggetto_ruolo_id
+            constraintName: fk_emittenti_fiscali_billing_account_emittente
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: emittenti_fiscali_billing_account
+            columnNames: billing_account_id
+            constraintName: uq_emittenti_fiscali_ba
+
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.emittenti_fiscali_billing_account
+                ADD CONSTRAINT chk_emittenti_fiscali_ba_default
+                CHECK (
+                  (is_default = true AND billing_account_id IS NULL) OR
+                  (is_default = false AND billing_account_id IS NOT NULL)
+                );
+
+              CREATE UNIQUE INDEX uq_emittenti_fiscali_ba_default
+              ON anagrafiche.emittenti_fiscali_billing_account (is_default)
+              WHERE is_default = true;
