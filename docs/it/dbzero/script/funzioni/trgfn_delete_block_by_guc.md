@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/trgfn_delete_block_by_guc.md" %}
 # ⚙️ Funzione `trgfn_delete_block_by_guc`
 
 ```sql
@@ -22,10 +23,10 @@ BEGIN
         'expected','guc_key',
         'found', TG_NARGS
       ),
+      NULL::uuid,
       concat('Argomenti trigger mancanti ',
         'expected ',' guc_key ',
-        'found ', TG_NARGS::text),
-      NULL::uuid
+        'found ', TG_NARGS::text)
     );
   END IF;
 
@@ -42,10 +43,11 @@ BEGIN
       'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
       'id', OLD.id
     ),
+    NULL::uuid,
     concat('Delete non consentita (policy ruoli) ',
       'table ', TG_TABLE_SCHEMA , '.' , TG_TABLE_NAME,
-      ' id ', OLD.id::text),
-    NULL::uuid
+      ' id ', OLD.id::text)
+    
   );
 
   RETURN OLD;

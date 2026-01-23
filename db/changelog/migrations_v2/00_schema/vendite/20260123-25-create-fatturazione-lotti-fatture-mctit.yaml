@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260123-25-create-fatturazione-lotti-fatture-mctit.yaml
+
+  - changeSet:
+      id: 20260123-25-create-fatturazione-lotti-fatture
+      author: mctit
+      comment: "Relazione lotto <-> fatture con esclusione e stato SDI"
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: fatturazione_lotti_fatture
+            remarks: "Relazione lotto-fattura con esclusione e stato SDI."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_fatturazione_lotti_fatture
+                    nullable: false
+
+              - column:
+                  name: lotto_id
+                  type: bigint
+                  remarks: "FK -> vendite.fatturazione_lotti.id"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: fattura_id
+                  type: bigint
+                  remarks: "FK -> vendite.fatture.id"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: stato_sdi_id
+                  type: bigint
+                  remarks: "Stato SDI (FK futura -> config.stati_sdi)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: esclusa
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "TRUE se fattura esclusa dal lotto."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Abilita storicizzazione."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction id (policy)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: fatturazione_lotti_fatture
+            columnNames: lotto_id, fattura_id
+            constraintName: uq_fatturazione_lotti_fatture_lotto_fattura
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatturazione_lotti_fatture
+            baseColumnNames: lotto_id
+            constraintName: fk_fatturazione_lotti_fatture_lotto
+            referencedTableSchemaName: vendite
+            referencedTableName: fatturazione_lotti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatturazione_lotti_fatture
+            baseColumnNames: fattura_id
+            constraintName: fk_fatturazione_lotti_fatture_fattura
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE vendite.fatturazione_lotti_fatture
+                IS 'Relazione lotto-fattura con esclusione e stato SDI.';

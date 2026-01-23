@@ -49,4 +49,12 @@ avviene tramite la tabella di mapping `anagrafiche.emittenti_fiscali_billing_acc
 
 ---
 
+### 🔒 Vincoli applicativi (attivo)
+
+* Un emittente fiscale **non puo` essere disattivato** se esistono mapping
+  in `emittenti_fiscali_billing_account` collegati al suo `soggetto_ruolo_id`.
+* Questo vincolo evita che un emittente ancora in uso venga escluso per errore.
+
+---
+
 {% include-markdown "signature-core.md" %}

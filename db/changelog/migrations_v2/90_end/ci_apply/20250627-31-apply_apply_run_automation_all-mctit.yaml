@@ -38,6 +38,7 @@ databaseChangeLog:
               SELECT dbops.fn_run_automations_tx_id('CI', NULL, false);
               SELECT dbops.fn_run_automations_attivo('CI', NULL, false);
               SELECT dbops.fn_run_automations_lock_columns('CI', NULL, false);
+              SELECT dbops.fn_run_automations_delete_block('CI', NULL, false);
 
   - changeSet:
       id: 9099-tag-after-automations-ci

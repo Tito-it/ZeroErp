@@ -13,6 +13,9 @@ databaseChangeLog:
   - changeSet:
       id: 20260123-05-create-trgfn-delete-block-by-guc
       author: mctit
+      runAlways: false
+      validCheckSum:
+        - ANY
       comment: "Trigger function generica per bloccare DELETE con bypass via GUC"
       changes:
         - sql:
@@ -34,10 +37,10 @@ databaseChangeLog:
                       'expected','guc_key',
                       'found', TG_NARGS
                     ),
+                    NULL::uuid,
                     concat('Argomenti trigger mancanti ',
                       'expected ',' guc_key ',
-                      'found ', TG_NARGS::text),
-                    NULL::uuid
+                      'found ', TG_NARGS::text)
                   );
                 END IF;
 
@@ -54,10 +57,11 @@ databaseChangeLog:
                     'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
                     'id', OLD.id
                   ),
+                  NULL::uuid,
                   concat('Delete non consentita (policy ruoli) ',
                     'table ', TG_TABLE_SCHEMA , '.' , TG_TABLE_NAME,
-                    ' id ', OLD.id::text),
-                  NULL::uuid
+                    ' id ', OLD.id::text)
+                  
                 );
 
                 RETURN OLD;

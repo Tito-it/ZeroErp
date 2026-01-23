@@ -17,9 +17,10 @@
 -- 10) Inserito emittente fiscale 2
 -- 11) Inserito mapping BA -> emittente (override)
 -- 12) Override funzione emittente (mapping BA)
+-- 13) Blocco disattivazione emittente con mapping
 -- ------------------------------------------------------------
 
-SELECT plan(12);
+SELECT plan(13);
 
 -- ============================================================
 -- 0) Costanti
@@ -254,9 +255,48 @@ SELECT is(
     'Override funzione emittente (mapping BA)'
 );
 
+-- ============================================================
+-- 13) Blocco disattivazione emittente con mapping
+-- ============================================================
+SELECT throws_ok(
+    $$
+    UPDATE anagrafiche.emittenti_fiscali
+    SET attivo = false
+    WHERE id = (SELECT id FROM tmp_emittente_2);
+    $$,
+    'P0001',
+    NULL,
+    'Blocco disattivazione emittente con mapping BA'
+);
+
 -- Cleanup
+SELECT set_config('zeroerp.maintenance_ruoli_delete', 'on', false);
+
+
 DELETE FROM anagrafiche.emittenti_fiscali_billing_account
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_ef);
-
 DELETE FROM anagrafiche.emittenti_fiscali
 WHERE brand_meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_ef);
+
+DELETE FROM anagrafiche.soggetti_ruoli sr
+WHERE sr.id IN (
+    (SELECT soggetto_ruolo_id FROM tmp_ef_role_1),
+    (SELECT soggetto_ruolo_id FROM tmp_ef_role_2)
+)
+  AND NOT EXISTS (
+    SELECT 1
+    FROM anagrafiche.emittenti_fiscali ef
+    WHERE ef.soggetto_ruolo_id = sr.id
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM anagrafiche.emittenti_fiscali_billing_account m
+    WHERE m.emittente_soggetto_ruolo_id = sr.id
+  );
+
+
+DELETE FROM anagrafiche.emittenti_fiscali_billing_account m
+USING anagrafiche.emittenti_fiscali ef
+WHERE m.is_default = true
+  AND m.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
+  AND ef.brand_meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_ef);

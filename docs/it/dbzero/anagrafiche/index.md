@@ -47,6 +47,7 @@
 - [trgfn_dati_societari_guard_tipo_soggetto](funzioni/trgfn_dati_societari_guard_tipo_soggetto.md) — (latest review 03-12-25) Garantire che *solo* i soggetti autorizzati secondo le **policy dati societari** possano inserire o aggiornare una riga in `anagrafiche.dati_societari`.
 - [trgfn_emittenti_fiscali_default_bootstrap](funzioni/trgfn_emittenti_fiscali_default_bootstrap.md) — (latest review 23-01-2026) La funzione `anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()` crea in modo automatico la **riga di default** nel mapping emittenti fiscali quando viene inserito il **primo emittente**.
 - [trgfn_emittenti_fiscali_default_guard](funzioni/trgfn_emittenti_fiscali_default_guard.md) — La funzione `anagrafiche.trgfn_emittenti_fiscali_default_guard()` garantisce che esista **esattamente un** emittente fiscale di default.
+- [trgfn_emittenti_fiscali_guard_attivo](funzioni/trgfn_emittenti_fiscali_guard_attivo.md) — (latest review 23-01-26) La funzione **`anagrafiche.trgfn_emittenti_fiscali_guard_attivo()`** impedisce la disattivazione (`attivo = false`) di un emittente fiscale quando esistono righe di mapping in `emittenti_fiscali_billing_account` collegate al suo `emittente_soggetto_ruolo_id`.
 - [trgfn_emittenti_fiscali_guard_ruolo_emi_fis](funzioni/trgfn_emittenti_fiscali_guard_ruolo_emi_fis.md)
 - [trgfn_emittenti_fiscali_normalize](funzioni/trgfn_emittenti_fiscali_normalize.md)
 - [trgfn_fornitori_guard_normalize](funzioni/trgfn_fornitori_guard_normalize.md)

@@ -40,8 +40,9 @@ BEGIN
         'found', v_count,
         'emittenti_fiscali', v_emittenti
       ),
-      'Deve esistere un solo emittente fiscale di default',
-      NULL::uuid
+      NULL::uuid,
+      'Deve esistere un solo emittente fiscale di default'
+      
     );
   END IF;
 

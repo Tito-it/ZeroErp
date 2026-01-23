@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_apply_delete_block_trigger.md" %}
 # ⚙️ Funzione `fn_apply_delete_block_trigger`
 
 ```sql
@@ -16,11 +17,23 @@ DECLARE
   v_exists boolean;
 BEGIN
   IF p_schema IS NULL OR p_table IS NULL OR p_guc_key IS NULL THEN
-    RAISE EXCEPTION 'Parametri obbligatori mancanti (schema, table, guc_key).';
+    PERFORM script.fn_log_and_raise_error(
+      'dbops',
+      'fn_apply_delete_block_trigger',
+      'E_GENERICO',
+      jsonb_build_object(
+        'detail','Parametri obbligatori mancanti',
+        'schema', p_schema,
+        'table', p_table,
+        'guc_key', p_guc_key
+      ),
+      NULL::uuid,
+      'Parametri obbligatori mancanti (schema, table, guc_key).'
+    );
   END IF;
 
   v_trigger_name := COALESCE(
-    p_trigger_name,
+    NULLIF(p_trigger_name, ''),
     format('trg_%s_a10_delete_block_dlt', p_table)
   );
 

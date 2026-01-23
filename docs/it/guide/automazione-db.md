@@ -28,7 +28,8 @@
 >  * [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),  
 >  * [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
 >  * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns),  
->  * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)  
+>  * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo),  
+>  * [dbops.fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block)  
 
 ---
 
@@ -131,6 +132,16 @@ Note operative:
 * Se `key_columns` non e' valorizzato, il vincolo non viene creato.
 * Per chiavi UUID e' richiesta l'estensione `btree_gist`.
 * Le tabelle non versionate restano `active=false`.
+
+**3.8 DELETE_BLOCK (blocco DELETE con GUC)**
+
+Automazione dedicata a tabelle sensibili (es. ruoli) per **bloccare la DELETE** salvo bypass esplicito via GUC.
+
+Componenti principali:
+
+* **Config**: `dbops.automation_delete_block` con schema/tabella, GUC e flag `enabled`.
+* **Trigger**: `script.trgfn_delete_block_by_guc(guc_key)`.
+* **Apply**: `dbops.fn_run_automations_delete_block()` applica i trigger.
 
 ---
 

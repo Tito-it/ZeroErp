@@ -40,9 +40,10 @@ BEGIN
         'detail', 'Emittente fiscale di default mancante',
         'billing_account_id', p_billing_account_id
       ),
+      NULL::uuid,
       concat('Emittente fiscale di default mancante ',
-        'billing_account_id ', p_billing_account_id::text),
-      NULL::uuid
+        'billing_account_id ', p_billing_account_id::text)
+      
     );
   END IF;
 

@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/anagrafiche/20260123-15-create-trgfn-emittenti-fiscali-guard-attivo-mctit.yaml
+
+  - changeSet:
+      id: 20260123-15-create-trgfn-emittenti-fiscali-guard-attivo
+      author: mctit
+      comment: "Blocca disattivazione emittenti_fiscali se esistono mapping billing_account"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_attivo()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_has_mapping boolean;
+              BEGIN
+                IF TG_OP = 'UPDATE'
+                  AND NEW.attivo = false
+                  AND COALESCE(OLD.attivo, true) = true
+                THEN
+                  SELECT EXISTS (
+                    SELECT 1
+                      FROM anagrafiche.emittenti_fiscali_billing_account m
+                     WHERE m.emittente_soggetto_ruolo_id = NEW.soggetto_ruolo_id
+                  )
+                  INTO v_has_mapping;
+
+                  IF v_has_mapping THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      TG_TABLE_SCHEMA,
+                      TG_NAME,
+                      'E_GENERICO',
+                      jsonb_build_object(
+                        'detail','Disattivazione emittente non consentita: mapping billing_account presente',
+                        'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                      ),
+                      NULL::uuid,
+                      'Disattivazione emittente fiscale non consentita: mapping billing_account presente'
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END
+              $$;
+
+              CREATE TRIGGER trg_emittenti_fiscali_a10_guard_attivo_upd
+              BEFORE UPDATE OF attivo ON anagrafiche.emittenti_fiscali
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_attivo();
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_attivo()
+                IS 'Blocca la disattivazione se esistono mapping in emittenti_fiscali_billing_account.';
