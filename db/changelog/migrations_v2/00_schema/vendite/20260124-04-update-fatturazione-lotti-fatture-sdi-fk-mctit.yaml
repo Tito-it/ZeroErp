@@ -1,0 +1,23 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260124-04-update-fatturazione-lotti-fatture-sdi-fk-mctit.yaml
+
+  - changeSet:
+      id: 20260124-04-update-fatturazione-lotti-fatture-sdi-fk
+      author: mctit
+      comment: "FK stato_sdi_id -> config.stati_sdi"
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatturazione_lotti_fatture
+            baseColumnNames: stato_sdi_id
+            constraintName: fk_fatturazione_lotti_fatture_stato_sdi
+            referencedTableSchemaName: config
+            referencedTableName: stati_sdi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION

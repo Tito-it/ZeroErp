@@ -24,6 +24,7 @@ Supporta:
 
 * **quantità/coefficiente** per unità di prodotto (`coeff_qta`),
 * **inclusione nel calcolo quantità** (`partecipa_qta`),
+* **determinazione q.ta padre** (`determina_qta_padre`),
 * **obbligatorietà** del componente (`obbligatorio`),
 * **attivazione/disattivazione logica** (`attivo`) e **storicizzazione**.
 
@@ -46,7 +47,7 @@ Supporta:
 * **Identità**: `id UUID` (PK)
 * **Legame**: `prodotto_id UUID` (FK), `componente_id UUID` (FK)
 * **Versioning**: `valido_dal DATE` (**obbligatorio**), `valido_al DATE` *(NULL = infinito)*
-* **Quantità & logica**: `coeff_qta NUMERIC(18,6) ≥ 0`, `partecipa_qta BOOLEAN`, `obbligatorio BOOLEAN`
+* **Quantità & logica**: `coeff_qta NUMERIC(18,6) ≥ 0`, `partecipa_qta BOOLEAN`, `determina_qta_padre BOOLEAN`, `obbligatorio BOOLEAN`
 * **Note**: `note_target_tipo`, `note_id` (FK composita verso `catalogo.note`)
 * **Meta & Audit**: `meta JSONB`, `attivo`, `storicizza`, `tx_id`, `user_*`, `data_*`
 

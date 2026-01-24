@@ -17,12 +17,14 @@
 | user_update | text | YES | CURRENT_USER |
 | target_table | regclass | YES |  |
 | key_selector | text | NO | 'id'::text |
+| registro_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_sorgenti_codice_interno_non_vuoto |  |
 | CHECK | chk_sorgenti_key_selector_values |  |
+| FOREIGN KEY | fk_sorgenti_registro | registro_id |
 | PRIMARY KEY | sorgenti_pkey | id |
 | UNIQUE | uq_sorgenti_codice | codice |
 | UNIQUE | uq_sorgenti_codice_interno | codice_interno |

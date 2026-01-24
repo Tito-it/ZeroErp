@@ -10,8 +10,6 @@
 > Approfondimenti funzioni/trigger:
 >
 > * [config.trgfn_sorgenti_norm](/dbzero/config/funzioni/trgfn_sorgenti_norm)
-> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic) *(se usato in evoluzione futura)*
 
 ---
 
@@ -27,6 +25,7 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
 
 ### 🎯 Scopo Principale
 
+(latest update 24-01-2026)
 * Fornire un **catalogo univoco** delle sorgenti applicative utilizzate in:
 
   * tabelle di collegamento (es. note collegate a entità diverse),
@@ -106,6 +105,11 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
   * `data_insert`, `user_insert`, `data_update`, `user_update` tracciano le modifiche al catalogo sorgenti;
   * la gestione può essere uniformata in futuro tramite trigger generici di audit.
 
+* **Registro fatturazione** (`registro_id`):
+
+  * opzionale, usato per sorgenti **RIGA** nella generazione di `attivita_fatturabili`;
+  * se valorizzato, ha priorita` sul registro di default della utility.
+
 ---
 
 ### 🔗 Relazioni
@@ -126,36 +130,6 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
   * utilizzando `codice_interno` e la chiave della riga sorgente, è possibile evitare esecuzioni duplicate di processi.
 
 > 🔁 In generale, dove serve un **collegamento generico e riusabile** a “qualcosa nel sistema”, `config.sorgenti` diventa il punto di partenza per identificare *cosa* sia quel “qualcosa”.
-
----
-
-### ⚙️ Trigger Associati
-
-#### 1. `trg_sorgenti_a10_upd_lock_columns`
-
-* **Quando**: `BEFORE UPDATE` su `config.sorgenti`.
-* **Condizione**: solo se `old.categoria` è diversa da `new.categoria`.
-* **Cosa fa**:
-
-  * invoca `script.trgfn_lock_columns('categoria', 'CODICE_NON_MODIFICABILE')`;
-  * se viene tentata la modifica di `categoria`, la funzione blocca l’operazione (sollevando un errore applicativo con codice logico `CODICE_NON_MODIFICABILE`).
-* **Obiettivo**:
-
-  * garantire che la **categoria assegnata alla sorgente non cambi** nel tempo, preservando la stabilità semantica.
-
-#### 2. `trg_sorgenti_ins_upd_norm`
-
-* **Quando**: `BEFORE INSERT OR UPDATE` su `config.sorgenti`.
-* **Cosa fa** (comportamento atteso):
-
-  * normalizza i valori chiave della sorgente (`codice_interno`, `codice`, eventuali spazi, maiuscole/minuscole);
-  * applica regole di default/consistenza su `categoria`, `target_table`, `key_selector` quando necessario;
-  * può effettuare controlli preventivi su `target_table` (esistenza tabella) per evitare configurazioni incoerenti.
-* **Come**:
-
-  * delega a `config.trgfn_sorgenti_norm()`, che centralizza la logica di normalizzazione e validazione.
-
-> ✅ La combinazione dei due trigger rende il dominio `config.sorgenti` **stabile, normalizzato e sicuro**, riducendo il rischio di errori di configurazione che impatterebbero più processi.
 
 ---
 

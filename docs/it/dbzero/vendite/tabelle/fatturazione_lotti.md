@@ -11,8 +11,7 @@
 | utility_id | integer | YES |  |
 | registro_id | bigint | YES |  |
 | billing_account_id | bigint | YES |  |
-| stato_job | text | NO | 'IN_ESECUZIONE'::text |
-| stato_documenti | text | NO | 'DRAFT'::text |
+| stato_lotto | text | NO | 'IN_ESECUZIONE'::text |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
@@ -20,14 +19,15 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| stato_doc_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_fatturazione_lotti_stato_documenti |  |
 | CHECK | chk_fatturazione_lotti_stato_job |  |
 | FOREIGN KEY | fk_fatturazione_lotti_ba | billing_account_id |
 | FOREIGN KEY | fk_fatturazione_lotti_registro | registro_id |
+| FOREIGN KEY | fk_fatturazione_lotti_stato_doc_fiscale | stato_doc_fiscale_id |
 | FOREIGN KEY | fk_fatturazione_lotti_utility | utility_id |
 | PRIMARY KEY | pk_fatturazione_lotti | id |
 | UNIQUE | uq_fatturazione_lotti_codice | codice |

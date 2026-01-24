@@ -12,10 +12,12 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| registro_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_utilities_registro | registro_id |
 | PRIMARY KEY | pk_utilities | id |
 | UNIQUE | uq_utilities_codice | codice |
 | UNIQUE | uq_utilities_codice_interno | codice_interno |

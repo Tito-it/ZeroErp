@@ -250,8 +250,8 @@ Il **lotto** diventa l’elemento centrale per:
 * `utility_id` (opzionale)
 * `registro_id` (opzionale)
 * `billing_account_id` (opzionale)
-* `stato_job` (IN_ESECUZIONE | COMPLETATO | ERRORE)
-* `stato_documenti` (DRAFT | EMESSA | INVIATA)
+* `stato_lotto` (IN_ESECUZIONE | COMPLETATO | ERRORE)
+* `stato_doc_fiscale_id` (FK -> `config.stati_doc_fiscale`)
 * audit + `meta`
 
 > Nota: `utility_id` e `registro_id` **non sono obbligatori**, ma entrano nel **raggruppamento** quando valorizzati.
@@ -265,6 +265,7 @@ Il **lotto** diventa l’elemento centrale per:
 * `p_billing_account_id` (opzionale)
 * `p_utility_id` (opzionale)
 * `p_registro_id` (opzionale)
+* `p_reseller_soggetto_ruolo_id` (opzionale)
 * `p_lotto_id` (opzionale; se NULL/0 -> crea lotto)
 * `p_preview` (opzionale)
 
@@ -272,6 +273,7 @@ Il **lotto** diventa l’elemento centrale per:
 
 * se `p_lotto_id` e` valorizzato, il ricalcolo si aggancia al lotto (e ai suoi parametri).
 * il lotto contiene **tutti i parametri** necessari per ricalcoli futuri.
+* il `reseller` e` un filtro commerciale, **non** modifica il destinatario fattura.
 
 ---
 
@@ -287,6 +289,35 @@ Chiavi di raggruppamento:
 * `emittente_soggetto_ruolo_id`
 
 La funzione **aggrega** su fattura bozza esistente con stessa chiave.
+
+---
+
+### 3.1) Multi‑emittente e fatturazione su parent billing account
+
+**Multi‑emittente**:
+* L’emittente fiscale e` un ruolo e puo` variare per utility/cliente.
+* Il lotto puo` includere piu` emittenti (societa` diverse) e il raggruppamento
+  deve mantenere separati i documenti per emittente.
+
+**Parent billing account**:
+* Un `billing_account` puo` avere un **parent**.
+* La **testata fattura** viene emessa al parent.
+* Le **righe** mantengono il dettaglio per **child** (es. `dest_billing_account_id`),
+  cosi` il parent riceve una fattura aggregata ma con dettaglio per account figlio.
+
+**Implicazioni di calcolo**:
+* Il raggruppamento usa il parent per la testata.
+* I calcoli di riga restano legati al child, per ripartizioni e riepiloghi separati.
+
+---
+
+### 3.2) Reseller (ruolo commerciale, non cliente)
+
+* **Cliente unico**: il destinatario fattura resta sempre il **billing account** (o il suo parent).
+* **Reseller opzionale**: non aggrega BA diversi in un’unica fattura; serve come filtro e
+  metadato commerciale (report, provvigioni, selezioni batch).
+* **Distribuzione esclusa**: il caso in cui il reseller diventa destinatario fattura
+  e` fuori dallo standard e verra` trattato come processo dedicato.
 
 ---
 
@@ -316,6 +347,9 @@ Questa separazione evita sovrapposizioni tra **stato fiscale** e **stato di invi
 
 * gli stati `INVIATA`, `CONSEGNATA`, `SCARTATA` **escono** da `config.stati_doc_fiscale`
 * si crea `config.stati_sdi` e si collega a `vendite.fatturazione_lotti_fatture.stato_sdi_id`
+* `config.stati_doc_fiscale` resta unica, con flag di applicabilita`:
+  * `applica_fattura` (stato valido per `vendite.fatture`)
+  * `applica_lotto` (stato valido per `vendite.fatturazione_lotti`)
 
 ---
 
@@ -339,6 +373,10 @@ Proposta di base:
 * Se l’attivita` deriva da una sorgente **RIGA** (`config.sorgenti`), il `registro_id` viene ereditato dalla sorgente.
 * Per attivita` inserite manualmente (auto‑sorgente), il `registro_id` deve essere valorizzato direttamente.
 * **Fallback**: se non e` presente, usare il **registro di default della utility** (`config.utilities.registro_id`).
+* **Ordine di risoluzione** per l’alimentazione di `attivita_fatturabili`:
+  1) `config.sorgenti.registro_id` (se sorgente RIGA e valorizzato)
+  2) `config.utilities.registro_id` (fallback)
+  3) errore se ancora NULL
 
 Questa regola rende il raggruppamento deterministico e permette casi semplificati con **un solo registro per utility**.
 
@@ -430,23 +468,33 @@ Per evitare monoliti, la pipeline deve essere composta da procedure richiamabili
 
 **Nuove tabelle (proposte):**
 
-* `vendite.fatturazione_lotti` (lotto + stato job/documenti + lock uuid)
-* `vendite.fatturazione_lotti_fatture` (relazione lotto ↔ fattura + stato SDI + esclusione)
-* `config.stati_sdi` (stati canale SDI)
-* `config.stati_lotto_documenti` (ordine + stato_precedente_ammesso per lotto)
-* `anagrafiche.emittenti_fiscali_billing_account` (mapping **billing_account → emittente fiscale**)
+* fatta `vendite.fatturazione_lotti` (lotto + stato job/documenti + lock uuid)
+* fatta `vendite.fatturazione_lotti_fatture` (relazione lotto ↔ fattura + stato SDI + esclusione)
+  
+* fatto -`config.stati_sdi` (stati canale SDI)
+* fatto `config.stati_doc_fiscale` (stati documento con flag `applica_lotto` / `applica_fattura`)
+  
+* fatto `anagrafiche.emittenti_fiscali_billing_account` (mapping **billing_account → emittente fiscale**)
   * aggiungere `default boolean` con **unicita`** del valore `true`
 * `dbops.jobs`, `dbops.job_runs`, `dbops.job_steps` (modello job)
+  
 * `vendite.fatture_log` (log anomalie documento)
+
+* fatto  `anagrafiche.resellers_billing_account` (mapping **billing_account → reseller** senza default)
+  * campi minimi: `id`, `billing_account_id`, `reseller_soggetto_ruolo_id`, `meta`, audit
 
 **Tabelle da modificare (proposte):**
 
-* `vendite.attivita_fatturabili` → aggiungere `registro_id`, `valuta_id`, `prezzo_unitario`
-* `config.sorgenti` → aggiungere `registro_id` (per sorgenti RIGA)
-* `config.utilities` → aggiungere `registro_id` default
-* `vendite.fatture` → aggiungere `registro_id` e `critical`
-* `config.stati_doc_fiscale` → rimuovere stati SDI e aggiungere `stato_precedente_ammesso`
-* `catalogo.articoli_componenti` → aggiungere `determina_qta_padre`
+* fatto `vendite.attivita_fatturabili` → aggiungere `registro_id`, `valuta_id`, `prezzo_unitario`
+* fatto `config.sorgenti` → aggiungere `registro_id` (per sorgenti RIGA)
+* fatto `config.utilities` → aggiungere `registro_id` default
+* fatto `vendite.fatture` → aggiungere `registro_id` e `critical`
+
+* fatto `config.stati_doc_fiscale` → rimuovere stati SDI e aggiungere `stato_precedente_ammesso`
+ 
+* fatto  `catalogo.articoli_componenti` → aggiungere `determina_qta_padre`
+
+* `anagrafiche.resellers` → bloccare `attivo = false` se esistono mapping su `resellers_billing_account`
 
 ---
 

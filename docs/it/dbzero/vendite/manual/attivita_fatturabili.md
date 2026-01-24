@@ -74,6 +74,9 @@ Tipico filtro di eleggibilità per il motore:
   `sorgente_tipo_id`, `sorgente_uid` (vincolo unico parziale per evitare duplicazioni dai sistemi esterni).
 * **Governance**:
   `tx_id`, `storicizza`, `user_*`, `data_*`.
+* **Economiche & registro**:
+  `registro_id` (registro di fatturazione), `valuta_id`, `prezzo_unitario` (snapshot economico).
+  In fase di alimentazione il registro segue l’ordine: sorgente → utility (fallback).
 * **Misure & dettaglio sorgente**:
   `sorgente_riga` (riferimento tecnico riga sorgente), `uom_id` (u.m. base), `qta_operativa` (quantita operativa), `uom_operativa_id` (u.m. operativa), `factor_to_base` (fattore conversione verso base).
 

@@ -1,0 +1,4 @@
+id,codice,descrizione,attivo,ordine,meta,codice_interno
+1,INVIATA,Inviata,t,10,{},INVIATA
+2,CONSEGNATA,Consegnata,t,20,{},CONSEGNATA
+3,SCARTATA,Scartata,t,20,{},SCARTATA

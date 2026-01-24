@@ -1,8 +1,7 @@
-id,codice,descrizione,attivo,ordine,meta,codice_interno
-1,DRAFT,Bozza,t,10,{},DRAFT
-2,EMESSA,Emessa,t,20,{},EMESSA
-3,INVIATA,Inviata,t,30,{},INVIATA
-4,CONSEGNATA,Consegnata,t,40,{},CONSEGNATA
-5,SCARTATA,Scartata,t,50,{},SCARTATA
-6,REGISTRATA,Registrata,t,60,{},REGISTRATA
-7,ANNULLATA,Annullata,t,70,{},ANNULLATA
+id,codice,descrizione,attivo,ordine,meta,codice_interno,applica_lotto,applica_fattura,ritorno_precedente_stato
+6,REGISTRATA,Registrata,t,60,{},REGISTRATA,f,t,f
+3,INVIATA,Inviata,t,40,{},INVIATA,t,t,f
+1,DRAFT,Bozza,t,10,{},DRAFT,t,t,t
+2,EMESSA,Emessa,t,20,{},EMESSA,t,t,t
+8,DEFINITIVA,DEFINITIVA,t,30,{},DEFINITIVA,t,t,t
+7,ANNULLATA,Annullata,t,70,{},ANNULLATA,f,t,t

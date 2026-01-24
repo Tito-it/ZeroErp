@@ -25,8 +25,8 @@ coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, 
 * **Identita` lotto**: `id`, `lock_batch_id` (uuid), `codice`.
 * **Parametri di calcolo**: `competenza_mese`, `utility_id`, `registro_id`, `billing_account_id`.
 * **Stati**:
-  * `stato_job` (IN_ESECUZIONE | COMPLETATO | ERRORE)
-  * `stato_documenti` (DRAFT | EMESSA | INVIATA)
+  * `stato_lotto` (IN_ESECUZIONE | COMPLETATO | ERRORE)
+  * `stato_doc_fiscale_id` (FK -> `config.stati_doc_fiscale`)
 * **Governance**: `meta`, `storicizza`, `tx_id`, audit `data_*`/`user_*`.
 
 ---

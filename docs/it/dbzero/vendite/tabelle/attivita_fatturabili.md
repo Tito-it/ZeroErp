@@ -34,6 +34,9 @@
 | qta_operativa | numeric | YES |  |
 | uom_operativa_id | bigint | YES |  |
 | factor_to_base | numeric | NO | 1 |
+| registro_id | bigint | YES |  |
+| valuta_id | integer | YES |  |
+| prezzo_unitario | numeric | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -43,9 +46,11 @@
 | FOREIGN KEY | fk_attivita_fatturabili_articoli | articolo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_billing_account | billing_account_id |
 | FOREIGN KEY | fk_attivita_fatturabili_istanze_utilities | istanza_utility_id |
+| FOREIGN KEY | fk_attivita_fatturabili_registro | registro_id |
 | FOREIGN KEY | fk_attivita_fatturabili_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_uom_id | uom_id |
 | FOREIGN KEY | fk_attivita_fatturabili_uom_operativa_id | uom_operativa_id |
+| FOREIGN KEY | fk_attivita_fatturabili_valuta | valuta_id |
 | PRIMARY KEY | pk_attivita_fatturabili | id |
 
 ## 📑 Indici

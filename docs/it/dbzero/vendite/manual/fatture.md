@@ -18,6 +18,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 24-01-2026)
 `vendite.fatture` rappresenta la **testata del documento fiscale di vendita**. Gestisce **identità fiscale (registro/anno/serie/numero)**, **stato e tipo documento**, **intestatari economici** (BA, emittente, reseller), **valuta e pagamento**, **totali** e **metadati**. È il **punto di aggregazione** delle righe (`vendite.fatture_righe`) e dei riepiloghi IVA.
 
 Obiettivi principali:
@@ -27,6 +28,7 @@ Obiettivi principali:
 * Gestire **multi‑valuta** e **termini di pagamento**.
 * Conservare **totali** e **correzioni** (bollo, arrotondamenti), con opzione **"fattura di minimo"** (utilities).
 * Consentire **idempotenza** d’import (**`uid`** e/o *(sorgente_tipo_id, sorgente_uid)*).
+* Segnalare **anomalie bloccanti** tramite `critical`.
 
 ---
 
@@ -58,6 +60,7 @@ Obiettivi principali:
 * **Emittente fiscale**: `emittente_soggetto_ruolo_id` → `anagrafiche.soggetti_ruoli` (stabilisce chi emette).
 * **Billing Account**: `billing_account_id` (payer).
 * **Reseller** *(opzionale)*: `reseller_soggetto_ruolo_id` per branding e catene commerciali.
+* **Flag criticita`**: `critical = true` indica errori bloccanti (numerazione/invio sospesi).
 
 ---
 
@@ -86,21 +89,6 @@ Obiettivi principali:
 
 ---
 
-### 🔒 Vincoli, indici e coerenze
-
-* **FK**: BA, emittente, reseller, registro, stato, tipo, valuta, sorgente tipo.
-* **Indici operativi**:
-
-  * `ix_fatture_ba_data` → ricerche per BA & periodo.
-  * `ix_fatture_emitt_data` → ricerche per emittente & data.
-  * `ix_fatture_stato_doc` → cruscotti per stato.
-  * `ix_fatture_data_contabile` → export/contabilità.
-* **Unique parziali**:
-
-  * `uq_fatture_numero` su *(registro, anno, serie_coalesce, numero)* **WHERE `numero IS NOT NULL`**.
-  * `uq_fatture_v_sorgente_fk` su *(sorgente_tipo_id, sorgente_uid)* **WHERE `sorgente_tipo_id IS NOT NULL`**.
-
----
 
 ### 🧪 Esempi d’uso (query applicative)
 

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/stati_doc_fiscale.md" %}
 # 📚 Tabella `stati_doc_fiscale`
 
 ## 🗂️ Campi principali
@@ -10,6 +11,9 @@
 | ordine | smallint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | codice_interno | character varying | NO |  |
+| applica_lotto | boolean | NO | false |
+| applica_fattura | boolean | NO | true |
+| ritorno_precedente_stato | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

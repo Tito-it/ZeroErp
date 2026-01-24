@@ -22,6 +22,7 @@
 |------|------|---------|
 | FOREIGN KEY | fk_fatturazione_lotti_fatture_fattura | fattura_id |
 | FOREIGN KEY | fk_fatturazione_lotti_fatture_lotto | lotto_id |
+| FOREIGN KEY | fk_fatturazione_lotti_fatture_stato_sdi | stato_sdi_id |
 | PRIMARY KEY | pk_fatturazione_lotti_fatture | id |
 | UNIQUE | uq_fatturazione_lotti_fatture_lotto_fattura | lotto_id, fattura_id |
 

@@ -1,0 +1,49 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260124-01-add-flags-stati-doc-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260124-01-add-flags-stati-doc-fiscale
+      author: mctit
+      comment: "Aggiunge flag di applicabilita' stati documento per lotto e fattura"
+      changes:
+        - addColumn:
+            schemaName: config
+            tableName: stati_doc_fiscale
+            columns:
+              - column:
+                  name: applica_lotto
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "TRUE se lo stato e' applicabile ai lotti di fatturazione."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: applica_fattura
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "TRUE se lo stato e' applicabile alle fatture."
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 20260124-02-add-ritorno-precedente-stati-doc-fiscale
+      author: mctit
+      comment: "Flag per consentire ritorno allo stato precedente"
+      changes:
+        - addColumn:
+            schemaName: config
+            tableName: stati_doc_fiscale
+            columns:
+              - column:
+                  name: ritorno_precedente_stato
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "TRUE se e' consentito tornare allo stato precedente."
+                  constraints:
+                    nullable: false

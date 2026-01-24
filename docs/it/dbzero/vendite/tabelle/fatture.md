@@ -42,6 +42,7 @@
 | sorgente_uid | uuid | YES |  |
 | termine_pagamento_id | bigint | YES |  |
 | termine_pagamento_snapshot | jsonb | YES |  |
+| critical | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
