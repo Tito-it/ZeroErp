@@ -573,3 +573,43 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 * un operatore autorizzato puo` **disabilitare** un errore ritenuto accettabile.
 * se esiste almeno un log **critical** attivo, `fatture.critical = true` e la numerazione/invio devono essere bloccati.
 * `disabilitato = true` esclude il log dal calcolo del flag `critical` sulla fattura.
+
+---
+
+### 16) Sviluppi funzioni (backlog)
+
+**Preparazione lotto**
+
+* `vendite.fn_create_fatturazione_lotto(...)` → crea lotto da parametri (competenza, utility, registro, BA/reseller opzionali).
+* `vendite.fn_get_or_create_lotto(...)` → valida lotto esistente o lo crea se assente (supporto ricalcolo).
+
+**Selezione e lock attivita_fatturabili**
+
+* `vendite.fn_select_attivita_fatturabili(...)` → seleziona righe eleggibili (filtri: competenza, stati, BA, utility, registro, valuta).
+* `vendite.fn_lock_attivita_fatturabili(...)` → marca/lock delle righe selezionate per evitare doppie elaborazioni.
+
+**Aggregazione e chiavi documento**
+
+* `vendite.fn_group_attivita_fatturabili(...)` → applica regole di aggregazione (BA, utility, registro, valuta, parent BA).
+* `vendite.fn_build_fattura_key(...)` → genera chiave logica di aggregazione per documento.
+
+**Generazione documenti**
+
+* `vendite.fn_get_or_create_fattura_header(...)` → crea/recupera testata fattura in bozza (riuso per lotto/chiave).
+* `vendite.fn_generate_fatture_righe(...)` → genera righe da `attivita_fatturabili` secondo regole.
+
+**Ricalcolo**
+
+* `vendite.fn_reset_fattura_righe(...)` → elimina righe e dipendenze se lo stato lo consente.
+* `vendite.fn_ricalcolo_lotto(...)` → reset + rigenerazione per lotto (eventuale filtro BA).
+
+**Stato e validazioni**
+
+* `vendite.fn_guard_lotto_stato(...)` → verifica transizioni ammesse per lotto.
+* `vendite.fn_guard_fattura_stato(...)` → verifica transizioni ammesse per fattura.
+* `vendite.fn_check_fattura_errors(...)` → aggiorna `critical` e log in base agli errori.
+
+**Post-process**
+
+* `vendite.fn_numera_fatture_lotto(...)` → assegna progressivi documento (registri).
+* `vendite.fn_prepare_sdi_payload(...)` → prepara invio SDI (placeholder).

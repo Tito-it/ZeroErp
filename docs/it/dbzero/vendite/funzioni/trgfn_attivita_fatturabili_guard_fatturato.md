@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_attivita_fatturabili_guard_fatturato.md" %}
 # ⚙️ Funzione `trgfn_attivita_fatturabili_guard_fatturato`
 
 ```sql

@@ -15,17 +15,21 @@ AS $function$
 DECLARE
   v_utility_id config.utilities.id%TYPE;
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Normalizza campi base e risolve registro/valuta per
-  --   attivita_fatturabili.
-  --
-  -- Regole:
-  --   - competenza_mese -> primo del mese
-  --   - sorgente_riga default 0 se sorgente valorizzata
-  --   - registro_id: sorgente -> utility -> errore
-  --   - valuta_id: BA -> utility -> gestore
-  -- =========================================================
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
 
   IF NEW.competenza_mese IS NOT NULL THEN
     NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
