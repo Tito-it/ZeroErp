@@ -10,3 +10,4 @@ id,codice_interno,codice,categoria,descrizione,attivo,meta,data_insert,user_inse
 9,DDT_VENDITA_RIGA,DDT_VENDITA_RIGA,RIGA,Riga DDT vendita,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.ddt_righe,id,NULL
 10,FATTURA,FATTURA,DOCUMENTO,Fattura (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.fatture,id,NULL
 11,FATTURA_RIGA,FATTURA_RIGA,RIGA,Riga fattura,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.fatture_righe,id,NULL
+12,ATTIVITA_CONSUMI,ATTIVITA_CONSUMI,DOCUMENTO,Attivita' consumi (testata),t,{},2026-01-24 00:00:00+01,titodb,2026-01-24 00:00:00+01,titodb,vendite.attivita_consumi,uid,NULL

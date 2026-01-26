@@ -27,5 +27,10 @@
 | uq_stati_sdi_codice | `CREATE UNIQUE INDEX uq_stati_sdi_codice ON config.stati_sdi USING btree (codice)` |
 | uq_stati_sdi_codice_interno | `CREATE UNIQUE INDEX uq_stati_sdi_codice_interno ON config.stati_sdi USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_stati_sdi_a10_fatturazione_lotti_fatture_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti_fatture', 'stato_sdi_id', 'id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

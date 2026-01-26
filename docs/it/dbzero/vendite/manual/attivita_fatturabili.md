@@ -63,15 +63,17 @@ Tipico filtro di eleggibilità per il motore:
 ### 🔑 Campi chiave (uso applicativo)
 
 * **Identificazione & riferimenti**:
-  `articolo_id` (servizio/voce), `istanza_utility_id` (punto tecnico), `billing_account_id` (opz. intestazione economica).
+  `uid` (identificativo applicativo), `articolo_id` (servizio/voce), `istanza_utility_id` (punto tecnico), `billing_account_id` (opz. intestazione economica).
 * **Dati attività**:
   `data_attivita`, `quantita` (> 0),  `meta` (estensioni specifiche: matricole, rilevazioni, tariffa applicata, ecc.).
 * **Competenza & gating**:
   `competenza_mese`, `competenza_data`, `posticipa_al`, `sospesa`.
 * **Stato di processo**:
   `approvato`, `fatturato`, `lock_in_fatturazione`, `lock_batch_id`, `fattura_riga_id` (consumo su documento).
+* **Batch alimentazione**:
+  `lotto_attivita_id` (lotto alimentazione), `attivita_consumi_id` (testata consumi).
 * **Idempotenza import**:
-  `sorgente_tipo_id`, `sorgente_uid` (vincolo unico parziale per evitare duplicazioni dai sistemi esterni).
+  `uid` (identita` applicativa) e `sorgente_tipo_id`, `sorgente_uid` (vincolo unico parziale per evitare duplicazioni dai sistemi esterni).
 * **Governance**:
   `tx_id`, `storicizza`, `user_*`, `data_*`.
 * **Economiche & registro**:

@@ -32,7 +32,7 @@ ai **lotti**, tramite flag di applicabilita`.
 ### ✅ Regole operative
 
 * Gli stati **possono essere condivisi** tra lotto e fattura, ma vanno marcati con i flag.
-* I processi devono validare che lo stato richiesto sia applicabile al contesto.
+* Le **transizioni ammesse** sono definite in `config.stati_doc_fiscale_transizioni`.
 
 ---
 

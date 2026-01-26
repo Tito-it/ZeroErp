@@ -48,7 +48,6 @@ databaseChangeLog:
               - column: { name: codice_interno, type: STRING }
               - column: { name: applica_lotto, type: BOOLEAN }
               - column: { name: applica_fattura, type: BOOLEAN }
-              - column: { name: ritorno_precedente_stato, type: BOOLEAN }
 
   - changeSet:
       id: 20250912-90-upsert-stati_doc_fiscale

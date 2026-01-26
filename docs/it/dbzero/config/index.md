@@ -34,6 +34,7 @@
 - [stati_doc_contratti](tabelle/stati_doc_contratti.md)
 - [stati_doc_ddt](tabelle/stati_doc_ddt.md)
 - [stati_doc_fiscale](tabelle/stati_doc_fiscale.md) — (latest review 23-01-2026) `config.stati_doc_fiscale` definisce gli **stati documento** utilizzati dal ciclo fatturazione. Gli stessi stati possono essere applicati sia alle **fatture** sia ai **lotti**, tramite flag di applicabilita`.
+- [stati_doc_fiscale_transizioni](tabelle/stati_doc_fiscale_transizioni.md) — (latest review 24-01-2026) `config.stati_doc_fiscale_transizioni` definisce le **transizioni ammesse** tra stati documento, con validita` separata per **lotti** e **fatture**.
 - [stati_doc_ordini](tabelle/stati_doc_ordini.md)
 - [stati_doc_preventivi](tabelle/stati_doc_preventivi.md)
 - [stati_pdp](tabelle/stati_pdp.md) — * **Dominio degli stati tecnici del PDP**   Fornisce il catalogo centralizzato degli stati tecnici ammessi per i punti di prelievo, utilizzato da `anagrafiche.pdp.stato_pdp_id`.
@@ -65,6 +66,7 @@
 - [valute](tabelle/valute.md) — * **Definizione delle valute**   Elenco centralizzato di tutte le valute supportate, con codici interni e standard ISO 4217. * **Supporto ai moduli finanziari**   Garantisce alle aree di fatturazione, contabilità e reporting uniformità nella rappresentazione e conversione delle valute. * **Tracciabilità e auditing**   Memorizza informazioni di inserimento e aggiornamento per mantenere la storicità delle modifiche.
 
 ## ⚙️ Funzioni
+- [fn_get_stati_doc_fiscale](funzioni/fn_get_stati_doc_fiscale.md) — (latest review 24-01-2026) La funzione **`config.fn_get_stati_doc_fiscale`** restituisce gli stati validi per **LOTTO** o **FATTURA**, con eventuale filtro sulle **transizioni ammesse**.
 - [trgfn_comuni_protect_update](funzioni/trgfn_comuni_protect_update.md) — (latest review 29-12-25) Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
 - [trgfn_iva_guard_conti_iva](funzioni/trgfn_iva_guard_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_iva_stati_normalize](funzioni/trgfn_iva_stati_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.iva_stati` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.

@@ -53,12 +53,19 @@ Questa separazione garantisce **idempotenza**, **controllo** e **revisionabilita
 flowchart TD
   A[Sorgenti attive<br/>config.sorgenti] --> B[Dashboard Input<br/>Selezione sorgenti]
   B --> C[Alimentazione<br/>vendite.attivita_fatturabili]
+  B -.-> X[Eccezioni utilities<br/>Calcolo consumi]
+  X --> XC[attivita_consumi<br/>+ log alimentazione]
+  XC --> C
   C --> D[Dashboard Pre‑Calcolo<br/>Filtri + approvazione]
   D --> E[Calcolo righe<br/>vendite.fatture_righe]
   E --> F[Dashboard Emissione<br/>Conferma documento]
   F --> G[Emissione + numerazione<br/>vendite.fatture]
   G --> H[Output/Invio/Statistiche]
 ```
+
+---
+
+> Nota: la dashboard e` concepita come **unica** con sezioni dedicate (input, eccezioni utilities, pre‑calcolo, emissione).
 
 ---
 
@@ -92,6 +99,18 @@ Le sorgenti sono definite in `config.sorgenti` e rappresentano **origini dati** 
 * Selezione sorgenti e intervalli (periodo, BA, istanza, utility).
 * Visualizzazione righe candidate e preview dei conteggi.
 * Avvio del processo di alimentazione (batch o manuale).
+
+**Integrazione utilities (gas/energia/acqua)**  
+Non tutte le sorgenti possono alimentare direttamente `attivita_fatturabili`:
+nei casi utilities serve un **processo di calcolo preliminare** dei consumi.
+La dashboard “Input” deve quindi gestire due flussi:
+
+1) **Alimentazione diretta** → inserimento righe `attivita_fatturabili` da sorgenti semplici.  
+2) **Alimentazione con calcolo** → generazione di `attivita_consumi` (testata consumi),
+   log dedicato e successiva produzione di righe `attivita_fatturabili`.
+
+Il processo di alimentazione avviene **prima** del lotto fatture e mantiene tracciabilita`
+tramite `fatturazione_lotti_attivita`.
 
 ---
 
@@ -258,6 +277,41 @@ Il **lotto** diventa l’elemento centrale per:
 > Lo stato del lotto segue un **ordine** e supporta `stato_precedente_ammesso` per eventuali rollback.
 
 ---
+
+### 1.1) Processo di alimentazione attivita_fatturabili (necessita`)
+
+In ambito utilities (gas/energia/acqua) la **generazione** di `attivita_fatturabili`
+non e` un semplice import ma un **calcolo complesso** (consumi, conguagli, minimi, fasce).
+Questo richiede:
+
+* **tracciabilita` batch** (quando e` stato eseguito il calcolo, con quali parametri);
+* **log dedicato** (warning/critical specifici del calcolo consumi);
+* **testata di calcolo** con totali e periodi per BA/competenza;
+* separazione chiara tra **alimentazione** e **fatturazione**.
+
+Per questo si introduce un **processo di alimentazione** separato dal lotto fatture,
+ma collegabile in dashboard.
+
+---
+
+### 1.2) Lotto alimentazione + attivita_consumi (design)
+
+**Lotto alimentazione** (`vendite.fatturazione_lotti_attivita`):
+* batch di generazione `attivita_fatturabili` con parametri di calcolo (competenza, utility, BA);
+* stato lotto (IN_ESECUZIONE | COMPLETATO | ERRORE);
+* riferimento per dashboard e audit.
+
+**Testata consumi** (`vendite.attivita_consumi`):
+* totalizzatori per BA/periodo (consumo_totale, uom, periodo);
+* punto di aggregazione per i dettagli futuri (fasce, minimi, ecc.);
+* collegabile a `fattura_id` quando il documento e` emesso.
+
+**Log dedicato** (`vendite.attivita_fatturabili_log`):
+* messaggi W/C riferiti al lotto o alla testata consumi.
+
+Le righe `attivita_fatturabili` generate da processi automatici
+mantengono un riferimento al **lotto alimentazione** e, se disponibile,
+alla **testata consumi**.
 
 ### 2) Parametri funzione di calcolo (proposta)
 
@@ -476,9 +530,9 @@ Per evitare monoliti, la pipeline deve essere composta da procedure richiamabili
   
 * fatto `anagrafiche.emittenti_fiscali_billing_account` (mapping **billing_account → emittente fiscale**)
   * aggiungere `default boolean` con **unicita`** del valore `true`
-* `dbops.jobs`, `dbops.job_runs`, `dbops.job_steps` (modello job)
+ `dbops.jobs`, `dbops.job_runs`, `dbops.job_steps` (modello job)
   
-* `vendite.fatture_log` (log anomalie documento)
+* fatto `vendite.fatture_log` (log anomalie documento)
 
 * fatto  `anagrafiche.resellers_billing_account` (mapping **billing_account → reseller** senza default)
   * campi minimi: `id`, `billing_account_id`, `reseller_soggetto_ruolo_id`, `meta`, audit

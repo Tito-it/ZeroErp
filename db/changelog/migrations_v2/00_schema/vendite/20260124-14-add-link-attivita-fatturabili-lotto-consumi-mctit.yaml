@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260124-14-add-link-attivita-fatturabili-lotto-consumi-mctit.yaml
+
+  - changeSet:
+      id: 20260124-14-add-link-attivita-fatturabili-lotto-consumi
+      author: mctit
+      comment: "Collega attivita_fatturabili a lotto alimentazione e attivita_consumi"
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columns:
+              - column:
+                  name: lotto_attivita_id
+                  type: bigint
+                  remarks: "FK -> vendite.fatturazione_lotti_attivita.id"
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: attivita_consumi_id
+                  type: bigint
+                  remarks: "FK -> vendite.attivita_consumi.id"
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: lotto_attivita_id
+            constraintName: fk_attivita_fatturabili_lotto_attivita
+            referencedTableSchemaName: vendite
+            referencedTableName: fatturazione_lotti_attivita
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: attivita_consumi_id
+            constraintName: fk_attivita_fatturabili_attivita_consumi
+            referencedTableSchemaName: vendite
+            referencedTableName: attivita_consumi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION

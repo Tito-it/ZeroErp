@@ -64,13 +64,13 @@ extra_javascript:
 
 nav:
         - Home: it/index.md
-        - Introduzione:
-                  - Cos’è Zero ERP: it/introduzione.md
+        - Visione e Filosofia:
                   - Manifesto: it/manifesto.md
-                  - Licenza: it/LICENSE.md
-
+                  - Cos’è Zero ERP: it/introduzione.md
+                  - Perchè Zero ERP: it/perche-zeroerp.md
         - Installazione:
                   - Prerequisiti: it/installazione.md
+                  - Licenza: it/LICENSE.md
         - Architettura:
                   - Panoramica: it/architettura.md
                   - Database:

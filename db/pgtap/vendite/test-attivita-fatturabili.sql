@@ -17,20 +17,21 @@
 -- 10) Default sospesa = false
 -- 11) Default lock_in_fatturazione = false
 -- 12) Default storicizza = true
--- 13) Default factor_to_base = 1
--- 14) Default sorgente_riga = 0
--- 15) Normalizzazione competenza_mese al primo del mese
--- 16) Check competenza_data >= data_attivita
--- 17) NOT NULL quantita
--- 18) FK su articolo_id
--- 19) Inserimento riga con sorgente_tipo_id e sorgente_uid/sorgente_riga validi
--- 20) Unicita parziale su (sorgente_tipo_id, sorgente_uid)
--- 21) Riferimento config.note_stili presente
--- 22) Inserimento nota su vendite.note (target ATTIVITAFT)
--- 23) Nota presente in partizione vendite.note_attivita_fatturabili
+-- 13) Default uid valorizzato
+-- 14) Default factor_to_base = 1
+-- 15) Default sorgente_riga = 0
+-- 16) Normalizzazione competenza_mese al primo del mese
+-- 17) Check competenza_data >= data_attivita
+-- 18) NOT NULL quantita
+-- 19) FK su articolo_id
+-- 20) Inserimento riga con sorgente_tipo_id e sorgente_uid/sorgente_riga validi
+-- 21) Unicita parziale su (sorgente_tipo_id, sorgente_uid)
+-- 22) Riferimento config.note_stili presente
+-- 23) Inserimento nota su vendite.note (target ATTIVITAFT)
+-- 24) Nota presente in partizione vendite.note_attivita_fatturabili
 -- ------------------------------------------------------------
 
-SELECT plan(23);
+SELECT plan(24);
 
 -- ============================================================
 -- 0) Costanti e riferimenti
@@ -172,6 +173,7 @@ WITH ins AS (
         sospesa,
         lock_in_fatturazione,
         storicizza,
+        uid,
         factor_to_base,
         sorgente_riga
 )
@@ -217,6 +219,11 @@ SELECT is(
     (SELECT storicizza FROM tmp_attivita_base),
     true,
     'Default storicizza = true'
+);
+
+SELECT ok(
+    (SELECT uid IS NOT NULL FROM tmp_attivita_base),
+    'Default uid valorizzato'
 );
 
 SELECT is(
