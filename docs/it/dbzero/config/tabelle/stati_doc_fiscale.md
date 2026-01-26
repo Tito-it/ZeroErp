@@ -35,6 +35,8 @@
 | trg_stati_doc_fiscale_a10_fatturazione_lotti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti', 'stato_doc_fiscale_id', 'id')` |
 | trg_stati_doc_fiscale_a10_fatture_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture', 'stato_doc_fiscale_id', 'id')` |
 | trg_stati_doc_fiscale_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+| trg_stati_doc_fiscale_a10_stati_doc_fiscale_transizioni__88be0f | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_fiscale_transizioni', 'stato_to_id', 'id')` |
+| trg_stati_doc_fiscale_a10_stati_doc_fiscale_transizioni__94ae32 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_fiscale_transizioni', 'stato_from_id', 'id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

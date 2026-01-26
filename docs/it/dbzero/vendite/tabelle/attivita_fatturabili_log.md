@@ -30,5 +30,10 @@
 |------|-------------|
 | pk_attivita_fatturabili_log | `CREATE UNIQUE INDEX pk_attivita_fatturabili_log ON vendite.attivita_fatturabili_log USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_attivita_fatturabili_log_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

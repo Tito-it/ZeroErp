@@ -1,13 +1,13 @@
 id,codice_interno,codice,categoria,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update,target_table,key_selector,registro_id
-1,ATTIVITA,ATTIVITA,RIGA,Attività fatturabili,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.attivita_fatturabili,id,NULL
-2,PREVENTIVO,PREVENTIVO,DOCUMENTO,Preventivo (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.preventivi,id,NULL
-3,PREVENTIVO_RIGA,PREVENTIVO_RIGA,RIGA,Riga preventivo,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.preventivi_righe,id,NULL
-4,CONTRATTO,CONTRATTO,DOCUMENTO,Contratto (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.contratti,id,NULL
-5,CONTRATTO_RIGA,CONTRATTO_RIGA,RIGA,Riga contratto,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.contratti_righe,id,NULL
-6,ORDINE_VENDITA,ORDINE_VENDITA,DOCUMENTO,Ordine vendita (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.ordini,id,NULL
-7,ORDINE_VENDITA_RIGA,ORDINE_VENDITA_RIGA,RIGA,Riga ordine vendita,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.ordini_righe,id,NULL
-8,DDT_VENDITA,DDT_VENDITA,DOCUMENTO,DDT vendita (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.ddt,id,NULL
-9,DDT_VENDITA_RIGA,DDT_VENDITA_RIGA,RIGA,Riga DDT vendita,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.ddt_righe,id,NULL
-10,FATTURA,FATTURA,DOCUMENTO,Fattura (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.fatture,id,NULL
-11,FATTURA_RIGA,FATTURA_RIGA,RIGA,Riga fattura,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-16 17:38:32.228603+01,titodb,vendite.fatture_righe,id,NULL
-12,ATTIVITA_CONSUMI,ATTIVITA_CONSUMI,DOCUMENTO,Attivita' consumi (testata),t,{},2026-01-24 00:00:00+01,titodb,2026-01-24 00:00:00+01,titodb,vendite.attivita_consumi,uid,NULL
+1,ATTIVITA,ATTIVITA,RIGA,Attività fatturabili,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.attivita_fatturabili,id,null
+2,PREVENTIVO,PREVENTIVO,DOCUMENTO,Preventivo (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.preventivi,id,null
+3,PREVENTIVO_RIGA,PREVENTIVO_RIGA,RIGA,Riga preventivo,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.preventivi_righe,id,null
+4,CONTRATTO,CONTRATTO,DOCUMENTO,Contratto (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.contratti,id,null
+5,CONTRATTO_RIGA,CONTRATTO_RIGA,RIGA,Riga contratto,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.contratti_righe,id,null
+6,ORDINE_VENDITA,ORDINE_VENDITA,DOCUMENTO,Ordine vendita (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.ordini,id,null
+7,ORDINE_VENDITA_RIGA,ORDINE_VENDITA_RIGA,RIGA,Riga ordine vendita,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.ordini_righe,id,null
+8,DDT_VENDITA,DDT_VENDITA,DOCUMENTO,DDT vendita (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.ddt,id,null
+9,DDT_VENDITA_RIGA,DDT_VENDITA_RIGA,RIGA,Riga DDT vendita,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.ddt_righe,id,null
+10,FATTURA,FATTURA,DOCUMENTO,Fattura (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.fatture,id,null
+11,FATTURA_RIGA,FATTURA_RIGA,RIGA,Riga fattura,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.fatture_righe,id,null
+12,ATTIVITA_CONSUMI,ATTIVITA_CONSUMI,DOCUMENTO,Attivita' consumi (testata),t,{},2026-01-24 00:00:00+01,titodb,2026-01-24 00:00:00+01,titodb,vendite.attivita_consumi,id,null

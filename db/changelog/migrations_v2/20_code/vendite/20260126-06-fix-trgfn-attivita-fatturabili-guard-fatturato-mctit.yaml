@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260126-06-fix-trgfn-attivita-fatturabili-guard-fatturato-mctit.yaml
+
+  - changeSet:
+      id: 20260126-06-fix-trgfn-attivita-fatturabili-guard-fatturato
+      author: mctit
+      comment: "Fix ritorno trigger su DELETE (RETURN OLD)"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Blocca UPDATE/DELETE se la riga e' gia' fatturata
+                --   (fattura_riga_id valorizzato).
+                -- =========================================================
+                IF TG_OP = 'UPDATE' THEN
+                  IF OLD.fattura_riga_id IS NOT NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_RIGA_GIA_FATTURATA',
+                      jsonb_build_object('id', OLD.id, 'fattura_riga_id', OLD.fattura_riga_id),
+                      NULL::uuid, OLD.id::text
+                    );
+                  END IF;
+                  RETURN NEW;
+                ELSIF TG_OP = 'DELETE' THEN
+                  IF OLD.fattura_riga_id IS NOT NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', TG_NAME, 'E_RIGA_GIA_FATTURATA',
+                      jsonb_build_object('id', OLD.id, 'fattura_riga_id', OLD.fattura_riga_id),
+                      NULL::uuid, OLD.id::text
+                    );
+                  END IF;
+                  RETURN OLD;
+                END IF;
+
+                RETURN NEW;
+              END
+              $$;
+
+              COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()
+                IS 'Blocca update/delete se fattura_riga_id e'' valorizzato; RETURN OLD su DELETE.';

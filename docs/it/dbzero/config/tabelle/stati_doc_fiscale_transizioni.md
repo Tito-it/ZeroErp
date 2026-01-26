@@ -30,5 +30,14 @@
 | pk_stati_doc_fiscale_transizioni | `CREATE UNIQUE INDEX pk_stati_doc_fiscale_transizioni ON config.stati_doc_fiscale_transizioni USING btree (id)` |
 | uq_stati_doc_fiscale_transizioni | `CREATE UNIQUE INDEX uq_stati_doc_fiscale_transizioni ON config.stati_doc_fiscale_transizioni USING btree (stato_from_id, stato_to_id, solo_lotto, solo_fattura)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_stati_doc_fiscale_transizioni_a10_stati_doc_fiscale__8ec9d2 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_from_id')` |
+| trg_stati_doc_fiscale_transizioni_a10_stati_doc_fiscale__8ec9d2 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_from_id')` |
+| trg_stati_doc_fiscale_transizioni_a10_stati_doc_fiscale__ec940d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_to_id')` |
+| trg_stati_doc_fiscale_transizioni_a10_stati_doc_fiscale__ec940d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_to_id')` |
+| trg_stati_doc_fiscale_transizioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

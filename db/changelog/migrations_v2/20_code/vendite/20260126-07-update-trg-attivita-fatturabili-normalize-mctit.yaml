@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260126-07-update-trg-attivita-fatturabili-normalize-mctit.yaml
+
+  - changeSet:
+      id: 20260126-07-update-trg-attivita-fatturabili-normalize
+      author: mctit
+      runOnChange: true
+      comment: "Limita il trigger normalize a UPDATE OF campi rilevanti e ignora DELETE"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_utility_id config.utilities.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Normalizza campi base e risolve registro/valuta per
+                --   attivita_fatturabili, solo su INS/UPD dei campi rilevanti.
+                --
+                -- Regole:
+                --   - competenza_mese -> primo del mese
+                --   - sorgente_riga default 0 se sorgente valorizzata
+                --   - registro_id: sorgente -> utility -> errore
+                --   - valuta_id: BA -> utility -> gestore
+                -- =========================================================
+
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                IF NEW.competenza_mese IS NOT NULL THEN
+                  NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
+                END IF;
+
+                IF NEW.sorgente_tipo_id IS NOT NULL THEN
+                  IF NEW.sorgente_riga IS NULL THEN
+                    NEW.sorgente_riga := 0;
+                  END IF;
+                END IF;
+
+                IF NEW.billing_account_id IS NOT NULL THEN
+                  SELECT ba.utility_id
+                    INTO v_utility_id
+                    FROM anagrafiche.billing_account ba
+                   WHERE ba.id = NEW.billing_account_id;
+                END IF;
+
+                IF NEW.registro_id IS NULL THEN
+                  NEW.registro_id := vendite.fn_get_registro_id(
+                    NEW.sorgente_tipo_id,
+                    v_utility_id
+                  );
+                END IF;
+
+                IF NEW.valuta_id IS NULL THEN
+                  NEW.valuta_id := vendite.fn_get_valuta_id(
+                    NEW.billing_account_id,
+                    v_utility_id
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $$;
+
+              COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
+                IS 'Normalizza competenza/sorgente; risolve registro_id e valuta_id (solo campi rilevanti).';
+
+              DROP TRIGGER IF EXISTS trg_attivita_fatturabili_normalize_ins_upd
+                ON vendite.attivita_fatturabili;
+
+              CREATE TRIGGER trg_attivita_fatturabili_normalize_ins_upd
+              BEFORE INSERT OR UPDATE OF
+                competenza_mese,
+                sorgente_tipo_id,
+                sorgente_riga,
+                billing_account_id,
+                registro_id,
+                valuta_id
+              ON vendite.attivita_fatturabili
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_normalize();
+
+              COMMENT ON TRIGGER trg_attivita_fatturabili_normalize_ins_upd
+                ON vendite.attivita_fatturabili
+                IS 'Normalizzazione attivita_fatturabili (solo su campi rilevanti).';

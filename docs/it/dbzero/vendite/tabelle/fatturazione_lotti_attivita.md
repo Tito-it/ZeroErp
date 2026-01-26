@@ -38,5 +38,16 @@
 | uq_fatturazione_lotti_attivita_codice | `CREATE UNIQUE INDEX uq_fatturazione_lotti_attivita_codice ON vendite.fatturazione_lotti_attivita USING btree (codice)` |
 | uq_fatturazione_lotti_attivita_lock_batch_id | `CREATE UNIQUE INDEX uq_fatturazione_lotti_attivita_lock_batch_id ON vendite.fatturazione_lotti_attivita USING btree (lock_batch_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_fatturazione_lotti_attivita_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fatturazione_lotti_attivita_gen_codice()` |
+| trg_fatturazione_lotti_attivita_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatturazione_lotti_attivita_gen_codice()` |
+| trg_fatturazione_lotti_attivita_a10_sorgenti_require_att_e6ab3e | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
+| trg_fatturazione_lotti_attivita_a10_sorgenti_require_att_e6ab3e | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
+| trg_fatturazione_lotti_attivita_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_fatturazione_lotti_attivita_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatturazione_lotti_attivita_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

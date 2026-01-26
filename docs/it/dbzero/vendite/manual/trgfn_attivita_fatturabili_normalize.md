@@ -17,7 +17,10 @@ La funzione `vendite.trgfn_attivita_fatturabili_normalize()` applica una **norma
 su `vendite.attivita_fatturabili` per garantire coerenza **temporale** e **tecnica** dei dati
 prima della scrittura.
 
-La funzione e` eseguita da un trigger **BEFORE INSERT/UPDATE** su `vendite.attivita_fatturabili`.
+La funzione e` eseguita da un trigger **BEFORE INSERT** e **BEFORE UPDATE OF**
+`competenza_mese`, `sorgente_tipo_id`, `sorgente_riga`, `billing_account_id`, `registro_id`, `valuta_id`
+su `vendite.attivita_fatturabili`.
+Le operazioni **DELETE** non attivano la normalizzazione.
 
 ---
 
@@ -31,6 +34,14 @@ La funzione e` eseguita da un trigger **BEFORE INSERT/UPDATE** su `vendite.attiv
    normalizzazione stringa.  
    Se `sorgente_tipo_id` e` valorizzato e `sorgente_riga` e` NULL, viene impostato `sorgente_riga = 0`
    per garantire coerenza con l’idempotenza import.
+
+3. **Registro fatturazione**  
+   Se `registro_id` e` NULL, viene risolto tramite `vendite.fn_get_registro_id`
+   (priorita`: sorgente → utility → errore).
+
+4. **Valuta**  
+   Se `valuta_id` e` NULL, viene risolto tramite `vendite.fn_get_valuta_id`
+   (priorita`: BA → utility → gestore).
 
 La funzione non esegue validazioni di dominio (delegate ai trigger guard dedicati).
 

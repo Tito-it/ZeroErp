@@ -39,10 +39,14 @@
 - [preventivi](tabelle/preventivi.md)
 - [preventivi_indirizzi](tabelle/preventivi_indirizzi.md)
 - [preventivi_righe](tabelle/preventivi_righe.md)
-- [registri_fatturazione](tabelle/registri_fatturazione.md)
-- [registri_fatturazione_progressivi](tabelle/registri_fatturazione_progressivi.md)
+- [registri_fatturazione](tabelle/registri_fatturazione.md) — (latest review 26-01-2026) `vendite.registri_fatturazione` definisce i **registri fiscali di emissione**: serie, regole di reset e collegamento all’emittente fiscale. Ogni fattura si aggancia a un registro, che governa numerazione e perimetro fiscale.
+- [registri_fatturazione_progressivi](tabelle/registri_fatturazione_progressivi.md) — (latest review 26-01-2026) `vendite.registri_fatturazione_progressivi` memorizza i **progressivi di numerazione** per ciascun registro, anno, mese e serie. E` la base per l’assegnazione del numero documento in fase di emissione.
 
 ## ⚙️ Funzioni
+- [fn_get_anno_registro](funzioni/fn_get_anno_registro.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_anno_registro`** calcola l’anno di riferimento per la numerazione dei registri con `reset_policy = ANNUALE`.
+- [fn_get_next_progressivo](funzioni/fn_get_next_progressivo.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_next_progressivo`** restituisce il prossimo numero di registro, con **lock della riga** progressivi per evitare doppioni.
+- [fn_get_registro_id](funzioni/fn_get_registro_id.md) — (latest review 24-01-2026) La funzione **`vendite.fn_get_registro_id`** risolve il registro di fatturazione secondo una regola deterministica: **sorgente → utility → errore**.
+- [fn_get_valuta_id](funzioni/fn_get_valuta_id.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback al **gestore** quando non esistono valori specifici su BA/utility.
 - [fn_get_vendite_note](funzioni/fn_get_vendite_note.md)
 - [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md)
 - [fn_resolve_termini_pagamento](funzioni/fn_resolve_termini_pagamento.md)
@@ -57,6 +61,8 @@
 - [trgfn_ddt_gen_codice](funzioni/trgfn_ddt_gen_codice.md)
 - [trgfn_ddt_normalize](funzioni/trgfn_ddt_normalize.md)
 - [trgfn_dlt_block_ordrig_ddtrig](funzioni/trgfn_dlt_block_ordrig_ddtrig.md)
+- [trgfn_fatturazione_lotti_attivita_gen_codice](funzioni/trgfn_fatturazione_lotti_attivita_gen_codice.md)
+- [trgfn_fatturazione_lotti_gen_codice](funzioni/trgfn_fatturazione_lotti_gen_codice.md)
 - [trgfn_fatturazione_lotti_guard_stato](funzioni/trgfn_fatturazione_lotti_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le transizioni tra stati documento sui lotti di fatturazione.
 - [trgfn_fatture_gen_codice](funzioni/trgfn_fatture_gen_codice.md)
 - [trgfn_fatture_guard_stato](funzioni/trgfn_fatture_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatture_guard_stato()`** controlla le transizioni tra stati documento sulle fatture, bloccando quelle non ammesse.

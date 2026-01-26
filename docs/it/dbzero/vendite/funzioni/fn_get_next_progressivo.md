@@ -1,0 +1,104 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_get_next_progressivo.md" %}
+# ⚙️ Funzione `fn_get_next_progressivo`
+
+```sql
+CREATE FUNCTION fn_get_next_progressivo(p_registro_id bigint, p_data date, p_serie text)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_get_next_progressivo(p_registro_id bigint, p_data date, p_serie text DEFAULT NULL::text)
+ RETURNS bigint
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_anno smallint;
+  v_mese smallint := 0;
+  v_serie text := COALESCE(p_serie, '');
+  v_last bigint;
+  v_next bigint;
+BEGIN
+  -- =========================================================
+  -- Scopo:
+  --   Restituisce il prossimo progressivo per registro/anno/mese/serie
+  --   con lock della riga progressivi (anti-doppioni).
+  --
+  -- Regole:
+  --   - anno da fn_get_anno_registro(p_data)
+  --   - mese=0 (reset annuale)
+  --   - lock: advisory lock su registro/anno
+  --   - lock: SELECT ... FOR UPDATE sulla riga progressivo
+  -- =========================================================
+
+  IF p_registro_id IS NULL OR p_data IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite',
+      'fn_get_next_progressivo',
+      'E_GENERICO',
+      jsonb_build_object(
+        'detail','Parametri obbligatori mancanti',
+        'registro_id', p_registro_id,
+        'data', p_data
+      ),
+      NULL::uuid,
+      concat('Parametri obbligatori mancanti (registro_id, data)',  
+      ' registro_id ', p_registro_id::text,
+        ', data ', p_data::text
+       )
+    );
+  END IF;
+
+  v_anno := vendite.fn_get_anno_registro(p_data);
+
+  -- Lock transazionale per evitare interleaving su stesso registro/anno
+  PERFORM pg_advisory_xact_lock(
+    hashtext('registri_fatturazione_progressivi'),
+    hashtext(p_registro_id::text || '|' || v_anno::text || '|' || v_serie)
+  );
+
+  SELECT rp.last_numero
+    INTO v_last
+    FROM vendite.registri_fatturazione_progressivi rp
+   WHERE rp.registro_id = p_registro_id
+     AND rp.anno = v_anno
+     AND rp.mese = v_mese
+     AND rp.serie = v_serie
+   FOR UPDATE;
+
+  IF v_last IS NULL THEN
+    INSERT INTO vendite.registri_fatturazione_progressivi (
+      registro_id,
+      anno,
+      mese,
+      serie,
+      last_numero,
+      attivo
+    )
+    VALUES (
+      p_registro_id,
+      v_anno,
+      v_mese,
+      v_serie,
+      0,
+      true
+    )
+    RETURNING last_numero INTO v_last;
+  END IF;
+
+  v_next := v_last + 1;
+
+  UPDATE vendite.registri_fatturazione_progressivi
+     SET last_numero = v_next
+   WHERE registro_id = p_registro_id
+     AND anno = v_anno
+     AND mese = v_mese
+     AND serie = v_serie;
+
+  RETURN v_next;
+END
+$function$
+```
+
+---
+{% include-markdown "signature-core.md" %}

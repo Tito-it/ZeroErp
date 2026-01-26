@@ -28,5 +28,10 @@
 |------|-------------|
 | pk_fatturazione_lotti_log | `CREATE UNIQUE INDEX pk_fatturazione_lotti_log ON vendite.fatturazione_lotti_log USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_fatturazione_lotti_log_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}
