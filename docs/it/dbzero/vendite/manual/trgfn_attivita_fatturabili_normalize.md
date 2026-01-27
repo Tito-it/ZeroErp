@@ -37,7 +37,7 @@ Le operazioni **DELETE** non attivano la normalizzazione.
 
 3. **Tipo documento fiscale**  
    Se `tipo_doc_fiscale_id` e` NULL, viene risolto tramite `vendite.fn_get_tipo_doc_fiscale_id`
-   (priorita`: sorgente → utility → errore).
+   (solo sorgente, senza fallback).
 
 4. **Valuta**  
    Se `valuta_id` e` NULL, viene risolto tramite `vendite.fn_get_valuta_id`

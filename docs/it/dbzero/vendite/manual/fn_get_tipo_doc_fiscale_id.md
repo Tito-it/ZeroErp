@@ -29,7 +29,7 @@ fiscale a partire dalla sorgente o dalla utility.
 ### ✅ Note operative
 
 * Funzione pensata per l’alimentazione di `attivita_fatturabili`.
-* Garantisce coerenza del tipo documento senza fallback impliciti applicativi.
+* Non prevede fallback su utility: il tipo documento e` di sistema.
 
 ---
 

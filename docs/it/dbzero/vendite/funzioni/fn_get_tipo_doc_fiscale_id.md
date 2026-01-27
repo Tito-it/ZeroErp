@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_get_tipo_doc_fiscale_id`
 
 ```sql
-CREATE FUNCTION fn_get_tipo_doc_fiscale_id(p_sorgente_tipo_id bigint, p_utility_id integer)
+CREATE FUNCTION fn_get_tipo_doc_fiscale_id(p_sorgente_tipo_id bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_get_tipo_doc_fiscale_id(p_sorgente_tipo_id bigint, p_utility_id integer)
+CREATE OR REPLACE FUNCTION vendite.fn_get_tipo_doc_fiscale_id(p_sorgente_tipo_id bigint)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
@@ -17,47 +17,36 @@ DECLARE
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Risolve il tipo documento fiscale da sorgente o utility.
+  --   Risolve il tipo documento fiscale dalla sorgente.
   --
   -- Regole:
   --   1) config.sorgenti.tipo_doc_fiscale_id
-  --   2) config.utilities.tipo_doc_fiscale_id
-  --   3) errore
+  --   2) errore
   -- =========================================================
 
-  IF p_sorgente_tipo_id IS NULL AND p_utility_id IS NULL THEN
+  IF p_sorgente_tipo_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_get_tipo_doc_fiscale_id', 'E_GENERICO',
-      jsonb_build_object('detail','Parametri obbligatori mancanti (sorgente/utility)'),
+      jsonb_build_object('detail','sorgente_tipo_id obbligatorio'),
       NULL::uuid,
-      'Parametri obbligatori mancanti (sorgente/utility)'
+      'sorgente_tipo_id obbligatorio'
     );
   END IF;
 
-  IF p_sorgente_tipo_id IS NOT NULL THEN
-    SELECT s.tipo_doc_fiscale_id
-      INTO v_tipo_doc_id
-      FROM config.sorgenti s
-     WHERE s.id = p_sorgente_tipo_id;
-  END IF;
-
-  IF v_tipo_doc_id IS NULL AND p_utility_id IS NOT NULL THEN
-    SELECT u.tipo_doc_fiscale_id
-      INTO v_tipo_doc_id
-      FROM config.utilities u
-     WHERE u.id = p_utility_id;
-  END IF;
+  SELECT s.tipo_doc_fiscale_id
+    INTO v_tipo_doc_id
+    FROM config.sorgenti s
+   WHERE s.id = p_sorgente_tipo_id;
 
   IF v_tipo_doc_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_get_tipo_doc_fiscale_id', 'E_GENERICO',
       jsonb_build_object(
-        'detail','Tipo documento fiscale non risolto (sorgente/utility)',
-        'sorgente_tipo_id', p_sorgente_tipo_id,
-        'utility_id', p_utility_id
+        'detail','Tipo documento fiscale non risolto (sorgente)',
+        'sorgente_tipo_id', p_sorgente_tipo_id
       ),
       NULL::uuid,
-      concat('Tipo documento fiscale non risolto (sorgente/utility)', ' lotto_id: ', p_lotto_id::text)
+      'Tipo documento fiscale non risolto (sorgente)'
     );
   END IF;
 

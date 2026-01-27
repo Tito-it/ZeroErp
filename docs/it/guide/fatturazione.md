@@ -340,7 +340,7 @@ Chiavi di raggruppamento:
 * `utility_id` (se valorizzato)
 * `tipo_doc_fiscale_id`
 * `valuta_id`
-* `emittente_soggetto_ruolo_id`
+* `emittente_soggetto_ruolo_id` (se valorizzato)
 
 La funzione **aggrega** su fattura bozza esistente con stessa chiave.
 
@@ -426,11 +426,10 @@ Proposta di base:
 * `vendite.attivita_fatturabili` **deve** avere `tipo_doc_fiscale_id`.
 * Se l’attivita` deriva da una sorgente **RIGA** (`config.sorgenti`), il `tipo_doc_fiscale_id` viene ereditato dalla sorgente.
 * Per attivita` inserite manualmente (auto‑sorgente), il `tipo_doc_fiscale_id` deve essere valorizzato direttamente.
-* **Fallback**: se non e` presente, usare il **tipo documento di default della utility** (`config.utilities.tipo_doc_fiscale_id`).
+* **Fallback**: non previsto. Il tipo documento e` di sistema.
 * **Ordine di risoluzione** per l’alimentazione di `attivita_fatturabili`:
   1) `config.sorgenti.tipo_doc_fiscale_id` (se sorgente RIGA e valorizzato)
-  2) `config.utilities.tipo_doc_fiscale_id` (fallback)
-  3) errore se ancora NULL
+  2) errore se ancora NULL
 
 Questa regola rende il raggruppamento deterministico e permette casi semplificati con **un solo tipo documento per utility**.
 
@@ -528,7 +527,7 @@ Per evitare monoliti, la pipeline deve essere composta da procedure richiamabili
 * ✅ -`config.stati_sdi` (stati canale SDI)
 * ✅ `config.stati_doc_fiscale` (stati documento con flag `applica_lotto` / `applica_fattura`)
   
-* ✅ `vendite.tipi_doc_fiscale_registri` (mapping **tipo documento → registro**, con varianti per utility/emittente)
+* ✅ `vendite.tipi_doc_fiscale_registri` (mapping **tipo documento → registro**)
 
 * ✅ `anagrafiche.emittenti_fiscali_billing_account` (mapping **billing_account → emittente fiscale**)
   * aggiungere `default boolean` con **unicita`** del valore `true`
@@ -582,8 +581,8 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 
 **Preparazione lotto**
 
-* `vendite.fn_create_fatturazione_lotto(...)` → crea lotto da parametri (competenza, utility, tipo documento, BA/reseller opzionali).
-* `vendite.fn_get_or_create_lotto(...)` → valida lotto esistente o lo crea se assente (supporto ricalcolo).
+* ✅ `vendite.fn_create_fatturazione_lotto(...)` → crea lotto da parametri (competenza, utility, tipo documento, BA/reseller opzionali).
+* ✅ `vendite.fn_get_or_create_lotto(...)` → valida lotto esistente o lo crea se assente (supporto ricalcolo).
 
 **Selezione e lock attivita_fatturabili**
 

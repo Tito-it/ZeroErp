@@ -23,7 +23,7 @@ BEGIN
   -- Regole:
   --   - competenza_mese -> primo del mese
   --   - sorgente_riga default 0 se sorgente valorizzata
-  --   - tipo_doc_fiscale_id: sorgente -> utility -> errore
+  --   - tipo_doc_fiscale_id: da sorgente (obbligatorio)
   --   - valuta_id: BA -> utility -> gestore
   -- =========================================================
 
@@ -50,8 +50,7 @@ BEGIN
 
   IF NEW.tipo_doc_fiscale_id IS NULL THEN
     NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
-      NEW.sorgente_tipo_id,
-      v_utility_id
+      NEW.sorgente_tipo_id
     );
   END IF;
 
