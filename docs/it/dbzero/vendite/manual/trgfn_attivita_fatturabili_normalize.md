@@ -18,7 +18,7 @@ su `vendite.attivita_fatturabili` per garantire coerenza **temporale** e **tecni
 prima della scrittura.
 
 La funzione e` eseguita da un trigger **BEFORE INSERT** e **BEFORE UPDATE OF**
-`competenza_mese`, `sorgente_tipo_id`, `sorgente_riga`, `billing_account_id`, `registro_id`, `valuta_id`
+`competenza_mese`, `sorgente_tipo_id`, `sorgente_riga`, `billing_account_id`, `tipo_doc_fiscale_id`, `valuta_id`
 su `vendite.attivita_fatturabili`.
 Le operazioni **DELETE** non attivano la normalizzazione.
 
@@ -35,8 +35,8 @@ Le operazioni **DELETE** non attivano la normalizzazione.
    Se `sorgente_tipo_id` e` valorizzato e `sorgente_riga` e` NULL, viene impostato `sorgente_riga = 0`
    per garantire coerenza con l’idempotenza import.
 
-3. **Registro fatturazione**  
-   Se `registro_id` e` NULL, viene risolto tramite `vendite.fn_get_registro_id`
+3. **Tipo documento fiscale**  
+   Se `tipo_doc_fiscale_id` e` NULL, viene risolto tramite `vendite.fn_get_tipo_doc_fiscale_id`
    (priorita`: sorgente → utility → errore).
 
 4. **Valuta**  

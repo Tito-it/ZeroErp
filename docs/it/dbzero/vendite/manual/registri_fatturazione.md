@@ -6,8 +6,8 @@
 >
 > • [vendite.registri_fatturazione_progressivi](/dbzero/vendite/tabelle/registri_fatturazione_progressivi)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
-> • [config.sorgenti](/dbzero/config/tabelle/sorgenti)  
-> • [config.utilities](/dbzero/config/tabelle/utilities)  
+> • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
+> • [vendite.tipi_doc_fiscale_registri](/dbzero/vendite/manual/tipi_doc_fiscale_registri)  
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
 >
 ---
@@ -35,7 +35,7 @@ si aggancia a un registro, che governa numerazione e perimetro fiscale.
 
 * `vendite.fatture.registro_id` → determina la numerazione.
 * `vendite.registri_fatturazione_progressivi` mantiene i contatori per anno/mese/serie.
-* `config.sorgenti.registro_id` e `config.utilities.registro_id` usano il registro come fallback.
+* `vendite.tipi_doc_fiscale_registri` associa il registro al tipo documento fiscale.
 
 ---
 

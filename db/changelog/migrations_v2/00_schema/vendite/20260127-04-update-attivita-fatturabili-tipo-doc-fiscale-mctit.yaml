@@ -1,0 +1,44 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260127-04-update-attivita-fatturabili-tipo-doc-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260127-04-update-attivita-fatturabili-tipo-doc-fiscale
+      author: mctit
+      comment: "Sostituisce registro_id con tipo_doc_fiscale_id su attivita_fatturabili"
+      changes:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            constraintName: fk_attivita_fatturabili_registro
+
+        - dropColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columnName: registro_id
+
+        - addColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columns:
+              - column:
+                  name: tipo_doc_fiscale_id
+                  type: bigint
+                  remarks: "FK → config.tipi_doc_fiscale.id (tipo documento della riga)."
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: tipo_doc_fiscale_id
+            constraintName: fk_attivita_fatturabili_tipo_doc_fiscale
+            referencedTableSchemaName: config
+            referencedTableName: tipi_doc_fiscale
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION

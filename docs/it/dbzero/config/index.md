@@ -46,7 +46,7 @@
 - [termini_pagamento](tabelle/termini_pagamento.md) — (latest review 15-01-26) `config.termini_pagamento` definisce i **termini (piani) di pagamento** riutilizzabili nel sistema. Ogni record rappresenta una regola parametrica per generare **rate/scadenze** a partire dalla data documento (o da altra data base), con controllo su intervalli, fine mese e ripartizione degli importi.
 - [tipi_attivita](tabelle/tipi_attivita.md)
 - [tipi_contatti](tabelle/tipi_contatti.md) — (latest review 07-01-26) La tabella **`config.tipi_contatti`** definisce le **categorie di contatto** utilizzabili nell’anagrafica dei soggetti. Il reparto/ufficio di riferimento e' invece gestito da `config.unita_organizzative`.
-- [tipi_doc_fiscale](tabelle/tipi_doc_fiscale.md)
+- [tipi_doc_fiscale](tabelle/tipi_doc_fiscale.md) — (latest review 27-01-2026) La tabella **`config.tipi_doc_fiscale`** rappresenta il catalogo dei **tipi di documento fiscale** gestiti dal sistema (es. fattura utility, allaccio, rata, rettifica). Il tipo documento e` la dimensione **funzionale** del documento e indica il *perche`* del documento, separandolo dalla numerazione contabile.
 - [tipi_documenti](tabelle/tipi_documenti.md)
 - [tipi_evento_assets](tabelle/tipi_evento_assets.md)
 - [tipi_indirizzi](tabelle/tipi_indirizzi.md) — La tabella **`config.tipi_indirizzi`** centralizza i **tipi di indirizzo** utilizzabili in Zero ERP, come ad esempio Residenza, Domicilio Fiscale, Sede Legale, Sede Operativa, Corrispondenza Postale, Indirizzo di Fornitura, ecc. 

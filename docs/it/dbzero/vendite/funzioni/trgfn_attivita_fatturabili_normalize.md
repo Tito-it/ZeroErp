@@ -15,17 +15,17 @@ AS $function$
 DECLARE
   v_utility_id config.utilities.id%TYPE;
 BEGIN
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+  -- =========================================================
+  -- Scopo:
+  --   Normalizza campi base e risolve tipo_doc_fiscale/valuta
+  --   per attivita_fatturabili, solo su INS/UPD dei campi rilevanti.
+  --
+  -- Regole:
+  --   - competenza_mese -> primo del mese
+  --   - sorgente_riga default 0 se sorgente valorizzata
+  --   - tipo_doc_fiscale_id: sorgente -> utility -> errore
+  --   - valuta_id: BA -> utility -> gestore
+  -- =========================================================
 
   IF TG_OP = 'DELETE' THEN
     RETURN OLD;
@@ -48,8 +48,8 @@ BEGIN
      WHERE ba.id = NEW.billing_account_id;
   END IF;
 
-  IF NEW.registro_id IS NULL THEN
-    NEW.registro_id := vendite.fn_get_registro_id(
+  IF NEW.tipo_doc_fiscale_id IS NULL THEN
+    NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
       NEW.sorgente_tipo_id,
       v_utility_id
     );

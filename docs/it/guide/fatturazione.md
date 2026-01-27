@@ -266,14 +266,14 @@ Il **lotto** diventa l’elemento centrale per:
 * `uuid` (lock_batch_id)
 * `codice` (es. LOT-YYYYMM-NN)
 * `competenza_mese` (date, YYYY-MM-01)
-* `utility_id` (opzionale)
-* `registro_id` (opzionale)
+* `utility_id` (opzionale, derivabile da BA)
+* `tipo_doc_fiscale_id` (**obbligatorio**)
 * `billing_account_id` (opzionale)
 * `stato_lotto` (IN_ESECUZIONE | COMPLETATO | ERRORE)
 * `stato_doc_fiscale_id` (FK -> `config.stati_doc_fiscale`)
 * audit + `meta`
 
-> Nota: `utility_id` e `registro_id` **non sono obbligatori**, ma entrano nel **raggruppamento** quando valorizzati.
+> Nota: `tipo_doc_fiscale_id` e` obbligatorio; `utility_id` puo` essere derivato da `billing_account_id`.
 > Lo stato del lotto segue un **ordine** e supporta `stato_precedente_ammesso` per eventuali rollback.
 
 ---
@@ -318,7 +318,7 @@ alla **testata consumi**.
 * `p_competenza_mese` (obbligatorio, YYYY-MM-01)
 * `p_billing_account_id` (opzionale)
 * `p_utility_id` (opzionale)
-* `p_registro_id` (opzionale)
+* `p_tipo_doc_fiscale_id` (obbligatorio)
 * `p_reseller_soggetto_ruolo_id` (opzionale)
 * `p_lotto_id` (opzionale; se NULL/0 -> crea lotto)
 * `p_preview` (opzionale)
@@ -338,7 +338,7 @@ Chiavi di raggruppamento:
 * `billing_account_id`
 * `competenza_mese`
 * `utility_id` (se valorizzato)
-* `registro_id` (se valorizzato)
+* `tipo_doc_fiscale_id`
 * `valuta_id`
 * `emittente_soggetto_ruolo_id`
 
@@ -421,18 +421,18 @@ Proposta di base:
 
 ---
 
-### 6) Registro di fatturazione (regola proposta)
+### 6) Tipo documento fiscale (regola proposta)
 
-* `vendite.attivita_fatturabili` **deve** avere `registro_id`.
-* Se l’attivita` deriva da una sorgente **RIGA** (`config.sorgenti`), il `registro_id` viene ereditato dalla sorgente.
-* Per attivita` inserite manualmente (auto‑sorgente), il `registro_id` deve essere valorizzato direttamente.
-* **Fallback**: se non e` presente, usare il **registro di default della utility** (`config.utilities.registro_id`).
+* `vendite.attivita_fatturabili` **deve** avere `tipo_doc_fiscale_id`.
+* Se l’attivita` deriva da una sorgente **RIGA** (`config.sorgenti`), il `tipo_doc_fiscale_id` viene ereditato dalla sorgente.
+* Per attivita` inserite manualmente (auto‑sorgente), il `tipo_doc_fiscale_id` deve essere valorizzato direttamente.
+* **Fallback**: se non e` presente, usare il **tipo documento di default della utility** (`config.utilities.tipo_doc_fiscale_id`).
 * **Ordine di risoluzione** per l’alimentazione di `attivita_fatturabili`:
-  1) `config.sorgenti.registro_id` (se sorgente RIGA e valorizzato)
-  2) `config.utilities.registro_id` (fallback)
+  1) `config.sorgenti.tipo_doc_fiscale_id` (se sorgente RIGA e valorizzato)
+  2) `config.utilities.tipo_doc_fiscale_id` (fallback)
   3) errore se ancora NULL
 
-Questa regola rende il raggruppamento deterministico e permette casi semplificati con **un solo registro per utility**.
+Questa regola rende il raggruppamento deterministico e permette casi semplificati con **un solo tipo documento per utility**.
 
 ---
 
@@ -522,33 +522,35 @@ Per evitare monoliti, la pipeline deve essere composta da procedure richiamabili
 
 **Nuove tabelle (proposte):**
 
-* fatta `vendite.fatturazione_lotti` (lotto + stato job/documenti + lock uuid)
-* fatta `vendite.fatturazione_lotti_fatture` (relazione lotto ↔ fattura + stato SDI + esclusione)
+* ✅ `vendite.fatturazione_lotti` (lotto + stato job/documenti + lock uuid)
+* ✅ `vendite.fatturazione_lotti_fatture` (relazione lotto ↔ fattura + stato SDI + esclusione)
   
-* fatto -`config.stati_sdi` (stati canale SDI)
-* fatto `config.stati_doc_fiscale` (stati documento con flag `applica_lotto` / `applica_fattura`)
+* ✅ -`config.stati_sdi` (stati canale SDI)
+* ✅ `config.stati_doc_fiscale` (stati documento con flag `applica_lotto` / `applica_fattura`)
   
-* fatto `anagrafiche.emittenti_fiscali_billing_account` (mapping **billing_account → emittente fiscale**)
+* ✅ `vendite.tipi_doc_fiscale_registri` (mapping **tipo documento → registro**)
+
+* ✅ `anagrafiche.emittenti_fiscali_billing_account` (mapping **billing_account → emittente fiscale**)
   * aggiungere `default boolean` con **unicita`** del valore `true`
  `dbops.jobs`, `dbops.job_runs`, `dbops.job_steps` (modello job)
   
-* fatto `vendite.fatture_log` (log anomalie documento)
+* ✅ `vendite.fatture_log` (log anomalie documento)
 
-* fatto  `anagrafiche.resellers_billing_account` (mapping **billing_account → reseller** senza default)
+* ✅  `anagrafiche.resellers_billing_account` (mapping **billing_account → reseller** senza default)
   * campi minimi: `id`, `billing_account_id`, `reseller_soggetto_ruolo_id`, `meta`, audit
 
 **Tabelle da modificare (proposte):**
 
-* fatto `vendite.attivita_fatturabili` → aggiungere `registro_id`, `valuta_id`, `prezzo_unitario`
-* fatto `config.sorgenti` → aggiungere `registro_id` (per sorgenti RIGA)
-* fatto `config.utilities` → aggiungere `registro_id` default
-* fatto `vendite.fatture` → aggiungere `registro_id` e `critical`
+* ✅ `vendite.attivita_fatturabili` → aggiungere `tipo_doc_fiscale_id`, `valuta_id`, `prezzo_unitario`
+* ✅ `config.sorgenti` → aggiungere `tipo_doc_fiscale_id` (per sorgenti RIGA)
+* ✅ `config.utilities` → aggiungere `tipo_doc_fiscale_id` default
+* ✅ `vendite.fatture` → aggiungere `registro_id` e `critical`
 
-* fatto `config.stati_doc_fiscale` → rimuovere stati SDI e aggiungere `stato_precedente_ammesso`
+* ✅ `config.stati_doc_fiscale` → rimuovere stati SDI e aggiungere `stato_precedente_ammesso`
  
-* fatto  `catalogo.articoli_componenti` → aggiungere `determina_qta_padre`
+* ✅  `catalogo.articoli_componenti` → aggiungere `determina_qta_padre`
 
-* `anagrafiche.resellers` → bloccare `attivo = false` se esistono mapping su `resellers_billing_account`
+* ✅ `anagrafiche.resellers` → bloccare `attivo = false` se esistono mapping su `resellers_billing_account`
 
 ---
 
@@ -580,17 +582,17 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 
 **Preparazione lotto**
 
-* `vendite.fn_create_fatturazione_lotto(...)` → crea lotto da parametri (competenza, utility, registro, BA/reseller opzionali).
+* `vendite.fn_create_fatturazione_lotto(...)` → crea lotto da parametri (competenza, utility, tipo documento, BA/reseller opzionali).
 * `vendite.fn_get_or_create_lotto(...)` → valida lotto esistente o lo crea se assente (supporto ricalcolo).
 
 **Selezione e lock attivita_fatturabili**
 
-* `vendite.fn_select_attivita_fatturabili(...)` → seleziona righe eleggibili (filtri: competenza, stati, BA, utility, registro, valuta).
+* `vendite.fn_select_attivita_fatturabili(...)` → seleziona righe eleggibili (filtri: competenza, stati, BA, utility, tipo documento, valuta).
 * `vendite.fn_lock_attivita_fatturabili(...)` → marca/lock delle righe selezionate per evitare doppie elaborazioni.
 
 **Aggregazione e chiavi documento**
 
-* `vendite.fn_group_attivita_fatturabili(...)` → applica regole di aggregazione (BA, utility, registro, valuta, parent BA).
+* `vendite.fn_group_attivita_fatturabili(...)` → applica regole di aggregazione (BA, utility, tipo documento, valuta, parent BA).
 * `vendite.fn_build_fattura_key(...)` → genera chiave logica di aggregazione per documento.
 
 **Generazione documenti**
@@ -613,3 +615,11 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 
 * `vendite.fn_numera_fatture_lotto(...)` → assegna progressivi documento (registri).
 * `vendite.fn_prepare_sdi_payload(...)` → prepara invio SDI (placeholder).
+
+---
+
+### 17) Nota su Fatturazione Elettronica (FE)
+
+* Il mapping **FE** (es. TD01, TD04) non e` gestito nel tipo documento attuale.
+* La classificazione FE verra` introdotta in una fase successiva con un dominio dedicato
+  per l’emissione elettronica e l’invio SDI.

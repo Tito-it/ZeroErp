@@ -4,17 +4,17 @@
 >
 > **Approfondimento tabelle:**
 >
-> • [config.sorgenti](/dbzero/config/tabelle/sorgenti)  
-> • [config.utilities](/dbzero/config/tabelle/utilities)  
+> • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
+> • [vendite.tipi_doc_fiscale_registri](/dbzero/vendite/manual/tipi_doc_fiscale_registri)  
 > • [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)  
 >
 ---
 
 ### 🎯 Scopo Principale
 
-(latest review 24-01-2026)
+(latest review 27-01-2026)
 La funzione **`vendite.fn_get_registro_id`** risolve il registro di fatturazione
-secondo una regola deterministica: **sorgente → utility → errore**.
+in base al mapping **tipo documento → registro**.
 
 ---
 
@@ -22,23 +22,21 @@ secondo una regola deterministica: **sorgente → utility → errore**.
 
 | Parametro | Tipo | Descrizione |
 | --- | --- | --- |
-| `p_sorgente_tipo_id` | `config.sorgenti.id%TYPE` | Sorgente di origine (opzionale). |
-| `p_utility_id` | `config.utilities.id%TYPE` | Utility di riferimento (opzionale). |
+| `p_tipo_doc_fiscale_id` | `config.tipi_doc_fiscale.id%TYPE` | Tipo documento fiscale. |
 
 ---
 
 ### ✅ Regola applicata
 
-1. Se `config.sorgenti.registro_id` e` valorizzato → usa quello.
-2. Altrimenti usa `config.utilities.registro_id`.
-3. Se ancora NULL → errore bloccante.
+1. Se esiste un mapping in `vendite.tipi_doc_fiscale_registri` → usa il `registro_id`.
+2. Se assente → errore bloccante.
 
 ---
 
 ### ✅ Note operative
 
-* Funzione pensata per l’alimentazione di `attivita_fatturabili`.
-* Garantisce coerenza del registro senza regole implicite.
+* Funzione pensata per la numerazione e per i processi che richiedono il registro contabile.
+* Evita fallback impliciti: il mapping deve essere configurato in modo esplicito.
 
 ---
 

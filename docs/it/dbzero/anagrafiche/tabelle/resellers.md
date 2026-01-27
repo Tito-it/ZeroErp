@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/resellers.md" %}
 # 📚 Tabella `resellers`
 
 ## 🗂️ Campi principali

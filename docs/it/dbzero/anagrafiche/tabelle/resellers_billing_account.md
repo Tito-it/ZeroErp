@@ -28,5 +28,10 @@
 |------|-------------|
 | pk_resellers_billing_account | `CREATE UNIQUE INDEX pk_resellers_billing_account ON anagrafiche.resellers_billing_account USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_resellers_billing_account_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

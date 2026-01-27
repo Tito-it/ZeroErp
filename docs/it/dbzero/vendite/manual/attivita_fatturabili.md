@@ -65,7 +65,7 @@ Tipico filtro di eleggibilità per il motore:
 * **Identificazione & riferimenti**:
   `uid` (identificativo applicativo), `articolo_id` (servizio/voce), `istanza_utility_id` (punto tecnico), `billing_account_id` (opz. intestazione economica).
 * **Dati attività**:
-  `data_attivita`, `quantita` (> 0),  `meta` (estensioni specifiche: matricole, rilevazioni, tariffa applicata, ecc.).
+  `data_attivita`, `quantita`, `meta` (estensioni specifiche: matricole, rilevazioni, tariffa applicata, ecc.).
 * **Competenza & gating**:
   `competenza_mese`, `competenza_data`, `posticipa_al`, `sospesa`.
 * **Stato di processo**:
@@ -76,9 +76,9 @@ Tipico filtro di eleggibilità per il motore:
   `uid` (identita` applicativa) e `sorgente_tipo_id`, `sorgente_uid` (vincolo unico parziale per evitare duplicazioni dai sistemi esterni).
 * **Governance**:
   `tx_id`, `storicizza`, `user_*`, `data_*`.
-* **Economiche & registro**:
-  `registro_id` (registro di fatturazione), `valuta_id`, `prezzo_unitario` (snapshot economico).
-  In fase di alimentazione il registro segue l’ordine: sorgente → utility (fallback).
+* **Economiche & tipo documento**:
+  `tipo_doc_fiscale_id`, `valuta_id`, `prezzo_unitario` (snapshot economico).
+  In fase di alimentazione il tipo documento segue l’ordine: sorgente → utility (fallback).
 * **Misure & dettaglio sorgente**:
   `sorgente_riga` (riferimento tecnico riga sorgente), `uom_id` (u.m. base), `qta_operativa` (quantita operativa), `uom_operativa_id` (u.m. operativa), `factor_to_base` (fattore conversione verso base).
 
@@ -105,7 +105,7 @@ Tipico filtro di eleggibilità per il motore:
   * **Unique parziale** `uq_attivita_fatturabili_v_sorgente_fk` su (`sorgente_tipo_id`, `sorgente_uid`) *WHEN* `sorgente_tipo_id IS NOT NULL` → **idempotenza import**.
 * **Trigger**:
 
-  * `trg_attivita_fatturabili_normalize_ins_upd` → **normalizza** `competenza_mese` al 1° del mese (YYYY‑MM‑01) e, se `sorgente_tipo_id` è valorizzato, imposta `sorgente_riga` a `0` quando mancante.
+  * `trg_attivita_fatturabili_normalize_ins_upd` → **normalizza** `competenza_mese` al 1° del mese (YYYY‑MM‑01), imposta `sorgente_riga` a `0` se `sorgente_tipo_id` è valorizzato e risolve `tipo_doc_fiscale_id`/`valuta_id` quando mancanti.
   * `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` → **coerenze BA/istanza/articolo** (regole di dominio).
   * `trg_attivita_fatturabili_a10_guard_fonte_ins_upd` → **validazione sorgente** (`sorgente_tipo_id`/`sorgente_uid`).
   * `trg_attivita_fatturabili_a10_guard_fatturato_upd_dlt` → **fail‑fast**: blocca update/delete se già collegate a fattura.

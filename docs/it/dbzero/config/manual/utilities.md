@@ -66,5 +66,5 @@ La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si 
 
 ### 🔗 Registro di fatturazione (fallback)
 
-* `registro_id` (opzionale) definisce il **registro di default** per l’utility.
-* Usato come **fallback** quando la sorgente non specifica un registro.
+* `tipo_doc_fiscale_id` (opzionale) definisce il **tipo documento di default** per l’utility.
+* Usato come **fallback** quando la sorgente non specifica un tipo documento.

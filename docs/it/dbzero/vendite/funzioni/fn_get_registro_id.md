@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_get_registro_id`
 
 ```sql
-CREATE FUNCTION fn_get_registro_id(p_sorgente_tipo_id bigint, p_utility_id integer)
+CREATE FUNCTION fn_get_registro_id(p_tipo_doc_fiscale_id bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_get_registro_id(p_sorgente_tipo_id bigint, p_utility_id integer)
+CREATE OR REPLACE FUNCTION vendite.fn_get_registro_id(p_tipo_doc_fiscale_id bigint)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
@@ -17,41 +17,36 @@ DECLARE
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Risolve il registro di fatturazione con priorita' su:
-  --   1) config.sorgenti.registro_id
-  --   2) config.utilities.registro_id
-  --   3) errore se ancora NULL
+  --   Risolve il registro dal mapping tipo_doc_fiscale -> registro.
+  --
+  -- Regole:
+  --   1) vendite.tipi_doc_fiscale_registri
+  --   2) errore
   -- =========================================================
 
-  IF p_sorgente_tipo_id IS NOT NULL THEN
-    SELECT s.registro_id
-      INTO v_registro_id
-      FROM config.sorgenti s
-     WHERE s.id = p_sorgente_tipo_id;
+  IF p_tipo_doc_fiscale_id IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_get_registro_id', 'E_GENERICO',
+      jsonb_build_object('detail','tipo_doc_fiscale_id obbligatorio'),
+      NULL::uuid,
+      'tipo_doc_fiscale_id obbligatorio'
+    );
   END IF;
 
-  IF v_registro_id IS NULL AND p_utility_id IS NOT NULL THEN
-    SELECT u.registro_id
-      INTO v_registro_id
-      FROM config.utilities u
-     WHERE u.id = p_utility_id;
-  END IF;
+  SELECT m.registro_id
+    INTO v_registro_id
+    FROM vendite.tipi_doc_fiscale_registri m
+   WHERE m.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id;
 
   IF v_registro_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'vendite',
-      'fn_get_registro_id',
-      'E_GENERICO',
+      'vendite', 'fn_get_registro_id', 'E_GENERICO',
       jsonb_build_object(
-        'detail','Registro non risolto (sorgente/utility)',
-        'sorgente_tipo_id', p_sorgente_tipo_id,
-        'utility_id', p_utility_id
+        'detail','Registro non risolto (tipo_doc_fiscale)',
+        'tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
       ),
       NULL::uuid,
-      concat('Registro non risolto (sorgente/utility)', 
-      ' sorgente_tipo_id ', p_sorgente_tipo_id::text,
-        ', utility_id ', p_utility_id::text
-       )
+      concat('Registro non risolto (tipo_doc_fiscale)', ' lotto_id: ', p_lotto_id::text)
     );
   END IF;
 

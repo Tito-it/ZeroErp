@@ -1,1 +1,3 @@
-id,codice,descrizione,attivo,ordine,meta,codice_interno,codice_fe
+id,codice,descrizione,attivo,ordine,meta,codice_interno
+1,Front office,Fatturazione Front-office,t,10,{},FRONTOFFICE
+2,Back Office,Fatturazione Back-office,t,20,{},BACKOFFICE

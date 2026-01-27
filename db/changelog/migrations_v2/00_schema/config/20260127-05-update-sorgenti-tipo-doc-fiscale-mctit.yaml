@@ -1,0 +1,44 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260127-05-update-sorgenti-tipo-doc-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260127-05-update-sorgenti-tipo-doc-fiscale
+      author: mctit
+      comment: "Sostituisce registro_id con tipo_doc_fiscale_id su config.sorgenti"
+      changes:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: sorgenti
+            constraintName: fk_sorgenti_registro
+
+        - dropColumn:
+            schemaName: config
+            tableName: sorgenti
+            columnName: registro_id
+
+        - addColumn:
+            schemaName: config
+            tableName: sorgenti
+            columns:
+              - column:
+                  name: tipo_doc_fiscale_id
+                  type: bigint
+                  remarks: "Tipo documento fiscale associato alla sorgente (opzionale)."
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: sorgenti
+            baseColumnNames: tipo_doc_fiscale_id
+            constraintName: fk_sorgenti_tipo_doc_fiscale
+            referencedTableSchemaName: config
+            referencedTableName: tipi_doc_fiscale
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION

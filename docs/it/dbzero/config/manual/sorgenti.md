@@ -105,10 +105,10 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
   * `data_insert`, `user_insert`, `data_update`, `user_update` tracciano le modifiche al catalogo sorgenti;
   * la gestione può essere uniformata in futuro tramite trigger generici di audit.
 
-* **Registro fatturazione** (`registro_id`):
+* **Tipo documento fiscale** (`tipo_doc_fiscale_id`):
 
   * opzionale, usato per sorgenti **RIGA** nella generazione di `attivita_fatturabili`;
-  * se valorizzato, ha priorita` sul registro di default della utility.
+  * se valorizzato, ha priorita` sul tipo documento di default della utility.
 
 ---
 

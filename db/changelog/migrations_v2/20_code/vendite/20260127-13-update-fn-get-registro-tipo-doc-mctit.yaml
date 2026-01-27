@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260127-13-update-fn-get-registro-tipo-doc-mctit.yaml
+
+  - changeSet:
+      id: 20260127-13-update-fn-get-registro-tipo-doc
+      author: mctit
+      comment: "Risoluzione tipo_doc_fiscale e registro da mapping"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_tipo_doc_fiscale_id(
+                p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                p_utility_id config.utilities.id%TYPE
+              )
+              RETURNS config.tipi_doc_fiscale.id%TYPE
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_tipo_doc_id config.tipi_doc_fiscale.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Risolve il tipo documento fiscale da sorgente o utility.
+                --
+                -- Regole:
+                --   1) config.sorgenti.tipo_doc_fiscale_id
+                --   2) config.utilities.tipo_doc_fiscale_id
+                --   3) errore
+                -- =========================================================
+
+                IF p_sorgente_tipo_id IS NULL AND p_utility_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_tipo_doc_fiscale_id', 'E_GENERICO',
+                    jsonb_build_object('detail','Parametri obbligatori mancanti (sorgente/utility)'),
+                    NULL::uuid,
+                    'Parametri obbligatori mancanti (sorgente/utility)'
+                  );
+                END IF;
+
+                IF p_sorgente_tipo_id IS NOT NULL THEN
+                  SELECT s.tipo_doc_fiscale_id
+                    INTO v_tipo_doc_id
+                    FROM config.sorgenti s
+                   WHERE s.id = p_sorgente_tipo_id;
+                END IF;
+
+                IF v_tipo_doc_id IS NULL AND p_utility_id IS NOT NULL THEN
+                  SELECT u.tipo_doc_fiscale_id
+                    INTO v_tipo_doc_id
+                    FROM config.utilities u
+                   WHERE u.id = p_utility_id;
+                END IF;
+
+                IF v_tipo_doc_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_tipo_doc_fiscale_id', 'E_GENERICO',
+                    jsonb_build_object(
+                      'detail','Tipo documento fiscale non risolto (sorgente/utility)',
+                      'sorgente_tipo_id', p_sorgente_tipo_id,
+                      'utility_id', p_utility_id
+                    ),
+                    NULL::uuid,
+                    concat('Tipo documento fiscale non risolto (sorgente/utility)', ' lotto_id: ', p_lotto_id::text)
+                  );
+                END IF;
+
+                RETURN v_tipo_doc_id;
+              END
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_get_tipo_doc_fiscale_id(
+                config.sorgenti.id%TYPE,
+                config.utilities.id%TYPE
+              ) IS 'Risoluzione tipo_doc_fiscale_id: sorgente -> utility -> errore.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_get_registro_id(
+                p_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE
+              )
+              RETURNS vendite.registri_fatturazione.id%TYPE
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_registro_id vendite.registri_fatturazione.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Risolve il registro dal mapping tipo_doc_fiscale -> registro.
+                --
+                -- Regole:
+                --   1) vendite.tipi_doc_fiscale_registri
+                --   2) errore
+                -- =========================================================
+
+                IF p_tipo_doc_fiscale_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_registro_id', 'E_GENERICO',
+                    jsonb_build_object('detail','tipo_doc_fiscale_id obbligatorio'),
+                    NULL::uuid,
+                    'tipo_doc_fiscale_id obbligatorio'
+                  );
+                END IF;
+
+                SELECT m.registro_id
+                  INTO v_registro_id
+                  FROM vendite.tipi_doc_fiscale_registri m
+                 WHERE m.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id;
+
+                IF v_registro_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_registro_id', 'E_GENERICO',
+                    jsonb_build_object(
+                      'detail','Registro non risolto (tipo_doc_fiscale)',
+                      'tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
+                    ),
+                    NULL::uuid,
+                    concat('Registro non risolto (tipo_doc_fiscale)', ' lotto_id: ', p_lotto_id::text)
+                  );
+                END IF;
+
+                RETURN v_registro_id;
+              END
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_get_registro_id(
+                config.tipi_doc_fiscale.id%TYPE
+              ) IS 'Risoluzione registro_id: mapping tipo_doc_fiscale -> registro.';

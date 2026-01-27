@@ -53,7 +53,7 @@ databaseChangeLog:
                   type: STRING
                   defaultValue: "NOW()"
               - column: { name: user_update, type: STRING }
-              - column: { name: registro_id, type: STRING }
+              - column: { name: tipo_doc_fiscale_id, type: STRING }
         # 3) Ri‐abilita tutti i trigger
         - sql:
             splitStatements: false

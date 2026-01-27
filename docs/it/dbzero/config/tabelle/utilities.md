@@ -12,12 +12,12 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
-| registro_id | bigint | YES |  |
+| tipo_doc_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| FOREIGN KEY | fk_utilities_registro | registro_id |
+| FOREIGN KEY | fk_utilities_tipo_doc_fiscale | tipo_doc_fiscale_id |
 | PRIMARY KEY | pk_utilities | id |
 | UNIQUE | uq_utilities_codice | codice |
 | UNIQUE | uq_utilities_codice_interno | codice_interno |
@@ -33,8 +33,6 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_utilities_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
-| trg_utilities_a10_registri_fatturazione_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id')` |
-| trg_utilities_a10_registri_fatturazione_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id')` |
 | trg_utilities_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---

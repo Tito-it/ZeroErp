@@ -171,6 +171,11 @@ Deve essere controllabile.
 
 ---
 
+Zero ERP non serve a far andare più veloce la tua azienda.
+
+Serve a fare in modo che
+la tua azienda esista ancora.
+
 ## Una frase che riassume tutto
 
 > **Zero ERP è un ERP che si rifiuta
@@ -178,16 +183,7 @@ Deve essere controllabile.
 
 ---
 
-## Chiusura
-
-Zero ERP non serve a far andare più veloce la tua azienda.
-
-Serve a fare in modo che
-la tua azienda esista ancora.
-
----
-
-## Nota onesta (per collaboratori e partner)
+##  Nota onesta (per collaboratori e partner)
 
 Zero ERP non è un progetto “rapido”.
 
@@ -197,8 +193,42 @@ A lungo termine.
 
 Cerca:
 
-* persone che odiano gli stati impossibili
-* persone che rispettano i dati
-* persone che preferiscono fare bene
-  invece che fare in fretta
+ * persone che odiano gli stati impossibili
 
+ * persone che rispettano i dati
+
+ * persone che preferiscono fare bene
+   invece che fare in fretta
+
+Ma anche:
+
+ * persone con immaginazione
+
+ * persone con idee nuove
+
+ * persone capaci di portare innovazione
+  e prospettive non ovvie
+
+A una condizione molto chiara:
+
+**In Zero ERP la fantasia è benvenuta.**
+**L’innovazione è incoraggiata.**
+
+Ma la realizzazione concreta del progetto
+deve sempre poggiare su tre principi non negoziabili:
+
+  * niente stati impossibili
+
+  * rispetto assoluto dei dati
+
+  * correttezza strutturale prima della velocità
+
+**Chi porta buone idee è il benvenuto.**
+**Chi le realizza violando questi principi, no.**
+
+>
+>  In Zero ERP la fantasia è benvenuta.
+>  L’innovazione è incoraggiata,
+>  ma la realizzazione concreta del progetto
+>  deve sempre poggiare sui tre principi non negoziabili.
+>

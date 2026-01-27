@@ -10,7 +10,7 @@
 -- 3) Riferimento config.sorgenti presente
 -- 4) Riferimento catalogo.unita_misura presente
 -- 5) Riferimento anagrafiche.billing_account presente
--- 6) Riferimento vendite.registri_fatturazione presente
+-- 6) Riferimento config.tipi_doc_fiscale presente
 -- 7) Riferimento config.valute presente
 -- 8) Sorgente configurata con target valido (per guard polimorfo)
 -- 9) Inserimento con quantita negativa consentito
@@ -21,7 +21,7 @@
 -- 14) Default lock_in_fatturazione = false
 -- 15) Default storicizza = true
 -- 16) Default uid valorizzato
--- 17) Default registro_id valorizzato
+-- 17) tipo_doc_fiscale_id valorizzato
 -- 18) Default valuta_id valorizzato
 -- 19) Default factor_to_base = 1
 -- 20) Default sorgente_riga = 0
@@ -34,7 +34,7 @@
 -- 27) Inserimento lotto alimentazione
 -- 28) Inserimento attivita_consumi
 -- 29) Inserimento attivita_fatturabili con link lotto/consumi
--- 30) FK registro_id inesistente
+-- 30) FK tipo_doc_fiscale_id inesistente
 -- 31) FK valuta_id inesistente
 -- 32) FK lotto_attivita_id inesistente
 -- 33) FK attivita_consumi_id inesistente
@@ -83,10 +83,10 @@ SELECT
       ORDER BY id
       LIMIT 1) AS uom_id,
     (SELECT id
-       FROM vendite.registri_fatturazione
+       FROM config.tipi_doc_fiscale
       WHERE attivo IS TRUE
       ORDER BY id
-      LIMIT 1) AS registro_id,
+      LIMIT 1) AS tipo_doc_fiscale_id,
     (SELECT id
        FROM config.valute
       ORDER BY id
@@ -105,44 +105,6 @@ CREATE TEMP TABLE tmp_sorgente_cfg (
     sorgente_riga bigint,
     sorgente_uid uuid
 );
-
-DO $$
-DECLARE
-    r record;
-    v_id bigint;
-    v_uid uuid;
-BEGIN
-    SELECT id, target_table, key_selector
-      INTO r
-      FROM config.sorgenti
-     WHERE id = 1
-       AND attivo IS TRUE
-       AND target_table IS NOT NULL
-       AND key_selector IN ('id', 'uid');
-
-    IF r.id IS NULL THEN
-        RETURN;
-    END IF;
-
-    v_id := NULL;
-    v_uid := NULL;
-
-    IF r.key_selector = 'id' THEN
-        EXECUTE format('SELECT id FROM %s ORDER BY 1 LIMIT 1', r.target_table::text)
-          INTO v_id;
-        IF v_id IS NOT NULL THEN
-            INSERT INTO tmp_sorgente_cfg
-            VALUES (r.id, r.key_selector, v_id, NULL);
-        END IF;
-    ELSE
-        EXECUTE format('SELECT uid FROM %s ORDER BY 1 LIMIT 1', r.target_table::text)
-          INTO v_uid;
-        IF v_uid IS NOT NULL THEN
-            INSERT INTO tmp_sorgente_cfg
-            VALUES (r.id, r.key_selector, NULL, v_uid);
-        END IF;
-    END IF;
-END $$;
 
 SELECT ok(
     (SELECT articolo_id FROM tmp_refs_af) IS NOT NULL,
@@ -170,7 +132,12 @@ SELECT ok(
 );
 
 SELECT ok(
-    (SELECT count(*) FROM tmp_sorgente_cfg) = 1,
+    (SELECT count(*)
+       FROM config.sorgenti
+      WHERE id = 1
+        AND attivo IS TRUE
+        AND target_table IS NOT NULL
+        AND key_selector IN ('id', 'uid')) = 1,
     'Sorgente id=1 configurata con target valido'
 );
 
@@ -180,8 +147,8 @@ SELECT ok(
 );
 
 SELECT ok(
-    (SELECT registro_id IS NOT NULL FROM tmp_refs_af),
-    'Riferimento registri_fatturazione presente'
+    (SELECT tipo_doc_fiscale_id IS NOT NULL FROM tmp_refs_af),
+    'Riferimento config.tipi_doc_fiscale presente'
 );
 
 SELECT ok(
@@ -200,7 +167,7 @@ WITH ins AS (
         billing_account_id,
         data_attivita,
         quantita,
-        registro_id,
+        tipo_doc_fiscale_id,
         valuta_id,
         meta
     )
@@ -210,7 +177,7 @@ WITH ins AS (
         r.billing_account_id,
         current_date,
         -5,
-        r.registro_id,
+        r.tipo_doc_fiscale_id,
         r.valuta_id,
         jsonb_build_object('test_scope', k.test_scope)
     FROM tmp_refs_af r,
@@ -224,12 +191,24 @@ WITH ins AS (
         lock_in_fatturazione,
         storicizza,
         uid,
-        registro_id,
+        tipo_doc_fiscale_id,
         valuta_id,
         factor_to_base,
         sorgente_riga
 )
 SELECT * FROM ins;
+
+INSERT INTO tmp_sorgente_cfg (sorgente_tipo_id, key_selector, sorgente_riga, sorgente_uid)
+SELECT
+    s.id,
+    s.key_selector,
+    CASE WHEN s.key_selector = 'id' THEN a.id ELSE NULL END,
+    CASE WHEN s.key_selector = 'uid' THEN a.uid ELSE NULL END
+FROM config.sorgenti s,
+     tmp_attivita_base a
+WHERE s.id = 1
+  AND s.attivo IS TRUE
+  AND s.key_selector IN ('id', 'uid');
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_attivita_base),
@@ -279,8 +258,8 @@ SELECT ok(
 );
 
 SELECT ok(
-    (SELECT registro_id IS NOT NULL FROM tmp_attivita_base),
-    'Default registro_id valorizzato'
+    (SELECT tipo_doc_fiscale_id IS NOT NULL FROM tmp_attivita_base),
+    'Tipo_doc_fiscale_id valorizzato'
 );
 
 SELECT ok(
@@ -366,7 +345,7 @@ WITH ins AS (
         data_attivita,
         quantita,
         competenza_mese,
-        registro_id,
+        tipo_doc_fiscale_id,
         valuta_id,
         meta
     )
@@ -377,7 +356,7 @@ WITH ins AS (
         date '2025-01-15',
         10,
         date '2025-01-20',
-        r.registro_id,
+        r.tipo_doc_fiscale_id,
         r.valuta_id,
         jsonb_build_object('test_scope', k.test_scope, 'case', 'competenza_norm')
     FROM tmp_refs_af r,
@@ -404,7 +383,7 @@ SELECT throws_ok(
         data_attivita,
         quantita,
         competenza_data,
-        registro_id,
+        tipo_doc_fiscale_id,
         valuta_id
     )
     SELECT
@@ -414,7 +393,7 @@ SELECT throws_ok(
         date '2025-02-01',
         1,
         date '2025-01-31',
-        r.registro_id,
+        r.tipo_doc_fiscale_id,
         r.valuta_id
     FROM tmp_refs_af r;
     $$,
@@ -434,7 +413,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
-        registro_id,
+        tipo_doc_fiscale_id,
         valuta_id
     )
     SELECT
@@ -443,7 +422,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         NULL,
-        r.registro_id,
+        r.tipo_doc_fiscale_id,
         r.valuta_id
     FROM tmp_refs_af r;
     $$,
@@ -463,7 +442,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
-        registro_id,
+        tipo_doc_fiscale_id,
         valuta_id
     )
     SELECT
@@ -472,7 +451,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
-        r.registro_id,
+        r.tipo_doc_fiscale_id,
         r.valuta_id
     FROM tmp_refs_af r;
     $$,
@@ -495,7 +474,7 @@ WITH ins AS (
         sorgente_tipo_id,
         sorgente_riga,
         sorgente_uid,
-        registro_id,
+        tipo_doc_fiscale_id,
         valuta_id,
         meta
     )
@@ -508,7 +487,7 @@ WITH ins AS (
         s.sorgente_tipo_id,
         CASE WHEN s.key_selector = 'id' THEN s.sorgente_riga ELSE NULL END,
         CASE WHEN s.key_selector = 'uid' THEN s.sorgente_uid ELSE k.sorgente_uid_unica END,
-        r.registro_id,
+        r.tipo_doc_fiscale_id,
         r.valuta_id,
         jsonb_build_object('test_scope', k.test_scope, 'case', 'unique_sorgente')
     FROM tmp_refs_af r,
@@ -535,7 +514,7 @@ SELECT throws_ok(
         sorgente_tipo_id,
         sorgente_riga,
         sorgente_uid,
-        registro_id,
+        tipo_doc_fiscale_id,
         valuta_id
     )
     SELECT
@@ -547,7 +526,7 @@ SELECT throws_ok(
         s.sorgente_tipo_id,
         CASE WHEN s.key_selector = 'id' THEN s.sorgente_riga ELSE NULL END,
         CASE WHEN s.key_selector = 'uid' THEN s.sorgente_uid ELSE k.sorgente_uid_unica END,
-        r.registro_id,
+        r.tipo_doc_fiscale_id,
         r.valuta_id
     FROM tmp_refs_af r,
          tmp_sorgente_cfg s,
@@ -602,7 +581,8 @@ WITH ins AS (
         periodo_al,
         consumo_totale,
         uom_id,
-        meta
+        meta,
+        storicizza
     )
     SELECT
         l.id,
@@ -612,7 +592,8 @@ WITH ins AS (
         current_date - 1,
         100.5,
         r.uom_id,
-        jsonb_build_object('test_scope', k.test_scope)
+        jsonb_build_object('test_scope', k.test_scope),
+        false
     FROM tmp_lotto_attivita l,
          tmp_refs_af r,
          tmp_costanti_af k
@@ -634,7 +615,7 @@ WITH ins AS (
         billing_account_id,
         data_attivita,
         quantita,
-        registro_id,
+        tipo_doc_fiscale_id,
         valuta_id,
         lotto_attivita_id,
         attivita_consumi_id,
@@ -646,7 +627,7 @@ WITH ins AS (
         r.billing_account_id,
         current_date,
         1,
-        r.registro_id,
+        r.tipo_doc_fiscale_id,
         r.valuta_id,
         l.id,
         c.id,
@@ -666,7 +647,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 8) FK registro_id inesistente
+-- 8) FK tipo_doc_fiscale_id inesistente
 -- ============================================================
 SELECT throws_ok(
     $$
@@ -676,7 +657,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
-        registro_id,
+        tipo_doc_fiscale_id,
         valuta_id
     )
     SELECT
@@ -691,7 +672,7 @@ SELECT throws_ok(
     $$,
     '23503',
     NULL,
-    'FK violation su registro_id'
+    'FK violation su tipo_doc_fiscale_id'
 );
 
 -- ============================================================
@@ -705,7 +686,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
-        registro_id,
+        tipo_doc_fiscale_id,
         valuta_id
     )
     SELECT
@@ -714,7 +695,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
-        r.registro_id,
+        r.tipo_doc_fiscale_id,
         999999::integer
     FROM tmp_refs_af r;
     $$,
@@ -734,7 +715,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
-        registro_id,
+        tipo_doc_fiscale_id,
         valuta_id,
         lotto_attivita_id
     )
@@ -744,7 +725,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
-        r.registro_id,
+        r.tipo_doc_fiscale_id,
         r.valuta_id,
         999999999::bigint
     FROM tmp_refs_af r;
@@ -765,7 +746,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
-        registro_id,
+        tipo_doc_fiscale_id,
         valuta_id,
         attivita_consumi_id
     )
@@ -775,7 +756,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
-        r.registro_id,
+        r.tipo_doc_fiscale_id,
         r.valuta_id,
         999999999::bigint
     FROM tmp_refs_af r;
@@ -798,7 +779,15 @@ WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
 DELETE FROM vendite.attivita_fatturabili
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
 
+UPDATE vendite.attivita_consumi
+SET storicizza = false
+WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
+
 DELETE FROM vendite.attivita_consumi
+WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
+
+UPDATE vendite.fatturazione_lotti_attivita
+SET storicizza = false
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
 
 DELETE FROM vendite.fatturazione_lotti_attivita
