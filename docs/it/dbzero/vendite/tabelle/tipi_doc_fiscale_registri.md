@@ -13,12 +13,16 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| utility_id | integer | YES |  |
+| emittente_soggetto_ruolo_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_tipi_doc_fiscale_registri_emittente | emittente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_tipi_doc_fiscale_registri_registro | registro_id |
 | FOREIGN KEY | fk_tipi_doc_fiscale_registri_tipo_doc | tipo_doc_fiscale_id |
+| FOREIGN KEY | fk_tipi_doc_fiscale_registri_utility | utility_id |
 | PRIMARY KEY | pk_tipi_doc_fiscale_registri | id |
 | UNIQUE | uq_tipi_doc_fiscale_registri_tipo_doc | tipo_doc_fiscale_id |
 
