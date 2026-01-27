@@ -32,6 +32,7 @@ databaseChangeLog:
               - column: { name: codice, type: STRING }
               - column: { name: descrizione, type: STRING }
               - column: { name: emittente_soggetto_ruolo_id, type: STRING }
+
               - column: { name: serie_default, type: STRING }
               - column: { name: reset_policy, type: STRING }
               - column: { name: attivo, type: BOOLEAN }
@@ -48,3 +49,4 @@ databaseChangeLog:
                   type: STRING
                   defaultValue: "NOW()"
               - column: { name: user_update, type: STRING }
+              - column: { name: utility_id, type: STRING }

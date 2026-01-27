@@ -30,8 +30,6 @@ databaseChangeLog:
               - column: { name: id, type: STRING }
               - column: { name: tipo_doc_fiscale_id, type: STRING }
               - column: { name: registro_id, type: STRING }
-              - column: { name: utility_id, type: STRING }
-              - column: { name: emittente_soggetto_ruolo_id, type: STRING }
               - column: { name: codice_interno, type: STRING }
               - column:
                   name: meta

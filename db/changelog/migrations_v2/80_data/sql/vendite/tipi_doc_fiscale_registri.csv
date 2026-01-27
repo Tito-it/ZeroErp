@@ -1,3 +1,3 @@
-id,tipo_doc_fiscale_id,registro_id,utility_id,emittente_soggetto_ruolo_id,codice_interno,meta,data_insert,user_insert,data_update,user_update
-1,1,3,NULL,NULL,FRONTOFFICE,{},2026-01-27 16:10:00+01,titodb,2026-01-27 16:10:00+01,titodb
-2,2,4,NULL,NULL,BACKOFFICE,{},2026-01-27 16:10:00+01,titodb,2026-01-27 16:10:00+01,titodb
+id,tipo_doc_fiscale_id,registro_id,codice_interno,meta,data_insert,user_insert,data_update,user_update
+1,1,3,FRONTOFFICE,{},2026-01-27 16:10:00+01,titodb,2026-01-27 16:10:00+01,titodb
+2,2,4,BACKOFFICE,{},2026-01-27 16:10:00+01,titodb,2026-01-27 16:10:00+01,titodb

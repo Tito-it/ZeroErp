@@ -22,16 +22,14 @@ numerazione e la contabilizzazione dei documenti.
 
 * `tipo_doc_fiscale_id` → tipo documento fiscale (FK).
 * `registro_id` → registro di fatturazione associato (FK).
-* `utility_id` → utility opzionale per mapping specifico.
-* `emittente_soggetto_ruolo_id` → emittente opzionale per mapping specifico.
 * `codice_interno` → codice di servizio del mapping (opzionale).
 
 ---
 
 ### ✅ Regole principali
 
-* mapping **univoco** per `tipo_doc_fiscale_id` (base) con varianti opzionali per utility/emittente.
-* usato dalle funzioni di risoluzione del registro (`vendite.fn_get_registro_id`), con fallback.
+* mapping **multiplo** per `tipo_doc_fiscale_id` verso registri diversi.
+* la selezione del registro e` determinata da `vendite.fn_get_registro_id`.
 
 ---
 

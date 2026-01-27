@@ -14,7 +14,7 @@
 
 (latest review 27-01-2026)
 La funzione **`vendite.fn_get_registro_id`** risolve il registro di fatturazione
-in base al mapping **tipo documento → registro**, con fallback su utility/emittente.
+in base al mapping **tipo documento → registro**, considerando utility/emittente se presenti.
 
 ---
 
@@ -41,7 +41,7 @@ in base al mapping **tipo documento → registro**, con fallback su utility/emit
 ### ✅ Note operative
 
 * Funzione pensata per la numerazione e per i processi che richiedono il registro contabile.
-* I mapping specifici (utility/emittente) hanno priorita` sul generico.
+* Le varianti sono gestite tramite registri con utility/emittente valorizzati.
 
 ---
 
