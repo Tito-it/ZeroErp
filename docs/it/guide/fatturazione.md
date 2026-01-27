@@ -528,7 +528,7 @@ Per evitare monoliti, la pipeline deve essere composta da procedure richiamabili
 * ✅ -`config.stati_sdi` (stati canale SDI)
 * ✅ `config.stati_doc_fiscale` (stati documento con flag `applica_lotto` / `applica_fattura`)
   
-* ✅ `vendite.tipi_doc_fiscale_registri` (mapping **tipo documento → registro**)
+* ✅ `vendite.tipi_doc_fiscale_registri` (mapping **tipo documento → registro**, con varianti per utility/emittente)
 
 * ✅ `anagrafiche.emittenti_fiscali_billing_account` (mapping **billing_account → emittente fiscale**)
   * aggiungere `default boolean` con **unicita`** del valore `true`
