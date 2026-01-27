@@ -46,7 +46,7 @@ BEGIN
         'tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
       ),
       NULL::uuid,
-      concat('Registro non risolto (tipo_doc_fiscale)', ' lotto_id: ', p_lotto_id::text)
+      'Registro non risolto (tipo_doc_fiscale)'
     );
   END IF;
 

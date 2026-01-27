@@ -8,7 +8,7 @@
 | uid | uuid | NO | uuidv7() |
 | codice | character varying | NO |  |
 | descrizione | character varying | NO |  |
-| emittente_soggetto_ruolo_id | bigint | NO |  |
+| emittente_soggetto_ruolo_id | bigint | YES |  |
 | serie_default | character varying | YES |  |
 | reset_policy | character varying | NO | 'ANNUALE'::character varying |
 | attivo | boolean | NO | true |
@@ -19,12 +19,14 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
+| utility_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_registri_fatturazione_reset |  |
 | FOREIGN KEY | fk_registri_fatturazione_emitt | emittente_soggetto_ruolo_id |
+| FOREIGN KEY | fk_registri_fatturazione_utility | utility_id |
 | PRIMARY KEY | pk_regfatt | id |
 | UNIQUE | uq_registri_fatturazione_codice | codice |
 | UNIQUE | uq_registri_fatturazione_uid | uid |

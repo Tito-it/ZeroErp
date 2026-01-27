@@ -20,13 +20,13 @@
 | FOREIGN KEY | fk_tipi_doc_fiscale_registri_registro | registro_id |
 | FOREIGN KEY | fk_tipi_doc_fiscale_registri_tipo_doc | tipo_doc_fiscale_id |
 | PRIMARY KEY | pk_tipi_doc_fiscale_registri | id |
-| UNIQUE | uq_tipi_doc_fiscale_registri_tipo_doc | tipo_doc_fiscale_id |
+| UNIQUE | uq_tipi_doc_fiscale_registri_tipo_doc_registro | tipo_doc_fiscale_id, registro_id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_tipi_doc_fiscale_registri | `CREATE UNIQUE INDEX pk_tipi_doc_fiscale_registri ON vendite.tipi_doc_fiscale_registri USING btree (id)` |
-| uq_tipi_doc_fiscale_registri_tipo_doc | `CREATE UNIQUE INDEX uq_tipi_doc_fiscale_registri_tipo_doc ON vendite.tipi_doc_fiscale_registri USING btree (tipo_doc_fiscale_id)` |
+| uq_tipi_doc_fiscale_registri_tipo_doc_registro | `CREATE UNIQUE INDEX uq_tipi_doc_fiscale_registri_tipo_doc_registro ON vendite.tipi_doc_fiscale_registri USING btree (tipo_doc_fiscale_id, registro_id)` |
 
 ---
 {% include-markdown "signature-core.md" %}

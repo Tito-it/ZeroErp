@@ -28,8 +28,8 @@ numerazione e la contabilizzazione dei documenti.
 
 ### ✅ Regole principali
 
-* mapping **univoco** per `tipo_doc_fiscale_id`.
-* usato dalle funzioni di risoluzione del registro (`vendite.fn_get_registro_id`).
+* mapping **multiplo** per `tipo_doc_fiscale_id` verso registri diversi.
+* la selezione del registro e` determinata da `vendite.fn_get_registro_id`.
 
 ---
 

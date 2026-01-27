@@ -1,0 +1,23 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260127-19-update-uniq-tipi-doc-fiscale-registri-mctit.yaml
+
+  - changeSet:
+      id: 20260127-19-update-uniq-tipi-doc-fiscale-registri
+      author: mctit
+      comment: "Allenta unicita` mapping tipo_doc_fiscale_registri per supportare registri multipli"
+      changes:
+        - dropUniqueConstraint:
+            schemaName: vendite
+            tableName: tipi_doc_fiscale_registri
+            constraintName: uq_tipi_doc_fiscale_registri_tipo_doc
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: tipi_doc_fiscale_registri
+            columnNames: tipo_doc_fiscale_id, registro_id
+            constraintName: uq_tipi_doc_fiscale_registri_tipo_doc_registro

@@ -188,27 +188,30 @@ jobs:
           publish_branch: gh-pages
           publish_dir: ./site
 
-      # (Opzionale) Deploy anche su S3 nello stesso job
-      - name: Configura credenziali AWS (best-effort)
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-central-1
-        continue-on-error: true # se i secret mancano, non fallire il job
+#  Blocatto AWS 27 01 2026 - non più usato
 
-      - name: Sincronizza su S3 (se credenziali presenti)
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: eu-central-1
-        shell: bash
-        run: |
-          if [[ -n "$AWS_ACCESS_KEY_ID" && -n "$AWS_SECRET_ACCESS_KEY" ]]; then
-            aws s3 sync site/ s3://zeroerp-docs-tid/ --delete
-          else
-            echo "No AWS creds → skipping S3 sync."
-          fi
+
+      # (Opzionale) Deploy anche su S3 nello stesso job
+#      - name: Configura credenziali AWS (best-effort)
+#        uses: aws-actions/configure-aws-credentials@v2
+#        with:
+#          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#          aws-region: eu-central-1
+#        continue-on-error: true # se i secret mancano, non fallire il job
+
+#      - name: Sincronizza su S3 (se credenziali presenti)
+#        env:
+#          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#          AWS_DEFAULT_REGION: eu-central-1
+#        shell: bash
+#        run: |
+#          if [[ -n "$AWS_ACCESS_KEY_ID" && -n "$AWS_SECRET_ACCESS_KEY" ]]; then
+#            aws s3 sync site/ s3://zeroerp-docs-tid/ --delete
+#          else
+#            echo "No AWS creds → skipping S3 sync."
+#          fi
 
       
   # Nuovo job per Docker

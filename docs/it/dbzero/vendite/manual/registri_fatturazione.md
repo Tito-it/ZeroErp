@@ -25,6 +25,7 @@ si aggancia a un registro, che governa numerazione e perimetro fiscale.
 
 * **Identita`**: `id`, `uid`, `codice`.
 * **Emittente**: `emittente_soggetto_ruolo_id` (ruolo fiscale che emette).
+* **Utility**: `utility_id` (opzionale, per registri specifici di utility).
 * **Numerazione**: `serie_default`, `reset_policy` (es. ANNUALE).
 * **Stato**: `attivo`.
 * **Governance**: `meta`, `storicizza`, `tx_id`, audit.
