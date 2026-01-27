@@ -1,0 +1,36 @@
+## 📘 Documentazione Concettuale – Funzione `vendite.fn_get_tipo_doc_fiscale_id`
+
+> 👀 **Vedi anche**
+>
+> **Approfondimento tabelle:**
+>
+> • [config.sorgenti](/dbzero/config/tabelle/sorgenti)  
+> • [config.utilities](/dbzero/config/tabelle/utilities)  
+> • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
+>
+---
+
+### 🎯 Scopo Principale
+
+(latest review 27-01-2026)
+La funzione **`vendite.fn_get_tipo_doc_fiscale_id`** risolve il tipo documento
+fiscale a partire dalla sorgente o dalla utility.
+
+---
+
+### ✅ Regola applicata
+
+1. Se `config.sorgenti.tipo_doc_fiscale_id` e` valorizzato → usa quello.
+2. Altrimenti usa `config.utilities.tipo_doc_fiscale_id`.
+3. Se ancora NULL → errore bloccante.
+
+---
+
+### ✅ Note operative
+
+* Funzione pensata per l’alimentazione di `attivita_fatturabili`.
+* Garantisce coerenza del tipo documento senza fallback impliciti applicativi.
+
+---
+
+{% include-markdown "signature-core.md" %}

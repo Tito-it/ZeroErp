@@ -17,12 +17,14 @@
 | user_update | text | YES | CURRENT_USER |
 | target_table | regclass | YES |  |
 | key_selector | text | NO | 'id'::text |
+| tipo_doc_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_sorgenti_codice_interno_non_vuoto |  |
 | CHECK | chk_sorgenti_key_selector_values |  |
+| FOREIGN KEY | fk_sorgenti_tipo_doc_fiscale | tipo_doc_fiscale_id |
 | PRIMARY KEY | sorgenti_pkey | id |
 | UNIQUE | uq_sorgenti_codice | codice |
 | UNIQUE | uq_sorgenti_codice_interno | codice_interno |
@@ -40,6 +42,7 @@
 | trg_sorgenti_a10_attivita_fatturabili_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'attivita_fatturabili', 'sorgente_tipo_id', 'id')` |
 | trg_sorgenti_a10_ddt_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt', 'sorgente_tipo_id', 'id')` |
 | trg_sorgenti_a10_eventi_assets_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'eventi_assets', 'sorgente_tipo_id', 'id')` |
+| trg_sorgenti_a10_fatturazione_lotti_attivita_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti_attivita', 'sorgente_tipo_id', 'id')` |
 | trg_sorgenti_a10_fatture_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture', 'sorgente_tipo_id', 'id')` |
 | trg_sorgenti_a10_fatture_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_righe', 'sorgente_tipo_id', 'id')` |
 | trg_sorgenti_a10_inventari_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'inventari', 'sorgente_tipo_id', 'id')` |

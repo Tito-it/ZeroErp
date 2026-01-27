@@ -53,12 +53,19 @@ Questa separazione garantisce **idempotenza**, **controllo** e **revisionabilita
 flowchart TD
   A[Sorgenti attive<br/>config.sorgenti] --> B[Dashboard Input<br/>Selezione sorgenti]
   B --> C[Alimentazione<br/>vendite.attivita_fatturabili]
+  B -.-> X[Eccezioni utilities<br/>Calcolo consumi]
+  X --> XC[attivita_consumi<br/>+ log alimentazione]
+  XC --> C
   C --> D[Dashboard Pre‑Calcolo<br/>Filtri + approvazione]
   D --> E[Calcolo righe<br/>vendite.fatture_righe]
   E --> F[Dashboard Emissione<br/>Conferma documento]
   F --> G[Emissione + numerazione<br/>vendite.fatture]
   G --> H[Output/Invio/Statistiche]
 ```
+
+---
+
+> Nota: la dashboard e` concepita come **unica** con sezioni dedicate (input, eccezioni utilities, pre‑calcolo, emissione).
 
 ---
 
@@ -92,6 +99,18 @@ Le sorgenti sono definite in `config.sorgenti` e rappresentano **origini dati** 
 * Selezione sorgenti e intervalli (periodo, BA, istanza, utility).
 * Visualizzazione righe candidate e preview dei conteggi.
 * Avvio del processo di alimentazione (batch o manuale).
+
+**Integrazione utilities (gas/energia/acqua)**  
+Non tutte le sorgenti possono alimentare direttamente `attivita_fatturabili`:
+nei casi utilities serve un **processo di calcolo preliminare** dei consumi.
+La dashboard “Input” deve quindi gestire due flussi:
+
+1) **Alimentazione diretta** → inserimento righe `attivita_fatturabili` da sorgenti semplici.  
+2) **Alimentazione con calcolo** → generazione di `attivita_consumi` (testata consumi),
+   log dedicato e successiva produzione di righe `attivita_fatturabili`.
+
+Il processo di alimentazione avviene **prima** del lotto fatture e mantiene tracciabilita`
+tramite `fatturazione_lotti_attivita`.
 
 ---
 
@@ -247,24 +266,60 @@ Il **lotto** diventa l’elemento centrale per:
 * `uuid` (lock_batch_id)
 * `codice` (es. LOT-YYYYMM-NN)
 * `competenza_mese` (date, YYYY-MM-01)
-* `utility_id` (opzionale)
-* `registro_id` (opzionale)
+* `utility_id` (opzionale, derivabile da BA)
+* `tipo_doc_fiscale_id` (**obbligatorio**)
 * `billing_account_id` (opzionale)
-* `stato_job` (IN_ESECUZIONE | COMPLETATO | ERRORE)
-* `stato_documenti` (DRAFT | EMESSA | INVIATA)
+* `stato_lotto` (IN_ESECUZIONE | COMPLETATO | ERRORE)
+* `stato_doc_fiscale_id` (FK -> `config.stati_doc_fiscale`)
 * audit + `meta`
 
-> Nota: `utility_id` e `registro_id` **non sono obbligatori**, ma entrano nel **raggruppamento** quando valorizzati.
+> Nota: `tipo_doc_fiscale_id` e` obbligatorio; `utility_id` puo` essere derivato da `billing_account_id`.
 > Lo stato del lotto segue un **ordine** e supporta `stato_precedente_ammesso` per eventuali rollback.
 
 ---
+
+### 1.1) Processo di alimentazione attivita_fatturabili (necessita`)
+
+In ambito utilities (gas/energia/acqua) la **generazione** di `attivita_fatturabili`
+non e` un semplice import ma un **calcolo complesso** (consumi, conguagli, minimi, fasce).
+Questo richiede:
+
+* **tracciabilita` batch** (quando e` stato eseguito il calcolo, con quali parametri);
+* **log dedicato** (warning/critical specifici del calcolo consumi);
+* **testata di calcolo** con totali e periodi per BA/competenza;
+* separazione chiara tra **alimentazione** e **fatturazione**.
+
+Per questo si introduce un **processo di alimentazione** separato dal lotto fatture,
+ma collegabile in dashboard.
+
+---
+
+### 1.2) Lotto alimentazione + attivita_consumi (design)
+
+**Lotto alimentazione** (`vendite.fatturazione_lotti_attivita`):
+* batch di generazione `attivita_fatturabili` con parametri di calcolo (competenza, utility, BA);
+* stato lotto (IN_ESECUZIONE | COMPLETATO | ERRORE);
+* riferimento per dashboard e audit.
+
+**Testata consumi** (`vendite.attivita_consumi`):
+* totalizzatori per BA/periodo (consumo_totale, uom, periodo);
+* punto di aggregazione per i dettagli futuri (fasce, minimi, ecc.);
+* collegabile a `fattura_id` quando il documento e` emesso.
+
+**Log dedicato** (`vendite.attivita_fatturabili_log`):
+* messaggi W/C riferiti al lotto o alla testata consumi.
+
+Le righe `attivita_fatturabili` generate da processi automatici
+mantengono un riferimento al **lotto alimentazione** e, se disponibile,
+alla **testata consumi**.
 
 ### 2) Parametri funzione di calcolo (proposta)
 
 * `p_competenza_mese` (obbligatorio, YYYY-MM-01)
 * `p_billing_account_id` (opzionale)
 * `p_utility_id` (opzionale)
-* `p_registro_id` (opzionale)
+* `p_tipo_doc_fiscale_id` (obbligatorio)
+* `p_reseller_soggetto_ruolo_id` (opzionale)
 * `p_lotto_id` (opzionale; se NULL/0 -> crea lotto)
 * `p_preview` (opzionale)
 
@@ -272,6 +327,7 @@ Il **lotto** diventa l’elemento centrale per:
 
 * se `p_lotto_id` e` valorizzato, il ricalcolo si aggancia al lotto (e ai suoi parametri).
 * il lotto contiene **tutti i parametri** necessari per ricalcoli futuri.
+* il `reseller` e` un filtro commerciale, **non** modifica il destinatario fattura.
 
 ---
 
@@ -282,11 +338,40 @@ Chiavi di raggruppamento:
 * `billing_account_id`
 * `competenza_mese`
 * `utility_id` (se valorizzato)
-* `registro_id` (se valorizzato)
+* `tipo_doc_fiscale_id`
 * `valuta_id`
 * `emittente_soggetto_ruolo_id`
 
 La funzione **aggrega** su fattura bozza esistente con stessa chiave.
+
+---
+
+### 3.1) Multi‑emittente e fatturazione su parent billing account
+
+**Multi‑emittente**:
+* L’emittente fiscale e` un ruolo e puo` variare per utility/cliente.
+* Il lotto puo` includere piu` emittenti (societa` diverse) e il raggruppamento
+  deve mantenere separati i documenti per emittente.
+
+**Parent billing account**:
+* Un `billing_account` puo` avere un **parent**.
+* La **testata fattura** viene emessa al parent.
+* Le **righe** mantengono il dettaglio per **child** (es. `dest_billing_account_id`),
+  cosi` il parent riceve una fattura aggregata ma con dettaglio per account figlio.
+
+**Implicazioni di calcolo**:
+* Il raggruppamento usa il parent per la testata.
+* I calcoli di riga restano legati al child, per ripartizioni e riepiloghi separati.
+
+---
+
+### 3.2) Reseller (ruolo commerciale, non cliente)
+
+* **Cliente unico**: il destinatario fattura resta sempre il **billing account** (o il suo parent).
+* **Reseller opzionale**: non aggrega BA diversi in un’unica fattura; serve come filtro e
+  metadato commerciale (report, provvigioni, selezioni batch).
+* **Distribuzione esclusa**: il caso in cui il reseller diventa destinatario fattura
+  e` fuori dallo standard e verra` trattato come processo dedicato.
 
 ---
 
@@ -316,6 +401,9 @@ Questa separazione evita sovrapposizioni tra **stato fiscale** e **stato di invi
 
 * gli stati `INVIATA`, `CONSEGNATA`, `SCARTATA` **escono** da `config.stati_doc_fiscale`
 * si crea `config.stati_sdi` e si collega a `vendite.fatturazione_lotti_fatture.stato_sdi_id`
+* `config.stati_doc_fiscale` resta unica, con flag di applicabilita`:
+  * `applica_fattura` (stato valido per `vendite.fatture`)
+  * `applica_lotto` (stato valido per `vendite.fatturazione_lotti`)
 
 ---
 
@@ -333,14 +421,18 @@ Proposta di base:
 
 ---
 
-### 6) Registro di fatturazione (regola proposta)
+### 6) Tipo documento fiscale (regola proposta)
 
-* `vendite.attivita_fatturabili` **deve** avere `registro_id`.
-* Se l’attivita` deriva da una sorgente **RIGA** (`config.sorgenti`), il `registro_id` viene ereditato dalla sorgente.
-* Per attivita` inserite manualmente (auto‑sorgente), il `registro_id` deve essere valorizzato direttamente.
-* **Fallback**: se non e` presente, usare il **registro di default della utility** (`config.utilities.registro_id`).
+* `vendite.attivita_fatturabili` **deve** avere `tipo_doc_fiscale_id`.
+* Se l’attivita` deriva da una sorgente **RIGA** (`config.sorgenti`), il `tipo_doc_fiscale_id` viene ereditato dalla sorgente.
+* Per attivita` inserite manualmente (auto‑sorgente), il `tipo_doc_fiscale_id` deve essere valorizzato direttamente.
+* **Fallback**: se non e` presente, usare il **tipo documento di default della utility** (`config.utilities.tipo_doc_fiscale_id`).
+* **Ordine di risoluzione** per l’alimentazione di `attivita_fatturabili`:
+  1) `config.sorgenti.tipo_doc_fiscale_id` (se sorgente RIGA e valorizzato)
+  2) `config.utilities.tipo_doc_fiscale_id` (fallback)
+  3) errore se ancora NULL
 
-Questa regola rende il raggruppamento deterministico e permette casi semplificati con **un solo registro per utility**.
+Questa regola rende il raggruppamento deterministico e permette casi semplificati con **un solo tipo documento per utility**.
 
 ---
 
@@ -430,23 +522,35 @@ Per evitare monoliti, la pipeline deve essere composta da procedure richiamabili
 
 **Nuove tabelle (proposte):**
 
-* `vendite.fatturazione_lotti` (lotto + stato job/documenti + lock uuid)
-* `vendite.fatturazione_lotti_fatture` (relazione lotto ↔ fattura + stato SDI + esclusione)
-* `config.stati_sdi` (stati canale SDI)
-* `config.stati_lotto_documenti` (ordine + stato_precedente_ammesso per lotto)
-* `anagrafiche.emittenti_fiscali_billing_account` (mapping **billing_account → emittente fiscale**)
+* ✅ `vendite.fatturazione_lotti` (lotto + stato job/documenti + lock uuid)
+* ✅ `vendite.fatturazione_lotti_fatture` (relazione lotto ↔ fattura + stato SDI + esclusione)
+  
+* ✅ -`config.stati_sdi` (stati canale SDI)
+* ✅ `config.stati_doc_fiscale` (stati documento con flag `applica_lotto` / `applica_fattura`)
+  
+* ✅ `vendite.tipi_doc_fiscale_registri` (mapping **tipo documento → registro**)
+
+* ✅ `anagrafiche.emittenti_fiscali_billing_account` (mapping **billing_account → emittente fiscale**)
   * aggiungere `default boolean` con **unicita`** del valore `true`
-* `dbops.jobs`, `dbops.job_runs`, `dbops.job_steps` (modello job)
-* `vendite.fatture_log` (log anomalie documento)
+ `dbops.jobs`, `dbops.job_runs`, `dbops.job_steps` (modello job)
+  
+* ✅ `vendite.fatture_log` (log anomalie documento)
+
+* ✅  `anagrafiche.resellers_billing_account` (mapping **billing_account → reseller** senza default)
+  * campi minimi: `id`, `billing_account_id`, `reseller_soggetto_ruolo_id`, `meta`, audit
 
 **Tabelle da modificare (proposte):**
 
-* `vendite.attivita_fatturabili` → aggiungere `registro_id`, `valuta_id`, `prezzo_unitario`
-* `config.sorgenti` → aggiungere `registro_id` (per sorgenti RIGA)
-* `config.utilities` → aggiungere `registro_id` default
-* `vendite.fatture` → aggiungere `registro_id` e `critical`
-* `config.stati_doc_fiscale` → rimuovere stati SDI e aggiungere `stato_precedente_ammesso`
-* `catalogo.articoli_componenti` → aggiungere `determina_qta_padre`
+* ✅ `vendite.attivita_fatturabili` → aggiungere `tipo_doc_fiscale_id`, `valuta_id`, `prezzo_unitario`
+* ✅ `config.sorgenti` → aggiungere `tipo_doc_fiscale_id` (per sorgenti RIGA)
+* ✅ `config.utilities` → aggiungere `tipo_doc_fiscale_id` default
+* ✅ `vendite.fatture` → aggiungere `registro_id` e `critical`
+
+* ✅ `config.stati_doc_fiscale` → rimuovere stati SDI e aggiungere `stato_precedente_ammesso`
+ 
+* ✅  `catalogo.articoli_componenti` → aggiungere `determina_qta_padre`
+
+* ✅ `anagrafiche.resellers` → bloccare `attivo = false` se esistono mapping su `resellers_billing_account`
 
 ---
 
@@ -471,3 +575,51 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 * un operatore autorizzato puo` **disabilitare** un errore ritenuto accettabile.
 * se esiste almeno un log **critical** attivo, `fatture.critical = true` e la numerazione/invio devono essere bloccati.
 * `disabilitato = true` esclude il log dal calcolo del flag `critical` sulla fattura.
+
+---
+
+### 16) Sviluppi funzioni (backlog)
+
+**Preparazione lotto**
+
+* `vendite.fn_create_fatturazione_lotto(...)` → crea lotto da parametri (competenza, utility, tipo documento, BA/reseller opzionali).
+* `vendite.fn_get_or_create_lotto(...)` → valida lotto esistente o lo crea se assente (supporto ricalcolo).
+
+**Selezione e lock attivita_fatturabili**
+
+* `vendite.fn_select_attivita_fatturabili(...)` → seleziona righe eleggibili (filtri: competenza, stati, BA, utility, tipo documento, valuta).
+* `vendite.fn_lock_attivita_fatturabili(...)` → marca/lock delle righe selezionate per evitare doppie elaborazioni.
+
+**Aggregazione e chiavi documento**
+
+* `vendite.fn_group_attivita_fatturabili(...)` → applica regole di aggregazione (BA, utility, tipo documento, valuta, parent BA).
+* `vendite.fn_build_fattura_key(...)` → genera chiave logica di aggregazione per documento.
+
+**Generazione documenti**
+
+* `vendite.fn_get_or_create_fattura_header(...)` → crea/recupera testata fattura in bozza (riuso per lotto/chiave).
+* `vendite.fn_generate_fatture_righe(...)` → genera righe da `attivita_fatturabili` secondo regole.
+
+**Ricalcolo**
+
+* `vendite.fn_reset_fattura_righe(...)` → elimina righe e dipendenze se lo stato lo consente.
+* `vendite.fn_ricalcolo_lotto(...)` → reset + rigenerazione per lotto (eventuale filtro BA).
+
+**Stato e validazioni**
+
+* `vendite.fn_guard_lotto_stato(...)` → verifica transizioni ammesse per lotto.
+* `vendite.fn_guard_fattura_stato(...)` → verifica transizioni ammesse per fattura.
+* `vendite.fn_check_fattura_errors(...)` → aggiorna `critical` e log in base agli errori.
+
+**Post-process**
+
+* `vendite.fn_numera_fatture_lotto(...)` → assegna progressivi documento (registri).
+* `vendite.fn_prepare_sdi_payload(...)` → prepara invio SDI (placeholder).
+
+---
+
+### 17) Nota su Fatturazione Elettronica (FE)
+
+* Il mapping **FE** (es. TD01, TD04) non e` gestito nel tipo documento attuale.
+* La classificazione FE verra` introdotta in una fase successiva con un dominio dedicato
+  per l’emissione elettronica e l’invio SDI.

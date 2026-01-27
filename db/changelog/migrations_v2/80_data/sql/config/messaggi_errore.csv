@@ -1,9 +1,11 @@
 codice,lingua,messaggio,id,causa,soluzione
+E_GENERICO,it,%s,128,,
 E_STORICIZZAZIONE,it,Errore storicizzazione per la tabella: %s in fase di: %s per il codice: %s valore: %s .  SQL ERROR: %s  ,21,Operazione non prevista in fase di storicizzazione ,""
 MESSAGGIO_NON_DEFINITO,it,Definire il messaggio con codice : %s,14,Non è presente il messaggio nella tabella config.messaggi_errore.,Definire il messaggio nella tabella config.messaggi_errore
 E_SNAPSHOT_CLOSE_ERROR,it,Errore chiusura snapshot: %s (SQLSTATE: %s),23,I valori dello snapshot in chiusura sono errati,""
+E_EMITTENTE_DEFAULT_MISSING,it,Emittente fiscale di default mancante. %s,130,,
 E_SOGGETTO_NO_CONTATTI,it,"Il soggetto non ha contatti validi: è necessario almeno un contatto con email, telefono, cellulare o PEC.",2,"",""
-E_ARTICOLO_NON_COMPOSITO,it,Articolo deve essere composito = true . (%s),127,,
+E_ARTICOLO_NON_COMPOSITO,it,Articolo deve essere composito = true . (%s),127,"",""
 ERRORE_PARAMETRI_TABELLA,it,Parametro:%s  non trovato nella tabella: %s,16,Il parametro segnalato non è stato caricato nella tabella indicata.,Caricare il parametro nella rispettiva tabella
 E_TXID_GENERATION,it,Fallita generazione tx_id: %s,18,Non è stato possibile assegnare un id transaction,Andare nella tabella dei log per verificare il problema
 E_TABELLA_OP_NON_CONSENTITA,it,Operazione non consentita sulla tabella %s: %s non permessa,17,Si sta cercando di effettuare una operazione che non è permessa su questa tabella. ,L'attività non è permessa
@@ -68,6 +70,8 @@ E_QTA_OPERATIVA_NON_INTERA,it,"Quantità operativa non intera. (%s %s, %s %s )",
 E_SOGGETTO_NULL,it,soggetto_id (%s)  mancante per il ruolo   %s.,98,"",""
 E_SOGGETTI_RUOLI_RACE,it,"Race condition su soggetti_ruoli per soggetto %s, id ruolo %s , cod_int_ruolo %."" .",99,"",""
 E_BILLING_ACCOUNT_UTILITY_NULL,it,Billing account %s senza utility associata.,100,"",""
+E_RISORSA_UMANA_SOGGETTO_MISMATCH,it,Il soggetto  a cui è collegata la risorsa non è un gestore (soggetto_ruolo id %s).,126,"",""
+E_DELETE_BLOCK,it,Generazione trigger block in automazione non permessa. (sqlerrm %s),191,,
 E_CLIENTE_UTILITY_MISMATCH_BA,it,Billing account id %s: Utility del cliente (%s) diversa da quella del billing_account (%s).,101,"",""
 E_DBLINK_LOG_CONN_MISSING,it,Impostare il parametro a livello DATABASE/ROLE o ALTER SYSTEM. (%s),102,"",""
 E_TXID_DBLINK_NULL,it,"dblink ha restituito NULL, uso uuidv7() locale.(%s) ",103,"",""
@@ -93,4 +97,3 @@ E_DATA_ERRATA,it,Data %s errata o mancante.,122,"",""
 E_ATTIVO_BLOCK_FKCOL_NOT_FOUND,it,%s,123,"",""
 E_ATTIVO_BLOCK_CHILDREN_EXIST,it,%s,125,"",""
 E_STORICO_PARENT_PK_NOT_FOUND,it,"Impossibile determinare PK o tipo per tabella padre. Schema %s , tabella %s",121,"",""
-E_RISORSA_UMANA_SOGGETTO_MISMATCH,it,Il soggetto  a cui è collegata la risorsa non è un gestore (soggetto_ruolo id %s).,126,"",""

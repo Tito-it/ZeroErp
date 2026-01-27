@@ -22,6 +22,7 @@
 | attivo | boolean | NO | true |
 | note_target_tipo | character varying | YES |  |
 | note_id | bigint | YES |  |
+| determina_qta_padre | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

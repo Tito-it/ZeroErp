@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20260127-09-upsert-registri-fatturazione
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: registri_fatturazione
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/vendite/registri_fatturazione.csv
+            tableName: registri_fatturazione
+            schemaName: vendite
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: uid, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: emittente_soggetto_ruolo_id, type: STRING }
+              - column: { name: serie_default, type: STRING }
+              - column: { name: reset_policy, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: tx_id, type: STRING }
+              - column: { name: storicizza, type: BOOLEAN }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update, type: STRING }

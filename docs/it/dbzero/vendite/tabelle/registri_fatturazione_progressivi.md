@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/registri_fatturazione_progressivi.md" %}
 # 📚 Tabella `registri_fatturazione_progressivi`
 
 ## 🗂️ Campi principali

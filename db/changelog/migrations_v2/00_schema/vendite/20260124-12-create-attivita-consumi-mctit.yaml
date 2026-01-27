@@ -1,0 +1,216 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260124-12-create-attivita-consumi-mctit.yaml
+
+  - changeSet:
+      id: 20260124-12-create-attivita-consumi
+      author: mctit
+      comment: "Testata consumi (work in progress) per processi utilities"
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: attivita_consumi
+            remarks: "WIP: testata consumi per utilities (gas/acqua/energia)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_attivita_consumi
+                    nullable: false
+
+              - column:
+                  name: uid
+                  type: uuid
+                  defaultValueComputed: "uuidv7()"
+                  remarks: "UID univoco (sorgente/idempotenza)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: lotto_attivita_id
+                  type: bigint
+                  remarks: "FK -> vendite.fatturazione_lotti_attivita.id"
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: fattura_id
+                  type: bigint
+                  remarks: "FK -> vendite.fatture.id (collegata in emissione)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: billing_account_id
+                  type: bigint
+                  remarks: "FK -> anagrafiche.billing_account.id"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: competenza_mese
+                  type: date
+                  remarks: "Competenza mensile (YYYY-MM-01)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: periodo_dal
+                  type: date
+                  remarks: "Inizio periodo consumi."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: periodo_al
+                  type: date
+                  remarks: "Fine periodo consumi."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: consumo_totale
+                  type: numeric(20,6)
+                  remarks: "Consumo totale calcolato."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: uom_id
+                  type: bigint
+                  remarks: "FK -> catalogo.unita_misura.id"
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: stato_calcolo
+                  type: text
+                  defaultValue: "OK"
+                  remarks: "Esito calcolo (OK|WARNING|ERRORE)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Abilita storicizzazione."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction id (policy)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: attivita_consumi
+            columnNames: uid
+            constraintName: uq_attivita_consumi_uid
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_consumi
+            baseColumnNames: lotto_attivita_id
+            constraintName: fk_attivita_consumi_lotto_attivita
+            referencedTableSchemaName: vendite
+            referencedTableName: fatturazione_lotti_attivita
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_consumi
+            baseColumnNames: fattura_id
+            constraintName: fk_attivita_consumi_fattura
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_consumi
+            baseColumnNames: billing_account_id
+            constraintName: fk_attivita_consumi_ba
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_consumi
+            baseColumnNames: uom_id
+            constraintName: fk_attivita_consumi_uom
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.attivita_consumi
+                ADD CONSTRAINT chk_attivita_consumi_stato_calcolo
+                CHECK (stato_calcolo IN ('OK','WARNING','ERRORE'));
+
+              COMMENT ON TABLE vendite.attivita_consumi
+                IS 'WIP: testata consumi per utilities (gas/acqua/energia).';

@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260127-02-create-tipi-doc-fiscale-registri-mctit.yaml
+
+  - changeSet:
+      id: 20260127-02-create-tipi-doc-fiscale-registri
+      author: mctit
+      comment: "Mapping tipo_doc_fiscale -> registro fatturazione"
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: tipi_doc_fiscale_registri
+            remarks: "Associazione tipo documento fiscale -> registro di fatturazione."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_tipi_doc_fiscale_registri
+                    nullable: false
+
+              - column:
+                  name: tipo_doc_fiscale_id
+                  type: bigint
+                  remarks: "FK → config.tipi_doc_fiscale.id."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: registro_id
+                  type: bigint
+                  remarks: "FK → vendite.registri_fatturazione.id."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: codice_interno
+                  type: text
+                  remarks: "Codice interno del mapping."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni in formato JSONB."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente che ha effettuato l'inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente che ha effettuato l'ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: tipi_doc_fiscale_registri
+            baseColumnNames: tipo_doc_fiscale_id
+            constraintName: fk_tipi_doc_fiscale_registri_tipo_doc
+            referencedTableSchemaName: config
+            referencedTableName: tipi_doc_fiscale
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: tipi_doc_fiscale_registri
+            baseColumnNames: registro_id
+            constraintName: fk_tipi_doc_fiscale_registri_registro
+            referencedTableSchemaName: vendite
+            referencedTableName: registri_fatturazione
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: tipi_doc_fiscale_registri
+            columnNames: tipo_doc_fiscale_id
+            constraintName: uq_tipi_doc_fiscale_registri_tipo_doc

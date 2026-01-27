@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260124-19-create-fn-get-stati-doc-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260124-19-create-fn-get-stati-doc-fiscale
+      author: mctit
+      comment: "Restituisce stati validi per lotto/fattura, con transizioni"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_get_stati_doc_fiscale(
+                p_target text,
+                p_from_id bigint DEFAULT NULL
+              )
+              RETURNS SETOF config.stati_doc_fiscale
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_target text := upper(btrim(p_target));
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Restituisce gli stati doc_fiscale validi per LOTTO o
+                --   FATTURA, con eventuale filtro sulle transizioni ammesse.
+                --
+                -- Regole:
+                --   - Se p_from_id IS NULL: tutti gli stati applicabili.
+                --   - Se p_from_id valorizzato: solo transizioni ammesse.
+                -- =========================================================
+                IF v_target NOT IN ('LOTTO','FATTURA') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'config',
+                    'fn_get_stati_doc_fiscale',
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'detail','Target non valido',
+                      'target', p_target
+                    ),
+                    NULL::uuid,
+                    'Target non valido (usa LOTTO o FATTURA)'
+                  );
+                END IF;
+
+                IF p_from_id IS NULL THEN
+                  RETURN QUERY
+                  SELECT s.*
+                  FROM config.stati_doc_fiscale s
+                  WHERE s.attivo
+                    AND (
+                      (v_target = 'LOTTO'   AND s.applica_lotto) OR
+                      (v_target = 'FATTURA' AND s.applica_fattura)
+                    )
+                  ORDER BY s.ordine NULLS LAST, s.id;
+                  RETURN;
+                END IF;
+
+                RETURN QUERY
+                SELECT s.*
+                FROM config.stati_doc_fiscale_transizioni t
+                JOIN config.stati_doc_fiscale s
+                  ON s.id = t.stato_to_id
+                WHERE t.ammesso
+                  AND t.stato_from_id = p_from_id
+                  AND (
+                    (v_target = 'LOTTO'   AND t.solo_fattura = false) OR
+                    (v_target = 'FATTURA' AND t.solo_lotto = false)
+                  )
+                  AND (
+                    (v_target = 'LOTTO'   AND s.applica_lotto) OR
+                    (v_target = 'FATTURA' AND s.applica_fattura)
+                  )
+                  AND s.attivo
+                ORDER BY s.ordine NULLS LAST, s.id;
+              END
+              $$;
+
+              COMMENT ON FUNCTION config.fn_get_stati_doc_fiscale(text, bigint)
+                IS 'Restituisce stati validi per lotto/fattura e transizioni ammesse.';

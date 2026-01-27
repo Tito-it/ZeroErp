@@ -9,10 +9,8 @@
 | codice | character varying | NO |  |
 | competenza_mese | date | NO |  |
 | utility_id | integer | YES |  |
-| registro_id | bigint | YES |  |
 | billing_account_id | bigint | YES |  |
-| stato_job | text | NO | 'IN_ESECUZIONE'::text |
-| stato_documenti | text | NO | 'DRAFT'::text |
+| stato_lotto | text | NO | 'IN_ESECUZIONE'::text |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
@@ -20,14 +18,16 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| stato_doc_fiscale_id | bigint | YES |  |
+| tipo_doc_fiscale_id | bigint | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_fatturazione_lotti_stato_documenti |  |
 | CHECK | chk_fatturazione_lotti_stato_job |  |
 | FOREIGN KEY | fk_fatturazione_lotti_ba | billing_account_id |
-| FOREIGN KEY | fk_fatturazione_lotti_registro | registro_id |
+| FOREIGN KEY | fk_fatturazione_lotti_stato_doc_fiscale | stato_doc_fiscale_id |
+| FOREIGN KEY | fk_fatturazione_lotti_tipo_doc_fiscale | tipo_doc_fiscale_id |
 | FOREIGN KEY | fk_fatturazione_lotti_utility | utility_id |
 | PRIMARY KEY | pk_fatturazione_lotti | id |
 | UNIQUE | uq_fatturazione_lotti_codice | codice |
@@ -39,6 +39,20 @@
 | pk_fatturazione_lotti | `CREATE UNIQUE INDEX pk_fatturazione_lotti ON vendite.fatturazione_lotti USING btree (id)` |
 | uq_fatturazione_lotti_codice | `CREATE UNIQUE INDEX uq_fatturazione_lotti_codice ON vendite.fatturazione_lotti USING btree (codice)` |
 | uq_fatturazione_lotti_lock_batch_id | `CREATE UNIQUE INDEX uq_fatturazione_lotti_lock_batch_id ON vendite.fatturazione_lotti USING btree (lock_batch_id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_fatturazione_lotti_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fatturazione_lotti_gen_codice()` |
+| trg_fatturazione_lotti_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatturazione_lotti_gen_codice()` |
+| trg_fatturazione_lotti_a10_guard_stato_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatturazione_lotti_guard_stato()` |
+| trg_fatturazione_lotti_a10_stati_doc_fiscale_require_att_f6cf27 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id')` |
+| trg_fatturazione_lotti_a10_stati_doc_fiscale_require_att_f6cf27 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id')` |
+| trg_fatturazione_lotti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_fatturazione_lotti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatturazione_lotti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatturazione_lotti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('fatturazione_lotti_id')` |
+| trg_fatturazione_lotti_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('fatturazione_lotti_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

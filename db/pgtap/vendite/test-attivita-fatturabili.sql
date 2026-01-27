@@ -9,28 +9,41 @@
 -- 2) Riferimento anagrafiche.istanze_utilities presente
 -- 3) Riferimento config.sorgenti presente
 -- 4) Riferimento catalogo.unita_misura presente
--- 5) Sorgente configurata con target valido (per guard polimorfo)
--- 6) Inserimento con quantita negativa consentito
--- 7) Quantita negativa mantenuta
--- 8) Default approvato = false
--- 9) Default fatturato = false
--- 10) Default sospesa = false
--- 11) Default lock_in_fatturazione = false
--- 12) Default storicizza = true
--- 13) Default factor_to_base = 1
--- 14) Default sorgente_riga = 0
--- 15) Normalizzazione competenza_mese al primo del mese
--- 16) Check competenza_data >= data_attivita
--- 17) NOT NULL quantita
--- 18) FK su articolo_id
--- 19) Inserimento riga con sorgente_tipo_id e sorgente_uid/sorgente_riga validi
--- 20) Unicita parziale su (sorgente_tipo_id, sorgente_uid)
--- 21) Riferimento config.note_stili presente
--- 22) Inserimento nota su vendite.note (target ATTIVITAFT)
--- 23) Nota presente in partizione vendite.note_attivita_fatturabili
+-- 5) Riferimento anagrafiche.billing_account presente
+-- 6) Riferimento config.tipi_doc_fiscale presente
+-- 7) Riferimento config.valute presente
+-- 8) Sorgente configurata con target valido (per guard polimorfo)
+-- 9) Inserimento con quantita negativa consentito
+-- 10) Quantita negativa mantenuta
+-- 11) Default approvato = false
+-- 12) Default fatturato = false
+-- 13) Default sospesa = false
+-- 14) Default lock_in_fatturazione = false
+-- 15) Default storicizza = true
+-- 16) Default uid valorizzato
+-- 17) tipo_doc_fiscale_id valorizzato
+-- 18) Default valuta_id valorizzato
+-- 19) Default factor_to_base = 1
+-- 20) Default sorgente_riga = 0
+-- 21) Normalizzazione competenza_mese al primo del mese
+-- 22) Check competenza_data >= data_attivita
+-- 23) NOT NULL quantita
+-- 24) FK su articolo_id
+-- 25) Inserimento riga con sorgente_tipo_id e sorgente_uid/sorgente_riga validi
+-- 26) Unicita parziale su (sorgente_tipo_id, sorgente_uid)
+-- 27) Inserimento lotto alimentazione
+-- 28) Inserimento attivita_consumi
+-- 29) Inserimento attivita_fatturabili con link lotto/consumi
+-- 30) FK tipo_doc_fiscale_id inesistente
+-- 31) FK valuta_id inesistente
+-- 32) FK lotto_attivita_id inesistente
+-- 33) FK attivita_consumi_id inesistente
+-- 34) Riferimento config.note_stili presente
+-- 35) Inserimento nota su vendite.note (target ATTIVITAFT)
+-- 36) Nota presente in partizione vendite.note_attivita_fatturabili
 -- ------------------------------------------------------------
 
-SELECT plan(23);
+SELECT plan(36);
 
 -- ============================================================
 -- 0) Costanti e riferimenti
@@ -52,6 +65,14 @@ SELECT
       ORDER BY data_insert DESC NULLS LAST
       LIMIT 1) AS istanza_utility_id,
     (SELECT id
+       FROM anagrafiche.billing_account
+      ORDER BY data_insert DESC NULLS LAST
+      LIMIT 1) AS billing_account_id,
+    (SELECT utility_id
+       FROM anagrafiche.billing_account
+      ORDER BY data_insert DESC NULLS LAST
+      LIMIT 1) AS utility_id,
+    (SELECT id
        FROM config.sorgenti
       WHERE attivo IS TRUE
       ORDER BY id
@@ -60,7 +81,16 @@ SELECT
        FROM catalogo.unita_misura
       WHERE attivo IS TRUE
       ORDER BY id
-      LIMIT 1) AS uom_id;
+      LIMIT 1) AS uom_id,
+    (SELECT id
+       FROM config.tipi_doc_fiscale
+      WHERE attivo IS TRUE
+      ORDER BY id
+      LIMIT 1) AS tipo_doc_fiscale_id,
+    (SELECT id
+       FROM config.valute
+      ORDER BY id
+      LIMIT 1) AS valuta_id;
 
 CREATE TEMP TABLE tmp_note_stile AS
 SELECT id AS id_stile
@@ -75,44 +105,6 @@ CREATE TEMP TABLE tmp_sorgente_cfg (
     sorgente_riga bigint,
     sorgente_uid uuid
 );
-
-DO $$
-DECLARE
-    r record;
-    v_id bigint;
-    v_uid uuid;
-BEGIN
-    SELECT id, target_table, key_selector
-      INTO r
-      FROM config.sorgenti
-     WHERE id = 1
-       AND attivo IS TRUE
-       AND target_table IS NOT NULL
-       AND key_selector IN ('id', 'uid');
-
-    IF r.id IS NULL THEN
-        RETURN;
-    END IF;
-
-    v_id := NULL;
-    v_uid := NULL;
-
-    IF r.key_selector = 'id' THEN
-        EXECUTE format('SELECT id FROM %s ORDER BY 1 LIMIT 1', r.target_table::text)
-          INTO v_id;
-        IF v_id IS NOT NULL THEN
-            INSERT INTO tmp_sorgente_cfg
-            VALUES (r.id, r.key_selector, v_id, NULL);
-        END IF;
-    ELSE
-        EXECUTE format('SELECT uid FROM %s ORDER BY 1 LIMIT 1', r.target_table::text)
-          INTO v_uid;
-        IF v_uid IS NOT NULL THEN
-            INSERT INTO tmp_sorgente_cfg
-            VALUES (r.id, r.key_selector, NULL, v_uid);
-        END IF;
-    END IF;
-END $$;
 
 SELECT ok(
     (SELECT articolo_id FROM tmp_refs_af) IS NOT NULL,
@@ -140,8 +132,28 @@ SELECT ok(
 );
 
 SELECT ok(
-    (SELECT count(*) FROM tmp_sorgente_cfg) = 1,
+    (SELECT count(*)
+       FROM config.sorgenti
+      WHERE id = 1
+        AND attivo IS TRUE
+        AND target_table IS NOT NULL
+        AND key_selector IN ('id', 'uid')) = 1,
     'Sorgente id=1 configurata con target valido'
+);
+
+SELECT ok(
+    (SELECT billing_account_id IS NOT NULL FROM tmp_refs_af),
+    'Riferimento billing_account presente'
+);
+
+SELECT ok(
+    (SELECT tipo_doc_fiscale_id IS NOT NULL FROM tmp_refs_af),
+    'Riferimento config.tipi_doc_fiscale presente'
+);
+
+SELECT ok(
+    (SELECT valuta_id IS NOT NULL FROM tmp_refs_af),
+    'Riferimento config.valute presente'
 );
 
 -- ============================================================
@@ -152,15 +164,21 @@ WITH ins AS (
     INSERT INTO vendite.attivita_fatturabili (
         articolo_id,
         istanza_utility_id,
+        billing_account_id,
         data_attivita,
         quantita,
+        tipo_doc_fiscale_id,
+        valuta_id,
         meta
     )
     SELECT
         r.articolo_id,
         r.istanza_utility_id,
+        r.billing_account_id,
         current_date,
         -5,
+        r.tipo_doc_fiscale_id,
+        r.valuta_id,
         jsonb_build_object('test_scope', k.test_scope)
     FROM tmp_refs_af r,
          tmp_costanti_af k
@@ -172,10 +190,25 @@ WITH ins AS (
         sospesa,
         lock_in_fatturazione,
         storicizza,
+        uid,
+        tipo_doc_fiscale_id,
+        valuta_id,
         factor_to_base,
         sorgente_riga
 )
 SELECT * FROM ins;
+
+INSERT INTO tmp_sorgente_cfg (sorgente_tipo_id, key_selector, sorgente_riga, sorgente_uid)
+SELECT
+    s.id,
+    s.key_selector,
+    CASE WHEN s.key_selector = 'id' THEN a.id ELSE NULL END,
+    CASE WHEN s.key_selector = 'uid' THEN a.uid ELSE NULL END
+FROM config.sorgenti s,
+     tmp_attivita_base a
+WHERE s.id = 1
+  AND s.attivo IS TRUE
+  AND s.key_selector IN ('id', 'uid');
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_attivita_base),
@@ -217,6 +250,21 @@ SELECT is(
     (SELECT storicizza FROM tmp_attivita_base),
     true,
     'Default storicizza = true'
+);
+
+SELECT ok(
+    (SELECT uid IS NOT NULL FROM tmp_attivita_base),
+    'Default uid valorizzato'
+);
+
+SELECT ok(
+    (SELECT tipo_doc_fiscale_id IS NOT NULL FROM tmp_attivita_base),
+    'Tipo_doc_fiscale_id valorizzato'
+);
+
+SELECT ok(
+    (SELECT valuta_id IS NOT NULL FROM tmp_attivita_base),
+    'Default valuta_id valorizzato'
 );
 
 SELECT is(
@@ -293,17 +341,23 @@ WITH ins AS (
     INSERT INTO vendite.attivita_fatturabili (
         articolo_id,
         istanza_utility_id,
+        billing_account_id,
         data_attivita,
         quantita,
         competenza_mese,
+        tipo_doc_fiscale_id,
+        valuta_id,
         meta
     )
     SELECT
         r.articolo_id,
         r.istanza_utility_id,
+        r.billing_account_id,
         date '2025-01-15',
         10,
         date '2025-01-20',
+        r.tipo_doc_fiscale_id,
+        r.valuta_id,
         jsonb_build_object('test_scope', k.test_scope, 'case', 'competenza_norm')
     FROM tmp_refs_af r,
          tmp_costanti_af k
@@ -325,16 +379,22 @@ SELECT throws_ok(
     INSERT INTO vendite.attivita_fatturabili (
         articolo_id,
         istanza_utility_id,
+        billing_account_id,
         data_attivita,
         quantita,
-        competenza_data
+        competenza_data,
+        tipo_doc_fiscale_id,
+        valuta_id
     )
     SELECT
         r.articolo_id,
         r.istanza_utility_id,
+        r.billing_account_id,
         date '2025-02-01',
         1,
-        date '2025-01-31'
+        date '2025-01-31',
+        r.tipo_doc_fiscale_id,
+        r.valuta_id
     FROM tmp_refs_af r;
     $$,
     '23514',
@@ -350,14 +410,20 @@ SELECT throws_ok(
     INSERT INTO vendite.attivita_fatturabili (
         articolo_id,
         istanza_utility_id,
+        billing_account_id,
         data_attivita,
-        quantita
+        quantita,
+        tipo_doc_fiscale_id,
+        valuta_id
     )
     SELECT
         r.articolo_id,
         r.istanza_utility_id,
+        r.billing_account_id,
         current_date,
-        NULL
+        NULL,
+        r.tipo_doc_fiscale_id,
+        r.valuta_id
     FROM tmp_refs_af r;
     $$,
     '23502',
@@ -373,14 +439,20 @@ SELECT throws_ok(
     INSERT INTO vendite.attivita_fatturabili (
         articolo_id,
         istanza_utility_id,
+        billing_account_id,
         data_attivita,
-        quantita
+        quantita,
+        tipo_doc_fiscale_id,
+        valuta_id
     )
     SELECT
         uuidv7(),
         r.istanza_utility_id,
+        r.billing_account_id,
         current_date,
-        1
+        1,
+        r.tipo_doc_fiscale_id,
+        r.valuta_id
     FROM tmp_refs_af r;
     $$,
     '23503',
@@ -396,21 +468,27 @@ WITH ins AS (
     INSERT INTO vendite.attivita_fatturabili (
         articolo_id,
         istanza_utility_id,
+        billing_account_id,
         data_attivita,
         quantita,
         sorgente_tipo_id,
         sorgente_riga,
         sorgente_uid,
+        tipo_doc_fiscale_id,
+        valuta_id,
         meta
     )
     SELECT
         r.articolo_id,
         r.istanza_utility_id,
+        r.billing_account_id,
         current_date,
         1,
         s.sorgente_tipo_id,
         CASE WHEN s.key_selector = 'id' THEN s.sorgente_riga ELSE NULL END,
         CASE WHEN s.key_selector = 'uid' THEN s.sorgente_uid ELSE k.sorgente_uid_unica END,
+        r.tipo_doc_fiscale_id,
+        r.valuta_id,
         jsonb_build_object('test_scope', k.test_scope, 'case', 'unique_sorgente')
     FROM tmp_refs_af r,
          tmp_sorgente_cfg s,
@@ -430,20 +508,26 @@ SELECT throws_ok(
     INSERT INTO vendite.attivita_fatturabili (
         articolo_id,
         istanza_utility_id,
+        billing_account_id,
         data_attivita,
         quantita,
         sorgente_tipo_id,
         sorgente_riga,
-        sorgente_uid
+        sorgente_uid,
+        tipo_doc_fiscale_id,
+        valuta_id
     )
     SELECT
         r.articolo_id,
         r.istanza_utility_id,
+        r.billing_account_id,
         current_date,
         2,
         s.sorgente_tipo_id,
         CASE WHEN s.key_selector = 'id' THEN s.sorgente_riga ELSE NULL END,
-        CASE WHEN s.key_selector = 'uid' THEN s.sorgente_uid ELSE k.sorgente_uid_unica END
+        CASE WHEN s.key_selector = 'uid' THEN s.sorgente_uid ELSE k.sorgente_uid_unica END,
+        r.tipo_doc_fiscale_id,
+        r.valuta_id
     FROM tmp_refs_af r,
          tmp_sorgente_cfg s,
          tmp_costanti_af k;
@@ -453,9 +537,258 @@ SELECT throws_ok(
     'Unicita sorgente_tipo_id + sorgente_uid'
 );
 
+-- ============================================================
+-- 7) Lotto alimentazione + attivita_consumi (link)
+-- ============================================================
+CREATE TEMP TABLE tmp_lotto_attivita AS
+WITH ins AS (
+    INSERT INTO vendite.fatturazione_lotti_attivita (
+        lock_batch_id,
+        codice,
+        competenza_mese,
+        utility_id,
+        billing_account_id,
+        sorgente_tipo_id,
+        meta
+    )
+    SELECT
+        uuidv7(),
+        'LA-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'),
+        date_trunc('month', current_date)::date,
+        r.utility_id,
+        r.billing_account_id,
+        r.sorgente_tipo_id,
+        jsonb_build_object('test_scope', k.test_scope)
+    FROM tmp_refs_af r,
+         tmp_costanti_af k
+    RETURNING id
+)
+SELECT id FROM ins;
+
+SELECT is(
+    (SELECT count(*)::int FROM tmp_lotto_attivita),
+    1,
+    'Inserito lotto alimentazione'
+);
+
+CREATE TEMP TABLE tmp_attivita_consumi AS
+WITH ins AS (
+    INSERT INTO vendite.attivita_consumi (
+        lotto_attivita_id,
+        billing_account_id,
+        competenza_mese,
+        periodo_dal,
+        periodo_al,
+        consumo_totale,
+        uom_id,
+        meta,
+        storicizza
+    )
+    SELECT
+        l.id,
+        r.billing_account_id,
+        date_trunc('month', current_date)::date,
+        current_date - 30,
+        current_date - 1,
+        100.5,
+        r.uom_id,
+        jsonb_build_object('test_scope', k.test_scope),
+        false
+    FROM tmp_lotto_attivita l,
+         tmp_refs_af r,
+         tmp_costanti_af k
+    RETURNING id
+)
+SELECT id FROM ins;
+
+SELECT is(
+    (SELECT count(*)::int FROM tmp_attivita_consumi),
+    1,
+    'Inserita attivita_consumi'
+);
+
+CREATE TEMP TABLE tmp_attivita_link AS
+WITH ins AS (
+    INSERT INTO vendite.attivita_fatturabili (
+        articolo_id,
+        istanza_utility_id,
+        billing_account_id,
+        data_attivita,
+        quantita,
+        tipo_doc_fiscale_id,
+        valuta_id,
+        lotto_attivita_id,
+        attivita_consumi_id,
+        meta
+    )
+    SELECT
+        r.articolo_id,
+        r.istanza_utility_id,
+        r.billing_account_id,
+        current_date,
+        1,
+        r.tipo_doc_fiscale_id,
+        r.valuta_id,
+        l.id,
+        c.id,
+        jsonb_build_object('test_scope', k.test_scope, 'case', 'link_lotto_consumi')
+    FROM tmp_refs_af r,
+         tmp_lotto_attivita l,
+         tmp_attivita_consumi c,
+         tmp_costanti_af k
+    RETURNING id
+)
+SELECT id FROM ins;
+
+SELECT is(
+    (SELECT count(*)::int FROM tmp_attivita_link),
+    1,
+    'Inserita attivita con link lotto/consumi'
+);
+
+-- ============================================================
+-- 8) FK tipo_doc_fiscale_id inesistente
+-- ============================================================
+SELECT throws_ok(
+    $$
+    INSERT INTO vendite.attivita_fatturabili (
+        articolo_id,
+        istanza_utility_id,
+        billing_account_id,
+        data_attivita,
+        quantita,
+        tipo_doc_fiscale_id,
+        valuta_id
+    )
+    SELECT
+        r.articolo_id,
+        r.istanza_utility_id,
+        r.billing_account_id,
+        current_date,
+        1,
+        999999999::bigint,
+        r.valuta_id
+    FROM tmp_refs_af r;
+    $$,
+    '23503',
+    NULL,
+    'FK violation su tipo_doc_fiscale_id'
+);
+
+-- ============================================================
+-- 9) FK valuta_id inesistente
+-- ============================================================
+SELECT throws_ok(
+    $$
+    INSERT INTO vendite.attivita_fatturabili (
+        articolo_id,
+        istanza_utility_id,
+        billing_account_id,
+        data_attivita,
+        quantita,
+        tipo_doc_fiscale_id,
+        valuta_id
+    )
+    SELECT
+        r.articolo_id,
+        r.istanza_utility_id,
+        r.billing_account_id,
+        current_date,
+        1,
+        r.tipo_doc_fiscale_id,
+        999999::integer
+    FROM tmp_refs_af r;
+    $$,
+    '23503',
+    NULL,
+    'FK violation su valuta_id'
+);
+
+-- ============================================================
+-- 10) FK lotto_attivita_id inesistente
+-- ============================================================
+SELECT throws_ok(
+    $$
+    INSERT INTO vendite.attivita_fatturabili (
+        articolo_id,
+        istanza_utility_id,
+        billing_account_id,
+        data_attivita,
+        quantita,
+        tipo_doc_fiscale_id,
+        valuta_id,
+        lotto_attivita_id
+    )
+    SELECT
+        r.articolo_id,
+        r.istanza_utility_id,
+        r.billing_account_id,
+        current_date,
+        1,
+        r.tipo_doc_fiscale_id,
+        r.valuta_id,
+        999999999::bigint
+    FROM tmp_refs_af r;
+    $$,
+    '23503',
+    NULL,
+    'FK violation su lotto_attivita_id'
+);
+
+-- ============================================================
+-- 11) FK attivita_consumi_id inesistente
+-- ============================================================
+SELECT throws_ok(
+    $$
+    INSERT INTO vendite.attivita_fatturabili (
+        articolo_id,
+        istanza_utility_id,
+        billing_account_id,
+        data_attivita,
+        quantita,
+        tipo_doc_fiscale_id,
+        valuta_id,
+        attivita_consumi_id
+    )
+    SELECT
+        r.articolo_id,
+        r.istanza_utility_id,
+        r.billing_account_id,
+        current_date,
+        1,
+        r.tipo_doc_fiscale_id,
+        r.valuta_id,
+        999999999::bigint
+    FROM tmp_refs_af r;
+    $$,
+    '23503',
+    NULL,
+    'FK violation su attivita_consumi_id'
+);
+
 -- Cleanup
 DELETE FROM vendite.note
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
 
+/*
+UPDATE vendite.attivita_fatturabili
+SET attivita_consumi_id = NULL,
+    lotto_attivita_id = NULL
+WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
+*/
 DELETE FROM vendite.attivita_fatturabili
+WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
+
+UPDATE vendite.attivita_consumi
+SET storicizza = false
+WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
+
+DELETE FROM vendite.attivita_consumi
+WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
+
+UPDATE vendite.fatturazione_lotti_attivita
+SET storicizza = false
+WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
+
+DELETE FROM vendite.fatturazione_lotti_attivita
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);

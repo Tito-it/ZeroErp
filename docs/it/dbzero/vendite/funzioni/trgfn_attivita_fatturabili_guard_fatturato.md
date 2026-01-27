@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_attivita_fatturabili_guard_fatturato.md" %}
 # ⚙️ Funzione `trgfn_attivita_fatturabili_guard_fatturato`
 
 ```sql
@@ -12,8 +13,12 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()
  LANGUAGE plpgsql
 AS $function$
 BEGIN
+  -- =========================================================
+  -- Scopo:
+  --   Blocca UPDATE/DELETE se la riga e' gia' fatturata
+  --   (fattura_riga_id valorizzato).
+  -- =========================================================
   IF TG_OP = 'UPDATE' THEN
-    -- Una volta valorizzato fattura_riga_id (OLD non null), blocca qualsiasi UPDATE
     IF OLD.fattura_riga_id IS NOT NULL THEN
       PERFORM script.fn_log_and_raise_error(
         'database', TG_NAME, 'E_RIGA_GIA_FATTURATA',
@@ -21,8 +26,8 @@ BEGIN
         NULL::uuid, OLD.id::text
       );
     END IF;
+    RETURN NEW;
   ELSIF TG_OP = 'DELETE' THEN
-    -- Vietato cancellare se già agganciata ad una riga di fattura
     IF OLD.fattura_riga_id IS NOT NULL THEN
       PERFORM script.fn_log_and_raise_error(
         'database', TG_NAME, 'E_RIGA_GIA_FATTURATA',
@@ -30,10 +35,12 @@ BEGIN
         NULL::uuid, OLD.id::text
       );
     END IF;
+    RETURN OLD;
   END IF;
 
   RETURN NEW;
-END$function$
+END
+$function$
 ```
 
 ---

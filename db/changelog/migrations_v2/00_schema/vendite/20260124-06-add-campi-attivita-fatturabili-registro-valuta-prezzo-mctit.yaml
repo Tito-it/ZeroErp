@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260124-06-add-campi-attivita-fatturabili-registro-valuta-prezzo-mctit.yaml
+
+  - changeSet:
+      id: 20260124-06-add-campi-attivita-fatturabili-registro-valuta-prezzo
+      author: mctit
+      comment: "Aggiunge registro_id, valuta_id e prezzo_unitario su attivita_fatturabili"
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columns:
+              - column:
+                  name: registro_id
+                  type: bigint
+                  remarks: "FK -> vendite.registri_fatturazione.id"
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: valuta_id
+                  type: integer
+                  remarks: "FK -> config.valute.id"
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: prezzo_unitario
+                  type: numeric(20,8)
+                  remarks: "Prezzo unitario della riga (snapshot)."
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: registro_id
+            constraintName: fk_attivita_fatturabili_registro
+            referencedTableSchemaName: vendite
+            referencedTableName: registri_fatturazione
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: valuta_id
+            constraintName: fk_attivita_fatturabili_valuta
+            referencedTableSchemaName: config
+            referencedTableName: valute
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION

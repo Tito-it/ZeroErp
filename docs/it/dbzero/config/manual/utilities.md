@@ -6,6 +6,7 @@ La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si 
 
 ### 🎯 Scopo Principale
 
+(latest revire 24-01-2026)
 * **Definizione del settore**
   Tabella dove si definiscono i tipi di "utilities" a cui l’azienda è rivolta. Ogni record identifica un settore di business specifico: per esempio manifatturiero, gas o telecom.
 * **Componente standard e specifica**
@@ -60,3 +61,10 @@ La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si 
 ---
 
 > 🧠 **"Una tabella per orchestrare l’intera suite funzionale di Zero ERP, dalla base comune alle specializzazioni verticali."**
+
+---
+
+### 🔗 Registro di fatturazione (fallback)
+
+* `tipo_doc_fiscale_id` (opzionale) definisce il **tipo documento di default** per l’utility.
+* Usato come **fallback** quando la sorgente non specifica un tipo documento.

@@ -12,21 +12,59 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+DECLARE
+  v_utility_id config.utilities.id%TYPE;
 BEGIN
-  
+  -- =========================================================
+  -- Scopo:
+  --   Normalizza campi base e risolve tipo_doc_fiscale/valuta
+  --   per attivita_fatturabili, solo su INS/UPD dei campi rilevanti.
+  --
+  -- Regole:
+  --   - competenza_mese -> primo del mese
+  --   - sorgente_riga default 0 se sorgente valorizzata
+  --   - tipo_doc_fiscale_id: sorgente -> utility -> errore
+  --   - valuta_id: BA -> utility -> gestore
+  -- =========================================================
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+
   IF NEW.competenza_mese IS NOT NULL THEN
     NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
   END IF;
 
-  
   IF NEW.sorgente_tipo_id IS NOT NULL THEN
     IF NEW.sorgente_riga IS NULL THEN
       NEW.sorgente_riga := 0;
     END IF;
   END IF;
 
+  IF NEW.billing_account_id IS NOT NULL THEN
+    SELECT ba.utility_id
+      INTO v_utility_id
+      FROM anagrafiche.billing_account ba
+     WHERE ba.id = NEW.billing_account_id;
+  END IF;
+
+  IF NEW.tipo_doc_fiscale_id IS NULL THEN
+    NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
+      NEW.sorgente_tipo_id,
+      v_utility_id
+    );
+  END IF;
+
+  IF NEW.valuta_id IS NULL THEN
+    NEW.valuta_id := vendite.fn_get_valuta_id(
+      NEW.billing_account_id,
+      v_utility_id
+    );
+  END IF;
+
   RETURN NEW;
-END$function$
+END
+$function$
 ```
 
 ---
