@@ -586,8 +586,7 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 
 **Selezione e lock attivita_fatturabili**
 
-* `vendite.fn_select_attivita_fatturabili(...)` → seleziona righe eleggibili (filtri: competenza, stati, BA, utility, tipo documento, valuta).
-* `vendite.fn_lock_attivita_fatturabili(...)` → marca/lock delle righe selezionate per evitare doppie elaborazioni.
+* `vendite.fn_select_attivita_fatturabili(...)` → seleziona righe eleggibili e, se richiesto, esegue il lock in modo atomico.
 
 **Aggregazione e chiavi documento**
 

@@ -19,6 +19,7 @@
 - [fatturazione_lotti_attivita](tabelle/fatturazione_lotti_attivita.md) — (latest review 24-01-2026) `vendite.fatturazione_lotti_attivita` rappresenta il **batch di alimentazione** per la generazione di `attivita_fatturabili`. E` usato per processi automatici (consumi, conguagli, calcoli utilities) e per tracciabilita` in dashboard.
 - [fatturazione_lotti_fatture](tabelle/fatturazione_lotti_fatture.md) — (latest review 23-01-2026) `vendite.fatturazione_lotti_fatture` rappresenta la **relazione esplicita** tra lotto e fattura, consentendo di:
 - [fatturazione_lotti_log](tabelle/fatturazione_lotti_log.md) — (latest review 24-01-2026) `vendite.fatturazione_lotti_log` registra **warning** e **errori critici** relativi ai processi del lotto di fatturazione.
+- [fatturazione_pipeline](tabelle/fatturazione_pipeline.md) — (latest review 28-01-2026)   La tabella **`vendite.fatturazione_pipeline`** descrive la **pipeline configurabile** dei processi di fatturazione.   Ogni riga rappresenta uno **step** logico (coerente con gli stati lotto definiti in `config.stati_doc_fiscale`, limitati alla parte *lotti*), e definisce:
 - [fatture](tabelle/fatture.md) — (latest review 24-01-2026) `vendite.fatture` rappresenta la **testata del documento fiscale di vendita**. Gestisce **identità fiscale (registro/anno/serie/numero)**, **stato e tipo documento**, **intestatari economici** (BA, emittente, reseller), **valuta e pagamento**, **totali** e **metadati**. È il **punto di aggregazione** delle righe (`vendite.fatture_righe`) e dei riepiloghi IVA.
 - [fatture_indirizzi](tabelle/fatture_indirizzi.md) — `vendite.fatture_indirizzi` **semplifica la gestione degli indirizzi di fattura** e garantisce la **ristampa conforme** nel tempo tramite **snapshot** JSON dell’indirizzo al momento dell’emissione.
 - [fatture_rettifiche](tabelle/fatture_rettifiche.md) — `vendite.fatture_rettifiche` modella il **legame N:N** fra **documenti rettificanti** (es. note di credito/debito) e **documenti rettificati** (fatture originarie).
@@ -54,6 +55,8 @@
 - [fn_get_vendite_note](funzioni/fn_get_vendite_note.md)
 - [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md)
 - [fn_resolve_termini_pagamento](funzioni/fn_resolve_termini_pagamento.md)
+- [fn_select_attivita_fatturabili](funzioni/fn_select_attivita_fatturabili.md) — (latest review 27-01-2026) La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe **eleggibili** per la fatturazione e, se richiesto, le **locka** in modo atomico.
+- [fn_set_fatturazione_lotto_stato](funzioni/fn_set_fatturazione_lotto_stato.md) — (latest review 27-01-2026)   La funzione **`vendite.fn_set_fatturazione_lotto_stato()`** aggiorna lo **stato operativo** del lotto di fatturazione, applicando regole minime di transizione.
 - [trgfn_attivita_fatturabili_guard_ba_coerenza](funzioni/trgfn_attivita_fatturabili_guard_ba_coerenza.md)
 - [trgfn_attivita_fatturabili_guard_fatturato](funzioni/trgfn_attivita_fatturabili_guard_fatturato.md) — (latest review 26-01-2026) La funzione **`vendite.trgfn_attivita_fatturabili_guard_fatturato()`** blocca modifiche o cancellazioni di righe di `vendite.attivita_fatturabili` che risultano gia` agganciate a una riga di fattura.
 - [trgfn_attivita_fatturabili_guard_fonte](funzioni/trgfn_attivita_fatturabili_guard_fonte.md)

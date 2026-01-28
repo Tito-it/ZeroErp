@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260128-01-create-fatturazione-pipeline-mctit.yaml
+
+  - changeSet:
+      id: 20260128-01-create-fatturazione-pipeline
+      author: mctit
+      comment: "Pipeline configurabile per processi e rollback della fatturazione"
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: fatturazione_pipeline
+            remarks: "Configurazione pipeline fatturazione per step, processi e rollback."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_fatturazione_pipeline
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione step pipeline ."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: stato_doc_fiscale_id
+                  type: bigint
+                  remarks: "FK -> config.stati_doc_fiscale.id (solo stati applicabili ai lotti)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: processi
+                  type: jsonb
+                  defaultValueComputed: "'[]'::jsonb"
+                  remarks: "Lista processi step (payload configurabile)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: rollback
+                  type: jsonb
+                  defaultValueComputed: "'[]'::jsonb"
+                  remarks: "Lista operazioni di rollback/cleanup per lo step."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Step attivo/inattivo."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: fatturazione_pipeline
+            columnNames: stato_doc_fiscale_id
+            constraintName: uq_fatturazione_pipeline_stato_doc_fiscale_id
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatturazione_pipeline
+            baseColumnNames: stato_doc_fiscale_id
+            constraintName: fk_fatturazione_pipeline_stato_doc_fiscale
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_fiscale
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
