@@ -292,6 +292,10 @@ Questo richiede:
 Per questo si introduce un **processo di alimentazione** separato dal lotto fatture,
 ma collegabile in dashboard.
 
+> Nota: le validazioni/normalizzazioni su `attivita_fatturabili` sono gestite da
+> trigger dedicati (es. `trgfn_attivita_fatturabili_guard_ba_coerenza`,
+> `trgfn_attivita_fatturabili_guard_fonte`, `trgfn_attivita_norm_competenza_mese`).
+
 ---
 
 ### 1.2) Lotto alimentazione + attivita_consumi (design)
@@ -300,6 +304,8 @@ ma collegabile in dashboard.
 * batch di generazione `attivita_fatturabili` con parametri di calcolo (competenza, utility, BA);
 * stato lotto (IN_ESECUZIONE | COMPLETATO | ERRORE);
 * riferimento per dashboard e audit.
+
+> Promemoria: rinominare `vendite.fatturazione_lotti_attivita` in `vendite.attivita_fatturabili_lotti`.
 
 **Testata consumi** (`vendite.attivita_consumi`):
 * totalizzatori per BA/periodo (consumo_totale, uom, periodo);

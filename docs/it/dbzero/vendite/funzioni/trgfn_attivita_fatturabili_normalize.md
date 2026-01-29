@@ -17,13 +17,14 @@ DECLARE
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Normalizza campi base e risolve tipo_doc_fiscale/valuta
-  --   per attivita_fatturabili, solo su INS/UPD dei campi rilevanti.
+  --   Normalizza campi base e risolve tipo_doc_fiscale/valuta.
   --
   -- Regole:
-  --   - competenza_mese -> primo del mese
+  --   - competenza_mese sempre valorizzata e al primo del mese
+  --   - se NULL -> mese di posticipa_al o data_attivita
+  --   - competenza_dal/al: se NULL, default su data_attivita
   --   - sorgente_riga default 0 se sorgente valorizzata
-  --   - tipo_doc_fiscale_id: da sorgente (obbligatorio)
+  --   - tipo_doc_fiscale_id: da sorgente
   --   - valuta_id: BA -> utility -> gestore
   -- =========================================================
 
@@ -31,8 +32,18 @@ BEGIN
     RETURN OLD;
   END IF;
 
-  IF NEW.competenza_mese IS NOT NULL THEN
+  IF NEW.competenza_mese IS NULL THEN
+    NEW.competenza_mese := date_trunc('month', COALESCE(NEW.posticipa_al, NEW.data_attivita))::date;
+  ELSE
     NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
+  END IF;
+
+  IF NEW.competenza_dal IS NULL THEN
+    NEW.competenza_dal := NEW.data_attivita;
+  END IF;
+
+  IF NEW.competenza_al IS NULL THEN
+    NEW.competenza_al := NEW.competenza_dal;
   END IF;
 
   IF NEW.sorgente_tipo_id IS NOT NULL THEN

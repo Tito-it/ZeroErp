@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_attivita_fatturabili_guard_fonte.md" %}
 # ⚙️ Funzione `trgfn_attivita_fatturabili_guard_fonte`
 
 ```sql
@@ -11,10 +12,17 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-DECLARE v_fonte TEXT;
+DECLARE
+  v_fonte text;
 BEGIN
-
-
+  -- =========================================================
+  -- Scopo:
+  --   Validazioni su fonte_quantita e coerenza competenze.
+  --
+  -- Regole:
+  --   - competenza_mese alternativo a competenza_dal/al
+  --   - se competenza_dal/al presenti, devono essere entrambi valorizzati
+  -- =========================================================
 
   SELECT r.fonte_quantita
     INTO v_fonte
@@ -22,21 +30,19 @@ BEGIN
   WHERE r.prodotto_id = NEW.articolo_id;
 
   IF v_fonte IS NULL THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database',                              
-        'attivita_fatturabili',                 
-        'E_REGOLA_FATTURAZIONE_MANCANTE',       
-        jsonb_build_object(
-          'context', 'inserimento/aggiornamento attivita_fatturabili',
-          'articolo_id', NEW.articolo_id
-        ),
-        NULL::uuid,
-        NEW.articolo_id
-      );    
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'attivita_fatturabili',
+      'E_REGOLA_FATTURAZIONE_MANCANTE',
+      jsonb_build_object(
+        'context', 'inserimento/aggiornamento attivita_fatturabili',
+        'articolo_id', NEW.articolo_id
+      ),
+      NULL::uuid,
+      NEW.articolo_id
+    );
   END IF;
 
-  
-  
   IF v_fonte NOT IN ('TIMESHEET','MANUALE','FISSA') THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
@@ -47,12 +53,11 @@ BEGIN
         'fonte_quantita', v_fonte,
         'articolo_id', NEW.articolo_id
       ),
-     NULL::uuid,
-     v_fonte, NEW.articolo_id
+      NULL::uuid,
+      v_fonte, NEW.articolo_id
     );
   END IF;
 
-  
   IF NEW.competenza_mese IS NOT NULL
     AND date_trunc('month', NEW.data_attivita)::date > NEW.competenza_mese THEN
     PERFORM script.fn_log_and_raise_error(
@@ -64,14 +69,67 @@ BEGIN
         'data_attivita', NEW.data_attivita,
         'competenza_mese', NEW.competenza_mese
       ),
-     NULL::uuid,
-    NEW.data_attivita, NEW.competenza_mese
+      NULL::uuid,
+      NEW.data_attivita, NEW.competenza_mese
     );
   END IF;
 
-  
-  IF NEW.competenza_data IS NOT NULL
-    AND  NEW.data_attivita > NEW.competenza_data THEN
+  -- competenza_mese non compatibile con competenza_dal/al
+  IF NEW.competenza_mese IS NOT NULL
+    AND (NEW.competenza_dal IS NOT NULL OR NEW.competenza_al IS NOT NULL) THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'attivita_fatturabili',
+      'E_COMPETENZA',
+      jsonb_build_object(
+        'context','validazione competenza',
+        'competenza_mese', NEW.competenza_mese,
+        'competenza_dal', NEW.competenza_dal,
+        'competenza_al', NEW.competenza_al
+      ),
+      NULL::uuid,
+      NEW.competenza_mese, NEW.competenza_dal, NEW.competenza_al
+    );
+  END IF;
+
+  -- se uno dei due e` valorizzato, devono esserlo entrambi
+  IF (NEW.competenza_dal IS NULL) <> (NEW.competenza_al IS NULL) THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'attivita_fatturabili',
+      'E_COMPETENZA',
+      jsonb_build_object(
+        'context','validazione competenza',
+        'competenza_dal', NEW.competenza_dal,
+        'competenza_al', NEW.competenza_al
+      ),
+      NULL::uuid,
+      NEW.competenza_dal, NEW.competenza_al
+    );
+  END IF;
+
+  -- coerenza intervallo
+  IF NEW.competenza_dal IS NOT NULL
+    AND NEW.competenza_al IS NOT NULL
+    AND NEW.competenza_dal > NEW.competenza_al THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'attivita_fatturabili',
+      'E_COMPETENZA',
+      jsonb_build_object(
+        'context','validazione competenza',
+        'competenza_dal', NEW.competenza_dal,
+        'competenza_al', NEW.competenza_al
+      ),
+      NULL::uuid,
+      NEW.competenza_dal, NEW.competenza_al
+    );
+  END IF;
+
+  -- data_attivita deve rientrare nell'intervallo
+  IF NEW.competenza_dal IS NOT NULL
+    AND NEW.competenza_al IS NOT NULL
+    AND (NEW.data_attivita < NEW.competenza_dal OR NEW.data_attivita > NEW.competenza_al) THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
       'attivita_fatturabili',
@@ -79,33 +137,17 @@ BEGIN
       jsonb_build_object(
         'context','validazione competenza',
         'data_attivita', NEW.data_attivita,
-        'competenza_data', NEW.competenza_data
+        'competenza_dal', NEW.competenza_dal,
+        'competenza_al', NEW.competenza_al
       ),
-     NULL::uuid,
-    NEW.data_attivita, NEW.competenza_data
-    );
-  END IF;
-
-  
-  IF NEW.competenza_data IS NOT NULL 
-    AND  NEW.competenza_mese IS NOT NULL
-  THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database',
-      'attivita_fatturabili',
-      'E_COMPETENZA',
-      jsonb_build_object(
-        'context','validazione competenza',
-        'competenza mese', NEW.competenza_mese,
-        'competenza_data', NEW.competenza_data
-      ),
-     NULL::uuid,
-    NEW.competenza_mese, NEW.competenza_data
+      NULL::uuid,
+      NEW.data_attivita, NEW.competenza_dal, NEW.competenza_al
     );
   END IF;
 
   RETURN NEW;
-END$function$
+END
+$function$
 ```
 
 ---

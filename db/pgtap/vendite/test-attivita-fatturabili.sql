@@ -26,8 +26,9 @@
 -- 19) Default factor_to_base = 1
 -- 20) Default sorgente_riga = 0
 -- 21) Normalizzazione competenza_mese al primo del mese
--- 22) Check competenza_data >= data_attivita
--- 23) NOT NULL quantita
+-- 22) Check competenza_dal/competenza_al includono data_attivita
+-- 23) Competenza_mese derivata da posticipa_al se NULL
+-- 24) NOT NULL quantita
 -- 24) FK su articolo_id
 -- 25) Inserimento riga con sorgente_tipo_id e sorgente_uid/sorgente_riga validi
 -- 26) Unicita parziale su (sorgente_tipo_id, sorgente_uid)
@@ -43,7 +44,7 @@
 -- 36) Nota presente in partizione vendite.note_attivita_fatturabili
 -- ------------------------------------------------------------
 
-SELECT plan(36);
+SELECT plan(37);
 
 -- ============================================================
 -- 0) Costanti e riferimenti
@@ -372,7 +373,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 3) Check competenza_data >= data_attivita
+-- 3) Check competenza_dal/competenza_al includono data_attivita
 -- ============================================================
 SELECT throws_ok(
     $$
@@ -382,7 +383,8 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
-        competenza_data,
+        competenza_dal,
+        competenza_al,
         tipo_doc_fiscale_id,
         valuta_id
     )
@@ -392,6 +394,7 @@ SELECT throws_ok(
         r.billing_account_id,
         date '2025-02-01',
         1,
+        date '2025-01-01',
         date '2025-01-31',
         r.tipo_doc_fiscale_id,
         r.valuta_id
@@ -399,7 +402,45 @@ SELECT throws_ok(
     $$,
     '23514',
     NULL,
-    'Check competenza_data >= data_attivita'
+    'Check competenza_dal/competenza_al includono data_attivita'
+);
+
+-- ============================================================
+-- 3.1) Competenza_mese derivata da posticipa_al
+-- ============================================================
+CREATE TEMP TABLE tmp_attivita_posticipo AS
+WITH ins AS (
+    INSERT INTO vendite.attivita_fatturabili (
+        articolo_id,
+        istanza_utility_id,
+        billing_account_id,
+        data_attivita,
+        quantita,
+        posticipa_al,
+        tipo_doc_fiscale_id,
+        valuta_id,
+        meta
+    )
+    SELECT
+        r.articolo_id,
+        r.istanza_utility_id,
+        r.billing_account_id,
+        date '2025-01-10',
+        1,
+        date '2025-03-15',
+        r.tipo_doc_fiscale_id,
+        r.valuta_id,
+        jsonb_build_object('test_scope', k.test_scope, 'case', 'posticipo_competenza')
+    FROM tmp_refs_af r,
+         tmp_costanti_af k
+    RETURNING id, competenza_mese
+)
+SELECT * FROM ins;
+
+SELECT is(
+    (SELECT competenza_mese FROM tmp_attivita_posticipo),
+    date '2025-03-01',
+    'Competenza_mese derivata da posticipa_al'
 );
 
 -- ============================================================

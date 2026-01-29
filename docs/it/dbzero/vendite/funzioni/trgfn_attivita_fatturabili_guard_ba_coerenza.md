@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_attivita_fatturabili_guard_ba_coerenza.md" %}
 # ⚙️ Funzione `trgfn_attivita_fatturabili_guard_ba_coerenza`
 
 ```sql

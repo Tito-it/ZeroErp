@@ -1,0 +1,134 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260129-02-create-fn-fatture-log-sync-mctit.yaml
+
+  - changeSet:
+      id: 20260129-02-create-fn-fatture-log-sync
+      author: mctit
+      comment: "Funzioni di sync esito log fatture e lotto"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_sync_fattura_critical(
+                p_fattura_id vendite.fatture.id%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_has_critical boolean;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Aggiorna fatture.critical in base ai log attivi.
+                --
+                -- Regole:
+                --   - C (critical) ha priorita` su W (warning)
+                --   - disabilitato = true esclude il log
+                -- =========================================================
+
+                IF p_fattura_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_fattura_critical', 'E_GENERICO',
+                    jsonb_build_object('detail','fattura_id obbligatorio'),
+                    NULL::uuid, 'fattura_id obbligatorio'
+                  );
+                END IF;
+
+                SELECT EXISTS (
+                  SELECT 1
+                  FROM vendite.fatture_log
+                  WHERE fattura_id = p_fattura_id
+                    AND disabilitato IS FALSE
+                    AND status = 'C'
+                )
+                INTO v_has_critical;
+
+                UPDATE vendite.fatture
+                   SET critical = COALESCE(v_has_critical, false),
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE id = p_fattura_id;
+              END
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_sync_fattura_critical(
+                vendite.fatture.id%TYPE
+              ) IS 'Aggiorna fatture.critical in base ai log attivi (C/W).';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_log_lotto_esito_fatture(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_has_critical boolean;
+                v_has_warning boolean;
+                v_status character;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Registra un log di esito lotto dedotto dai log fatture.
+                --
+                -- Regole:
+                --   - C ha priorita` su W
+                --   - se nessun log attivo: status I
+                -- =========================================================
+
+                IF p_lotto_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_log_lotto_esito_fatture', 'E_GENERICO',
+                    jsonb_build_object('detail','lotto_id obbligatorio'),
+                    NULL::uuid, 'lotto_id obbligatorio'
+                  );
+                END IF;
+
+                SELECT EXISTS (
+                  SELECT 1
+                  FROM vendite.fatturazione_lotti_fatture lf
+                  JOIN vendite.fatture_log fl
+                    ON fl.fattura_id = lf.fattura_id
+                  WHERE lf.lotto_id = p_lotto_id
+                    AND fl.disabilitato IS FALSE
+                    AND fl.status = 'C'
+                )
+                INTO v_has_critical;
+
+                SELECT EXISTS (
+                  SELECT 1
+                  FROM vendite.fatturazione_lotti_fatture lf
+                  JOIN vendite.fatture_log fl
+                    ON fl.fattura_id = lf.fattura_id
+                  WHERE lf.lotto_id = p_lotto_id
+                    AND fl.disabilitato IS FALSE
+                    AND fl.status = 'W'
+                )
+                INTO v_has_warning;
+
+                v_status := CASE
+                              WHEN v_has_critical THEN 'C'
+                              WHEN v_has_warning THEN 'W'
+                              ELSE 'I'
+                            END;
+
+                PERFORM vendite.fn_log_pipeline_fase(
+                  p_lotto_id,
+                  NULL,
+                  'Esito fatture lotto',
+                  v_status,
+                  NULL,
+                  jsonb_build_object('source','fatture_log')
+                );
+              END
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_log_lotto_esito_fatture(
+                vendite.fatturazione_lotti.id%TYPE
+              ) IS 'Registra log lotto con severita` dedotta dai log fatture.';

@@ -28,7 +28,7 @@ La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe
   * sospese,
   * non approvate,
   * lockate.
-* Rispetta `posticipa_al` e le regole di competenza (`competenza_mese` / `competenza_data`).
+* Rispetta `posticipa_al` e le regole di competenza (`competenza_mese` / `competenza_al`).
 * Con `p_lock = true` usa `FOR UPDATE SKIP LOCKED` e aggiorna
   `lock_in_fatturazione` + `lock_batch_id`.
 * `p_lock = false` equivale a una **dry-run**: nessuna scrittura, solo selezione.

@@ -62,7 +62,7 @@ BEGIN
     ' AND COALESCE(a.lock_in_fatturazione, false) IS FALSE' ||
     ' AND (a.posticipa_al IS NULL OR a.posticipa_al <= ' || quote_literal(v_data_fatturazione) || ')' ||
     ' AND ((a.competenza_mese IS NOT NULL AND a.competenza_mese <= ' || quote_literal(v_competenza) || ')' ||
-    '      OR (a.competenza_mese IS NULL AND (a.competenza_data IS NULL OR a.competenza_data <= ' || quote_literal(v_data_fatturazione) || ')))' ||
+    '      OR (a.competenza_mese IS NULL AND (a.competenza_al IS NULL OR a.competenza_al <= ' || quote_literal(v_data_fatturazione) || ')))' ||
     ' AND a.tipo_doc_fiscale_id = ' || quote_literal(p_tipo_doc_fiscale_id);
 
   IF p_billing_account_id IS NOT NULL THEN
@@ -93,7 +93,7 @@ BEGIN
       '    FROM vendite.attivita_fatturabili a' ||
       -- Fix utilities_id è su billing_account-- 
       --'    JOIN anagrafiche.istanze_utilities iu ON iu.id = a.istanza_utility_id' ||
-      '    JOIN anagrafiche.billing_accounts ba ON ba.id = a.billing_account_id' ||
+      '    JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' ||
            v_where ||
       '   ORDER BY a.data_attivita, a.id' ||
            v_limit ||
@@ -116,7 +116,7 @@ BEGIN
       '    FROM vendite.attivita_fatturabili a' ||
       -- Fix utilities_id è su billing_account-- 
       --'    JOIN anagrafiche.istanze_utilities iu ON iu.id = a.istanza_utility_id' ||
-      '    JOIN anagrafiche.billing_accounts ba ON ba.id = a.billing_account_id' ||
+      '    JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' ||
            v_where ||
       '   ORDER BY a.data_attivita, a.id' ||
            v_limit ||

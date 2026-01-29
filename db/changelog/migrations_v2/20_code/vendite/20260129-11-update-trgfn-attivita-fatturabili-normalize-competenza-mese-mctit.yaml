@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260129-11-update-trgfn-attivita-fatturabili-normalize-competenza-mese-mctit.yaml
+
+  - changeSet:
+      id: 20260129-11-update-trgfn-attivita-fatturabili-normalize-competenza-mese
+      author: mctit
+      comment: "Normalizza competenza_mese obbligatoria (fallback da posticipa_al/data_attivita)"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_utility_id config.utilities.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Normalizza campi base e risolve tipo_doc_fiscale/valuta.
+                --
+                -- Regole:
+                --   - competenza_mese sempre valorizzata e al primo del mese
+                --   - se NULL -> mese di posticipa_al o data_attivita
+                --   - competenza_dal/al: se NULL, default su data_attivita
+                --   - sorgente_riga default 0 se sorgente valorizzata
+                --   - tipo_doc_fiscale_id: da sorgente
+                --   - valuta_id: BA -> utility -> gestore
+                -- =========================================================
+
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                IF NEW.competenza_mese IS NULL THEN
+                  NEW.competenza_mese := date_trunc('month', COALESCE(NEW.posticipa_al, NEW.data_attivita))::date;
+                ELSE
+                  NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
+                END IF;
+
+                IF NEW.competenza_dal IS NULL THEN
+                  NEW.competenza_dal := NEW.data_attivita;
+                END IF;
+
+                IF NEW.competenza_al IS NULL THEN
+                  NEW.competenza_al := NEW.competenza_dal;
+                END IF;
+
+                IF NEW.sorgente_tipo_id IS NOT NULL THEN
+                  IF NEW.sorgente_riga IS NULL THEN
+                    NEW.sorgente_riga := 0;
+                  END IF;
+                END IF;
+
+                IF NEW.billing_account_id IS NOT NULL THEN
+                  SELECT ba.utility_id
+                    INTO v_utility_id
+                    FROM anagrafiche.billing_account ba
+                   WHERE ba.id = NEW.billing_account_id;
+                END IF;
+
+                IF NEW.tipo_doc_fiscale_id IS NULL THEN
+                  NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
+                    NEW.sorgente_tipo_id
+                  );
+                END IF;
+
+                IF NEW.valuta_id IS NULL THEN
+                  NEW.valuta_id := vendite.fn_get_valuta_id(
+                    NEW.billing_account_id,
+                    v_utility_id
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $$;
+
+              COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
+                IS 'Normalizza competenze/sorgente; risolve tipo_doc_fiscale_id e valuta_id.';
+
+              DROP TRIGGER IF EXISTS trg_attivita_fatturabili_normalize_ins_upd
+                ON vendite.attivita_fatturabili;
+
+              CREATE TRIGGER trg_attivita_fatturabili_normalize_ins_upd
+              BEFORE INSERT OR UPDATE OF
+                competenza_mese,
+                competenza_dal,
+                competenza_al,
+                posticipa_al,
+                sorgente_tipo_id,
+                sorgente_riga,
+                billing_account_id,
+                tipo_doc_fiscale_id,
+                valuta_id
+              ON vendite.attivita_fatturabili
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_normalize();
+
+              COMMENT ON TRIGGER trg_attivita_fatturabili_normalize_ins_upd
+                ON vendite.attivita_fatturabili
+                IS 'Normalizzazione attivita_fatturabili (competenza/tipo_doc/valuta).';

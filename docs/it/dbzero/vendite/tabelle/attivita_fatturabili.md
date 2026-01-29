@@ -10,8 +10,7 @@
 | istanza_utility_id | bigint | NO |  |
 | data_attivita | date | NO |  |
 | quantita | numeric | NO |  |
-| competenza_mese | date | YES |  |
-| competenza_data | date | YES |  |
+| competenza_mese | date | NO |  |
 | approvato | boolean | YES | false |
 | fatturato | boolean | YES | false |
 | meta | jsonb | YES | '{}'::jsonb |
@@ -40,11 +39,13 @@
 | attivita_consumi_id | bigint | YES |  |
 | uid | uuid | NO | uuidv7() |
 | tipo_doc_fiscale_id | bigint | YES |  |
+| competenza_dal | date | NO |  |
+| competenza_al | date | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_attivita_competenza_data_logica |  |
+| CHECK | chk_attivita_competenza_dal_al |  |
 | CHECK | chk_attivita_competenza_mese_primo |  |
 | FOREIGN KEY | fk_attivita_fatturabili_articoli | articolo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_attivita_consumi | attivita_consumi_id |
