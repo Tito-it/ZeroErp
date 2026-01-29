@@ -15,12 +15,15 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| fase | text | YES |  |
+| stato_doc_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_fatturazione_lotti_log_status |  |
 | FOREIGN KEY | fk_fatturazione_lotti_log_lotto | lotto_id |
+| FOREIGN KEY | fk_fatturazione_lotti_log_stato_doc_fiscale | stato_doc_fiscale_id |
 | PRIMARY KEY | pk_fatturazione_lotti_log | id |
 
 ## 📑 Indici

@@ -70,7 +70,7 @@ BEGIN
   END IF;
 
   IF p_utility_id IS NOT NULL THEN
-    v_where := v_where || ' AND iu.utility_id = ' || quote_literal(p_utility_id);
+    v_where := v_where || ' AND ba.utility_id = ' || quote_literal(p_utility_id);
   END IF;
 
   IF p_valuta_id IS NOT NULL THEN
@@ -91,7 +91,9 @@ BEGIN
       'WITH candidati AS (' ||
       '  SELECT a.id' ||
       '    FROM vendite.attivita_fatturabili a' ||
-      '    JOIN anagrafiche.istanze_utilities iu ON iu.id = a.istanza_utility_id' ||
+      -- Fix utilities_id è su billing_account-- 
+      --'    JOIN anagrafiche.istanze_utilities iu ON iu.id = a.istanza_utility_id' ||
+      '    JOIN anagrafiche.billing_accounts ba ON ba.id = a.billing_account_id' ||
            v_where ||
       '   ORDER BY a.data_attivita, a.id' ||
            v_limit ||
@@ -112,7 +114,9 @@ BEGIN
       'WITH candidati AS (' ||
       '  SELECT a.id' ||
       '    FROM vendite.attivita_fatturabili a' ||
-      '    JOIN anagrafiche.istanze_utilities iu ON iu.id = a.istanza_utility_id' ||
+      -- Fix utilities_id è su billing_account-- 
+      --'    JOIN anagrafiche.istanze_utilities iu ON iu.id = a.istanza_utility_id' ||
+      '    JOIN anagrafiche.billing_accounts ba ON ba.id = a.billing_account_id' ||
            v_where ||
       '   ORDER BY a.data_attivita, a.id' ||
            v_limit ||

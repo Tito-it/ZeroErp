@@ -586,7 +586,7 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 
 **Selezione e lock attivita_fatturabili**
 
-* `vendite.fn_select_attivita_fatturabili(...)` → seleziona righe eleggibili e, se richiesto, esegue il lock in modo atomico.
+* ✅`vendite.fn_select_attivita_fatturabili(...)` → seleziona righe eleggibili e, se richiesto, esegue il lock in modo atomico.
 
 **Aggregazione e chiavi documento**
 
@@ -613,6 +613,18 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 
 * `vendite.fn_numera_fatture_lotto(...)` → assegna progressivi documento (registri).
 * `vendite.fn_prepare_sdi_payload(...)` → prepara invio SDI (placeholder).
+
+**Pipeline (orchestrazione lotto)**
+
+*✅ `vendite.pr_run_lotto_pipeline(...)` → esegue la pipeline configurabile leggendo `vendite.fatturazione_pipeline`.
+  * imposta `stato_lotto = IN_ESECUZIONE` all’avvio e `COMPLETATO` a fine job.
+  * per ogni step:
+    * aggiorna `stato_doc_fiscale_id` del lotto,
+    * scrive un log `status=I` con `fase` su `fatturazione_lotti_log`,
+    * esegue i task definiti in `processi`.
+  * in caso di errore: `stato_lotto = ERRORE` + log errore.
+* ✅`vendite.fn_execute_pipeline_step(...)` → esegue i task di uno step (lettura `processi`/`rollback`).
+* ✅ `vendite.fn_log_pipeline_fase(...)` → inserisce log `I/W/C` con fase e stato lotto.
 
 ---
 

@@ -10,7 +10,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 24-01-2026)
+(latest review 28-01-2026)
 `vendite.fatturazione_lotti_log` registra **warning** e **errori critici**
 relativi ai processi del lotto di fatturazione.
 
@@ -20,15 +20,18 @@ relativi ai processi del lotto di fatturazione.
 
 * **Contesto**: `lotto_id`.
 * **Evento**: `data_ora`, `messaggio`.
-* **Severita`**: `status` (W=warning, C=critical).
+* **Severita`**: `status` (I=info, W=warning, C=critical).
 * **Gestione**: `disabilitato` (TRUE se ignorato dall’operatore).
 * **Governance**: `meta`, audit.
+* **Pipeline**: `fase` (descrizione step) e `stato_doc_fiscale_id`.
 
 ---
 
 ### ✅ Note operative
 
 * Tabella dedicata al **lotto fatturazione**, distinta da `fatture_log`.
+* I record con `status = I` possono essere usati per mostrare l’avanzamento
+  della pipeline (es. “caricamento lista”, “generazione righe”).
 
 ---
 

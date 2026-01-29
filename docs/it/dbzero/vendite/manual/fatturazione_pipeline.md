@@ -49,6 +49,48 @@ tecnici. Esempio (schema indicativo):
 
 ---
 
+### 🧪 Esempi
+
+**Pipeline per stato CALCOLO (esempio base)**
+
+```json
+[
+  { "task": "select_attivita", "fase": "Caricamento lista attivita", "params": {"lock": true} },
+  { "task": "validate_attivita", "fase": "Validazioni preliminari", "params": {} }
+]
+```
+
+**Override funzione (opzionale)**
+
+```json
+[
+  {
+    "task": "select_attivita",
+    "fase": "Caricamento lista attivita",
+    "params": {"lock": true, "fn": "vendite.fn_select_attivita_fatturabili"}
+  }
+]
+```
+
+**Rollback per stato CALCOLO**
+
+```json
+[
+  { "task": "unlock_attivita", "fase": "Sblocco righe", "params": {} }
+]
+```
+
+**Pipeline per stato BOZZA**
+
+```json
+[
+  { "task": "generate_righe", "fase": "Generazione righe fattura", "params": {"mode": "standard"} },
+  { "task": "apply_note", "fase": "Aggancio note su righe", "params": {} }
+]
+```
+
+---
+
 ### ✅ Note operative
 
 * La pipeline governa il **workflow dei lotti** (non la numerazione o i dettagli
@@ -56,6 +98,10 @@ tecnici. Esempio (schema indicativo):
 * L’orchestratore legge questa tabella per decidere **quali processi** eseguire
   e come gestire il **rollback**.
 * I singoli processi devono essere **idempotenti** o progettati per gestire retry.
+* I task eseguiti sono gestiti da `vendite.fn_execute_pipeline_step` tramite
+  whitelist (es. `select_attivita`, `noop`, `log_only`).
+
+* **Regola di sicurezza: i task devono usare **solo `lotto_id`** come input; i parametri operativi devono essere recuperati dal lotto (o da tabelle collegate).**
 
 ---
 

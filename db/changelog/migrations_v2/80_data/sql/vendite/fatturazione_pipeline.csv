@@ -1,0 +1,2 @@
+id,descrizione,stato_doc_fiscale_id,processi,rollback,attivo,meta,data_insert,user_insert,data_update,user_update
+1,Pipeline base lotti (DRAFT),1,"[{""task"":""select_attivita"",""fase"":""Caricamento lista attivita"",""params"":{""lock"":true}}]","[]",t,{},2026-01-28 10:00:00+01,titodb,2026-01-28 10:00:00+01,titodb
