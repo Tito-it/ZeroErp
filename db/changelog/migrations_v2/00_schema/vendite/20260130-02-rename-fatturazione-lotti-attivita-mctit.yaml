@@ -9,6 +9,8 @@ databaseChangeLog:
   - changeSet:
       id: 20260130-02-rename-fatturazione-lotti-attivita
       author: mctit
+      validCheckSum:
+        - ANY
       comment: "Rinomina fatturazione_lotti_attivita in attivita_fatturabili_lotti"
       changes:
         - sql:
@@ -59,6 +61,7 @@ databaseChangeLog:
                 RENAME CONSTRAINT fk_attivita_fatturabili_log_lotto_attivita TO fk_attivita_fatturabili_log_attivita_lotto;
 
               -- Rinominare trigger per coerenza (opzionale, stessa funzione)
+              /*
               ALTER TRIGGER trg_fatturazione_lotti_attivita_a10_gen_codice_ins_upd
                 ON vendite.attivita_fatturabili_lotti
                 RENAME TO trg_attivita_fatturabili_lotti_a10_gen_codice_ins_upd;
@@ -78,3 +81,16 @@ databaseChangeLog:
               ALTER TRIGGER trg_fatturazione_lotti_attivita_z90_storico_upd_dlt
                 ON vendite.attivita_fatturabili_lotti
                 RENAME TO trg_attivita_fatturabili_lotti_z90_storico_upd_dlt;
+              */
+  - changeSet:
+      id: 20260130-02-01-rename-fatturazione-lotti-attivita
+      author: mctit
+      comment: "Rinomina fatturazione_lotti_attivita in attivita_fatturabili_lotti"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS 
+              trg_sorgenti_a10_fatturazione_lotti_attivita_block_deact_upd 
+              ON config.sorgenti;
