@@ -1,4 +1,4 @@
-## 📘 Documentazione Concettuale – Tabella `vendite.fatturazione_lotti_attivita`
+## 📘 Documentazione Concettuale – Tabella `vendite.attivita_fatturabili_lotti`
 
 > 👀 **Vedi anche**
 >
@@ -14,7 +14,7 @@
 ### 🎯 Scopo Principale
 
 (latest review 24-01-2026)
-`vendite.fatturazione_lotti_attivita` rappresenta il **batch di alimentazione**
+`vendite.attivita_fatturabili_lotti` rappresenta il **batch di alimentazione**
 per la generazione di `attivita_fatturabili`. E` usato per processi automatici
 (consumi, conguagli, calcoli utilities) e per tracciabilita` in dashboard.
 

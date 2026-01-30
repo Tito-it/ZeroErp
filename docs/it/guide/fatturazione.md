@@ -110,7 +110,7 @@ La dashboard “Input” deve quindi gestire due flussi:
    log dedicato e successiva produzione di righe `attivita_fatturabili`.
 
 Il processo di alimentazione avviene **prima** del lotto fatture e mantiene tracciabilita`
-tramite `fatturazione_lotti_attivita`.
+tramite `attivita_fatturabili_lotti`.
 
 ---
 
@@ -252,6 +252,12 @@ flowchart TD
 
 ## 📎 Appendice – Lotto, raggruppamenti e stati (design operativo)
 
+> **Nota importante (evidenza):**
+> `area_geografica_id` restera` **solo** un filtro geografico.
+> In futuro i raggruppamenti multi‑criterio (comuni + tipologia utenza + contratti, ecc.)
+> saranno gestiti con un **nuovo livello** (`gruppo_fatturazione_id`), per evitare
+> ambiguita` semantiche e mantenere la compatibilita` con l’attuale modello.
+
 ### 1) Lotto di fatturazione
 
 Il **lotto** diventa l’elemento centrale per:
@@ -300,12 +306,10 @@ ma collegabile in dashboard.
 
 ### 1.2) Lotto alimentazione + attivita_consumi (design)
 
-**Lotto alimentazione** (`vendite.fatturazione_lotti_attivita`):
+**Lotto alimentazione** (`vendite.attivita_fatturabili_lotti`):
 * batch di generazione `attivita_fatturabili` con parametri di calcolo (competenza, utility, BA);
 * stato lotto (IN_ESECUZIONE | COMPLETATO | ERRORE);
 * riferimento per dashboard e audit.
-
-> Promemoria: rinominare `vendite.fatturazione_lotti_attivita` in `vendite.attivita_fatturabili_lotti`.
 
 **Testata consumi** (`vendite.attivita_consumi`):
 * totalizzatori per BA/periodo (consumo_totale, uom, periodo);
@@ -314,6 +318,19 @@ ma collegabile in dashboard.
 
 **Log dedicato** (`vendite.attivita_fatturabili_log`):
 * messaggi W/C riferiti al lotto o alla testata consumi.
+
+---
+
+### 1.3) Area geografica (analisi)
+
+Per esigenze di fatturazione (es. raggruppamenti per **comuni**), e` necessario
+introdurre una **area geografica** dedicata.  
+Questa area e` un filtro **specifico** e non va confusa con i futuri gruppi
+multi‑criterio (che useranno un livello distinto).
+
+> Nota: i BA senza area restano **fatturabili**. L’area geografica puo` essere
+> NULL e le attivita vengono comunque generate, per non penalizzare chi non
+> usa questa funzionalita`.
 
 Le righe `attivita_fatturabili` generate da processi automatici
 mantengono un riferimento al **lotto alimentazione** e, se disponibile,
@@ -596,13 +613,13 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 
 **Aggregazione e chiavi documento**
 
-* `vendite.fn_group_attivita_fatturabili(...)` → applica regole di aggregazione (BA, utility, tipo documento, valuta, parent BA).
-* `vendite.fn_build_fattura_key(...)` → genera chiave logica di aggregazione per documento.
+* ✅`vendite.fn_group_attivita_fatturabili(...)` → applica regole di aggregazione (BA, utility, tipo documento, valuta, parent BA).
+* ✅`vendite.fn_build_fattura_key(...)` → genera chiave logica di aggregazione per documento.
 
 **Generazione documenti**
 
-* `vendite.fn_get_or_create_fattura_header(...)` → crea/recupera testata fattura in bozza (riuso per lotto/chiave).
-* `vendite.fn_generate_fatture_righe(...)` → genera righe da `attivita_fatturabili` secondo regole.
+* ✅`vendite.fn_get_or_create_fattura_header(...)` → crea/recupera testata fattura in bozza (riuso per lotto/chiave).
+* ✅`vendite.fn_generate_fatture_righe(...)` → genera righe da `attivita_fatturabili` secondo regole.
 
 **Ricalcolo**
 
@@ -631,6 +648,27 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
   * in caso di errore: `stato_lotto = ERRORE` + log errore.
 * ✅`vendite.fn_execute_pipeline_step(...)` → esegue i task di uno step (lettura `processi`/`rollback`).
 * ✅ `vendite.fn_log_pipeline_fase(...)` → inserisce log `I/W/C` con fase e stato lotto.
+
+---
+
+### 18) Sviluppi – Area geografica (backlog)
+
+**Tabelle**
+
+* `vendite.area_geografica_fatturazione`
+  * id, codice, descrizione, attivo, meta, audit
+* `vendite.area_geografica_fatturazione_comuni`
+  * id, area_id, comune_id, attivo, meta, audit
+
+**Colonne da aggiungere**
+
+* `vendite.attivita_fatturabili.area_geografica_id` (FK, opzionale)
+* `vendite.fatturazione_lotti.area_geografica_id` (FK, opzionale)
+
+**Funzioni / regole previste**
+
+* risoluzione area da comune (BA/indirizzo/utenza) in normalize
+* filtro area in `fn_select_attivita_fatturabili`
 
 ---
 

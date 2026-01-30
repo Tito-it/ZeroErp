@@ -373,7 +373,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 3) Check competenza_dal/competenza_al includono data_attivita
+-- 3) Check competenza_dal <= competenza_al
 -- ============================================================
 SELECT throws_ok(
     $$
@@ -394,7 +394,7 @@ SELECT throws_ok(
         r.billing_account_id,
         date '2025-02-01',
         1,
-        date '2025-01-01',
+        date '2025-02-01',
         date '2025-01-31',
         r.tipo_doc_fiscale_id,
         r.valuta_id
@@ -402,7 +402,7 @@ SELECT throws_ok(
     $$,
     '23514',
     NULL,
-    'Check competenza_dal/competenza_al includono data_attivita'
+    'Check competenza_dal <= competenza_al'
 );
 
 -- ============================================================
@@ -583,7 +583,7 @@ SELECT throws_ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_lotto_attivita AS
 WITH ins AS (
-    INSERT INTO vendite.fatturazione_lotti_attivita (
+    INSERT INTO vendite.attivita_fatturabili_lotti (
         lock_batch_id,
         codice,
         competenza_mese,
@@ -827,9 +827,9 @@ WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
 DELETE FROM vendite.attivita_consumi
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
 
-UPDATE vendite.fatturazione_lotti_attivita
+UPDATE vendite.attivita_fatturabili_lotti
 SET storicizza = false
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
 
-DELETE FROM vendite.fatturazione_lotti_attivita
+DELETE FROM vendite.attivita_fatturabili_lotti
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);

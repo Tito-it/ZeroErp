@@ -4,7 +4,7 @@
 >
 > **Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti_attivita](/dbzero/vendite/tabelle/fatturazione_lotti_attivita)  
+> • [vendite.attivita_fatturabili_lotti](/dbzero/vendite/tabelle/attivita_fatturabili_lotti)  
 > • [vendite.attivita_consumi](/dbzero/vendite/tabelle/attivita_consumi)  
 >
 ---

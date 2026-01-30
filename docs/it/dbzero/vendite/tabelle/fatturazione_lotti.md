@@ -20,11 +20,13 @@
 | user_update | text | NO | CURRENT_USER |
 | stato_doc_fiscale_id | bigint | YES |  |
 | tipo_doc_fiscale_id | bigint | NO |  |
+| area_geografica_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_fatturazione_lotti_stato_job |  |
+| FOREIGN KEY | fk_fatturazione_lotti_area_geografica | area_geografica_id |
 | FOREIGN KEY | fk_fatturazione_lotti_ba | billing_account_id |
 | FOREIGN KEY | fk_fatturazione_lotti_stato_doc_fiscale | stato_doc_fiscale_id |
 | FOREIGN KEY | fk_fatturazione_lotti_tipo_doc_fiscale | tipo_doc_fiscale_id |

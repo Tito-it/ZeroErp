@@ -66,7 +66,7 @@ Tipico filtro di eleggibilità per il motore:
 ### 🔑 Campi chiave (uso applicativo)
 
 * **Identificazione & riferimenti**:
-  `uid` (identificativo applicativo), `articolo_id` (servizio/voce), `istanza_utility_id` (punto tecnico), `billing_account_id` (opz. intestazione economica).
+  `uid` (identificativo applicativo), `articolo_id` (servizio/voce), `istanza_utility_id` (punto tecnico), `billing_account_id` (opz. intestazione economica), `area_geografica_id` (opz. area di fatturazione).
 * **Dati attività**:
   `data_attivita`, `quantita`, `meta` (estensioni specifiche: matricole, rilevazioni, tariffa applicata, ecc.).
 * **Competenza & gating**:

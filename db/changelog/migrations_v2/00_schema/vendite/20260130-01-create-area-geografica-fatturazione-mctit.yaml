@@ -1,0 +1,202 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260130-01-create-area-geografica-fatturazione-mctit.yaml
+
+  - changeSet:
+      id: 20260130-01-create-area-geografica-fatturazione
+      author: mctit
+      comment: "Tabelle area geografica fatturazione e mapping comuni"
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: area_geografica_fatturazione
+            remarks: "Area geografica per raggruppamenti fatturazione (comuni)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_area_geografica_fatturazione
+                    nullable: false
+
+              - column:
+                  name: codice
+                  type: text
+                  remarks: "Codice area geografica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione area geografica."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Area attiva/inattiva."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: area_geografica_fatturazione
+            columnNames: codice
+            constraintName: uq_area_geografica_fatturazione_codice
+
+        - createTable:
+            schemaName: vendite
+            tableName: area_geografica_fatturazione_comuni
+            remarks: "Mapping comuni -> area geografica fatturazione."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_area_geografica_fatturazione_comuni
+                    nullable: false
+
+              - column:
+                  name: area_geografica_id
+                  type: bigint
+                  remarks: "FK -> vendite.area_geografica_fatturazione.id"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: comune_id
+                  type: integer
+                  remarks: "FK -> config.comuni.id"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Mapping attivo/inattivo."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: area_geografica_fatturazione_comuni
+            columnNames: area_geografica_id, comune_id
+            constraintName: uq_area_geografica_fatturazione_comuni
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: area_geografica_fatturazione_comuni
+            baseColumnNames: area_geografica_id
+            constraintName: fk_area_geografica_fatturazione_comuni_area
+            referencedTableSchemaName: vendite
+            referencedTableName: area_geografica_fatturazione
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: area_geografica_fatturazione_comuni
+            baseColumnNames: comune_id
+            constraintName: fk_area_geografica_fatturazione_comuni_comune
+            referencedTableSchemaName: config
+            referencedTableName: comuni
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION

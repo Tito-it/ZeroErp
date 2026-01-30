@@ -29,5 +29,10 @@
 | ix_fatture_log_fattura_id | `CREATE INDEX ix_fatture_log_fattura_id ON vendite.fatture_log USING btree (fattura_id)` |
 | pk_fatture_log | `CREATE UNIQUE INDEX pk_fatture_log ON vendite.fatture_log USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_fatture_log_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

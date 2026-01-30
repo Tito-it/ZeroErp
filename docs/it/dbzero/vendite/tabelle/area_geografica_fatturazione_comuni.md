@@ -1,0 +1,32 @@
+{% include-markdown "it/dbzero/vendite/manual/area_geografica_fatturazione_comuni.md" %}
+# 📚 Tabella `area_geografica_fatturazione_comuni`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO |  |
+| area_geografica_id | bigint | NO |  |
+| comune_id | integer | NO |  |
+| attivo | boolean | NO | true |
+| meta | jsonb | NO | '{}'::jsonb |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | CURRENT_USER |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| FOREIGN KEY | fk_area_geografica_fatturazione_comuni_area | area_geografica_id |
+| FOREIGN KEY | fk_area_geografica_fatturazione_comuni_comune | comune_id |
+| PRIMARY KEY | pk_area_geografica_fatturazione_comuni | id |
+| UNIQUE | uq_area_geografica_fatturazione_comuni | area_geografica_id, comune_id |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| pk_area_geografica_fatturazione_comuni | `CREATE UNIQUE INDEX pk_area_geografica_fatturazione_comuni ON vendite.area_geografica_fatturazione_comuni USING btree (id)` |
+| uq_area_geografica_fatturazione_comuni | `CREATE UNIQUE INDEX uq_area_geografica_fatturazione_comuni ON vendite.area_geografica_fatturazione_comuni USING btree (area_geografica_id, comune_id)` |
+
+---
+{% include-markdown "signature-core.md" %}

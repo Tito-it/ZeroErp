@@ -22,7 +22,7 @@
 |------|------|---------|
 | CHECK | chk_attivita_fatturabili_log_status |  |
 | FOREIGN KEY | fk_attivita_fatturabili_log_attivita_consumi | attivita_consumi_id |
-| FOREIGN KEY | fk_attivita_fatturabili_log_lotto_attivita | lotto_attivita_id |
+| FOREIGN KEY | fk_attivita_fatturabili_log_attivita_lotto | lotto_attivita_id |
 | PRIMARY KEY | pk_attivita_fatturabili_log | id |
 
 ## 📑 Indici

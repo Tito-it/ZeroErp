@@ -41,17 +41,19 @@
 | tipo_doc_fiscale_id | bigint | YES |  |
 | competenza_dal | date | NO |  |
 | competenza_al | date | NO |  |
+| area_geografica_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_attivita_competenza_dal_al |  |
 | CHECK | chk_attivita_competenza_mese_primo |  |
+| FOREIGN KEY | fk_attivita_fatturabili_area_geografica | area_geografica_id |
 | FOREIGN KEY | fk_attivita_fatturabili_articoli | articolo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_attivita_consumi | attivita_consumi_id |
+| FOREIGN KEY | fk_attivita_fatturabili_attivita_lotto | lotto_attivita_id |
 | FOREIGN KEY | fk_attivita_fatturabili_billing_account | billing_account_id |
 | FOREIGN KEY | fk_attivita_fatturabili_istanze_utilities | istanza_utility_id |
-| FOREIGN KEY | fk_attivita_fatturabili_lotto_attivita | lotto_attivita_id |
 | FOREIGN KEY | fk_attivita_fatturabili_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_tipo_doc_fiscale | tipo_doc_fiscale_id |
 | FOREIGN KEY | fk_attivita_fatturabili_uom_id | uom_id |
