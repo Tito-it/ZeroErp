@@ -7,6 +7,11 @@
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [config.stati_doc_fiscale_transizioni](/dbzero/config/tabelle/stati_doc_fiscale_transizioni)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)  
+> • [vendite.trgfn_fatture_numerata_non_annulabile](/dbzero/vendite/funzioni/trgfn_fatture_numerata_non_annulabile)  
+>
 ---
 
 ### 🎯 Scopo Principale

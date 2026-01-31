@@ -7,6 +7,11 @@
 > • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
+> • [vendite.trgfn_attivita_fatturabili_guard_fonte](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_fonte)  
+>
 ---
 
 ### 🎯 Scopo Principale

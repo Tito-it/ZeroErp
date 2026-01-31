@@ -9,6 +9,10 @@
 > • [anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori)  
 > • [config.valute](/dbzero/config/tabelle/valute)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
+>
 ---
 
 ### 🎯 Scopo Principale

@@ -4,9 +4,13 @@
 >
 > **Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
-> • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
+> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
+> • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)   
+> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)   
+>
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_build_fattura_key](/dbzero/vendite/funzioni/fn_build_fattura_key)   
 >
 ---
 

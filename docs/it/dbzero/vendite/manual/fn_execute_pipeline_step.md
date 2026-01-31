@@ -7,6 +7,11 @@
 > • [vendite.fatturazione_pipeline](/dbzero/vendite/manual/fatturazione_pipeline)  
 > • [vendite.fatturazione_lotti_log](/dbzero/vendite/tabelle/fatturazione_lotti_log)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_select_attivita_fatturabili](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili)   
+> • [vendite.fn_log_pipeline_fase](/dbzero/vendite/funzioni/fn_log_pipeline_fase)   
+>
 ---
 
 ### 🎯 Scopo Principale

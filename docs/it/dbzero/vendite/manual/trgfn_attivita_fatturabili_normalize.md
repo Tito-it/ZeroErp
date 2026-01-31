@@ -7,6 +7,11 @@
 > • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)    
 > • [config.sorgenti](/dbzero/config/tabelle/sorgenti)    
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_get_tipo_doc_fiscale_id](/dbzero/vendite/funzioni/fn_get_tipo_doc_fiscale_id)   
+> • [vendite.fn_get_valuta_id](/dbzero/vendite/funzioni/fn_get_valuta_id)   
+>
 
 ---
 

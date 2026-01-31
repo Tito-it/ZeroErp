@@ -8,6 +8,10 @@
 > • [config.utilities](/dbzero/config/tabelle/utilities)  
 > • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
+>
 ---
 
 ### 🎯 Scopo Principale

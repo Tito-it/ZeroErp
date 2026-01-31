@@ -718,3 +718,9 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 * Il mapping **FE** (es. TD01, TD04) non e` gestito nel tipo documento attuale.
 * La classificazione FE verra` introdotta in una fase successiva con un dominio dedicato
   per l’emissione elettronica e l’invio SDI.
+
+---
+
+### 19) Promemoria refactor
+
+* Rinominare `vendite.fatturazione_lotti_attivita` in `vendite.attivita_fatturabili_lotti`.

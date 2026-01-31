@@ -8,6 +8,11 @@
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_get_or_create_fattura_header](/dbzero/vendite/funzioni/fn_get_or_create_fattura_header)   
+> • [vendite.fn_group_attivita_fatturabili](/dbzero/vendite/funzioni/fn_group_attivita_fatturabili)   
+>
 ---
 
 ### 🎯 Scopo Principale

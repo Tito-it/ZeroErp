@@ -7,6 +7,12 @@
 > • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 > • [vendite.articolo_regole_fatturazione](/dbzero/vendite/tabelle/articolo_regole_fatturazione)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
+> • [vendite.trgfn_attivita_fatturabili_guard_ba_coerenza](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_ba_coerenza)  
+> • [vendite.trgfn_attivita_fatturabili_guard_fatturato](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_fatturato)  
+>
 ---
 
 ### 🎯 Scopo Principale

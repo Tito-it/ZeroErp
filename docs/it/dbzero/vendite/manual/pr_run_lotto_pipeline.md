@@ -8,6 +8,13 @@
 > • [vendite.fatturazione_pipeline](/dbzero/vendite/manual/fatturazione_pipeline)  
 > • [vendite.fatturazione_lotti_log](/dbzero/vendite/tabelle/fatturazione_lotti_log)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_get_or_create_lotto](/dbzero/vendite/funzioni/fn_get_or_create_lotto)   
+> • [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)   
+> • [vendite.fn_execute_pipeline_step](/dbzero/vendite/funzioni/fn_execute_pipeline_step)   
+> • [vendite.fn_log_pipeline_fase](/dbzero/vendite/funzioni/fn_log_pipeline_fase)   
+>
 ---
 
 ### 🎯 Scopo Principale
@@ -21,7 +28,7 @@ invoca l’esecuzione dei task (filtrati per `tipo_lotto`).
 
 ### ✅ Regole principali
 
-* `lotto_id` opzionale: se assente, la procedura crea/recupera il lotto dai parametri.
+* `lotto_id` opzionale: se assente (o = 0), la procedura crea/recupera il lotto dai parametri.
 * `stato_lotto` viene impostato a `IN_ESECUZIONE` all’avvio e `COMPLETATO` a fine job.
 * Per ogni step:
   * aggiorna `stato_doc_fiscale_id` del lotto,

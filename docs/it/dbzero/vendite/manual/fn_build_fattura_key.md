@@ -10,6 +10,10 @@
 > • [anagrafiche.resellers_billing_account](/dbzero/anagrafiche/tabelle/resellers_billing_account)  
 > • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_get_or_create_fattura_header](/dbzero/vendite/funzioni/fn_get_or_create_fattura_header)  
+>
 ---
 
 ### 🎯 Scopo Principale

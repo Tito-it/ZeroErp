@@ -7,6 +7,11 @@
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.fatture_log](/dbzero/vendite/manual/fatture_log)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_log_lotto_esito_fatture](/dbzero/vendite/funzioni/fn_log_lotto_esito_fatture)  
+> • [vendite.fn_sync_lotto_fatture_stato](/dbzero/vendite/funzioni/fn_sync_lotto_fatture_stato)  
+>
 ---
 
 ### 🎯 Scopo Principale

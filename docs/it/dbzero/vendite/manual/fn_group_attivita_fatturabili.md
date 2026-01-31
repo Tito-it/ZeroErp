@@ -4,9 +4,13 @@
 >
 > **Approfondimento tabelle:**
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
-> • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)  
-> • [vendite.articolo_regole_fatturazione](/dbzero/vendite/tabelle/articolo_regole_fatturazione)  
+> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)   
+> • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)   
+> • [vendite.articolo_regole_fatturazione](/dbzero/vendite/tabelle/articolo_regole_fatturazione)   
+>
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_generate_fatture_righe](/dbzero/vendite/funzioni/fn_generate_fatture_righe)   
 >
 ---
 

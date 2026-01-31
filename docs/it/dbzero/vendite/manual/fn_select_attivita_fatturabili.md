@@ -4,9 +4,14 @@
 >
 > **Approfondimento tabelle:**
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
-> • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)  
+> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)   
+> • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)   
 > • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
+>
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_execute_pipeline_step](/dbzero/vendite/funzioni/fn_execute_pipeline_step)   
+> • [vendite.pr_run_lotto_pipeline](/dbzero/vendite/funzioni/pr_run_lotto_pipeline)   
 >
 ---
 

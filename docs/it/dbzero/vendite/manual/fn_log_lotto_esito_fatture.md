@@ -4,9 +4,13 @@
 >
 > **Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
-> • [vendite.fatturazione_lotti_log](/dbzero/vendite/tabelle/fatturazione_lotti_log)  
-> • [vendite.fatture_log](/dbzero/vendite/manual/fatture_log)  
+> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)   
+> • [vendite.fatturazione_lotti_log](/dbzero/vendite/tabelle/fatturazione_lotti_log)   
+> • [vendite.fatture_log](/dbzero/vendite/manual/fatture_log)   
+>
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_log_pipeline_fase](/dbzero/vendite/funzioni/fn_log_pipeline_fase)   
 >
 ---
 

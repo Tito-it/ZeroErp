@@ -7,6 +7,12 @@
 > • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale)  
 >
+>
+> **Approfondimento funzioni:**
+>
+> • [`vendite.fn_execute_pipeline_step`](/dbzero/vendite/funzioni/fn_execute_pipeline_step)   
+> • [`vendite.fn_select_attivita_fatturabili`](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili)  
+>
 ---
 
 ### 🎯 Scopo Principale
@@ -103,6 +109,7 @@ tecnici. Esempio (schema indicativo):
   whitelist (es. `select_attivita`, `noop`, `log_only`).
 
 * **Regola di sicurezza: i task devono usare **solo `lotto_id`** come input; i parametri operativi devono essere recuperati dal lotto (o da tabelle collegate).**
+
 
 ---
 

@@ -7,6 +7,10 @@
 > • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [vendite.fatturazione_lotti_log](/dbzero/vendite/tabelle/fatturazione_lotti_log)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_log_lotto_esito_fatture](/dbzero/vendite/funzioni/fn_log_lotto_esito_fatture)  
+>
 ---
 
 ### 🎯 Scopo Principale

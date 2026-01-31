@@ -6,6 +6,11 @@
 >
 > • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.pr_run_lotto_pipeline](/dbzero/vendite/funzioni/pr_run_lotto_pipeline)  
+> • [vendite.fn_log_pipeline_fase](/dbzero/vendite/funzioni/fn_log_pipeline_fase)  
+>
 ---
 
 ### 🎯 Scopo Principale

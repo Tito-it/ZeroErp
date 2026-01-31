@@ -4,8 +4,12 @@
 >
 > **Approfondimento tabelle:**
 >
-> • [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)  
-> • [vendite.registri_fatturazione_progressivi](/dbzero/vendite/tabelle/registri_fatturazione_progressivi)  
+> • [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)   
+> • [vendite.registri_fatturazione_progressivi](/dbzero/vendite/tabelle/registri_fatturazione_progressivi)   
+> 
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_get_next_progressivo](/dbzero/vendite/funzioni/fn_get_next_progressivo)   
 >
 ---
 
@@ -19,9 +23,9 @@ per la numerazione dei registri con `reset_policy = ANNUALE`.
 
 ### 🔍 Parametri di input
 
-| Parametro | Tipo | Descrizione |
-| --- | --- | --- |
-| `p_data` | date | Data documento (fattura). |
+| Parametro | Tipo | Descrizione               |
+| --------- | ---- | ------------------------- |
+| `p_data`  | date | Data documento (fattura). |
 
 ---
 

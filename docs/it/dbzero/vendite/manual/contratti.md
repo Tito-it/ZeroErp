@@ -17,7 +17,12 @@
 > • [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)    
 > • [config.utilities](/dbzero/config/tabelle/utilities)    
 > • [config.stati_doc_contratti](/dbzero/config/tabelle/stati_doc_contratti)   
-
+>
+>
+>  **Approfondimento funzioni:**
+>
+> • [`vendite.trgfn_contratti_gen_codice`](/dbzero/vendite/funzioni/trgfn_contratti_gen_codice)
+>
 ---
 
 ### 🎯 Scopo Principale     
@@ -50,6 +55,7 @@ Obiettivi principali:
 * **UID** (`uid`) per integrazioni esterne e idempotenza applicativa.
 * **Blocco modifiche**: `script.trgfn_lock_columns('numero', ...)` impedisce aggiornamenti non autorizzati.
 * **Data contratto** (`data`) valorizzata automaticamente alla prima assegnazione di `numero`.
+
 
 ---
 
@@ -90,19 +96,7 @@ Per attivita **non‑utilities** o servizi eterogenei, i dati precontrattuali po
 * **Rinnovi/collegamenti**: `parent_contratto_id` collega contratti successivi (rinnovi, subentri, varianti).
 * **Audit**: `data_insert`, `user_insert`, `data_update`, `user_update` e `storicizza` per tracciabilita e storico.
 
----
 
-### 🔒 Vincoli, indici e trigger (logica)
-
-* **FK principali**: BA, istanza, utility, stato documento, parent.
-* **Indici**:
-  * `ix_contratti_ba_istanza` per ricerche per BA/istanza.
-  * `ix_contratti_ambito` per filtri di dominio.
-  * `uq_contratti_numero` e `uq_contratti_uid` per identificazione univoca.
-* **Trigger**:
-  * `trg_contratti_a10_gen_codice_ins_upd` → numerazione automatica.
-  * `trg_contratti_normalize_ins_upd` → valorizza `data` quando serve.
-  * `trg_contratti_a10_lock_columns_upd` → blocco modifiche a `numero`.
 
 ---
 
