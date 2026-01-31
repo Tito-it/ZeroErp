@@ -14,6 +14,9 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_guard_stato()
 AS $function$
 DECLARE
   v_ok boolean;
+  v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
+  v_old_ordine config.stati_doc_fiscale.ordine%TYPE;
+  v_new_ordine config.stati_doc_fiscale.ordine%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -23,11 +26,47 @@ BEGIN
   -- Regole:
   --   - Stato applicabile a fattura (applica_fattura=true).
   --   - Transizione ammessa e non solo_lotto.
+  --   - Lotto GIORNALIERO: vietata retrocessione stato.
   -- =========================================================
   IF TG_OP = 'UPDATE'
     AND NEW.stato_doc_fiscale_id IS NOT NULL
     AND NEW.stato_doc_fiscale_id IS DISTINCT FROM OLD.stato_doc_fiscale_id
   THEN
+    -- Blocco retrocessione per lotti giornalieri
+    SELECT l.tipo_lotto, s_old.ordine, s_new.ordine
+      INTO v_tipo_lotto, v_old_ordine, v_new_ordine
+      FROM vendite.fatturazione_lotti_fatture lf
+      JOIN vendite.fatturazione_lotti l
+        ON l.id = lf.lotto_id
+      LEFT JOIN config.stati_doc_fiscale s_old
+        ON s_old.id = OLD.stato_doc_fiscale_id
+      LEFT JOIN config.stati_doc_fiscale s_new
+        ON s_new.id = NEW.stato_doc_fiscale_id
+     WHERE lf.fattura_id = NEW.id
+     ORDER BY l.id
+     LIMIT 1;
+
+    IF v_tipo_lotto = 'GIORNALIERO'
+       AND v_old_ordine IS NOT NULL
+       AND v_new_ordine IS NOT NULL
+       AND v_new_ordine < v_old_ordine THEN
+      PERFORM script.fn_log_and_raise_error(
+        TG_TABLE_SCHEMA,
+        TG_NAME,
+        'E_GENERICO',
+        jsonb_build_object(
+          'detail','Retrocessione stato non ammessa per lotto giornaliero',
+          'from', OLD.stato_doc_fiscale_id,
+          'to', NEW.stato_doc_fiscale_id
+        ),
+        NULL::uuid,
+        concat('Retrocessione stato non ammessa per lotto giornaliero',
+          ' from: ', OLD.stato_doc_fiscale_id::text,
+          ' to: ', NEW.stato_doc_fiscale_id::text
+        )
+      );
+    END IF;
+
     IF OLD.stato_doc_fiscale_id IS NULL THEN
       SELECT s.applica_fattura
         INTO v_ok
@@ -45,7 +84,8 @@ BEGIN
             'stato_id', NEW.stato_doc_fiscale_id
           ),
           NULL::uuid,
-          'Stato non applicabile a fattura'
+          concat('Stato non applicabile a fattura: '
+          , NEW.stato_doc_fiscale_id::text)
         );
       END IF;
     ELSE
@@ -70,7 +110,9 @@ BEGIN
             'to', NEW.stato_doc_fiscale_id
           ),
           NULL::uuid,
-          'Transizione stato fattura non ammessa'
+          concat('Transizione stato fattura non ammessa'
+          , ' from: ', OLD.stato_doc_fiscale_id::text
+          , ' to: ', NEW.stato_doc_fiscale_id::text)
         );
       END IF;
     END IF;

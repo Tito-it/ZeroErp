@@ -15,7 +15,7 @@
 (latest review 28-01-2026)  
 La procedura **`vendite.pr_run_lotto_pipeline()`** esegue la pipeline configurabile
 del lotto: imposta lo **stato job**, aggiorna lo **stato lotto** per ogni step e
-invoca l’esecuzione dei task.
+invoca l’esecuzione dei task (filtrati per `tipo_lotto`).
 
 ---
 
@@ -27,6 +27,9 @@ invoca l’esecuzione dei task.
   * aggiorna `stato_doc_fiscale_id` del lotto,
   * scrive un log `status=I` con `fase`,
   * esegue i task definiti in `processi`.
+* Lotto **GIORNALIERO**: alla transizione a `INVIATA`:
+  * `stato_operativo` → `CHIUSO`
+  * tutte le fatture del lotto → `INVIATA`
 * In caso di errore: `stato_lotto = ERRORE` e rilancio dell’eccezione.
   
 * **Regola di sicurezza: i task devono usare **solo `lotto_id`** come input; i  parametri operativi vengono letti dal lotto (o tabelle collegate).**

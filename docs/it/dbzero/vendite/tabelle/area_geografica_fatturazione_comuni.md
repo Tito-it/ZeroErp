@@ -28,5 +28,12 @@
 | pk_area_geografica_fatturazione_comuni | `CREATE UNIQUE INDEX pk_area_geografica_fatturazione_comuni ON vendite.area_geografica_fatturazione_comuni USING btree (id)` |
 | uq_area_geografica_fatturazione_comuni | `CREATE UNIQUE INDEX uq_area_geografica_fatturazione_comuni ON vendite.area_geografica_fatturazione_comuni USING btree (area_geografica_id, comune_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_area_geografica_fatturazione_comuni_a10_area_geograf_f88212 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id')` |
+| trg_area_geografica_fatturazione_comuni_a10_area_geograf_f88212 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id')` |
+| trg_area_geografica_fatturazione_comuni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

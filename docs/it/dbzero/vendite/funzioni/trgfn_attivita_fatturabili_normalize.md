@@ -21,7 +21,7 @@ BEGIN
   --
   -- Regole:
   --   - competenza_mese sempre valorizzata e al primo del mese
-  --   - se NULL -> mese di posticipa_al o data_attivita
+  --   - se NULL -> mese di posticipa_al (se presente)
   --   - competenza_dal/al: se NULL, default su data_attivita
   --   - sorgente_riga default 0 se sorgente valorizzata
   --   - tipo_doc_fiscale_id: da sorgente
@@ -32,9 +32,9 @@ BEGIN
     RETURN OLD;
   END IF;
 
-  IF NEW.competenza_mese IS NULL THEN
-    NEW.competenza_mese := date_trunc('month', COALESCE(NEW.posticipa_al, NEW.data_attivita))::date;
-  ELSE
+  IF NEW.competenza_mese IS NULL AND NEW.posticipa_al IS NOT NULL THEN
+    NEW.competenza_mese := date_trunc('month', NEW.posticipa_al)::date;
+  ELSIF NEW.competenza_mese IS NOT NULL THEN
     NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
   END IF;
 

@@ -1,0 +1,44 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/vendite/20260130-09-add-fatturazione-pipeline-tipo-lotto-mctit.yaml
+
+    - changeSet:
+          id: 20260130-09-add-fatturazione-pipeline-tipo-lotto
+          author: mctit
+          comment: "Aggiunge tipo_lotto alla pipeline e aggiorna univocita`"
+          changes:
+              - addColumn:
+                    schemaName: vendite
+                    tableName: fatturazione_pipeline
+                    columns:
+                        - column:
+                              name: tipo_lotto
+                              type: text
+                              defaultValue: MASSIVO
+                              remarks: "Tipo lotto applicabile: MASSIVO o GIORNALIERO."
+                              constraints:
+                                  nullable: false
+
+              - dropUniqueConstraint:
+                    schemaName: vendite
+                    tableName: fatturazione_pipeline
+                    constraintName: uq_fatturazione_pipeline_stato_doc_fiscale_id
+
+              - addUniqueConstraint:
+                    schemaName: vendite
+                    tableName: fatturazione_pipeline
+                    columnNames: tipo_lotto, stato_doc_fiscale_id
+                    constraintName: uq_fatturazione_pipeline_tipo_stato
+
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        ALTER TABLE vendite.fatturazione_pipeline
+                          ADD CONSTRAINT chk_fatturazione_pipeline_tipo_lotto
+                          CHECK (tipo_lotto IN ('MASSIVO','GIORNALIERO'));

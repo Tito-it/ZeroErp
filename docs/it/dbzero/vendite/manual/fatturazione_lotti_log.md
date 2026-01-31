@@ -24,6 +24,7 @@ relativi ai processi del lotto di fatturazione.
 * **Gestione**: `disabilitato` (TRUE se ignorato dall’operatore).
 * **Governance**: `meta`, audit.
 * **Pipeline**: `fase` (descrizione step) e `stato_doc_fiscale_id`.
+* **Contesto lotto**: `tipo_lotto`, `stato_operativo` (snapshot al momento del log).
 
 ---
 

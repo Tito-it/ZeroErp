@@ -26,7 +26,7 @@
 -- 19) Default factor_to_base = 1
 -- 20) Default sorgente_riga = 0
 -- 21) Normalizzazione competenza_mese al primo del mese
--- 22) Check competenza_dal/competenza_al includono data_attivita
+-- 22) Check competenza_dal <= competenza_al
 -- 23) Competenza_mese derivata da posticipa_al se NULL
 -- 24) NOT NULL quantita
 -- 24) FK su articolo_id
@@ -168,6 +168,7 @@ WITH ins AS (
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id,
         meta
@@ -178,6 +179,7 @@ WITH ins AS (
         r.billing_account_id,
         current_date,
         -5,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id,
         jsonb_build_object('test_scope', k.test_scope)
@@ -385,6 +387,7 @@ SELECT throws_ok(
         quantita,
         competenza_dal,
         competenza_al,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id
     )
@@ -396,6 +399,7 @@ SELECT throws_ok(
         1,
         date '2025-02-01',
         date '2025-01-31',
+        date '2025-02-01',
         r.tipo_doc_fiscale_id,
         r.valuta_id
     FROM tmp_refs_af r;
@@ -454,6 +458,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id
     )
@@ -463,6 +468,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         NULL,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id
     FROM tmp_refs_af r;
@@ -483,6 +489,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id
     )
@@ -492,6 +499,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id
     FROM tmp_refs_af r;
@@ -515,6 +523,7 @@ WITH ins AS (
         sorgente_tipo_id,
         sorgente_riga,
         sorgente_uid,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id,
         meta
@@ -528,6 +537,7 @@ WITH ins AS (
         s.sorgente_tipo_id,
         CASE WHEN s.key_selector = 'id' THEN s.sorgente_riga ELSE NULL END,
         CASE WHEN s.key_selector = 'uid' THEN s.sorgente_uid ELSE k.sorgente_uid_unica END,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id,
         jsonb_build_object('test_scope', k.test_scope, 'case', 'unique_sorgente')
@@ -555,6 +565,7 @@ SELECT throws_ok(
         sorgente_tipo_id,
         sorgente_riga,
         sorgente_uid,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id
     )
@@ -567,6 +578,7 @@ SELECT throws_ok(
         s.sorgente_tipo_id,
         CASE WHEN s.key_selector = 'id' THEN s.sorgente_riga ELSE NULL END,
         CASE WHEN s.key_selector = 'uid' THEN s.sorgente_uid ELSE k.sorgente_uid_unica END,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id
     FROM tmp_refs_af r,
@@ -656,6 +668,7 @@ WITH ins AS (
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id,
         lotto_attivita_id,
@@ -668,6 +681,7 @@ WITH ins AS (
         r.billing_account_id,
         current_date,
         1,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id,
         l.id,
@@ -698,6 +712,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id
     )
@@ -707,6 +722,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
+        date_trunc('month', current_date)::date,
         999999999::bigint,
         r.valuta_id
     FROM tmp_refs_af r;
@@ -727,6 +743,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id
     )
@@ -736,6 +753,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         999999::integer
     FROM tmp_refs_af r;
@@ -756,6 +774,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id,
         lotto_attivita_id
@@ -766,6 +785,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id,
         999999999::bigint
@@ -787,6 +807,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id,
         attivita_consumi_id
@@ -797,6 +818,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id,
         999999999::bigint

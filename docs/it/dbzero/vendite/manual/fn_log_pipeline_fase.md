@@ -22,6 +22,7 @@ del lotto per registrare l’avanzamento (fase) della pipeline.
 * `lotto_id` obbligatorio.
 * `status` ammessi: `I` (info), `W` (warning), `C` (critical).
 * `fase` e` testo descrittivo utilizzato dalla dashboard.
+* Il log cattura `tipo_lotto` e `stato_operativo` dal lotto al momento dell’inserimento.
 
 ---
 

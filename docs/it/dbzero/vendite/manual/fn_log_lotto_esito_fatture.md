@@ -26,6 +26,7 @@ esito lotto dedotto dai log fatture associate al lotto.
 * I log disabilitati non vengono considerati.
 * Uso previsto: durante l’esecuzione della pipeline o quando si vuole
   riallineare l’esito lotto ai log fatture correnti.
+* Il log generato include `tipo_lotto` e `stato_operativo` del lotto.
 
 ---
 

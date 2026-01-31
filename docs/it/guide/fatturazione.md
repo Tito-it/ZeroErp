@@ -24,6 +24,25 @@ Questa separazione garantisce **idempotenza**, **controllo** e **revisionabilita
 
 ---
 
+## 🔎 Analisi – Lotto “giornaliero” vs massivo
+
+Per esigenze front‑office puo` essere necessario **emettere fatture immediate** (numerate)
+senza attendere il ciclo massivo. Per mantenere coerenza con il modello a lotti,
+introduciamo due concetti:
+
+* **`tipo_lotto`**: `MASSIVO` | `GIORNALIERO`
+* **`stato_operativo`**: `APERTO` | `CHIUSO` | `ERRORE`
+
+Regola chiave:
+* Il **lotto giornaliero** può restare **APERTO** anche se le fatture sono **EMESSE**.
+* Si chiude **solo** quando il lotto passa a **INVIATA**.
+* Le fatture giornaliere **non sono retrocedibili** (no ritorno a BOZZA).
+
+Questo consente di **accorpare più fatture** nello stesso lotto giornaliero,
+senza perdere la governance documentale.
+
+---
+
 ## 🧱 Tabelle coinvolte (core)
 
 * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)
@@ -335,6 +354,28 @@ multi‑criterio (che useranno un livello distinto).
 Le righe `attivita_fatturabili` generate da processi automatici
 mantengono un riferimento al **lotto alimentazione** e, se disponibile,
 alla **testata consumi**.
+
+---
+
+## 📌 Appendice – Modifiche richieste (giornaliero)
+
+### A) Schema
+* `vendite.fatturazione_lotti`
+  * aggiungere `tipo_lotto` (`MASSIVO` | `GIORNALIERO`)
+  * aggiungere `stato_operativo` (`APERTO` | `CHIUSO` | `ERRORE`)
+
+### B) Regole operative
+* **Giornaliero**:
+  * fatture emesse subito (numerazione immediata)
+  * **no retrocessione** a BOZZA
+  * lotto `APERTO` finché `stato_doc_fiscale_id` ≠ INVIATA
+* **Massivo**:
+  * retrocessione ammessa (se previsto dalle transizioni)
+  * `stato_operativo` può riaprire
+
+### C) Pipeline
+* pipeline dedicata **GIORNALIERO** (step ridotti fino a numerazione)
+* pipeline MASSIVA invariata
 
 ### 2) Parametri funzione di calcolo (proposta)
 
@@ -655,15 +696,15 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 
 **Tabelle**
 
-* `vendite.area_geografica_fatturazione`
+* ✅`vendite.area_geografica_fatturazione`
   * id, codice, descrizione, attivo, meta, audit
-* `vendite.area_geografica_fatturazione_comuni`
+* ✅`vendite.area_geografica_fatturazione_comuni`
   * id, area_id, comune_id, attivo, meta, audit
 
 **Colonne da aggiungere**
 
-* `vendite.attivita_fatturabili.area_geografica_id` (FK, opzionale)
-* `vendite.fatturazione_lotti.area_geografica_id` (FK, opzionale)
+* ✅`vendite.attivita_fatturabili.area_geografica_id` (FK, opzionale)
+* ✅`vendite.fatturazione_lotti.area_geografica_id` (FK, opzionale)
 
 **Funzioni / regole previste**
 

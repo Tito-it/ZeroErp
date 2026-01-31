@@ -21,11 +21,15 @@
 | stato_doc_fiscale_id | bigint | YES |  |
 | tipo_doc_fiscale_id | bigint | NO |  |
 | area_geografica_id | bigint | YES |  |
+| tipo_lotto | text | NO | 'MASSIVO'::text |
+| stato_operativo | text | NO | 'APERTO'::text |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_fatturazione_lotti_stato_job |  |
+| CHECK | chk_fatturazione_lotti_stato_operativo |  |
+| CHECK | chk_fatturazione_lotti_tipo_lotto |  |
 | FOREIGN KEY | fk_fatturazione_lotti_area_geografica | area_geografica_id |
 | FOREIGN KEY | fk_fatturazione_lotti_ba | billing_account_id |
 | FOREIGN KEY | fk_fatturazione_lotti_stato_doc_fiscale | stato_doc_fiscale_id |
@@ -45,13 +49,15 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_fatturazione_lotti_a10_area_geografica_fatturazione__2ad64f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id')` |
+| trg_fatturazione_lotti_a10_area_geografica_fatturazione__2ad64f | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id')` |
 | trg_fatturazione_lotti_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatturazione_lotti_gen_codice()` |
 | trg_fatturazione_lotti_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fatturazione_lotti_gen_codice()` |
 | trg_fatturazione_lotti_a10_guard_stato_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatturazione_lotti_guard_stato()` |
 | trg_fatturazione_lotti_a10_stati_doc_fiscale_require_att_f6cf27 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id')` |
 | trg_fatturazione_lotti_a10_stati_doc_fiscale_require_att_f6cf27 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id')` |
-| trg_fatturazione_lotti_a10_tipi_doc_fiscale_require_atti_662b04 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id')` |
 | trg_fatturazione_lotti_a10_tipi_doc_fiscale_require_atti_662b04 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id')` |
+| trg_fatturazione_lotti_a10_tipi_doc_fiscale_require_atti_662b04 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id')` |
 | trg_fatturazione_lotti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatturazione_lotti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_fatturazione_lotti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

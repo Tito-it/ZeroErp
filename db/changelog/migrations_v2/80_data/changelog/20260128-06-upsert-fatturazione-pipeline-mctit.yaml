@@ -29,6 +29,7 @@ databaseChangeLog:
             columns:
               - column: { name: id, type: STRING }
               - column: { name: descrizione, type: STRING }
+              - column: { name: tipo_lotto, type: STRING }
               - column: { name: stato_doc_fiscale_id, type: STRING }
               - column: { name: processi, type: JSON }
               - column: { name: rollback, type: JSON }

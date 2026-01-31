@@ -29,6 +29,7 @@ evoluzioni (nuovi step o processi senza refactor massivo).
 ### ✅ Regole principali
 
 * `stato_doc_fiscale_id` collega lo step agli **stati lotto** (non agli stati fattura).
+* `tipo_lotto` distingue pipeline MASSIVO vs GIORNALIERO.
 * `processi` contiene una lista di “task” tecnici da eseguire (payload jsonb).
 * `rollback` contiene le azioni di pulizia per tornare allo stato precedente.
 * Solo gli step con `attivo=true` vengono eseguiti dalla pipeline.

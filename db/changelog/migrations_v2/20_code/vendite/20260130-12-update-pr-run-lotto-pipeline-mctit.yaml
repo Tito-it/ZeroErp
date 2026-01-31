@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260130-12-update-pr-run-lotto-pipeline-mctit.yaml
+
+  - changeSet:
+      id: 20260130-12-update-pr-run-lotto-pipeline
+      author: mctit
+      comment: "Orchestratore pipeline: filtra per tipo_lotto e chiude giornalieri a INVIATA"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE vendite.pr_run_lotto_pipeline(
+                IN p_lotto_id vendite.fatturazione_lotti.id%TYPE DEFAULT NULL,
+                IN p_competenza_mese vendite.fatturazione_lotti.competenza_mese%TYPE DEFAULT NULL,
+                IN p_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE DEFAULT NULL,
+                IN p_utility_id config.utilities.id%TYPE DEFAULT NULL,
+                IN p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                IN p_lock_batch_id vendite.fatturazione_lotti.lock_batch_id%TYPE DEFAULT NULL,
+                IN p_meta jsonb DEFAULT NULL,
+                IN p_dry_run boolean DEFAULT false,
+                IN p_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE DEFAULT 'MASSIVO'
+              )
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_step record;
+                v_lotto_id vendite.fatturazione_lotti.id%TYPE;
+                v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                v_inviata_id config.stati_doc_fiscale.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Orchestrazione pipeline lotto per tipo_lotto.
+                --
+                -- Regole:
+                --   - stato_lotto: IN_ESECUZIONE -> COMPLETATO/ERRORE
+                --   - selezione pipeline per tipo_lotto
+                --   - lotto giornaliero: CHIUSO quando stato_doc_fiscale=INVIATA
+                -- =========================================================
+
+                v_lotto_id := vendite.fn_get_or_create_lotto(
+                  p_lotto_id,
+                  p_competenza_mese,
+                  p_tipo_doc_fiscale_id,
+                  p_utility_id,
+                  p_billing_account_id,
+                  p_lock_batch_id,
+                  p_meta,
+                  p_tipo_lotto
+                );
+
+                SELECT tipo_lotto
+                  INTO v_tipo_lotto
+                  FROM vendite.fatturazione_lotti
+                 WHERE id = v_lotto_id;
+
+                IF v_tipo_lotto IS NULL THEN
+                  v_tipo_lotto := COALESCE(p_tipo_lotto, 'MASSIVO');
+                END IF;
+
+                SELECT id
+                  INTO v_inviata_id
+                  FROM config.stati_doc_fiscale
+                 WHERE codice = 'INVIATA'
+                   AND attivo IS TRUE
+                 ORDER BY ordine
+                 LIMIT 1;
+
+                -- Imposta stato lotto in esecuzione
+                PERFORM vendite.fn_set_fatturazione_lotto_stato(
+                  v_lotto_id, 'IN_ESECUZIONE', 'Avvio pipeline'
+                );
+
+                FOR v_step IN
+                  SELECT fp.stato_doc_fiscale_id, fp.descrizione, sd.ordine
+                    FROM vendite.fatturazione_pipeline fp
+                    JOIN config.stati_doc_fiscale sd
+                      ON sd.id = fp.stato_doc_fiscale_id
+                   WHERE fp.attivo IS TRUE
+                     AND fp.tipo_lotto = v_tipo_lotto
+                     AND COALESCE(sd.applica_lotto, false) IS TRUE
+                   ORDER BY sd.ordine
+                LOOP
+                  -- Aggiorna stato lotto allo step corrente
+                  UPDATE vendite.fatturazione_lotti
+                     SET stato_doc_fiscale_id = v_step.stato_doc_fiscale_id,
+                         data_update = now(),
+                         user_update = current_user
+                   WHERE id = v_lotto_id;
+
+                  -- Lotto giornaliero: a INVIATA chiude operativamente e aggiorna fatture
+                  IF v_tipo_lotto = 'GIORNALIERO'
+                     AND v_inviata_id IS NOT NULL
+                     AND v_step.stato_doc_fiscale_id = v_inviata_id THEN
+                    UPDATE vendite.fatturazione_lotti
+                       SET stato_operativo = 'CHIUSO',
+                           data_update = now(),
+                           user_update = current_user
+                     WHERE id = v_lotto_id;
+
+                    UPDATE vendite.fatture f
+                       SET stato_doc_fiscale_id = v_inviata_id,
+                           data_update = now(),
+                           user_update = current_user
+                      FROM vendite.fatturazione_lotti_fatture lf
+                     WHERE lf.lotto_id = v_lotto_id
+                       AND lf.fattura_id = f.id;
+                  END IF;
+
+                  -- Log fase (info)
+                  PERFORM vendite.fn_log_pipeline_fase(
+                    v_lotto_id,
+                    v_step.stato_doc_fiscale_id,
+                    COALESCE(v_step.descrizione, 'Esecuzione step'),
+                    'I',
+                    NULL,
+                    jsonb_build_object('ordine', v_step.ordine, 'dry_run', p_dry_run)
+                  );
+
+                  -- Esecuzione task dello step
+                  PERFORM vendite.fn_execute_pipeline_step(
+                    v_lotto_id,
+                    v_step.stato_doc_fiscale_id,
+                    false,
+                    p_dry_run
+                  );
+                END LOOP;
+
+                -- Stato lotto completato
+                PERFORM vendite.fn_set_fatturazione_lotto_stato(
+                  v_lotto_id, 'COMPLETATO', 'Pipeline completata'
+                );
+              EXCEPTION
+                WHEN OTHERS THEN
+                  PERFORM vendite.fn_set_fatturazione_lotto_stato(
+                    v_lotto_id, 'ERRORE', 'Errore pipeline'
+                  );
+                  RAISE;
+              END
+              $$;
+
+              COMMENT ON PROCEDURE vendite.pr_run_lotto_pipeline(
+                vendite.fatturazione_lotti.id%TYPE,
+                vendite.fatturazione_lotti.competenza_mese%TYPE,
+                config.tipi_doc_fiscale.id%TYPE,
+                config.utilities.id%TYPE,
+                anagrafiche.billing_account.id%TYPE,
+                vendite.fatturazione_lotti.lock_batch_id%TYPE,
+                jsonb,
+                boolean,
+                vendite.fatturazione_lotti.tipo_lotto%TYPE
+              ) IS 'Orchestratore pipeline lotto per tipo_lotto.';

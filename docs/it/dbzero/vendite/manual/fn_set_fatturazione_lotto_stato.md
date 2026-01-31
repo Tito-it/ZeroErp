@@ -12,7 +12,7 @@
 
 (latest review 27-01-2026)  
 La funzione **`vendite.fn_set_fatturazione_lotto_stato()`** aggiorna lo **stato
-operativo** del lotto di fatturazione, applicando regole minime di transizione.
+job** del lotto di fatturazione e allinea lo **stato operativo**.
 
 ---
 
@@ -23,6 +23,8 @@ operativo** del lotto di fatturazione, applicando regole minime di transizione.
   * `IN_ESECUZIONE` → `COMPLETATO` | `ERRORE`
   * `ERRORE` → `IN_ESECUZIONE` (reset)
   * `COMPLETATO` = stato finale (nessun ritorno)
+* MASSIVO: `COMPLETATO` → `stato_operativo = CHIUSO`
+* GIORNALIERO: `stato_operativo` viene gestito al passaggio a INVIATA
 * Se lo stato richiesto coincide con quello corrente, la funzione non fa nulla.
 * Se `p_note` e` valorizzato, viene salvata in `meta.note_stato`.
 

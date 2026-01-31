@@ -15,19 +15,21 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| tipo_lotto | text | NO | 'MASSIVO'::text |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatturazione_pipeline_tipo_lotto |  |
 | FOREIGN KEY | fk_fatturazione_pipeline_stato_doc_fiscale | stato_doc_fiscale_id |
 | PRIMARY KEY | pk_fatturazione_pipeline | id |
-| UNIQUE | uq_fatturazione_pipeline_stato_doc_fiscale_id | stato_doc_fiscale_id |
+| UNIQUE | uq_fatturazione_pipeline_tipo_stato | tipo_lotto, stato_doc_fiscale_id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_fatturazione_pipeline | `CREATE UNIQUE INDEX pk_fatturazione_pipeline ON vendite.fatturazione_pipeline USING btree (id)` |
-| uq_fatturazione_pipeline_stato_doc_fiscale_id | `CREATE UNIQUE INDEX uq_fatturazione_pipeline_stato_doc_fiscale_id ON vendite.fatturazione_pipeline USING btree (stato_doc_fiscale_id)` |
+| uq_fatturazione_pipeline_tipo_stato | `CREATE UNIQUE INDEX uq_fatturazione_pipeline_tipo_stato ON vendite.fatturazione_pipeline USING btree (tipo_lotto, stato_doc_fiscale_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

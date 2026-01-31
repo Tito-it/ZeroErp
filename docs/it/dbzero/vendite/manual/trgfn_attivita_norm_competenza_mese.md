@@ -19,7 +19,7 @@ La funzione **`vendite.trgfn_attivita_norm_competenza_mese()`** normalizza
 ### ✅ Regole principali
 
 * Se `competenza_mese` e` valorizzata, viene troncata al primo giorno del mese.
-* Nessuna modifica quando `competenza_mese` e` NULL.
+* Se `competenza_mese` e` NULL` e `posticipa_al` e` valorizzata, usa il mese di `posticipa_al`.
 
 ---
 

@@ -44,8 +44,8 @@ Obiettivi principali:
 ### 📅 Periodo di competenza & regole di fatturabilità
 
 * `competenza_mese` → **competenza mensile** obbligatoria (sempre valorizzata) e al **1° giorno del mese** (es. `YYYY‑MM‑01`).
-  Rappresenta l’**anno/mese di fatturazione**: se non valorizzata, viene derivata
-  da `posticipa_al` (se presente) oppure da `data_attivita`.
+  Rappresenta l’**anno/mese di fatturazione**. Se non valorizzata, viene derivata
+  da `posticipa_al` (se presente). Non viene derivata da `data_attivita`.
   Se `posticipa_al` e` valorizzata, sposta l’attivita al **nuovo anno/mese** di fatturazione.
 
   * **Regola**: non fatturare **prima** di quel mese.
@@ -108,7 +108,7 @@ Tipico filtro di eleggibilità per il motore:
   * **Unique parziale** `uq_attivita_fatturabili_v_sorgente_fk` su (`sorgente_tipo_id`, `sorgente_uid`) *WHEN* `sorgente_tipo_id IS NOT NULL` → **idempotenza import**.
 * **Trigger**:
 
-* `trg_attivita_fatturabili_normalize_ins_upd` → **normalizza** `competenza_mese` al 1° del mese (obbligatoria, derivata da `posticipa_al` o `data_attivita`), imposta `sorgente_riga` a `0` se `sorgente_tipo_id` è valorizzato e risolve `tipo_doc_fiscale_id`/`valuta_id` quando mancanti.
+* `trg_attivita_fatturabili_normalize_ins_upd` → **normalizza** `competenza_mese` al 1° del mese (obbligatoria, derivata da `posticipa_al` se assente), imposta `sorgente_riga` a `0` se `sorgente_tipo_id` è valorizzato e risolve `tipo_doc_fiscale_id`/`valuta_id` quando mancanti.
   * `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` → **coerenze BA/istanza/articolo** (regole di dominio).
   * `trg_attivita_fatturabili_a10_guard_fonte_ins_upd` → **validazione sorgente** (`sorgente_tipo_id`/`sorgente_uid`).
   * `trg_attivita_fatturabili_a10_guard_fatturato_upd_dlt` → **fail‑fast**: blocca update/delete se già collegate a fattura.
@@ -125,10 +125,7 @@ WHERE a.approvato
   AND NOT a.fatturato
   AND NOT a.sospesa
   AND (a.posticipa_al IS NULL OR a.posticipa_al <= :data_fatturazione)
-  AND (
-    (a.competenza_mese IS NOT NULL AND a.competenza_mese <= date_trunc('month', :data_fatturazione)) OR
-    (a.competenza_mese IS NULL AND (a.competenza_al IS NULL OR a.competenza_al <= :data_fatturazione))
-  );
+  AND a.competenza_mese <= date_trunc('month', :data_fatturazione);
 
 -- 2) Marcatura come fatturato (eseguita dal motore dopo creazione riga fattura)
 UPDATE vendite.attivita_fatturabili

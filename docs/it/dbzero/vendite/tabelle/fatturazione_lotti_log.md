@@ -17,11 +17,15 @@
 | user_update | text | NO | CURRENT_USER |
 | fase | text | YES |  |
 | stato_doc_fiscale_id | bigint | YES |  |
+| tipo_lotto | text | YES |  |
+| stato_operativo | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatturazione_lotti_log_stato_operativo |  |
 | CHECK | chk_fatturazione_lotti_log_status |  |
+| CHECK | chk_fatturazione_lotti_log_tipo_lotto |  |
 | FOREIGN KEY | fk_fatturazione_lotti_log_lotto | lotto_id |
 | FOREIGN KEY | fk_fatturazione_lotti_log_stato_doc_fiscale | stato_doc_fiscale_id |
 | PRIMARY KEY | pk_fatturazione_lotti_log | id |

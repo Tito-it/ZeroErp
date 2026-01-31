@@ -22,6 +22,7 @@ tra stati documento sulle fatture, bloccando quelle non ammesse.
 * Trigger `BEFORE UPDATE OF stato_doc_fiscale_id` su `vendite.fatture`.
 * Verifica la transizione in `config.stati_doc_fiscale_transizioni`.
 * Se lo stato non e` applicabile o la transizione non e` ammessa → errore.
+* Lotto **GIORNALIERO**: vietata retrocessione di stato.
 
 ---
 

@@ -12,6 +12,9 @@ CREATE OR REPLACE FUNCTION vendite.fn_log_pipeline_fase(p_lotto_id bigint, p_sta
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
+DECLARE
+  v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
+  v_stato_operativo vendite.fatturazione_lotti.stato_operativo%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -39,10 +42,10 @@ BEGIN
     );
   END IF;
 
-  -- verifica lotto esistente
-  PERFORM 1
-  FROM vendite.fatturazione_lotti
-  WHERE id = p_lotto_id;
+  SELECT l.tipo_lotto, l.stato_operativo
+    INTO v_tipo_lotto, v_stato_operativo
+    FROM vendite.fatturazione_lotti l
+   WHERE l.id = p_lotto_id;
 
   IF NOT FOUND THEN
     PERFORM script.fn_log_and_raise_error(
@@ -61,6 +64,8 @@ BEGIN
     disabilitato,
     fase,
     stato_doc_fiscale_id,
+    tipo_lotto,
+    stato_operativo,
     meta,
     data_insert,
     user_insert,
@@ -75,6 +80,8 @@ BEGIN
     false,
     p_fase,
     p_stato_doc_fiscale_id,
+    v_tipo_lotto,
+    v_stato_operativo,
     COALESCE(p_meta, '{}'::jsonb),
     now(),
     current_user,

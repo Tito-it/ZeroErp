@@ -14,16 +14,19 @@ CREATE OR REPLACE FUNCTION vendite.fn_set_fatturazione_lotto_stato(p_lotto_id bi
 AS $function$
 DECLARE
   v_stato_corrente vendite.fatturazione_lotti.stato_lotto%TYPE;
+  v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
+  v_stato_operativo vendite.fatturazione_lotti.stato_operativo%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Aggiorna lo stato operativo del lotto (IN_ESECUZIONE,
-  --   COMPLETATO, ERRORE) con regole minime di transizione.
+  --   Aggiorna lo stato job del lotto e allinea lo stato operativo.
   --
   -- Regole:
   --   - IN_ESECUZIONE -> COMPLETATO | ERRORE
   --   - ERRORE -> IN_ESECUZIONE (reset)
   --   - COMPLETATO: stato finale (no ritorno)
+  --   - MASSIVO: COMPLETATO -> stato_operativo CHIUSO
+  --   - GIORNALIERO: stato_operativo gestito da stato_doc_fiscale
   -- =========================================================
 
   IF p_lotto_id IS NULL OR p_stato_lotto IS NULL THEN
@@ -34,8 +37,8 @@ BEGIN
     );
   END IF;
 
-  SELECT stato_lotto
-    INTO v_stato_corrente
+  SELECT stato_lotto, tipo_lotto, stato_operativo
+    INTO v_stato_corrente, v_tipo_lotto, v_stato_operativo
     FROM vendite.fatturazione_lotti
    WHERE id = p_lotto_id
    FOR UPDATE;
@@ -84,6 +87,11 @@ BEGIN
 
   UPDATE vendite.fatturazione_lotti
      SET stato_lotto = p_stato_lotto,
+         stato_operativo = CASE
+                             WHEN p_stato_lotto = 'ERRORE' THEN 'ERRORE'
+                             WHEN p_stato_lotto = 'COMPLETATO' AND v_tipo_lotto = 'MASSIVO' THEN 'CHIUSO'
+                             ELSE stato_operativo
+                           END,
          meta = CASE
                   WHEN p_note IS NULL THEN meta
                   ELSE jsonb_set(meta, '{note_stato}', to_jsonb(p_note), true)
