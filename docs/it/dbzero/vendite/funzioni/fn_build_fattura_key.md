@@ -1,0 +1,96 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_build_fattura_key.md" %}
+# ⚙️ Funzione `fn_build_fattura_key`
+
+```sql
+CREATE FUNCTION fn_build_fattura_key(p_attivita_id bigint)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_build_fattura_key(p_attivita_id bigint)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_ba_id anagrafiche.billing_account.id%TYPE;
+  v_ba_fattura_id anagrafiche.billing_account.id%TYPE;
+  v_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE;
+  v_valuta_id config.valute.id%TYPE;
+  v_utility_id config.utilities.id%TYPE;
+  v_emittente_id anagrafiche.soggetti_ruoli.id%TYPE;
+  v_reseller_id anagrafiche.soggetti_ruoli.id%TYPE;
+  v_registro_id vendite.registri_fatturazione.id%TYPE;
+BEGIN
+  -- =========================================================
+  -- Scopo:
+  --   Costruisce la chiave logica di aggregazione documento
+  --   a partire da una riga di attivita_fatturabili.
+  --
+  -- Regole:
+  --   - fattura emessa su BA padre (se presente) altrimenti BA stesso
+  --   - emittente da mapping BA -> emittente fiscale
+  --   - reseller da mapping BA -> reseller (se presente)
+  --   - registro da tipo_doc_fiscale
+  -- =========================================================
+
+  IF p_attivita_id IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_build_fattura_key', 'E_GENERICO',
+      jsonb_build_object('detail','attivita_id obbligatorio'),
+      NULL::uuid, 'attivita_id obbligatorio'
+    );
+  END IF;
+
+  SELECT a.billing_account_id,
+         COALESCE(ba.parent_account_id, a.billing_account_id),
+         a.tipo_doc_fiscale_id,
+         a.valuta_id,
+         iu.utility_id
+    INTO v_ba_id,
+         v_ba_fattura_id,
+         v_tipo_doc_fiscale_id,
+         v_valuta_id,
+         v_utility_id
+    FROM vendite.attivita_fatturabili a
+    JOIN anagrafiche.billing_account ba
+      ON ba.id = a.billing_account_id
+    JOIN anagrafiche.istanze_utilities iu
+      ON iu.id = a.istanza_utility_id
+   WHERE a.id = p_attivita_id;
+
+  IF v_ba_id IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_build_fattura_key', 'E_GENERICO',
+      jsonb_build_object('detail','attivita non trovata o BA mancante', 'attivita_id', p_attivita_id),
+      NULL::uuid, 'Attivita non trovata o BA mancante'
+    );
+  END IF;
+
+  v_emittente_id := anagrafiche.fn_get_emittente_fiscale_id(v_ba_fattura_id);
+
+  SELECT rb.reseller_soggetto_ruolo_id
+    INTO v_reseller_id
+    FROM anagrafiche.resellers_billing_account rb
+   WHERE rb.billing_account_id = v_ba_fattura_id
+     AND rb.attivo IS TRUE
+   ORDER BY rb.id
+   LIMIT 1;
+
+  v_registro_id := vendite.fn_get_registro_id(v_tipo_doc_fiscale_id);
+
+  RETURN jsonb_build_object(
+    'billing_account_id', v_ba_fattura_id,
+    'tipo_doc_fiscale_id', v_tipo_doc_fiscale_id,
+    'valuta_id', v_valuta_id,
+    'emittente_soggetto_ruolo_id', v_emittente_id,
+    'reseller_soggetto_ruolo_id', v_reseller_id,
+    'utility_id', v_utility_id,
+    'registro_id', v_registro_id
+  );
+END
+$function$
+```
+
+---
+{% include-markdown "signature-core.md" %}

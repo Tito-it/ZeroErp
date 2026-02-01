@@ -8,7 +8,11 @@
 > •[config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)     
 > •[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)      
 > •[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)      
-
+>
+> Approfondimento funzioni:
+>
+> •[`vendite.trgfn_tipi_indirizzi_only_allowed`](/dbzero/vendite/funzioni/trgfn_tipi_indirizzi_only_allowed)
+>
 
 ---
 ### 🎯 Scopo Principale
@@ -61,6 +65,7 @@ Comportamento atteso della funzione collegata:
 Verifica che tipo_indirizzo_id sia compreso nel set “ammessi per DDT” (es.: spedizione, fornitura…).
 
 In caso contrario registra su dbops.error_log e solleva errore applicativo.
+
 
 ---
 

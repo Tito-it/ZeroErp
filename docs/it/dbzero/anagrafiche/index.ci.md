@@ -59,6 +59,7 @@
 - [trgfn_istanze_utilities_normalize](manual/trgfn_istanze_utilities_normalize.md) — (latest review 28-12-25) Il trigger `anagrafiche.trgfn_istanze_utilities_normalize` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
 - [trgfn_iu_clone_catasto_from_parent](manual/trgfn_iu_clone_catasto_from_parent.md) — (latest review 15-12-25) La trigger function **`anagrafiche.trgfn_iu_clone_catasto_from_parent()`** è un wrapper minimale che, in risposta a un evento di modifica dell’istanza (tipicamente valorizzazione di `parent_istanza_id`), attiva la clonazione del catasto dalla parent verso l’istanza corrente.
 - [trgfn_iu_sync_catasto_unita_indirizzo](manual/trgfn_iu_sync_catasto_unita_indirizzo.md) — (latest review 15-12-25) La trigger function **`anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo()`** garantisce che, quando una istanza (`anagrafiche.istanze_utilities`) dispone di:
+- [trgfn_pdp_a10_guard](manual/trgfn_pdp_a10_guard.md) — (latest review 28-01-2026) Impedire la **modifica** dei campi **identitari** del PDP:
 - [trgfn_pdp_set_default_stato](manual/trgfn_pdp_set_default_stato.md) — (latest review 16-12-25) La trigger function **`anagrafiche.trgfn_pdp_set_default_stato()`** imposta automaticamente lo **stato tecnico** di un PDP a **DISP** (*Disponibile*) quando il campo `stato_pdp_id` non è stato valorizzato.
 - [trgfn_resellers_guard_attivo](manual/trgfn_resellers_guard_attivo.md) — (latest review 26-01-2026) La funzione **`anagrafiche.trgfn_resellers_guard_attivo()`** impedisce la **disattivazione** di un reseller quando esistono mapping verso `resellers_billing_account`.
 - [trgfn_sepa_mandati_guard](manual/trgfn_sepa_mandati_guard.md) — (latest review 29-12-25) Garantire che un mandato SEPA sia coerente quando e' in stato **ATTIVO** e normalizzare i campi di input sensibili (`umr`, `iban_snapshot`).
@@ -82,6 +83,3 @@
 - [vw_istanze_dati_precontrattuali_dettaglio](manual/vw_istanze_dati_precontrattuali_dettaglio.md) — (latest review 09-01-26)  La vista **`anagrafiche.vw_istanze_dati_precontrattuali_dettaglio`** unisce i dati pre‑contrattuali con i dettagli dell’istanza utility e le decodifiche di **classe** e **tipo utenza**. Il **tipo utenza** è derivato dalla classe (`config.classi_utenze.tipo_utenza_id`).
 - [vw_istanze_utilities_dettaglio](manual/vw_istanze_utilities_dettaglio.md) — (latest review 29-12-25) La vista **`anagrafiche.vw_istanze_utilities_dettaglio`** aggrega le informazioni di un'istanza utility con:
 - [vw_risorse_umane_dettaglio](manual/vw_risorse_umane_dettaglio.md) — (latest review 07-01-26) La vista **`anagrafiche.vw_risorse_umane_dettaglio`** fornisce una lettura unificata delle risorse umane con:
-
-## 📘 Altri contenuti manuali
-- [trgfn_pdp_protecet_cols](manual/trgfn_pdp_protecet_cols.md) — Impedire la **modifica** dei campi **identitari** del PDP:

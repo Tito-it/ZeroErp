@@ -1,0 +1,31 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/config/20260127-23-drop-tipo-doc-fiscale-id-utilities-mctit.yaml
+
+    - changeSet:
+          id: 20260127-23-drop-tipo-doc-fiscale-id-utilities
+          author: mctit
+          comment: "Rimuove tipo_doc_fiscale_id da config.utilities (tipo documento di sistema)"
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        DROP TRIGGER IF EXISTS 
+                        trg_utilities_a10_tipi_doc_fiscale_require_attivo_ins_upd
+                        ON config.utilities;
+
+              - dropForeignKeyConstraint:
+                    baseTableSchemaName: config
+                    baseTableName: utilities
+                    constraintName: fk_utilities_tipo_doc_fiscale
+
+              - dropColumn:
+                    schemaName: config
+                    tableName: utilities
+                    columnName: tipo_doc_fiscale_id

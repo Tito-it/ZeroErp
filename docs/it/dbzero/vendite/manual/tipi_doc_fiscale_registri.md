@@ -7,6 +7,12 @@
 > • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
 > • [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)  
 >
+>
+> **Approfondimento funzioni:**
+>
+> • [`vendite.fn_get_registro_id`](/dbzero/vendite/funzioni/fn_get_registro_id)
+>
+
 ---
 
 ### 🎯 Scopo Principale
@@ -30,6 +36,7 @@ numerazione e la contabilizzazione dei documenti.
 
 * mapping **multiplo** per `tipo_doc_fiscale_id` verso registri diversi.
 * la selezione del registro e` determinata da `vendite.fn_get_registro_id`.
+
 
 ---
 

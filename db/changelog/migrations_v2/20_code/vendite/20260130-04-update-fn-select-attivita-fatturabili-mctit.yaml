@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260130-04-update-fn-select-attivita-fatturabili-mctit.yaml
+
+  - changeSet:
+      id: 20260130-04-update-fn-select-attivita-fatturabili
+      author: mctit
+      # runAlways: true
+      comment: "Update selezione attivita_fatturabili: competenza_mese obbligatoria e filtro area_geografica"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_select_attivita_fatturabili(
+                p_competenza_mese vendite.attivita_fatturabili.competenza_mese%TYPE,
+                p_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE,
+                p_lock_batch_id vendite.attivita_fatturabili.lock_batch_id%TYPE DEFAULT NULL,
+                p_lock boolean DEFAULT false,
+                p_data_fatturazione date DEFAULT CURRENT_DATE,
+                p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                p_utility_id config.utilities.id%TYPE DEFAULT NULL,
+                p_valuta_id config.valute.id%TYPE DEFAULT NULL,
+                p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE DEFAULT NULL,
+                p_area_geografica_id vendite.area_geografica_fatturazione.id%TYPE DEFAULT NULL,
+                p_limit integer DEFAULT NULL
+              )
+              RETURNS SETOF vendite.attivita_fatturabili
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_competenza date;
+                v_data_fatturazione date;
+                v_where text;
+                v_limit text;
+                v_sql text;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Seleziona attivita_fatturabili eleggibili con lock opzionale.
+                --
+                -- Regole:
+                --   - tipo_doc_fiscale obbligatorio
+                --   - competenza_mese obbligatoria (mese di fatturazione)
+                --   - lock opzionale con SKIP LOCKED
+                -- =========================================================
+
+                IF p_competenza_mese IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_select_attivita_fatturabili', 'E_GENERICO',
+                    jsonb_build_object('detail','competenza_mese obbligatoria'),
+                    NULL::uuid, 'competenza_mese obbligatoria'
+                  );
+                END IF;
+
+                IF p_tipo_doc_fiscale_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_select_attivita_fatturabili', 'E_GENERICO',
+                    jsonb_build_object('detail','tipo_doc_fiscale_id obbligatorio'),
+                    NULL::uuid, 'tipo_doc_fiscale_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_lock AND p_lock_batch_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_select_attivita_fatturabili', 'E_GENERICO',
+                    jsonb_build_object('detail','lock_batch_id obbligatorio quando p_lock=true'),
+                    NULL::uuid, 'lock_batch_id obbligatorio quando p_lock=true'
+                  );
+                END IF;
+
+                v_competenza := date_trunc('month', p_competenza_mese)::date;
+                v_data_fatturazione := COALESCE(p_data_fatturazione, CURRENT_DATE);
+
+                v_where :=
+                  ' WHERE a.approvato IS TRUE' ||
+                  ' AND a.fatturato IS FALSE' ||
+                  ' AND a.sospesa IS FALSE' ||
+                  ' AND COALESCE(a.lock_in_fatturazione, false) IS FALSE' ||
+                  ' AND (a.posticipa_al IS NULL OR a.posticipa_al <= ' || quote_literal(v_data_fatturazione) || ')' ||
+                  ' AND a.competenza_mese <= ' || quote_literal(v_competenza) ||
+                  ' AND a.tipo_doc_fiscale_id = ' || quote_literal(p_tipo_doc_fiscale_id);
+
+                IF p_billing_account_id IS NOT NULL THEN
+                  v_where := v_where || ' AND a.billing_account_id = ' || quote_literal(p_billing_account_id);
+                END IF;
+
+                IF p_utility_id IS NOT NULL THEN
+                  v_where := v_where || ' AND ba.utility_id = ' || quote_literal(p_utility_id);
+                END IF;
+
+                IF p_valuta_id IS NOT NULL THEN
+                  v_where := v_where || ' AND a.valuta_id = ' || quote_literal(p_valuta_id);
+                END IF;
+
+                IF p_emittente_soggetto_ruolo_id IS NOT NULL THEN
+                  v_where := v_where ||
+                    ' AND a.billing_account_id IS NOT NULL' ||
+                    ' AND anagrafiche.fn_get_emittente_fiscale_id(a.billing_account_id) = ' ||
+                    quote_literal(p_emittente_soggetto_ruolo_id);
+                END IF;
+
+                IF p_area_geografica_id IS NOT NULL THEN
+                  v_where := v_where || ' AND a.area_geografica_id = ' || quote_literal(p_area_geografica_id);
+                END IF;
+
+                v_limit := CASE WHEN p_limit IS NOT NULL THEN ' LIMIT ' || p_limit::text ELSE '' END;
+
+                IF p_lock THEN
+                  v_sql :=
+                    'WITH candidati AS (' ||
+                    '  SELECT a.id' ||
+                    '    FROM vendite.attivita_fatturabili a' ||
+                    '    JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' ||
+                         v_where ||
+                    '   ORDER BY a.data_attivita, a.id' ||
+                         v_limit ||
+                    '   FOR UPDATE SKIP LOCKED' ||
+                    ')' ||
+                    ' UPDATE vendite.attivita_fatturabili a' ||
+                    '    SET lock_in_fatturazione = true,' ||
+                    '        lock_batch_id = ' || quote_literal(p_lock_batch_id) || ',' ||
+                    '        data_update = now(),' ||
+                    '        user_update = current_user' ||
+                    '   FROM candidati c' ||
+                    '  WHERE a.id = c.id' ||
+                    '    AND a.fatturato IS FALSE' ||
+                    '    AND COALESCE(a.lock_in_fatturazione, false) IS FALSE' ||
+                    ' RETURNING a.*';
+                ELSE
+                  v_sql :=
+                    'WITH candidati AS (' ||
+                    '  SELECT a.id' ||
+                    '    FROM vendite.attivita_fatturabili a' ||
+                    '    JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' ||
+                         v_where ||
+                    '   ORDER BY a.data_attivita, a.id' ||
+                         v_limit ||
+                    ')' ||
+                    ' SELECT a.*' ||
+                    '   FROM vendite.attivita_fatturabili a' ||
+                    '   JOIN candidati c ON c.id = a.id' ||
+                    '  ORDER BY a.data_attivita, a.id';
+                END IF;
+
+                RETURN QUERY EXECUTE v_sql;
+              END
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_select_attivita_fatturabili(
+                vendite.attivita_fatturabili.competenza_mese%TYPE,
+                config.tipi_doc_fiscale.id%TYPE,
+                vendite.attivita_fatturabili.lock_batch_id%TYPE,
+                boolean,
+                date,
+                anagrafiche.billing_account.id%TYPE,
+                config.utilities.id%TYPE,
+                config.valute.id%TYPE,
+                anagrafiche.soggetti_ruoli.id%TYPE,
+                vendite.area_geografica_fatturazione.id%TYPE,
+                integer
+              ) IS 'Select attivita_fatturabili con lock opzionale.';

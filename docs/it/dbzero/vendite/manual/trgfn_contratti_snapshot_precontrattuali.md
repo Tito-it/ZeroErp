@@ -8,6 +8,11 @@
 > • [vendite.contratti_utilities](/dbzero/vendite/manual/contratti_utilities)    
 > • [anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali)    
 >
+> **Approfondimento funzioni:**    
+>
+> • [vendite.trgfn_contratti_normalize](/dbzero/vendite/funzioni/trgfn_contratti_normalize)    
+> • [vendite.trgfn_contratti_gen_codice](/dbzero/vendite/funzioni/trgfn_contratti_gen_codice)    
+>
 
 ---
 

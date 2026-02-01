@@ -8,6 +8,10 @@
 > • [vendite.registri_fatturazione_progressivi](/dbzero/vendite/tabelle/registri_fatturazione_progressivi)  
 > • [vendite.fn_get_anno_registro](/dbzero/vendite/manual/fn_get_anno_registro)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_get_anno_registro](/dbzero/vendite/funzioni/fn_get_anno_registro)   
+>
 ---
 
 ### 🎯 Scopo Principale
@@ -20,11 +24,11 @@ di registro, con **lock della riga** progressivi per evitare doppioni.
 
 ### 🔍 Parametri di input
 
-| Parametro | Tipo | Descrizione |
-| --- | --- | --- |
-| `p_registro_id` | `vendite.registri_fatturazione.id%TYPE` | Registro fiscale. |
-| `p_data` | date | Data documento. |
-| `p_serie` | text | Serie (opzionale). |
+| Parametro       | Tipo                                    | Descrizione        |
+| --------------- | --------------------------------------- | ------------------ |
+| `p_registro_id` | `vendite.registri_fatturazione.id%TYPE` | Registro fiscale.  |
+| `p_data`        | date                                    | Data documento.    |
+| `p_serie`       | text                                    | Serie (opzionale). |
 
 ---
 

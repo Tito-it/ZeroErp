@@ -8,6 +8,11 @@
 > • [vendite.tipi_doc_fiscale_registri](/dbzero/vendite/manual/tipi_doc_fiscale_registri)  
 > • [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_get_anno_registro](/dbzero/vendite/funzioni/fn_get_anno_registro)  
+> • [vendite.fn_get_next_progressivo](/dbzero/vendite/funzioni/fn_get_next_progressivo)  
+>
 ---
 
 ### 🎯 Scopo Principale

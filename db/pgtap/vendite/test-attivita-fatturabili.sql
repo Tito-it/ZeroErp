@@ -26,8 +26,9 @@
 -- 19) Default factor_to_base = 1
 -- 20) Default sorgente_riga = 0
 -- 21) Normalizzazione competenza_mese al primo del mese
--- 22) Check competenza_data >= data_attivita
--- 23) NOT NULL quantita
+-- 22) Check competenza_dal <= competenza_al
+-- 23) Competenza_mese derivata da posticipa_al se NULL
+-- 24) NOT NULL quantita
 -- 24) FK su articolo_id
 -- 25) Inserimento riga con sorgente_tipo_id e sorgente_uid/sorgente_riga validi
 -- 26) Unicita parziale su (sorgente_tipo_id, sorgente_uid)
@@ -43,7 +44,7 @@
 -- 36) Nota presente in partizione vendite.note_attivita_fatturabili
 -- ------------------------------------------------------------
 
-SELECT plan(36);
+SELECT plan(37);
 
 -- ============================================================
 -- 0) Costanti e riferimenti
@@ -167,6 +168,7 @@ WITH ins AS (
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id,
         meta
@@ -177,6 +179,7 @@ WITH ins AS (
         r.billing_account_id,
         current_date,
         -5,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id,
         jsonb_build_object('test_scope', k.test_scope)
@@ -372,7 +375,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 3) Check competenza_data >= data_attivita
+-- 3) Check competenza_dal <= competenza_al
 -- ============================================================
 SELECT throws_ok(
     $$
@@ -382,7 +385,9 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
-        competenza_data,
+        competenza_dal,
+        competenza_al,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id
     )
@@ -392,14 +397,54 @@ SELECT throws_ok(
         r.billing_account_id,
         date '2025-02-01',
         1,
+        date '2025-02-01',
         date '2025-01-31',
+        date '2025-02-01',
         r.tipo_doc_fiscale_id,
         r.valuta_id
     FROM tmp_refs_af r;
     $$,
     '23514',
     NULL,
-    'Check competenza_data >= data_attivita'
+    'Check competenza_dal <= competenza_al'
+);
+
+-- ============================================================
+-- 3.1) Competenza_mese derivata da posticipa_al
+-- ============================================================
+CREATE TEMP TABLE tmp_attivita_posticipo AS
+WITH ins AS (
+    INSERT INTO vendite.attivita_fatturabili (
+        articolo_id,
+        istanza_utility_id,
+        billing_account_id,
+        data_attivita,
+        quantita,
+        posticipa_al,
+        tipo_doc_fiscale_id,
+        valuta_id,
+        meta
+    )
+    SELECT
+        r.articolo_id,
+        r.istanza_utility_id,
+        r.billing_account_id,
+        date '2025-01-10',
+        1,
+        date '2025-03-15',
+        r.tipo_doc_fiscale_id,
+        r.valuta_id,
+        jsonb_build_object('test_scope', k.test_scope, 'case', 'posticipo_competenza')
+    FROM tmp_refs_af r,
+         tmp_costanti_af k
+    RETURNING id, competenza_mese
+)
+SELECT * FROM ins;
+
+SELECT is(
+    (SELECT competenza_mese FROM tmp_attivita_posticipo),
+    date '2025-03-01',
+    'Competenza_mese derivata da posticipa_al'
 );
 
 -- ============================================================
@@ -413,6 +458,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id
     )
@@ -422,6 +468,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         NULL,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id
     FROM tmp_refs_af r;
@@ -442,6 +489,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id
     )
@@ -451,6 +499,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id
     FROM tmp_refs_af r;
@@ -474,6 +523,7 @@ WITH ins AS (
         sorgente_tipo_id,
         sorgente_riga,
         sorgente_uid,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id,
         meta
@@ -487,6 +537,7 @@ WITH ins AS (
         s.sorgente_tipo_id,
         CASE WHEN s.key_selector = 'id' THEN s.sorgente_riga ELSE NULL END,
         CASE WHEN s.key_selector = 'uid' THEN s.sorgente_uid ELSE k.sorgente_uid_unica END,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id,
         jsonb_build_object('test_scope', k.test_scope, 'case', 'unique_sorgente')
@@ -514,6 +565,7 @@ SELECT throws_ok(
         sorgente_tipo_id,
         sorgente_riga,
         sorgente_uid,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id
     )
@@ -526,6 +578,7 @@ SELECT throws_ok(
         s.sorgente_tipo_id,
         CASE WHEN s.key_selector = 'id' THEN s.sorgente_riga ELSE NULL END,
         CASE WHEN s.key_selector = 'uid' THEN s.sorgente_uid ELSE k.sorgente_uid_unica END,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id
     FROM tmp_refs_af r,
@@ -542,7 +595,7 @@ SELECT throws_ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_lotto_attivita AS
 WITH ins AS (
-    INSERT INTO vendite.fatturazione_lotti_attivita (
+    INSERT INTO vendite.attivita_fatturabili_lotti (
         lock_batch_id,
         codice,
         competenza_mese,
@@ -615,6 +668,7 @@ WITH ins AS (
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id,
         lotto_attivita_id,
@@ -627,6 +681,7 @@ WITH ins AS (
         r.billing_account_id,
         current_date,
         1,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id,
         l.id,
@@ -657,6 +712,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id
     )
@@ -666,6 +722,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
+        date_trunc('month', current_date)::date,
         999999999::bigint,
         r.valuta_id
     FROM tmp_refs_af r;
@@ -686,6 +743,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id
     )
@@ -695,6 +753,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         999999::integer
     FROM tmp_refs_af r;
@@ -715,6 +774,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id,
         lotto_attivita_id
@@ -725,6 +785,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id,
         999999999::bigint
@@ -746,6 +807,7 @@ SELECT throws_ok(
         billing_account_id,
         data_attivita,
         quantita,
+        competenza_mese,
         tipo_doc_fiscale_id,
         valuta_id,
         attivita_consumi_id
@@ -756,6 +818,7 @@ SELECT throws_ok(
         r.billing_account_id,
         current_date,
         1,
+        date_trunc('month', current_date)::date,
         r.tipo_doc_fiscale_id,
         r.valuta_id,
         999999999::bigint
@@ -786,9 +849,9 @@ WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
 DELETE FROM vendite.attivita_consumi
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
 
-UPDATE vendite.fatturazione_lotti_attivita
+UPDATE vendite.attivita_fatturabili_lotti
 SET storicizza = false
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);
 
-DELETE FROM vendite.fatturazione_lotti_attivita
+DELETE FROM vendite.attivita_fatturabili_lotti
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_af);

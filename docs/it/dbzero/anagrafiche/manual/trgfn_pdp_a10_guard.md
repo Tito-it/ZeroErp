@@ -1,4 +1,4 @@
-## 📘 Documentazione – Funzione trigger `anagrafiche.trgfn_pdp_protect_cols`
+## 📘 Documentazione – Funzione trigger `anagrafiche.trgfn_pdp_a10_guard`
 
 > 👀 **Vedi anche**
 >
@@ -14,6 +14,7 @@
 
 ### 🎯 Scopo Principale
 
+(latest review 28-01-2026)
 Impedire la **modifica** dei campi **identitari** del PDP:
 
 * `pdp` (codice univoco globale)
@@ -21,12 +22,14 @@ Impedire la **modifica** dei campi **identitari** del PDP:
 
 La regola è **immutabilità dopo prima valorizzazione**: è consentito impostare il valore da `NULL → valore`, ma **qualunque modifica successiva** viene bloccata con eccezione applicativa tracciata via `script.fn_log_and_raise_error`.
 
+**Nota naming**: in versioni precedenti la funzione era `anagrafiche.trgfn_pdp_protect_cols` con trigger `trg_pdp_protect_cols_upd`.
+
 ---
 
 ### 🧩 Firma
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_pdp_protect_cols()
+CREATE OR REPLACE FUNCTION anagrafiche.trgfn_pdp_a10_guard()
 RETURNS trigger
 LANGUAGE plpgsql
 VOLATILE
@@ -36,31 +39,6 @@ VOLATILE
 
 ---
 
-### 🔎 Logica
-
-```plpgsql
-IF TG_OP = 'UPDATE' THEN
-  -- Blocca cambio codice PDP (se già valorizzato)
-  IF OLD.pdp IS NOT NULL AND NEW.pdp IS DISTINCT FROM OLD.pdp THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', TG_NAME, 'E_COLONNA_NON_MODIFICABILE',
-      jsonb_build_object('column','pdp','id',OLD.id),
-      NULL::uuid, 'pdp'
-    );
-  END IF;
-
-  -- Blocca spostamento fisico del PDP
-  IF OLD.indirizzo_dettaglio_id IS NOT NULL
-     AND NEW.indirizzo_dettaglio_id IS DISTINCT FROM OLD.indirizzo_dettaglio_id THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', TG_NAME, 'E_COLONNA_NON_MODIFICABILE',
-      jsonb_build_object('column','indirizzo_dettaglio_id','id',OLD.id),
-      NULL::uuid, 'indirizzo_dettaglio_id'
-    );
-  END IF;
-END IF;
-RETURN NEW;
-```
 
 **Effetti pratici**
 
@@ -85,12 +63,12 @@ RETURN NEW;
 
 ```sql
 -- Ricrea il trigger di protezione
-DROP TRIGGER IF EXISTS trg_pdp_upd_protect_cols ON anagrafiche.pdp;
-CREATE TRIGGER trg_pdp_upd_protect_cols
+DROP TRIGGER IF EXISTS trg_pdp_a10_guard_upd ON anagrafiche.pdp;
+CREATE TRIGGER trg_pdp_a10_guard_upd
 BEFORE UPDATE OF pdp, indirizzo_dettaglio_id
 ON anagrafiche.pdp
 FOR EACH ROW
-EXECUTE FUNCTION anagrafiche.trgfn_pdp_protect_cols();
+EXECUTE FUNCTION anagrafiche.trgfn_pdp_a10_guard();
 ```
 
 **Test rapido**

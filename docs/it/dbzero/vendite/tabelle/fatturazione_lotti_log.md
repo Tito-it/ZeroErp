@@ -15,12 +15,19 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| fase | text | YES |  |
+| stato_doc_fiscale_id | bigint | YES |  |
+| tipo_lotto | text | YES |  |
+| stato_operativo | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatturazione_lotti_log_stato_operativo |  |
 | CHECK | chk_fatturazione_lotti_log_status |  |
+| CHECK | chk_fatturazione_lotti_log_tipo_lotto |  |
 | FOREIGN KEY | fk_fatturazione_lotti_log_lotto | lotto_id |
+| FOREIGN KEY | fk_fatturazione_lotti_log_stato_doc_fiscale | stato_doc_fiscale_id |
 | PRIMARY KEY | pk_fatturazione_lotti_log | id |
 
 ## 📑 Indici
@@ -31,6 +38,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_fatturazione_lotti_log_a10_stati_doc_fiscale_require_48d164 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id')` |
+| trg_fatturazione_lotti_log_a10_stati_doc_fiscale_require_48d164 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id')` |
 | trg_fatturazione_lotti_log_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---

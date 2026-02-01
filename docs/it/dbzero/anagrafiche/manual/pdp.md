@@ -15,6 +15,7 @@
 >
 > • [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)  
 > • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)  
+> • [`anagrafiche.trgfn_pdp_a10_guard`](/dbzero/anagrafiche/manual/trgfn_pdp_a10_guard)  
 
 ---
 

@@ -9,6 +9,7 @@
 > * [`Documentazione fatture_righe`](/dbzero/vendite/manual/fatture_righe)  
 > * [`Documentazione note (partizionata)`](/dbzero/vendite/manual/note)  
 > * [`Messaggi di errore e log`](/guide/Messaggi-di-Errore-e-Generazione-Log)  
+> * [`Piano migrazione DB → Django`](/guide/fatturazione-migrazione-django)  
 
 ---
 
@@ -21,6 +22,25 @@ La fatturazione in Zero ERP e` progettata come **pipeline in piu` fasi**:
 3. **Emissione** e numerazione del documento (`vendite.fatture`).
 
 Questa separazione garantisce **idempotenza**, **controllo** e **revisionabilita`** prima dell’emissione fiscale.
+
+---
+
+## 🔎 Analisi – Lotto “giornaliero” vs massivo
+
+Per esigenze front‑office puo` essere necessario **emettere fatture immediate** (numerate)
+senza attendere il ciclo massivo. Per mantenere coerenza con il modello a lotti,
+introduciamo due concetti:
+
+* **`tipo_lotto`**: `MASSIVO` | `GIORNALIERO`
+* **`stato_operativo`**: `APERTO` | `CHIUSO` | `ERRORE`
+
+Regola chiave:
+* Il **lotto giornaliero** può restare **APERTO** anche se le fatture sono **EMESSE**.
+* Si chiude **solo** quando il lotto passa a **INVIATA**.
+* Le fatture giornaliere **non sono retrocedibili** (no ritorno a BOZZA).
+
+Questo consente di **accorpare più fatture** nello stesso lotto giornaliero,
+senza perdere la governance documentale.
 
 ---
 
@@ -110,7 +130,7 @@ La dashboard “Input” deve quindi gestire due flussi:
    log dedicato e successiva produzione di righe `attivita_fatturabili`.
 
 Il processo di alimentazione avviene **prima** del lotto fatture e mantiene tracciabilita`
-tramite `fatturazione_lotti_attivita`.
+tramite `attivita_fatturabili_lotti`.
 
 ---
 
@@ -252,6 +272,12 @@ flowchart TD
 
 ## 📎 Appendice – Lotto, raggruppamenti e stati (design operativo)
 
+> **Nota importante (evidenza):**
+> `area_geografica_id` restera` **solo** un filtro geografico.
+> In futuro i raggruppamenti multi‑criterio (comuni + tipologia utenza + contratti, ecc.)
+> saranno gestiti con un **nuovo livello** (`gruppo_fatturazione_id`), per evitare
+> ambiguita` semantiche e mantenere la compatibilita` con l’attuale modello.
+
 ### 1) Lotto di fatturazione
 
 Il **lotto** diventa l’elemento centrale per:
@@ -292,11 +318,15 @@ Questo richiede:
 Per questo si introduce un **processo di alimentazione** separato dal lotto fatture,
 ma collegabile in dashboard.
 
+> Nota: le validazioni/normalizzazioni su `attivita_fatturabili` sono gestite da
+> trigger dedicati (es. `trgfn_attivita_fatturabili_guard_ba_coerenza`,
+> `trgfn_attivita_fatturabili_guard_fonte`, `trgfn_attivita_norm_competenza_mese`).
+
 ---
 
 ### 1.2) Lotto alimentazione + attivita_consumi (design)
 
-**Lotto alimentazione** (`vendite.fatturazione_lotti_attivita`):
+**Lotto alimentazione** (`vendite.attivita_fatturabili_lotti`):
 * batch di generazione `attivita_fatturabili` con parametri di calcolo (competenza, utility, BA);
 * stato lotto (IN_ESECUZIONE | COMPLETATO | ERRORE);
 * riferimento per dashboard e audit.
@@ -309,9 +339,44 @@ ma collegabile in dashboard.
 **Log dedicato** (`vendite.attivita_fatturabili_log`):
 * messaggi W/C riferiti al lotto o alla testata consumi.
 
+---
+
+### 1.3) Area geografica (analisi)
+
+Per esigenze di fatturazione (es. raggruppamenti per **comuni**), e` necessario
+introdurre una **area geografica** dedicata.  
+Questa area e` un filtro **specifico** e non va confusa con i futuri gruppi
+multi‑criterio (che useranno un livello distinto).
+
+> Nota: i BA senza area restano **fatturabili**. L’area geografica puo` essere
+> NULL e le attivita vengono comunque generate, per non penalizzare chi non
+> usa questa funzionalita`.
+
 Le righe `attivita_fatturabili` generate da processi automatici
 mantengono un riferimento al **lotto alimentazione** e, se disponibile,
 alla **testata consumi**.
+
+---
+
+## 📌 Appendice – Modifiche richieste (giornaliero)
+
+### A) Schema
+* `vendite.fatturazione_lotti`
+  * aggiungere `tipo_lotto` (`MASSIVO` | `GIORNALIERO`)
+  * aggiungere `stato_operativo` (`APERTO` | `CHIUSO` | `ERRORE`)
+
+### B) Regole operative
+* **Giornaliero**:
+  * fatture emesse subito (numerazione immediata)
+  * **no retrocessione** a BOZZA
+  * lotto `APERTO` finché `stato_doc_fiscale_id` ≠ INVIATA
+* **Massivo**:
+  * retrocessione ammessa (se previsto dalle transizioni)
+  * `stato_operativo` può riaprire
+
+### C) Pipeline
+* pipeline dedicata **GIORNALIERO** (step ridotti fino a numerazione)
+* pipeline MASSIVA invariata
 
 ### 2) Parametri funzione di calcolo (proposta)
 
@@ -340,7 +405,7 @@ Chiavi di raggruppamento:
 * `utility_id` (se valorizzato)
 * `tipo_doc_fiscale_id`
 * `valuta_id`
-* `emittente_soggetto_ruolo_id`
+* `emittente_soggetto_ruolo_id` (se valorizzato)
 
 La funzione **aggrega** su fattura bozza esistente con stessa chiave.
 
@@ -426,11 +491,10 @@ Proposta di base:
 * `vendite.attivita_fatturabili` **deve** avere `tipo_doc_fiscale_id`.
 * Se l’attivita` deriva da una sorgente **RIGA** (`config.sorgenti`), il `tipo_doc_fiscale_id` viene ereditato dalla sorgente.
 * Per attivita` inserite manualmente (auto‑sorgente), il `tipo_doc_fiscale_id` deve essere valorizzato direttamente.
-* **Fallback**: se non e` presente, usare il **tipo documento di default della utility** (`config.utilities.tipo_doc_fiscale_id`).
+* **Fallback**: non previsto. Il tipo documento e` di sistema.
 * **Ordine di risoluzione** per l’alimentazione di `attivita_fatturabili`:
   1) `config.sorgenti.tipo_doc_fiscale_id` (se sorgente RIGA e valorizzato)
-  2) `config.utilities.tipo_doc_fiscale_id` (fallback)
-  3) errore se ancora NULL
+  2) errore se ancora NULL
 
 Questa regola rende il raggruppamento deterministico e permette casi semplificati con **un solo tipo documento per utility**.
 
@@ -528,7 +592,7 @@ Per evitare monoliti, la pipeline deve essere composta da procedure richiamabili
 * ✅ -`config.stati_sdi` (stati canale SDI)
 * ✅ `config.stati_doc_fiscale` (stati documento con flag `applica_lotto` / `applica_fattura`)
   
-* ✅ `vendite.tipi_doc_fiscale_registri` (mapping **tipo documento → registro**, con varianti per utility/emittente)
+* ✅ `vendite.tipi_doc_fiscale_registri` (mapping **tipo documento → registro**)
 
 * ✅ `anagrafiche.emittenti_fiscali_billing_account` (mapping **billing_account → emittente fiscale**)
   * aggiungere `default boolean` con **unicita`** del valore `true`
@@ -582,23 +646,22 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 
 **Preparazione lotto**
 
-* `vendite.fn_create_fatturazione_lotto(...)` → crea lotto da parametri (competenza, utility, tipo documento, BA/reseller opzionali).
-* `vendite.fn_get_or_create_lotto(...)` → valida lotto esistente o lo crea se assente (supporto ricalcolo).
+* ✅ `vendite.fn_create_fatturazione_lotto(...)` → crea lotto da parametri (competenza, utility, tipo documento, BA/reseller opzionali).
+* ✅ `vendite.fn_get_or_create_lotto(...)` → valida lotto esistente o lo crea se assente (supporto ricalcolo).
 
 **Selezione e lock attivita_fatturabili**
 
-* `vendite.fn_select_attivita_fatturabili(...)` → seleziona righe eleggibili (filtri: competenza, stati, BA, utility, tipo documento, valuta).
-* `vendite.fn_lock_attivita_fatturabili(...)` → marca/lock delle righe selezionate per evitare doppie elaborazioni.
+* ✅`vendite.fn_select_attivita_fatturabili(...)` → seleziona righe eleggibili e, se richiesto, esegue il lock in modo atomico.
 
 **Aggregazione e chiavi documento**
 
-* `vendite.fn_group_attivita_fatturabili(...)` → applica regole di aggregazione (BA, utility, tipo documento, valuta, parent BA).
-* `vendite.fn_build_fattura_key(...)` → genera chiave logica di aggregazione per documento.
+* ✅`vendite.fn_group_attivita_fatturabili(...)` → applica regole di aggregazione (BA, utility, tipo documento, valuta, parent BA).
+* ✅`vendite.fn_build_fattura_key(...)` → genera chiave logica di aggregazione per documento.
 
 **Generazione documenti**
 
-* `vendite.fn_get_or_create_fattura_header(...)` → crea/recupera testata fattura in bozza (riuso per lotto/chiave).
-* `vendite.fn_generate_fatture_righe(...)` → genera righe da `attivita_fatturabili` secondo regole.
+* ✅`vendite.fn_get_or_create_fattura_header(...)` → crea/recupera testata fattura in bozza (riuso per lotto/chiave).
+* ✅`vendite.fn_generate_fatture_righe(...)` → genera righe da `attivita_fatturabili` secondo regole.
 
 **Ricalcolo**
 
@@ -616,6 +679,39 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 * `vendite.fn_numera_fatture_lotto(...)` → assegna progressivi documento (registri).
 * `vendite.fn_prepare_sdi_payload(...)` → prepara invio SDI (placeholder).
 
+**Pipeline (orchestrazione lotto)**
+
+*✅ `vendite.pr_run_lotto_pipeline(...)` → esegue la pipeline configurabile leggendo `vendite.fatturazione_pipeline`.
+  * imposta `stato_lotto = IN_ESECUZIONE` all’avvio e `COMPLETATO` a fine job.
+  * per ogni step:
+    * aggiorna `stato_doc_fiscale_id` del lotto,
+    * scrive un log `status=I` con `fase` su `fatturazione_lotti_log`,
+    * esegue i task definiti in `processi`.
+  * in caso di errore: `stato_lotto = ERRORE` + log errore.
+* ✅`vendite.fn_execute_pipeline_step(...)` → esegue i task di uno step (lettura `processi`/`rollback`).
+* ✅ `vendite.fn_log_pipeline_fase(...)` → inserisce log `I/W/C` con fase e stato lotto.
+
+---
+
+### 18) Sviluppi – Area geografica (backlog)
+
+**Tabelle**
+
+* ✅`vendite.area_geografica_fatturazione`
+  * id, codice, descrizione, attivo, meta, audit
+* ✅`vendite.area_geografica_fatturazione_comuni`
+  * id, area_id, comune_id, attivo, meta, audit
+
+**Colonne da aggiungere**
+
+* ✅`vendite.attivita_fatturabili.area_geografica_id` (FK, opzionale)
+* ✅`vendite.fatturazione_lotti.area_geografica_id` (FK, opzionale)
+
+**Funzioni / regole previste**
+
+* risoluzione area da comune (BA/indirizzo/utenza) in normalize
+* filtro area in `fn_select_attivita_fatturabili`
+
 ---
 
 ### 17) Nota su Fatturazione Elettronica (FE)
@@ -623,3 +719,9 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 * Il mapping **FE** (es. TD01, TD04) non e` gestito nel tipo documento attuale.
 * La classificazione FE verra` introdotta in una fase successiva con un dominio dedicato
   per l’emissione elettronica e l’invio SDI.
+
+---
+
+### 19) Promemoria refactor
+
+* Rinominare `vendite.fatturazione_lotti_attivita` in `vendite.attivita_fatturabili_lotti`.

@@ -1,0 +1,116 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260128-05-create-pr-run-lotto-pipeline-mctit.yaml
+
+  - changeSet:
+      id: 20260128-05-create-pr-run-lotto-pipeline
+      author: mctit
+      comment: "Procedura orchestrazione pipeline lotti"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE vendite.pr_run_lotto_pipeline(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE DEFAULT NULL,
+                p_competenza_mese vendite.fatturazione_lotti.competenza_mese%TYPE DEFAULT NULL,
+                p_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE DEFAULT NULL,
+                p_utility_id config.utilities.id%TYPE DEFAULT NULL,
+                p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                p_lock_batch_id vendite.fatturazione_lotti.lock_batch_id%TYPE DEFAULT NULL,
+                p_meta jsonb DEFAULT NULL,
+                p_dry_run boolean DEFAULT false
+              )
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_step record;
+                v_lotto_id vendite.fatturazione_lotti.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Orchestrazione pipeline lotto: imposta stato job,
+                --   aggiorna stato_doc_fiscale_id per step e invoca i task.
+                --
+                -- Regole:
+                --   - stato_lotto: IN_ESECUZIONE -> COMPLETATO/ERRORE
+                --   - ordine step determinato da config.stati_doc_fiscale.ordine
+                -- =========================================================
+
+                v_lotto_id := vendite.fn_get_or_create_lotto(
+                  p_lotto_id,
+                  p_competenza_mese,
+                  p_tipo_doc_fiscale_id,
+                  p_utility_id,
+                  p_billing_account_id,
+                  p_lock_batch_id,
+                  p_meta
+                );
+
+                -- Imposta stato lotto in esecuzione
+                PERFORM vendite.fn_set_fatturazione_lotto_stato(
+                  v_lotto_id, 'IN_ESECUZIONE', 'Avvio pipeline'
+                );
+
+                FOR v_step IN
+                  SELECT fp.stato_doc_fiscale_id, fp.descrizione, sd.ordine
+                    FROM vendite.fatturazione_pipeline fp
+                    JOIN config.stati_doc_fiscale sd
+                      ON sd.id = fp.stato_doc_fiscale_id
+                   WHERE fp.attivo IS TRUE
+                     AND COALESCE(sd.applica_lotto, false) IS TRUE
+                   ORDER BY sd.ordine
+                LOOP
+                  -- Aggiorna stato lotto allo step corrente
+                  UPDATE vendite.fatturazione_lotti
+                     SET stato_doc_fiscale_id = v_step.stato_doc_fiscale_id,
+                         data_update = now(),
+                         user_update = current_user
+                   WHERE id = v_lotto_id;
+
+                  -- Log fase (info)
+                  PERFORM vendite.fn_log_pipeline_fase(
+                    v_lotto_id,
+                    v_step.stato_doc_fiscale_id,
+                    COALESCE(v_step.descrizione, 'Esecuzione step'),
+                    'I',
+                    NULL,
+                    jsonb_build_object('ordine', v_step.ordine, 'dry_run', p_dry_run)
+                  );
+
+                  -- Esecuzione task dello step
+                  PERFORM vendite.fn_execute_pipeline_step(
+                    v_lotto_id,
+                    v_step.stato_doc_fiscale_id,  
+                    false,
+                    p_dry_run
+                  );
+                END LOOP;
+
+                -- Stato lotto completato
+                PERFORM vendite.fn_set_fatturazione_lotto_stato(
+                  v_lotto_id, 'COMPLETATO', 'Pipeline completata'
+                );
+              EXCEPTION
+                WHEN OTHERS THEN
+                  PERFORM vendite.fn_set_fatturazione_lotto_stato(
+                    v_lotto_id, 'ERRORE', 'Errore pipeline'
+                  );
+                  RAISE;
+              END
+              $$;
+
+              COMMENT ON PROCEDURE vendite.pr_run_lotto_pipeline(
+                vendite.fatturazione_lotti.id%TYPE,
+                vendite.fatturazione_lotti.competenza_mese%TYPE,
+                config.tipi_doc_fiscale.id%TYPE,
+                config.utilities.id%TYPE,
+                anagrafiche.billing_account.id%TYPE,
+                vendite.fatturazione_lotti.lock_batch_id%TYPE,
+                jsonb,
+                boolean
+              ) IS 'Esegue la pipeline del lotto: log fasi, step e stato job.';

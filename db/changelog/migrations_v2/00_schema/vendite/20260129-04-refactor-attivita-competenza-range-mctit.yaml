@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260129-04-refactor-attivita-competenza-range-mctit.yaml
+
+  - changeSet:
+      id: 20260129-04-refactor-attivita-competenza-range
+      author: mctit
+      comment: "Sostituisce competenza_data con intervallo competenza_dal/competenza_al"
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columns:
+              - column:
+                  name: competenza_dal
+                  type: date
+                  remarks: "Competenza periodo dal (YYYY-MM-DD)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: competenza_al
+                  type: date
+                  remarks: "Competenza periodo al (YYYY-MM-DD)."
+                  constraints:
+                    nullable: true
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE vendite.attivita_fatturabili
+              SET competenza_dal = COALESCE(competenza_dal, data_attivita),
+                  competenza_al = COALESCE(competenza_al, COALESCE(competenza_dal, data_attivita));
+
+              ALTER TABLE vendite.attivita_fatturabili
+                DROP CONSTRAINT IF EXISTS chk_attivita_competenza_data_logica;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                DROP COLUMN IF EXISTS competenza_data;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                ALTER COLUMN competenza_dal SET NOT NULL,
+                ALTER COLUMN competenza_al SET NOT NULL;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                ADD CONSTRAINT chk_attivita_competenza_dal_al
+                CHECK (competenza_dal <= competenza_al);

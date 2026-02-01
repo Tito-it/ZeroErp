@@ -17,13 +17,14 @@ DECLARE
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Normalizza campi base e risolve tipo_doc_fiscale/valuta
-  --   per attivita_fatturabili, solo su INS/UPD dei campi rilevanti.
+  --   Normalizza campi base e risolve tipo_doc_fiscale/valuta.
   --
   -- Regole:
-  --   - competenza_mese -> primo del mese
+  --   - competenza_mese sempre valorizzata e al primo del mese
+  --   - se NULL -> mese di posticipa_al (se presente)
+  --   - competenza_dal/al: se NULL, default su data_attivita
   --   - sorgente_riga default 0 se sorgente valorizzata
-  --   - tipo_doc_fiscale_id: sorgente -> utility -> errore
+  --   - tipo_doc_fiscale_id: da sorgente
   --   - valuta_id: BA -> utility -> gestore
   -- =========================================================
 
@@ -31,8 +32,18 @@ BEGIN
     RETURN OLD;
   END IF;
 
-  IF NEW.competenza_mese IS NOT NULL THEN
+  IF NEW.competenza_mese IS NULL AND NEW.posticipa_al IS NOT NULL THEN
+    NEW.competenza_mese := date_trunc('month', NEW.posticipa_al)::date;
+  ELSIF NEW.competenza_mese IS NOT NULL THEN
     NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
+  END IF;
+
+  IF NEW.competenza_dal IS NULL THEN
+    NEW.competenza_dal := NEW.data_attivita;
+  END IF;
+
+  IF NEW.competenza_al IS NULL THEN
+    NEW.competenza_al := NEW.competenza_dal;
   END IF;
 
   IF NEW.sorgente_tipo_id IS NOT NULL THEN
@@ -50,8 +61,7 @@ BEGIN
 
   IF NEW.tipo_doc_fiscale_id IS NULL THEN
     NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
-      NEW.sorgente_tipo_id,
-      v_utility_id
+      NEW.sorgente_tipo_id
     );
   END IF;
 

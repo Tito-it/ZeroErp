@@ -6,6 +6,12 @@
 >
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)    
 > • [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)    
+>
+> **Approfondimento funzioni:**
+>
+> • [`vendite.trgfn_tipi_indirizzi_only_allowed`](/dbzero/vendite/funzioni/trgfn_tipi_indirizzi_only_allowed)
+>
+
 
 ---
 
@@ -34,18 +40,6 @@ Per ogni fattura puoi memorizzare **al massimo un indirizzo per tipo** (es. fatt
 
 > Suggerimento di contenuto `snapshot`: `{ "ragsoc": "ABC S.p.A.", "via": "Via Roma, 1", "cap": "00100", "comune": "Roma", "prov": "RM", "nazione": "IT", "pec": "fatture@abcpec.it", "email": "billing@abc.it" }`
 
----
-
-### 🔒 Vincoli, indici e trigger
-
-* **PK**: `id`.
-* **FK**:
-
-  * `fattura_id` → `vendite.fatture(id)` (ON DELETE CASCADE).
-  * `tipo_indirizzo_id` → `config.tipi_indirizzi(id)`.
-* **UNIQUE**: uno per tipo per fattura.
-* **Indice**: `ix_fatture_indir_fattura` per recupero rapido per fattura.
-* **Trigger**: `trg_fatture_indirizzi_a10_ins_upd_only_allowed_tipi` → impedisce l’uso di **tipi non ammessi** per la fattura (lista governata dalla funzione `vendite.trgfn_fatture_indirizzi_only_allowed_tipi`).
 
 ---
 

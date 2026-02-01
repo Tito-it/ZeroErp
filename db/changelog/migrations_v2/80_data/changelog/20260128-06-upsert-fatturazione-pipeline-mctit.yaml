@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20260128-06-upsert-fatturazione-pipeline
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: fatturazione_pipeline
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/vendite/fatturazione_pipeline.csv
+            tableName: fatturazione_pipeline
+            schemaName: vendite
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: tipo_lotto, type: STRING }
+              - column: { name: stato_doc_fiscale_id, type: STRING }
+              - column: { name: processi, type: JSON }
+              - column: { name: rollback, type: JSON }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update, type: STRING }

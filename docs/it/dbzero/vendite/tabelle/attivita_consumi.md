@@ -27,9 +27,9 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_attivita_consumi_stato_calcolo |  |
+| FOREIGN KEY | fk_attivita_consumi_attivita_lotto | lotto_attivita_id |
 | FOREIGN KEY | fk_attivita_consumi_ba | billing_account_id |
 | FOREIGN KEY | fk_attivita_consumi_fattura | fattura_id |
-| FOREIGN KEY | fk_attivita_consumi_lotto_attivita | lotto_attivita_id |
 | FOREIGN KEY | fk_attivita_consumi_uom | uom_id |
 | PRIMARY KEY | pk_attivita_consumi | id |
 | UNIQUE | uq_attivita_consumi_uid | uid |

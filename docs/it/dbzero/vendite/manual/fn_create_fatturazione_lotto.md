@@ -4,11 +4,15 @@
 >
 > **Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
-> • [config.utilities](/dbzero/config/tabelle/utilities)  
-> • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
-> • [vendite.tipi_doc_fiscale_registri](/dbzero/vendite/manual/tipi_doc_fiscale_registri)  
+> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)   
+> • [config.utilities](/dbzero/config/tabelle/utilities)   
+> • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)   
+> • [vendite.tipi_doc_fiscale_registri](/dbzero/vendite/manual/tipi_doc_fiscale_registri)   
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
+>
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_get_or_create_lotto](/dbzero/vendite/funzioni/fn_get_or_create_lotto)   
 >
 ---
 

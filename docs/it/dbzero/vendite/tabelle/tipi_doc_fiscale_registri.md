@@ -28,5 +28,14 @@
 | pk_tipi_doc_fiscale_registri | `CREATE UNIQUE INDEX pk_tipi_doc_fiscale_registri ON vendite.tipi_doc_fiscale_registri USING btree (id)` |
 | uq_tipi_doc_fiscale_registri_tipo_doc_registro | `CREATE UNIQUE INDEX uq_tipi_doc_fiscale_registri_tipo_doc_registro ON vendite.tipi_doc_fiscale_registri USING btree (tipo_doc_fiscale_id, registro_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_tipi_doc_fiscale_registri_a10_registri_fatturazione__3f401f | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id')` |
+| trg_tipi_doc_fiscale_registri_a10_registri_fatturazione__3f401f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id')` |
+| trg_tipi_doc_fiscale_registri_a10_tipi_doc_fiscale_requi_f3dd83 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id')` |
+| trg_tipi_doc_fiscale_registri_a10_tipi_doc_fiscale_requi_f3dd83 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id')` |
+| trg_tipi_doc_fiscale_registri_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

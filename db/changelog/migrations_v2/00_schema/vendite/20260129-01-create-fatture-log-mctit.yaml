@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260129-01-create-fatture-log-mctit.yaml
+
+  - changeSet:
+      id: 20260129-01-create-fatture-log
+      author: mctit
+      comment: "Log anomalie fatture (warning/critical)"
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: fatture_log
+            remarks: "Log anomalie fattura (warning/critical) con possibilita` di disabilitazione."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_fatture_log
+                    nullable: false
+
+              - column:
+                  name: fattura_id
+                  type: bigint
+                  remarks: "FK -> vendite.fatture.id"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_ora
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp evento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: messaggio
+                  type: text
+                  remarks: "Messaggio log."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: status
+                  type: character
+                  defaultValue: "W"
+                  remarks: "W=warning, C=critical."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: disabilitato
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "TRUE se log disabilitato da operatore."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_log
+            baseColumnNames: fattura_id
+            constraintName: fk_fatture_log_fattura
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture_log
+            indexName: ix_fatture_log_fattura_id
+            columns:
+              - column:
+                  name: fattura_id
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_log
+                ADD CONSTRAINT chk_fatture_log_status
+                CHECK (status IN ('W','C'));
+
+              COMMENT ON TABLE vendite.fatture_log
+                IS 'Log anomalie fattura (warning/critical) con disabilitazione.';

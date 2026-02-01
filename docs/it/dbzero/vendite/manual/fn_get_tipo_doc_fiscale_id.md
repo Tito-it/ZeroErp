@@ -8,6 +8,10 @@
 > • [config.utilities](/dbzero/config/tabelle/utilities)  
 > • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
+>
 ---
 
 ### 🎯 Scopo Principale
@@ -29,7 +33,7 @@ fiscale a partire dalla sorgente o dalla utility.
 ### ✅ Note operative
 
 * Funzione pensata per l’alimentazione di `attivita_fatturabili`.
-* Garantisce coerenza del tipo documento senza fallback impliciti applicativi.
+* Non prevede fallback su utility: il tipo documento e` di sistema.
 
 ---
 

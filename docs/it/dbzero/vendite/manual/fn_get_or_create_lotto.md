@@ -6,6 +6,10 @@
 >
 > • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 >
+> **Approfondimento funzioni:**
+>
+> • [vendite.fn_create_fatturazione_lotto](/dbzero/vendite/funzioni/fn_create_fatturazione_lotto)     
+>
 ---
 
 ### 🎯 Scopo Principale
@@ -18,9 +22,10 @@ La funzione **`vendite.fn_get_or_create_lotto()`** recupera un lotto esistente
 
 ### 🔧 Regole applicate
 
+* `tipo_lotto` obbligatorio (MASSIVO | GIORNALIERO).
 * Se `p_lotto_id` e` valorizzato:
   * verifica l’esistenza del lotto;
-  * valida la coerenza di `competenza_mese`, `utility_id`, `tipo_doc_fiscale_id`, `billing_account_id`.
+  * valida la coerenza di `competenza_mese`, `utility_id`, `tipo_doc_fiscale_id`, `billing_account_id`, `tipo_lotto`.
 * Se `p_lock_batch_id` e` valorizzato e non esiste un lotto, ne crea uno nuovo.
 * Se non e` presente nessun riferimento, delega a `fn_create_fatturazione_lotto`.
 

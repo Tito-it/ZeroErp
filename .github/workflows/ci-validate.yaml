@@ -7,12 +7,21 @@ on:
       - db/**
       - backend/**
       - requirements/**
+      - scripts/**
+      - .github/workflows/ci-validate.yml
   pull_request:
-    branches: [main]
+    branches: [Tito-dev, main]
+    paths:
+      - db/**
+      - backend/**
+      - requirements/**
+      - scripts/**
+      - .github/workflows/ci-validate.yml
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+
     services:
       postgres:
         image: postgis/postgis:18-3.6
@@ -22,26 +31,45 @@ jobs:
           POSTGRES_PASSWORD: secret
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U zeroerp"
-          --health-interval 10s --health-timeout 5s --health-retries 5
+          --health-cmd "pg_isready -U zeroerp -d zeroerp"
+          --health-interval 5s --health-timeout 5s --health-retries 30
+
     env:
-      # scegli qui quale requirements usare
-      REQ_FILE: backbase.txt # oppure: backdev.txt
+      # requirements runtime backend
+      REQ_FILE: backbase.txt
+
+      # Django / DB
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_NAME: zeroerp
+      DB_USER: zeroerp
+      DB_PASSWORD: secret
+      DJANGO_SECRET_KEY: ci-placeholder
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
+      DJANGO_DEBUG: "0"
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
-        with: { python-version: "3.13" }
-
-      # crea la venv in backend/.venv
+        with:
+          python-version: "3.14"
+          cache: "pip"
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements.in
+      # venv backend locale per gestire manage.py e deps
       - name: venv + pip (backend/.venv)
         working-directory: ./backend
         run: |
           python -m venv .venv
           source .venv/bin/activate
-          python -m pip install --upgrade pip
+          python -m pip install -U pip setuptools wheel
 
+      - name: Install backend requirements
+        run: |
+          source backend/.venv/bin/activate
+          pip install -r backend/requirements.txt
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -55,12 +83,11 @@ jobs:
           version: '5.0.0'
           edition: 'oss'
 
-      - name: Install PostgreSQL driver (LPM)
+      - name: Install PostgreSQL driver for Liquibase 5
         run: |
           liquibase lpm add postgresql --global
           liquibase --version
 
-     # Genera il changelog-master-autogen.yaml dalla cartella migrations_v2     
       - name: Generate Liquibase autogen master (timeline)
         run: |
           python scripts/gen_master_autogen.py \
@@ -68,36 +95,38 @@ jobs:
             --out  db/changelog/migrations_v2/changelog-autogen.yaml \
             --strict
 
-
-      - name: Liquibase update (DB effimero del job)
+      - name: Liquibase update (standard, no test)
         run: |
           liquibase \
-            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20app.env%3Dci" \
+            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff" \
             --username=zeroerp \
             --password=secret \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts="!test"
 
-      # installa i requirements selezionati usando la venv in backend/.venv
-      - name: Install requirements (backend venv)
+      - name: Liquibase CI apply (run automations)
         run: |
-          source backend/.venv/bin/activate
-          pip install -r requirements/${REQ_FILE}
+          liquibase \
+            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff%20-c%20app.env%3Dci" \
+            --username=zeroerp \
+            --password=secret \
+            --changeLogFile=db/changelog/changelog-master-v2.yaml \
+            update --contexts=ci_apply
 
-      # migrazioni Django dalla cartella del progetto
-      - name: Django migrate (schema django, DB effimero)
-
-        working-directory: ./backend 
-        env:
-          DB_HOST: localhost
-          DB_PORT: "5432"
-          DB_NAME: zeroerp
-          DB_USER: zeroerp
-          DB_PASSWORD: secret
-          DJANGO_SECRET_KEY: ci-placeholder
-          DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
-          DJANGO_DEBUG: "0"
+      - name: Django check
+        working-directory: ./backend
         run: |
-          source .venv/bin/activate               # venv è ./backend/.venv
+          source .venv/bin/activate
+          python manage.py check
+
+      - name: Django migrate (schema django)
+        working-directory: ./backend
+        run: |
+          source .venv/bin/activate
           python manage.py migrate --noinput
-          
+
+      - name: Django tests
+        working-directory: ./backend
+        run: |
+          source .venv/bin/activate
+          python manage.py test

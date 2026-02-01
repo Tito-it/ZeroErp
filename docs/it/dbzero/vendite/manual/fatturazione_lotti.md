@@ -24,10 +24,12 @@ coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, 
 ### 🧱 Campi chiave (semantica)
 
 * **Identita` lotto**: `id`, `lock_batch_id` (uuid), `codice`.
-* **Parametri di calcolo**: `competenza_mese`, `utility_id`, `tipo_doc_fiscale_id`, `billing_account_id`.
+* **Parametri di calcolo**: `competenza_mese`, `utility_id`, `tipo_doc_fiscale_id`, `billing_account_id`, `area_geografica_id` (opz.).
+* **Tipo lotto**: `tipo_lotto` (MASSIVO | GIORNALIERO).
 * **Stati**:
   * `stato_lotto` (IN_ESECUZIONE | COMPLETATO | ERRORE)
   * `stato_doc_fiscale_id` (FK -> `config.stati_doc_fiscale`)
+  * `stato_operativo` (APERTO | CHIUSO | ERRORE)
 * **Governance**: `meta`, `storicizza`, `tx_id`, audit `data_*`/`user_*`.
 
 ---

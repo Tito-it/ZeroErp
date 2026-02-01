@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260130-03-add-area-geografica-columns-mctit.yaml
+
+  - changeSet:
+      id: 20260130-03-add-area-geografica-columns
+      author: mctit
+      comment: "Aggiunge area_geografica_id a attivita_fatturabili e fatturazione_lotti"
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columns:
+              - column:
+                  name: area_geografica_id
+                  type: bigint
+                  remarks: "FK -> vendite.area_geografica_fatturazione.id (opzionale)."
+                  constraints:
+                    nullable: true
+
+        - addColumn:
+            schemaName: vendite
+            tableName: fatturazione_lotti
+            columns:
+              - column:
+                  name: area_geografica_id
+                  type: bigint
+                  remarks: "FK -> vendite.area_geografica_fatturazione.id (opzionale)."
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: area_geografica_id
+            constraintName: fk_attivita_fatturabili_area_geografica
+            referencedTableSchemaName: vendite
+            referencedTableName: area_geografica_fatturazione
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatturazione_lotti
+            baseColumnNames: area_geografica_id
+            constraintName: fk_fatturazione_lotti_area_geografica
+            referencedTableSchemaName: vendite
+            referencedTableName: area_geografica_fatturazione
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION

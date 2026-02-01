@@ -9,7 +9,7 @@
 > **Approfondimento tabelle:**
 >
 > • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
-> • [vendite.fatturazione_lotti_attivita](/dbzero/vendite/tabelle/fatturazione_lotti_attivita)  
+> • [vendite.attivita_fatturabili_lotti](/dbzero/vendite/tabelle/attivita_fatturabili_lotti)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)  
 >

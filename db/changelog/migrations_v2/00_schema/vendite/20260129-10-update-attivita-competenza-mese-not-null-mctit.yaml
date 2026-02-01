@@ -1,0 +1,23 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260129-10-update-attivita-competenza-mese-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260129-10-update-attivita-competenza-mese-not-null
+      author: mctit
+      comment: "Rende competenza_mese obbligatoria e la normalizza su dati esistenti"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE vendite.attivita_fatturabili
+              SET competenza_mese = date_trunc('month', COALESCE(competenza_mese, posticipa_al, data_attivita))::date
+              WHERE competenza_mese IS NULL;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                ALTER COLUMN competenza_mese SET NOT NULL;

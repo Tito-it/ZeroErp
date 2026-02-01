@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260130-02-rename-fatturazione-lotti-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20260130-02-rename-fatturazione-lotti-attivita
+      author: mctit
+      validCheckSum:
+        - ANY
+      comment: "Rinomina fatturazione_lotti_attivita in attivita_fatturabili_lotti"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_attivita
+                RENAME TO attivita_fatturabili_lotti;
+               
+              ALTER TABLE vendite.attivita_fatturabili_lotti
+                RENAME CONSTRAINT pk_fatturazione_lotti_attivita TO pk_attivita_fatturabili_lotti;
+
+              ALTER TABLE vendite.attivita_fatturabili_lotti
+                RENAME CONSTRAINT uq_fatturazione_lotti_attivita_lock_batch_id TO uq_attivita_fatturabili_lotti_lock_batch_id;
+
+              ALTER TABLE vendite.attivita_fatturabili_lotti
+                RENAME CONSTRAINT uq_fatturazione_lotti_attivita_codice TO uq_attivita_fatturabili_lotti_codice;
+
+              ALTER TABLE vendite.attivita_fatturabili_lotti
+                RENAME CONSTRAINT fk_fatturazione_lotti_attivita_utility TO fk_attivita_fatturabili_lotti_utility;
+
+              ALTER TABLE vendite.attivita_fatturabili_lotti
+                RENAME CONSTRAINT fk_fatturazione_lotti_attivita_ba TO fk_attivita_fatturabili_lotti_ba;
+
+              ALTER TABLE vendite.attivita_fatturabili_lotti
+                RENAME CONSTRAINT fk_fatturazione_lotti_attivita_sorgente TO fk_attivita_fatturabili_lotti_sorgente;
+
+              ALTER TABLE vendite.attivita_fatturabili_lotti
+                RENAME CONSTRAINT chk_fatturazione_lotti_attivita_stato TO chk_attivita_fatturabili_lotti_stato;
+              /*
+              ALTER INDEX vendite.pk_fatturazione_lotti_attivita
+                RENAME TO pk_attivita_fatturabili_lotti;
+
+              ALTER INDEX vendite.uq_fatturazione_lotti_attivita_codice
+                RENAME TO uq_attivita_fatturabili_lotti_codice;
+
+              ALTER INDEX vendite.uq_fatturazione_lotti_attivita_lock_batch_id
+                RENAME TO uq_attivita_fatturabili_lotti_lock_batch_id;
+              */
+              -- Rinominare i vincoli FK nelle tabelle figlie (nomi)
+              ALTER TABLE vendite.attivita_consumi
+                RENAME CONSTRAINT fk_attivita_consumi_lotto_attivita TO fk_attivita_consumi_attivita_lotto;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                RENAME CONSTRAINT fk_attivita_fatturabili_lotto_attivita TO fk_attivita_fatturabili_attivita_lotto;
+
+              ALTER TABLE vendite.attivita_fatturabili_log
+                RENAME CONSTRAINT fk_attivita_fatturabili_log_lotto_attivita TO fk_attivita_fatturabili_log_attivita_lotto;
+
+              -- Rinominare trigger per coerenza (opzionale, stessa funzione)
+              /*
+              ALTER TRIGGER trg_fatturazione_lotti_attivita_a10_gen_codice_ins_upd
+                ON vendite.attivita_fatturabili_lotti
+                RENAME TO trg_attivita_fatturabili_lotti_a10_gen_codice_ins_upd;
+
+              ALTER TRIGGER trg_fatturazione_lotti_attivita_a10_sorgenti_require_att_e6ab3e
+                ON vendite.attivita_fatturabili_lotti
+                RENAME TO trg_attivita_fatturabili_lotti_a10_sorgenti_require_att_e6ab3e;
+
+              ALTER TRIGGER trg_fatturazione_lotti_attivita_audit_data_user_upd
+                ON vendite.attivita_fatturabili_lotti
+                RENAME TO trg_attivita_fatturabili_lotti_audit_data_user_upd;
+
+              ALTER TRIGGER trg_fatturazione_lotti_attivita_gen_tx_id_ins_upd
+                ON vendite.attivita_fatturabili_lotti
+                RENAME TO trg_attivita_fatturabili_lotti_gen_tx_id_ins_upd;
+
+              ALTER TRIGGER trg_fatturazione_lotti_attivita_z90_storico_upd_dlt
+                ON vendite.attivita_fatturabili_lotti
+                RENAME TO trg_attivita_fatturabili_lotti_z90_storico_upd_dlt;
+              */
+  - changeSet:
+      id: 20260130-02-01-rename-fatturazione-lotti-attivita
+      author: mctit
+      comment: "Rinomina fatturazione_lotti_attivita in attivita_fatturabili_lotti"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS 
+              trg_sorgenti_a10_fatturazione_lotti_attivita_block_deact_upd 
+              ON config.sorgenti;
