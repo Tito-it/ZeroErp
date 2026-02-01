@@ -5,6 +5,16 @@
 - Default language: it-IT
 - Follow docs in `docs/it/linee-guida-sql.md`, `docs/it/linee-guida-trigger.md`, `docs/it/liquibase-setup-workflow.md`
 
+## Backend (Django)
+- Codice backend in `backend/`
+- Versioni: Python 3.14, Django 6.01
+- Evitare API/metodi deprecati; seguire best practice Django
+- Accesso webserver configurato: test migrazione solo su richiesta
+- Struttura consigliata: project config in `backend/zeroerp_backend/`, app in `backend/apps/`
+- App per dominio (es. `vendite`, `anagrafiche`), non per dettaglio tecnico; se uno schema DB coincide con un dominio stabile, la cartella app puo` allinearsi allo schema
+- Orchestrazione in `apps/<dominio>/services/` (o `usecases/`); accesso DB/SQL in `apps/<dominio>/db/` o `repositories/`
+- API in `apps/<dominio>/api/` o `views.py` + `urls.py`; modelli ORM solo dove utili, altrimenti `managed = False`
+
 ## Liquibase v2 Workflow
 - New work only in `db/changelog/migrations_v2/`
 - File extension: `.yaml` only
@@ -20,6 +30,14 @@
 - Gli script aggiornati per tabelle/views/funzioni si trovano in `<schema>/tabelle`, `<schema>/views`, `<schema>/funzioni`.
 - Non modificare questi file auto-generati: servono solo come riferimento.
 - Scrivere o aggiornare solo la documentazione concettuale in `<schema>/manual`.
+- Per la documentazione backend (Django), usare sempre una struttura standard nei file manuali:
+  - Scopo
+  - Contesto
+  - Input
+  - Output
+  - Regole
+  - Dipendenze DB
+  - Note di migrazione (se applicabile)
 
 ## SQL Conventions
 - Schemas/tables/columns naming per `linee-guida-sql.md`
