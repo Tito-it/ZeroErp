@@ -102,6 +102,18 @@ nav:
                             - Storico: it/dbzero/storico/index.md
                             - Script: it/dbzero/script/index.md
                             - Vendite: it/dbzero/vendite/index.md
+        - Backend (Django):
+                  - Panoramica: it/backend/index.md
+                  - Aree:
+                            - Acquisti: it/backend/acquisti/index.md
+                            - Anagrafiche: it/backend/anagrafiche/index.md
+                            - Catalogo: it/backend/catalogo/index.md
+                            - Config: it/backend/config/index.md
+                            - Contabilita: it/backend/contabilita/index.md
+                            - Magazzino: it/backend/magazzino/index.md
+                            - Pagamenti: it/backend/pagamenti/index.md
+                            - Storico: it/backend/storico/index.md
+                            - Vendite: it/backend/vendite/index.md
 
         - Guide tecniche:
                   - Soggetti e ruoli anagrafici: it/guide/soggetti-e-ruoli-anagrafici.md

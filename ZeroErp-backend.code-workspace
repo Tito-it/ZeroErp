@@ -1,9 +1,0 @@
-{
-  "folders": [
-    { "name": "ZeroErp", "path": "/home/tid/apps/ZeroErp" }
-  ],
-  "settings": {
-    "python.defaultInterpreterPath": "/home/tid/apps/ZeroErp/backend/.venv/bin/python",
-    "python.terminal.activateEnvironment": true
-  }
-}
