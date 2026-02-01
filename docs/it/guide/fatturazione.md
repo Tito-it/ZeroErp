@@ -9,6 +9,7 @@
 > * [`Documentazione fatture_righe`](/dbzero/vendite/manual/fatture_righe)  
 > * [`Documentazione note (partizionata)`](/dbzero/vendite/manual/note)  
 > * [`Messaggi di errore e log`](/guide/Messaggi-di-Errore-e-Generazione-Log)  
+> * [`Piano migrazione DB → Django`](/guide/fatturazione-migrazione-django)  
 
 ---
 

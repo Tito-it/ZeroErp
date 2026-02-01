@@ -1,7 +1,10 @@
 {
-	"folders": [
-		{
-			"path": "."
-		}
-	]
+  "folders": [
+    
+   {
+      "name": "Backend-Dev",
+      "uri": "vscode-remote://ssh-remote+backend-dev/home/tid/apps/ZeroErp/backend"
+    }
+
+  ],
 }
