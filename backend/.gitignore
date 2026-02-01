@@ -1,38 +1,35 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html#
-#*
-# Ignora file compilati di Python
-./backend/.gitignore
-
+# Python: cache/bytecode
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 
-# Ignora i file di configurazione locali
+# Virtual env
+.venv/
+venv/
+
+# Env files (se contengono segreti)
 .env
+.env.*
 .env.systemd
-*.sqlite3
 internal.env
-
-workspaces/
-*.code-workspace
-
-backend/.env.systemd
 backend/.env
 backend/.env.*
+backend/.env.systemd
 
-# Ignora cartelle di log ed errori
+# DB locali
+*.sqlite3
+
+# Logs
 logs/
 *.log
 
-# Ignora i file delle dipendenze di Python
-venv/
-.venv/
-
-# 
-privato/
-
-# ignora carella doc site
+# Build docs / static site
 site/
 
-# ignora cartella tools
+# Workspace / IDE (personale)
+*.code-workspace
+workspaces/
+.vscode/
+
+# Tools / private
 tools/
+privato/
