@@ -3,13 +3,9 @@
     {
       "name": "DB-Dev",
        "uri": "vscode-remote://ssh-remote+dbdev/home/tid/software/ZeroErp"
-    },
-    
-   {
-      "name": "Backend-Dev",
-      "uri": "vscode-remote://ssh-remote+backend-dev/home/tid/apps/ZeroErp/backend"
     }
-
+    
+   
   ],
   //"settings": {
   //  "python.defaultInterpreterPath": "/home/tid/software/ZeroErp/.venv/bin/python",
