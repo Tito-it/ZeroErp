@@ -2,18 +2,18 @@
 
 > Obiettivo: mantenere in DB **primitive atomiche** e spostare in Django
 > la **orchestrazione** e le logiche di pipeline.
-
+>
 ---
 
 ### 1) Migrazione immediata (basso rischio)
 
 **Da spostare in Django**
 
-| Attuale in DB | Cosa fa oggi | Da implementare in Django |
-| --- | --- | --- |
-| `vendite.pr_run_lotto_pipeline(...)` | Orchestrazione completa pipeline (step + log + stato) | Service `PipelineRunner` con gestione transazioni e log |
-| `vendite.fn_execute_pipeline_step(...)` | Esecuzione task generici da `processi` | Task runner con dispatch dinamico (whitelist funzioni) |
-| `vendite.fatturazione_pipeline` (lettura) | Configura step e task | Config layer Django (lettura tabella + validazione) |
+| Attuale in DB                             | Cosa fa oggi                                          | Da implementare in Django                               |
+| ----------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------- |
+| `vendite.pr_run_lotto_pipeline(...)`      | Orchestrazione completa pipeline (step + log + stato) | Service `PipelineRunner` con gestione transazioni e log |
+| `vendite.fn_execute_pipeline_step(...)`   | Esecuzione task generici da `processi`                | Task runner con dispatch dinamico (whitelist funzioni)  |
+| `vendite.fatturazione_pipeline` (lettura) | Configura step e task                                 | Config layer Django (lettura tabella + validazione)     |
 
 **Note**
 * Questa fase sposta **solo la regia**: il flusso si muove in Django, ma i dati
@@ -28,10 +28,10 @@
 
 **Da valutare per step successivi**
 
-| Attuale in DB | Cosa fa oggi | Possibile refactor |
-| --- | --- | --- |
-| `vendite.fn_generate_fatture_righe(...)` | Genera righe fattura da attività | Spostare logica di calcolo/importi in Django; DB mantiene insert |
-| `vendite.fn_group_attivita_fatturabili(...)` | Aggregazione deterministica | Portare aggregazione in Django se le regole cambiano spesso |
+| Attuale in DB                                | Cosa fa oggi                     | Possibile refactor                                               |
+| -------------------------------------------- | -------------------------------- | ---------------------------------------------------------------- |
+| `vendite.fn_generate_fatture_righe(...)`     | Genera righe fattura da attività | Spostare logica di calcolo/importi in Django; DB mantiene insert |
+| `vendite.fn_group_attivita_fatturabili(...)` | Aggregazione deterministica      | Portare aggregazione in Django se le regole cambiano spesso      |
 
 **Prerequisiti**
 * Prima di spostare la logica, servono **API DB stabili** per inserimento righe/testate,
