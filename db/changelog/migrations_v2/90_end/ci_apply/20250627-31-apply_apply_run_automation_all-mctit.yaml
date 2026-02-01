@@ -24,7 +24,7 @@ databaseChangeLog:
         - or:
             - sqlCheck:
                 expectedResult: "OK"
-                sql: "select case when current_setting('app.env', true)='ci' then 'OK' else 'NO' end"
+                sql: "select case when current_setting('myapp.env', true)='ci' then 'OK' else 'NO' end"
             # - runningAs: ci_runner
 
       changes:

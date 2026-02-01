@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 
 $base = "jdbc:postgresql://$DbHost:$DbPort/$DbName"
 $optsNoDblink = '?options=-c%20myapp.log_with_dblink%3Doff'
-$optsCi       = "$optsNoDblink%20-c%20app.env%3Dci"
+$optsCi       = "$optsNoDblink%20-c%20myapp.env%3Dci"
 
 Write-Host "==> Liquibase base update (no test contexts)…"
 & $Liquibase `

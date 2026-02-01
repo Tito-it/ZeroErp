@@ -1,16 +1,15 @@
 # ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Liquibase changelog per Zero ERP
-# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
 #
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 
 databaseChangeLog:
-
   # Blocca in produzione (accetta solo DB che finisce con _dev o _test, o APP_ENV=test)
-# 9500: guard – precondition valutata SOLO se lanci con --contexts=test
+  # 9500: guard – precondition valutata SOLO se lanci con --contexts=test
   - changeSet:
       id: 9500-guard-test-db
       author: mctit
@@ -18,7 +17,7 @@ databaseChangeLog:
       preConditions:
         - onFail: HALT
         - onError: HALT
-        
+
         - dbms:
             type: postgresql
         # -- Opzioni precedenti (commentate):
@@ -28,7 +27,7 @@ databaseChangeLog:
         #         sql: "SELECT CASE WHEN current_database() ~ '(_dev|_test)$' THEN 'OK' ELSE 'NO' END"
         #     - sqlCheck:
         #         expectedResult: "OK"
-        #         sql: "SELECT CASE WHEN current_setting('app.env', true)='test' THEN 'OK' ELSE 'NO' END"
+        #         sql: "SELECT CASE WHEN current_setting('myapp.env', true)='test' THEN 'OK' ELSE 'NO' END"
 
         # Consenti solo se il DB si chiama 'Zero' (case-insensitive per sicurezza):
         - sqlCheck:
@@ -36,8 +35,7 @@ databaseChangeLog:
             sql: "SELECT CASE WHEN lower(current_database())='zero' THEN 'OK' ELSE 'NO' END"
       changes:
         - sql:
-            sql: "SELECT 1"  # no-op; serve solo a racchiudere la precondition
-
+            sql: "SELECT 1" # no-op; serve solo a racchiudere la precondition
 
   # 9501: playground (schema/table) – solo in test
   - changeSet:
@@ -103,9 +101,6 @@ databaseChangeLog:
                 note       text
               );
 
-
-
-
   # 9502: regole per lab – solo in test
   - changeSet:
       id: 9502-seed-rules
@@ -115,41 +110,41 @@ databaseChangeLog:
         - sql:
             splitStatements: false
             sql: |
-               -- TX_ID
-                INSERT INTO dbops.automation_rules_tbl (enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority, note)
-                SELECT true,'TX_ID','lab','AUTO','trg_{table}_ins_upd_gen_tx_id','BY_NAME','{}'::jsonb,100,'lab txid'
-                WHERE NOT EXISTS (
-                  SELECT 1 FROM dbops.automation_rules_tbl WHERE rule_type='TX_ID' AND target_schema='lab'
-                );
+              -- TX_ID
+               INSERT INTO dbops.automation_rules_tbl (enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority, note)
+               SELECT true,'TX_ID','lab','AUTO','trg_{table}_ins_upd_gen_tx_id','BY_NAME','{}'::jsonb,100,'lab txid'
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM dbops.automation_rules_tbl WHERE rule_type='TX_ID' AND target_schema='lab'
+               );
 
-                -- AUDIT_UPDATE
-                INSERT INTO dbops.automation_rules_tbl (enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority, note)
-                SELECT true,'AUDIT_UPDATE','lab','AUTO','trg_upd_{table}_audit_data_user','BY_NAME',
-                      '{"audit_ts":"data_update","audit_user":"user_update"}'::jsonb,100,'lab audit'
-                WHERE NOT EXISTS (
-                  SELECT 1 FROM dbops.automation_rules_tbl WHERE rule_type='AUDIT_UPDATE' AND target_schema='lab'
-                );
+               -- AUDIT_UPDATE
+               INSERT INTO dbops.automation_rules_tbl (enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority, note)
+               SELECT true,'AUDIT_UPDATE','lab','AUTO','trg_upd_{table}_audit_data_user','BY_NAME',
+                     '{"audit_ts":"data_update","audit_user":"user_update"}'::jsonb,100,'lab audit'
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM dbops.automation_rules_tbl WHERE rule_type='AUDIT_UPDATE' AND target_schema='lab'
+               );
 
-                -- STORICO
-                INSERT INTO dbops.automation_rules_tbl (enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority, note)
-                SELECT true,'STORICO','lab','AUTO','trg_{table}_{op}_storico','BY_NAME','{}'::jsonb,100,'lab storico'
-                WHERE NOT EXISTS (
-                  SELECT 1 FROM dbops.automation_rules_tbl WHERE rule_type='STORICO' AND target_schema='lab'
-                );
+               -- STORICO
+               INSERT INTO dbops.automation_rules_tbl (enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority, note)
+               SELECT true,'STORICO','lab','AUTO','trg_{table}_{op}_storico','BY_NAME','{}'::jsonb,100,'lab storico'
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM dbops.automation_rules_tbl WHERE rule_type='STORICO' AND target_schema='lab'
+               );
 
-                -- ATTIVO / soft-delete (NO ACTION e RESTRICT)
-                INSERT INTO dbops.automation_rules_tbl (enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority, note)
-                SELECT true,'ATTIVO','lab','AUTO',
-                      '{"cascade":"trg_soft_del_{parent}__{child}__{fk}",
-                        "require":"trg_chk_{child}_parent_{fk}",
-                        "block":"trg_block_deact_{parent}__{child}"}',
-                      'BY_NAME',
-                      '{"mode":"auto","cascade_children":true,"require_active_parent":true,"block_if_child_no_attivo":true,
-                        "include_no_action": true}'::jsonb,
-                      100,'lab attivo'
-                WHERE NOT EXISTS (
-                  SELECT 1 FROM dbops.automation_rules_tbl WHERE rule_type='ATTIVO' AND target_schema='lab'
-                );
+               -- ATTIVO / soft-delete (NO ACTION e RESTRICT)
+               INSERT INTO dbops.automation_rules_tbl (enabled, rule_type, target_schema, exec_mode, name_template, existence_strategy, params, priority, note)
+               SELECT true,'ATTIVO','lab','AUTO',
+                     '{"cascade":"trg_soft_del_{parent}__{child}__{fk}",
+                       "require":"trg_chk_{child}_parent_{fk}",
+                       "block":"trg_block_deact_{parent}__{child}"}',
+                     'BY_NAME',
+                     '{"mode":"auto","cascade_children":true,"require_active_parent":true,"block_if_child_no_attivo":true,
+                       "include_no_action": true}'::jsonb,
+                     100,'lab attivo'
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM dbops.automation_rules_tbl WHERE rule_type='ATTIVO' AND target_schema='lab'
+               );
 
   # 9503: DRY-RUN (default) – solo in test
   - changeSet:
