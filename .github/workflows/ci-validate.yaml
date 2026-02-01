@@ -107,7 +107,7 @@ jobs:
       - name: Liquibase CI apply (run automations)
         run: |
           liquibase \
-            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff%20-c%20app.env%3Dci" \
+            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff%20-c%20myapp.env%3Dci" \
             --username=zeroerp \
             --password=secret \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
