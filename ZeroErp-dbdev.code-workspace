@@ -1,15 +1,9 @@
 {
   "folders": [
-    {
-      "name": "DB-Dev",
-       "uri": "vscode-remote://ssh-remote+dbdev/home/tid/software/ZeroErp"
-    }
-    
-   
+    { "name": "ZeroErp", "path": "/home/tid/software/ZeroErp" }
   ],
-  //"settings": {
-  //  "python.defaultInterpreterPath": "/home/tid/software/ZeroErp/.venv/bin/python",
-  //  "python.terminal.activateEnvironment": true,
-  //  "liquibase.java.home": "/usr/lib/jvm/java-17-openjdk-amd64"
-  //}
+  "settings": {
+    "python.defaultInterpreterPath": "/home/tid/software/ZeroErp/.venv/bin/python",
+    "python.terminal.activateEnvironment": true
+  }
 }
