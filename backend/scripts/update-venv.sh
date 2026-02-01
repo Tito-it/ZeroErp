@@ -28,70 +28,86 @@
 # pip list --outdated --format=columns | ForEach-Object { if ($_ -match '^\S+') { pip install --upgrade $matches[0] } } -- aggiorna tutto
 # python -m pip freeze > requirements.txt
 
+#  Utilizzo
+#cd backend
+#source .venv/bin/activate
+#./update-venv.sh
 
 
 
+#!/usr/bin/env bash
 set -euo pipefail
+cd "$(dirname "$0")"
 
-if [[ -z "${VIRTUAL_ENV:-}" ]]; then
-  echo "⚠️  Non sembra attiva una virtualenv (VIRTUAL_ENV non impostata)."
-  read -r -p "Vuoi continuare lo stesso? [y/N] " RESP
-  [[ "${RESP}" == "y" ]] || exit 1
-fi
+IN="../requirements.in"
+OUT="../requirements.txt"
 
-PYTHON_BIN="${PYTHON_BIN:-python}"
+[[ -f "$IN" ]] || { echo "Missing $IN"; exit 1; }
+[[ -n "${VIRTUAL_ENV:-}" ]] || { echo "Activate venv first"; exit 1; }
 
-# 1) Aggiorna pip
-${PYTHON_BIN} -m pip install --upgrade pip
+python -m pip install -U pip
 
-# 2) Elenco pacchetti da aggiornare (evita broken pipe)
-echo " Cerco pacchetti da aggiornare..."
-export OUTDATED_JSON="$(${PYTHON_BIN} -m pip list --outdated --format=json || true)"
+# aggiorna SOLO i pacchetti esplicitati in requirements.in (ignora commenti/blank)
+pkgs=$(grep -Ehv '^\s*($|#|-r )' "$IN" | sed 's/[<=>!~].*$//' | tr '\n' ' ')
+[[ -n "${pkgs// }" ]] && python -m pip install -U $pkgs
 
-TO_UPDATE="$(${PYTHON_BIN} - <<'PY'
-import sys, json, os
-data = os.environ.get("OUTDATED_JSON","").strip()
-if not data:
-    sys.exit(0)
-try:
-    pkgs = json.loads(data)
-    for p in pkgs:
-        name = p.get("name")
-        if name:
-            print(name)
-except Exception:
-    sys.exit(0)
+python -m pip install -r "$IN"
+python -m pip check
+
+# freeze "pulito": solo pacchetti installati che appartengono al grafo deps di requirements.in
+
+export REQ_IN="$IN"
+export REQ_OUT="$OUT"
+
+python - <<'PY' > "$OUT"
+import re, sys, subprocess ,os
+from importlib.metadata import distributions
+
+req_in = os.environ["REQ_IN"]
+req_out = os.environ["REQ_OUT"]
+
+
+# top-level richiesti da requirements.in
+req = []
+for line in open(req_in, "r", encoding="utf-8"):
+    line=line.strip()
+    if not line or line.startswith("#") or line.startswith("-r "): 
+        continue
+  
+    name = re.split(r'[<=>!~\[]', line, maxsplit=1)[0].strip()
+
+    if name: req.append(name.lower())
+
+# mappa dipendenze installate
+deps = {}
+name_of = {}
+for d in distributions():
+    n = (d.metadata.get("Name") or "").strip()
+    if not n: 
+        continue
+    nl = n.lower()
+    name_of[nl] = n
+    requires = d.requires or []
+    deps[nl] = [re.split(r'[ ;(<=>!~\[]', r, maxsplit=1)[0].strip().lower() for r in requires if r.strip()]
+
+# closure deps
+seen=set()
+stack=list(req)
+while stack:
+    n=stack.pop()
+    if n in seen: 
+        continue
+    seen.add(n)
+    for ch in deps.get(n, []):
+        if ch and ch not in seen:
+            stack.append(ch)
+
+# output pinned from `pip freeze` but filtered to seen set
+freeze = subprocess.check_output([sys.executable, "-m", "pip", "freeze"], text=True).splitlines()
+for line in freeze:
+    pkg = line.split("==", 1)[0].strip().lower()
+    if pkg in seen:
+        print(line)
 PY
-)"
 
-if [[ -z "${TO_UPDATE}" ]]; then
-  echo "✅ Nessun pacchetto da aggiornare."
-else
-  echo "⟹ Aggiorno:"
-  while IFS= read -r name; do
-    [[ -n "$name" ]] || continue
-    echo "   - $name"
-    ${PYTHON_BIN} -m pip install --upgrade "$name"
-  done <<< "${TO_UPDATE}"
-fi
-
-# 3) Verifica dipendenze
-echo
-echo "▶️  Eseguo 'pip check'..."
-set +e
-CHECK_OUT="$(${PYTHON_BIN} -m pip check 2>&1)"
-STATUS=$?
-set -e
-echo "${CHECK_OUT}"
-
-# 4) Freeze solo se OK
-if [[ ${STATUS} -eq 0 ]]; then
-  echo
-  echo "✅ Dipendenze OK. Scrivo requirements.txt..."
-  ${PYTHON_BIN} -m pip freeze > requirements.txt
-  echo " Fatto: requirements.txt aggiornato."
-  exit 0
-else
-  echo "❌ Conflitti rilevati. requirements.txt NON aggiornato. Risolvi e riprova."
-  exit ${STATUS}
-fi
+echo "OK -> $OUT updated"
