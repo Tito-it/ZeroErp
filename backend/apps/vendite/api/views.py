@@ -4,9 +4,10 @@ from datetime import date
 from django.http import HttpRequest, JsonResponse
 from django.views.decorators.http import require_POST
 
-from apps.vendite.services.exceptions import PipelineError
+from apps.core.services.error_translator import ErrorTranslator
 from apps.vendite.services.pipeline_service import pr_run_lotto_pipeline
 
+# View API vendite: espone endpoint HTTP per avviare pipeline lotto.
 
 def _parse_date(value: str | None) -> date | None:
     if not value:
@@ -16,6 +17,7 @@ def _parse_date(value: str | None) -> date | None:
 
 @require_POST
 def run_lotto_pipeline(request: HttpRequest) -> JsonResponse:
+    # Accetta solo payload JSON per rendere la validazione deterministica.
     try:
         payload = json.loads(request.body.decode("utf-8") or "{}")
     except json.JSONDecodeError:
@@ -35,6 +37,9 @@ def run_lotto_pipeline(request: HttpRequest) -> JsonResponse:
         )
         return JsonResponse({"lotto_id": lotto_id, "status": "ok"})
     except ValueError:
+        # Errore tipico: parsing data o coercizione payload.
         return JsonResponse({"error": "invalid_payload"}, status=400)
-    except PipelineError as exc:
-        return JsonResponse({"error": "pipeline_error", "detail": str(exc)}, status=400)
+    except Exception as exc:
+        api_error = ErrorTranslator.to_api_error(exc)
+        status_code = ErrorTranslator.get_http_status(api_error)
+        return JsonResponse({"error": api_error.to_dict()}, status=status_code)

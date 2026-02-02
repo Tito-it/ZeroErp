@@ -4,6 +4,7 @@ from typing import Any
 
 from django.db import connection
 
+# Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
 
 @dataclass(frozen=True)
 class LottoContext:
@@ -22,7 +23,7 @@ class PipelineStep:
 
 
 class VenditePipelineRepository:
-    """Low-level SQL wrapper for vendite pipeline orchestration."""
+    """Wrapper SQL a basso livello per l'orchestrazione pipeline vendite."""
 
     ALLOWED_TASK_FUNCTIONS = {
         "select_attivita": "vendite.fn_select_attivita_fatturabili",
@@ -39,6 +40,7 @@ class VenditePipelineRepository:
         meta: dict[str, Any] | None,
         tipo_lotto: str | None,
     ) -> int:
+        # Delega al DB la risoluzione/creazione lotto per mantenere coerenza funzionale.
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -93,6 +95,7 @@ class VenditePipelineRepository:
             )
 
     def list_pipeline_steps(self, tipo_lotto: str) -> list[PipelineStep]:
+        # Ordina gli step con config.stati_doc_fiscale.ordine come nella pipeline SQL.
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -225,6 +228,7 @@ class VenditePipelineRepository:
         context: LottoContext,
         params: dict[str, Any],
     ) -> None:
+        # Normalizza i parametri JSON prima della chiamata alla funzione SQL.
         lock = self._as_bool(params.get("lock"), default=False)
         data_fatturazione = self._empty_to_none(params.get("data_fatturazione"))
         valuta_id = self._empty_to_none(params.get("valuta_id"))
@@ -260,6 +264,7 @@ class VenditePipelineRepository:
                     limit_value,
                 ],
             )
+
     @staticmethod
     def _as_bool(value: Any, default: bool = False) -> bool:
         if value is None:
