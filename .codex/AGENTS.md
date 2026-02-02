@@ -38,6 +38,7 @@
   - Regole
   - Dipendenze DB
   - Note di migrazione (se applicabile)
+- Template di riferimento: `docs/it/backend/_templates/manual-standard.md`
 
 ## SQL Conventions
 - Schemas/tables/columns naming per `linee-guida-sql.md`
