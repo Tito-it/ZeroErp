@@ -4,6 +4,7 @@ from typing import Any
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 
+# Facade servizi: mantiene firme SQL-like e delega alle classi OOP.
 
 def pr_run_lotto_pipeline(
     *,
@@ -17,7 +18,8 @@ def pr_run_lotto_pipeline(
     dry_run: bool = False,
     tipo_lotto: str = "MASSIVO",
 ) -> int:
-    """Python service entrypoint with the same intent as SQL procedure pr_run_lotto_pipeline."""
+    """Entrypoint servizio Python con lo stesso intento della procedura SQL pr_run_lotto_pipeline."""
+    # Facade sottile: firma simile alla SQL, comportamento delegato al runner OOP.
     runner = LottoPipelineRunner()
     params = LottoPipelineParams(
         lotto_id=lotto_id,
@@ -40,7 +42,8 @@ def fn_execute_pipeline_step(
     rollback: bool = False,
     dry_run: bool = False,
 ) -> None:
-    """Python service entrypoint with the same intent as SQL function fn_execute_pipeline_step."""
+    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_execute_pipeline_step."""
+    # Facade usata da API/test e futuri handler applicativi.
     executor = PipelineStepExecutor()
     executor.execute_step(
         lotto_id=lotto_id,

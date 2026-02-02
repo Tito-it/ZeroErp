@@ -10,6 +10,9 @@
 - Versioni: Python 3.14, Django 6.01
 - Evitare API/metodi deprecati; seguire best practice Django
 - Accesso webserver configurato: test migrazione solo su richiesta
+- Nei file Python aggiungere commenti sintetici nei blocchi non banali (orchestrazione, transazioni, mapping task/SQL), scritti in italiano.
+- Per error handling servizi/API usare helper centralizzato in `apps/core/services/error_manager.py`, evitando logica duplicata nei moduli dominio.
+- Il mapping `codice errore -> HTTP status -> azione UI` deve essere centralizzato in `apps/core/services/error_policies.py`.
 - Struttura consigliata: project config in `backend/zeroerp_backend/`, app in `backend/apps/`
 - App per dominio (es. `vendite`, `anagrafiche`), non per dettaglio tecnico; se uno schema DB coincide con un dominio stabile, la cartella app puo` allinearsi allo schema
 - Orchestrazione in `apps/<dominio>/services/` (o `usecases/`); accesso DB/SQL in `apps/<dominio>/db/` o `repositories/`
@@ -72,3 +75,4 @@
 - Test DB: pgtap
 - Percorso: `db/pgtap/`
 - Nei file di test, all'inizio inserire un indice dei test eseguiti nei commenti.
+- Nei file di test Python/Django, inserire all'inizio un breve indice dei test previsti (nome test/caso).
