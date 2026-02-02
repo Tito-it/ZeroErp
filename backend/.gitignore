@@ -1,3 +1,4 @@
+
 # Python: cache/bytecode
 __pycache__/
 *.py[cod]
@@ -33,3 +34,43 @@ workspaces/
 # Tools / private
 tools/
 privato/
+=======
+# Created by venv; see https://docs.python.org/3/library/venv.html#
+#*
+# Ignora file compilati di Python
+./backend/.gitignore
+
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignora i file di configurazione locali
+.env
+.env.systemd
+*.sqlite3
+internal.env
+
+workspaces/
+*.code-workspace
+
+backend/.env.systemd
+backend/.env
+backend/.env.*
+
+# Ignora cartelle di log ed errori
+logs/
+*.log
+
+# Ignora i file delle dipendenze di Python
+venv/
+.venv/
+
+# 
+privato/
+
+# ignora carella doc site
+site/
+
+# ignora cartella tools
+tools/
+
