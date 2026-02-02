@@ -1,6 +1,8 @@
 # Created by venv; see https://docs.python.org/3/library/venv.html#
 #*
 # Ignora file compilati di Python
+./backend/.gitignore
+
 __pycache__/
 *.pyc
 *.pyo
@@ -11,6 +13,7 @@ __pycache__/
 *.sqlite3
 internal.env
 
+workspaces/
 *.code-workspace
 
 backend/.env.systemd
