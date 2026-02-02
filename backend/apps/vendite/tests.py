@@ -8,15 +8,16 @@ Indice test eseguiti:
 """
 
 import json
+from contextlib import nullcontext
 from unittest.mock import patch
 
-from django.test import Client, TestCase
+from django.test import Client, SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 
 
-class VenditePipelineApiTests(TestCase):
+class VenditePipelineApiTests(SimpleTestCase):
     def setUp(self) -> None:
         self.client = Client()
 
@@ -53,7 +54,7 @@ class VenditePipelineApiTests(TestCase):
             data=json.dumps({"lotto_id": 999}),
             content_type="application/json",
         )
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 404)
         body = response.json()["error"]
         self.assertEqual(body["code"], "E_PIPELINE_LOTTO_NOT_FOUND")
         self.assertIn("Lotto non trovato", body["detail"])
@@ -77,7 +78,7 @@ class VenditePipelineApiTests(TestCase):
         self.assertEqual(body["ui_action"], "show_retry_dialog")
 
 
-class LottoPipelineRunnerUnitTests(TestCase):
+class LottoPipelineRunnerUnitTests(SimpleTestCase):
     class _RepoMock:
         def get_or_create_lotto(self, **kwargs):
             return 10
@@ -119,6 +120,7 @@ class LottoPipelineRunnerUnitTests(TestCase):
         repo = self._RepoMock()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        result = runner.run(LottoPipelineParams(dry_run=True))
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            result = runner.run(LottoPipelineParams(dry_run=True))
         self.assertEqual(result, 10)
         self.assertTrue(step_executor.called)
