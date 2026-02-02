@@ -76,3 +76,4 @@
 - Percorso: `db/pgtap/`
 - Nei file di test, all'inizio inserire un indice dei test eseguiti nei commenti.
 - Nei file di test Python/Django, inserire all'inizio un breve indice dei test previsti (nome test/caso).
+- Struttura test Django per app: `apps/<schema>/tests/` con sottocartelle minime `api/` e `services/`.

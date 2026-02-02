@@ -47,6 +47,9 @@ Client → (HTTP/HTTPS) → Nginx → (HTTP 127.0.0.1:8000) → Gunicorn → Dja
 - `apps/` contiene le app di dominio (`vendite`, `anagrafiche`, `magazzino`, ecc.).
 - Evitare logica business in `zeroerp_backend/`: va sempre in `apps/<dominio>/services`.
 - Accesso SQL/DB dedicato in `apps/<dominio>/db` (o `repositories`), API in `apps/<dominio>/api`.
+- Test per app in `apps/<dominio>/tests/` con sottocartelle minime:
+  - `api/` per test endpoint e contratto risposta
+  - `services/` per test logica applicativa/orchestrazione
 - Questa separazione e` intenzionale e **non richiede ristrutturazione**: e` gia` coerente con Django e con la crescita del progetto.
 
 ---
