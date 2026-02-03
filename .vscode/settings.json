@@ -4,8 +4,9 @@
   "editor.tabSize": 2,
   "editor.formatOnSave": true,
 
-  // Python (se usi venv locale al repo)
-  //"python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  // Python: non fissiamo un interpreter unico nel repo, cosi` ogni host
+  // (backend-dev / db-dev) puo` ricordare il proprio interpreter selezionato.
+  "python.analysis.extraPaths": ["${workspaceFolder}/backend"],
   
   "python.terminal.activateEnvironment": true,
   

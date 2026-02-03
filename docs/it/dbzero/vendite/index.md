@@ -49,6 +49,7 @@
 
 ## ⚙️ Funzioni
 - [fn_build_fattura_key](funzioni/fn_build_fattura_key.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_build_fattura_key()`** costruisce la **chiave logica** di aggregazione documento a partire da una riga di `attivita_fatturabili`.
+- [fn_close_giornaliero_lotto](funzioni/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
 - [fn_create_fatturazione_lotto](funzioni/fn_create_fatturazione_lotto.md) — (latest review 27-01-2026) La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e inizializza lo stato documento a **DRAFT**.
 - [fn_execute_pipeline_step](funzioni/fn_execute_pipeline_step.md) — (latest review 28-01-2026)   La funzione **`vendite.fn_execute_pipeline_step()`** esegue i task definiti nel JSON `processi` (o `rollback`) della pipeline per lo step corrente.
 - [fn_generate_fatture_righe](funzioni/fn_generate_fatture_righe.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_generate_fatture_righe()`** genera le righe fattura partendo dalle `attivita_fatturabili` lockate sul lotto.

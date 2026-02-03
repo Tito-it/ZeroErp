@@ -108,6 +108,7 @@ nav:
                             - Acquisti: it/backend/acquisti/index.md
                             - Anagrafiche: it/backend/anagrafiche/index.md
                             - Catalogo: it/backend/catalogo/index.md
+                            - Core: it/backend/core/index.md
                             - Config: it/backend/config/index.md
                             - Contabilita: it/backend/contabilita/index.md
                             - Magazzino: it/backend/magazzino/index.md

@@ -32,13 +32,25 @@ Client → (HTTP/HTTPS) → Nginx → (HTTP 127.0.0.1:8000) → Gunicorn → Dja
  ├─ manage.py
  ├─ env.sh                 # variabili per shell interattiva
  ├─ .venv/                 # venv Python
+ ├─ apps/                  # app Django per dominio (business logic/API)
  ├─ zeroerp_backend/
- │   ├─ settings.py
- │   ├─ urls.py
- │   └─ wsgi.py
+ │   ├─ settings.py        # configurazione progetto
+ │   ├─ urls.py            # routing principale
+ │   └─ wsgi.py            # entrypoint WSGI
  └─ bin/
      └─ start-gunicorn.sh  # wrapper usato da systemd (sorgente env.sh)
 ```
+
+### Convenzione struttura (raccomandata)
+
+- `zeroerp_backend/` contiene **solo** configurazione progetto (settings, urls, asgi/wsgi).
+- `apps/` contiene le app di dominio (`vendite`, `anagrafiche`, `magazzino`, ecc.).
+- Evitare logica business in `zeroerp_backend/`: va sempre in `apps/<dominio>/services`.
+- Accesso SQL/DB dedicato in `apps/<dominio>/db` (o `repositories`), API in `apps/<dominio>/api`.
+- Test per app in `apps/<dominio>/tests/` con sottocartelle minime:
+  - `api/` per test endpoint e contratto risposta
+  - `services/` per test logica applicativa/orchestrazione
+- Questa separazione e` intenzionale e **non richiede ristrutturazione**: e` gia` coerente con Django e con la crescita del progetto.
 
 ---
 

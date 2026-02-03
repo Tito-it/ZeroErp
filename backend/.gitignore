@@ -1,3 +1,40 @@
+
+# Python: cache/bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual env
+.venv/
+venv/
+
+# Env files (se contengono segreti)
+.env
+.env.*
+.env.systemd
+internal.env
+backend/.env
+backend/.env.*
+backend/.env.systemd
+
+# DB locali
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# Build docs / static site
+site/
+
+# Workspace / IDE (personale)
+*.code-workspace
+workspaces/
+.vscode/
+
+# Tools / private
+tools/
+privato/
+
 # Created by venv; see https://docs.python.org/3/library/venv.html#
 #*
 # Ignora file compilati di Python
@@ -36,3 +73,4 @@ site/
 
 # ignora cartella tools
 tools/
+
