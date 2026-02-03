@@ -2,14 +2,20 @@ from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.pipeline_repository import LottoContext, VenditePipelineRepository
+from apps.vendite.services.fatture_righe_service import FattureRigheService
 
 # Esecutore di singolo step pipeline con mapping task JSON -> azioni applicative.
 
 class PipelineStepExecutor:
     """Controparte Django della funzione SQL vendite.fn_execute_pipeline_step."""
 
-    def __init__(self, repository: VenditePipelineRepository | None = None) -> None:
+    def __init__(
+        self,
+        repository: VenditePipelineRepository | None = None,
+        fatture_righe_service: FattureRigheService | None = None,
+    ) -> None:
         self.repository = repository or VenditePipelineRepository()
+        self.fatture_righe_service = fatture_righe_service or FattureRigheService(self.repository)
 
     def execute_step(
         self,
@@ -108,6 +114,21 @@ class PipelineStepExecutor:
                     log_to_db=True,
                 )
             self.repository.run_select_attivita_task(context=context, params=params)
+            return
+
+        if task == "generate_fatture_righe":
+            # Whitelist esplicita: la generazione righe usa il servizio Python dedicato.
+            allowed = self.repository.ALLOWED_TASK_FUNCTIONS["generate_fatture_righe"]
+            if fn_name and fn_name != allowed:
+                ErrorManager.raise_error(
+                    code="E_TASK_NOT_ALLOWED",
+                    message="Funzione task non ammessa.",
+                    detail=f"Funzione non ammessa per task generate_fatture_righe: {fn_name}",
+                    context={"task": task, "fn": fn_name},
+                    function_name="vendite.pipeline_step_executor._run_task",
+                    log_to_db=True,
+                )
+            self.fatture_righe_service.generate_fatture_righe(lotto_id, dry_run=dry_run)
             return
 
         ErrorManager.raise_error(

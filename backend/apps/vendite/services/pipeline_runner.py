@@ -138,7 +138,3 @@ class LottoPipelineRunner:
                 log_to_db=lotto_id is None,
                 cause=exc,
             )
-
-    def run(self, params: LottoPipelineParams) -> int:
-        # Alias compatibilità: mantiene i call-site legacy durante la transizione.
-        return self.run_pipeline(params)

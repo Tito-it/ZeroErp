@@ -4,26 +4,44 @@
 Eseguire un singolo step di pipeline, applicando i task definiti nello step corrente.
 
 ## Contesto
-In DB la funzione `vendite.fn_execute_pipeline_step()` esegue i task definiti in `processi`/`rollback`.
-In Django questa logica viene portata nei **services**.
+La funzione SQL `vendite.fn_execute_pipeline_step()` e` stata migrata lato backend Django.
+La logica applicativa ora vive in:
+- `apps/vendite/services/pipeline_service.py` (`fn_execute_pipeline_step`)
+- `apps/vendite/services/pipeline_step_executor.py` (`PipelineStepExecutor.execute_step`)
 
 ## Input
 - `lotto_id`
-- `step_code` o riferimento allo step
-- configurazione step (task JSON)
+- `stato_doc_fiscale_id` (step corrente)
+- `rollback` (usa definizione `rollback` invece di `processi`)
+- `dry_run`
 
 ## Output
-- esito step
-- log task (successo/errore)
+- nessun valore di ritorno
+- log task/fase su `vendite.fatturazione_lotti_log`
+- eventuale errore applicativo (`ServiceError`)
 
 ## Regole
-- Ogni task deve essere tracciato.
-- In caso di errore, interrompere lo step e registrare il log.
+- Validazione parametri obbligatori (`lotto_id`, `stato_doc_fiscale_id`).
+- Recupero contesto lotto obbligatorio (`competenza_mese` e campi necessari ai task).
+- Lettura configurazione task JSON da `vendite.fatturazione_pipeline`.
+- Ogni task viene loggato prima dell'esecuzione.
+- `dry_run` e task `noop`/`log_only` non eseguono side effect.
+- Per `select_attivita`, funzione ammessa solo se in whitelist (`vendite.fn_select_attivita_fatturabili`).
+- Per `generate_fatture_righe`, funzione ammessa solo se in whitelist (`vendite.fn_generate_fatture_righe`).
+- Task non riconosciuti -> `E_TASK_NOT_IMPLEMENTED`.
 
 ## Dipendenze DB
 - Lettura pipeline da `vendite.fatturazione_pipeline`
-- Funzioni/trigger di integrità in DB (immutate)
+- `vendite.fn_log_pipeline_fase(...)`
+- `vendite.fn_select_attivita_fatturabili(...)`
+- `vendite.fn_get_or_create_fattura_header(...)`
+- Funzioni/trigger di integrita` e coerenza dati restano in DB
+
+## Matrice responsabilita` (Python vs DB)
+- Python (step executor): validazione input, dispatch task da JSON, whitelist task/funzioni, controllo `dry_run`/`rollback`.
+- DB (funzioni/tabelle): lettura configurazione pipeline, logging persistente, esecuzione logica dati massiva (`fn_select_attivita_fatturabili`), creazione header fattura, enforcement integrita`.
 
 ## Note di migrazione
-- Convertire i task JSON in chiamate a service Django con mapping esplicito.
-- Evitare logica dinamica non controllata: mantenere mapping chiaro tra `task_code` e handler.
+- Stato attuale: migrazione completata lato Python per orchestrazione task.
+- Non viene eseguito SQL dinamico da input esterno; il dispatch task e` esplicito nel codice.
+- Estensioni future: aggiungere nuovi task mantenendo mapping esplicito in `PipelineStepExecutor`.

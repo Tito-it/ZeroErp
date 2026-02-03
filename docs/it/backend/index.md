@@ -14,6 +14,7 @@ La struttura replica quella del DB: per ogni area applicativa ci sono due cartel
 - [Acquisti](acquisti/index.md)
 - [Anagrafiche](anagrafiche/index.md)
 - [Catalogo](catalogo/index.md)
+- [Core](core/index.md)
 - [Config](config/index.md)
 - [Contabilita](contabilita/index.md)
 - [Magazzino](magazzino/index.md)

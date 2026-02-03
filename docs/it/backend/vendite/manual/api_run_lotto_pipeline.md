@@ -18,7 +18,8 @@ Endpoint applicativo che invoca il servizio Python `pr_run_lotto_pipeline`, equi
 ## Regole
 - Valida JSON e formato date (`YYYY-MM-DD`).
 - Converte `dry_run` in boolean.
-- Propaga errori di dominio come `pipeline_error`.
+- Usa parser/request helper condivisi area core.
+- Traduce eccezioni con envelope errore core.
 
 ## Dipendenze DB
 - Dipendenze indirette via `services/pipeline_runner.py` e `db/pipeline_repository.py`.
