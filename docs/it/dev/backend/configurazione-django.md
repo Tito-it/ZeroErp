@@ -275,6 +275,7 @@ curl -I -k https://192.168.X.8/admin/login/
 
 * Aggiungi host/IP a `DJANGO_ALLOWED_HOSTS` in `env.sh`
 * Riavvia Gunicorn: `sudo systemctl restart zeroerp-gunicorn`
+* In sviluppo, per autoreload con service attivo: vedi `docs/it/dev/backend/gunicorn-dev-autoreload.md`
 
 ### 3) **CSRF 403 su IP/HTTPS**
 

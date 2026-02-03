@@ -20,6 +20,7 @@ Endpoint applicativo che invoca il servizio Python `pr_run_lotto_pipeline`, equi
 - Converte `dry_run` in boolean.
 - Usa parser/request helper condivisi area core.
 - Traduce eccezioni con envelope errore core.
+- Implementa il pattern standard core `handle_post_json(...)`.
 
 ## Dipendenze DB
 - Dipendenze indirette via `services/pipeline_runner.py` e `db/pipeline_repository.py`.
