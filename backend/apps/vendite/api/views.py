@@ -1,12 +1,8 @@
 from django.http import HttpRequest, JsonResponse
 from django.views.decorators.http import require_POST
 
-from apps.core.api.error_responses import (
-    exception_to_error_response,
-    invalid_json_response,
-    invalid_payload_response,
-)
-from apps.core.api.request_parsers import parse_iso_date, parse_json_body
+from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.request_parsers import parse_iso_date
 from apps.vendite.services.pipeline_service import pr_run_lotto_pipeline
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
@@ -14,13 +10,7 @@ from apps.vendite.services.pipeline_service import pr_run_lotto_pipeline
 
 @require_POST
 def run_lotto_pipeline(request: HttpRequest) -> JsonResponse:
-    # Accetta solo payload JSON per rendere la validazione deterministica.
-    try:
-        payload = parse_json_body(request)
-    except ValueError:
-        return invalid_json_response()
-
-    try:
+    def _handler(payload: dict[str, object]) -> dict[str, object]:
         lotto_id = pr_run_lotto_pipeline(
             lotto_id=payload.get("lotto_id"),
             competenza_mese=parse_iso_date(payload.get("competenza_mese")),
@@ -32,9 +22,7 @@ def run_lotto_pipeline(request: HttpRequest) -> JsonResponse:
             dry_run=bool(payload.get("dry_run", False)),
             tipo_lotto=payload.get("tipo_lotto", "MASSIVO"),
         )
-        return JsonResponse({"lotto_id": lotto_id, "status": "ok"})
-    except ValueError:
-        # Errore tipico: parsing data o coercizione payload.
-        return invalid_payload_response()
-    except Exception as exc:
-        return exception_to_error_response(exc)
+        return {"lotto_id": lotto_id, "status": "ok"}
+
+    # Pattern condiviso: JSON parse + envelope errori centralizzato.
+    return handle_post_json(request, handler=_handler)

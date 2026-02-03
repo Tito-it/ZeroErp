@@ -38,3 +38,6 @@ La logica condivisa e` centralizzata in:
 ## Note di migrazione
 - Questo documento e` la fonte condivisa cross-domain.
 - Le aree dominio (es. vendite) devono solo documentare l'uso locale della policy.
+- Endpoint diagnostico disponibile per test rapido envelope:
+  - `GET /api/core/diagnostics/error-envelope/`
+  - varianti: `?kind=generic|retryable|not_found`
