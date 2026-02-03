@@ -1,37 +1,28 @@
 # Error handling API vendite (Django)
 
 ## Scopo
-Definire un contratto errore uniforme per API, backend Django e logica DB.
+Documentare come l'area vendite applica il contratto errori condiviso.
 
 ## Contesto
-Il DB usa `config.messaggi_errore`, `script.fn_log_and_raise_error` e `script.fn_log_error_only`.
-Il backend Django traduce le eccezioni applicative/DB in un envelope JSON coerente.
-La logica e` centralizzata con:
+La policy errori cross-domain e` definita in:
+- `docs/it/backend/core/manual/error-handling-api.md`
+
+Vendite usa i componenti core senza ridefinire policy locali:
 - `apps/core/services/error_manager.py`
-- `apps/core/services/error_policies.py`
-- `apps/core/services/service_errors.py`
-- `apps/core/services/error_translator.py`
+- `apps/core/api/error_responses.py`
 
 ## Input
-- Eccezioni applicative Python (es. `PipelineError`)
-- Eccezioni DB (`DatabaseError`, incluse `DETAIL` e `HINT`)
+- Eccezioni applicative vendite (`ServiceError` con codici `E_PIPELINE_*`, `E_TASK_*`, ...)
+- Eccezioni DB propagate dai repository
 
 ## Output
-- Payload API uniforme:
-  - `error.code`
-  - `error.message`
-  - `error.detail` (opzionale)
-  - `error.hint` (opzionale)
-  - `error.tx_id` (opzionale)
-  - `error.retryable`
+- Payload API uniforme (definito in area core).
 
 ## Regole
 - Il frontend gestisce per `error.code`, non per testo libero.
-- Mapping centralizzato `code -> HTTP status -> ui_action` in `ErrorPolicyRegistry`.
-- Errori di servizio -> codice specifico (`E_PIPELINE_*`, `E_TASK_*`, ecc.) secondo policy.
-- Errori database -> `E_DATABASE` / `E_DATABASE_RETRYABLE` secondo SQLSTATE.
-- Errori non classificati -> `E_GENERICO`.
-- Nei servizi usare `ErrorManager.require(...)` e `ErrorManager.raise_error(...)` per evitare duplicazioni.
+- Mapping centralizzato `code -> HTTP status -> ui_action` in `ErrorPolicyRegistry` (core).
+- Nei servizi vendite usare `ErrorManager.require(...)` e `ErrorManager.raise_error(...)`.
+- Nelle view vendite usare helper core `exception_to_error_response(...)`.
 
 ### Esempio policy UI/API
 - `E_PIPELINE_LOTTO_NOT_FOUND` -> `404` -> `show_empty_state`
@@ -44,5 +35,5 @@ La logica e` centralizzata con:
 - `script.fn_log_error_only`
 
 ## Note di migrazione
-- Stato attuale: helper unico introdotto e applicato ai servizi pipeline vendite.
-- Mapping `codice errore -> HTTP status/UI action` introdotto lato backend in `ErrorPolicyRegistry`.
+- Stato attuale: vendite allineata al layer errori core condiviso.
+- Le evoluzioni policy devono essere fatte in area core e poi riusate da vendite.

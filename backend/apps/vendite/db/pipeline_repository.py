@@ -1,9 +1,11 @@
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from django.db import connection
 
+from apps.core.services.value_normalizer import as_bool, empty_to_none
 from apps.vendite.types import LottoPipelineMeta
 
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
@@ -24,11 +26,44 @@ class PipelineStep:
     ordine: int | None
 
 
+@dataclass(frozen=True)
+class GroupAttivitaInput:
+    attivita_id: int
+    articolo_id: int
+    dest_billing_account_id: int | None
+    uom_id: int | None
+    prezzo_unitario: Decimal | None
+    iva_id: int | None
+    competenza_dal: date | None
+    competenza_al: date | None
+    data_attivita: date | None
+    visibilita_componenti: str
+    calcolo_qta_padre: str
+    arrotondamento_importi_dec: int
+    arrotondamento_quantita_dec: int
+    metodo_arrotondamento_importi: str
+    metodo_arrotondamento_quantita: str
+
+
+@dataclass(frozen=True)
+class AttivitaDaFatturare:
+    id: int
+    articolo_id: int
+    quantita: Decimal | None
+    prezzo_unitario: Decimal | None
+    uom_id: int | None
+    sorgente_tipo_id: int | None
+    sorgente_uid: str | None
+    sorgente_riga: int | None
+    articolo_descrizione: str | None
+
+
 class VenditePipelineRepository:
     """Wrapper SQL a basso livello per l'orchestrazione pipeline vendite."""
 
     ALLOWED_TASK_FUNCTIONS = {
         "select_attivita": "vendite.fn_select_attivita_fatturabili",
+        "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
     }
 
     def get_or_create_lotto(
@@ -139,25 +174,9 @@ class VenditePipelineRepository:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                UPDATE vendite.fatturazione_lotti
-                SET stato_operativo = 'CHIUSO',
-                    data_update = now(),
-                    user_update = current_user
-                WHERE id = %s
+                SELECT vendite.fn_close_giornaliero_lotto(%s, %s)
                 """,
-                [lotto_id],
-            )
-            cursor.execute(
-                """
-                UPDATE vendite.fatture f
-                SET stato_doc_fiscale_id = %s,
-                    data_update = now(),
-                    user_update = current_user
-                FROM vendite.fatturazione_lotti_fatture lf
-                WHERE lf.lotto_id = %s
-                  AND lf.fattura_id = f.id
-                """,
-                [inviata_id, lotto_id],
+                [lotto_id, inviata_id],
             )
 
     def log_pipeline_fase(
@@ -231,11 +250,11 @@ class VenditePipelineRepository:
         params: dict[str, Any],
     ) -> None:
         # Normalizza i parametri JSON prima della chiamata alla funzione SQL.
-        lock = self._as_bool(params.get("lock"), default=False)
-        data_fatturazione = self._empty_to_none(params.get("data_fatturazione"))
-        valuta_id = self._empty_to_none(params.get("valuta_id"))
-        emittente_id = self._empty_to_none(params.get("emittente_soggetto_ruolo_id"))
-        limit_value = self._empty_to_none(params.get("limit"))
+        lock = as_bool(params.get("lock"), default=False)
+        data_fatturazione = empty_to_none(params.get("data_fatturazione"))
+        valuta_id = empty_to_none(params.get("valuta_id"))
+        emittente_id = empty_to_none(params.get("emittente_soggetto_ruolo_id"))
+        limit_value = empty_to_none(params.get("limit"))
 
         with connection.cursor() as cursor:
             cursor.execute(
@@ -267,18 +286,189 @@ class VenditePipelineRepository:
                 ],
             )
 
-    @staticmethod
-    def _as_bool(value: Any, default: bool = False) -> bool:
-        if value is None:
-            return default
-        if isinstance(value, bool):
-            return value
-        return str(value).strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+    def get_group_attivita_input(self, attivita_id: int) -> GroupAttivitaInput | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    a.id,
+                    a.articolo_id,
+                    a.billing_account_id AS dest_billing_account_id,
+                    COALESCE(a.uom_id, art.uom_id) AS uom_id,
+                    a.prezzo_unitario,
+                    art.iva_id,
+                    a.competenza_dal,
+                    a.competenza_al,
+                    a.data_attivita,
+                    COALESCE(r.visibilita_componenti, 'solo_padre') AS visibilita_componenti,
+                    COALESCE(r.calcolo_qta_padre, 'fissa') AS calcolo_qta_padre,
+                    COALESCE(r.arrotondamento_importi_dec, 2) AS arrotondamento_importi_dec,
+                    COALESCE(r.arrotondamento_quantita_dec, 3) AS arrotondamento_quantita_dec,
+                    COALESCE(r.metodo_arrotondamento_importi, 'HALF_UP') AS metodo_arrotondamento_importi,
+                    COALESCE(r.metodo_arrotondamento_quantita, 'HALF_UP') AS metodo_arrotondamento_quantita
+                FROM vendite.attivita_fatturabili a
+                JOIN catalogo.articoli art
+                  ON art.id = a.articolo_id
+                LEFT JOIN vendite.articolo_regole_fatturazione r
+                  ON r.articolo_id = a.articolo_id
+                WHERE a.id = %s
+                """,
+                [attivita_id],
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return GroupAttivitaInput(
+            attivita_id=int(row[0]),
+            articolo_id=int(row[1]),
+            dest_billing_account_id=None if row[2] is None else int(row[2]),
+            uom_id=None if row[3] is None else int(row[3]),
+            prezzo_unitario=row[4],
+            iva_id=None if row[5] is None else int(row[5]),
+            competenza_dal=row[6],
+            competenza_al=row[7],
+            data_attivita=row[8],
+            visibilita_componenti=row[9],
+            calcolo_qta_padre=row[10],
+            arrotondamento_importi_dec=int(row[11]),
+            arrotondamento_quantita_dec=int(row[12]),
+            metodo_arrotondamento_importi=row[13],
+            metodo_arrotondamento_quantita=row[14],
+        )
 
-    @staticmethod
-    def _empty_to_none(value: Any) -> Any:
-        if value is None:
-            return None
-        if isinstance(value, str) and value.strip() == "":
-            return None
-        return value
+    def list_attivita_da_fatturare(self, lotto_id: int) -> list[AttivitaDaFatturare]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    a.id,
+                    a.articolo_id,
+                    a.quantita,
+                    a.prezzo_unitario,
+                    a.uom_id,
+                    a.sorgente_tipo_id,
+                    a.sorgente_uid,
+                    a.sorgente_riga,
+                    art.descrizione
+                FROM vendite.attivita_fatturabili a
+                JOIN catalogo.articoli art
+                  ON art.id = a.articolo_id
+                WHERE a.lock_batch_id = (
+                        SELECT fl.lock_batch_id
+                        FROM vendite.fatturazione_lotti fl
+                        WHERE fl.id = %s
+                      )
+                  AND a.fatturato IS FALSE
+                  AND COALESCE(a.lock_in_fatturazione, false) IS TRUE
+                ORDER BY a.id
+                """,
+                [lotto_id],
+            )
+            rows = cursor.fetchall()
+        return [
+            AttivitaDaFatturare(
+                id=int(row[0]),
+                articolo_id=int(row[1]),
+                quantita=row[2],
+                prezzo_unitario=row[3],
+                uom_id=None if row[4] is None else int(row[4]),
+                sorgente_tipo_id=None if row[5] is None else int(row[5]),
+                sorgente_uid=row[6],
+                sorgente_riga=row[7],
+                articolo_descrizione=row[8],
+            )
+            for row in rows
+        ]
+
+    def get_or_create_fattura_header(self, lotto_id: int, attivita_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_get_or_create_fattura_header(%s, %s)",
+                [lotto_id, attivita_id],
+            )
+            row = cursor.fetchone()
+        return int(row[0])
+
+    def get_next_fattura_riga_nr(self, fattura_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COALESCE(MAX(riga_nr), 0) + 1
+                FROM vendite.fatture_righe
+                WHERE fattura_id = %s
+                """,
+                [fattura_id],
+            )
+            row = cursor.fetchone()
+        return int(row[0])
+
+    def insert_fattura_riga(
+        self,
+        *,
+        fattura_id: int,
+        riga_nr: int,
+        articolo_id: int,
+        descrizione: str | None,
+        uom_id: int | None,
+        qta: Decimal | None,
+        prezzo_unitario: Decimal | None,
+        iva_id: int | None,
+        dest_billing_account_id: int,
+        sorgente_tipo_id: int | None,
+        sorgente_uid: str | None,
+        sorgente_riga: int | None,
+        meta: LottoPipelineMeta | None,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO vendite.fatture_righe (
+                    fattura_id,
+                    riga_nr,
+                    articolo_id,
+                    descrizione,
+                    uom_id,
+                    qta,
+                    prezzo_unitario,
+                    iva_id,
+                    dest_billing_account_id,
+                    sorgente_tipo_id,
+                    sorgente_uid,
+                    sorgente_riga,
+                    meta
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                [
+                    fattura_id,
+                    riga_nr,
+                    articolo_id,
+                    descrizione,
+                    uom_id,
+                    qta,
+                    prezzo_unitario,
+                    iva_id,
+                    dest_billing_account_id,
+                    sorgente_tipo_id,
+                    sorgente_uid,
+                    sorgente_riga,
+                    meta,
+                ],
+            )
+            row = cursor.fetchone()
+        return int(row[0])
+
+    def mark_attivita_fatturata(self, attivita_id: int, fattura_riga_id: int) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.attivita_fatturabili
+                SET fattura_riga_id = %s,
+                    fatturato = TRUE,
+                    data_update = now(),
+                    user_update = current_user
+                WHERE id = %s
+                """,
+                [fattura_riga_id, attivita_id],
+            )

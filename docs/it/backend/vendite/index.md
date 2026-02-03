@@ -11,5 +11,5 @@
 - [fn_execute_pipeline_step](manual/fn_execute_pipeline_step.md)
 - [api_run_lotto_pipeline](manual/api_run_lotto_pipeline.md)
 - [error-handling-api](manual/error-handling-api.md)
-- [fn_generate_fatture_righe](manual/fn_generate_fatture_righe.md) (opzionale)
-- [fn_group_attivita_fatturabili](manual/fn_group_attivita_fatturabili.md) (opzionale)
+- [fn_generate_fatture_righe](manual/fn_generate_fatture_righe.md)
+- [fn_group_attivita_fatturabili](manual/fn_group_attivita_fatturabili.md)
