@@ -1,8 +1,8 @@
 from datetime import date
-from typing import Any
 
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
+from apps.vendite.types import LottoPipelineMeta
 
 # Facade servizi: mantiene firme SQL-like e delega alle classi OOP.
 
@@ -14,7 +14,7 @@ def pr_run_lotto_pipeline(
     utility_id: int | None = None,
     billing_account_id: int | None = None,
     lock_batch_id: int | None = None,
-    meta: dict[str, Any] | None = None,
+    meta: LottoPipelineMeta | None = None,
     dry_run: bool = False,
     tipo_lotto: str = "MASSIVO",
 ) -> int:
@@ -32,7 +32,7 @@ def pr_run_lotto_pipeline(
         dry_run=dry_run,
         tipo_lotto=tipo_lotto,
     )
-    return runner.run(params)
+    return runner.run_pipeline(params)
 
 
 def fn_execute_pipeline_step(

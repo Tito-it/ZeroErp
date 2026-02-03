@@ -4,6 +4,8 @@ from typing import Any
 
 from django.db import connection
 
+from apps.vendite.types import LottoPipelineMeta
+
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
 
 @dataclass(frozen=True)
@@ -37,7 +39,7 @@ class VenditePipelineRepository:
         utility_id: int | None,
         billing_account_id: int | None,
         lock_batch_id: int | None,
-        meta: dict[str, Any] | None,
+        meta: LottoPipelineMeta | None,
         tipo_lotto: str | None,
     ) -> int:
         # Delega al DB la risoluzione/creazione lotto per mantenere coerenza funzionale.
@@ -165,7 +167,7 @@ class VenditePipelineRepository:
         fase: str,
         status: str,
         messaggio: str | None,
-        meta: dict[str, Any] | None,
+        meta: LottoPipelineMeta | None,
     ) -> None:
         with connection.cursor() as cursor:
             cursor.execute(
