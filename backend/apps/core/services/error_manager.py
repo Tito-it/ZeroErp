@@ -23,6 +23,7 @@ class ErrorManager:
         area: str = "backend",
         function_name: str = "django_service",
         log_to_db: bool = False,
+        cause: Exception | None = None,
     ) -> None:
         if log_to_db:
             ErrorManager.log_error_only(
@@ -32,7 +33,7 @@ class ErrorManager:
                 function_name=function_name,
             )
 
-        raise ServiceError(
+        service_error = ServiceError(
             code=code,
             message=message,
             detail=detail,
@@ -40,6 +41,9 @@ class ErrorManager:
             retryable=retryable,
             context=context,
         )
+        if cause is not None:
+            raise service_error from cause
+        raise service_error
 
     @staticmethod
     def require(
