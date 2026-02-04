@@ -35,7 +35,7 @@ Per ridurre duplicazioni tra app dominio usare helper core:
 - Context middleware assegna `request_id` (header `X-Request-ID`) e propaga `Idempotency-Key` se presente.
 - Rate limiting: non e` ancora applicato a livello applicativo; baseline consigliata su Nginx/API gateway per endpoint write/retryable.
 - Fase 2 deprecazione legacy:
-  - route legacy abilitate/disabilitate via `DJANGO_API_LEGACY_ROUTES_ENABLED` (default `1`)
+  - route legacy abilitate/disabilitate via `DJANGO_API_LEGACY_ROUTES_ENABLED` (default `0`, v1-only)
   - header deprecazione su legacy via `DJANGO_API_LEGACY_DEPRECATION_HEADERS_ENABLED` (default `1`)
   - sunset configurabile via `DJANGO_API_LEGACY_SUNSET_HEADER`
 
