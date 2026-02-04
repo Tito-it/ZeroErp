@@ -17,7 +17,7 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 
 ### 🎯 Scopo Principale
 
-(latest review 18-01-26)
+(latest review 04-02-26)
 * **Generazione di codici configurabili**
   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
 
@@ -90,13 +90,23 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 
    seq_name := format('%I.%I_%I_seq', v_schema_tabella, v_nome_tabella, v_nome_colonna);
 
-   EXECUTE format('CREATE SEQUENCE IF NOT EXISTS %s', seq_name);
+   IF to_regclass(seq_name) IS NULL THEN
+     PERFORM script.fn_log_and_raise_error(
+       'database',
+       v_context_name,
+       'SEQUENZA_NON_CONFIGURATA',
+       jsonb_build_object('codice_interno', tipo, 'sequence_name', seq_name),
+       NULL::uuid,
+       tipo::TEXT
+     );
+   END IF;
+
    EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
    risultato := prefix || sep || lpad(seq_val::TEXT, len, '0');
    RETURN risultato;
    ```
 
-   * La sequenza viene creata se mancante e usata per ottenere il prossimo valore numerico.
+   * La sequenza deve essere pre-provisionata e viene usata per ottenere il prossimo valore numerico.
    * Converte `seq_val` in testo e lo riempie a sinistra con zeri fino a raggiungere la lunghezza `len`.
    * Concatena `prefisso`, `separatore` e `numero_formattato`, restituendo il risultato.
 
@@ -131,7 +141,7 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 
 * **Sequenza database**
 
-  * Se la sequenza calcolata non esiste, viene creata automaticamente.
+  * La sequenza calcolata deve esistere gia'. Se manca, la funzione solleva errore (`SEQUENZA_NON_CONFIGURATA`).
 
 * **Funzione di supporto**
 
