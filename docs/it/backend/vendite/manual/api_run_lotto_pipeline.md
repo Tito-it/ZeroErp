@@ -9,8 +9,7 @@ Endpoint applicativo che invoca il servizio Python `pr_run_lotto_pipeline`, equi
 ## Input
 - Metodo: `POST`
 - Path canonico: `/api/v1/vendite/pipeline/run/`
-- Path legacy (compatibilita`): `/api/vendite/pipeline/run/`
-  - la route legacy espone header HTTP `Deprecation`, `Warning`, `Link`, `Sunset`
+- Path legacy (deprecato): `/api/vendite/pipeline/run/` (disabilitato di default)
 - Header richiesto: `Idempotency-Key`
 - Header sicurezza (solo path `/api/v1/...`): `Authorization: Bearer <access_token>`
 - Body JSON: `lotto_id`, `competenza_mese`, `tipo_doc_fiscale_id`, `utility_id`, `billing_account_id`, `lock_batch_id`, `meta`, `dry_run`, `tipo_lotto`
