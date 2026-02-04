@@ -1,5 +1,5 @@
 from django.http import JsonResponse
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -15,6 +15,15 @@ from apps.vendite.services.pipeline_service import pr_run_lotto_pipeline
 
 class ApiRunLottoPipeline(APIView):
     @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
         request=inline_serializer(
             name="VenditeRunLottoPipelineRequest",
             fields={

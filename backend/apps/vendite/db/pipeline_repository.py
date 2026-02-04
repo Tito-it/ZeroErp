@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+import json
 from typing import Any
 
 from django.db import connection
@@ -66,6 +67,13 @@ class VenditePipelineRepository:
         "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
     }
 
+    @staticmethod
+    def _to_jsonb_param(value: LottoPipelineMeta | None) -> str | None:
+        if value is None:
+            return None
+        # Serializza esplicitamente per evitare errori adapter psycopg su dict/list.
+        return json.dumps(value)
+
     def get_or_create_lotto(
         self,
         lotto_id: int | None,
@@ -82,7 +90,7 @@ class VenditePipelineRepository:
             cursor.execute(
                 """
                 SELECT vendite.fn_get_or_create_lotto(
-                    %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s::jsonb, %s
                 )
                 """,
                 [
@@ -92,7 +100,7 @@ class VenditePipelineRepository:
                     utility_id,
                     billing_account_id,
                     lock_batch_id,
-                    meta,
+                    self._to_jsonb_param(meta),
                     tipo_lotto,
                 ],
             )
@@ -192,10 +200,17 @@ class VenditePipelineRepository:
             cursor.execute(
                 """
                 SELECT vendite.fn_log_pipeline_fase(
-                    %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s::jsonb
                 )
                 """,
-                [lotto_id, stato_doc_fiscale_id, fase, status, messaggio, meta],
+                [
+                    lotto_id,
+                    stato_doc_fiscale_id,
+                    fase,
+                    status,
+                    messaggio,
+                    self._to_jsonb_param(meta),
+                ],
             )
 
     def get_lotto_context(self, lotto_id: int) -> LottoContext | None:
@@ -437,7 +452,7 @@ class VenditePipelineRepository:
                     sorgente_riga,
                     meta
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 RETURNING id
                 """,
                 [
@@ -453,7 +468,7 @@ class VenditePipelineRepository:
                     sorgente_tipo_id,
                     sorgente_uid,
                     sorgente_riga,
-                    meta,
+                    self._to_jsonb_param(meta),
                 ],
             )
             row = cursor.fetchone()
