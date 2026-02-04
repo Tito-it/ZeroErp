@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_select_attivita_fatturabili`
 
 ```sql
-CREATE FUNCTION fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid, p_lock boolean, p_data_fatturazione date, p_billing_account_id bigint, p_utility_id integer, p_valuta_id integer, p_emittente_soggetto_ruolo_id bigint, p_limit integer)
+CREATE FUNCTION fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid, p_lock boolean, p_data_fatturazione date, p_billing_account_id bigint, p_utility_id integer, p_valuta_id integer, p_emittente_soggetto_ruolo_id bigint, p_area_geografica_id bigint, p_limit integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid DEFAULT NULL::uuid, p_lock boolean DEFAULT false, p_data_fatturazione date DEFAULT CURRENT_DATE, p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_valuta_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer)
+CREATE OR REPLACE FUNCTION vendite.fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid DEFAULT NULL::uuid, p_lock boolean DEFAULT false, p_data_fatturazione date DEFAULT CURRENT_DATE, p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_valuta_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_area_geografica_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer)
  RETURNS SETOF vendite.attivita_fatturabili
  LANGUAGE plpgsql
 AS $function$
@@ -25,6 +25,7 @@ BEGIN
   --
   -- Regole:
   --   - tipo_doc_fiscale obbligatorio
+  --   - competenza_mese obbligatoria (mese di fatturazione)
   --   - lock opzionale con SKIP LOCKED
   -- =========================================================
 
@@ -61,8 +62,7 @@ BEGIN
     ' AND a.sospesa IS FALSE' ||
     ' AND COALESCE(a.lock_in_fatturazione, false) IS FALSE' ||
     ' AND (a.posticipa_al IS NULL OR a.posticipa_al <= ' || quote_literal(v_data_fatturazione) || ')' ||
-    ' AND ((a.competenza_mese IS NOT NULL AND a.competenza_mese <= ' || quote_literal(v_competenza) || ')' ||
-    '      OR (a.competenza_mese IS NULL AND (a.competenza_al IS NULL OR a.competenza_al <= ' || quote_literal(v_data_fatturazione) || ')))' ||
+    ' AND a.competenza_mese <= ' || quote_literal(v_competenza) ||
     ' AND a.tipo_doc_fiscale_id = ' || quote_literal(p_tipo_doc_fiscale_id);
 
   IF p_billing_account_id IS NOT NULL THEN
@@ -84,6 +84,10 @@ BEGIN
       quote_literal(p_emittente_soggetto_ruolo_id);
   END IF;
 
+  IF p_area_geografica_id IS NOT NULL THEN
+    v_where := v_where || ' AND a.area_geografica_id = ' || quote_literal(p_area_geografica_id);
+  END IF;
+
   v_limit := CASE WHEN p_limit IS NOT NULL THEN ' LIMIT ' || p_limit::text ELSE '' END;
 
   IF p_lock THEN
@@ -91,8 +95,6 @@ BEGIN
       'WITH candidati AS (' ||
       '  SELECT a.id' ||
       '    FROM vendite.attivita_fatturabili a' ||
-      -- Fix utilities_id è su billing_account-- 
-      --'    JOIN anagrafiche.istanze_utilities iu ON iu.id = a.istanza_utility_id' ||
       '    JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' ||
            v_where ||
       '   ORDER BY a.data_attivita, a.id' ||
@@ -114,8 +116,6 @@ BEGIN
       'WITH candidati AS (' ||
       '  SELECT a.id' ||
       '    FROM vendite.attivita_fatturabili a' ||
-      -- Fix utilities_id è su billing_account-- 
-      --'    JOIN anagrafiche.istanze_utilities iu ON iu.id = a.istanza_utility_id' ||
       '    JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' ||
            v_where ||
       '   ORDER BY a.data_attivita, a.id' ||

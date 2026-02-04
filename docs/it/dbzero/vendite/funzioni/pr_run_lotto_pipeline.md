@@ -2,28 +2,35 @@
 # ⚙️ Procedura `pr_run_lotto_pipeline`
 
 ```sql
-CREATE PROCEDURE pr_run_lotto_pipeline(IN p_lotto_id bigint, IN p_competenza_mese date, IN p_tipo_doc_fiscale_id bigint, IN p_utility_id integer, IN p_billing_account_id bigint, IN p_lock_batch_id uuid, IN p_meta jsonb, IN p_dry_run boolean)
+CREATE PROCEDURE pr_run_lotto_pipeline(IN p_lotto_id bigint, IN p_competenza_mese date, IN p_tipo_doc_fiscale_id bigint, IN p_utility_id integer, IN p_billing_account_id bigint, IN p_lock_batch_id uuid, IN p_meta jsonb, IN p_dry_run boolean, IN p_tipo_lotto text)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE PROCEDURE vendite.pr_run_lotto_pipeline(IN p_lotto_id bigint DEFAULT NULL::bigint, IN p_competenza_mese date DEFAULT NULL::date, IN p_tipo_doc_fiscale_id bigint DEFAULT NULL::bigint, IN p_utility_id integer DEFAULT NULL::integer, IN p_billing_account_id bigint DEFAULT NULL::bigint, IN p_lock_batch_id uuid DEFAULT NULL::uuid, IN p_meta jsonb DEFAULT NULL::jsonb, IN p_dry_run boolean DEFAULT false)
+CREATE OR REPLACE PROCEDURE vendite.pr_run_lotto_pipeline(IN p_lotto_id bigint DEFAULT NULL::bigint, IN p_competenza_mese date DEFAULT NULL::date, IN p_tipo_doc_fiscale_id bigint DEFAULT NULL::bigint, IN p_utility_id integer DEFAULT NULL::integer, IN p_billing_account_id bigint DEFAULT NULL::bigint, IN p_lock_batch_id uuid DEFAULT NULL::uuid, IN p_meta jsonb DEFAULT NULL::jsonb, IN p_dry_run boolean DEFAULT false, IN p_tipo_lotto text DEFAULT 'MASSIVO'::text)
  LANGUAGE plpgsql
 AS $procedure$
 DECLARE
   v_step record;
   v_lotto_id vendite.fatturazione_lotti.id%TYPE;
+  v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
+  v_inviata_id config.stati_doc_fiscale.id%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Orchestrazione pipeline lotto: imposta stato job,
-  --   aggiorna stato_doc_fiscale_id per step e invoca i task.
+  --   Orchestrazione pipeline lotto per tipo_lotto.
   --
   -- Regole:
+  --   - p_lotto_id=0 -> NULL (creazione lotto)
   --   - stato_lotto: IN_ESECUZIONE -> COMPLETATO/ERRORE
-  --   - ordine step determinato da config.stati_doc_fiscale.ordine
+  --   - selezione pipeline per tipo_lotto
+  --   - lotto giornaliero: CHIUSO quando stato_doc_fiscale=INVIATA
   -- =========================================================
+
+  IF p_lotto_id = 0 THEN
+    p_lotto_id := NULL;
+  END IF;
 
   v_lotto_id := vendite.fn_get_or_create_lotto(
     p_lotto_id,
@@ -32,8 +39,26 @@ BEGIN
     p_utility_id,
     p_billing_account_id,
     p_lock_batch_id,
-    p_meta
+    p_meta,
+    p_tipo_lotto
   );
+
+  SELECT tipo_lotto
+    INTO v_tipo_lotto
+    FROM vendite.fatturazione_lotti
+   WHERE id = v_lotto_id;
+
+  IF v_tipo_lotto IS NULL THEN
+    v_tipo_lotto := COALESCE(p_tipo_lotto, 'MASSIVO');
+  END IF;
+
+  SELECT id
+    INTO v_inviata_id
+    FROM config.stati_doc_fiscale
+   WHERE codice = 'INVIATA'
+     AND attivo IS TRUE
+   ORDER BY ordine
+   LIMIT 1;
 
   -- Imposta stato lotto in esecuzione
   PERFORM vendite.fn_set_fatturazione_lotto_stato(
@@ -46,6 +71,7 @@ BEGIN
       JOIN config.stati_doc_fiscale sd
         ON sd.id = fp.stato_doc_fiscale_id
      WHERE fp.attivo IS TRUE
+       AND fp.tipo_lotto = v_tipo_lotto
        AND COALESCE(sd.applica_lotto, false) IS TRUE
      ORDER BY sd.ordine
   LOOP
@@ -55,6 +81,25 @@ BEGIN
            data_update = now(),
            user_update = current_user
      WHERE id = v_lotto_id;
+
+    -- Lotto giornaliero: a INVIATA chiude operativamente e aggiorna fatture
+    IF v_tipo_lotto = 'GIORNALIERO'
+       AND v_inviata_id IS NOT NULL
+       AND v_step.stato_doc_fiscale_id = v_inviata_id THEN
+      UPDATE vendite.fatturazione_lotti
+         SET stato_operativo = 'CHIUSO',
+             data_update = now(),
+             user_update = current_user
+       WHERE id = v_lotto_id;
+
+      UPDATE vendite.fatture f
+         SET stato_doc_fiscale_id = v_inviata_id,
+             data_update = now(),
+             user_update = current_user
+        FROM vendite.fatturazione_lotti_fatture lf
+       WHERE lf.lotto_id = v_lotto_id
+         AND lf.fattura_id = f.id;
+    END IF;
 
     -- Log fase (info)
     PERFORM vendite.fn_log_pipeline_fase(
