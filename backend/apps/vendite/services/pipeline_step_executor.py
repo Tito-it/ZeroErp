@@ -16,6 +16,10 @@ class PipelineStepExecutor:
     ) -> None:
         self.repository = repository or VenditePipelineRepository()
         self.fatture_righe_service = fatture_righe_service or FattureRigheService(self.repository)
+        self.task_registry = {
+            "select_attivita": self._handle_select_attivita_task,
+            "generate_fatture_righe": self._handle_generate_fatture_righe_task,
+        }
 
     def execute_step(
         self,
@@ -102,33 +106,16 @@ class PipelineStepExecutor:
         if dry_run or task in {"noop", "log_only"}:
             return
 
-        if task == "select_attivita":
-            # Whitelist esplicita per impedire esecuzione arbitraria da parametri JSON.
-            if fn_name and fn_name != self.repository.ALLOWED_TASK_FUNCTIONS["select_attivita"]:
-                ErrorManager.raise_error(
-                    code="E_TASK_NOT_ALLOWED",
-                    message="Funzione task non ammessa.",
-                    detail=f"Funzione non ammessa per task select_attivita: {fn_name}",
-                    context={"task": task, "fn": fn_name},
-                    function_name="vendite.pipeline_step_executor._run_task",
-                    log_to_db=True,
-                )
-            self.repository.run_select_attivita_task(context=context, params=params)
-            return
-
-        if task == "generate_fatture_righe":
-            # Whitelist esplicita: la generazione righe usa il servizio Python dedicato.
-            allowed = self.repository.ALLOWED_TASK_FUNCTIONS["generate_fatture_righe"]
-            if fn_name and fn_name != allowed:
-                ErrorManager.raise_error(
-                    code="E_TASK_NOT_ALLOWED",
-                    message="Funzione task non ammessa.",
-                    detail=f"Funzione non ammessa per task generate_fatture_righe: {fn_name}",
-                    context={"task": task, "fn": fn_name},
-                    function_name="vendite.pipeline_step_executor._run_task",
-                    log_to_db=True,
-                )
-            self.fatture_righe_service.generate_fatture_righe(lotto_id, dry_run=dry_run)
+        task_handler = self.task_registry.get(task)
+        if task_handler is not None:
+            task_handler(
+                task=task,
+                fn_name=fn_name,
+                lotto_id=lotto_id,
+                context=context,
+                params=params,
+                dry_run=dry_run,
+            )
             return
 
         ErrorManager.raise_error(
@@ -139,3 +126,41 @@ class PipelineStepExecutor:
             function_name="vendite.pipeline_step_executor._run_task",
             log_to_db=True,
         )
+
+    def _validate_task_function_name(self, *, task: str, fn_name: str | None) -> None:
+        allowed = self.repository.ALLOWED_TASK_FUNCTIONS[task]
+        if fn_name and fn_name != allowed:
+            ErrorManager.raise_error(
+                code="E_TASK_NOT_ALLOWED",
+                message="Funzione task non ammessa.",
+                detail=f"Funzione non ammessa per task {task}: {fn_name}",
+                context={"task": task, "fn": fn_name},
+                function_name="vendite.pipeline_step_executor._validate_task_function_name",
+                log_to_db=True,
+            )
+
+    def _handle_select_attivita_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> None:
+        self._validate_task_function_name(task=task, fn_name=fn_name)
+        self.repository.run_select_attivita_task(context=context, params=params)
+
+    def _handle_generate_fatture_righe_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> None:
+        self._validate_task_function_name(task=task, fn_name=fn_name)
+        self.fatture_righe_service.generate_fatture_righe(lotto_id, dry_run=dry_run)
