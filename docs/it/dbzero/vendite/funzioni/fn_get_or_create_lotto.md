@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_get_or_create_lotto`
 
 ```sql
-CREATE FUNCTION fn_get_or_create_lotto(p_lotto_id bigint, p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_utility_id integer, p_billing_account_id bigint, p_lock_batch_id uuid, p_meta jsonb)
+CREATE FUNCTION fn_get_or_create_lotto(p_lotto_id bigint, p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_utility_id integer, p_billing_account_id bigint, p_lock_batch_id uuid, p_meta jsonb, p_tipo_lotto text)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_lotto(p_lotto_id bigint DEFAULT NULL::bigint, p_competenza_mese date DEFAULT NULL::date, p_tipo_doc_fiscale_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_billing_account_id bigint DEFAULT NULL::bigint, p_lock_batch_id uuid DEFAULT NULL::uuid, p_meta jsonb DEFAULT NULL::jsonb)
+CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_lotto(p_lotto_id bigint DEFAULT NULL::bigint, p_competenza_mese date DEFAULT NULL::date, p_tipo_doc_fiscale_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_billing_account_id bigint DEFAULT NULL::bigint, p_lock_batch_id uuid DEFAULT NULL::uuid, p_meta jsonb DEFAULT NULL::jsonb, p_tipo_lotto text DEFAULT 'MASSIVO'::text)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
@@ -18,19 +18,29 @@ DECLARE
   v_utility_id config.utilities.id%TYPE;
   v_tipo_doc_id config.tipi_doc_fiscale.id%TYPE;
   v_billing_account_id anagrafiche.billing_account.id%TYPE;
+  v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
   --   Recupera un lotto esistente o lo crea se assente.
   --
   -- Regole:
+  --   - tipo_lotto obbligatorio (MASSIVO | GIORNALIERO)
   --   - se p_lotto_id presente, valida coerenza parametri
   --   - se p_lock_batch_id presente, riusa lotto se esistente
   -- =========================================================
 
+  IF p_tipo_lotto IS NULL OR p_tipo_lotto NOT IN ('MASSIVO','GIORNALIERO') THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+      jsonb_build_object('detail','tipo_lotto non valido', 'tipo_lotto', p_tipo_lotto),
+      NULL::uuid, 'tipo_lotto non valido'
+    );
+  END IF;
+
   IF p_lotto_id IS NOT NULL THEN
-    SELECT competenza_mese, utility_id, tipo_doc_fiscale_id, billing_account_id
-      INTO v_competenza, v_utility_id, v_tipo_doc_id, v_billing_account_id
+    SELECT competenza_mese, utility_id, tipo_doc_fiscale_id, billing_account_id, tipo_lotto
+      INTO v_competenza, v_utility_id, v_tipo_doc_id, v_billing_account_id, v_tipo_lotto
       FROM vendite.fatturazione_lotti
      WHERE id = p_lotto_id;
 
@@ -78,6 +88,14 @@ BEGIN
       );
     END IF;
 
+    IF v_tipo_lotto IS NOT NULL AND v_tipo_lotto <> p_tipo_lotto THEN
+      PERFORM script.fn_log_and_raise_error(
+        'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+        jsonb_build_object('detail','Tipo lotto non coerente', 'lotto_id', p_lotto_id),
+        NULL::uuid, concat('Tipo lotto non coerente', ' lotto_id: ', p_lotto_id::text)
+      );
+    END IF;
+
     RETURN p_lotto_id;
   END IF;
 
@@ -92,7 +110,7 @@ BEGIN
     END IF;
   END IF;
 
-  RETURN vendite.fn_create_fatturazione_lotto(
+  v_lotto_id := vendite.fn_create_fatturazione_lotto(
     p_competenza_mese,
     p_tipo_doc_fiscale_id,
     p_utility_id,
@@ -100,6 +118,14 @@ BEGIN
     p_lock_batch_id,
     p_meta
   );
+
+  UPDATE vendite.fatturazione_lotti
+     SET tipo_lotto = p_tipo_lotto,
+         data_update = now(),
+         user_update = current_user
+   WHERE id = v_lotto_id;
+
+  RETURN v_lotto_id;
 END
 $function$
 ```
