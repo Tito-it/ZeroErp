@@ -1,11 +1,11 @@
 from django.urls import path
 
-from apps.core.api.views import diagnostics_error_envelope
+from apps.core.api.views import ApiDiagnosticsErrorEnvelope
 
 urlpatterns = [
     path(
         "diagnostics/error-envelope/",
-        diagnostics_error_envelope,
+        ApiDiagnosticsErrorEnvelope.as_view(),
         name="core-diagnostics-error-envelope",
     ),
 ]

@@ -8,11 +8,14 @@ Endpoint applicativo che invoca il servizio Python `pr_run_lotto_pipeline`, equi
 
 ## Input
 - Metodo: `POST`
-- Path: `/api/vendite/pipeline/run/`
+- Path canonico: `/api/v1/vendite/pipeline/run/`
+- Path legacy (deprecato): `/api/vendite/pipeline/run/` (disabilitato di default)
+- Header richiesto: `Idempotency-Key`
+- Header sicurezza (solo path `/api/v1/...`): `Authorization: Bearer <access_token>`
 - Body JSON: `lotto_id`, `competenza_mese`, `tipo_doc_fiscale_id`, `utility_id`, `billing_account_id`, `lock_batch_id`, `meta`, `dry_run`, `tipo_lotto`
 
 ## Output
-- `200`: `{ "lotto_id": <id>, "status": "ok" }`
+- `200`: `{ "data": { "lotto_id": <id>, "status": "ok" }, "meta": { ... } }`
 - `400`: payload non valido o errore applicativo pipeline
 
 ## Regole
@@ -21,6 +24,8 @@ Endpoint applicativo che invoca il servizio Python `pr_run_lotto_pipeline`, equi
 - Usa parser/request helper condivisi area core.
 - Traduce eccezioni con envelope errore core.
 - Implementa il pattern standard core `handle_post_json(...)`.
+- Non usa `try/except Exception` locale: fallback errori non gestiti delegato al middleware API globale.
+- Endpoint write protetto con obbligo `Idempotency-Key`.
 
 ## Dipendenze DB
 - Dipendenze indirette via `services/pipeline_runner.py` e `db/pipeline_repository.py`.

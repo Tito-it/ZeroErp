@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
 import os
 from django.core.exceptions import ImproperlyConfigured
 
@@ -46,6 +47,16 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-insecure")
 
 DEBUG = env("DJANGO_DEBUG", "1") == "1"
 ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")]
+API_EXCEPTION_MIDDLEWARE_ENABLED = env("DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED", "1") == "1"
+API_RETRY_AFTER_SECONDS = int(env("DJANGO_API_RETRY_AFTER_SECONDS", "3"))
+API_LEGACY_ROUTES_ENABLED = env("DJANGO_API_LEGACY_ROUTES_ENABLED", "0") == "1"
+API_LEGACY_DEPRECATION_HEADERS_ENABLED = (
+    env("DJANGO_API_LEGACY_DEPRECATION_HEADERS_ENABLED", "1") == "1"
+)
+API_LEGACY_SUNSET_HEADER = env(
+    "DJANGO_API_LEGACY_SUNSET_HEADER",
+    "Tue, 30 Jun 2026 23:59:59 GMT",
+)
 
 
 # Application definition
@@ -57,6 +68,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'drf_spectacular',
     'apps.core',
     'apps.acquisti',
     'apps.anagrafiche',
@@ -69,10 +82,43 @@ INSTALLED_APPS = [
     'apps.vendite',
 ]
 
+REST_FRAMEWORK = {
+    # API backend solo JSON: evita output HTML non richiesto su endpoint REST.
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
+    ],
+    "DEFAULT_PARSER_CLASSES": [
+        "rest_framework.parsers.JSONParser",
+    ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.AllowAny",
+    ],
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "ZeroErp API",
+    "VERSION": "v1",
+    # Espone nello schema solo gli endpoint versionati /api/v1/*.
+    "SCHEMA_PATH_PREFIX": r"/api/v1",
+}
+
+SIMPLE_JWT = {
+    # Per sviluppo: access token piu` lungo, refresh invariato a 1 giorno.
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+}
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'apps.core.middleware.api_legacy_deprecation_middleware.ApiLegacyDeprecationMiddleware',
+    'apps.core.middleware.request_context_middleware.RequestContextMiddleware',
+    'apps.core.middleware.api_exception_middleware.ApiExceptionMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',

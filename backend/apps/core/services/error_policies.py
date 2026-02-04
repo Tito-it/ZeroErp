@@ -27,6 +27,12 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Parametri pipeline non validi.",
         ),
+        "E_IDEMPOTENCY_KEY_REQUIRED": ErrorPolicy(
+            code="E_IDEMPOTENCY_KEY_REQUIRED",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Idempotency-Key obbligatoria per questa operazione.",
+        ),
         "E_PIPELINE_LOTTO_NOT_FOUND": ErrorPolicy(
             code="E_PIPELINE_LOTTO_NOT_FOUND",
             http_status=404,
