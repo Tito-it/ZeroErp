@@ -1,7 +1,7 @@
 from django.urls import path
 
-from apps.vendite.api.views import run_lotto_pipeline
+from apps.vendite.api.views import ApiRunLottoPipeline
 
 urlpatterns = [
-    path("pipeline/run/", run_lotto_pipeline, name="vendite-run-lotto-pipeline"),
+    path("pipeline/run/", ApiRunLottoPipeline.as_view(), name="vendite-run-lotto-pipeline"),
 ]
