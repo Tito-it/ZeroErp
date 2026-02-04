@@ -28,7 +28,7 @@ BEGIN
   /*	Crea la funzione generica script.fn_generate_codice(tipo TEXT) che:
         - legge da config.sistema_codici i parametri per quel tipo
         - rispetta il flag usa_sequenza (se false restituisce NULL)
-        - crea la sequenza se manca, usando default <schema>.<tabella>_<colonna>_seq
+        - richiede la sequenza gia' presente (<schema>.<tabella>_<colonna>_seq)
         - concatena prefisso, separatore e numero formattato
   */
   SELECT prefisso,
@@ -77,7 +77,14 @@ BEGIN
   seq_name := format('%I.%I_%I_seq', v_schema_tabella, v_nome_tabella, v_nome_colonna);
 
   IF to_regclass(seq_name) IS NULL THEN
-    EXECUTE format('CREATE SEQUENCE IF NOT EXISTS %s', seq_name);
+    PERFORM script.fn_log_and_raise_error(
+        'database',
+        v_context_name,
+        'SEQUENZA_NON_CONFIGURATA',
+        jsonb_build_object('codice_interno', tipo, 'sequence_name', seq_name),
+        NULL::uuid,
+        tipo::TEXT
+      );
   END IF;
 
   EXECUTE format('SELECT nextval(%L)', seq_name) INTO seq_val;
