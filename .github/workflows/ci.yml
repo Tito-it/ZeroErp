@@ -133,7 +133,7 @@ jobs:
             --username=zeroerp \
             --password=secret \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
-            update --contexts="!test"
+            update --contexts="!test,!ci_apply,!provision"
 
 
       - name: Liquibase admin (provision)
