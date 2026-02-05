@@ -135,7 +135,18 @@ jobs:
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts="!test"
 
-      - name: Liquibase CI apply (run automations)
+
+      - name: Liquibase admin (provision)
+        run: |
+          liquibase \
+            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.env%3Dci" \
+            --username=postgres \
+            --password="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
+            --changeLogFile=db/changelog/changelog-master-v2.yaml \
+            update --contexts=provision
+    
+      
+      - name: Liquibase CI apply (run automations - ci_apply)
         run: |
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff%20-c%20myapp.env%3Dci" \

@@ -172,5 +172,6 @@ databaseChangeLog:
                       'Impossibile impostare owner=postgres per script.fn_log_error_only() in questo ambiente (privilegi insufficienti).';
                 END;
               END;
-              */
+
               $$;
+              */
