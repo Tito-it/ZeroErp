@@ -10,6 +10,9 @@ databaseChangeLog:
       id: 20260130-11-update-fn-set-fatturazione-lotto-stato
       author: mctit
       comment: "Aggiorna stato_lotto e allinea stato_operativo"
+      runAlways: false
+      validCheckSum:
+        - ANY
       changes:
         - sql:
             splitStatements: false
@@ -59,7 +62,7 @@ databaseChangeLog:
                     'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
                     jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id),
                     NULL::uuid, 
-                    concat('Lotto non trovato', 'lotto_id: ', p_lotto_id::text)
+                    concat('Lotto non trovato ', 'lotto_id: ', p_lotto_id::text)
                   );
                 END IF;
 
