@@ -14,7 +14,7 @@ def pr_run_lotto_pipeline(
     tipo_doc_fiscale_id: int | None = None,
     utility_id: int | None = None,
     billing_account_id: int | None = None,
-    lock_batch_id: int | None = None,
+    lock_batch_id: str | None = None,
     meta: LottoPipelineMeta | None = None,
     dry_run: bool = False,
     tipo_lotto: str = "MASSIVO",

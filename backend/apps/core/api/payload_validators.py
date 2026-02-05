@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from apps.core.api.request_parsers import parse_iso_date
 
@@ -42,3 +43,23 @@ def optional_iso_date(payload: dict[str, Any], key: str):
     if not isinstance(value, str):
         raise ValueError(f"{key}_invalid")
     return parse_iso_date(value)
+
+
+def optional_uuid(payload: dict[str, Any], key: str) -> str | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    # Per compatibilita` input legacy/UI: 0 o stringa vuota => NULL.
+    if value in (0, "0", ""):
+        return None
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, str):
+        candidate = value.strip()
+        if not candidate:
+            return None
+        try:
+            return str(UUID(candidate))
+        except ValueError as exc:
+            raise ValueError(f"{key}_invalid") from exc
+    raise ValueError(f"{key}_invalid")
