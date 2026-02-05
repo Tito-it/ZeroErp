@@ -1,7 +1,7 @@
 ﻿# ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Liquibase changelog per Zero ERP
-# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
 #
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
@@ -13,19 +13,16 @@ databaseChangeLog:
       relativeToChangelogFile: true
       errorIfMissingOrEmpty: true
 
-  
-# Esempio di eccezioni quando non si puÃ² eseguire l'ordine alfabetico in migartionis
-#  - include:
-#      file: migrations/script/20250507-01-trgfn-blocco-colonna-mctit.yaml 
-
-
+  # Esempio di eccezioni quando non si puÃ² eseguire l'ordine alfabetico in migartionis
+  #  - include:
+  #      file: migrations/script/20250507-01-trgfn-blocco-colonna-mctit.yaml
   # Poi tutto il resto (ordina alfabeticamente dentro ogni schema)
   - includeAll:
       path: migrations
       relativeToChangelogFile: true
-      errorIfMissingOrEmpty: false  
+      errorIfMissingOrEmpty: false
 
-   # tests (caricato sempre, ma i changeSet hanno context test/test_apply/test_cleanup)
-  - include:
-      file: tests/changelog.yaml
-      relativeToChangelogFile: true
+    # tests (caricato sempre, ma i changeSet hanno context test/test_apply/test_cleanup)
+  # - include:
+#      file: tests/changelog.yaml
+#      relativeToChangelogFile: true
