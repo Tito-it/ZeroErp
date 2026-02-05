@@ -84,6 +84,125 @@ Questa guida illustra come utilizzare e estendere la struttura di errore, garant
 * **Scopo**: unificare logging via `dblink_exec` .
 * **Link**: [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only)
 
+> **Nota operativa (PG18)**  
+> Per garantire logging **persistente** anche in caso di rollback (out‑of‑transaction),  
+> `script.fn_log_error_only` **deve essere `SECURITY DEFINER`** ed **owner superuser** (es. `postgres`).  
+> La connessione `dblink` va configurata tramite **`pg_service.conf` + `.pgpass`** sul server PostgreSQL,
+> con `myapp.dblink_log_connection = 'service=<nome>'`.  
+> In caso contrario si ottiene errore `2F003` (password/GSSAPI richiesti).
+
+---
+
+## ✅ Setup operativo dblink (log persistente)
+
+### 1) Ruolo di logging con privilegi minimi
+
+Eseguire da utente admin (es. `postgres`) nel DB applicativo:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS dblink;
+
+CREATE ROLE zeroerp_log LOGIN PASSWORD 'PASSWORD_FORTE';
+GRANT USAGE ON SCHEMA dbops TO zeroerp_log;
+GRANT INSERT ON TABLE dbops.error_log TO zeroerp_log;
+GRANT USAGE, SELECT ON SEQUENCE dbops.error_log_id_seq TO zeroerp_log;
+```
+
+### 2) Configurare `pg_service.conf` (server PostgreSQL)
+
+I file devono essere creati **sul server DB**, nella HOME dell’utente OS `postgres`
+(tipicamente `/var/lib/postgresql`).
+
+`/var/lib/postgresql/.pg_service.conf`:
+
+```
+[zeroerp_log]
+host=127.0.0.1
+port=5432
+dbname=zeroerp
+user=zeroerp_log
+```
+
+### 3) Configurare `.pgpass` (server PostgreSQL)
+
+`/var/lib/postgresql/.pgpass`:
+
+```
+127.0.0.1:5432:zeroerp:zeroerp_log:PASSWORD_FORTE
+```
+
+Permessi obbligatori:
+
+```bash
+chown postgres:postgres /var/lib/postgresql/.pg_service.conf /var/lib/postgresql/.pgpass
+chmod 600 /var/lib/postgresql/.pg_service.conf /var/lib/postgresql/.pgpass
+```
+
+Se il servizio PostgreSQL non legge la HOME, forzare i path con systemd:
+
+```
+[Service]
+Environment=PGSERVICEFILE=/var/lib/postgresql/.pg_service.conf
+Environment=PGPASSFILE=/var/lib/postgresql/.pgpass
+```
+
+e riavviare `postgresql@<versione>-main`.
+
+### 4) Impostare la GUC per i ruoli applicativi
+
+Eseguire da admin:
+
+```sql
+ALTER ROLE titodb     IN DATABASE zeroerp SET myapp.dblink_log_connection = 'service=zeroerp_log';
+ALTER ROLE zeroerp_app IN DATABASE zeroerp SET myapp.dblink_log_connection = 'service=zeroerp_log';
+```
+
+---
+
+## 🔧 Verifiche e test
+
+### Test corretto (via funzione SECURITY DEFINER)
+
+```sql
+SELECT script.fn_log_error_only(
+  'test',
+  'diag_log_only',
+  'E_GENERICO',
+  jsonb_build_object('probe','manual_test','ts',clock_timestamp()),
+  NULL::uuid
+);
+
+SELECT *
+FROM dbops.error_log
+ORDER BY occurred_at DESC
+LIMIT 5;
+```
+
+### Errori tipici
+
+* **`2F003` (password/GSSAPI richiesti)**  
+  La funzione non è `SECURITY DEFINER` o non è owner superuser; oppure `pg_service.conf/.pgpass` non sono visibili al processo postgres.
+* **Log non presente ma nessun errore**  
+  Verificare `myapp.dblink_log_connection`, `pg_service.conf/.pgpass`, e permessi del ruolo `zeroerp_log`.
+
+---
+
+## 🔐 Hardening owner funzioni (Liquibase)
+
+Per garantire owner `postgres` alle funzioni sensibili (inclusa `script.fn_log_error_only`),
+si usa il changeSet:
+
+`migrations_v2/90_end/20251123-12-sec-functions-owner-hardening-mctit.yaml`
+
+Questo esegue `dbops.fn_sync_functions_owner()` che legge `dbops.sec_functions_owner`.
+La funzione `script.fn_log_error_only` è registrata nella tabella e viene riallineata a `postgres`.
+
+**Esecuzione consigliata (admin):**
+
+```bash
+scripts/liquibase5.sh update --contexts=provision --username=postgres --password=***
+```
+
 ---
 
 ## 🔄 Flusso di Gestione degli Errori

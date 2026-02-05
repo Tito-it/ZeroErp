@@ -143,7 +143,6 @@ jobs:
             --password=secret \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts=ci_apply
-
       
       - name: Genera doc DB
         # Qui sopra non serve più caricare i tuoi secrets, ma usiamo quelli del servizio
