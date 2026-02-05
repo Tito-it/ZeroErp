@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20251004-13-create-fn-get-acquisti-note
       author: mctit
-      context: test
+      # context: test
       logicalFilePath: migrations_v2/00_schema/acquisti/20251004-13-create-fn-get-acquisti-note.sql.yaml
       preConditions:
         # non deve essere più creata fatta funzione generica 22/10/22
