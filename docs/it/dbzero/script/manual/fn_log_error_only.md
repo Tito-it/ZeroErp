@@ -77,8 +77,11 @@ CREATE OR REPLACE FUNCTION script.fn_log_error_only(
 
 ### Sicurezza & Permessi
 
-* Se si usa `dblink_connect_u`, richiede superuser o configurazioni ad hoc; preferibile `dblink_connect` con utente dedicato ai log.
-* Valutare `SECURITY DEFINER` **solo se necessario** (es. log verso DB di servizio con credenziali dedicate). In tal caso impostare owner, `search_path` e GRANT con attenzione.
+* Per **logging out-of-transaction** via `dblink` senza password in GUC, **la funzione deve essere `SECURITY DEFINER`** e **owner superuser** (es. `postgres`).
+  In caso contrario, il caller non superuser riceve `2F003` (password/GSSAPI richiesti).
+* Usare un utente dedicato ai log (es. `zeroerp_log`) con privilegi **minimi** su `dbops.error_log`.
+* Configurare **`pg_service.conf` + `.pgpass`** sul server PostgreSQL (utente OS `postgres`) per il service usato da `myapp.dblink_log_connection`.
+* In modalità `SECURITY DEFINER`, mantenere `search_path` ristretto e garantire `GRANT EXECUTE` solo ai ruoli necessari.
 * Il **caller** necessita solo di `EXECUTE` sulla funzione; i permessi sulla tabella di log sono gestiti sul lato remoto via `dblink`.
 
 ---
@@ -106,6 +109,7 @@ END;
 ### Troubleshooting
 
 * **`dblink` non configurato** → la funzione continua “a vuoto” (non lancia). Verificare la GUC `dblink.log_connection` e l’operatività di `script.fn_ensure_logconn()`.
+* **Errore `2F003` (password/GSSAPI richiesti)** → la funzione non è `SECURITY DEFINER` o non è owner superuser; verificare anche `pg_service.conf/.pgpass`.
 * **Messaggio non trovato** → verificare `config.messaggi_errore` o la lingua corrente; con fallback non si blocca.
 
 ---
@@ -121,4 +125,3 @@ END;
 ---
 
 > 🧠 **“Usa `fn_log_error_only` per il logging passivo—per casi in cui vuoi solo registrare, mai bloccare.”**
-

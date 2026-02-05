@@ -10,6 +10,9 @@ databaseChangeLog:
       id: 20260205-01-update-fn-log-error-only-remote-only
       author: mctit
       comment: "Aggiorna script.fn_log_error_only per logging remoto out-of-transaction"
+      runAlways: false
+      validCheckSum:
+        - ANY
       changes:
         - sql:
             splitStatements: false
@@ -24,6 +27,7 @@ databaseChangeLog:
                 VARIADIC p_valori text[]
               ) RETURNS void
               LANGUAGE plpgsql
+              SECURITY DEFINER
               VOLATILE
               SET search_path TO public, pg_temp
               AS $BODY$
@@ -156,3 +160,16 @@ databaseChangeLog:
 
               COMMENT ON FUNCTION script.fn_log_error_only(text,text,text,jsonb,uuid,text[])
                 IS 'Logga su dbops.error_log via connessione dblink separata (out-of-transaction), senza sollevare eccezioni.';
+
+              DO $$
+              BEGIN
+                BEGIN
+                  ALTER FUNCTION script.fn_log_error_only(text,text,text,jsonb,uuid,text[])
+                    OWNER TO postgres;
+                EXCEPTION
+                  WHEN insufficient_privilege THEN
+                    RAISE NOTICE
+                      'Impossibile impostare owner=postgres per script.fn_log_error_only() in questo ambiente (privilegi insufficienti).';
+                END;
+              END;
+              $$;
