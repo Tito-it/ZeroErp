@@ -8,13 +8,15 @@ Indice test eseguiti:
 6) VenditePipelineApiTests.test_run_lotto_pipeline_requires_idempotency_key
 7) VenditePipelineApiTests.test_run_lotto_pipeline_v1_requires_jwt
 8) VenditePipelineApiTests.test_legacy_vendite_path_not_found_when_disabled
+9) VenditePipelineApiTests.test_run_lotto_pipeline_hides_technical_detail_for_generic_errors
+10) VenditePipelineApiTests.test_run_lotto_pipeline_exposes_technical_message_in_debug_mode
 """
 
 import json
 from unittest.mock import patch
 from unittest.mock import Mock
 
-from django.test import Client, SimpleTestCase
+from django.test import Client, SimpleTestCase, override_settings
 
 from apps.core.services.service_errors import ServiceError
 
@@ -132,3 +134,39 @@ class VenditePipelineApiTests(SimpleTestCase):
             headers={"Idempotency-Key": "idem-legacy-1"},
         )
         self.assertEqual(response.status_code, 404)
+
+    @override_settings(API_EXPOSE_TECHNICAL_DETAILS=False)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    def test_run_lotto_pipeline_hides_technical_detail_for_generic_errors(self, mocked_service, _mock_auth):
+        mocked_service.side_effect = RuntimeError("CONTEXT: SQL interno sensibile")
+        response = self.client.post(
+            "/api/v1/vendite/pipeline/run/",
+            data=json.dumps({"dry_run": True}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-safe-err-1"},
+        )
+        self.assertEqual(response.status_code, 500)
+        body = response.json()["error"]
+        self.assertEqual(body["code"], "E_GENERICO")
+        self.assertEqual(body["message"], "Errore non gestito.")
+        self.assertNotIn("SQL interno", body["detail"])
+        self.assertIn("request_id", body["detail"])
+        self.assertNotIn("technical_message", body)
+
+    @override_settings(API_EXPOSE_TECHNICAL_DETAILS=True)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    def test_run_lotto_pipeline_exposes_technical_message_in_debug_mode(self, mocked_service, _mock_auth):
+        mocked_service.side_effect = RuntimeError("CONTEXT: SQL interno sensibile")
+        response = self.client.post(
+            "/api/v1/vendite/pipeline/run/",
+            data=json.dumps({"dry_run": True}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-safe-err-2"},
+        )
+        self.assertEqual(response.status_code, 500)
+        body = response.json()["error"]
+        self.assertEqual(body["code"], "E_GENERICO")
+        self.assertEqual(body["message"], "Errore non gestito.")
+        self.assertEqual(body["technical_message"], "CONTEXT: SQL interno sensibile")

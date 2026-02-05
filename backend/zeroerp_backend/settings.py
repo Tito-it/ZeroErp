@@ -49,6 +49,7 @@ DEBUG = env("DJANGO_DEBUG", "1") == "1"
 ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")]
 API_EXCEPTION_MIDDLEWARE_ENABLED = env("DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED", "1") == "1"
 API_RETRY_AFTER_SECONDS = int(env("DJANGO_API_RETRY_AFTER_SECONDS", "3"))
+API_EXPOSE_TECHNICAL_DETAILS = env("DJANGO_API_EXPOSE_TECHNICAL_DETAILS", "0") == "1"
 API_LEGACY_ROUTES_ENABLED = env("DJANGO_API_LEGACY_ROUTES_ENABLED", "0") == "1"
 API_LEGACY_DEPRECATION_HEADERS_ENABLED = (
     env("DJANGO_API_LEGACY_DEPRECATION_HEADERS_ENABLED", "1") == "1"
@@ -104,6 +105,21 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "v1",
     # Espone nello schema solo gli endpoint versionati /api/v1/*.
     "SCHEMA_PATH_PREFIX": r"/api/v1",
+    # UI Swagger: rimuove header CSRF dai request snippet per API JWT.
+    "SWAGGER_UI_SETTINGS": """
+    {
+      deepLinking: true,
+      persistAuthorization: true,
+      requestInterceptor: (req) => {
+        if (req && req.headers) {
+          delete req.headers['X-CSRFToken'];
+          delete req.headers['X-CSRFTOKEN'];
+          delete req.headers['x-csrftoken'];
+        }
+        return req;
+      }
+    }
+    """,
 }
 
 SIMPLE_JWT = {
