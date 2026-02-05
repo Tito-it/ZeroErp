@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date
+from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
 from apps.vendite.services.pipeline_service import pr_run_lotto_pipeline
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
@@ -32,7 +32,7 @@ class ApiRunLottoPipeline(APIView):
                 "tipo_doc_fiscale_id": serializers.IntegerField(required=False, allow_null=True),
                 "utility_id": serializers.IntegerField(required=False, allow_null=True),
                 "billing_account_id": serializers.IntegerField(required=False, allow_null=True),
-                "lock_batch_id": serializers.IntegerField(required=False, allow_null=True),
+                "lock_batch_id": serializers.UUIDField(required=False, allow_null=True),
                 "meta": serializers.DictField(required=False),
                 "dry_run": serializers.BooleanField(required=False),
                 "tipo_lotto": serializers.CharField(required=False),
@@ -62,7 +62,7 @@ class ApiRunLottoPipeline(APIView):
                 tipo_doc_fiscale_id=optional_int(payload, "tipo_doc_fiscale_id"),
                 utility_id=optional_int(payload, "utility_id"),
                 billing_account_id=optional_int(payload, "billing_account_id"),
-                lock_batch_id=optional_int(payload, "lock_batch_id"),
+                lock_batch_id=optional_uuid(payload, "lock_batch_id"),
                 meta=payload.get("meta"),
                 dry_run=optional_bool(payload, "dry_run", default=False),
                 tipo_lotto=payload.get("tipo_lotto", "MASSIVO"),

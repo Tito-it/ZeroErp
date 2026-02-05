@@ -277,6 +277,7 @@ curl -I -k https://192.168.X.8/admin/login/
 * Riavvia Gunicorn: `sudo systemctl restart zeroerp-gunicorn`
 * In sviluppo, per autoreload con service attivo: vedi `docs/it/dev/backend/gunicorn-dev-autoreload.md`
 * Provisioning utenti DB runtime/migrator: `docs/it/dev/backend/provisioning-db-roles.md`
+* Debug dettaglio tecnico API: `docs/it/backend/core/manual/error-handling-api.md` (flag `DJANGO_API_EXPOSE_TECHNICAL_DETAILS`)
 
 ### 3) **CSRF 403 su IP/HTTPS**
 

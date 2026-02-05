@@ -17,7 +17,7 @@ class LottoContext:
     tipo_doc_fiscale_id: int | None
     utility_id: int | None
     billing_account_id: int | None
-    lock_batch_id: int | None
+    lock_batch_id: str | None
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,7 @@ class VenditePipelineRepository:
         tipo_doc_fiscale_id: int | None,
         utility_id: int | None,
         billing_account_id: int | None,
-        lock_batch_id: int | None,
+        lock_batch_id: str | None,
         meta: LottoPipelineMeta | None,
         tipo_lotto: str | None,
     ) -> int:
@@ -90,7 +90,7 @@ class VenditePipelineRepository:
             cursor.execute(
                 """
                 SELECT vendite.fn_get_or_create_lotto(
-                    %s, %s, %s, %s, %s, %s, %s::jsonb, %s
+                    %s, %s, %s, %s, %s, %s::uuid, %s::jsonb, %s::text
                 )
                 """,
                 [
@@ -277,7 +277,7 @@ class VenditePipelineRepository:
                 SELECT vendite.fn_select_attivita_fatturabili(
                     p_competenza_mese => %s,
                     p_tipo_doc_fiscale_id => %s,
-                    p_lock_batch_id => %s,
+                    p_lock_batch_id => %s::uuid,
                     p_lock => %s,
                     p_data_fatturazione => COALESCE(%s, CURRENT_DATE),
                     p_billing_account_id => %s,
