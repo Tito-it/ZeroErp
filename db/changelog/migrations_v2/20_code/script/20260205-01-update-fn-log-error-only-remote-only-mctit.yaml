@@ -160,7 +160,7 @@ databaseChangeLog:
 
               COMMENT ON FUNCTION script.fn_log_error_only(text,text,text,jsonb,uuid,text[])
                 IS 'Logga su dbops.error_log via connessione dblink separata (out-of-transaction), senza sollevare eccezioni.';
-
+              /* 
               DO $$
               BEGIN
                 BEGIN
@@ -172,4 +172,5 @@ databaseChangeLog:
                       'Impossibile impostare owner=postgres per script.fn_log_error_only() in questo ambiente (privilegi insufficienti).';
                 END;
               END;
+              */
               $$;
