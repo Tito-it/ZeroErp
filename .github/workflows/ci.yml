@@ -43,7 +43,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U zeroerp"
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
@@ -65,15 +65,15 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Show MkDocs version
-        run: |
-          source .venv/bin/activate
-          mkdocs --version
-          pip list | grep mkdocs
+    #  - name: Show MkDocs version
+   #     run: |
+   #       source .venv/bin/activate
+  #        mkdocs --version
+  #        pip list | grep mkdocs
 
       - name: Set custom GUCs for CI role
         env:
-          PGPASSWORD: ${{ secrets.DB_PASSWORD || 'secret' }}
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         run: |
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "CREATE ROLE zeroerp LOGIN PASSWORD 'secret';"
