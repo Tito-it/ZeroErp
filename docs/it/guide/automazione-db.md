@@ -280,7 +280,7 @@ Questa parte del framework gestisce la **generazione automatica di codici o nume
 
 **Funzioni**
 
-* [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice) → genera il codice in base alla configurazione, crea la sequenza se mancante.
+* [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice) → genera il codice in base alla configurazione e usa una sequenza pre-provisionata.
 * [script.trgfn_config_sistema_codici_sync_gen_codice](/dbzero/script/funzioni/trgfn_config_sistema_codici_sync_gen_codice) → sincronizza i trigger sulle tabelle target.
 
 ### 10.2 Regole operative

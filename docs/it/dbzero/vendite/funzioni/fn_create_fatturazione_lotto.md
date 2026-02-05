@@ -57,7 +57,7 @@ BEGIN
     SELECT ba.utility_id
       INTO v_utility_id
       FROM anagrafiche.billing_account ba
-     WHERE ba.id = p_billing_account_id;
+    WHERE ba.id = p_billing_account_id;
 
     IF v_utility_id IS NULL THEN
       PERFORM script.fn_log_and_raise_error(
@@ -68,7 +68,7 @@ BEGIN
         ),
         NULL::uuid, 
         concat('Utility non risolta da billing_account', 
-        ' lotto_id: ', p_lotto_id::text)
+        ' billing_account_id: ', p_billing_account_id::text)
       );
     END IF;
 
@@ -80,7 +80,10 @@ BEGIN
           'billing_account_id', p_billing_account_id,
           'utility_id', p_utility_id
         ),
-        NULL::uuid, concat('Utility non coerente con billing_account', ' lotto_id: ', p_lotto_id::text)
+        NULL::uuid,
+        concat('Utility non coerente con billing_account', 
+          ' billing_account_id: ', p_billing_account_id::text,
+          ' utility_id: ', p_utility_id::text)
       );
     END IF;
   END IF;
@@ -96,8 +99,8 @@ BEGIN
   SELECT EXISTS (
     SELECT 1
       FROM config.tipi_doc_fiscale t
-     WHERE t.id = p_tipo_doc_fiscale_id
-       AND t.attivo IS TRUE
+    WHERE t.id = p_tipo_doc_fiscale_id
+      AND t.attivo IS TRUE
   )
   INTO v_map_exists;
 
@@ -108,14 +111,15 @@ BEGIN
         'detail','Tipo documento fiscale non attivo o inesistente',
         'tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
       ),
-      NULL::uuid, 'Tipo documento fiscale non attivo o inesistente'
+      NULL::uuid, 
+      concat('Tipo documento fiscale non attivo o inesistente', ' tipo_doc_fiscale_id: ', p_tipo_doc_fiscale_id::text)
     );
   END IF;
 
   SELECT EXISTS (
     SELECT 1
       FROM vendite.tipi_doc_fiscale_registri m
-     WHERE m.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+    WHERE m.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
   )
   INTO v_map_exists;
 
@@ -127,18 +131,18 @@ BEGIN
         'tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
       ),
       NULL::uuid, 
-      concat('Mapping tipo_doc_fiscale -> registro assente', ' lotto_id: ', p_lotto_id::text)
+      concat('Mapping tipo_doc_fiscale -> registro assente', ' tipo_doc_fiscale_id: ', p_tipo_doc_fiscale_id::text)
     );
   END IF;
 
   SELECT id
     INTO v_stato_doc_id
     FROM config.stati_doc_fiscale
-   WHERE codice = 'DRAFT'
-     AND applica_lotto IS TRUE
-     AND attivo IS TRUE
-   ORDER BY ordine
-   LIMIT 1;
+  WHERE codice = 'DRAFT'
+    AND applica_lotto IS TRUE
+    AND attivo IS TRUE
+  ORDER BY ordine
+  LIMIT 1;
 
   IF v_stato_doc_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
