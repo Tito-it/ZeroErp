@@ -12,6 +12,7 @@ databaseChangeLog:
       id: 001-01-create-extensions
       author: mctit
       context: provision
+      labels: provision
       runOnChange: true
       validCheckSums:
         - ANY
@@ -40,6 +41,7 @@ databaseChangeLog:
       id: 001-01-02-create-pgagent-extension
       author: mctit
       context: provision
+      labels: provision
       preConditions:
         - onFail: CONTINUE
         - onError: CONTINUE

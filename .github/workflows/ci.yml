@@ -131,7 +131,7 @@ jobs:
             --username=postgres \
             --password="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
-            update --contexts=provision
+            update --contexts=provision --label-filter=provision
 
       - name: Applica migrazioni Liquibase
         run: |
@@ -152,7 +152,7 @@ jobs:
             --username=postgres \
             --password="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
-            update --contexts=provision
+            update --contexts=provision --label-filter=provision
     
       
       - name: Liquibase CI apply (run automations - ci_apply)
