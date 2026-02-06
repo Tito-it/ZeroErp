@@ -22,6 +22,7 @@ databaseChangeLog:
   - changeSet:
       id: 20250311-02-set-internal
       author: mctit
+      context: provision
       changes:
         - sql:
             splitStatements: false
