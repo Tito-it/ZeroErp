@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Definizioni errori di servizio core.
+# ------------------------------------------------------------
+
+
 from typing import Any
 
 # Modello errore applicativo unico riusabile da tutti i servizi Django.

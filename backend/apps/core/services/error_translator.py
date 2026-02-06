@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Traduzione errori applicativi.
+# ------------------------------------------------------------
+
+
 from dataclasses import asdict, dataclass
 from typing import Any
 

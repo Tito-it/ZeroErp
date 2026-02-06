@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Gestione contesto richiesta.
+# ------------------------------------------------------------
+
+
 from __future__ import annotations
 
 from contextvars import ContextVar
