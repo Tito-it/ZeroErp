@@ -1,7 +1,0 @@
-Django==5.2.6
-psycopg[binary]==3.2.10
-djangorestframework==3.16.1
-gunicorn==23.0.0
-# se non usi Redis puoi commentare
-#django-redis==6.0.0
-#redis==6.4.0

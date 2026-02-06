@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Esecuzione step pipeline vendite.
+# ------------------------------------------------------------
+
+
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager

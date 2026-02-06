@@ -10,6 +10,7 @@
 - Versioni: Python 3.14, Django 6.01
 - Evitare API/metodi deprecati; seguire best practice Django
 - Accesso webserver configurato: test migrazione solo su richiesta
+- Per i file Python **generati** aggiungere sempre l’header standard in `templates/python-header.txt`.
 - Nei file Python aggiungere commenti sintetici nei blocchi non banali (orchestrazione, transazioni, mapping task/SQL), scritti in italiano.
 - Nei servizi/classi Python usare nomi metodo espliciti e orientati al dominio (es. `run_pipeline`), evitando nomi generici/ambigui come `run`.
 - Per error handling servizi/API usare helper centralizzato in `apps/core/services/error_manager.py`, evitando logica duplicata nei moduli dominio.
