@@ -1,0 +1,12 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Provisioning (post): hardening owner funzioni sensibili
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - include:
+      file: migrations_v2/20_code/dbops/20251122-11-fn-get-or-create-session-tx-id-mctit.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: migrations_v2/90_end/20251123-12-sec-functions-owner-hardening-mctit.yaml
+      relativeToChangelogFile: true
