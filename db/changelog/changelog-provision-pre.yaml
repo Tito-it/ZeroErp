@@ -1,0 +1,9 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Provisioning (pre): estensioni e prerequisiti admin
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - include:
+      file: baseline/001-01-create-extensions.yaml
+      relativeToChangelogFile: true
