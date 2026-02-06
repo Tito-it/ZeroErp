@@ -113,6 +113,7 @@ class VenditePipelineRepository:
                 ],
             )
             row = cursor.fetchone()
+            assert row is not None
         return int(row[0])
 
     def get_lotto_tipo(self, lotto_id: int) -> str | None:
@@ -122,6 +123,7 @@ class VenditePipelineRepository:
                 [lotto_id],
             )
             row = cursor.fetchone()
+            assert row is not None
         return None if not row else row[0]
 
     def get_stato_doc_fiscale_id(self, codice: str) -> int | None:
@@ -138,6 +140,7 @@ class VenditePipelineRepository:
                 [codice],
             )
             row = cursor.fetchone()
+            assert row is not None
         return None if not row else int(row[0])
 
     def set_lotto_job_stato(self, lotto_id: int, stato: str, messaggio: str) -> None:
@@ -272,6 +275,7 @@ class VenditePipelineRepository:
         context: LottoContext,
         params: dict[str, Any],
     ) -> None:
+        assert context is not None
         # Normalizza i parametri JSON prima della chiamata alla funzione SQL.
         lock = as_bool(params.get("lock"), default=False)
         data_fatturazione = empty_to_none(params.get("data_fatturazione"))
@@ -410,6 +414,7 @@ class VenditePipelineRepository:
                 [lotto_id, attivita_id],
             )
             row = cursor.fetchone()
+            assert row is not None
         return int(row[0])
 
     def get_next_fattura_riga_nr(self, fattura_id: int) -> int:
@@ -423,6 +428,7 @@ class VenditePipelineRepository:
                 [fattura_id],
             )
             row = cursor.fetchone()
+            assert row is not None
         return int(row[0])
 
     def insert_fattura_riga(
@@ -480,6 +486,7 @@ class VenditePipelineRepository:
                 ],
             )
             row = cursor.fetchone()
+            assert row is not None
         return int(row[0])
 
     def mark_attivita_fatturata(self, attivita_id: int, fattura_riga_id: int) -> None:
