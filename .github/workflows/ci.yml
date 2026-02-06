@@ -84,6 +84,13 @@ jobs:
            psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
              "SELECT name, setting FROM pg_settings WHERE name LIKE 'myapp.%' ORDER BY name;"
 
+      - name: Grant CREATE on public (CI bootstrap)
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "GRANT USAGE, CREATE ON SCHEMA public TO zeroerp;"
+
  # Dicembre 2025 passaggio a Liquibase 5 Community
    # Versione Liquibase 5 (Community)       
       - name: Setup Liquibase 5 (oss)
