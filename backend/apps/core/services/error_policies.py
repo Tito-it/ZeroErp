@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Policy errori per mapping HTTP/UI.
+# ------------------------------------------------------------
+
+
 from dataclasses import dataclass
 
 # Registro centrale mapping errore -> comportamento API/UI.

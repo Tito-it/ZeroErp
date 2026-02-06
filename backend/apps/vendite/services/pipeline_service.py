@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Servizio applicativo pipeline vendite.
+# ------------------------------------------------------------
+
+
 from datetime import date
 
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner

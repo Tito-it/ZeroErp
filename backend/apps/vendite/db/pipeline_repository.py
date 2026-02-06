@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Accesso DB per pipeline vendite.
+# ------------------------------------------------------------
+
+
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal

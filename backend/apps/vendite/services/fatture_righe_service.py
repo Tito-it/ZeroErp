@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Orchestrazione per grouping e generazione righe fattura.
+# ------------------------------------------------------------
+
+
 from datetime import date
 from decimal import Decimal
 
@@ -34,6 +42,7 @@ class FattureRigheService:
             function_name="vendite.fatture_righe_service.group_attivita_fatturabili",
             log_to_db=True,
         )
+        assert row is not None
         ErrorManager.require(
             row.dest_billing_account_id is not None,
             code="E_GROUP_ATTIVITA_INVALID_DATA",
@@ -43,6 +52,7 @@ class FattureRigheService:
             function_name="vendite.fatture_righe_service.group_attivita_fatturabili",
             log_to_db=True,
         )
+        assert row.dest_billing_account_id is not None
 
         use_competenza = (
             row.competenza_dal is not None
