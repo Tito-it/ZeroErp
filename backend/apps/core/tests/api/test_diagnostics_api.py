@@ -51,11 +51,13 @@ class CoreDiagnosticsApiTests(SimpleTestCase):
         self.assertEqual(response.status_code, 401)
 
     def test_openapi_schema_endpoint(self):
+        # Smoke test: lo schema OpenAPI deve essere esposto.
         response = self.client.get("/api/schema/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("application/vnd.oai.openapi", response["Content-Type"])
 
     def test_openapi_swagger_ui_endpoint(self):
+        # Smoke test: la UI Swagger deve essere raggiungibile.
         response = self.client.get("/api/docs/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/html", response["Content-Type"])

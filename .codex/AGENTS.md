@@ -12,6 +12,8 @@
 - Accesso webserver configurato: test migrazione solo su richiesta
 - Per i file Python **generati** aggiungere sempre l’header standard in `templates/python-header.txt`.
 - Nei file Python aggiungere commenti sintetici nei blocchi non banali (orchestrazione, transazioni, mapping task/SQL), scritti in italiano.
+- Dopo un `ErrorManager.require(... is not None ...)` aggiungere sempre l’`assert` corrispondente per aiutare il type checker.
+- Dopo `row = cursor.fetchone()` aggiungere guard (`if not row`) oppure `assert row is not None` prima di usare `row[...]`.
 - Nei servizi/classi Python usare nomi metodo espliciti e orientati al dominio (es. `run_pipeline`), evitando nomi generici/ambigui come `run`.
 - Per error handling servizi/API usare helper centralizzato in `apps/core/services/error_manager.py`, evitando logica duplicata nei moduli dominio.
 - Il mapping `codice errore -> HTTP status -> azione UI` deve essere centralizzato in `apps/core/services/error_policies.py`.
@@ -82,3 +84,5 @@
 - Nei file di test, all'inizio inserire un indice dei test eseguiti nei commenti.
 - Nei file di test Python/Django, inserire all'inizio un breve indice dei test previsti (nome test/caso).
 - Struttura test Django per app: `apps/<schema>/tests/` con sottocartelle minime `api/` e `services/`.
+- Esempio esecuzione test Django: `./manage-test.sh apps.core.tests.api -v 2`
+- Smoke test API docs/schema: vedi `apps/core/tests/api/test_diagnostics_api.py` (endpoint `/api/docs/` e `/api/schema/`).
