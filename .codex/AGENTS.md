@@ -11,6 +11,7 @@
 - Evitare API/metodi deprecati; seguire best practice Django
 - Accesso webserver configurato: test migrazione solo su richiesta
 - Per i file Python **generati** aggiungere sempre l’header standard in `templates/python-header.txt`.
+- Per ogni nuovo file Python (non generato da Django) aggiungere l’header standard di `templates/python-header.txt` e un breve commento iniziale sullo scopo.
 - Nei file Python aggiungere commenti sintetici nei blocchi non banali (orchestrazione, transazioni, mapping task/SQL), scritti in italiano.
 - Dopo un `ErrorManager.require(... is not None ...)` aggiungere sempre l’`assert` corrispondente per aiutare il type checker.
 - Dopo `row = cursor.fetchone()` aggiungere guard (`if not row`) oppure `assert row is not None` prima di usare `row[...]`.
@@ -24,6 +25,8 @@
 - Per endpoint API usare il pattern core `handle_post_json(...)` (`apps/core/api/endpoint_helpers.py`) per parsing/error envelope uniforme.
 - Evitare `try/except Exception` generici nelle view API dominio: usare `ServiceError` nei service e lasciare fallback al middleware `apps/core/middleware/api_exception_middleware.py`.
 - Il middleware eccezioni API si applica solo a `/api/*` e resta disattivabile via `DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED`.
+- Per nuove API lista/search applicare la policy `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md` e usare gli helper core (`apps/core/api/pagination.py`, `apps/core/api/search_validators.py`).
+- Per endpoint search impostare `is_search_endpoint = True` per attivare throttling DRF (`apps/core/api/throttling.py`).
 
 ## Liquibase v2 Workflow
 - New work only in `db/changelog/migrations_v2/`

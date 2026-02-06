@@ -18,3 +18,5 @@ Fornire una checklist operativa pronta per nuovi endpoint write (`POST/PUT/PATCH
 ## Note
 - Per endpoint read-only (`GET` senza side effect), non richiedere `Idempotency-Key`.
 - Se serve eccezione temporanea, motivarla in doc e aprire task di riallineamento.
+- Per endpoint lista/search, seguire `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md` e usare i helper DRF core.
+- Se endpoint search, impostare `is_search_endpoint = True` per attivare throttling DRF.
