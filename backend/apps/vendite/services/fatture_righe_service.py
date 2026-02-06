@@ -32,6 +32,7 @@ class FattureRigheService:
             function_name="vendite.fatture_righe_service.group_attivita_fatturabili",
             log_to_db=True,
         )
+        assert attivita_id is not None
         row = self.repository.get_group_attivita_input(attivita_id)
         ErrorManager.require(
             row is not None,
@@ -89,6 +90,7 @@ class FattureRigheService:
             function_name="vendite.fatture_righe_service.generate_fatture_righe",
             log_to_db=True,
         )
+        assert lotto_id is not None
 
         count = 0
         with transaction.atomic():

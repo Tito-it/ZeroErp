@@ -57,6 +57,7 @@ class PipelineStepExecutor:
             function_name="vendite.pipeline_step_executor.execute_step",
             log_to_db=True,
         )
+        assert context is not None
 
         processi = self.repository.get_step_processes(stato_doc_fiscale_id, rollback=rollback)
         ErrorManager.require(
