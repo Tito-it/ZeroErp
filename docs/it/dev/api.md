@@ -179,6 +179,42 @@ L’API **non replica** le regole di business già garantite dal database.
 
 ---
 
+## ✅ Standard API attuali (vincolanti)
+
+Questa sezione allinea la visione con l’implementazione reale (DRF + JWT + policy core).
+
+### Versioning
+- Tutte le API canoniche sotto **`/api/v1/*`**.
+- Route legacy **disabilitate** di default (`DJANGO_API_LEGACY_ROUTES_ENABLED=0`).
+
+### Autenticazione
+- JWT Bearer obbligatorio per `/api/v1/*`.
+- Emissione token:
+  - `POST /api/v1/auth/token/`
+  - `POST /api/v1/auth/token/refresh/`
+
+### Errori (contratto uniforme)
+- Envelope standard: `{ "error": ..., "meta": { "request_id": ... } }`
+- `technical_message` solo in debug (`DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1`)
+- `message` sempre business/safe in produzione.
+
+### Idempotency
+- Endpoint write: `Idempotency-Key` obbligatoria.
+
+### Paginazione/Ricerca
+- Policy vincolante: `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md`
+- Max page size: 200.
+- `contains/ilike` solo con `term >= 3`.
+
+### Throttling search
+- DRF `SearchBurstRateThrottle` su endpoint con `is_search_endpoint = True`.
+
+### OpenAPI/Swagger
+- Schema: `GET /api/schema/`
+- UI: `GET /api/docs/`
+
+---
+
 ## 🎨 Benefici per il frontend
 
 Questa architettura semplifica fortemente il frontend:

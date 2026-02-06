@@ -9,6 +9,7 @@ Per ridurre duplicazioni tra app dominio usare helper core:
 - `apps/core/api/request_parsers.py`
 - `apps/core/api/error_responses.py`
 - Template di partenza: `apps/core/api/examples/domain_post_example.py`
+- Esempio search (throttling + min length): `apps/core/api/examples/domain_search_example.py`
 
 ## Input
 - `Request` DRF con body JSON
@@ -34,6 +35,11 @@ Per ridurre duplicazioni tra app dominio usare helper core:
 - Se serve disattivare fallback middleware (debug mirato), usare `DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED=0`.
 - Context middleware assegna `request_id` (header `X-Request-ID`) e propaga `Idempotency-Key` se presente.
 - Rate limiting: non e` ancora applicato a livello applicativo; baseline consigliata su Nginx/API gateway per endpoint write/retryable.
+- Paginazione/ricerca: seguire la policy `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md`.
+  - Parametri standard: `page`, `page_size`, `cursor`, `ordering`, `term`, `from`, `to`.
+  - Max page size: 200 (hard cap).
+  - `contains/ilike` solo con `term` >= 3.
+  - Throttling search: DRF `SearchBurstRateThrottle` attivo su view con `is_search_endpoint = True`.
 - Fase 2 deprecazione legacy:
   - route legacy abilitate/disabilitate via `DJANGO_API_LEGACY_ROUTES_ENABLED` (default `0`, v1-only)
   - header deprecazione su legacy via `DJANGO_API_LEGACY_DEPRECATION_HEADERS_ENABLED` (default `1`)
@@ -62,3 +68,4 @@ Per ridurre duplicazioni tra app dominio usare helper core:
 4. **Errori**: usare `ErrorManager.require(...)` / `ErrorManager.raise_error(...)` nel service.
 5. **Test**: aggiungere test API (status/envelope) e test service (regole dominio).
 6. **Doc**: aggiornare manuale area dominio e indice con endpoint, input/output e regole.
+7. **Liste/Search**: applicare policy paginazione/ricerca e usare helper DRF core (`pagination.py`, `search_validators.py`).
