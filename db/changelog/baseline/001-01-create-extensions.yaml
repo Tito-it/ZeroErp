@@ -1,25 +1,26 @@
 ﻿# ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Liquibase changelog per Zero ERP
-# Copyright (C) 2025 Tid (Michele Carlo Titini) 
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
 #
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
-  
+
 databaseChangeLog:
   - changeSet:
       id: 001-01-create-extensions
       author: mctit
+      context: provision
       runOnChange: true
       validCheckSums:
-        - ANY 
+        - ANY
       comments: >
         Crea le extension necessarie per il progetto (btree_gist, dblink, pgcrypto, PostGIS).
       preConditions:
-        onFail: HALT
-        onError: HALT
-        dbms:
+        - onFail: HALT
+        - onError: HALT
+        - dbms:
             type: postgresql
       changes:
         - sql:
@@ -38,19 +39,21 @@ databaseChangeLog:
   - changeSet:
       id: 001-01-02-create-pgagent-extension
       author: mctit
+      context: provision
       preConditions:
-        onFail: CONTINUE
-        onError: CONTINUE
-        dbms:  postgresql 
-        sqlCheck:
-          expectedResult: true
-          sql: "SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name='pgagent');"
+        - onFail: CONTINUE
+        - onError: CONTINUE
+        - dbms:
+            type: postgresql
+        - sqlCheck:
+            expectedResult: "TRUE"
+            sql: "SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name='pgagent');"
 
       changes:
         - sql:
             sql: |
               CREATE EXTENSION IF NOT EXISTS pgagent WITH SCHEMA pgagent;
-  
+
   - changeSet:
       id: 001-01-90-create-extensions
       author: mctit

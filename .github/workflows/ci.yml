@@ -124,12 +124,20 @@ jobs:
             --strict
 
 
-        # Attenzione si può usare solo una negazione context (non una lista di context negati)
+      - name: Liquibase admin (provision - pre)
+        run: |
+          liquibase \
+            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.env%3Dci" \
+            --username=postgres \
+            --password="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
+            --changeLogFile=db/changelog/changelog-master-v2.yaml \
+            update --contexts=provision
+
       - name: Applica migrazioni Liquibase
         run: |
           source .venv/bin/activate
 
-          # 1) Migrazioni standard (no test, no CI)
+          # 1) Migrazioni standard (no test, no provision)
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff" \
             --username=zeroerp \
@@ -137,8 +145,7 @@ jobs:
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts="!provision"
 
-
-      - name: Liquibase admin (provision)
+      - name: Liquibase admin (provision - post)
         run: |
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.env%3Dci" \
