@@ -48,7 +48,7 @@ BEGIN
       'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
       jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id),
       NULL::uuid, 
-      concat('Lotto non trovato', 'lotto_id: ', p_lotto_id::text)
+      concat('Lotto non trovato ', 'lotto_id: ', p_lotto_id::text)
     );
   END IF;
 

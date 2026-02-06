@@ -38,26 +38,17 @@ jobs:
         image: postgis/postgis:18-3.6
         env:
           POSTGRES_DB: zeroerp
-          POSTGRES_USER: zeroerp
-          POSTGRES_PASSWORD: secret
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U zeroerp"
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
 
-    #  pgagent:
-    #    image: chiavegatto/postgres-pgagent:latest
-
-    #    env:
-    #      PGAGENT_HOST: postgres
-    #      PGAGENT_PORT: 5432
-    #      PGAGENT_DATABASE: zeroerp
-    #      PGAGENT_USER: zeroerp
-    #      PGAGENT_PASSWORD: secret
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -74,22 +65,31 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Show MkDocs version
-        run: |
-          source .venv/bin/activate
-          mkdocs --version
-          pip list | grep mkdocs
+    #  - name: Show MkDocs version
+   #     run: |
+   #       source .venv/bin/activate
+  #        mkdocs --version
+  #        pip list | grep mkdocs
 
       - name: Set custom GUCs for CI role
         env:
-          PGPASSWORD: ${{ secrets.DB_PASSWORD || 'secret' }}
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         run: |
-          psql --no-psqlrc -h localhost -p 5432 -U zeroerp -d zeroerp -v ON_ERROR_STOP=1 -c \
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "CREATE ROLE zeroerp LOGIN PASSWORD 'secret';"
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "ALTER ROLE zeroerp SET myapp.user_language = 'it';"
-          psql --no-psqlrc -h localhost -p 5432 -U zeroerp -d zeroerp -v ON_ERROR_STOP=1 -c \
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "ALTER ROLE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp password=${PGPASSWORD}';"
-           psql --no-psqlrc -h localhost -p 5432 -U zeroerp -d zeroerp -v ON_ERROR_STOP=1 -c \
+           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
              "SELECT name, setting FROM pg_settings WHERE name LIKE 'myapp.%' ORDER BY name;"
+
+      - name: Grant CREATE on public (CI bootstrap)
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "GRANT USAGE, CREATE ON SCHEMA public TO zeroerp;"
 
  # Dicembre 2025 passaggio a Liquibase 5 Community
    # Versione Liquibase 5 (Community)       
@@ -133,9 +133,20 @@ jobs:
             --username=zeroerp \
             --password=secret \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
-            update --contexts="!test"
+            update --contexts="!provision"
 
-      - name: Liquibase CI apply (run automations)
+
+      - name: Liquibase admin (provision)
+        run: |
+          liquibase \
+            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.env%3Dci" \
+            --username=postgres \
+            --password="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
+            --changeLogFile=db/changelog/changelog-master-v2.yaml \
+            update --contexts=provision
+    
+      
+      - name: Liquibase CI apply (run automations - ci_apply)
         run: |
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff%20-c%20myapp.env%3Dci" \
@@ -143,7 +154,6 @@ jobs:
             --password=secret \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts=ci_apply
-
       
       - name: Genera doc DB
         # Qui sopra non serve più caricare i tuoi secrets, ma usiamo quelli del servizio

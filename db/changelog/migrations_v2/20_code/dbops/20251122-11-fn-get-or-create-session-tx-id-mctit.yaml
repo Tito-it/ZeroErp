@@ -247,7 +247,7 @@ databaseChangeLog:
     - changeSet:
           id: 20251122-11Fix2-fn-get-or-create-session-tx-id-change-owner
           author: mctit
-          context: test
+          context: provision
           comment: "Imposta owner postgres superuser per fn_get_or_create_session_tx_id."
 
           changes:

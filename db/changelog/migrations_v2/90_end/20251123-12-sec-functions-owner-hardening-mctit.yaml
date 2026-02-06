@@ -14,11 +14,12 @@ databaseChangeLog:
   - changeSet:
       id: 20251123-12-set-owner-fn-sync-functions-owner
       author: mctit
-      context: test
+      context: provision
       # runAlways: true
       comment: >
         Imposta l'owner della funzione dbops.fn_sync_functions_owner() a postgres,
         se l'utente corrente dispone dei privilegi necessari (altrimenti emette solo un NOTICE).
+        Da eseguire con utente admin (es. postgres).
       changes:
         - sql:
             dbms: postgresql

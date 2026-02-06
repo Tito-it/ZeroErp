@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/ci_apply/20260205-41-apply-runtime-grants-ci-mctit.yaml
+
+  - changeSet:
+      id: 20260205-41-apply-runtime-grants-ci
+      author: mctit
+      context: ci_apply
+      runAlways: false
+      comment: "Applica grant runtime in CI senza gestione password ruoli"
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+                v_migrator_role text := 'titodb';
+                v_schema text;
+                v_fn record;
+                v_rel record;
+                v_schemas text[] := ARRAY[
+                  'public',
+                  'script',
+                  'dbops',
+                  'config',
+                  'anagrafiche',
+                  'catalogo',
+                  'vendite',
+                  'acquisti',
+                  'magazzino',
+                  'pagamenti',
+                  'contabilita',
+                  'storico'
+                ];
+              BEGIN
+                -- In CI il ruolo dovrebbe esistere dal bootstrap; se manca non blocchiamo la pipeline.
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  RAISE NOTICE 'Ruolo % non presente: skip grant runtime.', v_app_role;
+                  RETURN;
+                END IF;
+
+                FOREACH v_schema IN ARRAY v_schemas LOOP
+                  BEGIN
+                    EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', v_schema, v_app_role);
+                  EXCEPTION WHEN OTHERS THEN
+                    RAISE NOTICE 'Skip GRANT USAGE su schema %: %', v_schema, SQLERRM;
+                  END;
+
+                  -- Tabelle: concedi solo sugli oggetti posseduti da current_user.
+                  FOR v_rel IN
+                    SELECT c.oid::regclass AS obj_sig
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = v_schema
+                      AND c.relkind IN ('r','p','v','m','f')
+                      AND pg_get_userbyid(c.relowner) = current_user
+                  LOOP
+                    BEGIN
+                      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %s TO %I', v_rel.obj_sig, v_app_role);
+                    EXCEPTION WHEN OTHERS THEN
+                      RAISE NOTICE 'Skip GRANT TABLE %: %', v_rel.obj_sig, SQLERRM;
+                    END;
+                  END LOOP;
+
+                  -- Sequenze: concedi solo sugli oggetti posseduti da current_user.
+                  FOR v_rel IN
+                    SELECT c.oid::regclass AS obj_sig
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = v_schema
+                      AND c.relkind = 'S'
+                      AND pg_get_userbyid(c.relowner) = current_user
+                  LOOP
+                    BEGIN
+                      EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE %s TO %I', v_rel.obj_sig, v_app_role);
+                    EXCEPTION WHEN OTHERS THEN
+                      RAISE NOTICE 'Skip GRANT SEQUENCE %: %', v_rel.obj_sig, SQLERRM;
+                    END;
+                  END LOOP;
+
+                  -- Alcune funzioni (es. extension in public) non sono grantabili
+                  -- dal ruolo corrente: concediamo EXECUTE solo sulle routine possedute.
+                  FOR v_fn IN
+                    SELECT
+                      p.oid::regprocedure AS fn_sig,
+                      p.prokind AS fn_kind
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                    WHERE n.nspname = v_schema
+                      AND pg_get_userbyid(p.proowner) = current_user
+                  LOOP
+                    IF v_fn.fn_kind = 'p' THEN
+                      EXECUTE format('GRANT EXECUTE ON PROCEDURE %s TO %I', v_fn.fn_sig, v_app_role);
+                    ELSIF v_fn.fn_kind = 'f' THEN
+                      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %I', v_fn.fn_sig, v_app_role);
+                    END IF;
+                  END LOOP;
+
+                  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_migrator_role) THEN
+                    BEGIN
+                      EXECUTE format(
+                        'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
+                        v_migrator_role, v_schema, v_app_role
+                      );
+                    EXCEPTION WHEN OTHERS THEN
+                      RAISE NOTICE 'Skip ADP TABLES schema %: %', v_schema, SQLERRM;
+                    END;
+
+                    BEGIN
+                      EXECUTE format(
+                        'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT USAGE, SELECT ON SEQUENCES TO %I',
+                        v_migrator_role, v_schema, v_app_role
+                      );
+                    EXCEPTION WHEN OTHERS THEN
+                      RAISE NOTICE 'Skip ADP SEQUENCES schema %: %', v_schema, SQLERRM;
+                    END;
+
+                    BEGIN
+                      EXECUTE format(
+                        'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT EXECUTE ON FUNCTIONS TO %I',
+                        v_migrator_role, v_schema, v_app_role
+                      );
+                    EXCEPTION WHEN OTHERS THEN
+                      RAISE NOTICE 'Skip ADP FUNCTIONS schema %: %', v_schema, SQLERRM;
+                    END;
+                  ELSE
+                    RAISE NOTICE 'Ruolo migrator % non presente: skip default privileges.', v_migrator_role;
+                  END IF;
+                END LOOP;
+              END;
+              $$;

@@ -75,7 +75,7 @@ databaseChangeLog:
   - changeSet:
       id: 20251122-02-diag-v-clienti-links
       author: mctit
-      context: test
+      # context: test
       comment: "Crea la view dbops.diag_v_clienti_links per verificare coerenza tra clienti e billing_account."
       #  runOnChange: true
       validCheckSums: [ANY]
