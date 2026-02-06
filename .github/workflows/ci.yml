@@ -84,13 +84,6 @@ jobs:
            psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
              "SELECT name, setting FROM pg_settings WHERE name LIKE 'myapp.%' ORDER BY name;"
 
-      - name: Grant CREATE on public (CI bootstrap)
-        env:
-          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
-        run: |
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "GRANT USAGE, CREATE ON SCHEMA public TO zeroerp;
-             GRANT CREATE ON DATABASE zeroerp TO zeroerp;"
 
 
  # Dicembre 2025 passaggio a Liquibase 5 Community
@@ -132,6 +125,17 @@ jobs:
             --password="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
             --changeLogFile=db/changelog/changelog-provision-pre.yaml \
             update --contexts=provision
+
+      - name: Grant CREATE on public (CI bootstrap)
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "GRANT USAGE, CREATE ON SCHEMA public TO zeroerp;
+             GRANT CREATE ON DATABASE zeroerp TO zeroerp;
+             GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.databasechangelog TO zeroerp;
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.databasechangeloglock TO zeroerp;
+                "
 
       - name: Applica migrazioni Liquibase
         run: |
