@@ -5,5 +5,8 @@
 
 databaseChangeLog:
   - include:
+      file: migrations/00_bootstrap/20250311_01-create_project_metadata_mctit.yaml
+      relativeToChangelogFile: true
+  - include:
       file: baseline/001-01-create-extensions.yaml
       relativeToChangelogFile: true
