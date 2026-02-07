@@ -4,12 +4,12 @@
 >
 > Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
-> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
+> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)    
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)
+> * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)    
 
 La tabella **`dbops.automation_cleanup_exclusions`** contiene l’elenco delle **tabelle escluse** dal framework di cleanup basato su `cleanup_at`.
 

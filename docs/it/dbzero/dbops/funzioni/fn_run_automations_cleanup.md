@@ -66,12 +66,15 @@ BEGIN
     IF v_is_excluded THEN
       PERFORM dbops.fn_audit_log_once(
         p_function_name => 'dbops.fn_run_automations_cleanup',
-        p_status        => 'SKIP_EXCLUDED',
+        p_status        => 'WARN',
         p_rule_type     => 'CLEANUP',
         p_exec_mode     => p_exec_mode,
         p_parts         => ARRAY['CLEANUP'],
         p_dry_run       => p_dry_run,
-        p_params        => jsonb_build_object('table', rtab.schema_name||'.'||rtab.table_name),
+        p_params        => jsonb_build_object(
+                            'table', rtab.schema_name||'.'||rtab.table_name,
+                            'skip_reason', 'EXCLUDED'
+                          ),
         p_message       => 'Tabella esclusa da automation_cleanup_exclusions'
       );
       CONTINUE;
@@ -94,14 +97,15 @@ BEGIN
       IF NOT dbops.fn_col_exists(rtab.schema_name, rtab.table_name, v_cleanup_col) THEN
         PERFORM dbops.fn_audit_log_once(
           p_function_name => 'dbops.fn_run_automations_cleanup',
-          p_status        => 'SKIP_NO_COLUMN',
+          p_status        => 'WARN',
           p_rule_type     => v_rule_type,
           p_exec_mode     => p_exec_mode,
           p_parts         => ARRAY[v_rule_type],
           p_dry_run       => p_dry_run,
           p_params        => jsonb_build_object(
                               'table', rtab.schema_name||'.'||rtab.table_name,
-                              'cleanup_column', v_cleanup_col
+                              'cleanup_column', v_cleanup_col,
+                              'skip_reason', 'NO_CLEANUP_COLUMN'
                             ),
           p_message       => 'Colonna cleanup non presente'
         );
@@ -128,14 +132,15 @@ BEGIN
         IF v_ttl_days IS NULL THEN
           PERFORM dbops.fn_audit_log_once(
             p_function_name => 'dbops.fn_run_automations_cleanup',
-            p_status        => 'SKIP_RULE',
+            p_status        => 'WARN',
             p_rule_type     => v_rule_type,
             p_exec_mode     => p_exec_mode,
             p_parts         => ARRAY[v_rule_type],
             p_dry_run       => p_dry_run,
             p_params        => jsonb_build_object(
                                 'table', rtab.schema_name||'.'||rtab.table_name,
-                                'cleanup_column', v_cleanup_col
+                                'cleanup_column', v_cleanup_col,
+                                'skip_reason', 'MISSING_TTL_DAYS'
                               ),
             p_message       => 'Parametro ttl_days mancante'
           );
@@ -145,7 +150,7 @@ BEGIN
         IF v_base_col IS NULL OR NOT dbops.fn_col_exists(rtab.schema_name, rtab.table_name, v_base_col) THEN
           PERFORM dbops.fn_audit_log_once(
             p_function_name => 'dbops.fn_run_automations_cleanup',
-            p_status        => 'SKIP_RULE',
+            p_status        => 'WARN',
             p_rule_type     => v_rule_type,
             p_exec_mode     => p_exec_mode,
             p_parts         => ARRAY[v_rule_type],
@@ -153,7 +158,8 @@ BEGIN
             p_params        => jsonb_build_object(
                                 'table', rtab.schema_name||'.'||rtab.table_name,
                                 'cleanup_column', v_cleanup_col,
-                                'base_ts_column', v_base_col
+                                'base_ts_column', v_base_col,
+                                'skip_reason', 'MISSING_BASE_TS_COLUMN'
                               ),
             p_message       => 'Colonna base_ts non presente'
           );
