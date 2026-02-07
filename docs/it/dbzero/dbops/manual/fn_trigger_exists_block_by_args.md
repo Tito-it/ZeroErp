@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
+> Guide:
+>
+> * [Automazioni – Overview del Modulo](/guide/automazione-db/)
+>
 > Approfondimento funzioni e trigger:
 >
 > * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)
 > * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)
 > * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)
->
-> Guide:
->
-> * [Automazioni – Overview del Modulo](/guide/automazione-db/)
 
 ---
 

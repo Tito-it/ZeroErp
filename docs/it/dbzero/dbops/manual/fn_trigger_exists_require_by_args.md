@@ -2,6 +2,10 @@
 
 > 👀 **Vedi anche**
 >
+> Guide:
+>
+> * [Automazioni – Overview del Modulo](/guide/automazione-db)
+>
 > Approfondimento funzioni e trigger correlati:
 >
 > * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)
@@ -9,10 +13,6 @@
 > * [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args)
 > * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)
 > * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)
->
-> Guide:
->
-> * [Automazioni – Overview del Modulo](/guide/automazione-db)
 
 
 ---
@@ -27,11 +27,11 @@ La funzione **`dbops.fn_trigger_exists_require_by_args(p_child_rel, p_parent_sch
 
 | Parametro             | Tipo     | Obbligatorio | Descrizione                                                      |
 | --------------------- | -------- | :----------: | ---------------------------------------------------------------- |
-| `p_child_rel`         | regclass |      ✔️      | Tabella figlia su cui verificare il trigger.                     |
-| `p_parent_schema`     | text     |      ✔️      | Schema della tabella padre.                                      |
-| `p_parent_table`      | text     |      ✔️      | Nome della tabella padre.                                        |
-| `p_parent_attivo_col` | text     |      ✔️      | Nome della **colonna `attivo`** nella tabella padre.             |
-| `p_fk_col`            | text     |      ✔️      | Nome della colonna FK nella tabella figlia che rimanda al padre. |
+| `p_child_rel`         | regclass |      ✔️       | Tabella figlia su cui verificare il trigger.                     |
+| `p_parent_schema`     | text     |      ✔️       | Schema della tabella padre.                                      |
+| `p_parent_table`      | text     |      ✔️       | Nome della tabella padre.                                        |
+| `p_parent_attivo_col` | text     |      ✔️       | Nome della **colonna `attivo`** nella tabella padre.             |
+| `p_fk_col`            | text     |      ✔️       | Nome della colonna FK nella tabella figlia che rimanda al padre. |
 
 ---
 

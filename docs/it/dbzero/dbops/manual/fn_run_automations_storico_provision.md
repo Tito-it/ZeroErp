@@ -8,15 +8,15 @@
 >
 > Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
-> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)
-> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)
-> * [dbops.fn_ensure_storico_table](/dbzero/dbops/funzioni/fn_ensure_storico_table)
-> * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico)
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
+> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)    
+> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
+> * [dbops.fn_ensure_storico_table](/dbzero/dbops/funzioni/fn_ensure_storico_table)   
+> * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico)   
 
 ---
 

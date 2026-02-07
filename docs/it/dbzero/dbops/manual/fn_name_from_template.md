@@ -6,14 +6,14 @@
 >
 > Approfondimento funzioni:
 >
-> * [`dbops.fn_run_automations`](/dbzero/dbops/funzioni/fn_run_automations)
-> * [`dbops.fn_run_automations_tx_id`](/dbzero/dbops/funzioni/fn_run_automations_tx_id)
-> * [`dbops.fn_run_automations_storico_provision`](/dbzero/dbops/funzioni/fn_run_automations_storico_provision)
+> * [`dbops.fn_run_automations`](/dbzero/dbops/funzioni/fn_run_automations)   
+> * [`dbops.fn_run_automations_tx_id`](/dbzero/dbops/funzioni/fn_run_automations_tx_id)    
+> * [`dbops.fn_run_automations_storico_provision`](/dbzero/dbops/funzioni/fn_run_automations_storico_provision)   
 >
 > Approfondimento tabelle:
 >
-> * [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)
-> * [`dbops.automation_overrides_cols`](/dbzero/dbops/tabelle/automation_overrides_cols)
+> * [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)  
+> * [`dbops.automation_overrides_cols`](/dbzero/dbops/tabelle/automation_overrides_cols)   
 
 ---
 

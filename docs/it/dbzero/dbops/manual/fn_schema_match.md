@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni:
->
-> * [dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope)
-> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)
->
 > Guida:
 >
-> * [Automazioni – Overview del Modulo](/guide/automazione-db)
+> * [Automazioni – Overview del Modulo](/guide/automazione-db)   
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope)   
+> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
 
 ---
 

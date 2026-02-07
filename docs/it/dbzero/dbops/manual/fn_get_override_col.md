@@ -4,12 +4,12 @@
 >
 > Approfondimento tabelle:
 >
-> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)
+> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)   
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_get_child_fk_col](/dbzero/dbops/funzioni/fn_get_child_fk_col)
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
+> * [dbops.fn_get_child_fk_col](/dbzero/dbops/funzioni/fn_get_child_fk_col)   
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
 
 ---
 

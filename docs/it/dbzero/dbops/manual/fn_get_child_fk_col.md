@@ -4,14 +4,14 @@
 >
 > Approfondimento Tabelle:
 >
-> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
+> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)    
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_foreign_keys_info](/dbzero/dbops/funzioni/fn_foreign_keys_info)
-> * [dbops.apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy)
-> * [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)
+> * [dbops.fn_foreign_keys_info](/dbzero/dbops/funzioni/fn_foreign_keys_info)  
+> * [dbops.apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy)   
+> * [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)  
 
 ---
 
@@ -25,7 +25,7 @@ La funzione **`dbops.fn_get_child_fk_col(p_conoid oid)`** restituisce **il nome 
 
 | Parametro  |  Tipo | Obbligatorio | Descrizione                                                                  |
 | ---------- | ----: | :----------: | ---------------------------------------------------------------------------- |
-| `p_conoid` | `oid` |      ✔️      | OID del vincolo in `pg_constraint` (deve essere un vincolo **FOREIGN KEY**). |
+| `p_conoid` | `oid` |      ✔️       | OID del vincolo in `pg_constraint` (deve essere un vincolo **FOREIGN KEY**). |
 
 > ℹ️ **Nota**: la funzione presuppone che `p_conoid` identifichi una FK valida. Se si passa l’OID di un vincolo non-FK, l’esito non è definito.
 

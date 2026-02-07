@@ -2,19 +2,19 @@
 
 > 👀 **Vedi anche**
 >
+> Guide:
+>
+> * [Automazioni – Overview del Modulo](/dbzero/dbops/manual/automazioni_overview)
+>
 > Approfondimento tabelle:
 >
-> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)
+> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)   
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)
-> * [dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope)
-> * [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match)
->
-> Manuale correlato:
->
-> * [Automazioni – Overview del Modulo](/dbzero/dbops/manual/automazioni_overview)
+> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
+> * [dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope)   
+> * [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match)   
 
 ---
 
