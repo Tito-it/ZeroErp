@@ -16,7 +16,8 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 29-01-2026)  
+(latest review 07-02-2026)  
+(Deprecate-trasferite in django)  
 La funzione **`vendite.fn_group_attivita_fatturabili()`** costruisce la
 **chiave di aggregazione riga** a partire da una riga di `attivita_fatturabili`.
 

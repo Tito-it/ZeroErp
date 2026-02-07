@@ -57,11 +57,11 @@ class ApiRunLottoPipeline(APIView):
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             lotto_id = pr_run_lotto_pipeline(
-                lotto_id=optional_int(payload, "lotto_id"),
+                lotto_id=optional_int(payload, "lotto_id", zero_as_none=True),
                 competenza_mese=optional_iso_date(payload, "competenza_mese"),
-                tipo_doc_fiscale_id=optional_int(payload, "tipo_doc_fiscale_id"),
-                utility_id=optional_int(payload, "utility_id"),
-                billing_account_id=optional_int(payload, "billing_account_id"),
+                tipo_doc_fiscale_id=optional_int(payload, "tipo_doc_fiscale_id", zero_as_none=True),
+                utility_id=optional_int(payload, "utility_id", zero_as_none=True),
+                billing_account_id=optional_int(payload, "billing_account_id", zero_as_none=True),
                 lock_batch_id=optional_uuid(payload, "lock_batch_id"),
                 meta=payload.get("meta"),
                 dry_run=optional_bool(payload, "dry_run", default=False),

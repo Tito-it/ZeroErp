@@ -17,7 +17,8 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 29-01-2026)  
+(latest review 07-02-2026)  
+(Deprecate-trasferite in django)  
 La funzione **`vendite.fn_generate_fatture_righe()`** genera le righe fattura
 partendo dalle `attivita_fatturabili` lockate sul lotto.
 

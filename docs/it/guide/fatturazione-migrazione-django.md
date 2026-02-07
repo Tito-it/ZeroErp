@@ -5,6 +5,19 @@
 >
 ---
 
+## Stato avanzamento (07 Febbraio 2026)
+
+- **Punto 1 (orchestrazione)**: completato lato Django.
+  - `pr_run_lotto_pipeline` -> `LottoPipelineRunner`
+  - `fn_execute_pipeline_step` -> `PipelineStepExecutor`
+- **Punto 2 (refactor medio)**: in corso e gia` avviato.
+  - `fn_generate_fatture_righe` migrata in servizio Python (`FattureRigheService`)
+  - `fn_group_attivita_fatturabili` migrata in servizio Python (`FattureRigheService`)
+  - Primitive atomiche DB restano attive (`fn_select_attivita_fatturabili`, `fn_get_or_create_fattura_header`)
+- **Punto 3 (core DB)**: invariato, resta nel perimetro DB.
+
+---
+
 ### 1) Migrazione immediata (basso rischio)
 
 **Da spostare in Django**

@@ -12,6 +12,8 @@ Indice test eseguiti:
 10) VenditePipelineApiTests.test_run_lotto_pipeline_exposes_technical_message_in_debug_mode
 11) VenditePipelineApiTests.test_run_lotto_pipeline_replays_completed_response_when_strong_idempotency_enabled
 12) VenditePipelineApiTests.test_run_lotto_pipeline_returns_conflict_when_idempotency_in_progress
+13) VenditePipelineApiTests.test_run_lotto_pipeline_accepts_null_lotto_id
+14) VenditePipelineApiTests.test_run_lotto_pipeline_converts_zero_optional_ids_to_none
 """
 
 import json
@@ -120,6 +122,47 @@ class VenditePipelineApiTests(SimpleTestCase):
         self.assertEqual(response.status_code, 400)
         body = response.json()["error"]
         self.assertEqual(body["code"], "E_IDEMPOTENCY_KEY_REQUIRED")
+
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    def test_run_lotto_pipeline_accepts_null_lotto_id(self, mocked_service, _mock_auth):
+        mocked_service.return_value = 777
+        response = self.client.post(
+            "/api/v1/vendite/pipeline/run/",
+            data=json.dumps({"lotto_id": None, "dry_run": True}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-null-lotto-1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["lotto_id"], 777)
+        mocked_service.assert_called_once()
+        self.assertIsNone(mocked_service.call_args.kwargs["lotto_id"])
+
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    def test_run_lotto_pipeline_converts_zero_optional_ids_to_none(self, mocked_service, _mock_auth):
+        mocked_service.return_value = 778
+        response = self.client.post(
+            "/api/v1/vendite/pipeline/run/",
+            data=json.dumps(
+                {
+                    "lotto_id": 0,
+                    "tipo_doc_fiscale_id": 0,
+                    "utility_id": 0,
+                    "billing_account_id": 0,
+                    "dry_run": True,
+                }
+            ),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-zero-to-null-1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        mocked_service.assert_called_once()
+        kwargs = mocked_service.call_args.kwargs
+        self.assertIsNone(kwargs["lotto_id"])
+        self.assertIsNone(kwargs["tipo_doc_fiscale_id"])
+        self.assertIsNone(kwargs["utility_id"])
+        self.assertIsNone(kwargs["billing_account_id"])
 
     def test_run_lotto_pipeline_v1_requires_jwt(self):
         response = self.client.post(

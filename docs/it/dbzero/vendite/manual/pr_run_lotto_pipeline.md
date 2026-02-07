@@ -19,7 +19,8 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 28-01-2026)  
+(latest review 07-02-2026)  
+(Deprecate-trasferite in django)  
 La procedura **`vendite.pr_run_lotto_pipeline()`** esegue la pipeline configurabile
 del lotto: imposta lo **stato job**, aggiorna lo **stato lotto** per ogni step e
 invoca l’esecuzione dei task (filtrati per `tipo_lotto`).

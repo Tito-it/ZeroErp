@@ -8,9 +8,11 @@ from apps.core.api.request_parsers import parse_iso_date
 # Validator centralizzati payload API (riusabili cross-domain).
 
 
-def optional_int(payload: dict[str, Any], key: str) -> int | None:
+def optional_int(payload: dict[str, Any], key: str, *, zero_as_none: bool = False) -> int | None:
     value = payload.get(key)
     if value is None:
+        return None
+    if zero_as_none and value in (0, "0"):
         return None
     if isinstance(value, bool):
         raise ValueError(f"{key}_invalid")

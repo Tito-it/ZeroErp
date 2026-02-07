@@ -16,7 +16,8 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 28-01-2026)  
+(latest review 07-02-2026)  
+(Deprecate-trasferite in django)  
 La funzione **`vendite.fn_execute_pipeline_step()`** esegue i task definiti
 nel JSON `processi` (o `rollback`) della pipeline per lo step corrente.
 

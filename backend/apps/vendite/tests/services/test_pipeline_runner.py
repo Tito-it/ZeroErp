@@ -48,9 +48,11 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
     class _StepExecutorMock:
         def __init__(self):
             self.called = False
+            self.last_kwargs = {}
 
         def execute_step(self, **kwargs):
             self.called = True
+            self.last_kwargs = kwargs
 
     class _UnexpectedFailingStepExecutorMock:
         def execute_step(self, **kwargs):
@@ -72,6 +74,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             result = runner.run_pipeline(LottoPipelineParams(dry_run=True))
         self.assertEqual(result, 10)
         self.assertTrue(step_executor.called)
+        self.assertEqual(step_executor.last_kwargs["tipo_lotto"], "MASSIVO")
 
     def test_runner_wraps_unexpected_error_with_service_error(self):
         repo = self._RepoMock()

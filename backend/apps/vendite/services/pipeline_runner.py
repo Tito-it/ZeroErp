@@ -113,6 +113,7 @@ class LottoPipelineRunner:
                     self.step_executor.execute_step(
                         lotto_id=lotto_id,
                         stato_doc_fiscale_id=step.stato_doc_fiscale_id,
+                        tipo_lotto=effective_tipo_lotto,
                         rollback=False,
                         dry_run=params.dry_run,
                     )
