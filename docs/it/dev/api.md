@@ -200,6 +200,8 @@ Questa sezione allinea la visione con l’implementazione reale (DRF + JWT + pol
 
 ### Idempotency
 - Endpoint write: `Idempotency-Key` obbligatoria.
+- Modalita` strong opzionale: `DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1`.
+- In strong mode: claim su `dbops.idempotency_keys`, replay risposta su key duplicata, stato `in_progress` -> `409`.
 
 ### Paginazione/Ricerca
 - Policy vincolante: `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md`

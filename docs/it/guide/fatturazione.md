@@ -23,6 +23,12 @@ La fatturazione in Zero ERP e` progettata come **pipeline in piu` fasi**:
 
 Questa separazione garantisce **idempotenza**, **controllo** e **revisionabilita`** prima dell’emissione fiscale.
 
+### Stato migrazione DB -> Django (07 Febbraio 2026)
+
+- Orchestrazione pipeline (`pr_run_lotto_pipeline`, `fn_execute_pipeline_step`) gestita in Django.
+- Refactor logiche righe/aggregazione gia` avviato in servizi Python.
+- Primitive atomiche e vincoli di consistenza restano in DB.
+
 ---
 
 ## 🔎 Analisi – Lotto “giornaliero” vs massivo

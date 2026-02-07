@@ -70,6 +70,7 @@ class AttivitaDaFatturare:
 class VenditePipelineRepository:
     """Wrapper SQL a basso livello per l'orchestrazione pipeline vendite."""
 
+    # `fn` nei JSON task e` mantenuto come token di compatibilita` SQL legacy.
     ALLOWED_TASK_FUNCTIONS = {
         "select_attivita": "vendite.fn_select_attivita_fatturabili",
         "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
@@ -123,8 +124,9 @@ class VenditePipelineRepository:
                 [lotto_id],
             )
             row = cursor.fetchone()
-            assert row is not None
-        return None if not row else row[0]
+        if not row:
+            return None
+        return row[0]
 
     def get_stato_doc_fiscale_id(self, codice: str) -> int | None:
         with connection.cursor() as cursor:
@@ -140,8 +142,9 @@ class VenditePipelineRepository:
                 [codice],
             )
             row = cursor.fetchone()
-            assert row is not None
-        return None if not row else int(row[0])
+        if not row:
+            return None
+        return int(row[0])
 
     def set_lotto_job_stato(self, lotto_id: int, stato: str, messaggio: str) -> None:
         with connection.cursor() as cursor:
@@ -249,16 +252,24 @@ class VenditePipelineRepository:
             lock_batch_id=row[4],
         )
 
-    def get_step_processes(self, stato_doc_fiscale_id: int, rollback: bool) -> list[dict[str, Any]]:
+    def get_step_processes(
+        self,
+        stato_doc_fiscale_id: int,
+        *,
+        tipo_lotto: str,
+        rollback: bool,
+    ) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT CASE WHEN %s THEN rollback ELSE processi END
                 FROM vendite.fatturazione_pipeline
                 WHERE stato_doc_fiscale_id = %s
+                  AND tipo_lotto = %s
                   AND attivo IS TRUE
+                LIMIT 1
                 """,
-                [rollback, stato_doc_fiscale_id],
+                [rollback, stato_doc_fiscale_id, tipo_lotto],
             )
             row = cursor.fetchone()
 
