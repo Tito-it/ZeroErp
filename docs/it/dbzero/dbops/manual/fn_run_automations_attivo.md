@@ -3,21 +3,21 @@
 ---
 
 ### 👀 Vedi anche
+>
+>**Guide**
+>
+> * [Automazione DB](/guide/automazione-db)
+>
+> **Approfondimento tabelle**
+>
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)  
+>
+> **Approfondimento funzioni e trigger**
 
-**Guide**
-
-* [Automazione DB](/guide/automazione-db)
-
-**Approfondimento tabelle**
-
-* [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
-
-**Approfondimento funzioni e trigger**
-
-* [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
-* [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)
-* [dbops.fn_get_child_fk_col](/dbzero/dbops/funzioni/fn_get_child_fk_col)
-* [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
+> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
+> * [dbops.fn_get_child_fk_col](/dbzero/dbops/funzioni/fn_get_child_fk_col)   
+> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)   
 
 ---
 

@@ -4,21 +4,21 @@
 
 ### 👀 Vedi anche
 
-**Guide**
-
-* [Automazione DB](/guide/automazione-db)
-
-**Approfondimento tabelle**
-
-* [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
-* [dbops.automation_cleanup_exclusions](/dbzero/dbops/tabelle/automation_cleanup_exclusions)
-* [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)
-
-**Approfondimento funzioni**
-
-* [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at)
-* [dbops.fn_purge_cleanup_expired](/dbzero/dbops/funzioni/fn_purge_cleanup_expired)
-
+>**Guide**
+>
+>* [Automazione DB](/guide/automazione-db)
+>
+>**Approfondimento tabelle**
+>
+>* [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
+>* [dbops.automation_cleanup_exclusions](/dbzero/dbops/tabelle/automation_cleanup_exclusions)   
+>* [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)   
+>
+>**Approfondimento funzioni**
+>
+>* [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at)   
+>* [dbops.fn_purge_cleanup_expired](/dbzero/dbops/funzioni/fn_purge_cleanup_expired)   
+>
 ---
 
 ### 🎯 Scopo Principale
@@ -35,11 +35,11 @@ Applica in modo coerente due regole dichiarative:
 
 ### 🧩 Parametri di input
 
-| Parametro     | Tipo      | Descrizione |
-| ------------ | --------- | ----------- |
-| `p_exec_mode` | `text`    | Modalità di esecuzione (`AUTO`, `CI`, `SCHEDULED`). |
+| Parametro     | Tipo      | Descrizione                                              |
+| ------------- | --------- | -------------------------------------------------------- |
+| `p_exec_mode` | `text`    | Modalità di esecuzione (`AUTO`, `CI`, `SCHEDULED`).      |
 | `p_schemas`   | `text[]`  | Schemi target. Se `NULL`, risolti da `fn_resolve_scope`. |
-| `p_dry_run`   | `boolean` | Se `true`, non modifica i dati e registra audit DRYRUN. |
+| `p_dry_run`   | `boolean` | Se `true`, non modifica i dati e registra audit DRYRUN.  |
 
 ---
 

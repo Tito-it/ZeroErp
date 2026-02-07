@@ -3,15 +3,15 @@
 ---
 
 ### 👀 Vedi anche
+>
+>**Guide**
+>
+> * [Automazione DB](/guide/automazione-db)
 
-**Guide**
-
-* [Automazione DB](/guide/automazione-db)
-
-**Approfondimento funzioni**
-
-* [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)
-* [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at)
+> **Approfondimento funzioni**
+>
+> * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)   
+> * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at)  
 
 ---
 
@@ -24,12 +24,12 @@ La funzione **`dbops.fn_purge_cleanup_expired`** elimina i record con **`cleanup
 
 ### 🧩 Parametri
 
-| Parametro          | Tipo      | Descrizione |
-| ------------------ | --------- | ----------- |
-| `p_schema`         | `text`    | Schema della tabella target. |
-| `p_table`          | `text`    | Tabella target. |
-| `p_cleanup_column` | `text`    | Colonna cleanup (default `cleanup_at`). |
-| `p_batch_limit`    | `integer` | Dimensione batch (default 5000). |
+| Parametro          | Tipo      | Descrizione                                            |
+| ------------------ | --------- | ------------------------------------------------------ |
+| `p_schema`         | `text`    | Schema della tabella target.                           |
+| `p_table`          | `text`    | Tabella target.                                        |
+| `p_cleanup_column` | `text`    | Colonna cleanup (default `cleanup_at`).                |
+| `p_batch_limit`    | `integer` | Dimensione batch (default 5000).                       |
 | `p_dry_run`        | `boolean` | Se `true`, non elimina e ritorna il numero eleggibile. |
 
 ---

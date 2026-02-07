@@ -6,11 +6,11 @@
 > * [Automazione DB](/guide/automazione-db)
 >
 > Approfondimento tabelle:
-> * [dbops.automation_delete_block](/dbzero/dbops/tabelle/automation_delete_block)
+> * [dbops.automation_delete_block](/dbzero/dbops/tabelle/automation_delete_block)   
 >
 > Approfondimento funzioni:
-> * [dbops.fn_apply_delete_block_trigger](/dbzero/dbops/funzioni/fn_apply_delete_block_trigger)
-> * [script.trgfn_delete_block_by_guc](/dbzero/script/funzioni/trgfn_delete_block_by_guc)
+> * [dbops.fn_apply_delete_block_trigger](/dbzero/dbops/funzioni/fn_apply_delete_block_trigger)  
+> * [script.trgfn_delete_block_by_guc](/dbzero/script/funzioni/trgfn_delete_block_by_guc)  
 
 ---
 
