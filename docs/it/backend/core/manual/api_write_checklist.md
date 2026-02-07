@@ -14,9 +14,14 @@ Fornire una checklist operativa pronta per nuovi endpoint write (`POST/PUT/PATCH
 6. **Test retryable**: se applicabile, verificare header `Retry-After`.
 7. **Doc endpoint**: aggiungere in Input l’header richiesto `Idempotency-Key`.
 8. **Contratto risposta**: verificare envelope `{data,error}` + `meta.request_id`.
+9. **Idempotenza forte (opzionale ma consigliata)**:
+   - abilitare `DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1`
+   - usare tabella `dbops.idempotency_keys` per `in_progress/completed/failed`
+   - replay automatico della stessa risposta su duplicate key.
 
 ## Note
 - Per endpoint read-only (`GET` senza side effect), non richiedere `Idempotency-Key`.
 - Se serve eccezione temporanea, motivarla in doc e aprire task di riallineamento.
 - Per endpoint lista/search, seguire `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md` e usare i helper DRF core.
 - Se endpoint search, impostare `is_search_endpoint = True` per attivare throttling DRF.
+- In idempotenza forte, `request_id` e `tx_id` sono entrambi UUID (consigliato mantenere formato UUID anche lato tracing).

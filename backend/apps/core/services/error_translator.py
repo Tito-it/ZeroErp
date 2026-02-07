@@ -77,7 +77,12 @@ class ErrorTranslator:
         detail = ErrorTranslator._sanitize_public_detail(api_error)
         # `message` resta sempre business/safe per stabilita` client/UI.
         public_message = policy.user_message if is_technical else (api_error.message or policy.user_message)
-        technical_message = api_error.message if is_technical and expose_technical else None
+        # In debug esponi il dettaglio tecnico reale, mantenendo `message` business.
+        technical_message = (
+            (api_error.detail or api_error.message)
+            if is_technical and expose_technical
+            else None
+        )
         return ApiError(
             code=api_error.code,
             message=public_message,

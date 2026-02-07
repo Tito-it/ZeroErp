@@ -10,6 +10,8 @@ Indice test eseguiti:
 8) VenditePipelineApiTests.test_legacy_vendite_path_not_found_when_disabled
 9) VenditePipelineApiTests.test_run_lotto_pipeline_hides_technical_detail_for_generic_errors
 10) VenditePipelineApiTests.test_run_lotto_pipeline_exposes_technical_message_in_debug_mode
+11) VenditePipelineApiTests.test_run_lotto_pipeline_replays_completed_response_when_strong_idempotency_enabled
+12) VenditePipelineApiTests.test_run_lotto_pipeline_returns_conflict_when_idempotency_in_progress
 """
 
 import json
@@ -18,9 +20,11 @@ from unittest.mock import Mock
 
 from django.test import Client, SimpleTestCase, override_settings
 
+from apps.core.services.idempotency_store import IdempotencyDecision
 from apps.core.services.service_errors import ServiceError
 
 
+@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class VenditePipelineApiTests(SimpleTestCase):
     def setUp(self) -> None:
         self.client = Client()
@@ -170,3 +174,60 @@ class VenditePipelineApiTests(SimpleTestCase):
         self.assertEqual(body["code"], "E_GENERICO")
         self.assertEqual(body["message"], "Errore non gestito.")
         self.assertEqual(body["technical_message"], "CONTEXT: SQL interno sensibile")
+
+    @override_settings(API_STRONG_IDEMPOTENCY_ENABLED=True)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.core.api.endpoint_helpers.IdempotencyStore.claim_or_replay")
+    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    def test_run_lotto_pipeline_replays_completed_response_when_strong_idempotency_enabled(
+        self,
+        mocked_service,
+        mocked_claim,
+        _mock_auth,
+    ):
+        mocked_claim.return_value = IdempotencyDecision(
+            should_execute=False,
+            replay_payload={
+                "data": {"lotto_id": 555, "status": "ok"},
+                "meta": {"request_id": "00000000-0000-0000-0000-000000000001"},
+            },
+        )
+
+        response = self.client.post(
+            "/api/v1/vendite/pipeline/run/",
+            data=json.dumps({"dry_run": True}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-replay-1"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["X-Idempotency-Replayed"], "1")
+        self.assertEqual(response.json()["data"]["lotto_id"], 555)
+        mocked_service.assert_not_called()
+
+    @override_settings(API_STRONG_IDEMPOTENCY_ENABLED=True)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.core.api.endpoint_helpers.IdempotencyStore.claim_or_replay")
+    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    def test_run_lotto_pipeline_returns_conflict_when_idempotency_in_progress(
+        self,
+        mocked_service,
+        mocked_claim,
+        _mock_auth,
+    ):
+        mocked_claim.return_value = IdempotencyDecision(
+            should_execute=False,
+            in_progress=True,
+        )
+
+        response = self.client.post(
+            "/api/v1/vendite/pipeline/run/",
+            data=json.dumps({"dry_run": True}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-progress-1"},
+        )
+
+        self.assertEqual(response.status_code, 409)
+        body = response.json()["error"]
+        self.assertEqual(body["code"], "E_IDEMPOTENCY_IN_PROGRESS")
+        mocked_service.assert_not_called()
