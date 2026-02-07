@@ -23,6 +23,7 @@
 | host | text | YES |  |
 | app_version | text | YES |  |
 | result | jsonb | YES |  |
+| cleanup_at | timestamp with time zone | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -34,6 +35,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_audit_fn_ts | `CREATE INDEX ix_audit_fn_ts ON dbops.audit_log USING btree (function_name, executed_at DESC)` |
+| ix_audit_log_cleanup_at | `CREATE INDEX ix_audit_log_cleanup_at ON dbops.audit_log USING btree (cleanup_at)` |
 | ix_audit_params_gin | `CREATE INDEX ix_audit_params_gin ON dbops.audit_log USING gin (params)` |
 | ix_audit_result_gin | `CREATE INDEX ix_audit_result_gin ON dbops.audit_log USING gin (result)` |
 | ix_audit_status_ts | `CREATE INDEX ix_audit_status_ts ON dbops.audit_log USING btree (status, executed_at DESC)` |

@@ -18,13 +18,14 @@
 > * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico)
 > * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)
 > * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
+> * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)
 
 ---
 
 ### 🎯 Scopo Principale
 
-(latest review 10-01-26)
-La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** del framework di automazioni. Coordina l’applicazione delle regole di sistema (Tx ID, aggiornamento audit, storico, lock colonne, gestione flag attivo) sugli schemi e tabelle in scope.
+(latest review 07-02-26)
+La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** del framework di automazioni. Coordina l’applicazione delle regole di sistema (Tx ID, aggiornamento audit, storico, lock colonne, gestione flag attivo, cleanup) sugli schemi e tabelle in scope.
 
 ---
 
@@ -56,6 +57,7 @@ La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** d
    * `fn_run_automations_storico`
    * `fn_run_automations_lock_columns`
    * `fn_run_automations_attivo`
+   * `fn_run_automations_cleanup`
 4. Ogni modulo applica trigger/funzioni sulle tabelle target secondo le regole.
 
 ---

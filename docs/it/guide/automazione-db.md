@@ -11,6 +11,8 @@
 >
 > * [dbops.automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)
 >
+> * [dbops.automation_cleanup_exclusions](/dbzero/dbops/tabelle/automation_cleanup_exclusions)
+>
 > * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)
 >
 > * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)
@@ -30,6 +32,7 @@
 >  * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns),  
 >  * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo),  
 >  * [dbops.fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block)  
+>  * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)  
 
 ---
 
@@ -47,7 +50,7 @@ Automatizzare attività ripetitive (assegnazione `tx_id`, audit update, storico,
 ## 2) 🧩 Architettura (sintesi)
 
 * **Scope** (`automation_scope` + `fn_resolve_scope` / parametro): delimita gli schemi/tabelle.
-* **Rules** (`automation_rules_tbl`): regole per schema/tabella (TX_ID, AUDIT_UPDATE, STORICO, LOCK_COLUMNS, + STORICO_PROVISION).
+* **Rules** (`automation_rules_tbl`): regole per schema/tabella (TX_ID, AUDIT_UPDATE, STORICO, LOCK_COLUMNS, CLEANUP, + STORICO_PROVISION).
 * **Overrides/Exclusions**: colonne non standard e FK da saltare.
 * **Orchestratori**: `fn_run_automations_*` per ogni area.
 * **Audit**: `audit_log` (anche out‑of‑tx via dblink opzionale).
@@ -142,6 +145,23 @@ Componenti principali:
 * **Config**: `dbops.automation_delete_block` con schema/tabella, GUC e flag `enabled`.
 * **Trigger**: `script.trgfn_delete_block_by_guc(guc_key)`.
 * **Apply**: `dbops.fn_run_automations_delete_block()` applica i trigger.
+
+**3.9 CLEANUP (cleanup_at)**
+
+Automazione per **calcolare `cleanup_at`** e **purge** dei record scaduti.
+
+Componenti principali:
+
+* **Config regole**: `dbops.automation_rules_tbl` con `rule_type`:
+  * `CLEANUP_AT` → calcola `cleanup_at` con TTL fisso
+  * `CLEANUP_PURGE` → elimina record scaduti (batch)
+* **Esclusioni**: `dbops.automation_cleanup_exclusions`
+* **Apply**: `dbops.fn_run_automations_cleanup()`
+
+Parametri JSON tipici:
+
+* `CLEANUP_AT`: `ttl_days`, `cleanup_column`, `base_ts_column`, `apply_on_update`
+* `CLEANUP_PURGE`: `cleanup_column`, `batch_limit`
 
 ---
 
