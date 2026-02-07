@@ -2,15 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
-> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)
+> Approfondimento tabelle:  
+> 
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)    
+> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)   
 >
 > Approfondimento funzioni:
-> * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)
+> 
+> * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)   
 >
 > Approfondimento trigger:
-> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
+> 
+> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)   
 
 ### 🎯 Scopo Principale
 

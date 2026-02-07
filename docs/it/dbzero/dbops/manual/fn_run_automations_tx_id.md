@@ -4,21 +4,21 @@
 >
 > Guide:
 >
-> * [Gestione Transaction ID](/guide/tx_id_implementation_guide)
-> * [Automazione DB](/guide/automazione-db)
+> * [Gestione Transaction ID](/guide/tx_id_implementation_guide)  
+> * [Automazione DB](/guide/automazione-db)  
 >
 > Approfonsimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
-> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)
-> * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template)
-> * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)
-> * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
+> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)    
+> * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template)   
+> * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)   
+> * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)   
+> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
 >
 
 ---

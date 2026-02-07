@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Accesso DB per pipeline vendite.
+# ------------------------------------------------------------
+
+
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -62,6 +70,7 @@ class AttivitaDaFatturare:
 class VenditePipelineRepository:
     """Wrapper SQL a basso livello per l'orchestrazione pipeline vendite."""
 
+    # `fn` nei JSON task e` mantenuto come token di compatibilita` SQL legacy.
     ALLOWED_TASK_FUNCTIONS = {
         "select_attivita": "vendite.fn_select_attivita_fatturabili",
         "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
@@ -105,6 +114,7 @@ class VenditePipelineRepository:
                 ],
             )
             row = cursor.fetchone()
+            assert row is not None
         return int(row[0])
 
     def get_lotto_tipo(self, lotto_id: int) -> str | None:
@@ -114,7 +124,9 @@ class VenditePipelineRepository:
                 [lotto_id],
             )
             row = cursor.fetchone()
-        return None if not row else row[0]
+        if not row:
+            return None
+        return row[0]
 
     def get_stato_doc_fiscale_id(self, codice: str) -> int | None:
         with connection.cursor() as cursor:
@@ -130,7 +142,9 @@ class VenditePipelineRepository:
                 [codice],
             )
             row = cursor.fetchone()
-        return None if not row else int(row[0])
+        if not row:
+            return None
+        return int(row[0])
 
     def set_lotto_job_stato(self, lotto_id: int, stato: str, messaggio: str) -> None:
         with connection.cursor() as cursor:
@@ -238,16 +252,24 @@ class VenditePipelineRepository:
             lock_batch_id=row[4],
         )
 
-    def get_step_processes(self, stato_doc_fiscale_id: int, rollback: bool) -> list[dict[str, Any]]:
+    def get_step_processes(
+        self,
+        stato_doc_fiscale_id: int,
+        *,
+        tipo_lotto: str,
+        rollback: bool,
+    ) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT CASE WHEN %s THEN rollback ELSE processi END
                 FROM vendite.fatturazione_pipeline
                 WHERE stato_doc_fiscale_id = %s
+                  AND tipo_lotto = %s
                   AND attivo IS TRUE
+                LIMIT 1
                 """,
-                [rollback, stato_doc_fiscale_id],
+                [rollback, stato_doc_fiscale_id, tipo_lotto],
             )
             row = cursor.fetchone()
 
@@ -264,6 +286,7 @@ class VenditePipelineRepository:
         context: LottoContext,
         params: dict[str, Any],
     ) -> None:
+        assert context is not None
         # Normalizza i parametri JSON prima della chiamata alla funzione SQL.
         lock = as_bool(params.get("lock"), default=False)
         data_fatturazione = empty_to_none(params.get("data_fatturazione"))
@@ -402,6 +425,7 @@ class VenditePipelineRepository:
                 [lotto_id, attivita_id],
             )
             row = cursor.fetchone()
+            assert row is not None
         return int(row[0])
 
     def get_next_fattura_riga_nr(self, fattura_id: int) -> int:
@@ -415,6 +439,7 @@ class VenditePipelineRepository:
                 [fattura_id],
             )
             row = cursor.fetchone()
+            assert row is not None
         return int(row[0])
 
     def insert_fattura_riga(
@@ -472,6 +497,7 @@ class VenditePipelineRepository:
                 ],
             )
             row = cursor.fetchone()
+            assert row is not None
         return int(row[0])
 
     def mark_attivita_fatturata(self, attivita_id: int, fattura_riga_id: int) -> None:

@@ -40,6 +40,7 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
 | `message`       | `text`              | Messaggio descrittivo dell’esito.                                                        |
 | `duration_ms`   | `integer`           | Durata dell’esecuzione in millisecondi.                                                  |
 | `tx_id`         | `uuid`              | Identificativo di transazione: valorizzato **dal trigger**  con `trgfn_tx_id_managed()`. |
+| `cleanup_at`    | `timestamptz`        | Timestamp opzionale per la pulizia programmata dei log.                                  |
 
 ---
 
@@ -98,3 +99,10 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
 ---
 
 > 🧠 **“Con la colonna `tx_id`, ogni record di audit è automaticamente correlato al contesto transazionale, semplificando debug, monitoraggio e analisi dei processi.”**
+
+---
+
+### 🧹 Pulizia programmata (`cleanup_at`)
+
+Il campo **`cleanup_at`** è destinato a **job periodici di pulizia** dei log storici.  
+Non rappresenta una scadenza funzionale dell’evento di audit.

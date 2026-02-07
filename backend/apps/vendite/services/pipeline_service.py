@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Servizio applicativo pipeline vendite.
+# ------------------------------------------------------------
+
+
 from datetime import date
 
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
@@ -40,6 +48,7 @@ def fn_execute_pipeline_step(
     *,
     lotto_id: int,
     stato_doc_fiscale_id: int,
+    tipo_lotto: str = "MASSIVO",
     rollback: bool = False,
     dry_run: bool = False,
 ) -> None:
@@ -49,6 +58,7 @@ def fn_execute_pipeline_step(
     executor.execute_step(
         lotto_id=lotto_id,
         stato_doc_fiscale_id=stato_doc_fiscale_id,
+        tipo_lotto=tipo_lotto,
         rollback=rollback,
         dry_run=dry_run,
     )

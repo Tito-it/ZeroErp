@@ -31,8 +31,19 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
     def test_execute_step_runs_generate_fatture_righe_task(self):
         processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
-        executor, _, fatture_righe_service = self._build_executor(processi)
-        executor.execute_step(lotto_id=1, stato_doc_fiscale_id=2, rollback=False, dry_run=False)
+        executor, repo, fatture_righe_service = self._build_executor(processi)
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+        repo.get_step_processes.assert_called_once_with(
+            2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+        )
         fatture_righe_service.generate_fatture_righe.assert_called_once_with(1, dry_run=False)
 
     def test_execute_step_rejects_generate_fatture_righe_fn_override(self):
@@ -45,6 +56,12 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         ]
         executor, _, fatture_righe_service = self._build_executor(processi)
         with self.assertRaises(ServiceError) as exc:
-            executor.execute_step(lotto_id=1, stato_doc_fiscale_id=2, rollback=False, dry_run=False)
+            executor.execute_step(
+                lotto_id=1,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
         self.assertEqual(exc.exception.code, "E_TASK_NOT_ALLOWED")
         fatture_righe_service.generate_fatture_righe.assert_not_called()

@@ -32,6 +32,7 @@ La tabella **`dbops.error_log`** serve a **centralizzare la registrazione degli 
 * **`messaggio_errore_id`**: FK verso `config.messaggi_errore(id)`, collega il record al testo di errore e alle eventuali traduzioni.
 * **`context`**: campo JSONB in cui si registrano parametri di input, valori di variabili, utente esecutore o altri metadati rilevanti.
 * **`tx_id`**: UUID di transazione corrente, utile per tracciare errori in contesti transazionali e correlare con altri log.
+* **`cleanup_at`**: timestamp opzionale di pulizia programmata (non indica scadenza funzionale).
 
 ---
 
@@ -85,6 +86,13 @@ La tabella **`dbops.error_log`** serve a **centralizzare la registrazione degli 
    SELECT * FROM audits
    ORDER BY occurred_at;
    ```
+
+---
+
+### 🧹 Pulizia programmata (`cleanup_at`)
+
+Il campo **`cleanup_at`** è usato esclusivamente per **gestire job di pulizia** dei log storici.  
+Non rappresenta una scadenza “funzionale” dell’errore, ma solo un **timestamp indicativo per il cleanup**.
 
 ---
 

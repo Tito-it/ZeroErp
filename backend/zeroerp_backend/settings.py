@@ -58,6 +58,8 @@ API_LEGACY_SUNSET_HEADER = env(
     "DJANGO_API_LEGACY_SUNSET_HEADER",
     "Tue, 30 Jun 2026 23:59:59 GMT",
 )
+API_SEARCH_THROTTLE_RATE = env("DJANGO_API_SEARCH_THROTTLE_RATE", "30/min")
+API_STRONG_IDEMPOTENCY_ENABLED = env("DJANGO_API_STRONG_IDEMPOTENCY_ENABLED", "0") == "1"
 
 
 # Application definition
@@ -98,6 +100,12 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "apps.core.api.throttling.SearchBurstRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "search_burst": API_SEARCH_THROTTLE_RATE,
+    },
 }
 
 SPECTACULAR_SETTINGS = {

@@ -4,18 +4,18 @@
 >
 > Guide:
 >
-> * [Automazione DB](/guide/automazione-db)
+> * [Automazione DB](/guide/automazione-db)   
 >
 > Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
 >
 > Approfondimento funzioni e trigger:
 >
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
-> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)
-> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)
-> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)    
+> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
+> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
 
 ---
 

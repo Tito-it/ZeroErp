@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**
 >
+> Guide:
+>
+> * [Automazioni – Overview del Modulo](/guide/automazione-db)
+>
 > Approfondimeti funzioni e trigger:
 >
 > * [dbops.trgfn_soft_delete_cascade](/dbzero/dbops/funzioni/trgfn_soft_delete_cascade)
 > * [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args)
 > * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)
 > * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)
->
-> Guide:
->
-> * [Automazioni – Overview del Modulo](/guide/automazione-db)
 
 ---
 
@@ -25,10 +25,10 @@ La funzione **`dbops.fn_trigger_exists_cascade_by_args(p_parent_rel, p_child_sch
 
 | Parametro        | Tipo     | Obbligatorio | Descrizione                                               |
 | ---------------- | -------- | :----------: | --------------------------------------------------------- |
-| `p_parent_rel`   | regclass |      ✔️      | Nome completo della tabella padre (es. `schema.tabella`). |
-| `p_child_schema` | text     |      ✔️      | Schema della tabella figlia.                              |
-| `p_child_table`  | text     |      ✔️      | Nome della tabella figlia.                                |
-| `p_fk_col`       | text     |      ✔️      | Nome della colonna FK nella tabella figlia.               |
+| `p_parent_rel`   | regclass |      ✔️       | Nome completo della tabella padre (es. `schema.tabella`). |
+| `p_child_schema` | text     |      ✔️       | Schema della tabella figlia.                              |
+| `p_child_table`  | text     |      ✔️       | Nome della tabella figlia.                                |
+| `p_fk_col`       | text     |      ✔️       | Nome della colonna FK nella tabella figlia.               |
 
 ---
 

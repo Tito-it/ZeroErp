@@ -21,23 +21,22 @@ databaseChangeLog:
               DO $$
               DECLARE
                 v_app_role text := 'zeroerp_app';
-                v_migrator_role text := 'titodb';
+                v_migrator_role text := 'postgres';
                 v_schema text;
                 v_fn record;
                 v_rel record;
                 v_schemas text[] := ARRAY[
-                  'public',
-                  'script',
+                 
                   'dbops',
-                  'config',
+                  'acquisti',
                   'anagrafiche',
                   'catalogo',
-                  'vendite',
-                  'acquisti',
+                  'config',
+                  'contabilita',
                   'magazzino',
                   'pagamenti',
-                  'contabilita',
-                  'storico'
+                  'storico',
+                  'vendite'
                 ];
               BEGIN
                 -- In CI il ruolo dovrebbe esistere dal bootstrap; se manca non blocchiamo la pipeline.

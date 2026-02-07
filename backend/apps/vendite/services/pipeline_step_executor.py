@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Esecuzione step pipeline vendite.
+# ------------------------------------------------------------
+
+
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
@@ -25,16 +33,21 @@ class PipelineStepExecutor:
         self,
         lotto_id: int,
         stato_doc_fiscale_id: int,
+        tipo_lotto: str,
         *,
         rollback: bool = False,
         dry_run: bool = False,
     ) -> None:
         ErrorManager.require(
-            bool(lotto_id and stato_doc_fiscale_id),
+            bool(lotto_id and stato_doc_fiscale_id and tipo_lotto and tipo_lotto.strip()),
             code="E_PIPELINE_VALIDATION",
             message="Parametri pipeline non validi.",
-            detail="lotto_id e stato_doc_fiscale_id sono obbligatori",
-            context={"lotto_id": lotto_id, "stato_doc_fiscale_id": stato_doc_fiscale_id},
+            detail="lotto_id, stato_doc_fiscale_id e tipo_lotto sono obbligatori",
+            context={
+                "lotto_id": lotto_id,
+                "stato_doc_fiscale_id": stato_doc_fiscale_id,
+                "tipo_lotto": tipo_lotto,
+            },
             function_name="vendite.pipeline_step_executor.execute_step",
             log_to_db=True,
         )
@@ -49,17 +62,26 @@ class PipelineStepExecutor:
             function_name="vendite.pipeline_step_executor.execute_step",
             log_to_db=True,
         )
+        assert context is not None
 
-        processi = self.repository.get_step_processes(stato_doc_fiscale_id, rollback=rollback)
+        processi = self.repository.get_step_processes(
+            stato_doc_fiscale_id,
+            tipo_lotto=tipo_lotto,
+            rollback=rollback,
+        )
         ErrorManager.require(
             bool(processi),
             code="E_PIPELINE_NOT_FOUND",
             message="Configurazione pipeline non trovata.",
             detail=(
                 "Pipeline non trovata o processi vuoti per "
-                f"stato_doc_fiscale_id={stato_doc_fiscale_id}"
+                f"stato_doc_fiscale_id={stato_doc_fiscale_id}, tipo_lotto={tipo_lotto}"
             ),
-            context={"stato_doc_fiscale_id": stato_doc_fiscale_id, "rollback": rollback},
+            context={
+                "stato_doc_fiscale_id": stato_doc_fiscale_id,
+                "tipo_lotto": tipo_lotto,
+                "rollback": rollback,
+            },
             function_name="vendite.pipeline_step_executor.execute_step",
             log_to_db=True,
         )
@@ -128,6 +150,7 @@ class PipelineStepExecutor:
         )
 
     def _validate_task_function_name(self, *, task: str, fn_name: str | None) -> None:
+        # `fn` resta un token di compatibilita` SQL nella configurazione processi.
         allowed = self.repository.ALLOWED_TASK_FUNCTIONS[task]
         if fn_name and fn_name != allowed:
             ErrorManager.raise_error(

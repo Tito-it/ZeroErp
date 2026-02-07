@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Policy errori per mapping HTTP/UI.
+# ------------------------------------------------------------
+
+
 from dataclasses import dataclass
 
 # Registro centrale mapping errore -> comportamento API/UI.
@@ -32,6 +40,12 @@ class ErrorPolicyRegistry:
             http_status=400,
             ui_action="highlight_form_fields",
             user_message="Idempotency-Key obbligatoria per questa operazione.",
+        ),
+        "E_IDEMPOTENCY_IN_PROGRESS": ErrorPolicy(
+            code="E_IDEMPOTENCY_IN_PROGRESS",
+            http_status=409,
+            ui_action="show_retry_dialog",
+            user_message="Operazione gia` in elaborazione con la stessa Idempotency-Key.",
         ),
         "E_PIPELINE_LOTTO_NOT_FOUND": ErrorPolicy(
             code="E_PIPELINE_LOTTO_NOT_FOUND",

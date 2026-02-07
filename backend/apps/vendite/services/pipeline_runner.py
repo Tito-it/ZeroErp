@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Orchestrazione esecuzione pipeline vendite.
+# ------------------------------------------------------------
+
+
 from dataclasses import dataclass
 from datetime import date
 
@@ -105,6 +113,7 @@ class LottoPipelineRunner:
                     self.step_executor.execute_step(
                         lotto_id=lotto_id,
                         stato_doc_fiscale_id=step.stato_doc_fiscale_id,
+                        tipo_lotto=effective_tipo_lotto,
                         rollback=False,
                         dry_run=params.dry_run,
                     )

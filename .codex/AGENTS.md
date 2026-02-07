@@ -10,7 +10,11 @@
 - Versioni: Python 3.14, Django 6.01
 - Evitare API/metodi deprecati; seguire best practice Django
 - Accesso webserver configurato: test migrazione solo su richiesta
+- Per i file Python **generati** aggiungere sempre l’header standard in `templates/python-header.txt`.
+- Per ogni nuovo file Python (non generato da Django) aggiungere l’header standard di `templates/python-header.txt` e un breve commento iniziale sullo scopo.
 - Nei file Python aggiungere commenti sintetici nei blocchi non banali (orchestrazione, transazioni, mapping task/SQL), scritti in italiano.
+- Dopo un `ErrorManager.require(... is not None ...)` aggiungere sempre l’`assert` corrispondente per aiutare il type checker.
+- Dopo `row = cursor.fetchone()` aggiungere guard (`if not row`) oppure `assert row is not None` prima di usare `row[...]`.
 - Nei servizi/classi Python usare nomi metodo espliciti e orientati al dominio (es. `run_pipeline`), evitando nomi generici/ambigui come `run`.
 - Per error handling servizi/API usare helper centralizzato in `apps/core/services/error_manager.py`, evitando logica duplicata nei moduli dominio.
 - Il mapping `codice errore -> HTTP status -> azione UI` deve essere centralizzato in `apps/core/services/error_policies.py`.
@@ -21,6 +25,8 @@
 - Per endpoint API usare il pattern core `handle_post_json(...)` (`apps/core/api/endpoint_helpers.py`) per parsing/error envelope uniforme.
 - Evitare `try/except Exception` generici nelle view API dominio: usare `ServiceError` nei service e lasciare fallback al middleware `apps/core/middleware/api_exception_middleware.py`.
 - Il middleware eccezioni API si applica solo a `/api/*` e resta disattivabile via `DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED`.
+- Per nuove API lista/search applicare la policy `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md` e usare gli helper core (`apps/core/api/pagination.py`, `apps/core/api/search_validators.py`).
+- Per endpoint search impostare `is_search_endpoint = True` per attivare throttling DRF (`apps/core/api/throttling.py`).
 
 ## Liquibase v2 Workflow
 - New work only in `db/changelog/migrations_v2/`
@@ -81,3 +87,5 @@
 - Nei file di test, all'inizio inserire un indice dei test eseguiti nei commenti.
 - Nei file di test Python/Django, inserire all'inizio un breve indice dei test previsti (nome test/caso).
 - Struttura test Django per app: `apps/<schema>/tests/` con sottocartelle minime `api/` e `services/`.
+- Esempio esecuzione test Django: `./manage-test.sh apps.core.tests.api -v 2`
+- Smoke test API docs/schema: vedi `apps/core/tests/api/test_diagnostics_api.py` (endpoint `/api/docs/` e `/api/schema/`).

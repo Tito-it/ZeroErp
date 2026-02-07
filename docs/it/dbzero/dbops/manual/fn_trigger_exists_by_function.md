@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
+> Guide:
+>
+> * [Automazioni – Overview del Modulo](/guide/automazione-db/)
+>
 > Approfondimento funzioni:
 >
 > * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)
 > * [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args)
->
-> Guide:
->
-> * [Automazioni – Overview del Modulo](/guide/automazione-db/)
 
 ---
 

@@ -17,7 +17,7 @@ DECLARE
   needs_table_rules boolean;
 BEGIN
   -- Orchestratore: calcola scope e chiama le parti richieste.
-  -- p_parts: 'TX_ID','AUDIT_UPDATE','STORICO','LOCK_COLUMNS','ATTIVO' (e 'TABLE_RULES' per compatibilita')
+  -- p_parts: 'TX_ID','AUDIT_UPDATE','STORICO','LOCK_COLUMNS','ATTIVO','CLEANUP' (e 'TABLE_RULES' per compatibilita')
 
   -- Scope schemi
   IF p_schemas IS NOT NULL THEN
@@ -61,6 +61,10 @@ BEGIN
 
   IF 'ATTIVO' = ANY(p_parts) THEN
     PERFORM dbops.fn_run_automations_attivo(p_exec_mode, v_schemas, p_dry_run);
+  END IF;
+
+  IF 'CLEANUP' = ANY(p_parts) THEN
+    PERFORM dbops.fn_run_automations_cleanup(p_exec_mode, v_schemas, p_dry_run);
   END IF;
 END;
 $function$
