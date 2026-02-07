@@ -20,6 +20,7 @@
 > * [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),   
 > * [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
 >  * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
+>  * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)
 
 ### 🎯 Scopo Principale
 
@@ -39,6 +40,8 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
   * `AUDIT_UPDATE` → trigger `BEFORE UPDATE` con `script.trgfn_upd_audit_data_user_generic()`.
   * `STORICO` → trigger su `BEFORE UPDATE` e `BEFORE DELETE` verso `storico.<table>_storico` con `script.trgfn_upd_dlt_storico_generic(...)`.
   * `LOCK_COLUMNS` → trigger `BEFORE UPDATE OF ...` con `script.trgfn_lock_columns(...)` su colonne critiche.
+  * `CLEANUP_AT` → calcolo `cleanup_at` con TTL fisso per tabella.
+  * `CLEANUP_PURGE` → cancellazione record scaduti (batch) su `cleanup_at`.
 * `ATTIVO` → set di trigger basati su FK: **block** sul padre + **require** sul figlio (no cascade).
 * **target_schema** *(text)* – schema di destinazione.
 * **target_table** *(text, opzionale)* – nome tabella **o pattern LIKE** (`%`) per filtrare. Se **NULL**, tutte le tabelle dello schema per quel *rule_type*.
@@ -82,6 +85,16 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
   * `include_no_action` *(boolean, default true)* → considera anche FK `NO ACTION` oltre a `RESTRICT`.
   * (eventuali flag boolean: `cascade_children`, `require_active_parent`, `block_if_child_no_attivo` – default `true`).
   * **Nota**: nella policy ATTIVO corrente, questi flag non vengono letti dall’orchestratore; sono mantenuti per retro‑compatibilità e non influenzano il comportamento attuale (block + require).
+* **CLEANUP_AT**:
+
+  * `ttl_days` *(int, obbligatorio)* → giorni di retention.
+  * `cleanup_column` *(text, default cleanup_at)* → colonna target.
+  * `base_ts_column` *(text, opzionale)* → colonna timestamp base (fallback: data_insert/executed_at/occurred_at/created_at).
+  * `apply_on_update` *(boolean, default false)* → ricalcola anche su righe già valorizzate.
+* **CLEANUP_PURGE**:
+
+  * `cleanup_column` *(text, default cleanup_at)* → colonna target.
+  * `batch_limit` *(int, default 5000)* → dimensione batch.
 
 ---
 
@@ -89,6 +102,7 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 
 * **`automation_overrides_cols`** → risolve nomi di colonne non standard: `ATTIVO_COL`, `AUDIT_TS`, `AUDIT_USER`, `STORICO_FK`.
 * **`automation_fk_exclusions`** → esclude specifiche coppie *parent/child* dalla regola `ATTIVO`.
+* **`automation_cleanup_exclusions`** → esclude tabelle dal cleanup (rule_type CLEANUP_*).
 
 ---
 
