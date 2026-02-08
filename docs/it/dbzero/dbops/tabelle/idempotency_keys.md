@@ -28,5 +28,12 @@
 | ix_idempotency_keys_cleanup_at | `CREATE INDEX ix_idempotency_keys_cleanup_at ON dbops.idempotency_keys USING btree (cleanup_at)` |
 | pk_idempotency_keys | `CREATE UNIQUE INDEX pk_idempotency_keys ON dbops.idempotency_keys USING btree (idempotency_key)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_idempotency_keys_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_idempotency_keys_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_idempotency_keys_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

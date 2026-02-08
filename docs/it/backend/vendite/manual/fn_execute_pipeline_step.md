@@ -24,7 +24,8 @@ La logica applicativa ora vive in:
 ## Regole
 - Validazione parametri obbligatori (`lotto_id`, `stato_doc_fiscale_id`, `tipo_lotto`).
 - Recupero contesto lotto obbligatorio (`competenza_mese` e campi necessari ai task).
-- Lettura configurazione task JSON da `vendite.fatturazione_pipeline` filtrando `stato_doc_fiscale_id + tipo_lotto`.
+- Lettura configurazione task JSON da `vendite.fatturazione_pipeline` filtrando:
+  `stato_doc_fiscale_id + tipo_lotto + utility_id + tipo_doc_fiscale_id` con fallback su `NULL`.
 - Ogni task viene loggato prima dell'esecuzione.
 - `dry_run` e task `noop`/`log_only` non eseguono side effect.
 - Per `select_attivita`, funzione ammessa solo se in whitelist (`vendite.fn_select_attivita_fatturabili`).

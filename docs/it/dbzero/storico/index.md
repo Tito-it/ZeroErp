@@ -1,14 +1,19 @@
 # Schema `storico`
 
 ## 📚 Tabelle
+- [ambito_causale](tabelle/ambito_causale.md)
 - [articoli](tabelle/articoli.md)
 - [articoli_componenti](tabelle/articoli_componenti.md)
 - [articoli_uom_operativa](tabelle/articoli_uom_operativa.md)
 - [articolo_regole_fatturazione](tabelle/articolo_regole_fatturazione.md)
+- [assets](tabelle/assets.md)
+- [attivita_consumi](tabelle/attivita_consumi.md)
 - [attivita_fatturabili](tabelle/attivita_fatturabili.md)
+- [attivita_fatturabili_lotti](tabelle/attivita_fatturabili_lotti.md)
 - [bank_branches](tabelle/bank_branches.md)
 - [billing_account](tabelle/billing_account.md)
 - [catasto_unita_immobiliari](tabelle/catasto_unita_immobiliari.md)
+- [causali](tabelle/causali.md)
 - [clienti](tabelle/clienti.md)
 - [comune_trasformazioni](tabelle/comune_trasformazioni.md)
 - [comuni](tabelle/comuni.md) — * **Audit Trail**: Conservare una traccia immutabile di ogni modifica e cancellazione applicata a `config.comuni`. * **Versioning dei record**: Permettere la ricostruzione dello stato storico di ogni comune in un dato momento. * **Query storiche**: Supportare interrogazioni basate su intervalli temporali grazie ai campi `valid_from` e `valid_to`. * **Classificazione operazioni**: Utilizzare `tipo_operazione_id` e `change_type` per distinguere INSERT iniziale, UPDATE e DELETE. ---
@@ -18,6 +23,10 @@
 - [ddt](tabelle/ddt.md)
 - [ddt_righe](tabelle/ddt_righe.md)
 - [emittenti_fiscali](tabelle/emittenti_fiscali.md)
+- [eventi_assets](tabelle/eventi_assets.md)
+- [fatturazione_lotti](tabelle/fatturazione_lotti.md)
+- [fatturazione_lotti_attivita](tabelle/fatturazione_lotti_attivita.md)
+- [fatturazione_lotti_fatture](tabelle/fatturazione_lotti_fatture.md)
 - [fatture](tabelle/fatture.md)
 - [fatture_righe](tabelle/fatture_righe.md)
 - [fatture_scadenze](tabelle/fatture_scadenze.md)
@@ -26,9 +35,13 @@
 - [indirizzi](tabelle/indirizzi.md) — * **Versionamento degli indirizzi**     Ogni operazione su `anagrafiche.indirizzi` (INSERT, UPDATE, DELETE) genera un record nello storico che ne conserva lo stato precedente o iniziale.
 - [indirizzi_dettaglio](tabelle/indirizzi_dettaglio.md) — * **Audit Trail**: tracciare ogni modifica ai dettagli degli indirizzi consentendo la ricostruzione dello stato storico. * **Versioning temporale**: supportare query basate su periodi di validità tramite `valid_from` e `valid_to`. * **Schema futuro‑proof**: salvare l’intero stato del record in JSONB senza richiedere aggiornamenti di schema a ogni nuova colonna.
 - [indirizzi_soggetti](tabelle/indirizzi_soggetti.md)
+- [inventari](tabelle/inventari.md)
+- [inventari_righe](tabelle/inventari_righe.md)
 - [istanze_dati_precontrattuali](tabelle/istanze_dati_precontrattuali.md)
 - [iva](tabelle/iva.md)
 - [iva_assoggettamenti](tabelle/iva_assoggettamenti.md)
+- [magazzini](tabelle/magazzini.md)
+- [movimenti](tabelle/movimenti.md)
 - [note_stili](tabelle/note_stili.md)
 - [ordini](tabelle/ordini.md)
 - [ordini_righe](tabelle/ordini_righe.md)
@@ -39,7 +52,11 @@
 - [registri_fatturazione](tabelle/registri_fatturazione.md)
 - [regole_fatturazione_articolo](tabelle/regole_fatturazione_articolo.md)
 - [resellers](tabelle/resellers.md)
+- [reservations](tabelle/reservations.md)
+- [rettifiche](tabelle/rettifiche.md)
+- [rettifiche_righe](tabelle/rettifiche_righe.md)
 - [risorse_umane](tabelle/risorse_umane.md)
+- [sepa_mandati](tabelle/sepa_mandati.md)
 - [soggetti](tabelle/soggetti.md) — * **Versionamento dei soggetti**   Ogni modifica (INSERT, UPDATE, DELETE) su `anagrafiche.soggetti` genera un record in storico con lo stato precedente, il tipo di operazione e i metadati di audit.
 - [soggetti_conti_bancari](tabelle/soggetti_conti_bancari.md)
 - [soggetti_ruoli_conti_bancari](tabelle/soggetti_ruoli_conti_bancari.md)
@@ -49,6 +66,8 @@
 - [stradario_trasformazioni](tabelle/stradario_trasformazioni.md)
 - [tipi_ruolo_tipi_indirizzo](tabelle/tipi_ruolo_tipi_indirizzo.md)
 - [tipi_soggetto_dettaglio_tipi_indirizzo](tabelle/tipi_soggetto_dettaglio_tipi_indirizzo.md)
+- [trasferimenti](tabelle/trasferimenti.md)
+- [trasferimenti_righe](tabelle/trasferimenti_righe.md)
 - [vettori](tabelle/vettori.md)
 
 ## ⚙️ Funzioni

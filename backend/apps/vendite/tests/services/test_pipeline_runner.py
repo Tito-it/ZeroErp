@@ -28,7 +28,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         def set_lotto_job_stato(self, lotto_id, stato, messaggio):
             self.last_stato = stato
 
-        def list_pipeline_steps(self, tipo_lotto):
+        def list_pipeline_steps(self, tipo_lotto, utility_id=None, tipo_doc_fiscale_id=None):
             class _Step:
                 stato_doc_fiscale_id = 1
                 descrizione = "Step 1"
@@ -44,6 +44,16 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
 
         def log_pipeline_fase(self, **kwargs):
             return None
+
+        def get_lotto_context(self, lotto_id):
+            class _Ctx:
+                competenza_mese = "2026-01-01"
+                tipo_doc_fiscale_id = 1
+                utility_id = 1
+                billing_account_id = None
+                lock_batch_id = None
+
+            return _Ctx()
 
     class _StepExecutorMock:
         def __init__(self):

@@ -1,0 +1,162 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260208-02-create-fn-resolve-pipeline-fallback-mctit.yaml
+
+  - changeSet:
+      id: 20260208-02-create-fn-resolve-pipeline-fallback
+      author: mctit
+      comment: "Funzioni SQL per risoluzione pipeline con fallback utility/tipo_doc_fiscale"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_resolve_fatturazione_pipeline_step(
+                p_tipo_lotto vendite.fatturazione_pipeline.tipo_lotto%TYPE,
+                p_stato_doc_fiscale_id vendite.fatturazione_pipeline.stato_doc_fiscale_id%TYPE,
+                p_utility_id vendite.fatturazione_pipeline.utility_id%TYPE DEFAULT NULL,
+                p_tipo_doc_fiscale_id vendite.fatturazione_pipeline.tipo_doc_fiscale_id%TYPE DEFAULT NULL,
+                p_rollback boolean DEFAULT false
+              )
+              RETURNS TABLE(
+                pipeline_id vendite.fatturazione_pipeline.id%TYPE,
+                stato_doc_fiscale_id vendite.fatturazione_pipeline.stato_doc_fiscale_id%TYPE,
+                descrizione vendite.fatturazione_pipeline.descrizione%TYPE,
+                ordine config.stati_doc_fiscale.ordine%TYPE,
+                processi jsonb,
+                utility_id vendite.fatturazione_pipeline.utility_id%TYPE,
+                tipo_doc_fiscale_id vendite.fatturazione_pipeline.tipo_doc_fiscale_id%TYPE,
+                livello_match text
+              )
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Risolve una configurazione pipeline per step applicando
+                --   fallback su utility/tipo_doc_fiscale.
+                --
+                -- Regole precedenza:
+                --   1) utility + tipo_doc_fiscale
+                --   2) utility
+                --   3) tipo_doc_fiscale
+                --   4) fallback globale (entrambi NULL)
+                -- =========================================================
+
+                IF p_tipo_lotto IS NULL OR btrim(p_tipo_lotto) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_GENERICO',
+                    jsonb_build_object('detail', 'p_tipo_lotto obbligatorio'),
+                    NULL::uuid,
+                    'p_tipo_lotto obbligatorio'
+                  );
+                END IF;
+
+
+                IF p_stato_doc_fiscale_id IS NULL OR p_stato_doc_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_GENERICO',
+                    jsonb_build_object('detail', 'p_stato_doc_fiscale_id obbligatorio'),
+                    NULL::uuid,
+                    'p_stato_doc_fiscale_id obbligatorio'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  fp.id AS pipeline_id,
+                  fp.stato_doc_fiscale_id,
+                  fp.descrizione,
+                  sd.ordine,
+                  CASE WHEN p_rollback THEN fp.rollback ELSE fp.processi END AS processi,
+                  fp.utility_id,
+                  fp.tipo_doc_fiscale_id,
+                  CASE
+                    WHEN fp.utility_id IS NOT NULL AND fp.tipo_doc_fiscale_id IS NOT NULL THEN 'UTILITY_TIPO_DOC'
+                    WHEN fp.utility_id IS NOT NULL AND fp.tipo_doc_fiscale_id IS NULL THEN 'UTILITY'
+                    WHEN fp.utility_id IS NULL AND fp.tipo_doc_fiscale_id IS NOT NULL THEN 'TIPO_DOC'
+                    ELSE 'FALLBACK'
+                  END AS livello_match
+                FROM vendite.fatturazione_pipeline fp
+                JOIN config.stati_doc_fiscale sd
+                  ON sd.id = fp.stato_doc_fiscale_id
+                WHERE fp.attivo IS TRUE
+                  AND fp.tipo_lotto = p_tipo_lotto
+                  AND fp.stato_doc_fiscale_id = p_stato_doc_fiscale_id
+                  AND (fp.utility_id = p_utility_id OR fp.utility_id IS NULL)
+                  AND (fp.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id OR fp.tipo_doc_fiscale_id IS NULL)
+                ORDER BY
+                  CASE
+                    WHEN fp.utility_id IS NOT NULL AND fp.tipo_doc_fiscale_id IS NOT NULL THEN 4
+                    WHEN fp.utility_id IS NOT NULL AND fp.tipo_doc_fiscale_id IS NULL THEN 3
+                    WHEN fp.utility_id IS NULL AND fp.tipo_doc_fiscale_id IS NOT NULL THEN 2
+                    ELSE 1
+                  END DESC,
+                  fp.id ASC
+                LIMIT 1;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_resolve_fatturazione_pipeline_step(
+                vendite.fatturazione_pipeline.tipo_lotto%TYPE,
+                vendite.fatturazione_pipeline.stato_doc_fiscale_id%TYPE,
+                vendite.fatturazione_pipeline.utility_id%TYPE,
+                vendite.fatturazione_pipeline.tipo_doc_fiscale_id%TYPE,
+                boolean
+              ) IS 'Risoluzione step pipeline con fallback utility/tipo_doc_fiscale e precedenza deterministica.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_list_fatturazione_pipeline_steps(
+                p_tipo_lotto vendite.fatturazione_pipeline.tipo_lotto%TYPE,
+                p_utility_id vendite.fatturazione_pipeline.utility_id%TYPE DEFAULT NULL,
+                p_tipo_doc_fiscale_id vendite.fatturazione_pipeline.tipo_doc_fiscale_id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE(
+                stato_doc_fiscale_id vendite.fatturazione_pipeline.stato_doc_fiscale_id%TYPE,
+                descrizione vendite.fatturazione_pipeline.descrizione%TYPE,
+                ordine config.stati_doc_fiscale.ordine%TYPE
+              )
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Elenca gli step pipeline risolti (uno per stato lotto)
+                --   applicando la stessa precedenza di fallback.
+                -- =========================================================
+
+                IF p_tipo_lotto IS NULL OR btrim(p_tipo_lotto) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_fatturazione_pipeline_steps', 'E_GENERICO',
+                    jsonb_build_object('detail', 'p_tipo_lotto obbligatorio'),
+                    NULL::uuid,
+                    'p_tipo_lotto obbligatorio'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  sd.id AS stato_doc_fiscale_id,
+                  COALESCE(rs.descrizione, sd.descrizione) AS descrizione,
+                  sd.ordine
+                FROM config.stati_doc_fiscale sd
+                JOIN LATERAL vendite.fn_resolve_fatturazione_pipeline_step(
+                  p_tipo_lotto,
+                  sd.id,
+                  p_utility_id,
+                  p_tipo_doc_fiscale_id,
+                  false
+                ) rs ON TRUE
+                WHERE COALESCE(sd.applica_lotto, false) IS TRUE
+                ORDER BY sd.ordine;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_list_fatturazione_pipeline_steps(
+                vendite.fatturazione_pipeline.tipo_lotto%TYPE,
+                vendite.fatturazione_pipeline.utility_id%TYPE,
+                vendite.fatturazione_pipeline.tipo_doc_fiscale_id%TYPE
+              ) IS 'Lista step pipeline risolti con fallback utility/tipo_doc_fiscale.';

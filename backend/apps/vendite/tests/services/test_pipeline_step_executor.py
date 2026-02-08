@@ -15,7 +15,11 @@ from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 class PipelineStepExecutorUnitTests(SimpleTestCase):
     def _build_executor(self, processi):
         repo = MagicMock()
-        repo.get_lotto_context.return_value = MagicMock(competenza_mese="2026-01-01")
+        repo.get_lotto_context.return_value = MagicMock(
+            competenza_mese="2026-01-01",
+            utility_id=None,
+            tipo_doc_fiscale_id=None,
+        )
         repo.get_step_processes.return_value = processi
         repo.log_pipeline_fase.return_value = None
         repo.ALLOWED_TASK_FUNCTIONS = {
@@ -42,6 +46,8 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.get_step_processes.assert_called_once_with(
             2,
             tipo_lotto="MASSIVO",
+            utility_id=None,
+            tipo_doc_fiscale_id=None,
             rollback=False,
         )
         fatture_righe_service.generate_fatture_righe.assert_called_once_with(1, dry_run=False)

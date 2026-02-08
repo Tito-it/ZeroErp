@@ -52,3 +52,5 @@ I vincoli di coerenza dati e le operazioni DB specialistiche restano delegate al
 - Stato attuale: orchestrazione e step executor migrati in Python.
 - Il mapping task e` esplicito nel servizio (`PipelineStepExecutor`) con whitelist funzioni ammesse.
 - La configurazione step resta su `vendite.fatturazione_pipeline` (source of truth).
+- La selezione step usa fallback di specificita`: match su `utility_id`/`tipo_doc_fiscale_id`,
+  poi fallback su valori `NULL` (configurazione base).
