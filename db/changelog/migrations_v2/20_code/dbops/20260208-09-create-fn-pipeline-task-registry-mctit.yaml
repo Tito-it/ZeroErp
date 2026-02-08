@@ -1,0 +1,177 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260208-09-create-fn-pipeline-task-registry-mctit.yaml
+
+  - changeSet:
+      id: 20260208-09-create-fn-pipeline-task-registry
+      author: mctit
+      comment: "Funzioni registry task pipeline (check e resolve)"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_check_pipeline_task_registered(
+                p_dominio_id dbops.pipeline_task_registry.dominio_id%TYPE,
+                p_task_code dbops.pipeline_task_registry.task_code%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_exists boolean;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Verifica esistenza task attivo nel registry per dominio.
+                --
+                -- Regole:
+                --   - p_dominio_id obbligatorio (>0)
+                --   - p_task_code obbligatorio (non vuoto)
+                -- =========================================================
+
+                IF p_dominio_id IS NULL OR p_dominio_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'dbops.fn_check_pipeline_task_registered', 'E_GENERICO',
+                    jsonb_build_object('detail', 'p_dominio_id obbligatorio'),
+                    NULL::uuid,
+                    'p_dominio_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'dbops.fn_check_pipeline_task_registered', 'E_GENERICO',
+                    jsonb_build_object('detail', 'p_task_code obbligatorio'),
+                    NULL::uuid,
+                    'p_task_code obbligatorio'
+                  );
+                END IF;
+
+                SELECT TRUE
+                  INTO v_exists
+                  FROM dbops.pipeline_task_registry r
+                  JOIN dbops.domini_task d
+                    ON d.id = r.dominio_id
+                 WHERE r.dominio_id = p_dominio_id
+                   AND r.task_code = p_task_code
+                   AND r.attivo IS TRUE
+                   AND d.attivo IS TRUE
+                 LIMIT 1;
+
+                IF v_exists IS NOT TRUE THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'dbops.fn_check_pipeline_task_registered', 'E_GENERICO',
+                    jsonb_build_object('detail', 'Task non registrato', 'dominio_id', p_dominio_id, 'task_code', p_task_code),
+                    NULL::uuid,
+                    concat('Task non registrato: ', p_task_code)
+                  );
+                END IF;
+
+                RETURN TRUE;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION dbops.fn_check_pipeline_task_registered(
+                dbops.pipeline_task_registry.dominio_id%TYPE,
+                dbops.pipeline_task_registry.task_code%TYPE
+              ) IS 'Verifica che un task sia registrato e attivo nel registry per dominio.';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_get_pipeline_task_implementation(
+                p_dominio_id dbops.pipeline_task_registry.dominio_id%TYPE,
+                p_task_code dbops.pipeline_task_registry.task_code%TYPE,
+                p_implementation_key dbops.pipeline_task_registry_impl.implementation_key%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE(
+                handler_code dbops.pipeline_task_registry_impl.handler_code%TYPE,
+                implementation_key dbops.pipeline_task_registry_impl.implementation_key%TYPE,
+                task_registry_id dbops.pipeline_task_registry_impl.task_registry_id%TYPE
+              )
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Risolve l'implementazione valida per un task.
+                --
+                -- Regole:
+                --   - p_dominio_id obbligatorio (>0)
+                --   - p_task_code obbligatorio (non vuoto)
+                --   - se p_implementation_key NULL/empty -> default
+                --   - se richiesta non valida -> fallback default
+                -- =========================================================
+
+                IF p_dominio_id IS NULL OR p_dominio_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'dbops.fn_get_pipeline_task_implementation', 'E_GENERICO',
+                    jsonb_build_object('detail', 'p_dominio_id obbligatorio'),
+                    NULL::uuid,
+                    'p_dominio_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'dbops.fn_get_pipeline_task_implementation', 'E_GENERICO',
+                    jsonb_build_object('detail', 'p_task_code obbligatorio'),
+                    NULL::uuid,
+                    'p_task_code obbligatorio'
+                  );
+                END IF;
+
+                PERFORM dbops.fn_check_pipeline_task_registered(p_dominio_id, p_task_code);
+
+                -- 1) Prova la richiesta esplicita se presente
+                IF p_implementation_key IS NOT NULL AND btrim(p_implementation_key) <> '' THEN
+                  RETURN QUERY
+                  SELECT i.handler_code, i.implementation_key, i.task_registry_id
+                    FROM dbops.pipeline_task_registry r
+                    JOIN dbops.pipeline_task_registry_impl i
+                      ON i.task_registry_id = r.id
+                   WHERE r.dominio_id = p_dominio_id
+                     AND r.task_code = p_task_code
+                     AND r.attivo IS TRUE
+                     AND i.attivo IS TRUE
+                     AND i.implementation_key = p_implementation_key
+                   ORDER BY i.id
+                   LIMIT 1;
+
+                  IF FOUND THEN
+                    RETURN;
+                  END IF;
+                END IF;
+
+                -- 2) Fallback su default
+                RETURN QUERY
+                SELECT i.handler_code, i.implementation_key, i.task_registry_id
+                  FROM dbops.pipeline_task_registry r
+                  JOIN dbops.pipeline_task_registry_impl i
+                    ON i.task_registry_id = r.id
+                 WHERE r.dominio_id = p_dominio_id
+                   AND r.task_code = p_task_code
+                   AND r.attivo IS TRUE
+                   AND i.attivo IS TRUE
+                   AND i.is_default IS TRUE
+                 ORDER BY i.id
+                 LIMIT 1;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'dbops.fn_get_pipeline_task_implementation', 'E_GENERICO',
+                    jsonb_build_object('detail', 'Implementazione non trovata', 'dominio_id', p_dominio_id, 'task_code', p_task_code),
+                    NULL::uuid,
+                    concat('Implementazione non trovata per task: ', p_task_code)
+                  );
+                END IF;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION dbops.fn_get_pipeline_task_implementation(
+                dbops.pipeline_task_registry.dominio_id%TYPE,
+                dbops.pipeline_task_registry.task_code%TYPE,
+                dbops.pipeline_task_registry_impl.implementation_key%TYPE
+              ) IS 'Risoluzione implementazione task con fallback su default.';

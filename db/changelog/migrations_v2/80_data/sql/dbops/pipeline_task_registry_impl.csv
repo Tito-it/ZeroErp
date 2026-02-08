@@ -1,0 +1,3 @@
+id,task_registry_id,implementation_key,handler_code,is_default,attivo,meta,data_insert,user_insert,data_update,user_update
+1,1,default,select_attivita_default,true,true,{},2026-02-08 00:00:00+01,titodb,,
+2,2,default,generate_fatture_righe_default,true,true,{},2026-02-08 00:00:00+01,titodb,,

@@ -22,6 +22,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         )
         repo.get_step_processes.return_value = processi
         repo.log_pipeline_fase.return_value = None
+        repo.get_task_handler_code.return_value = "generate_fatture_righe_default"
         repo.ALLOWED_TASK_FUNCTIONS = {
             "select_attivita": "vendite.fn_select_attivita_fatturabili",
             "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
@@ -50,6 +51,10 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             tipo_doc_fiscale_id=None,
             rollback=False,
         )
+        repo.get_task_handler_code.assert_called_once_with(
+            task_code="generate_fatture_righe",
+            implementation_key=None,
+        )
         fatture_righe_service.generate_fatture_righe.assert_called_once_with(1, dry_run=False)
 
     def test_execute_step_rejects_generate_fatture_righe_fn_override(self):
@@ -70,4 +75,5 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
                 dry_run=False,
             )
         self.assertEqual(exc.exception.code, "E_TASK_NOT_ALLOWED")
+        self.assertEqual(repo.get_task_handler_code.call_count, 1)
         fatture_righe_service.generate_fatture_righe.assert_not_called()

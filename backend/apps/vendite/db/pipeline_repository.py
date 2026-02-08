@@ -14,6 +14,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.services.error_manager import ErrorManager
 from apps.core.services.value_normalizer import as_bool, empty_to_none
 from apps.vendite.types import LottoPipelineMeta
 
@@ -69,6 +70,8 @@ class AttivitaDaFatturare:
 
 class VenditePipelineRepository:
     """Wrapper SQL a basso livello per l'orchestrazione pipeline vendite."""
+
+    DOMINIO_CODE = "FATTURAZIONE"
 
     # `fn` nei JSON task e` mantenuto come token di compatibilita` SQL legacy.
     ALLOWED_TASK_FUNCTIONS = {
@@ -127,6 +130,85 @@ class VenditePipelineRepository:
         if not row:
             return None
         return row[0]
+
+    def get_dominio_id(self, codice: str | None = None) -> int:
+        dominio_code = codice or self.DOMINIO_CODE
+        ErrorManager.require(
+            bool(dominio_code and str(dominio_code).strip()),
+            code="E_PIPELINE_DOMINIO",
+            message="Dominio pipeline non valido.",
+            detail="codice dominio obbligatorio",
+            context={"codice": dominio_code},
+            function_name="vendite.pipeline_repository.get_dominio_id",
+            log_to_db=True,
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM dbops.domini_task
+                WHERE codice = %s
+                  AND attivo IS TRUE
+                ORDER BY id
+                LIMIT 1
+                """,
+                [dominio_code],
+            )
+            row = cursor.fetchone()
+        if not row:
+            ErrorManager.raise_error(
+                code="E_PIPELINE_DOMINIO_NOT_FOUND",
+                message="Dominio pipeline non trovato.",
+                detail=f"Dominio non trovato: {dominio_code}",
+                context={"codice": dominio_code},
+                function_name="vendite.pipeline_repository.get_dominio_id",
+                log_to_db=True,
+            )
+        return int(row[0])
+
+    def get_task_handler_code(
+        self,
+        *,
+        task_code: str,
+        implementation_key: str | None,
+        dominio_code: str | None = None,
+    ) -> str:
+        ErrorManager.require(
+            bool(task_code and str(task_code).strip()),
+            code="E_PIPELINE_TASK",
+            message="Task pipeline non valido.",
+            detail="task_code obbligatorio",
+            context={"task_code": task_code},
+            function_name="vendite.pipeline_repository.get_task_handler_code",
+            log_to_db=True,
+        )
+        dominio_id = self.get_dominio_id(dominio_code)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT handler_code
+                FROM dbops.fn_get_pipeline_task_implementation(%s, %s, %s)
+                """,
+                [dominio_id, task_code, implementation_key],
+            )
+            row = cursor.fetchone()
+        if not row:
+            ErrorManager.raise_error(
+                code="E_PIPELINE_TASK_HANDLER_NOT_FOUND",
+                message="Handler task non trovato.",
+                detail=(
+                    "Nessun handler per task "
+                    f"{task_code} (implementation_key={implementation_key})"
+                ),
+                context={
+                    "dominio_id": dominio_id,
+                    "task_code": task_code,
+                    "implementation_key": implementation_key,
+                },
+                function_name="vendite.pipeline_repository.get_task_handler_code",
+                log_to_db=True,
+            )
+        return str(row[0])
 
     def get_stato_doc_fiscale_id(self, codice: str) -> int | None:
         with connection.cursor() as cursor:

@@ -1,0 +1,316 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260208-05-create-pipeline-task-registry-mctit.yaml
+
+  - changeSet:
+      id: 20260208-05-create-pipeline-task-registry
+      author: mctit
+      comment: "Registry task pipeline multi-dominio"
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: domini_task
+            remarks: "Catalogo domini task pipeline."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_domini_task
+                    nullable: false
+
+              - column:
+                  name: codice
+                  type: text
+                  remarks: "Codice dominio task (es. FATTURAZIONE, ATTIVITA_FATTURABILI)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione dominio."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Dominio attivo/inattivo."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: dbops
+            tableName: domini_task
+            columnNames: codice
+            constraintName: uq_domini_task_codice
+
+        - createTable:
+            schemaName: dbops
+            tableName: pipeline_task_registry
+            remarks: "Catalogo task ammessi per dominio pipeline."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_pipeline_task_registry
+                    nullable: false
+
+              - column:
+                  name: dominio_id
+                  type: bigint
+                  remarks: "FK -> dbops.domini_task.id."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: task_code
+                  type: text
+                  remarks: "Codice task (es. select_attivita, generate_fatture_righe)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione task."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Task attivo/inattivo."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: dbops
+            tableName: pipeline_task_registry
+            columnNames: dominio_id, task_code
+            constraintName: uq_pipeline_task_registry_dom_task
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: dbops
+            baseTableName: pipeline_task_registry
+            baseColumnNames: dominio_id
+            constraintName: fk_pipeline_task_registry_dominio
+            referencedTableSchemaName: dbops
+            referencedTableName: domini_task
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - createTable:
+            schemaName: dbops
+            tableName: pipeline_task_registry_impl
+            remarks: "Implementazioni consentite per task pipeline."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_pipeline_task_registry_impl
+                    nullable: false
+
+              - column:
+                  name: task_registry_id
+                  type: bigint
+                  remarks: "FK -> dbops.pipeline_task_registry.id."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: implementation_key
+                  type: text
+                  remarks: "Chiave implementazione (es. default, v2, gas_v1)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: handler_code
+                  type: text
+                  remarks: "Identificativo logico handler applicativo."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: is_default
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Implementazione di default per il task."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Implementazione attiva/inattiva."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: dbops
+            tableName: pipeline_task_registry_impl
+            columnNames: task_registry_id, implementation_key
+            constraintName: uq_pipeline_task_registry_impl_key
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: dbops
+            baseTableName: pipeline_task_registry_impl
+            baseColumnNames: task_registry_id
+            constraintName: fk_pipeline_task_registry_impl_task
+            referencedTableSchemaName: dbops
+            referencedTableName: pipeline_task_registry
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE UNIQUE INDEX uq_pipeline_task_registry_impl_default
+                ON dbops.pipeline_task_registry_impl (task_registry_id)
+               WHERE is_default IS TRUE;

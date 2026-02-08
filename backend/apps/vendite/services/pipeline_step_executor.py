@@ -24,9 +24,9 @@ class PipelineStepExecutor:
     ) -> None:
         self.repository = repository or VenditePipelineRepository()
         self.fatture_righe_service = fatture_righe_service or FattureRigheService(self.repository)
-        self.task_registry = {
-            "select_attivita": self._handle_select_attivita_task,
-            "generate_fatture_righe": self._handle_generate_fatture_righe_task,
+        self.handler_registry = {
+            "select_attivita_default": self._handle_select_attivita_task,
+            "generate_fatture_righe_default": self._handle_generate_fatture_righe_task,
         }
 
     def execute_step(
@@ -112,6 +112,7 @@ class PipelineStepExecutor:
         fase = process.get("fase") or "Esecuzione step"
         params = process.get("params") or {}
         fn_name = params.get("fn")
+        implementation_key = params.get("implementation_key")
 
         self.repository.log_pipeline_fase(
             lotto_id=lotto_id,
@@ -127,10 +128,18 @@ class PipelineStepExecutor:
             },
         )
 
-        if dry_run or task in {"noop", "log_only"}:
+        if task in {"noop", "log_only"}:
             return
 
-        task_handler = self.task_registry.get(task)
+        handler_code = self.repository.get_task_handler_code(
+            task_code=task,
+            implementation_key=implementation_key,
+        )
+
+        if dry_run:
+            return
+
+        task_handler = self.handler_registry.get(handler_code)
         if task_handler is not None:
             task_handler(
                 task=task,
@@ -143,10 +152,15 @@ class PipelineStepExecutor:
             return
 
         ErrorManager.raise_error(
-            code="E_TASK_NOT_IMPLEMENTED",
-            message="Task pipeline non implementato.",
-            detail=f"Task pipeline non implementato: {task}",
-            context={"task": task, "fase": fase},
+            code="E_TASK_IMPLEMENTATION_NOT_FOUND",
+            message="Implementazione task pipeline non trovata.",
+            detail=f"Implementazione task non trovata: {task} ({handler_code})",
+            context={
+                "task": task,
+                "fase": fase,
+                "implementation_key": implementation_key,
+                "handler_code": handler_code,
+            },
             function_name="vendite.pipeline_step_executor._run_task",
             log_to_db=True,
         )
