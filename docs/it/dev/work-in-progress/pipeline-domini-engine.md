@@ -76,6 +76,9 @@ Rendere parametrico il dispatch task senza esecuzione dinamica libera.
 * [x] Integrazione `implementation_key` in `PipelineStepExecutor` (dominio fatturazione)
 * [x] Risoluzione handler via DB in `VenditePipelineRepository`
 * [ ] Registry runtime multi-dominio completo (mappa per dominio)
+  * Nota: posticipabile finche` esiste solo il dominio fatturazione.
+  * Vincolo: mantenere dispatch basato su `handler_code` e mapping in un solo punto
+    per ridurre il refactor futuro.
 
 ---
 
