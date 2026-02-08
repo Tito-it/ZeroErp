@@ -41,15 +41,16 @@ BEGIN
     );
   END IF;
 
-  IF p_tipo_doc_fiscale_id IS NULL THEN
+  IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
       jsonb_build_object('detail','tipo_doc_fiscale_id obbligatorio'),
-      NULL::uuid, 
+      NULL::uuid,
       'tipo_doc_fiscale_id obbligatorio'
     );
   END IF;
 
+  
   v_competenza := date_trunc('month', p_competenza_mese)::date;
 
   v_utility_id := p_utility_id;
@@ -66,8 +67,8 @@ BEGIN
           'detail','Utility non risolta da billing_account',
           'billing_account_id', p_billing_account_id
         ),
-        NULL::uuid, 
-        concat('Utility non risolta da billing_account', 
+        NULL::uuid,
+        concat('Utility non risolta da billing_account',
         ' billing_account_id: ', p_billing_account_id::text)
       );
     END IF;
@@ -81,14 +82,14 @@ BEGIN
           'utility_id', p_utility_id
         ),
         NULL::uuid,
-        concat('Utility non coerente con billing_account', 
+        concat('Utility non coerente con billing_account',
           ' billing_account_id: ', p_billing_account_id::text,
           ' utility_id: ', p_utility_id::text)
       );
     END IF;
   END IF;
 
-  IF v_utility_id IS NULL THEN
+  IF v_utility_id IS NULL OR v_utility_id <= 0 THEN 
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
       jsonb_build_object('detail','utility_id obbligatoria'),
@@ -111,7 +112,7 @@ BEGIN
         'detail','Tipo documento fiscale non attivo o inesistente',
         'tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
       ),
-      NULL::uuid, 
+      NULL::uuid,
       concat('Tipo documento fiscale non attivo o inesistente', ' tipo_doc_fiscale_id: ', p_tipo_doc_fiscale_id::text)
     );
   END IF;
@@ -130,7 +131,7 @@ BEGIN
         'detail','Mapping tipo_doc_fiscale -> registro assente',
         'tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
       ),
-      NULL::uuid, 
+      NULL::uuid,
       concat('Mapping tipo_doc_fiscale -> registro assente', ' tipo_doc_fiscale_id: ', p_tipo_doc_fiscale_id::text)
     );
   END IF;

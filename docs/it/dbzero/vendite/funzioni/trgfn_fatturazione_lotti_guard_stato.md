@@ -32,37 +32,37 @@ BEGIN
       SELECT s.applica_lotto
         INTO v_ok
         FROM config.stati_doc_fiscale s
-       WHERE s.id = NEW.stato_doc_fiscale_id
-         AND s.attivo;
+      WHERE s.id = NEW.stato_doc_fiscale_id
+        AND s.attivo;
 
       IF COALESCE(v_ok, false) = false THEN
         PERFORM script.fn_log_and_raise_error(
-          TG_TABLE_SCHEMA,
-          TG_NAME,
+          'database', 
+          'vendite.trgfn_fatturazione_lotti_guard_stato',
           'E_GENERICO',
           jsonb_build_object(
             'detail','Stato non applicabile a lotto',
             'stato_id', NEW.stato_doc_fiscale_id
           ),
           NULL::uuid,
-          'Stato non applicabile a lotto'
+          concat('Stato non applicabile a lotto', ' stato_id: ', NEW.stato_doc_fiscale_id::text)
         );
       END IF;
     ELSE
       SELECT EXISTS (
         SELECT 1
           FROM config.stati_doc_fiscale_transizioni t
-         WHERE t.ammesso
-           AND t.stato_from_id = OLD.stato_doc_fiscale_id
-           AND t.stato_to_id = NEW.stato_doc_fiscale_id
-           AND t.solo_fattura = false
+        WHERE t.ammesso
+          AND t.stato_from_id = OLD.stato_doc_fiscale_id
+          AND t.stato_to_id = NEW.stato_doc_fiscale_id
+          AND t.solo_fattura = false
       )
       INTO v_ok;
 
       IF NOT v_ok THEN
         PERFORM script.fn_log_and_raise_error(
-          TG_TABLE_SCHEMA,
-          TG_NAME,
+          'database',
+          'vendite.trgfn_fatturazione_lotti_guard_stato',
           'E_GENERICO',
           jsonb_build_object(
             'detail','Transizione stato lotto non ammessa',
@@ -70,7 +70,9 @@ BEGIN
             'to', NEW.stato_doc_fiscale_id
           ),
           NULL::uuid,
-          'Transizione stato lotto non ammessa'
+          concat('Transizione stato lotto non ammessa', 
+                  ' from: ', OLD.stato_doc_fiscale_id::text, 
+                  ' to: ', NEW.stato_doc_fiscale_id::text)
         );
       END IF;
     END IF;
