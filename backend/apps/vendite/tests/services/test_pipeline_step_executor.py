@@ -65,7 +65,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
                 "params": {"fn": "vendite.fn_non_permessa"},
             }
         ]
-        executor, _, fatture_righe_service = self._build_executor(processi)
+        executor, repo, fatture_righe_service = self._build_executor(processi)
         with self.assertRaises(ServiceError) as exc:
             executor.execute_step(
                 lotto_id=1,
