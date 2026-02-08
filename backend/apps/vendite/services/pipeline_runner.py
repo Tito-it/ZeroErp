@@ -61,6 +61,35 @@ class LottoPipelineRunner:
                 function_name="vendite.pr_run_lotto_pipeline",
             )
 
+    def _mark_lotto_error_safely(
+        self,
+        *,
+        lotto_id: int,
+        code: str,
+        tipo_lotto: str,
+        detail: str | None,
+    ) -> None:
+        # Il mark errore non deve mai mascherare l'eccezione principale.
+        try:
+            self._mark_lotto_error(
+                lotto_id=lotto_id,
+                code=code,
+                tipo_lotto=tipo_lotto,
+                detail=detail,
+            )
+        except Exception as mark_exc:
+            ErrorManager.log_error_only(
+                code="E_PIPELINE_MARK_ERROR",
+                context={
+                    "lotto_id": lotto_id,
+                    "tipo_lotto": tipo_lotto,
+                    "detail": detail,
+                    "mark_error": str(mark_exc),
+                },
+                area="backend",
+                function_name="vendite.pr_run_lotto_pipeline",
+            )
+
     def run_pipeline(self, params: LottoPipelineParams) -> int:
         lotto_id: int | None = None
         effective_tipo_lotto = params.tipo_lotto or "MASSIVO"
@@ -82,6 +111,23 @@ class LottoPipelineRunner:
                 # Fonte autoritativa dominio: il tipo persistito sul lotto a DB; params è fallback.
                 lotto_tipo_db = self.repository.get_lotto_tipo(lotto_id)
                 effective_tipo_lotto = lotto_tipo_db or effective_tipo_lotto
+                lotto_stato_corrente = self.repository.get_lotto_job_stato(lotto_id)
+                if normalized_lotto_id is None and lotto_stato_corrente == "COMPLETATO":
+                    ErrorManager.raise_error(
+                        code="E_PIPELINE_LOTTO_COMPLETATO_REUSE",
+                        message="Lotto completato non riutilizzabile.",
+                        detail=(
+                            "Risolto lotto gia` completato durante creazione automatica: "
+                            f"lotto_id={lotto_id}. Usa lock_batch_id diverso o lotto esplicito."
+                        ),
+                        context={
+                            "lotto_id": lotto_id,
+                            "tipo_lotto": effective_tipo_lotto,
+                            "lock_batch_id": params.lock_batch_id,
+                        },
+                        function_name="vendite.pr_run_lotto_pipeline",
+                        log_to_db=True,
+                    )
                 inviata_id = self.repository.get_stato_doc_fiscale_id("INVIATA")
 
                 self.repository.set_lotto_job_stato(lotto_id, "IN_ESECUZIONE", "Avvio pipeline")
@@ -138,7 +184,7 @@ class LottoPipelineRunner:
                 return lotto_id
         except ServiceError as exc:
             if lotto_id is not None:
-                self._mark_lotto_error(
+                self._mark_lotto_error_safely(
                     lotto_id=lotto_id,
                     code=exc.code,
                     tipo_lotto=effective_tipo_lotto,
@@ -147,7 +193,7 @@ class LottoPipelineRunner:
             raise
         except Exception as exc:
             if lotto_id is not None:
-                self._mark_lotto_error(
+                self._mark_lotto_error_safely(
                     lotto_id=lotto_id,
                     code="E_PIPELINE",
                     tipo_lotto=effective_tipo_lotto,

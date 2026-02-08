@@ -131,6 +131,17 @@ class VenditePipelineRepository:
             return None
         return row[0]
 
+    def get_lotto_job_stato(self, lotto_id: int) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT stato_lotto FROM vendite.fatturazione_lotti WHERE id = %s",
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return row[0]
+
     def get_dominio_id(self, codice: str | None = None) -> int:
         dominio_code = codice or self.DOMINIO_CODE
         ErrorManager.require(
@@ -370,6 +381,15 @@ class VenditePipelineRepository:
         value = row[0]
         if isinstance(value, list):
             return value
+        if isinstance(value, str):
+            # In alcuni ambienti il jsonb puo` arrivare serializzato come stringa.
+            try:
+                decoded = json.loads(value)
+            except json.JSONDecodeError:
+                return []
+            if isinstance(decoded, list):
+                return decoded
+            return []
         return []
 
     def run_select_attivita_task(
