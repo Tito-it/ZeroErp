@@ -22,6 +22,7 @@ Endpoint applicativo che invoca il servizio Python `pr_run_lotto_pipeline`, equi
 - Valida JSON e formato date (`YYYY-MM-DD`).
 - Converte `dry_run` in boolean.
 - Per input compatibili UI/legacy, converte `0` in `null` sugli ID opzionali (`lotto_id`, `tipo_doc_fiscale_id`, `utility_id`, `billing_account_id`).
+- `lock_batch_id` e` il correlatore del lotto: se lo passi e` **RIUSO** lotto; per creare un lotto nuovo devi **ometterlo** o passare `null` (il DB lo genera). Riutilizzare un `lock_batch_id` di un lotto `COMPLETATO` produce errore.
 - Usa parser/request helper condivisi area core.
 - Traduce eccezioni con envelope errore core.
 - Implementa il pattern standard core `handle_post_json(...)`.
