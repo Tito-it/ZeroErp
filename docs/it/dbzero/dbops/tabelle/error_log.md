@@ -26,5 +26,11 @@
 | ix_dbops_error_log_messaggio_errore_id | `CREATE INDEX ix_dbops_error_log_messaggio_errore_id ON dbops.error_log USING btree (messaggio_errore_id)` |
 | ix_error_log_cleanup_at | `CREATE INDEX ix_error_log_cleanup_at ON dbops.error_log USING btree (cleanup_at)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_error_log_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_error_log_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

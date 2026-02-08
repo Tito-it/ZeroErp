@@ -86,7 +86,23 @@ class LottoPipelineRunner:
 
                 self.repository.set_lotto_job_stato(lotto_id, "IN_ESECUZIONE", "Avvio pipeline")
 
-                for step in self.repository.list_pipeline_steps(effective_tipo_lotto):
+                lotto_context = self.repository.get_lotto_context(lotto_id)
+                ErrorManager.require(
+                    lotto_context is not None,
+                    code="E_PIPELINE_LOTTO_NOT_FOUND",
+                    message="Lotto pipeline non trovato.",
+                    detail=f"Lotto non trovato: {lotto_id}",
+                    context={"lotto_id": lotto_id},
+                    function_name="vendite.pr_run_lotto_pipeline",
+                    log_to_db=True,
+                )
+                assert lotto_context is not None
+
+                for step in self.repository.list_pipeline_steps(
+                    effective_tipo_lotto,
+                    utility_id=lotto_context.utility_id,
+                    tipo_doc_fiscale_id=lotto_context.tipo_doc_fiscale_id,
+                ):
                     # Traccia avanzamento step coerente con il flusso SQL originale.
                     self.repository.update_lotto_stato_doc(lotto_id, step.stato_doc_fiscale_id)
                     if (

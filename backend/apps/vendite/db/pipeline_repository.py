@@ -153,21 +153,20 @@ class VenditePipelineRepository:
                 [lotto_id, stato, messaggio],
             )
 
-    def list_pipeline_steps(self, tipo_lotto: str) -> list[PipelineStep]:
-        # Ordina gli step con config.stati_doc_fiscale.ordine come nella pipeline SQL.
+    def list_pipeline_steps(
+        self,
+        tipo_lotto: str,
+        utility_id: int | None,
+        tipo_doc_fiscale_id: int | None,
+    ) -> list[PipelineStep]:
+        # Delega al DB la risoluzione step con fallback e precedenza.
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT fp.stato_doc_fiscale_id, fp.descrizione, sd.ordine
-                FROM vendite.fatturazione_pipeline fp
-                JOIN config.stati_doc_fiscale sd
-                  ON sd.id = fp.stato_doc_fiscale_id
-                WHERE fp.attivo IS TRUE
-                  AND fp.tipo_lotto = %s
-                  AND COALESCE(sd.applica_lotto, false) IS TRUE
-                ORDER BY sd.ordine
+                SELECT stato_doc_fiscale_id, descrizione, ordine
+                FROM vendite.fn_list_fatturazione_pipeline_steps(%s, %s, %s)
                 """,
-                [tipo_lotto],
+                [tipo_lotto, utility_id, tipo_doc_fiscale_id],
             )
             rows = cursor.fetchall()
         return [
@@ -257,19 +256,29 @@ class VenditePipelineRepository:
         stato_doc_fiscale_id: int,
         *,
         tipo_lotto: str,
+        utility_id: int | None,
+        tipo_doc_fiscale_id: int | None,
         rollback: bool,
     ) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT CASE WHEN %s THEN rollback ELSE processi END
-                FROM vendite.fatturazione_pipeline
-                WHERE stato_doc_fiscale_id = %s
-                  AND tipo_lotto = %s
-                  AND attivo IS TRUE
-                LIMIT 1
+                SELECT processi
+                FROM vendite.fn_resolve_fatturazione_pipeline_step(
+                    p_tipo_lotto => %s,
+                    p_stato_doc_fiscale_id => %s,
+                    p_utility_id => %s,
+                    p_tipo_doc_fiscale_id => %s,
+                    p_rollback => %s
+                )
                 """,
-                [rollback, stato_doc_fiscale_id, tipo_lotto],
+                [
+                    tipo_lotto,
+                    stato_doc_fiscale_id,
+                    utility_id,
+                    tipo_doc_fiscale_id,
+                    rollback,
+                ],
             )
             row = cursor.fetchone()
 

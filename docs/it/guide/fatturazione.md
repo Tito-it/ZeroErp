@@ -696,6 +696,8 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
   * in caso di errore: `stato_lotto = ERRORE` + log errore.
 * ✅`vendite.fn_execute_pipeline_step(...)` → esegue i task di uno step (lettura `processi`/`rollback`).
 * ✅ `vendite.fn_log_pipeline_fase(...)` → inserisce log `I/W/C` con fase e stato lotto.
+* Pipeline configurabile anche per `utility_id` e `tipo_doc_fiscale_id`, con fallback su `NULL`
+  per mantenere una configurazione base riusabile.
 
 ---
 

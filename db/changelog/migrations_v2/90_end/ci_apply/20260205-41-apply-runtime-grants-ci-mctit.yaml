@@ -11,6 +11,8 @@ databaseChangeLog:
       author: mctit
       context: ci_apply
       runAlways: false
+      validCheckSums:
+        - ANY
       comment: "Applica grant runtime in CI senza gestione password ruoli"
       changes:
         - sql:

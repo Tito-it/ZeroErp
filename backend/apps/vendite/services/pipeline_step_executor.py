@@ -67,6 +67,8 @@ class PipelineStepExecutor:
         processi = self.repository.get_step_processes(
             stato_doc_fiscale_id,
             tipo_lotto=tipo_lotto,
+            utility_id=context.utility_id,
+            tipo_doc_fiscale_id=context.tipo_doc_fiscale_id,
             rollback=rollback,
         )
         ErrorManager.require(

@@ -36,6 +36,7 @@ evoluzioni (nuovi step o processi senza refactor massivo).
 
 * `stato_doc_fiscale_id` collega lo step agli **stati lotto** (non agli stati fattura).
 * `tipo_lotto` distingue pipeline MASSIVO vs GIORNALIERO.
+* `utility_id` e `tipo_doc_fiscale_id` sono opzionali e permettono varianti specifiche.
 * `processi` contiene una lista di “task” tecnici da eseguire (payload jsonb).
 * `rollback` contiene le azioni di pulizia per tornare allo stato precedente.
 * Solo gli step con `attivo=true` vengono eseguiti dalla pipeline.
@@ -107,6 +108,12 @@ tecnici. Esempio (schema indicativo):
 * I singoli processi devono essere **idempotenti** o progettati per gestire retry.
 * I task eseguiti sono gestiti da `vendite.fn_execute_pipeline_step` tramite
   whitelist (es. `select_attivita`, `noop`, `log_only`).
+* Risoluzione configurazione con fallback (per `tipo_lotto + stato_doc_fiscale_id`):
+  * 1) match esatto `utility_id + tipo_doc_fiscale_id`
+  * 2) match `utility_id` con `tipo_doc_fiscale_id = NULL`
+  * 3) match `tipo_doc_fiscale_id` con `utility_id = NULL`
+  * 4) fallback globale `utility_id = NULL` e `tipo_doc_fiscale_id = NULL`
+* Ogni livello e` unico per evitare ambiguita` di configurazione.
 
 * **Regola di sicurezza: i task devono usare **solo `lotto_id`** come input; i parametri operativi devono essere recuperati dal lotto (o da tabelle collegate).**
 

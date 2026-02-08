@@ -16,20 +16,26 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tipo_lotto | text | NO | 'MASSIVO'::text |
+| utility_id | integer | YES |  |
+| tipo_doc_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_fatturazione_pipeline_tipo_lotto |  |
 | FOREIGN KEY | fk_fatturazione_pipeline_stato_doc_fiscale | stato_doc_fiscale_id |
+| FOREIGN KEY | fk_fatturazione_pipeline_tipo_doc_fiscale | tipo_doc_fiscale_id |
+| FOREIGN KEY | fk_fatturazione_pipeline_utility | utility_id |
 | PRIMARY KEY | pk_fatturazione_pipeline | id |
-| UNIQUE | uq_fatturazione_pipeline_tipo_stato | tipo_lotto, stato_doc_fiscale_id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_fatturazione_pipeline | `CREATE UNIQUE INDEX pk_fatturazione_pipeline ON vendite.fatturazione_pipeline USING btree (id)` |
-| uq_fatturazione_pipeline_tipo_stato | `CREATE UNIQUE INDEX uq_fatturazione_pipeline_tipo_stato ON vendite.fatturazione_pipeline USING btree (tipo_lotto, stato_doc_fiscale_id)` |
+| uq_fatt_pipeline_tipo_stato_fallback | `CREATE UNIQUE INDEX uq_fatt_pipeline_tipo_stato_fallback ON vendite.fatturazione_pipeline USING btree (tipo_lotto, stato_doc_fiscale_id) WHERE ((utility_id IS NULL) AND (tipo_doc_fiscale_id IS NULL))` |
+| uq_fatt_pipeline_tipo_stato_tipodoc | `CREATE UNIQUE INDEX uq_fatt_pipeline_tipo_stato_tipodoc ON vendite.fatturazione_pipeline USING btree (tipo_lotto, stato_doc_fiscale_id, tipo_doc_fiscale_id) WHERE ((utility_id IS NULL) AND (tipo_doc_fiscale_id IS NOT NULL))` |
+| uq_fatt_pipeline_tipo_stato_utility | `CREATE UNIQUE INDEX uq_fatt_pipeline_tipo_stato_utility ON vendite.fatturazione_pipeline USING btree (tipo_lotto, stato_doc_fiscale_id, utility_id) WHERE ((utility_id IS NOT NULL) AND (tipo_doc_fiscale_id IS NULL))` |
+| uq_fatt_pipeline_tipo_stato_utility_tipodoc | `CREATE UNIQUE INDEX uq_fatt_pipeline_tipo_stato_utility_tipodoc ON vendite.fatturazione_pipeline USING btree (tipo_lotto, stato_doc_fiscale_id, utility_id, tipo_doc_fiscale_id) WHERE ((utility_id IS NOT NULL) AND (tipo_doc_fiscale_id IS NOT NULL))` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
