@@ -2,3 +2,4 @@ id,dominio_id,task_code,descrizione,attivo,meta,data_insert,user_insert,data_upd
 1,1,select_attivita,Selezione e lock attivita fatturabili,true,{},2026-02-08 00:00:00+01,titodb,,
 2,1,generate_fatture_righe,Generazione righe fattura,true,{},2026-02-08 00:00:00+01,titodb,,
 3,1,numera_fatture,Numerazione e stato fatture,true,{},2026-02-08 00:00:00+01,titodb,,
+4,1,close_lotto,Chiusura operativa lotto,true,{},2026-02-10 00:00:00+01,titodb,,
