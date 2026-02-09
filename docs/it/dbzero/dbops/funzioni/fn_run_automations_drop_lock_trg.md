@@ -1,0 +1,182 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_run_automations_drop_lock_trg.md" %}
+# ⚙️ Funzione `fn_run_automations_drop_lock_trg`
+
+```sql
+CREATE FUNCTION fn_run_automations_drop_lock_trg(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION dbops.fn_run_automations_drop_lock_trg(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_schemas text[];
+  rtab record;
+  rrule record;
+  rel  regclass;
+  trg_name text;
+  tmpl     text;
+  exist_strat text;
+  has_codice_interno boolean;
+  has_extra boolean;
+  trg_rec record;
+BEGIN
+  -- =========================================================
+  -- Scopo:
+  --   Rimuovere i trigger LOCK_COLUMNS quando non esistono
+  --   colonne da bloccare sulla tabella target.
+  --
+  -- Regole:
+  --   - codice_interno implica lock se presente in tabella
+  --   - colonne extra da dbops.automation_lock_columns (enabled)
+  --   - se non esiste nessuna colonna da bloccare, il trigger
+  --     LOCK_COLUMNS viene rimosso
+  -- =========================================================
+
+  v_schemas := dbops.fn_resolve_scope(p_schemas);
+
+  FOR rtab IN
+    SELECT n.nspname AS schema_name,
+           c.relname AS table_name,
+           (quote_ident(n.nspname)||'.'||quote_ident(c.relname))::regclass AS rel
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid=c.relnamespace
+     WHERE c.relkind='r'
+       AND n.nspname = ANY(v_schemas)
+       AND dbops.fn_table_in_scope(n.nspname, c.relname)
+  LOOP
+    rel := rtab.rel;
+    has_codice_interno := dbops.fn_col_exists(rtab.schema_name, rtab.table_name, 'codice_interno');
+
+    SELECT EXISTS (
+        SELECT 1
+          FROM dbops.automation_lock_columns
+         WHERE enabled
+           AND target_schema = rtab.schema_name
+           AND target_table = rtab.table_name
+           AND (upper(btrim(exec_mode)) = 'AUTO' OR exec_mode = p_exec_mode)
+           AND dbops.fn_col_exists(rtab.schema_name, rtab.table_name, column_name)
+    )
+    INTO has_extra;
+
+    IF has_codice_interno OR has_extra THEN
+      CONTINUE;
+    END IF;
+
+    FOR rrule IN
+      SELECT *
+        FROM dbops.automation_rules_tbl r
+       WHERE r.enabled
+         AND upper(btrim(r.rule_type))='LOCK_COLUMNS'
+         AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
+         AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+         AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
+       ORDER BY r.priority, r.id
+    LOOP
+      exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
+      tmpl := COALESCE(rrule.name_template, 'trg_{table}_a10_lock_columns_upd');
+      trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL, NULL, NULL, NULL);
+
+      IF exist_strat = 'BY_NAME' OR exist_strat = 'BOTH' THEN
+        IF dbops.fn_trigger_exists_by_name(rel, trg_name) THEN
+          IF p_dry_run THEN
+            PERFORM dbops.fn_audit_log_once(
+              p_function_name => 'dbops.fn_run_automations_drop_lock_trg',
+              p_status        => 'DRYRUN',
+              p_rule_type     => 'LOCK_COLUMNS',
+              p_exec_mode     => p_exec_mode,
+              p_parts         => ARRAY['LOCK_COLUMNS'],
+              p_dry_run       => true,
+              p_params        => jsonb_build_object(
+                                'table', rtab.schema_name||'.'||rtab.table_name,
+                                'trigger', trg_name,
+                                'action', 'DRYRUN_DROP_TRIGGER'
+                              ),
+              p_message       => 'Trigger would be dropped'
+            );
+          ELSE
+            BEGIN
+              EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I',
+                             trg_name, rtab.schema_name, rtab.table_name);
+            EXCEPTION WHEN others THEN
+              PERFORM script.fn_log_and_raise_error(
+                'database ',
+                'run_automations',
+                'E_LOCK_COLUMNS',
+                jsonb_build_object(
+                  'where','LOCK_COLUMNS_DROP',
+                  'table', rtab.schema_name||'.'||rtab.table_name,
+                  'trigger', trg_name,
+                  'error', SQLERRM
+                ),
+                NULL::uuid,
+                concat('table:', rtab.schema_name||'.'||rtab.table_name,
+                  ' trigger:', trg_name,
+                  ' error:', SQLERRM )
+              );
+            END;
+          END IF;
+        END IF;
+      END IF;
+
+      IF exist_strat = 'BY_FUNCTION' OR exist_strat = 'BOTH' THEN
+        FOR trg_rec IN
+          SELECT t.tgname
+            FROM pg_trigger t
+            JOIN pg_proc p ON p.oid = t.tgfoid
+            JOIN pg_namespace pn ON pn.oid = p.pronamespace
+           WHERE t.tgrelid = rel
+             AND pn.nspname = 'script'
+             AND p.proname = 'trgfn_lock_columns'
+             AND NOT t.tgisinternal
+        LOOP
+          IF p_dry_run THEN
+            PERFORM dbops.fn_audit_log_once(
+              p_function_name => 'dbops.fn_run_automations_drop_lock_trg',
+              p_status        => 'DRYRUN',
+              p_rule_type     => 'LOCK_COLUMNS',
+              p_exec_mode     => p_exec_mode,
+              p_parts         => ARRAY['LOCK_COLUMNS'],
+              p_dry_run       => true,
+              p_params        => jsonb_build_object(
+                                'table', rtab.schema_name||'.'||rtab.table_name,
+                                'trigger', trg_rec.tgname,
+                                'action', 'DRYRUN_DROP_TRIGGER'
+                              ),
+              p_message       => 'Trigger would be dropped'
+            );
+          ELSE
+            BEGIN
+              EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I',
+                             trg_rec.tgname, rtab.schema_name, rtab.table_name);
+            EXCEPTION WHEN others THEN
+              PERFORM script.fn_log_and_raise_error(
+                'database',
+                'dbops.fn_run_automations_drop_lock_trg',
+                'E_LOCK_COLUMNS',
+                jsonb_build_object(
+                  'where','LOCK_COLUMNS_DROP',
+                  'table', rtab.schema_name||'.'||rtab.table_name,
+                  'trigger', trg_rec.tgname,
+                  'error', SQLERRM
+                ),
+                NULL::uuid,
+                concat('table:', rtab.schema_name||'.'||rtab.table_name,
+                  ' trigger:', trg_rec.tgname,
+                  ' error:', SQLERRM )
+              );
+            END;
+          END IF;
+        END LOOP;
+      END IF;
+    END LOOP;
+  END LOOP;
+END;
+$function$
+```
+
+---
+{% include-markdown "signature-core.md" %}

@@ -1,0 +1,39 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/maintenance/20260209-06-update-proc-automations-lock-columns-job-mctit.yaml
+
+  - changeSet:
+      id: 20260209-06-update-proc-automations-lock-columns-job
+      author: mctit
+      # runOnChange: true
+      #   validCheckSum:
+      #      - ANY
+      comment: >
+        Estende la procedura job LOCK_COLUMNS per includere il cleanup
+        dei trigger obsoleti.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_automations_lock_columns_job()
+                LANGUAGE 'plpgsql'
+              AS $BODY$
+                BEGIN
+                  PERFORM maintenance.fn_run_and_log(
+                    p_jobname  := 'automations_lock_columns',
+                    p_stepname := 'run_automations_lock_columns',
+                    p_sql      := 'SELECT dbops.fn_run_automations_lock_columns(''SCHEDULED'', NULL, false); ' ||
+                                 'SELECT dbops.fn_run_automations_drop_lock_trg(''SCHEDULED'', NULL, false);',
+                    p_lock_key := hashtext('automations_lock_columns')
+                  );
+                END;
+              $BODY$;
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_lock_columns_job()
+                IS 'Job wrapper per chiamare fn_run_automations_lock_columns e cleanup trigger LOCK_COLUMNS obsoleti.';

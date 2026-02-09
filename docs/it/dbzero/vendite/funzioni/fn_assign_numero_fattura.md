@@ -34,8 +34,8 @@ BEGIN
 
   IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database',
-      'vendite.fn_assign_numero_fattura',
+      'vendite',
+      'fn_assign_numero_fattura',
       'E_GENERICO',
       jsonb_build_object('detail','p_fattura_id obbligatorio', 'fattura_id', p_fattura_id),
       NULL::uuid,
@@ -58,12 +58,12 @@ BEGIN
 
   IF v_registro_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database',
-      'vendite.fn_assign_numero_fattura',
+      'vendite',
+      'fn_assign_numero_fattura',
       'E_GENERICO',
       jsonb_build_object('detail','fattura non trovata', 'fattura_id', p_fattura_id),
       NULL::uuid,
-      concat('fattura non trovata: ', p_fattura_id::text)
+      concat('fattura non trovata: ', p_fattura_id)
     );
   END IF;
 
@@ -82,7 +82,7 @@ BEGIN
          user_update = current_user
    WHERE id = p_fattura_id;
 
-  RETURN QUERY SELECT v_registro_id, v_anno, v_mese, NULLIF(v_serie, ''), v_numero;
+  RETURN QUERY SELECT v_registro_id, v_anno, v_mese, NULLIF(v_serie, '')::varchar, v_numero;
 END
 $function$
 ```
