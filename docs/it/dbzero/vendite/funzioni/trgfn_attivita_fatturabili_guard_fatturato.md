@@ -12,12 +12,23 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+DECLARE
+  v_bypass text;
 BEGIN
   -- =========================================================
   -- Scopo:
   --   Blocca UPDATE/DELETE se la riga e' gia' fatturata
   --   (fattura_riga_id valorizzato).
+  --   Bypass controllato via GUC per reset tecnico.
   -- =========================================================
+  v_bypass := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
+  IF v_bypass IS NOT NULL AND lower(v_bypass) IN ('1','true','on','yes') THEN
+    IF TG_OP = 'DELETE' THEN
+      RETURN OLD;
+    END IF;
+    RETURN NEW;
+  END IF;
+
   IF TG_OP = 'UPDATE' THEN
     IF OLD.fattura_riga_id IS NOT NULL THEN
       PERFORM script.fn_log_and_raise_error(

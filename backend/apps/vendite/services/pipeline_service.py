@@ -11,7 +11,8 @@ from datetime import date
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 from apps.vendite.services.fatture_righe_service import FattureRigheService
-from apps.vendite.types import GroupAttivitaKey, LottoPipelineMeta
+from apps.vendite.services.lotto_reset_service import LottoResetService
+from apps.vendite.types import GroupAttivitaKey, LottoPipelineMeta, ResetLottoDraftResult
 
 # Facade servizi: mantiene firme SQL-like e delega alle classi OOP.
 
@@ -74,3 +75,9 @@ def fn_generate_fatture_righe(*, lotto_id: int, dry_run: bool = False) -> int:
     """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_generate_fatture_righe."""
     service = FattureRigheService()
     return service.generate_fatture_righe(lotto_id, dry_run=dry_run)
+
+
+def fn_reset_lotto_draft(*, lotto_id: int) -> ResetLottoDraftResult:
+    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_reset_lotto_draft."""
+    service = LottoResetService()
+    return service.reset_lotto_draft(lotto_id)

@@ -14,6 +14,7 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_fatturazione_lotti_guard_stato()
 AS $function$
 DECLARE
   v_ok boolean;
+  v_bypass text;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -23,7 +24,13 @@ BEGIN
   -- Regole:
   --   - Stato applicabile a lotto (applica_lotto=true).
   --   - Transizione ammessa e non solo_fattura.
+  --   - Bypass controllato via GUC per reset tecnico.
   -- =========================================================
+  v_bypass := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
+  IF v_bypass IS NOT NULL AND lower(v_bypass) IN ('1','true','on','yes') THEN
+    RETURN NEW;
+  END IF;
+
   IF TG_OP = 'UPDATE'
     AND NEW.stato_doc_fiscale_id IS NOT NULL
     AND NEW.stato_doc_fiscale_id IS DISTINCT FROM OLD.stato_doc_fiscale_id

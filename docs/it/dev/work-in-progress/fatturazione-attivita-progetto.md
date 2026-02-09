@@ -294,6 +294,12 @@ Il **lotto** diventa l’elemento centrale per:
 > Nota: `tipo_doc_fiscale_id` e` obbligatorio; `utility_id` puo` essere derivato da `billing_account_id`.
 > Lo stato del lotto segue un **ordine** e supporta `stato_precedente_ammesso` per eventuali rollback.
 
+**Rollback DRAFT (lotto MASSIVO)**  
+Consentito solo per lotti **MASSIVO** in **DRAFT**.  
+Rollback tecnico: elimina fatture/righe/riepiloghi/log e ripristina le
+`attivita_fatturabili` (unlock + reset flag).  
+Il lotto viene marcato: `stato_doc_fiscale = ANNULLATA`, `stato_operativo = CHIUSO`, `stato_lotto = COMPLETATO`.
+
 ---
 
 ### 1.1) Processo di alimentazione attivita_fatturabili (necessita`)

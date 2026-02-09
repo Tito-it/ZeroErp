@@ -28,6 +28,9 @@ transizioni tra stati documento sui lotti di fatturazione.
 * Verifica la transizione in `config.stati_doc_fiscale_transizioni`.
 * Se lo stato non e` applicabile o la transizione non e` ammessa → errore.
 
+> Nota: il blocco puo` essere **bypassato** solo in contesti di manutenzione
+> tramite GUC `zeroerp.maintenance_reset_lotto_draft = on` (reset tecnico lotto DRAFT).
+
 ---
 
 {% include-markdown "signature-core.md" %}

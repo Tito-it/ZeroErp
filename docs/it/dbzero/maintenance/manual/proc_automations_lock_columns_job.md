@@ -50,6 +50,12 @@ La procedura:
    `SELECT dbops.fn_run_automations_lock_columns('SCHEDULED', NULL, false);`.
 
    `SELECT dbops.fn_run_automations_drop_lock_trg('SCHEDULED', NULL, false);`.
+
+#### Esempio manuale (cleanup solo LOCK_COLUMNS)
+
+```
+SELECT dbops.fn_run_automations_drop_lock_trg('AUTO', ARRAY['vendite'], false);
+```
 4. **Log end** con esito **OK/KO** e dettagli.
 5. **Release lock**.
 
