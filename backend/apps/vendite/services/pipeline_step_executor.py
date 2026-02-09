@@ -27,6 +27,7 @@ class PipelineStepExecutor:
         self.handler_registry = {
             "select_attivita_default": self._handle_select_attivita_task,
             "generate_fatture_righe_default": self._handle_generate_fatture_righe_task,
+            "numera_fatture_default": self._handle_numera_fatture_task,
         }
 
     def execute_step(
@@ -145,6 +146,7 @@ class PipelineStepExecutor:
                 task=task,
                 fn_name=fn_name,
                 lotto_id=lotto_id,
+                stato_doc_fiscale_id=stato_doc_fiscale_id,
                 context=context,
                 params=params,
                 dry_run=dry_run,
@@ -184,6 +186,7 @@ class PipelineStepExecutor:
         task: str,
         fn_name: str | None,
         lotto_id: int,
+        stato_doc_fiscale_id: int,
         context: LottoContext,
         params: dict[str, Any],
         dry_run: bool,
@@ -197,9 +200,34 @@ class PipelineStepExecutor:
         task: str,
         fn_name: str | None,
         lotto_id: int,
+        stato_doc_fiscale_id: int,
         context: LottoContext,
         params: dict[str, Any],
         dry_run: bool,
     ) -> None:
         self._validate_task_function_name(task=task, fn_name=fn_name)
         self.fatture_righe_service.generate_fatture_righe(lotto_id, dry_run=dry_run)
+
+    def _handle_numera_fatture_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> None:
+        # Numerazione documenti per lotto massivo con sync stato documento.
+        self._validate_task_function_name(task=task, fn_name=fn_name)
+        if dry_run:
+            return
+
+        for fattura_id in self.repository.list_fatture_by_lotto(lotto_id):
+            self.repository.numera_fattura_opz_emessa(fattura_id)
+
+        self.repository.sync_lotto_fatture_stato(
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+        )

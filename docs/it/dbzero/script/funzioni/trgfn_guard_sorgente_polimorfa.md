@@ -21,6 +21,12 @@ DECLARE
   v_src_uid       uuid;
   v_target_id     text;
 BEGIN
+  -- =========================================================
+  -- Scopo:
+  --   Validare la sorgente polimorfa (sorgente_tipo_id) usando
+  --   config.sorgenti, verificando la presenza del record target
+  --   su tabella/chiave configurata (id oppure uid).
+  -- =========================================================
   -- Se non è valorizzata la sorgente, nessuna verifica
   IF NEW.sorgente_tipo_id IS NULL THEN
     RETURN NEW;
@@ -30,13 +36,15 @@ BEGIN
   SELECT s.target_table, s.key_selector
     INTO v_tbl, v_selector
     FROM config.sorgenti s
-   WHERE s.id = NEW.sorgente_tipo_id
-     AND s.attivo = true;
+  WHERE s.id = NEW.sorgente_tipo_id
+    AND s.attivo = true;
 
   IF v_tbl IS NULL OR v_selector IS NULL THEN
-   -- Configurazoione mancante o errata
+  -- Configurazoione mancante o errata
     PERFORM script.fn_log_and_raise_error(
-      v_area, TG_TABLE_NAME, 'E_SORG_CONF',
+      'database', 
+      'script.trgfn_guard_sorgente_polimorfa', 
+      'E_SORG_CONF',
       jsonb_build_object(
         'detail','Configurazione sorgente mancante/errata',
         'sorgente_tipo_id', NEW.sorgente_tipo_id,
@@ -44,7 +52,9 @@ BEGIN
         'key_selector', COALESCE(v_selector,'<NULL>')
       ),
       NULL::uuid,
-      NEW.sorgente_tipo_id::text
+      concat( NEW.sorgente_tipo_id::text, 
+      ' target_table:', COALESCE(v_tbl::text,'<NULL>'),
+       ' key_selector:', COALESCE(v_selector,'<NULL>'))
     );
   END IF;
 
@@ -53,15 +63,17 @@ BEGIN
     v_src_id := NEW.sorgente_riga;
     IF v_src_id IS NULL THEN
       PERFORM script.fn_log_and_raise_error(
-        v_area, TG_TABLE_NAME, 'E_SORG_KEY_MISSING',
+        'database', 
+        'script.trgfn_guard_sorgente_polimorfa', 
+        'E_SORG_KEY_MISSING',
         jsonb_build_object(
           'detail','Chiave sorgente mancante: atteso sorgente_riga (id)',
           'sorgente_tipo_id', NEW.sorgente_tipo_id,
           'key_selector', v_selector
         ),
         NULL::uuid,
-        'id' ,
-        NEW.sorgente_tipo_id::text
+        
+        concat( NEW.sorgente_tipo_id::text, ' key_selector:', v_selector)
       );
     END IF;
 
@@ -73,15 +85,17 @@ BEGIN
     v_src_uid := NEW.sorgente_uid;
     IF v_src_uid IS NULL THEN
       PERFORM script.fn_log_and_raise_error(
-        v_area, TG_TABLE_NAME, 'E_SORG_KEY_MISSING',
+        'database', 
+        'script.trgfn_guard_sorgente_polimorfa', 
+        'E_SORG_KEY_MISSING',
+        
         jsonb_build_object(
           'detail','Chiave sorgente mancante: atteso sorgente_uid (uuid)',
           'sorgente_tipo_id', NEW.sorgente_tipo_id,
           'key_selector', v_selector
         ),
         NULL::uuid,
-        'uid',
-        NEW.sorgente_tipo_id::text
+        concat(NEW.sorgente_tipo_id::text , ' key_selector:', v_selector)
       );
     END IF;
 
@@ -92,14 +106,17 @@ BEGIN
   ELSE
     -- Valore non consentito: la tabella config.sorgenti dovrebbe impedirlo con CHECK
     PERFORM script.fn_log_and_raise_error(
-      v_area, TG_TABLE_NAME, 'E_SORG_KEYSEL',
+      'database', 
+      'script.trgfn_guard_sorgente_polimorfa', 
+      'E_SORG_KEYSEL',
+      
       jsonb_build_object(
         'detail','key_selector non supportato',
         'sorgente_tipo_id', NEW.sorgente_tipo_id,
         'key_selector', v_selector
       ),
       NULL::uuid,
-      NEW.sorgente_tipo_id::text
+      concat(NEW.sorgente_tipo_id::text , ' key_selector:', v_selector)
     );
   END IF;
 
@@ -111,7 +128,9 @@ BEGIN
 
   IF NOT COALESCE(v_exists,false) THEN
     PERFORM script.fn_log_and_raise_error(
-      v_area, TG_TABLE_NAME, 'E_SORG_NOT_FOUND',
+      'database',   
+      'script.trgfn_guard_sorgente_polimorfa', 
+      'E_SORG_NOT_FOUND',
       jsonb_build_object(
         'detail','Riferimento sorgente non trovato nella tabella target',
         'sorgente_tipo_id', NEW.sorgente_tipo_id,
@@ -121,7 +140,12 @@ BEGIN
         'sorgente_uid', NEW.sorgente_uid
       ),
       NULL::uuid,
-      v_target_id 
+      concat(NEW.sorgente_tipo_id::text , 
+      ' target_table ', v_tbl::text,
+        ' key_selector ', v_selector,
+        ' sorgente_riga ', NEW.sorgente_riga,
+        ' sorgente_uid ', NEW.sorgente_uid
+      )
     );
   END IF;
 
