@@ -33,6 +33,52 @@ Regole chiave:
 * il dispatch e` controllato da registry DB + mapping statico in Django.
 * vincoli, trigger e funzioni di consistenza restano in DB.
 
+## 📌 Generazione fatture puntuali (lotti giornalieri)
+
+### Scopo
+Gestire emissioni immediate (front-office) senza attendere il ciclo massivo,
+ma mantenendo la tracciabilita` tramite lotto giornaliero.
+
+### Modello operativo
+
+* Il **lotto giornaliero** e` un contenitore operativo, non il driver di emissione.
+* Le fatture vengono **create/emesse per documento** (processo puntuale).
+* Il lotto resta **APERTO** e raccoglie le fatture emesse nella giornata.
+* Il lotto passa a **INVIATA** solo nella fase batch di chiusura (invio/SDI).
+
+### Impatti su pipeline e guard
+
+* La pipeline `GIORNALIERO` non deve includere step di creazione/emissione.
+* Il trigger `trgfn_fatturazione_lotti_guard_stato` non viene sollecitato
+  per la fase EMESSA, perche` il lotto non transita in EMESSA.
+* L'unico cambio stato lotto rilevante per il giornaliero e` la chiusura (INVIATA).
+
+### Processo puntuale (fuori pipeline)
+
+* Deve riusare **gli stessi servizi/primitive** del massivo:
+  `select_attivita` (lock), `get_or_create_fattura_header`,
+  `generate_fatture_righe`, `fn_numera_fattura_opz_emessa`.
+* Deve garantire **idempotenza** e **lock** sul lotto giornaliero.
+* Deve loggare su `fatturazione_lotti_log` per tracciabilita`.
+* Deve agganciare sempre la fattura al lotto giornaliero aperto.
+
+### Nota di coerenza
+
+Il flusso puntuale non duplica logica: usa le stesse funzioni/servizi,
+ma senza passare dalla pipeline lotto.
+
+### Sviluppi necessari (minimo)
+
+* Servizio Django “emissione immediata”:
+  * risolve/crea lotto giornaliero APERTO
+  * seleziona/locka attivita fatturabili
+  * genera righe e numerazione documento
+  * collega fattura al lotto
+  * logga su `fatturazione_lotti_log`
+* Pipeline giornaliera ridotta ai soli task batch (chiusura/invio)
+* Chiusura batch tramite `vendite.fn_close_giornaliero_lotto`
+* Endpoint API dedicato (o estensione dell’endpoint esistente)
+
 ---
 
 ## 1) Processo di alimentazione `attivita_fatturabili`

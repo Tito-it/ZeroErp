@@ -77,6 +77,7 @@ class VenditePipelineRepository:
     ALLOWED_TASK_FUNCTIONS = {
         "select_attivita": "vendite.fn_select_attivita_fatturabili",
         "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
+        "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
     }
 
     @staticmethod
@@ -528,6 +529,41 @@ class VenditePipelineRepository:
             )
             for row in rows
         ]
+
+    def list_fatture_by_lotto(self, lotto_id: int) -> list[int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT f.id
+                FROM vendite.fatturazione_lotti_fatture lf
+                JOIN vendite.fatture f
+                  ON f.id = lf.fattura_id
+                WHERE lf.lotto_id = %s
+                ORDER BY f.id
+                """,
+                [lotto_id],
+            )
+            rows = cursor.fetchall()
+        return [int(row[0]) for row in rows]
+
+    def numera_fattura_opz_emessa(self, fattura_id: int) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_numera_fattura_opz_emessa(%s)",
+                [fattura_id],
+            )
+
+    def sync_lotto_fatture_stato(
+        self,
+        *,
+        lotto_id: int,
+        stato_doc_fiscale_id: int | None = None,
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_sync_lotto_fatture_stato(%s, %s)",
+                [lotto_id, stato_doc_fiscale_id],
+            )
 
     def get_or_create_fattura_header(self, lotto_id: int, attivita_id: int) -> int:
         with connection.cursor() as cursor:

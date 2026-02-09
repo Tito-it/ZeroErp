@@ -1,3 +1,4 @@
 id,descrizione,stato_doc_fiscale_id,processi,rollback,attivo,meta,data_insert,user_insert,data_update,user_update,tipo_lotto,utility_id,tipo_doc_fiscale_id
 1,Pipeline base lotti (DRAFT),1,"[{""task"":""select_attivita"",""fase"":""Caricamento lista attivita"",""params"":{""lock"":true,""implementation_key"":""default""}},{""task"":""generate_fatture_righe"",""fase"":""Generazione righe fattura"",""params"":{""implementation_key"":""default""}}]","[]",t,{},2026-01-28 10:00:00+01,titodb,2026-01-28 10:00:00+01,titodb,MASSIVO,null,null
 2,Pipeline giornaliera (EMESSA),2,"[]","[]",t,{},2026-01-30 10:00:00+01,titodb,2026-01-30 10:00:00+01,titodb,GIORNALIERO,null,null
+3,Pipeline massiva (EMESSA),2,"[{""task"":""numera_fatture"",""fase"":""Numerazione fatture"",""params"":{""implementation_key"":""default""}}]","[]",t,{},2026-02-09 10:30:00+01,titodb,2026-02-09 10:30:00+01,titodb,MASSIVO,null,null

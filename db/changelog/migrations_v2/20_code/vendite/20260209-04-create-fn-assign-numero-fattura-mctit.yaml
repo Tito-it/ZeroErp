@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260209-04-create-fn-assign-numero-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20260209-04-create-fn-assign-numero-fattura
+      author: mctit
+      comment: "Crea fn_assign_numero_fattura: assegna progressivo e aggiorna fattura"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_assign_numero_fattura(
+                p_fattura_id vendite.fatture.id%TYPE
+              )
+              RETURNS TABLE (
+                registro_id vendite.fatture.registro_id%TYPE,
+                anno vendite.fatture.anno%TYPE,
+                mese smallint,
+                serie vendite.fatture.serie%TYPE,
+                numero vendite.fatture.numero%TYPE
+              )
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_registro_id vendite.fatture.registro_id%TYPE;
+                v_data vendite.fatture.data%TYPE;
+                v_serie vendite.fatture.serie%TYPE;
+                v_reset vendite.registri_fatturazione.reset_policy%TYPE;
+                v_anno vendite.fatture.anno%TYPE;
+                v_mese smallint;
+                v_numero vendite.fatture.numero%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Assegnare progressivo di fattura usando il registro
+                --   e aggiornare anno/serie/numero sulla testata.
+                --
+                -- Regole:
+                --   - p_fattura_id obbligatorio (> 0)
+                --   - usa fn_get_next_progressivo
+                --   - mese valorizzato solo se reset_policy = MENSILE
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'vendite.fn_assign_numero_fattura',
+                    'E_GENERICO',
+                    jsonb_build_object('detail','p_fattura_id obbligatorio', 'fattura_id', p_fattura_id),
+                    NULL::uuid,
+                    concat('p_fattura_id obbligatorio: ', COALESCE(p_fattura_id::text, 'NULL'))
+                  );
+                END IF;
+
+                SELECT f.registro_id,
+                       f.data,
+                       COALESCE(f.serie, r.serie_default, ''),
+                       r.reset_policy
+                  INTO v_registro_id,
+                       v_data,
+                       v_serie,
+                       v_reset
+                  FROM vendite.fatture f
+                  JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
+                 WHERE f.id = p_fattura_id
+                 FOR UPDATE;
+
+                IF v_registro_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'vendite.fn_assign_numero_fattura',
+                    'E_GENERICO',
+                    jsonb_build_object('detail','fattura non trovata', 'fattura_id', p_fattura_id),
+                    NULL::uuid,
+                    concat('fattura non trovata: ', p_fattura_id::text)
+                  );
+                END IF;
+
+                v_anno := vendite.fn_get_anno_registro(v_data);
+                v_numero := vendite.fn_get_next_progressivo(v_registro_id, v_data, v_serie);
+                v_mese := CASE WHEN v_reset = 'MENSILE'
+                                 THEN EXTRACT(MONTH FROM v_data)::smallint
+                                 ELSE NULL
+                               END;
+
+                UPDATE vendite.fatture
+                   SET anno = v_anno,
+                       serie = NULLIF(v_serie, ''),
+                       numero = v_numero,
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE id = p_fattura_id;
+
+                RETURN QUERY SELECT v_registro_id, v_anno, v_mese, NULLIF(v_serie, ''), v_numero;
+              END
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_assign_numero_fattura(
+                vendite.fatture.id%TYPE
+              ) IS 'Assegna progressivo fattura e aggiorna la testata (anno/serie/numero).';
+
+  - changeSet:
+      id: 20260209-04-02-update-fn-assign-numero-fattura
+      author: mctit
+      comment: "Fix cast serie in RETURN QUERY"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_assign_numero_fattura(
+                p_fattura_id vendite.fatture.id%TYPE
+              )
+              RETURNS TABLE (
+                registro_id vendite.fatture.registro_id%TYPE,
+                anno vendite.fatture.anno%TYPE,
+                mese smallint,
+                serie vendite.fatture.serie%TYPE,
+                numero vendite.fatture.numero%TYPE
+              )
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_registro_id vendite.fatture.registro_id%TYPE;
+                v_data vendite.fatture.data%TYPE;
+                v_serie vendite.fatture.serie%TYPE;
+                v_reset vendite.registri_fatturazione.reset_policy%TYPE;
+                v_anno vendite.fatture.anno%TYPE;
+                v_mese smallint;
+                v_numero vendite.fatture.numero%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Assegnare progressivo di fattura usando il registro
+                --   e aggiornare anno/serie/numero sulla testata.
+                --
+                -- Regole:
+                --   - p_fattura_id obbligatorio (> 0)
+                --   - usa fn_get_next_progressivo
+                --   - mese valorizzato solo se reset_policy = MENSILE
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_assign_numero_fattura',
+                    'E_GENERICO',
+                    jsonb_build_object('detail','p_fattura_id obbligatorio', 'fattura_id', p_fattura_id),
+                    NULL::uuid,
+                    concat('p_fattura_id obbligatorio: ', COALESCE(p_fattura_id::text, 'NULL'))
+                  );
+                END IF;
+
+                SELECT f.registro_id,
+                       f.data,
+                       COALESCE(f.serie, r.serie_default, ''),
+                       r.reset_policy
+                  INTO v_registro_id,
+                       v_data,
+                       v_serie,
+                       v_reset
+                  FROM vendite.fatture f
+                  JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
+                 WHERE f.id = p_fattura_id
+                 FOR UPDATE;
+
+                IF v_registro_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_assign_numero_fattura',
+                    'E_GENERICO',
+                    jsonb_build_object('detail','fattura non trovata', 'fattura_id', p_fattura_id),
+                    NULL::uuid,
+                    concat('fattura non trovata: ', p_fattura_id)
+                  );
+                END IF;
+
+                v_anno := vendite.fn_get_anno_registro(v_data);
+                v_numero := vendite.fn_get_next_progressivo(v_registro_id, v_data, v_serie);
+                v_mese := CASE WHEN v_reset = 'MENSILE'
+                                 THEN EXTRACT(MONTH FROM v_data)::smallint
+                                 ELSE NULL
+                               END;
+
+                UPDATE vendite.fatture
+                   SET anno = v_anno,
+                       serie = NULLIF(v_serie, ''),
+                       numero = v_numero,
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE id = p_fattura_id;
+
+                RETURN QUERY SELECT v_registro_id, v_anno, v_mese, NULLIF(v_serie, '')::varchar, v_numero;
+              END
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_assign_numero_fattura(
+                vendite.fatture.id%TYPE
+              ) IS 'Assegna progressivo fattura e aggiorna la testata (anno/serie/numero).';
