@@ -148,6 +148,7 @@ Rendere parametrico il dispatch task senza esecuzione dinamica libera.
 * [x] Tabelle `dbops.domini_task`, `dbops.pipeline_task_registry`, `dbops.pipeline_task_registry_impl`
 * [x] Funzioni `dbops.fn_check_pipeline_task_registered` e `dbops.fn_get_pipeline_task_implementation`
 * [x] Seed CSV iniziali per dominio FATTURAZIONE e task base
+* [x] Task `close_lotto` registrato con handler `close_lotto_default`
 
 ---
 
@@ -184,6 +185,7 @@ Rendere parametrico il dispatch task senza esecuzione dinamica libera.
 ### Stato
 * [x] Seed `fatturazione_pipeline.csv` aggiornato con `implementation_key: default`
 * [x] Python usa `implementation_key` e registry DB per dispatch
+* [x] Pipeline massiva (EMESSA) include task `close_lotto`
 
 ### Funzioni SQL fatturazione
 
