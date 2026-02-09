@@ -32,6 +32,8 @@ documento, con validita` separata per **lotti** e **fatture**.
 ### ✅ Note operative
 
 * I guard di stato su `fatture` e `fatturazione_lotti` usano questa tabella.
+* Se `meta.tipo_lotto` e` valorizzato (es. `MASSIVO`, `GIORNALIERO`),
+  la transizione e` ammessa **solo** per lotti con lo stesso `tipo_lotto`.
 * La tabella sostituisce i flag generici di rollback.
 
 ---
