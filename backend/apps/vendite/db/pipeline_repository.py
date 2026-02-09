@@ -16,7 +16,7 @@ from django.db import connection
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.value_normalizer import as_bool, empty_to_none
-from apps.vendite.types import LottoPipelineMeta
+from apps.vendite.types import LottoPipelineMeta, ResetLottoDraftResult
 
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
 
@@ -574,6 +574,32 @@ class VenditePipelineRepository:
             row = cursor.fetchone()
             assert row is not None
         return int(row[0])
+
+    def build_fattura_key(self, attivita_id: int) -> dict[str, object]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_build_fattura_key(%s)",
+                [attivita_id],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return row[0]
+
+    def reset_lotto_draft(self, lotto_id: int) -> ResetLottoDraftResult:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT updated_lotti, updated_attivita, deleted_fatture, deleted_righe "
+                "FROM vendite.fn_reset_lotto_draft(%s)",
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return {
+            "updated_lotti": int(row[0]),
+            "updated_attivita": int(row[1]),
+            "deleted_fatture": int(row[2]),
+            "deleted_righe": int(row[3]),
+        }
 
     def get_next_fattura_riga_nr(self, fattura_id: int) -> int:
         with connection.cursor() as cursor:

@@ -30,6 +30,7 @@
 >  * [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),  
 >  * [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
 >  * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns),  
+>  * [dbops.fn_run_automations_drop_lock_trg](/dbzero/dbops/funzioni/fn_run_automations_drop_lock_trg),  
 >  * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo),  
 >  * [dbops.fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block)  
 >  * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)  
@@ -85,6 +86,12 @@ Trigger `BEFORE UPDATE OF ...` → `script.trgfn_lock_columns(...)`.
 * Usa `automation_rules_tbl` per `name_template` ed `existence_strategy`.
 * La colonna **`codice_interno`** e' implicita: se presente in tabella viene sempre inclusa.
 * Le colonne extra si configurano in `dbops.automation_lock_columns`.
+
+**3.5.1 LOCK_COLUMNS cleanup (drop trigger obsoleti)**
+
+Quando **non esistono colonne da bloccare** (nessun `codice_interno` e nessuna colonna extra attiva),
+i trigger LOCK_COLUMNS possono restare obsoleti.  
+La funzione `dbops.fn_run_automations_drop_lock_trg` rimuove questi trigger.
 
 **3.6 ATTIVO (soft‑delete funzionale – policy conservativa)**
 
@@ -229,6 +236,8 @@ Parametri JSON tipici:
 1. Inserisci/aggiorna **rules** (usa `'*all'` dove serve).
 2. (Opzionale) Popola **scope**: righe `('<schema>','*all')` o pattern puntuali.
 3. Esegui **dry‑run** del/i runner interessati (es. `fn_run_automations_storico(..., true)` o `fn_run_automations_lock_columns(..., true)`).
+4. Se stai disattivando colonne LOCK_COLUMNS, valuta il cleanup:  
+   `SELECT dbops.fn_run_automations_drop_lock_trg('AUTO', NULL, false);`
 4. Verifica audit → poi **apply** (`p_dry_run=false`).
 5. Controlla i trigger creati (`pg_trigger`) e, per STORICO, la presenza della tabella `storico.<tabella>`.
 

@@ -95,6 +95,7 @@ class FattureRigheService:
         count = 0
         with transaction.atomic():
             for attivita in self.repository.list_attivita_da_fatturare(lotto_id):
+                # Testata fattura aggregata via DB (fn_build_fattura_key).
                 fattura_id = self.repository.get_or_create_fattura_header(lotto_id, attivita.id)
                 group_key = self.group_attivita_fatturabili(attivita.id)
 
