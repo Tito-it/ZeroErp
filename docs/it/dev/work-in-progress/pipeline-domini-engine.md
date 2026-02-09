@@ -148,6 +148,7 @@ Rendere parametrico il dispatch task senza esecuzione dinamica libera.
 * [x] Tabelle `dbops.domini_task`, `dbops.pipeline_task_registry`, `dbops.pipeline_task_registry_impl`
 * [x] Funzioni `dbops.fn_check_pipeline_task_registered` e `dbops.fn_get_pipeline_task_implementation`
 * [x] Seed CSV iniziali per dominio FATTURAZIONE e task base
+* [x] Task `close_lotto` registrato con handler `close_lotto_default`
 
 ---
 
@@ -178,10 +179,13 @@ Rendere parametrico il dispatch task senza esecuzione dinamica libera.
 
 * `implementation_key` assente -> fallback automatico a `default`.
 * `params.fn` resta legacy/transitorio e non pilota il dispatch.
+* `implementation_key` assente significa: usare l'implementazione `is_default=true`
+  definita in `dbops.pipeline_task_registry_impl`.
 
 ### Stato
 * [x] Seed `fatturazione_pipeline.csv` aggiornato con `implementation_key: default`
 * [x] Python usa `implementation_key` e registry DB per dispatch
+* [x] Pipeline massiva (EMESSA) include task `close_lotto`
 
 ### Funzioni SQL fatturazione
 
@@ -354,3 +358,15 @@ Non vanno fusi.
 10. **Documentazione**
     * Aggiornare manuali pipeline con `implementation_key` e registry DB.
     * Aggiornare WIP con stati/step attivita e log.
+
+---
+
+## 9) Checklist di coerenza (da eseguire)
+
+* Verificare che ogni `task_code` abbia **esattamente un** `is_default=true`.
+* Verificare che ogni `handler_code` abbia **mappatura Python** unica e stabile.
+* Verificare che `params.fn` non alteri il dispatch (solo legacy).
+* Verificare che il mapping `dominio_id` sia centralizzato (no hardcode sparso).
+* Verificare validazione JSON pipeline (task/implementation) prima dell'esecuzione.
+* Verificare che il fallback `implementation_key -> default` sia sempre loggato.
+* Verificare coerenza fra seed DB e registry Python (task registrati e attivi).

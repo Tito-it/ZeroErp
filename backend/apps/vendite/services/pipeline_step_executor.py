@@ -28,6 +28,7 @@ class PipelineStepExecutor:
             "select_attivita_default": self._handle_select_attivita_task,
             "generate_fatture_righe_default": self._handle_generate_fatture_righe_task,
             "numera_fatture_default": self._handle_numera_fatture_task,
+            "close_lotto_default": self._handle_close_lotto_task,
         }
 
     def execute_step(
@@ -169,7 +170,9 @@ class PipelineStepExecutor:
 
     def _validate_task_function_name(self, *, task: str, fn_name: str | None) -> None:
         # `fn` resta un token di compatibilita` SQL nella configurazione processi.
-        allowed = self.repository.ALLOWED_TASK_FUNCTIONS[task]
+        allowed = self.repository.ALLOWED_TASK_FUNCTIONS.get(task)
+        if allowed is None:
+            return
         if fn_name and fn_name != allowed:
             ErrorManager.raise_error(
                 code="E_TASK_NOT_ALLOWED",
@@ -231,3 +234,20 @@ class PipelineStepExecutor:
             lotto_id=lotto_id,
             stato_doc_fiscale_id=stato_doc_fiscale_id,
         )
+
+    def _handle_close_lotto_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> None:
+        # Chiusura operativa lotto: stato_operativo=CHIUSO.
+        self._validate_task_function_name(task=task, fn_name=fn_name)
+        if dry_run:
+            return
+        self.repository.close_lotto_operativo(lotto_id)

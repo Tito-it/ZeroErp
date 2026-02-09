@@ -78,6 +78,7 @@ class VenditePipelineRepository:
         "select_attivita": "vendite.fn_select_attivita_fatturabili",
         "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
         "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
+        "close_lotto": None,
     }
 
     @staticmethod
@@ -292,6 +293,20 @@ class VenditePipelineRepository:
                 SELECT vendite.fn_close_giornaliero_lotto(%s, %s)
                 """,
                 [lotto_id, inviata_id],
+            )
+
+    def close_lotto_operativo(self, lotto_id: int) -> None:
+        # Chiusura operativa lotto senza vincolare lo stato documentale.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.fatturazione_lotti
+                SET stato_operativo = 'CHIUSO',
+                    data_update = now(),
+                    user_update = current_user
+                WHERE id = %s
+                """,
+                [lotto_id],
             )
 
     def log_pipeline_fase(

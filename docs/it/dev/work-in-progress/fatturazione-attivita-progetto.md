@@ -13,6 +13,7 @@
 - [x] `implementation_key` nei task JSON e dispatch via registry DB.
 - [x] Log fatture e flag `critical` (tabella `vendite.fatture_log` + sync).
 - [x] Area geografica fatturazione e colonne correlate.
+- [x] Task pipeline `close_lotto` (chiusura operativa lotto massivo).
 - [ ] Pipeline dedicata per `attivita_fatturabili` (tabella + funzioni).
 - [ ] Registry runtime multi-dominio completo in Django (mappa per dominio).
 

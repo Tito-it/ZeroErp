@@ -3,6 +3,7 @@ Indice test eseguiti:
 1) PipelineStepExecutorUnitTests.test_execute_step_runs_generate_fatture_righe_task
 2) PipelineStepExecutorUnitTests.test_execute_step_rejects_generate_fatture_righe_fn_override
 3) PipelineStepExecutorUnitTests.test_execute_step_runs_numera_fatture_task
+4) PipelineStepExecutorUnitTests.test_execute_step_runs_close_lotto_task
 """
 
 from unittest.mock import MagicMock
@@ -29,6 +30,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             "select_attivita": "vendite.fn_select_attivita_fatturabili",
             "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
             "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
+            "close_lotto": None,
         }
         fatture_righe_service = MagicMock()
         executor = PipelineStepExecutor(
@@ -101,3 +103,18 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             lotto_id=9,
             stato_doc_fiscale_id=2,
         )
+
+    def test_execute_step_runs_close_lotto_task(self):
+        processi = [{"task": "close_lotto", "fase": "Chiusura lotto", "params": {}}]
+        executor, repo, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "close_lotto_default"
+
+        executor.execute_step(
+            lotto_id=5,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.close_lotto_operativo.assert_called_once_with(5)

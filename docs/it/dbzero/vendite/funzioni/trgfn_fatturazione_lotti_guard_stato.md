@@ -15,6 +15,7 @@ AS $function$
 DECLARE
   v_ok boolean;
   v_bypass text;
+  v_tipo_lotto text;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -24,6 +25,8 @@ BEGIN
   -- Regole:
   --   - Stato applicabile a lotto (applica_lotto=true).
   --   - Transizione ammessa e non solo_fattura.
+  --   - Se meta.tipo_lotto e' valorizzato, deve combaciare con
+  --     vendite.fatturazione_lotti.tipo_lotto.
   --   - Bypass controllato via GUC per reset tecnico.
   -- =========================================================
   v_bypass := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
@@ -39,12 +42,12 @@ BEGIN
       SELECT s.applica_lotto
         INTO v_ok
         FROM config.stati_doc_fiscale s
-      WHERE s.id = NEW.stato_doc_fiscale_id
-        AND s.attivo;
+       WHERE s.id = NEW.stato_doc_fiscale_id
+         AND s.attivo;
 
       IF COALESCE(v_ok, false) = false THEN
         PERFORM script.fn_log_and_raise_error(
-          'database', 
+          'database',
           'vendite.trgfn_fatturazione_lotti_guard_stato',
           'E_GENERICO',
           jsonb_build_object(
@@ -59,14 +62,19 @@ BEGIN
       SELECT EXISTS (
         SELECT 1
           FROM config.stati_doc_fiscale_transizioni t
-        WHERE t.ammesso
-          AND t.stato_from_id = OLD.stato_doc_fiscale_id
-          AND t.stato_to_id = NEW.stato_doc_fiscale_id
-          AND t.solo_fattura = false
+         WHERE t.ammesso
+           AND t.stato_from_id = OLD.stato_doc_fiscale_id
+           AND t.stato_to_id = NEW.stato_doc_fiscale_id
+           AND t.solo_fattura = false
+           AND (
+                 (t.meta ->> 'tipo_lotto') IS NULL
+              OR (t.meta ->> 'tipo_lotto') = NEW.tipo_lotto
+           )
       )
       INTO v_ok;
 
       IF NOT v_ok THEN
+        v_tipo_lotto := COALESCE(NEW.tipo_lotto, '');
         PERFORM script.fn_log_and_raise_error(
           'database',
           'vendite.trgfn_fatturazione_lotti_guard_stato',
@@ -74,12 +82,14 @@ BEGIN
           jsonb_build_object(
             'detail','Transizione stato lotto non ammessa',
             'from', OLD.stato_doc_fiscale_id,
-            'to', NEW.stato_doc_fiscale_id
+            'to', NEW.stato_doc_fiscale_id,
+            'tipo_lotto', v_tipo_lotto
           ),
           NULL::uuid,
-          concat('Transizione stato lotto non ammessa', 
-                  ' from: ', OLD.stato_doc_fiscale_id::text, 
-                  ' to: ', NEW.stato_doc_fiscale_id::text)
+          concat('Transizione stato lotto non ammessa',
+                  ' from: ', OLD.stato_doc_fiscale_id::text,
+                  ' to: ', NEW.stato_doc_fiscale_id::text,
+                  ' tipo_lotto: ', v_tipo_lotto)
         );
       END IF;
     END IF;
