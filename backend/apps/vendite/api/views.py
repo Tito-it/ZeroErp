@@ -119,7 +119,7 @@ class ApiResetLottoDraft(APIView):
     def post(self, request: Request, lotto_id: int) -> JsonResponse:
         def _handler(_payload: dict[str, object]) -> dict[str, object]:
             result = fn_reset_lotto_draft(lotto_id=lotto_id)
-            return {"data": result}
+            return result
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
