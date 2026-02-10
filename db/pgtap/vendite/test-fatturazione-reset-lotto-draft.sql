@@ -13,10 +13,12 @@
 -- 7) Lotto annullato e chiuso
 -- 8) Documenti e righe eliminati
 -- 9) Attivita_fatturabili ripristinate
--- 10) Cleanup completato
+-- 10) Cleanup completato (note + righe + fatture)
+-- 11) Reset singola fattura DRAFT (nuova funzione)
+-- 12) Chiusura test e rollback
 -- ------------------------------------------------------------
 BEGIN;
-SELECT plan(10);
+SELECT plan(12);
 -- ============================================================
 -- 0) Riferimenti e costanti
 -- ============================================================
@@ -320,6 +322,151 @@ SELECT ok(
         )
     ),
     'Attivita_fatturabili ripristinate'
+  );
+SELECT ok(
+    (
+      SELECT count(*) = 0
+      FROM vendite.note
+      WHERE meta->>'test_scope' = (
+          SELECT test_scope
+          FROM tmp_costanti_rl
+        )
+    ),
+    'Cleanup completato'
+  );
+-- ============================================================
+-- 9) Reset singola fattura DRAFT
+-- ============================================================
+CREATE TEMP TABLE tmp_lotto_rl2 AS WITH ins AS (
+  INSERT INTO vendite.fatturazione_lotti (
+      lock_batch_id,
+      competenza_mese,
+      tipo_doc_fiscale_id,
+      utility_id,
+      billing_account_id,
+      stato_doc_fiscale_id
+    )
+  SELECT uuidv7(),
+    date_trunc('month', current_date)::date,
+    r.tipo_doc_fiscale_id,
+    r.utility_id,
+    r.billing_account_id,
+    r.stato_draft_id
+  FROM tmp_refs_rl r
+  RETURNING id,
+    lock_batch_id
+)
+SELECT *
+FROM ins;
+CREATE TEMP TABLE tmp_attivita_rl2 AS WITH ins AS (
+  INSERT INTO vendite.attivita_fatturabili (
+      articolo_id,
+      istanza_utility_id,
+      billing_account_id,
+      data_attivita,
+      competenza_mese,
+      quantita,
+      approvato,
+      fatturato,
+      sospesa,
+      tipo_doc_fiscale_id,
+      valuta_id,
+      meta
+    )
+  SELECT r.articolo_id,
+    r.istanza_utility_id,
+    r.billing_account_id,
+    current_date,
+    date_trunc('month', current_date)::date,
+    1,
+    true,
+    false,
+    false,
+    r.tipo_doc_fiscale_id,
+    r.valuta_id,
+    jsonb_build_object(
+      'test_scope',
+      (
+        SELECT test_scope
+        FROM tmp_costanti_rl
+      )
+    )
+  FROM tmp_refs_rl r
+  RETURNING id
+)
+SELECT *
+FROM ins;
+CREATE TEMP TABLE tmp_fattura_rl2 AS
+SELECT vendite.fn_get_or_create_fattura_header(
+    p_lotto_id => (
+      SELECT id
+      FROM tmp_lotto_rl2
+    ),
+    p_attivita_id => (
+      SELECT id
+      FROM tmp_attivita_rl2
+    )
+  ) AS fattura_id;
+CREATE TEMP TABLE tmp_fattura_riga_rl2 AS WITH ins AS (
+  INSERT INTO vendite.fatture_righe (
+      fattura_id,
+      riga_nr,
+      descrizione,
+      qta,
+      prezzo_unitario,
+      meta
+    )
+  VALUES (
+      (
+        SELECT fattura_id
+        FROM tmp_fattura_rl2
+      ),
+      1,
+      'Riga test reset singolo',
+      1,
+      10,
+      jsonb_build_object(
+        'test_scope',
+        (
+          SELECT test_scope
+          FROM tmp_costanti_rl
+        )
+      )
+    )
+  RETURNING id
+)
+SELECT *
+FROM ins;
+UPDATE vendite.attivita_fatturabili
+SET lock_in_fatturazione = true,
+  lock_batch_id = (
+    SELECT lock_batch_id
+    FROM tmp_lotto_rl2
+  ),
+  fatturato = true,
+  fattura_riga_id = (
+    SELECT id
+    FROM tmp_fattura_riga_rl2
+  )
+WHERE id = (
+    SELECT id
+    FROM tmp_attivita_rl2
+  );
+SELECT ok(
+    (
+      SELECT deleted_fatture = 1
+      FROM vendite.fn_reset_lotto_fattura_draft(
+          p_lotto_id => (
+            SELECT id
+            FROM tmp_lotto_rl2
+          ),
+          p_fattura_id => (
+            SELECT fattura_id
+            FROM tmp_fattura_rl2
+          )
+        )
+    ),
+    'Reset singola fattura DRAFT'
   );
 SELECT *
 FROM finish();

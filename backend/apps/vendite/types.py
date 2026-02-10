@@ -31,3 +31,9 @@ class ResetLottoDraftResult(TypedDict):
     updated_attivita: int
     deleted_fatture: int
     deleted_righe: int
+
+
+class ResetLottoFatturaDraftResult(TypedDict):
+    updated_attivita: int
+    deleted_fatture: int
+    deleted_righe: int

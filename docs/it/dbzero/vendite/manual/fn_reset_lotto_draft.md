@@ -45,6 +45,7 @@ dal draft e ripristinando le righe di `attivita_fatturabili`.
   * link `fatturazione_lotti_fatture`  
   * testate `fatture`
 * Ripristina `attivita_fatturabili` (unlock + reset flags).
+* Cleanup centralizzato tramite `vendite.fn_cleanup_fatture_by_ids`.
 * Usa una **GUC di manutenzione** per bypassare il guard di fatturato durante il reset.
 * I log di lotto (`fatturazione_lotti_log`) **non** vengono eliminati.
 
