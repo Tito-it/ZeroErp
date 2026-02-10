@@ -26,7 +26,12 @@ transizioni tra stati documento sui lotti di fatturazione.
 
 * Trigger `BEFORE UPDATE OF stato_doc_fiscale_id` su `vendite.fatturazione_lotti`.
 * Verifica la transizione in `config.stati_doc_fiscale_transizioni`.
+* Se `config.stati_doc_fiscale_transizioni.meta.tipo_lotto` e` valorizzato,
+  la transizione e` ammessa solo per lotti con lo stesso `tipo_lotto`.
 * Se lo stato non e` applicabile o la transizione non e` ammessa → errore.
+
+> Nota: il blocco puo` essere **bypassato** solo in contesti di manutenzione
+> tramite GUC `zeroerp.maintenance_reset_lotto_draft = on` (reset tecnico lotto DRAFT).
 
 ---
 

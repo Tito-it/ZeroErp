@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_numera_fattura_opz_emessa.md" %}
 # ⚙️ Funzione `fn_numera_fattura_opz_emessa`
 
 ```sql
@@ -12,43 +13,75 @@ CREATE OR REPLACE FUNCTION vendite.fn_numera_fattura_opz_emessa(p_fattura_id big
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_is_numbered   BOOLEAN;
-  v_reset           TEXT;
-  v_data            DATE;
-  v_registro_id     BIGINT;
-  v_anno            SMALLINT;
-  v_mese            SMALLINT;
-  v_serie           VARCHAR(8);
-  v_numero          BIGINT;
-  v_stato_emessa_id BIGINT;
+  v_is_numbered boolean;
+  v_reset vendite.registri_fatturazione.reset_policy%TYPE;
+  v_data vendite.fatture.data%TYPE;
+  v_registro_id vendite.fatture.registro_id%TYPE;
+  v_anno vendite.fatture.anno%TYPE;
+  v_mese smallint;
+  v_serie vendite.fatture.serie%TYPE;
+  v_numero vendite.fatture.numero%TYPE;
+  v_stato_emessa_id config.stati_doc_fiscale.id%TYPE;
 BEGIN
-  -- 1) Lock solo la riga fattura per minimizzare concorrenza
-   SELECT f.numero IS NOT NULL       AS is_numbered,
-        f.data, f.registro_id, r.reset_policy,
-        f.anno, f.serie, f.numero
-    INTO v_is_numbered,
-        v_data, v_registro_id, v_reset,
-        v_anno, v_serie, v_numero
-    FROM vendite.fatture f
-    JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
-  WHERE f.id = p_fattura_id
-  FOR UPDATE;
+  -- =========================================================
+  -- Scopo:
+  --   Assegna il numero fattura a fine flusso (idempotente)
+  --   e, opzionalmente, imposta lo stato EMESSA.
+  --
+  -- Regole:
+  --   - p_fattura_id obbligatorio (> 0)
+  --   - lock solo della riga fattura per minimizzare concorrenza
+  --   - se gia' numerata: ritorna valori correnti
+  -- =========================================================
 
-
-  IF v_registro_id IS NULL THEN
+  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database','fn_numera_fattura_opz_emessa','E_FATTURA_NON_TROVATA',
-      jsonb_build_object('fattura_id', p_fattura_id),
-      NULL::uuid, p_fattura_id::text
+      'database',
+      'vendite.fn_numera_fattura_opz_emessa',
+      'E_GENERICO',
+      jsonb_build_object('detail','p_fattura_id obbligatorio', 'fattura_id', p_fattura_id),
+      NULL::uuid,
+      concat('p_fattura_id obbligatorio: ', COALESCE(p_fattura_id::text, 'NULL'))
     );
   END IF;
 
-  -- 2) Se già numerata: ritorna i valori correnti (idempotente, niente lock extra)
+  -- 1) Lock solo la riga fattura per minimizzare concorrenza
+  SELECT f.numero IS NOT NULL AS is_numbered,
+         f.data,
+         f.registro_id,
+         r.reset_policy,
+         f.anno,
+         f.serie,
+         f.numero
+    INTO v_is_numbered,
+         v_data,
+         v_registro_id,
+         v_reset,
+         v_anno,
+         v_serie,
+         v_numero
+    FROM vendite.fatture f
+    JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
+   WHERE f.id = p_fattura_id
+   FOR UPDATE;
+
+  IF v_registro_id IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'vendite.fn_numera_fattura_opz_emessa',
+      'E_FATTURA_NON_TROVATA',
+      jsonb_build_object('fattura_id', p_fattura_id),
+      NULL::uuid,
+      p_fattura_id::text
+    );
+  END IF;
+
+  -- 2) Se gia' numerata: ritorna i valori correnti (idempotente)
   IF v_is_numbered THEN
     v_mese := CASE WHEN v_reset = 'MENSILE'
-                  THEN EXTRACT(MONTH FROM v_data)::SMALLINT
-                  ELSE NULL
-              END;
+                     THEN EXTRACT(MONTH FROM v_data)::smallint
+                     ELSE NULL
+                   END;
     RETURN QUERY SELECT v_registro_id, v_anno, v_mese, v_serie, v_numero;
     RETURN;
   END IF;
@@ -60,7 +93,8 @@ BEGIN
 
   -- 4) (Opzionale) Imposta stato EMESSA usando il codice_interno stabile
   IF p_set_emessa THEN
-    SELECT id INTO v_stato_emessa_id
+    SELECT id
+      INTO v_stato_emessa_id
       FROM config.stati_doc_fiscale
      WHERE codice_interno = p_codice_interno_emessa
      LIMIT 1;
@@ -72,7 +106,7 @@ BEGIN
     END IF;
   END IF;
 
-  -- 5) Ritorna i dati assegnati → il chiamante può COMMITtare subito
+  -- 5) Ritorna i dati assegnati -> il chiamante puo' COMMITtare subito
   RETURN QUERY SELECT v_registro_id, v_anno, v_mese, v_serie, v_numero;
 END
 $function$

@@ -8,7 +8,11 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
-from apps.vendite.services.pipeline_service import pr_run_lotto_pipeline
+from apps.vendite.services.pipeline_service import (
+    fn_reset_lotto_draft,
+    fn_reset_lotto_fattura_draft,
+    pr_run_lotto_pipeline,
+)
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
 
@@ -75,5 +79,96 @@ class ApiRunLottoPipeline(APIView):
 
 class ApiRunLottoPipelineV1(ApiRunLottoPipeline):
     # Versione canonica protetta: richiede JWT su /api/v1/*
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+
+class ApiResetLottoDraft(APIView):
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeResetLottoDraftRequest",
+            fields={},
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeResetLottoDraftResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeResetLottoDraftData",
+                        fields={
+                            "updated_lotti": serializers.IntegerField(),
+                            "updated_attivita": serializers.IntegerField(),
+                            "deleted_fatture": serializers.IntegerField(),
+                            "deleted_righe": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    def post(self, request: Request, lotto_id: int) -> JsonResponse:
+        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+            result = fn_reset_lotto_draft(lotto_id=lotto_id)
+            return result
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiResetLottoDraftV1(ApiResetLottoDraft):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+
+class ApiResetLottoFatturaDraft(APIView):
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeResetLottoFatturaDraftRequest",
+            fields={},
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeResetLottoFatturaDraftResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeResetLottoFatturaDraftData",
+                        fields={
+                            "updated_attivita": serializers.IntegerField(),
+                            "deleted_fatture": serializers.IntegerField(),
+                            "deleted_righe": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    def post(self, request: Request, lotto_id: int, fattura_id: int) -> JsonResponse:
+        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+            result = fn_reset_lotto_fattura_draft(lotto_id=lotto_id, fattura_id=fattura_id)
+            return {"data": result}
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiResetLottoFatturaDraftV1(ApiResetLottoFatturaDraft):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]

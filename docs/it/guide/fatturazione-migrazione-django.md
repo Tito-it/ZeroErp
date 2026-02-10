@@ -34,6 +34,8 @@
 * In DB restano i log (`fatturazione_lotti_log`) e le funzioni “primitive” che
   garantiscono coerenza e concorrenza.
 * Django gestisce retry, gestione errori, scheduling, controllo del job e reporting.
+* La configurazione `vendite.fatturazione_pipeline` supporta varianti per
+  `utility_id`/`tipo_doc_fiscale_id` con fallback su `NULL`.
 
 ---
 

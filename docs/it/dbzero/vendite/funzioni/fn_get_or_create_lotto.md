@@ -19,6 +19,7 @@ DECLARE
   v_tipo_doc_id config.tipi_doc_fiscale.id%TYPE;
   v_billing_account_id anagrafiche.billing_account.id%TYPE;
   v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
+  v_stato_lotto vendite.fatturazione_lotti.stato_lotto%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -26,8 +27,7 @@ BEGIN
   --
   -- Regole:
   --   - tipo_lotto obbligatorio (MASSIVO | GIORNALIERO)
-  --   - se p_lotto_id presente, valida coerenza parametri
-  --   - se p_lock_batch_id presente, riusa lotto se esistente
+  --   - lotto COMPLETATO non riutilizzabile
   -- =========================================================
 
   IF p_tipo_lotto IS NULL OR p_tipo_lotto NOT IN ('MASSIVO','GIORNALIERO') THEN
@@ -39,8 +39,8 @@ BEGIN
   END IF;
 
   IF p_lotto_id IS NOT NULL THEN
-    SELECT competenza_mese, utility_id, tipo_doc_fiscale_id, billing_account_id, tipo_lotto
-      INTO v_competenza, v_utility_id, v_tipo_doc_id, v_billing_account_id, v_tipo_lotto
+    SELECT competenza_mese, utility_id, tipo_doc_fiscale_id, billing_account_id, tipo_lotto, stato_lotto
+      INTO v_competenza, v_utility_id, v_tipo_doc_id, v_billing_account_id, v_tipo_lotto, v_stato_lotto
       FROM vendite.fatturazione_lotti
      WHERE id = p_lotto_id;
 
@@ -48,8 +48,17 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
         'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
         jsonb_build_object('detail','Lotto non trovato', 'lotto_id', p_lotto_id),
-        NULL::uuid, 
+        NULL::uuid,
         concat('Lotto non trovato', ' lotto_id: ', p_lotto_id::text)
+      );
+    END IF;
+
+    IF v_stato_lotto = 'COMPLETATO' THEN
+      PERFORM script.fn_log_and_raise_error(
+        'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+        jsonb_build_object('detail','Lotto completato non riutilizzabile', 'lotto_id', p_lotto_id),
+        NULL::uuid,
+        concat('Lotto completato non riutilizzabile', ' lotto_id: ', p_lotto_id::text)
       );
     END IF;
 
@@ -58,7 +67,7 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
         'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
         jsonb_build_object('detail','Competenza non coerente', 'lotto_id', p_lotto_id),
-        NULL::uuid, 
+        NULL::uuid,
         concat('Competenza non coerente', ' lotto_id: ', p_lotto_id::text)
       );
     END IF;
@@ -67,7 +76,7 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
         'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
         jsonb_build_object('detail','Utility non coerente', 'lotto_id', p_lotto_id),
-        NULL::uuid, concat('Utility non coerente', ' lotto_id: ', p_lotto_id::text) 
+        NULL::uuid, concat('Utility non coerente', ' lotto_id: ', p_lotto_id::text)
       );
     END IF;
 
@@ -75,7 +84,7 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
         'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
         jsonb_build_object('detail','Tipo documento non coerente', 'lotto_id', p_lotto_id),
-        NULL::uuid, 
+        NULL::uuid,
         concat('Tipo documento non coerente', ' lotto_id: ', p_lotto_id::text)
       );
     END IF;
@@ -100,12 +109,31 @@ BEGIN
   END IF;
 
   IF p_lock_batch_id IS NOT NULL THEN
-    SELECT id
-      INTO v_lotto_id
+    SELECT id, tipo_lotto, stato_lotto
+      INTO v_lotto_id, v_tipo_lotto, v_stato_lotto
       FROM vendite.fatturazione_lotti
-     WHERE lock_batch_id = p_lock_batch_id;
+     WHERE lock_batch_id = p_lock_batch_id
+     ORDER BY id DESC
+     LIMIT 1;
 
     IF v_lotto_id IS NOT NULL THEN
+      IF v_stato_lotto = 'COMPLETATO' THEN
+        PERFORM script.fn_log_and_raise_error(
+          'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+          jsonb_build_object('detail','Lotto completato non riutilizzabile', 'lotto_id', v_lotto_id),
+          NULL::uuid,
+          concat('Lotto completato non riutilizzabile', ' lotto_id: ', v_lotto_id::text)
+        );
+      END IF;
+
+      IF v_tipo_lotto IS NOT NULL AND v_tipo_lotto <> p_tipo_lotto THEN
+        PERFORM script.fn_log_and_raise_error(
+          'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+          jsonb_build_object('detail','Tipo lotto non coerente', 'lotto_id', v_lotto_id),
+          NULL::uuid, concat('Tipo lotto non coerente', ' lotto_id: ', v_lotto_id::text)
+        );
+      END IF;
+
       RETURN v_lotto_id;
     END IF;
   END IF;

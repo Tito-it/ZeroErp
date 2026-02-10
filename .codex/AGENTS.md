@@ -65,6 +65,7 @@
 - Nei blocchi SQL di funzioni/trigger inserire commenti sintetici sullo scopo e sulle regole principali.
 - In script complessi con molti filtri/parametri, e per evitare duplicazioni di logica, e` consentito usare SQL dinamico (con attenzione alla sicurezza).
 - Quando serve capire struttura o campi di tabelle/funzioni, leggere prima la documentazione in `<schema>/tabelle` e `<schema>/funzioni`, evitando di partire dalle migrations.
+- Nelle funzioni SQL, per parametri numerici di tipo ID applicare guard di validazione esplicita: errore se `NULL` o `<= 0` (non normalizzare silenziosamente).
 
 ## Trigger Conventions
 - Trigger name: `trg_<schema_opzionale>_<tabella>_<fase>_<descrizione>_<eventi>`

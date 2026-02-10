@@ -27,6 +27,7 @@ di aggregazione documento a partire da una riga di `attivita_fatturabili`.
 ### ✅ Regole principali
 
 * La fattura viene emessa sul **BA padre** se presente, altrimenti sul BA stesso.
+* L’utility e` risolta dal **billing_account**.
 * L’emittente fiscale e` risolto dal mapping BA → emittente.
 * Il reseller e` risolto dal mapping BA → reseller (se presente).
 * Il registro e` risolto dal tipo documento fiscale.

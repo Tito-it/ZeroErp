@@ -12,7 +12,7 @@ anagrafiche,vettori,codice,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_vettori
 vendite,contratti,numero,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_contratti_a10_v_protect_num_upd (trgfn_v_contratti_protect_num),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
 magazzino,magazzini,codice,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_magazzini_a10_protect_codice_upd (trgfn_magazzini_protect_codice),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
 vendite,ddt,numero,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_ddt_a10_v_protect_num_upd (trgfn_v_ddt_protect_num),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
-vendite,fatture,numero,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_fatture_a10_protect_num_upd (trgfn_fatture_protect_num),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
+vendite,fatture,numero,CODICE_NON_MODIFICABILE,AUTO,f,da trigger trg_fatture_a10_protect_num_upd (trgfn_fatture_protect_num),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
 vendite,ordini,numero,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_ordini_a10_v_protect_num_upd (trgfn_ordini_v_protect_num),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
 vendite,preventivi,numero,CODICE_NON_MODIFICABILE,AUTO,t,da trigger trg_preventivi_a10_v_protect_num_upd (trgfn_v_preventivi_protect_num),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb
 config,comuni,NON IMPOSTARE,CODICE_NON_MODIFICABILE,AUTO,f,da trigger trg_comuni_a10_protect_update_upd (trgfn_comuni_protect_update),2026-01-11 10:36:46.865568+01,titodb,2026-01-11 10:36:46.865568+01,titodb

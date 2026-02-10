@@ -2,8 +2,9 @@
 
 > 👀 **Vedi anche**
 >
+> **Approfondimento funzioni:**
+>
 > * [script.fn_get_snapshot_as_of](/dbzero/script/funzioni/fn_get_snapshot_as_of) *(snapshot completo)*
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) *(log + abort)*
 
 La funzione **`script.fn_get_record_id_as_of(p_schema TEXT, p_table TEXT, p_id TEXT, p_fk_col TEXT, p_as_of TIMESTAMP)`** restituisce il **testo dell’ID** (`TEXT`) del record valido in un dato istante, **cercando esclusivamente nella tabella di storico**. In assenza di uno snapshot valido, restituisce `NULL` senza eseguire alcun fallback sulla tabella operativa.
 

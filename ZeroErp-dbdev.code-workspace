@@ -7,32 +7,12 @@
       {
         "ssh": "Disabled",
         "previewLimit": 50,
-        "server": "192.168.X.6",
-        "port": 5432,
-        "driver": "PostgreSQL",
-        "name": "dbdev",
-        "database": "zeroerp",
-        "username": "tid"
-      },
-      {
-        "ssh": "Disabled",
-        "previewLimit": 50,
         "server": "dbdev",
         "port": 5432,
         "driver": "PostgreSQL",
-        "name": "dbdev",
+        "name": "zeroerp",
         "database": "zeroerp",
-        "username": "titodb"
-      },
-      {
-        "ssh": "Disabled",
-        "previewLimit": 50,
-        "server": "192.168.X.6",
-        "port": 5432,
-        "driver": "PostgreSQL",
-        "name": "dbdevok",
-        "database": "zeroerp",
-        "username": "titodb"
+        "username": "postgres"
       }
     ],
   },

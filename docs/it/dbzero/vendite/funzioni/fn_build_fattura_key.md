@@ -29,14 +29,15 @@ BEGIN
   --
   -- Regole:
   --   - fattura emessa su BA padre (se presente) altrimenti BA stesso
+  --   - utility da billing_account
   --   - emittente da mapping BA -> emittente fiscale
   --   - reseller da mapping BA -> reseller (se presente)
   --   - registro da tipo_doc_fiscale
   -- =========================================================
 
-  IF p_attivita_id IS NULL THEN
+  IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_build_fattura_key', 'E_GENERICO',
+      'database', 'vendite.fn_build_fattura_key', 'E_GENERICO',
       jsonb_build_object('detail','attivita_id obbligatorio'),
       NULL::uuid, 'attivita_id obbligatorio'
     );
@@ -46,7 +47,7 @@ BEGIN
          COALESCE(ba.parent_account_id, a.billing_account_id),
          a.tipo_doc_fiscale_id,
          a.valuta_id,
-         iu.utility_id
+         ba.utility_id
     INTO v_ba_id,
          v_ba_fattura_id,
          v_tipo_doc_fiscale_id,
@@ -55,15 +56,14 @@ BEGIN
     FROM vendite.attivita_fatturabili a
     JOIN anagrafiche.billing_account ba
       ON ba.id = a.billing_account_id
-    JOIN anagrafiche.istanze_utilities iu
-      ON iu.id = a.istanza_utility_id
    WHERE a.id = p_attivita_id;
 
   IF v_ba_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_build_fattura_key', 'E_GENERICO',
+      'database', 'vendite.fn_build_fattura_key', 'E_GENERICO',
       jsonb_build_object('detail','attivita non trovata o BA mancante', 'attivita_id', p_attivita_id),
-      NULL::uuid, 'Attivita non trovata o BA mancante'
+      NULL::uuid, 
+      concat('Attivita non trovata o BA mancante, attivita_id: ', p_attivita_id)
     );
   END IF;
 
@@ -73,7 +73,7 @@ BEGIN
     INTO v_reseller_id
     FROM anagrafiche.resellers_billing_account rb
    WHERE rb.billing_account_id = v_ba_fattura_id
-     AND rb.attivo IS TRUE
+     -- AND rb.attivo IS TRUE
    ORDER BY rb.id
    LIMIT 1;
 

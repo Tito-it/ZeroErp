@@ -15,7 +15,8 @@ AS $procedure$
     PERFORM maintenance.fn_run_and_log(
       p_jobname  := 'automations_lock_columns',
       p_stepname := 'run_automations_lock_columns',
-      p_sql      := 'SELECT dbops.fn_run_automations_lock_columns(''SCHEDULED'', NULL, false);',
+      p_sql      := 'SELECT dbops.fn_run_automations_lock_columns(''SCHEDULED'', NULL, false); ' ||
+                   'SELECT dbops.fn_run_automations_drop_lock_trg(''SCHEDULED'', NULL, false);',
       p_lock_key := hashtext('automations_lock_columns')
     );
   END;

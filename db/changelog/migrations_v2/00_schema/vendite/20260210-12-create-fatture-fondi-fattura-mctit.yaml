@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260210-12-create-fatture-fondi-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20260210-12-create-fatture-fondi-fattura
+      author: mctit
+      comment: "Fondi fattura collegati a documento e tipologia"
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: fatture_fondi_fattura
+            remarks: "Fondi fattura collegati alla testata (es. addebiti/accrediti, canone RAI)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_fatture_fondi_fattura
+                    nullable: false
+              - column:
+                  name: fattura_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: riferimento_fattura_id
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+              - column:
+                  name: tipo_fondo_fattura_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: importo
+                  type: NUMERIC
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: JSONB
+                  defaultValue: "{}"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: TEXT
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: TEXT
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            constraintName: fk_fatture_fondi_fattura_fattura
+            baseTableSchemaName: vendite
+            baseTableName: fatture_fondi_fattura
+            baseColumnNames: fattura_id
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture
+            referencedColumnNames: id
+        - addForeignKeyConstraint:
+            constraintName: fk_fatture_fondi_fattura_rif_fattura
+            baseTableSchemaName: vendite
+            baseTableName: fatture_fondi_fattura
+            baseColumnNames: riferimento_fattura_id
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture
+            referencedColumnNames: id
+        - addForeignKeyConstraint:
+            constraintName: fk_fatture_fondi_fattura_tipo
+            baseTableSchemaName: vendite
+            baseTableName: fatture_fondi_fattura
+            baseColumnNames: tipo_fondo_fattura_id
+            referencedTableSchemaName: vendite
+            referencedTableName: tipi_fondi_fattura
+            referencedColumnNames: id
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture_fondi_fattura
+            indexName: ix_fatture_fondi_fattura_fattura
+            columns:
+              - column:
+                  name: fattura_id
+        - createIndex:
+            schemaName: vendite
+            tableName: fatture_fondi_fattura
+            indexName: ix_fatture_fondi_fattura_tipo
+            columns:
+              - column:
+                  name: tipo_fondo_fattura_id

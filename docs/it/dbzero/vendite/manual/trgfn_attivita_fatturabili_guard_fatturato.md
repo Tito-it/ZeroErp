@@ -20,6 +20,9 @@ La funzione **`vendite.trgfn_attivita_fatturabili_guard_fatturato()`** blocca
 modifiche o cancellazioni di righe di `vendite.attivita_fatturabili` che
 risultano gia` agganciate a una riga di fattura.
 
+> Nota: il blocco puo` essere **bypassato** solo in contesti di manutenzione
+> tramite GUC `zeroerp.maintenance_reset_lotto_draft = on` (reset tecnico lotto DRAFT).
+
 ---
 
 ### 🔍 Regola applicata

@@ -14,8 +14,9 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.services.error_manager import ErrorManager
 from apps.core.services.value_normalizer import as_bool, empty_to_none
-from apps.vendite.types import LottoPipelineMeta
+from apps.vendite.types import LottoPipelineMeta, ResetLottoDraftResult, ResetLottoFatturaDraftResult
 
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
 
@@ -70,10 +71,14 @@ class AttivitaDaFatturare:
 class VenditePipelineRepository:
     """Wrapper SQL a basso livello per l'orchestrazione pipeline vendite."""
 
+    DOMINIO_CODE = "FATTURAZIONE"
+
     # `fn` nei JSON task e` mantenuto come token di compatibilita` SQL legacy.
     ALLOWED_TASK_FUNCTIONS = {
         "select_attivita": "vendite.fn_select_attivita_fatturabili",
         "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
+        "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
+        "close_lotto": None,
     }
 
     @staticmethod
@@ -128,6 +133,96 @@ class VenditePipelineRepository:
             return None
         return row[0]
 
+    def get_lotto_job_stato(self, lotto_id: int) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT stato_lotto FROM vendite.fatturazione_lotti WHERE id = %s",
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return row[0]
+
+    def get_dominio_id(self, codice: str | None = None) -> int:
+        dominio_code = codice or self.DOMINIO_CODE
+        ErrorManager.require(
+            bool(dominio_code and str(dominio_code).strip()),
+            code="E_PIPELINE_DOMINIO",
+            message="Dominio pipeline non valido.",
+            detail="codice dominio obbligatorio",
+            context={"codice": dominio_code},
+            function_name="vendite.pipeline_repository.get_dominio_id",
+            log_to_db=True,
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM dbops.domini_task
+                WHERE codice = %s
+                  AND attivo IS TRUE
+                ORDER BY id
+                LIMIT 1
+                """,
+                [dominio_code],
+            )
+            row = cursor.fetchone()
+        if not row:
+            ErrorManager.raise_error(
+                code="E_PIPELINE_DOMINIO_NOT_FOUND",
+                message="Dominio pipeline non trovato.",
+                detail=f"Dominio non trovato: {dominio_code}",
+                context={"codice": dominio_code},
+                function_name="vendite.pipeline_repository.get_dominio_id",
+                log_to_db=True,
+            )
+        return int(row[0])
+
+    def get_task_handler_code(
+        self,
+        *,
+        task_code: str,
+        implementation_key: str | None,
+        dominio_code: str | None = None,
+    ) -> str:
+        ErrorManager.require(
+            bool(task_code and str(task_code).strip()),
+            code="E_PIPELINE_TASK",
+            message="Task pipeline non valido.",
+            detail="task_code obbligatorio",
+            context={"task_code": task_code},
+            function_name="vendite.pipeline_repository.get_task_handler_code",
+            log_to_db=True,
+        )
+        dominio_id = self.get_dominio_id(dominio_code)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT handler_code
+                FROM dbops.fn_get_pipeline_task_implementation(%s, %s, %s)
+                """,
+                [dominio_id, task_code, implementation_key],
+            )
+            row = cursor.fetchone()
+        if not row:
+            ErrorManager.raise_error(
+                code="E_PIPELINE_TASK_HANDLER_NOT_FOUND",
+                message="Handler task non trovato.",
+                detail=(
+                    "Nessun handler per task "
+                    f"{task_code} (implementation_key={implementation_key})"
+                ),
+                context={
+                    "dominio_id": dominio_id,
+                    "task_code": task_code,
+                    "implementation_key": implementation_key,
+                },
+                function_name="vendite.pipeline_repository.get_task_handler_code",
+                log_to_db=True,
+            )
+        return str(row[0])
+
     def get_stato_doc_fiscale_id(self, codice: str) -> int | None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -153,21 +248,20 @@ class VenditePipelineRepository:
                 [lotto_id, stato, messaggio],
             )
 
-    def list_pipeline_steps(self, tipo_lotto: str) -> list[PipelineStep]:
-        # Ordina gli step con config.stati_doc_fiscale.ordine come nella pipeline SQL.
+    def list_pipeline_steps(
+        self,
+        tipo_lotto: str,
+        utility_id: int | None,
+        tipo_doc_fiscale_id: int | None,
+    ) -> list[PipelineStep]:
+        # Delega al DB la risoluzione step con fallback e precedenza.
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT fp.stato_doc_fiscale_id, fp.descrizione, sd.ordine
-                FROM vendite.fatturazione_pipeline fp
-                JOIN config.stati_doc_fiscale sd
-                  ON sd.id = fp.stato_doc_fiscale_id
-                WHERE fp.attivo IS TRUE
-                  AND fp.tipo_lotto = %s
-                  AND COALESCE(sd.applica_lotto, false) IS TRUE
-                ORDER BY sd.ordine
+                SELECT stato_doc_fiscale_id, descrizione, ordine
+                FROM vendite.fn_list_fatturazione_pipeline_steps(%s, %s, %s)
                 """,
-                [tipo_lotto],
+                [tipo_lotto, utility_id, tipo_doc_fiscale_id],
             )
             rows = cursor.fetchall()
         return [
@@ -199,6 +293,20 @@ class VenditePipelineRepository:
                 SELECT vendite.fn_close_giornaliero_lotto(%s, %s)
                 """,
                 [lotto_id, inviata_id],
+            )
+
+    def close_lotto_operativo(self, lotto_id: int) -> None:
+        # Chiusura operativa lotto senza vincolare lo stato documentale.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.fatturazione_lotti
+                SET stato_operativo = 'CHIUSO',
+                    data_update = now(),
+                    user_update = current_user
+                WHERE id = %s
+                """,
+                [lotto_id],
             )
 
     def log_pipeline_fase(
@@ -257,19 +365,29 @@ class VenditePipelineRepository:
         stato_doc_fiscale_id: int,
         *,
         tipo_lotto: str,
+        utility_id: int | None,
+        tipo_doc_fiscale_id: int | None,
         rollback: bool,
     ) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT CASE WHEN %s THEN rollback ELSE processi END
-                FROM vendite.fatturazione_pipeline
-                WHERE stato_doc_fiscale_id = %s
-                  AND tipo_lotto = %s
-                  AND attivo IS TRUE
-                LIMIT 1
+                SELECT processi
+                FROM vendite.fn_resolve_fatturazione_pipeline_step(
+                    p_tipo_lotto => %s,
+                    p_stato_doc_fiscale_id => %s,
+                    p_utility_id => %s,
+                    p_tipo_doc_fiscale_id => %s,
+                    p_rollback => %s
+                )
                 """,
-                [rollback, stato_doc_fiscale_id, tipo_lotto],
+                [
+                    tipo_lotto,
+                    stato_doc_fiscale_id,
+                    utility_id,
+                    tipo_doc_fiscale_id,
+                    rollback,
+                ],
             )
             row = cursor.fetchone()
 
@@ -279,6 +397,15 @@ class VenditePipelineRepository:
         value = row[0]
         if isinstance(value, list):
             return value
+        if isinstance(value, str):
+            # In alcuni ambienti il jsonb puo` arrivare serializzato come stringa.
+            try:
+                decoded = json.loads(value)
+            except json.JSONDecodeError:
+                return []
+            if isinstance(decoded, list):
+                return decoded
+            return []
         return []
 
     def run_select_attivita_task(
@@ -418,6 +545,41 @@ class VenditePipelineRepository:
             for row in rows
         ]
 
+    def list_fatture_by_lotto(self, lotto_id: int) -> list[int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT f.id
+                FROM vendite.fatturazione_lotti_fatture lf
+                JOIN vendite.fatture f
+                  ON f.id = lf.fattura_id
+                WHERE lf.lotto_id = %s
+                ORDER BY f.id
+                """,
+                [lotto_id],
+            )
+            rows = cursor.fetchall()
+        return [int(row[0]) for row in rows]
+
+    def numera_fattura_opz_emessa(self, fattura_id: int) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_numera_fattura_opz_emessa(%s)",
+                [fattura_id],
+            )
+
+    def sync_lotto_fatture_stato(
+        self,
+        *,
+        lotto_id: int,
+        stato_doc_fiscale_id: int | None = None,
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_sync_lotto_fatture_stato(%s, %s)",
+                [lotto_id, stato_doc_fiscale_id],
+            )
+
     def get_or_create_fattura_header(self, lotto_id: int, attivita_id: int) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -427,6 +589,51 @@ class VenditePipelineRepository:
             row = cursor.fetchone()
             assert row is not None
         return int(row[0])
+
+    def build_fattura_key(self, attivita_id: int) -> dict[str, object]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_build_fattura_key(%s)",
+                [attivita_id],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return row[0]
+
+    def reset_lotto_draft(self, lotto_id: int) -> ResetLottoDraftResult:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT updated_lotti, updated_attivita, deleted_fatture, deleted_righe "
+                "FROM vendite.fn_reset_lotto_draft(%s)",
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return {
+            "updated_lotti": int(row[0]),
+            "updated_attivita": int(row[1]),
+            "deleted_fatture": int(row[2]),
+            "deleted_righe": int(row[3]),
+        }
+
+    def reset_lotto_fattura_draft(
+        self,
+        lotto_id: int,
+        fattura_id: int,
+    ) -> ResetLottoFatturaDraftResult:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT updated_attivita, deleted_fatture, deleted_righe "
+                "FROM vendite.fn_reset_lotto_fattura_draft(%s, %s)",
+                [lotto_id, fattura_id],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return {
+            "updated_attivita": int(row[0]),
+            "deleted_fatture": int(row[1]),
+            "deleted_righe": int(row[2]),
+        }
 
     def get_next_fattura_riga_nr(self, fattura_id: int) -> int:
         with connection.cursor() as cursor:

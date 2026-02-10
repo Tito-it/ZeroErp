@@ -1,10 +1,12 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_get_snapshot_as_of`
 
 > 👀 **Vedi anche**
-> Approfondimento Funzioni:
+> 
 >
-> * [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only) *(solo logging, non aborta)*
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) *(logging + abort)*
+> **Approfondimento funzioni:**
+>
+> * [script.fn_get_record_id_as_of](/dbzero/script/funzioni/fn_get_record_id_as_of
+
 
 La funzione **`script.fn_get_snapshot_as_of(p_schema TEXT, p_table TEXT, p_id TEXT, p_fk_col TEXT, p_as_of TIMESTAMP)`** restituisce uno **snapshot JSONB** di un record al momento specificato (`p_as_of`), applicando il modello di storicizzazione unificato di Zero ERP:
 
@@ -59,10 +61,6 @@ END;
 RETURN v_snapshot;
 ```
 
-### 🔒 Gestione degli Errori
-
-* **`fn_log_and_raise_error`** viene invocata per ogni errore imprevisto: registra su `dbops.error_log` e poi **solleva un'eccezione**, interrompendo la chiamata.
-* **Per scenari di solo tracking** (log di attività non critiche), utilizzare **`fn_log_error_only`**, che registra l'evento senza bloccare l'esecuzione.
 
 ### 💡 Vantaggi Operativi
 

@@ -36,6 +36,10 @@ Ogni riga rappresenta una combinazione di:
 3. **Verifica** → la somma dei riepiloghi deve combaciare con i totali della testata (`imponibile_tot`, `imposta_tot`) salvo differenze gestite in `arrotondamento`.
 4. **Output** → i riepiloghi alimentano stampe, file elettronici e contabilizzazione.
 
+> Nota: il calcolo dei riepiloghi assume che **`iva_id` sia gia` valorizzato**
+> sulle righe fattura. La valorizzazione dell'IVA e` demandata al processo di
+> generazione righe (Python).
+
 ---
 
 ### 🔑 Chiavi di raggruppamento (combinazione fiscale)

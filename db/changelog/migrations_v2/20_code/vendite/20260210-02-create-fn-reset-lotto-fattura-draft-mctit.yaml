@@ -1,0 +1,435 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260210-02-create-fn-reset-lotto-fattura-draft-mctit.yaml
+
+  - changeSet:
+      id: 20260210-02-create-fn-reset-lotto-fattura-draft
+      author: mctit
+      comment: "Funzione di cleanup tecnico per reset lotto DRAFT , senza annullare il lotto."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_cleanup_fatture_by_ids(
+                p_fatture_ids bigint[],
+                p_lock_batch_id vendite.fatturazione_lotti.lock_batch_id%TYPE
+              )
+              RETURNS TABLE(
+                deleted_fatture integer,
+                deleted_righe integer,
+                updated_attivita integer
+              )
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_righe_ids bigint[];
+                v_deleted_fatture integer := 0;
+                v_deleted_righe integer := 0;
+                v_updated_attivita integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Cleanup centralizzato di fatture/righe e ripristino
+                --   attivita_fatturabili collegate.
+                --
+                -- Regole:
+                --   - usa GUC di manutenzione per bypass guard fatturato
+                --   - se p_fatture_ids vuoto -> nessuna modifica
+                -- =========================================================
+                IF p_fatture_ids IS NULL OR array_length(p_fatture_ids, 1) IS NULL THEN
+                  RETURN QUERY SELECT 0, 0, 0;
+                  RETURN;
+                END IF;
+
+                -- Bypass guard attivita_fatturabili durante il cleanup tecnico.
+                PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);
+
+                SELECT array_agg(r.id)
+                  INTO v_righe_ids
+                  FROM vendite.fatture_righe r
+                 WHERE r.fattura_id = ANY(p_fatture_ids);
+
+                IF v_righe_ids IS NULL THEN
+                  v_righe_ids := ARRAY[]::bigint[];
+                END IF;
+
+                -- Note collegate alle righe/testate fattura (tabella partizionata).
+                DELETE FROM vendite.note
+                 WHERE target_tipo = 'FATTURA'
+                   AND target_riga_id = ANY(v_righe_ids);
+
+                DELETE FROM vendite.note
+                 WHERE target_tipo = 'FATTURA'
+                   AND target_id = ANY(p_fatture_ids);
+
+                -- Riepiloghi IVA
+                DELETE FROM vendite.fatture_riepiloghi_iva
+                 WHERE fattura_id = ANY(p_fatture_ids);
+
+                -- Righe fattura
+                DELETE FROM vendite.fatture_righe
+                 WHERE fattura_id = ANY(p_fatture_ids);
+                GET DIAGNOSTICS v_deleted_righe = ROW_COUNT;
+
+                -- Log fatture
+                DELETE FROM vendite.fatture_log
+                 WHERE fattura_id = ANY(p_fatture_ids);
+
+                -- Link lotto-fatture
+                DELETE FROM vendite.fatturazione_lotti_fatture
+                 WHERE fattura_id = ANY(p_fatture_ids);
+
+                -- Testate fattura
+                DELETE FROM vendite.fatture
+                 WHERE id = ANY(p_fatture_ids);
+                GET DIAGNOSTICS v_deleted_fatture = ROW_COUNT;
+
+                -- Ripristino attivita_fatturabili
+                UPDATE vendite.attivita_fatturabili
+                   SET lock_in_fatturazione = false,
+                       lock_batch_id = NULL,
+                       fatturato = false,
+                       fattura_riga_id = NULL,
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE (p_lock_batch_id IS NOT NULL AND lock_batch_id = p_lock_batch_id)
+                    OR fattura_riga_id = ANY(v_righe_ids);
+                GET DIAGNOSTICS v_updated_attivita = ROW_COUNT;
+
+                RETURN QUERY
+                SELECT v_deleted_fatture, v_deleted_righe, v_updated_attivita;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_cleanup_fatture_by_ids(bigint[], uuid)
+                IS 'Cleanup centralizzato fatture/righe e ripristino attivita_fatturabili; note su tabella partizionata vendite.note.';
+
+  - changeSet:
+      id: 20260210-02-02-create-fn-reset-lotto-fattura-draft
+      author: mctit
+      comment: "Refactor reset lotto draft "
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              CREATE OR REPLACE FUNCTION vendite.fn_reset_lotto_draft(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+              RETURNS TABLE(
+                updated_lotti integer,
+                updated_attivita integer,
+                deleted_fatture integer,
+                deleted_righe integer
+              )
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                v_stato_doc_fiscale_id vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+                v_lock_batch_id vendite.fatturazione_lotti.lock_batch_id%TYPE;
+                v_draft_id config.stati_doc_fiscale.id%TYPE;
+                v_annullata_id config.stati_doc_fiscale.id%TYPE;
+                v_fatture_ids bigint[];
+                v_bad_fatture integer := 0;
+                v_updated_lotti integer := 0;
+                v_updated_attivita integer := 0;
+                v_deleted_fatture integer := 0;
+                v_deleted_righe integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Rollback tecnico di un lotto MASSIVO in DRAFT:
+                --   elimina fatture/righe generate e ripristina le righe
+                --   di attivita_fatturabili.
+                --
+                -- Regole:
+                --   - lotto deve esistere, tipo_lotto = MASSIVO
+                --   - stato_doc_fiscale del lotto deve essere DRAFT
+                --   - tutte le fatture del lotto devono essere DRAFT
+                --   - lotto finale: stato_doc_fiscale = ANNULLATA,
+                --     stato_operativo = CHIUSO, stato_lotto = COMPLETATO
+                -- =========================================================
+
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
+                    jsonb_build_object('detail','p_lotto_id obbligatorio'),
+                    NULL::uuid,
+                    'p_lotto_id non puo'' essere NULL o <= 0'
+                  );
+                END IF;
+
+                SELECT fl.tipo_lotto,
+                       fl.stato_doc_fiscale_id,
+                       fl.lock_batch_id
+                  INTO v_tipo_lotto, v_stato_doc_fiscale_id, v_lock_batch_id
+                  FROM vendite.fatturazione_lotti fl
+                 WHERE fl.id = p_lotto_id;
+
+                IF v_tipo_lotto IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
+                    jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id),
+                    NULL::uuid,
+                     concat('Lotto non trovato: ', p_lotto_id)
+                  );
+                END IF;
+
+                IF v_tipo_lotto <> 'MASSIVO' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
+                    jsonb_build_object('detail','tipo lotto non ammesso', 'tipo_lotto', v_tipo_lotto),
+                    NULL::uuid,
+                    concat('Rollback consentito solo per lotti MASSIVO, tipo lotto: ', v_tipo_lotto)
+                  );
+                END IF;
+
+                SELECT s.id
+                  INTO v_draft_id
+                  FROM config.stati_doc_fiscale s
+                 WHERE upper(btrim(s.codice)) = 'DRAFT'
+                   AND s.attivo IS TRUE
+                 LIMIT 1;
+
+                IF v_draft_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
+                    jsonb_build_object('detail','stato DRAFT non configurato'),
+                    NULL::uuid,
+                    'Stato DRAFT non trovato in config.stati_doc_fiscale'
+                  );
+                END IF;
+
+                SELECT s.id
+                  INTO v_annullata_id
+                  FROM config.stati_doc_fiscale s
+                 WHERE upper(btrim(s.codice)) = 'ANNULLATA'
+                   AND s.attivo IS TRUE
+                 LIMIT 1;
+
+                IF v_annullata_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
+                    jsonb_build_object('detail','stato ANNULLATA non configurato'),
+                    NULL::uuid,
+                    'Stato ANNULLATA non trovato in config.stati_doc_fiscale'
+                  );
+                END IF;
+
+                IF v_stato_doc_fiscale_id IS DISTINCT FROM v_draft_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
+                    jsonb_build_object(
+                      'detail','lotto non in DRAFT',
+                      'stato_doc_fiscale_id', v_stato_doc_fiscale_id
+                    ),
+                    NULL::uuid,
+                    concat('Rollback consentito solo se il lotto e'' in DRAFT, stato attuale: '
+                    , v_stato_doc_fiscale_id)
+                  );
+                END IF;
+
+                SELECT count(*)
+                  INTO v_bad_fatture
+                  FROM vendite.fatture f
+                  JOIN vendite.fatturazione_lotti_fatture lf
+                    ON lf.fattura_id = f.id
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND f.stato_doc_fiscale_id IS DISTINCT FROM v_draft_id;
+
+                IF v_bad_fatture > 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
+                    jsonb_build_object('detail','fatture non DRAFT', 'count', v_bad_fatture),
+                    NULL::uuid,
+                    concat('Rollback non consentito: esistono fatture non DRAFT, count: ', v_bad_fatture)
+                  );
+                END IF;
+
+                SELECT array_agg(lf.fattura_id)
+                  INTO v_fatture_ids
+                  FROM vendite.fatturazione_lotti_fatture lf
+                 WHERE lf.lotto_id = p_lotto_id;
+
+                IF v_fatture_ids IS NULL THEN
+                  v_fatture_ids := ARRAY[]::bigint[];
+                END IF;
+
+                SELECT c.deleted_fatture, c.deleted_righe, c.updated_attivita
+                  INTO v_deleted_fatture, v_deleted_righe, v_updated_attivita
+                  FROM vendite.fn_cleanup_fatture_by_ids(v_fatture_ids, v_lock_batch_id) AS c;
+
+                -- Chiusura lotto annullato
+                UPDATE vendite.fatturazione_lotti
+                   SET stato_operativo = 'CHIUSO',
+                       stato_doc_fiscale_id = v_annullata_id,
+                       stato_lotto = 'COMPLETATO',
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE id = p_lotto_id;
+                GET DIAGNOSTICS v_updated_lotti = ROW_COUNT;
+
+                RETURN QUERY
+                SELECT v_updated_lotti, v_updated_attivita, v_deleted_fatture, v_deleted_righe;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_reset_lotto_draft(bigint)
+                IS 'Rollback tecnico di lotto MASSIVO in DRAFT: elimina documenti generati e ripristina attivita_fatturabili.';
+
+  - changeSet:
+      id: 20260210-02-03-create-fn-reset-lotto-fattura-draft
+      author: mctit
+      comment: "Funzione di reset tecnico per singola fattura in lotto DRAFT"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              CREATE OR REPLACE FUNCTION vendite.fn_reset_lotto_fattura_draft(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                p_fattura_id vendite.fatture.id%TYPE
+              )
+              RETURNS TABLE(
+                updated_attivita integer,
+                deleted_fatture integer,
+                deleted_righe integer
+              )
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                v_stato_doc_fiscale_id vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+                v_lock_batch_id vendite.fatturazione_lotti.lock_batch_id%TYPE;
+                v_draft_id config.stati_doc_fiscale.id%TYPE;
+                v_is_linked boolean := false;
+                v_updated_attivita integer := 0;
+                v_deleted_fatture integer := 0;
+                v_deleted_righe integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Reset tecnico di una singola fattura in lotto MASSIVO
+                --   DRAFT, senza annullare il lotto.
+                --
+                -- Regole:
+                --   - lotto deve esistere, tipo_lotto = MASSIVO
+                --   - stato_doc_fiscale lotto = DRAFT
+                --   - fattura deve appartenere al lotto ed essere DRAFT
+                -- =========================================================
+
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_fattura_draft', 'E_GENERICO',
+                    jsonb_build_object('detail','p_lotto_id obbligatorio'),
+                    NULL::uuid,
+                    'p_lotto_id non puo'' essere NULL o <= 0'
+                  );
+                END IF;
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_fattura_draft', 'E_GENERICO',
+                    jsonb_build_object('detail','p_fattura_id obbligatorio'),
+                    NULL::uuid,
+                    'p_fattura_id non puo'' essere NULL o <= 0'
+                  );
+                END IF;
+
+                SELECT fl.tipo_lotto,
+                       fl.stato_doc_fiscale_id,
+                       fl.lock_batch_id
+                  INTO v_tipo_lotto, v_stato_doc_fiscale_id, v_lock_batch_id
+                  FROM vendite.fatturazione_lotti fl
+                 WHERE fl.id = p_lotto_id;
+
+                IF v_tipo_lotto IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_fattura_draft', 'E_GENERICO',
+                    jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id),
+                    NULL::uuid,
+                     concat('Lotto non trovato: ', p_lotto_id)
+                  );
+                END IF;
+
+                IF v_tipo_lotto <> 'MASSIVO' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_fattura_draft', 'E_GENERICO',
+                    jsonb_build_object('detail','tipo lotto non ammesso', 'tipo_lotto', v_tipo_lotto),
+                    NULL::uuid,
+                    concat('Reset consentito solo per lotti MASSIVO, tipo lotto: ', v_tipo_lotto)
+                  );
+                END IF;
+
+                SELECT s.id
+                  INTO v_draft_id
+                  FROM config.stati_doc_fiscale s
+                 WHERE upper(btrim(s.codice)) = 'DRAFT'
+                   AND s.attivo IS TRUE
+                 LIMIT 1;
+
+                IF v_draft_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_fattura_draft', 'E_GENERICO',
+                    jsonb_build_object('detail','stato DRAFT non configurato'),
+                    NULL::uuid,
+                    'Stato DRAFT non trovato in config.stati_doc_fiscale'
+                  );
+                END IF;
+
+                IF v_stato_doc_fiscale_id IS DISTINCT FROM v_draft_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_fattura_draft', 'E_GENERICO',
+                    jsonb_build_object(
+                      'detail','lotto non in DRAFT',
+                      'stato_doc_fiscale_id', v_stato_doc_fiscale_id
+                    ),
+                    NULL::uuid,
+                    concat('Reset consentito solo se il lotto e'' in DRAFT, stato attuale: '
+                    , v_stato_doc_fiscale_id)
+                  );
+                END IF;
+
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM vendite.fatturazione_lotti_fatture lf
+                    JOIN vendite.fatture f
+                      ON f.id = lf.fattura_id
+                   WHERE lf.lotto_id = p_lotto_id
+                     AND lf.fattura_id = p_fattura_id
+                     AND f.stato_doc_fiscale_id = v_draft_id
+                )
+                INTO v_is_linked;
+
+                IF COALESCE(v_is_linked, false) = false THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_lotto_fattura_draft', 'E_GENERICO',
+                    jsonb_build_object(
+                      'detail','fattura non collegata o non DRAFT',
+                      'lotto_id', p_lotto_id,
+                      'fattura_id', p_fattura_id
+                    ),
+                    NULL::uuid,
+                    'Fattura non collegata al lotto o non in DRAFT'
+                  );
+                END IF;
+
+                SELECT c.deleted_fatture, c.deleted_righe, c.updated_attivita
+                  INTO v_deleted_fatture, v_deleted_righe, v_updated_attivita
+                  FROM vendite.fn_cleanup_fatture_by_ids(ARRAY[p_fattura_id], v_lock_batch_id) AS c;
+
+                RETURN QUERY
+                SELECT v_updated_attivita, v_deleted_fatture, v_deleted_righe;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_reset_lotto_fattura_draft(bigint, bigint)
+                IS 'Reset tecnico di una singola fattura in lotto MASSIVO DRAFT (senza annullare il lotto).';

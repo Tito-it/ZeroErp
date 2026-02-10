@@ -24,3 +24,16 @@ class GroupAttivitaKey(TypedDict):
     arrotondamento_quantita_dec: int
     metodo_arrotondamento_importi: str
     metodo_arrotondamento_quantita: str
+
+
+class ResetLottoDraftResult(TypedDict):
+    updated_lotti: int
+    updated_attivita: int
+    deleted_fatture: int
+    deleted_righe: int
+
+
+class ResetLottoFatturaDraftResult(TypedDict):
+    updated_attivita: int
+    deleted_fatture: int
+    deleted_righe: int

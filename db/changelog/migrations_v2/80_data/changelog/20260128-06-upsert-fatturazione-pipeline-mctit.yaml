@@ -29,8 +29,8 @@ databaseChangeLog:
             columns:
               - column: { name: id, type: STRING }
               - column: { name: descrizione, type: STRING }
-              - column: { name: tipo_lotto, type: STRING }
               - column: { name: stato_doc_fiscale_id, type: STRING }
+
               - column: { name: processi, type: JSON }
               - column: { name: rollback, type: JSON }
               - column: { name: attivo, type: BOOLEAN }
@@ -45,3 +45,6 @@ databaseChangeLog:
                   type: STRING
                   defaultValue: "NOW()"
               - column: { name: user_update, type: STRING }
+              - column: { name: tipo_lotto, type: STRING }
+              - column: { name: utility_id, type: STRING }
+              - column: { name: tipo_doc_fiscale_id, type: STRING }

@@ -12,7 +12,7 @@
 ### 🎯 Scopo Principale
 
 (latest review 11-01-26)
-* **Eseguire in modo schedulato** l’orchestrazione delle **automazioni LOCK_COLUMNS** (trigger di blocco colonne) incapsulando la chiamata a `dbops.fn_run_automations_lock_columns(...)` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
+* **Eseguire in modo schedulato** l’orchestrazione delle **automazioni LOCK_COLUMNS** (trigger di blocco colonne) incapsulando la chiamata a `dbops.fn_run_automations_lock_columns(...)` e il cleanup dei trigger obsoleti in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 
 ---
 
@@ -33,6 +33,8 @@ La procedura:
 
    `SELECT dbops.fn_run_automations_lock_columns('SCHEDULED', NULL, false);`
 
+   `SELECT dbops.fn_run_automations_drop_lock_trg('SCHEDULED', NULL, false);`
+
    come **step** identificato da `automations_lock_columns / run_automations_lock_columns`.
 3. Usa un **advisory lock** (chiave derivata da `hashtext('automations_lock_columns')`) per evitare **sovrapposizioni** se lo scheduler tenta più run contemporanei.
 
@@ -44,7 +46,16 @@ La procedura:
 
 1. **Acquire lock** tramite `p_lock_key`.
 2. **Log start** (`p_jobname`, `p_stepname`).
-3. **Esecuzione**: `SELECT dbops.fn_run_automations_lock_columns('SCHEDULED', NULL, false);`.
+3. **Esecuzione**:
+   `SELECT dbops.fn_run_automations_lock_columns('SCHEDULED', NULL, false);`.
+
+   `SELECT dbops.fn_run_automations_drop_lock_trg('SCHEDULED', NULL, false);`.
+
+#### Esempio manuale (cleanup solo LOCK_COLUMNS)
+
+```
+SELECT dbops.fn_run_automations_drop_lock_trg('AUTO', ARRAY['vendite'], false);
+```
 4. **Log end** con esito **OK/KO** e dettagli.
 5. **Release lock**.
 
@@ -99,11 +110,12 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 ### 🔗 Dipendenze
 
 * `dbops.fn_run_automations_lock_columns` — orchestratore che applica/regola la policy **LOCK_COLUMNS** sulle tabelle in scope.
+* `dbops.fn_run_automations_drop_lock_trg` — cleanup dei trigger **LOCK_COLUMNS** non piu' necessari.
 * `maintenance.fn_run_and_log` — esecuzione protetta con logging e advisory lock.
 
 ---
 
-> 🧠 **In breve**: questa procedura e' il wrapper schedulabile e sicuro per lanciare le automazioni **LOCK_COLUMNS** tramite `dbops.fn_run_automations_lock_columns`, con logging strutturato e prevenzione di esecuzioni concorrenti.
+> 🧠 **In breve**: questa procedura e' il wrapper schedulabile e sicuro per lanciare le automazioni **LOCK_COLUMNS** e il cleanup dei trigger obsoleti, con logging strutturato e prevenzione di esecuzioni concorrenti.
 
 ---
 
