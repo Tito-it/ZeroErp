@@ -8,10 +8,12 @@ CREATE FUNCTION fn_ricalcola_fattura(p_fattura_id bigint)
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_fattura(p_fattura_id bigint)
- RETURNS TABLE(imponibile_tot numeric, imposta_tot numeric, totale_escluso_imponibile numeric, totale_doc numeric)
- LANGUAGE plpgsql
-AS $function$
+CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_fattura(
+  p_fattura_id vendite.fatture.id%TYPE
+)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -19,12 +21,9 @@ BEGIN
   -- =========================================================
 
   PERFORM vendite.fn_ricalcola_riepilogo_iva_fattura(p_fattura_id);
-
-  RETURN QUERY
-  SELECT *
-  FROM vendite.fn_ricalcola_totali_fattura(p_fattura_id);
+  PERFORM vendite.fn_ricalcola_totali_fattura(p_fattura_id);
 END;
-$function$
+$$
 ```
 
 ---

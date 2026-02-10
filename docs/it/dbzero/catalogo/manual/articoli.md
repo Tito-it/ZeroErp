@@ -27,7 +27,7 @@
 * **fiscalità** (IVA, conti contabili di vendita/acquisto);
 * **logistica/serializzazione** (`requires_serial`);
 * **distinta base leggera** (`is_composito`, via tabella componenti);
-* **aspetti documentali** (`fondo_fattura`, `voce_utility`).
+* **aspetti documentali** (`voce_utility`).
 
 ---
 
@@ -51,7 +51,7 @@
 * **Identità**: `id UUID` (PK), `codice VARCHAR(50)` (**UNIQUE**), `descrizione VARCHAR(150)`, `descrizione_breve VARCHAR(80)`
 * **Classificazione**: `uom_id`, `tipo_voce_id`, `gruppo_voce_id`, `spesa_id`
 * **Fiscale/Contabile**: `iva_id`, `conto_contabile_vendita_id`, `conto_contabile_acquisto_id`
-* **Flag funzionali**: `is_composito` (distinta), `is_solo_componente` (solo componente), `requires_serial` (serializzazione), `voce_utility` (voce utility), `fondo_fattura` (stampa in calce)
+* **Flag funzionali**: `is_composito` (distinta), `is_solo_componente` (solo componente), `requires_serial` (serializzazione), `voce_utility` (voce utility)
 * **Note**: `note_target_tipo`, `note_id` (FK composita verso `catalogo.note`)
 * **Tecnico**: `meta JSONB`, `attivo BOOLEAN` (default `true`), `storicizza BOOLEAN` (default `true`), `tx_id UUID`
 * **Audit**: `user_insert`, `user_update`, `data_insert`, `data_update`

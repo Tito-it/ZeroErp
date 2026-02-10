@@ -26,15 +26,14 @@ in sequenza, il ricalcolo dei riepiloghi IVA e dei totali testata.
 
 ### ✅ Output
 
-Ritorna una riga con i totali testata aggiornati.
+Aggiorna i totali testata e i riepiloghi IVA.
 
 ---
 
 ### 🧪 Esempio d’uso
 
 ```sql
-SELECT *
-FROM vendite.fn_ricalcola_fattura(123);
+SELECT vendite.fn_ricalcola_fattura(123);
 ```
 
 ---
