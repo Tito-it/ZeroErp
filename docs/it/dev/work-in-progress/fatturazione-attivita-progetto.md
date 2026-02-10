@@ -511,6 +511,15 @@ Questa regola rende il raggruppamento deterministico e permette casi semplificat
 
 * ✅ Le note associate a `attivita_fatturabili` confluiscono in `note_fatture_righe`.
 * ✅ Il trasferimento avviene **in fase di emissione/numerazione**, tramite **processo dedicato** richiamabile.
+* ✅ La lettura note usa `vendite.fn_get_vendite_note` (wrapper su tabella partizionata `vendite.note`).
+
+**IVA (processo dedicato):**
+
+* ✅ La generazione `fatture_riepiloghi_iva` e` un processo separato.
+* ✅ Deve **prima** rimuovere i riepiloghi esistenti della fattura/lotto
+  e **poi** ricalcolare.
+* ✅ Il processo puo` essere inserito in qualsiasi step della pipeline (o servizio dedicato),
+  senza vincolo a stato specifico.
 
 ---
 

@@ -3,15 +3,16 @@
 > 👀 **Vedi anche**
 >
 > **Approfondimento Tabelle**
-> • [`config.note_stili`](/dbzero/config/tabelle/note_stili)  
-> • [`config.lingue`](/dbzero/config/tabelle/lingue)  
+> 
+> • [`config.note_stili`](/dbzero/config/tabelle/note_stili)   
+> • [`config.lingue`](/dbzero/config/tabelle/lingue)    
 >
 > **Approfondimento Funzioni**
-> • [`script.fn_get_note`](/dbzero/script/funzioni/fn_get_note)  
+> • [`script.fn_get_note`](/dbzero/script/funzioni/fn_get_note)   
 >
 > **Esempi di uso**
-> • [`vendite.fn_get_vendite_note`](/dbzero/vendite/funzioni/fn_get_vendite_note)  
-> • [`acquisti.fn_get_acquisti_note`](/dbzero/acquisti/funzioni/fn_get_acquisti_note)  
+> • [`vendite.fn_get_vendite_note`](/dbzero/vendite/funzioni/fn_get_vendite_note)    
+> • [`acquisti.fn_get_acquisti_note`](/dbzero/acquisti/funzioni/fn_get_acquisti_note)    
 
 ---
 

@@ -197,6 +197,11 @@ Il **calcolo** produce righe; l’**emissione** produce la testata, la numerazio
 * `vendite.note` (e partizioni dedicate)
 * `vendite.fatture_indirizzi` (se previsto)
 
+### ✅ IVA (processo dedicato)
+La generazione dei riepiloghi IVA e` un processo separato:
+prima si eliminano i riepiloghi esistenti e poi si ricalcola. Il processo puo`
+essere inserito in qualsiasi step della pipeline o eseguito da servizio dedicato.
+
 ### 🖥️ Dashboard “Emissione”
 * Preview del documento, controlli finali e numerazione.
 * Conferma emissione con log degli esiti.

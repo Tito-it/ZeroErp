@@ -62,7 +62,7 @@
 - [fn_get_registro_id](funzioni/fn_get_registro_id.md) — (latest review 27-01-2026) La funzione **`vendite.fn_get_registro_id`** risolve il registro di fatturazione in base al mapping **tipo documento → registro**, considerando utility/emittente se presenti.
 - [fn_get_tipo_doc_fiscale_id](funzioni/fn_get_tipo_doc_fiscale_id.md) — (latest review 27-01-2026) La funzione **`vendite.fn_get_tipo_doc_fiscale_id`** risolve il tipo documento fiscale a partire dalla sorgente o dalla utility.
 - [fn_get_valuta_id](funzioni/fn_get_valuta_id.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback al **gestore** quando non esistono valori specifici su BA/utility.
-- [fn_get_vendite_note](funzioni/fn_get_vendite_note.md)
+- [fn_get_vendite_note](funzioni/fn_get_vendite_note.md) — (latest review 10-02-2026)   Wrapper su `script.fn_get_note` per la tabella partizionata `vendite.note`.
 - [fn_group_attivita_fatturabili](funzioni/fn_group_attivita_fatturabili.md) — (latest review 07-02-2026)   (Deprecate-trasferite in django)   La funzione **`vendite.fn_group_attivita_fatturabili()`** costruisce la **chiave di aggregazione riga** a partire da una riga di `attivita_fatturabili`.
 - [fn_list_fatturazione_pipeline_steps](funzioni/fn_list_fatturazione_pipeline_steps.md) — (latest review 08-02-2026)   La funzione restituisce la lista step pipeline risolti per `tipo_lotto`, `utility_id` e `tipo_doc_fiscale_id`, delegando la precedenza a `fn_resolve_fatturazione_pipeline_step`.
 - [fn_log_lotto_esito_fatture](funzioni/fn_log_lotto_esito_fatture.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_log_lotto_esito_fatture()`** registra un log di esito lotto dedotto dai log fatture associate al lotto.

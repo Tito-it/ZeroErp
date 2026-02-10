@@ -4,8 +4,8 @@
 >
 > Approfondimento tabelle:
 >
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)  
+> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)   
 
 ---
 
