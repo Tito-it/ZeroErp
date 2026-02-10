@@ -1,0 +1,97 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_cleanup_fatture_by_ids.md" %}
+# ⚙️ Funzione `fn_cleanup_fatture_by_ids`
+
+```sql
+CREATE FUNCTION fn_cleanup_fatture_by_ids(p_fatture_ids bigint[], p_lock_batch_id uuid)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_cleanup_fatture_by_ids(p_fatture_ids bigint[], p_lock_batch_id uuid)
+ RETURNS TABLE(deleted_fatture integer, deleted_righe integer, updated_attivita integer)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_righe_ids bigint[];
+  v_deleted_fatture integer := 0;
+  v_deleted_righe integer := 0;
+  v_updated_attivita integer := 0;
+BEGIN
+  -- =========================================================
+  -- Scopo:
+  --   Cleanup centralizzato di fatture/righe e ripristino
+  --   attivita_fatturabili collegate.
+  --
+  -- Regole:
+  --   - usa GUC di manutenzione per bypass guard fatturato
+  --   - se p_fatture_ids vuoto -> nessuna modifica
+  -- =========================================================
+  IF p_fatture_ids IS NULL OR array_length(p_fatture_ids, 1) IS NULL THEN
+    RETURN QUERY SELECT 0, 0, 0;
+    RETURN;
+  END IF;
+
+  -- Bypass guard attivita_fatturabili durante il cleanup tecnico.
+  PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);
+
+  SELECT array_agg(r.id)
+    INTO v_righe_ids
+    FROM vendite.fatture_righe r
+   WHERE r.fattura_id = ANY(p_fatture_ids);
+
+  IF v_righe_ids IS NULL THEN
+    v_righe_ids := ARRAY[]::bigint[];
+  END IF;
+
+  -- Note collegate alle righe/testate fattura (tabella partizionata).
+  DELETE FROM vendite.note
+   WHERE target_tipo = 'FATTURA'
+     AND target_riga_id = ANY(v_righe_ids);
+
+  DELETE FROM vendite.note
+   WHERE target_tipo = 'FATTURA'
+     AND target_id = ANY(p_fatture_ids);
+
+  -- Riepiloghi IVA
+  DELETE FROM vendite.fatture_riepiloghi_iva
+   WHERE fattura_id = ANY(p_fatture_ids);
+
+  -- Righe fattura
+  DELETE FROM vendite.fatture_righe
+   WHERE fattura_id = ANY(p_fatture_ids);
+  GET DIAGNOSTICS v_deleted_righe = ROW_COUNT;
+
+  -- Log fatture
+  DELETE FROM vendite.fatture_log
+   WHERE fattura_id = ANY(p_fatture_ids);
+
+  -- Link lotto-fatture
+  DELETE FROM vendite.fatturazione_lotti_fatture
+   WHERE fattura_id = ANY(p_fatture_ids);
+
+  -- Testate fattura
+  DELETE FROM vendite.fatture
+   WHERE id = ANY(p_fatture_ids);
+  GET DIAGNOSTICS v_deleted_fatture = ROW_COUNT;
+
+  -- Ripristino attivita_fatturabili
+  UPDATE vendite.attivita_fatturabili
+     SET lock_in_fatturazione = false,
+         lock_batch_id = NULL,
+         fatturato = false,
+         fattura_riga_id = NULL,
+         data_update = now(),
+         user_update = current_user
+   WHERE (p_lock_batch_id IS NOT NULL AND lock_batch_id = p_lock_batch_id)
+      OR fattura_riga_id = ANY(v_righe_ids);
+  GET DIAGNOSTICS v_updated_attivita = ROW_COUNT;
+
+  RETURN QUERY
+  SELECT v_deleted_fatture, v_deleted_righe, v_updated_attivita;
+END;
+$function$
+```
+
+---
+{% include-markdown "signature-core.md" %}

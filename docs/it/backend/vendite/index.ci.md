@@ -12,3 +12,5 @@
 - [fn_generate_fatture_righe](manual/fn_generate_fatture_righe.md) — Generare in Django le righe fattura a partire da attivita_fatturabili lockate sul lotto.
 - [fn_group_attivita_fatturabili](manual/fn_group_attivita_fatturabili.md) — Costruire in Django la chiave di aggregazione delle attivita fatturabili.
 - [fn_reset_lotto_draft](manual/fn_reset_lotto_draft.md) — Reset tecnico lotto DRAFT tramite wrapper Django.
+- [fn_reset_lotto_fattura_draft](manual/fn_reset_lotto_fattura_draft.md) — Reset tecnico singola fattura in lotto DRAFT tramite wrapper Django.
+- [api_reset_lotto_fattura_draft](manual/api_reset_lotto_fattura_draft.md) — Endpoint reset singola fattura in lotto DRAFT.

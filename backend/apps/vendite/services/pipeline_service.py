@@ -12,7 +12,12 @@ from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipe
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 from apps.vendite.services.lotto_reset_service import LottoResetService
-from apps.vendite.types import GroupAttivitaKey, LottoPipelineMeta, ResetLottoDraftResult
+from apps.vendite.types import (
+    GroupAttivitaKey,
+    LottoPipelineMeta,
+    ResetLottoDraftResult,
+    ResetLottoFatturaDraftResult,
+)
 
 # Facade servizi: mantiene firme SQL-like e delega alle classi OOP.
 
@@ -81,3 +86,13 @@ def fn_reset_lotto_draft(*, lotto_id: int) -> ResetLottoDraftResult:
     """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_reset_lotto_draft."""
     service = LottoResetService()
     return service.reset_lotto_draft(lotto_id)
+
+
+def fn_reset_lotto_fattura_draft(
+    *,
+    lotto_id: int,
+    fattura_id: int,
+) -> ResetLottoFatturaDraftResult:
+    """Entrypoint servizio Python per reset singola fattura del lotto."""
+    service = LottoResetService()
+    return service.reset_lotto_fattura_draft(lotto_id, fattura_id)

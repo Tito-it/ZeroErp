@@ -19,7 +19,6 @@ DECLARE
   v_draft_id config.stati_doc_fiscale.id%TYPE;
   v_annullata_id config.stati_doc_fiscale.id%TYPE;
   v_fatture_ids bigint[];
-  v_righe_ids bigint[];
   v_bad_fatture integer := 0;
   v_updated_lotti integer := 0;
   v_updated_attivita integer := 0;
@@ -48,9 +47,6 @@ BEGIN
       'p_lotto_id non puo'' essere NULL o <= 0'
     );
   END IF;
-
-  -- Bypass guard attivita_fatturabili durante il reset tecnico.
-  PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);
 
   SELECT fl.tipo_lotto,
          fl.stato_doc_fiscale_id,
@@ -148,55 +144,9 @@ BEGIN
     v_fatture_ids := ARRAY[]::bigint[];
   END IF;
 
-  SELECT array_agg(r.id)
-    INTO v_righe_ids
-    FROM vendite.fatture_righe r
-   WHERE r.fattura_id = ANY(v_fatture_ids);
-
-  IF v_righe_ids IS NULL THEN
-    v_righe_ids := ARRAY[]::bigint[];
-  END IF;
-
-  -- Note collegate alle righe/testate fattura
-  DELETE FROM vendite.note_fatture
-   WHERE target_riga_id = ANY(v_righe_ids);
-
-  DELETE FROM vendite.note_fatture
-   WHERE target_id = ANY(v_fatture_ids);
-
-  -- Riepiloghi IVA
-  DELETE FROM vendite.fatture_riepiloghi_iva
-   WHERE fattura_id = ANY(v_fatture_ids);
-
-  -- Righe fattura
-  DELETE FROM vendite.fatture_righe
-   WHERE fattura_id = ANY(v_fatture_ids);
-  GET DIAGNOSTICS v_deleted_righe = ROW_COUNT;
-
-  -- Log fatture
-  DELETE FROM vendite.fatture_log
-   WHERE fattura_id = ANY(v_fatture_ids);
-
-  -- Link lotto-fatture
-  DELETE FROM vendite.fatturazione_lotti_fatture
-   WHERE lotto_id = p_lotto_id;
-
-  -- Testate fattura
-  DELETE FROM vendite.fatture
-   WHERE id = ANY(v_fatture_ids);
-  GET DIAGNOSTICS v_deleted_fatture = ROW_COUNT;
-
-  -- Ripristino attivita_fatturabili
-  UPDATE vendite.attivita_fatturabili
-     SET lock_in_fatturazione = false,
-         lock_batch_id = NULL,
-         fatturato = false,
-         fattura_riga_id = NULL,
-         data_update = now(),
-         user_update = current_user
-   WHERE (v_lock_batch_id IS NOT NULL AND lock_batch_id = v_lock_batch_id)
-      OR fattura_riga_id = ANY(v_righe_ids);
-  GET DIAGNOSTICS v_updated_attivita = ROW_COUNT;
+  SELECT c.deleted_fatture, c.deleted_righe, c.updated_attivita
+    INTO v_deleted_fatture, v_deleted_righe, v_updated_attivita
+    FROM vendite.fn_cleanup_fatture_by_ids(v_fatture_ids, v_lock_batch_id) AS c;
 
   -- Chiusura lotto annullato
   UPDATE vendite.fatturazione_lotti
