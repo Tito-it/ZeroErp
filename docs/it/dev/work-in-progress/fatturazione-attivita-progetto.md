@@ -263,6 +263,43 @@ flowchart TD
 
 ---
 
+## 📌 Attivita` da introdurre – Fondi fattura (WIP)
+
+### Scopo
+Separare i **fondi fattura** dalle righe standard per garantire semantica corretta,
+tracciabilita` verso documenti precedenti e calcolo deterministico del totale a pagare.
+
+### Modello proposto
+
+**Nuove tabelle:**
+
+* `vendite.tipi_fondi_fattura`
+  * `id`, `codice`, `codice_interno`, `descrizione`, `meta`, audit
+* `vendite.fatture_fondi_fattura`
+  * `id`, `fattura_id`, `riferimento_fattura_id`, `tipo_fondo_fattura_id`, `importo`, `meta`, audit
+
+**Modifiche a `vendite.fatture`:**
+
+* `totale_doc` resta: `imponibile_tot + imposta_tot`
+* introdurre `totale_a_pagare` (totale fiscale + arrotondamenti + fondi)
+* rimuovere `totale_escluso_imponibile` (sostituito dalla somma fondi)
+
+**Modifiche a `catalogo.articoli`:**
+
+* rimuovere `fondo_fattura` (non piu` coerente come flag articolo)
+
+### Impatti su logica Django
+
+* Il processo di generazione righe **non** deve creare fondi fattura.
+* I fondi fattura vanno gestiti da **servizio dedicato** (API o batch).
+* Il ricalcolo totali deve includere `SUM(fatture_fondi_fattura.importo)`.
+
+### Note operative
+
+* Nessuna migrazione dati (al momento non esistono righe fondo fattura).
+* Aggiornare `fn_ricalcola_totali_fattura` e test pgtap relativi.
+
+
 ## 📎 Appendice – Lotto, raggruppamenti e stati (design operativo)
 
 > **Nota importante (evidenza):**

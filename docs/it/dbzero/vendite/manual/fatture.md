@@ -71,8 +71,9 @@ Obiettivi principali:
 * **Totali**: `imponibile_tot`, `imposta_tot`, `totale_doc`, con campi ausiliari:
 
   * **Bollo**: `bollo_applicato`, `bollo_importo`.
-  * **Extra fuori imponibile**: `totale_escluso_imponibile`.
+  * **Fondi fattura**: `fatture_fondi_fattura` (somma per `totale_a_pagare`).
   * **Arrotondamenti**: `arrotondamento_precedente` / `arrotondamento_attuale`.
+  * **Totale a pagare**: `totale_a_pagare` (totale_doc + arrotondamenti + fondi).
   * **Saldo scope**: l’origine del saldo tecnico e` `vendite.fatture_arrotondamenti_scope`
     (scope: BA, utility, tipo documento, emittente, valuta).
 
@@ -127,6 +128,7 @@ WHERE f.sorgente_tipo_id = :src_tipo
 * **Idempotenza**: popolare sempre `uid` oppure *(sorgente_tipo_id, sorgente_uid)* in integrazione.
 * **Allineamento valute**: fissare `tasso_cambio` al momento dell’emissione e non modificarlo successivamente (se serve, storicizza variazioni in `meta`).
 * **Totali**: ricalcolare da righe e riepiloghi IVA prima della numerazione; tracciare `arrotondamento_attuale`.
+* **Totale a pagare**: include fondi fattura e arrotondamenti, non solo imponibile+imposta.
 * **Arrotondamenti**: usare `vendite.fn_get_arrotondamento_scope()` e
   `vendite.fn_set_arrotondamento_scope()` per gestire il saldo tecnico per scope.
 
