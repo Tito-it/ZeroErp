@@ -520,6 +520,34 @@ Questa regola rende il raggruppamento deterministico e permette casi semplificat
   e **poi** ricalcolare.
 * ✅ Il processo puo` essere inserito in qualsiasi step della pipeline (o servizio dedicato),
   senza vincolo a stato specifico.
+*  Il processo di generazione righe (Django) deve valorizzare `iva_id`
+  in modo corretto e coerente con le regole applicative.
+
+---
+
+### 7.1) Arrotondamenti per scope
+
+Per garantire arrotondamenti **deterministici** e coerenti tra fattura e storni,
+introduciamo uno **scope tecnico** separato dalla testata.
+
+**Tabella:** `vendite.fatture_arrotondamenti_scope`
+
+**Chiave scope (univoca):**
+
+* `billing_account_id`
+* `utility_id`
+* `tipo_doc_fiscale_id`
+* `emittente_soggetto_ruolo_id`
+* `valuta_id`
+
+**Campo principale:**
+
+* `saldo_arrotondamento` (saldo tecnico da usare per `arrotondamento_precedente/attuale`).
+
+**Note operative:**
+
+* Il saldo e` tecnico, non fiscale.
+* L’aggiornamento deve avvenire tramite funzioni dedicate (get/set), non a mano.
 
 ---
 

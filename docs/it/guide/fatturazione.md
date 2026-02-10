@@ -202,6 +202,9 @@ La generazione dei riepiloghi IVA e` un processo separato:
 prima si eliminano i riepiloghi esistenti e poi si ricalcola. Il processo puo`
 essere inserito in qualsiasi step della pipeline o eseguito da servizio dedicato.
 
+Nota: il ricalcolo assume che `iva_id` sia gia` valorizzato sulle righe fattura;
+questa parte e` demandata al processo di generazione righe (Python).
+
 ### 🖥️ Dashboard “Emissione”
 * Preview del documento, controlli finali e numerazione.
 * Conferma emissione con log degli esiti.

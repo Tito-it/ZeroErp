@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260210-04-create-fn-ricalcola-riepiloghi-iva-mctit.yaml
+
+  - changeSet:
+      id: 20260210-04-create-fn-ricalcola-riepiloghi-iva
+      author: mctit
+      comment: "Ricalcolo riepiloghi IVA per fattura o lotto"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_riepiloghi_iva(
+                p_fattura_id vendite.fatture.id%TYPE DEFAULT NULL,
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE(
+                fatture_count integer,
+                deleted_rows integer,
+                inserted_rows integer
+              )
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_fatture_ids bigint[];
+                v_deleted_rows integer := 0;
+                v_inserted_rows integer := 0;
+                v_fatture_count integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Ricalcolo riepiloghi IVA per fattura o lotto.
+                --
+                -- Regole:
+                --   - p_fattura_id o p_lotto_id obbligatori
+                --   - iva_id delle righe deve essere gia` valorizzato
+                --   - rimuove riepiloghi esistenti e rigenera aggregando righe
+                -- =========================================================
+
+                IF (p_fattura_id IS NULL OR p_fattura_id <= 0)
+                   AND (p_lotto_id IS NULL OR p_lotto_id <= 0) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_ricalcola_riepiloghi_iva', 'E_GENERICO',
+                    jsonb_build_object('detail','p_fattura_id o p_lotto_id obbligatori'),
+                    NULL::uuid,
+                    'p_fattura_id o p_lotto_id obbligatori e > 0'
+                  );
+                END IF;
+
+                SELECT array_agg(s.fattura_id)
+                  INTO v_fatture_ids
+                  FROM (
+                    SELECT f.id AS fattura_id
+                    FROM vendite.fatture f
+                    WHERE p_fattura_id IS NOT NULL
+                      AND f.id = p_fattura_id
+                    UNION
+                    SELECT lf.fattura_id
+                    FROM vendite.fatturazione_lotti_fatture lf
+                    WHERE p_lotto_id IS NOT NULL
+                      AND lf.lotto_id = p_lotto_id
+                  ) AS s;
+
+                IF v_fatture_ids IS NULL THEN
+                  RETURN QUERY SELECT 0, 0, 0;
+                  RETURN;
+                END IF;
+
+                v_fatture_count := COALESCE(array_length(v_fatture_ids, 1), 0);
+
+                DELETE FROM vendite.fatture_riepiloghi_iva
+                 WHERE fattura_id = ANY(v_fatture_ids);
+                GET DIAGNOSTICS v_deleted_rows = ROW_COUNT;
+
+                INSERT INTO vendite.fatture_riepiloghi_iva (
+                  fattura_id,
+                  iva_id,
+                  natura_id,
+                  esigibilita,
+                  split_payment,
+                  imponibile,
+                  imposta,
+                  arrotondamento
+                )
+                SELECT
+                  r.fattura_id,
+                  r.iva_id,
+                  n.id AS natura_id,
+                  r.esigibilita,
+                  r.split_payment,
+                  SUM(COALESCE(r.imponibile_riga, 0)) AS imponibile,
+                  SUM(COALESCE(r.imposta_riga, 0)) AS imposta,
+                  0::numeric AS arrotondamento
+                FROM vendite.fatture_righe r
+                LEFT JOIN config.iva_natura n
+                  ON n.codice = r.iva_natura
+                WHERE r.fattura_id = ANY(v_fatture_ids)
+                GROUP BY r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment;
+                GET DIAGNOSTICS v_inserted_rows = ROW_COUNT;
+
+                RETURN QUERY
+                SELECT v_fatture_count, v_deleted_rows, v_inserted_rows;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_ricalcola_riepiloghi_iva(bigint, bigint)
+                IS 'Ricalcola i riepiloghi IVA eliminando quelli esistenti e aggregando fatture_righe; presuppone iva_id valorizzato sulle righe.';
+
+  - changeSet:
+      id: 20260210-04-02-drop-fn-ricalcola-riepiloghi-iva
+      author: mctit
+      comment: "DROP Ricalcolo riepiloghi IVA per fattura o lotto"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              DROP FUNCTION if exists 
+              vendite.fn_ricalcola_riepiloghi_iva(bigint,bigint)
