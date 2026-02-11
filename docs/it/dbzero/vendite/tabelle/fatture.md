@@ -27,7 +27,6 @@
 | bollo_importo | numeric | YES |  |
 | arrotondamento_precedente | numeric | YES |  |
 | arrotondamento_attuale | numeric | YES |  |
-| totale_escluso_imponibile | numeric | YES |  |
 | totale_doc | numeric | YES |  |
 | minimo | boolean | NO | false |
 | data_contabilizzazione | date | YES |  |
@@ -43,6 +42,7 @@
 | termine_pagamento_id | bigint | YES |  |
 | termine_pagamento_snapshot | jsonb | YES |  |
 | critical | boolean | NO | false |
+| totale_a_pagare | numeric | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

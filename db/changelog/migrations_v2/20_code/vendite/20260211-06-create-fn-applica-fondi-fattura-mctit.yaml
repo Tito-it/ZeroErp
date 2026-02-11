@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260211-06-create-fn-applica-fondi-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20260211-06-create-fn-applica-fondi-fattura
+      author: mctit
+      comment: "Applica fondi fattura source a una fattura figlia"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_applica_fondi_fattura(
+                p_billing_account_id vendite.fatture_fondi_fattura_source.billing_account_id%TYPE,
+                p_utility_id vendite.fatture_fondi_fattura_source.utility_id%TYPE,
+                p_tipo_doc_fiscale_id vendite.fatture_fondi_fattura_source.tipo_doc_fiscale_id%TYPE,
+                p_emittente_soggetto_ruolo_id vendite.fatture_fondi_fattura_source.emittente_soggetto_ruolo_id%TYPE,
+                p_valuta_id vendite.fatture_fondi_fattura_source.valuta_id%TYPE,
+                p_fattura_figlia_id vendite.fatture_fondi_fattura_source.fattura_figlia_id%TYPE,
+                p_tipo_fondo_fattura_id vendite.fatture_fondi_fattura_source.tipo_fondo_fattura_id%TYPE DEFAULT NULL
+              )
+              RETURNS integer
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_inserted integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Applica i fondi fattura in stato DISPONIBILE ad una
+                --   fattura figlia, creando le righe in fatture_fondi_fattura
+                --   e aggiornando la source a stato ASSEGNATO.
+                -- =========================================================
+
+                IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object('detail','billing_account_id obbligatorio'),
+                    NULL::uuid,
+                    'billing_account_id non valido'
+                  );
+                END IF;
+
+                IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object('detail','utility_id obbligatorio'),
+                    NULL::uuid,
+                    'utility_id non valido'
+                  );
+                END IF;
+
+                IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object('detail','tipo_doc_fiscale_id obbligatorio'),
+                    NULL::uuid,
+                    'tipo_doc_fiscale_id non valido'
+                  );
+                END IF;
+
+                IF p_emittente_soggetto_ruolo_id IS NULL OR p_emittente_soggetto_ruolo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object('detail','emittente_soggetto_ruolo_id obbligatorio'),
+                    NULL::uuid,
+                    'emittente_soggetto_ruolo_id non valido'
+                  );
+                END IF;
+
+                IF p_valuta_id IS NULL OR p_valuta_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object('detail','valuta_id obbligatorio'),
+                    NULL::uuid,
+                    'valuta_id non valido'
+                  );
+                END IF;
+
+                IF p_fattura_figlia_id IS NULL OR p_fattura_figlia_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object('detail','fattura_figlia_id obbligatorio'),
+                    NULL::uuid,
+                    'fattura_figlia_id non valido'
+                  );
+                END IF;
+
+                IF p_tipo_fondo_fattura_id IS NOT NULL AND p_tipo_fondo_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object('detail','tipo_fondo_fattura_id non valido'),
+                    NULL::uuid,
+                    'tipo_fondo_fattura_id non valido'
+                  );
+                END IF;
+
+                WITH src AS (
+                  SELECT s.*
+                  FROM vendite.fatture_fondi_fattura_source s
+                  WHERE s.stato = 'DISPONIBILE'
+                    AND s.fattura_figlia_id IS NULL
+                    AND s.billing_account_id = p_billing_account_id
+                    AND s.utility_id = p_utility_id
+                    AND s.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                    AND s.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                    AND s.valuta_id = p_valuta_id
+                    AND (p_tipo_fondo_fattura_id IS NULL OR s.tipo_fondo_fattura_id = p_tipo_fondo_fattura_id)
+                  FOR UPDATE SKIP LOCKED
+                ), upd AS (
+                  UPDATE vendite.fatture_fondi_fattura_source s
+                     SET fattura_figlia_id = p_fattura_figlia_id,
+                         data_assegnazione = now(),
+                         user_assegnazione = current_user,
+                         stato = 'ASSEGNATO',
+                         data_update = now(),
+                         user_update = current_user
+                    FROM src
+                   WHERE s.id = src.id
+                  RETURNING s.*
+                )
+                INSERT INTO vendite.fatture_fondi_fattura (
+                  fattura_id,
+                  tipo_fondo_fattura_id,
+                  importo,
+                  fattura_riferimento_id,
+                  meta,
+                  attivo,
+                  data_insert,
+                  user_insert,
+                  data_update,
+                  user_update
+                )
+                SELECT
+                  p_fattura_figlia_id,
+                  u.tipo_fondo_fattura_id,
+                  u.importo,
+                  u.fattura_sorgente_id,
+                  u.meta,
+                  TRUE,
+                  now(),
+                  current_user,
+                  now(),
+                  current_user
+                FROM upd u;
+
+                GET DIAGNOSTICS v_inserted = ROW_COUNT;
+
+                RETURN v_inserted;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_applica_fondi_fattura(
+                vendite.fatture_fondi_fattura_source.billing_account_id%TYPE,
+                vendite.fatture_fondi_fattura_source.utility_id%TYPE,
+                vendite.fatture_fondi_fattura_source.tipo_doc_fiscale_id%TYPE,
+                vendite.fatture_fondi_fattura_source.emittente_soggetto_ruolo_id%TYPE,
+                vendite.fatture_fondi_fattura_source.valuta_id%TYPE,
+                vendite.fatture_fondi_fattura_source.fattura_figlia_id%TYPE,
+                vendite.fatture_fondi_fattura_source.tipo_fondo_fattura_id%TYPE
+              ) IS 'Applica fondi fattura source ad una fattura figlia e aggiorna lo stato a ASSEGNATO.';

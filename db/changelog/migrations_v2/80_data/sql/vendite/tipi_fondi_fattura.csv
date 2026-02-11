@@ -1,0 +1,3 @@
+id,codice,codice_interno,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
+1,FONDO_ADD_ACC,F_F_ADD_ACC,Fondo fattura per addebiti/accrediti,t,{},2026-02-11 10:00:00+01,titodb,2026-02-11 10:00:00+01,titodb
+2,CANONE_RAI,RAI,Canone RAI,t,"{""id"":""xxxxxxxxx"",""periodo"":""2026-02""}",2026-02-11 10:00:00+01,titodb,2026-02-11 10:00:00+01,titodb

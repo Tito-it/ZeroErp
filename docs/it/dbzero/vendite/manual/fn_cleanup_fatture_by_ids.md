@@ -34,6 +34,7 @@ di fatture e righe correlate, ripristinando le righe di `attivita_fatturabili`.
 * Elimina: note (su tabella partizionata `vendite.note`), riepiloghi IVA, righe, log,
   link lotto-fatture, testate.
 * Ripristina le righe `attivita_fatturabili` legate alle righe cancellate.
+* Ripristina fondi fattura applicati tramite `vendite.fn_reset_fondi_fattura()`.
 * Usa GUC `zeroerp.maintenance_reset_lotto_draft` per bypassare la guard fatturato.
 
 ---

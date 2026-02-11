@@ -29,6 +29,7 @@
 |------|-------------|
 | ix_fatture_fondi_fattura_fattura | `CREATE INDEX ix_fatture_fondi_fattura_fattura ON vendite.fatture_fondi_fattura USING btree (fattura_id)` |
 | ix_fatture_fondi_fattura_tipo | `CREATE INDEX ix_fatture_fondi_fattura_tipo ON vendite.fatture_fondi_fattura USING btree (tipo_fondo_fattura_id)` |
+| pk_fatture_fondi_fattura | `CREATE UNIQUE INDEX pk_fatture_fondi_fattura ON vendite.fatture_fondi_fattura USING btree (id)` |
 
 ---
 {% include-markdown "signature-core.md" %}
