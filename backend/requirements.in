@@ -1,14 +1,25 @@
-asgiref==3.11.0
-Django==6.0.1
-django-redis==6.0.0
-djangorestframework==3.16.1
-djangorestframework-simplejwt==5.3.1
-drf-spectacular==0.27.2
-gunicorn==24.1.1
-packaging==26.0
-psycopg==3.3.2
-psycopg-binary==3.3.2
-redis==7.1.0
-setuptools==80.10.2
-sqlparse==0.5.5
-wheel==0.46.3
+# Core Django
+Django~=6.0
+asgiref~=3.11
+sqlparse~=0.5
+
+# Django REST
+djangorestframework~=3.16
+djangorestframework-simplejwt~=5.5
+
+# API schema
+drf-spectacular~=0.29
+
+# Database
+psycopg~=3.3
+psycopg-binary~=3.3
+
+# Cache
+redis~=7.1
+django-redis~=6.0
+
+# WSGI
+gunicorn~=25.0
+
+# Utilities
+packaging~=26.0
