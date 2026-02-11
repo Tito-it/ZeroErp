@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260211-08-create-fn-reset-fondi-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20260211-08-create-fn-reset-fondi-fattura
+      author: mctit
+      comment: "Ripristino fondi fattura applicati su una fattura figlia"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_reset_fondi_fattura(
+                p_fattura_id vendite.fatture.id%TYPE
+              )
+              RETURNS TABLE(
+                updated_source integer,
+                deleted_fondi integer
+              )
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_updated_source integer := 0;
+                v_deleted_fondi integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Ripristina i fondi applicati a una fattura figlia:
+                --   - riapre la source (DISPONIBILE)
+                --   - elimina le righe in fatture_fondi_fattura
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_reset_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object('detail','p_fattura_id obbligatorio'),
+                    NULL::uuid,
+                    'p_fattura_id non valido'
+                  );
+                END IF;
+
+                WITH src AS (
+                  SELECT s.id
+                  FROM vendite.fatture_fondi_fattura_source s
+                  JOIN vendite.tipi_fondi_fattura t
+                    ON t.id = s.tipo_fondo_fattura_id
+                  WHERE s.fattura_figlia_id = p_fattura_id
+                    AND s.stato = 'ASSEGNATO'
+                    AND t.codice_interno = 'F_F_ADD_ACC'
+                  FOR UPDATE
+                ), upd AS (
+                  UPDATE vendite.fatture_fondi_fattura_source s
+                     SET fattura_figlia_id = NULL,
+                         data_assegnazione = NULL,
+                         user_assegnazione = NULL,
+                         stato = 'DISPONIBILE',
+                         data_update = now(),
+                         user_update = current_user
+                    FROM src
+                   WHERE s.id = src.id
+                  RETURNING s.id
+                )
+                SELECT count(*)::int INTO v_updated_source FROM upd;
+
+                DELETE FROM vendite.fatture_fondi_fattura ff
+                USING vendite.tipi_fondi_fattura t
+                 WHERE ff.fattura_id = p_fattura_id
+                   AND t.id = ff.tipo_fondo_fattura_id
+                   AND t.codice_interno = 'F_F_ADD_ACC';
+                GET DIAGNOSTICS v_deleted_fondi = ROW_COUNT;
+
+                RETURN QUERY
+                SELECT v_updated_source, v_deleted_fondi;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_reset_fondi_fattura(vendite.fatture.id%TYPE)
+                IS 'Ripristina fondi fattura applicati a una fattura figlia (source DISPONIBILE, delete righe fondi).';

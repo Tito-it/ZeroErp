@@ -18,7 +18,6 @@
 | is_composito | boolean | NO | false |
 | requires_serial | boolean | NO | false |
 | voce_utility | boolean | NO | false |
-| fondo_fattura | boolean | NO | false |
 | meta | jsonb | YES | '{}'::jsonb |
 | user_insert | text | NO | CURRENT_USER |
 | user_update | text | YES | CURRENT_USER |

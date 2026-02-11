@@ -18,8 +18,14 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| UNIQUE | uq_tipi_fondi_fattura_codice | codice |
 | PRIMARY KEY | pk_tipi_fondi_fattura | id |
+| UNIQUE | uq_tipi_fondi_fattura_codice | codice |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| pk_tipi_fondi_fattura | `CREATE UNIQUE INDEX pk_tipi_fondi_fattura ON vendite.tipi_fondi_fattura USING btree (id)` |
+| uq_tipi_fondi_fattura_codice | `CREATE UNIQUE INDEX uq_tipi_fondi_fattura_codice ON vendite.tipi_fondi_fattura USING btree (codice)` |
 
 ---
 {% include-markdown "signature-core.md" %}

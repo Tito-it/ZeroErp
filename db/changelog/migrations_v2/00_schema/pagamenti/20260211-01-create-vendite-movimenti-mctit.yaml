@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260211-01-create-vendite-movimenti-mctit.yaml
+
+  - changeSet:
+      id: 20260211-01-create-vendite-movimenti
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      comment: "Movimenti di incasso/rimborso su fatture di vendita"
+      changes:
+        - createTable:
+            schemaName: pagamenti
+            tableName: vendite_movimenti
+            remarks: "Movimenti di incasso/rimborso su fatture di vendita."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_vendite_movimenti
+                    nullable: false
+              - column:
+                  name: fattura_id
+                  type: BIGINT
+                  remarks: "Fattura di riferimento"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: billing_account_id
+                  type: BIGINT
+                  remarks: "Billing account della fattura"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_effettiva
+                  type: DATE
+                  remarks: "Data effettiva incasso/rimborso"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_registrazione
+                  type: DATE
+                  remarks: "Data registrazione movimento"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_contabile
+                  type: DATE
+                  remarks: "Data contabile (opzionale)"
+                  constraints:
+                    nullable: true
+              - column:
+                  name: importo
+                  type: NUMERIC
+                  remarks: "Importo movimento (positivo incasso, negativo rimborso)"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: JSONB
+                  remarks: "Metadati movimento"
+                  defaultValue: "{}"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  remarks: "Flag attivo"
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  remarks: "Data inserimento"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: TEXT
+                  remarks: "Utente inserimento"
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  remarks: "Data ultimo aggiornamento"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: TEXT
+                  remarks: "Utente ultimo aggiornamento"
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            constraintName: fk_pagamenti_vendite_movimenti_fattura
+            baseTableSchemaName: pagamenti
+            baseTableName: vendite_movimenti
+            baseColumnNames: fattura_id
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture
+            referencedColumnNames: id
+        - addForeignKeyConstraint:
+            constraintName: fk_pagamenti_vendite_movimenti_ba
+            baseTableSchemaName: pagamenti
+            baseTableName: vendite_movimenti
+            baseColumnNames: billing_account_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
