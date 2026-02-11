@@ -35,6 +35,10 @@ BEGIN
   -- Bypass guard attivita_fatturabili durante il cleanup tecnico.
   PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);
 
+  -- Ripristina fondi fattura applicati (se presenti).
+  PERFORM vendite.fn_reset_fondi_fattura(f_id)
+    FROM unnest(p_fatture_ids) AS f_id;
+
   SELECT array_agg(r.id)
     INTO v_righe_ids
     FROM vendite.fatture_righe r

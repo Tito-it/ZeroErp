@@ -299,6 +299,68 @@ tracciabilita` verso documenti precedenti e calcolo deterministico del totale a 
 * Nessuna migrazione dati (al momento non esistono righe fondo fattura).
 * Aggiornare `fn_ricalcola_totali_fattura` e test pgtap relativi.
 
+---
+
+## 📌 Analisi fondi fattura – processo e regole (WIP)
+
+### Problema da risolvere
+
+I fondi fattura non sono righe di vendita. Sono addebiti/accrediti extra
+(minimi fatturati, canone RAI, recuperi precedenti) e richiedono:
+
+* tracciabilita` verso fattura origine
+* idempotenza (niente riaddebiti)
+* gestione storni/riaperture
+
+### Separazione necessaria
+
+1) **Sorgente fondo**: credito/debito originario da fattura precedente.  
+2) **Fondo applicato**: addebito collegato alla fattura corrente.
+
+### Tabella sorgente (core logico)
+
+`vendite.fatture_fondi_fattura_source`:
+
+* `fattura_sorgente_id`
+* `tipo_fondo_fattura_id`
+* `importo`
+* `stato`: `DISPONIBILE` | `ASSEGNATO` | `ANNULLATO`
+* `fattura_figlia_id`, `data_assegnazione`, `user_assegnazione`
+* denormalizzazioni: `billing_account_id`, `utility_id`, `tipo_doc_fiscale_id`,
+  `emittente_soggetto_ruolo_id`, `valuta_id`
+
+### Processo 1: Generazione source
+
+* seleziona fatture con `minimo = true`
+* esclude fatture gia` presenti in `source`
+* esclude fatture pagate (regola a definire su pagamenti)
+* inserisce record `DISPONIBILE`
+
+### Processo 2: Applicazione su fattura
+
+* seleziona record `DISPONIBILE` per chiave BA+utility+tipo_doc+emittente+valuta
+* crea record in `fatture_fondi_fattura`
+* aggiorna source `ASSEGNATO` e collega la `fattura_figlia_id`
+
+### Storni / note credito
+
+Policy per tipologia fondo:
+
+* default `riapribile = false`
+* se `riapribile = true` e arriva storno, lo source torna `DISPONIBILE`
+
+### Pagamenti
+
+Serve tabella movimenti:
+
+* `pagamenti.vendite_movimenti`
+* `SUM(importo) >= totale_a_pagare` come regola base di “pagata”
+
+### Totali fattura
+
+* `totale_doc = imponibile + imposta`
+* `totale_a_pagare = totale_doc + arrotondamenti + SUM(fondi)`
+
 
 ## 📎 Appendice – Lotto, raggruppamenti e stati (design operativo)
 
