@@ -23,6 +23,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -41,6 +42,15 @@
 | Nome | Definizione |
 |------|-------------|
 | pk_fatture_fondi_fattura_source | `CREATE UNIQUE INDEX pk_fatture_fondi_fattura_source ON vendite.fatture_fondi_fattura_source USING btree (id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_fatture_fondi_fattura_source_a10_tipi_doc_fiscale_re_d53a63 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id')` |
+| trg_fatture_fondi_fattura_source_a10_tipi_doc_fiscale_re_d53a63 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id')` |
+| trg_fatture_fondi_fattura_source_a10_tipi_fondi_fattura__fcf6c8 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'tipi_fondi_fattura', 'attivo', 'tipo_fondo_fattura_id')` |
+| trg_fatture_fondi_fattura_source_a10_tipi_fondi_fattura__fcf6c8 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'tipi_fondi_fattura', 'attivo', 'tipo_fondo_fattura_id')` |
+| trg_fatture_fondi_fattura_source_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

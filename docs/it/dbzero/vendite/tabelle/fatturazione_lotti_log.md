@@ -19,6 +19,7 @@
 | stato_doc_fiscale_id | bigint | YES |  |
 | tipo_lotto | text | YES |  |
 | stato_operativo | text | YES |  |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
