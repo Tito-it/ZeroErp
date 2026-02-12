@@ -4,138 +4,154 @@
 # ------------------------------------------------------------
 
 databaseChangeLog:
-  - logicalFilePath: migrations_v2/00_schema/vendite/20260210-09-create-fatture-arrotondamenti-scope-mctit.yaml
+    - logicalFilePath: migrations_v2/00_schema/vendite/20260210-09-create-fatture-arrotondamenti-scope-mctit.yaml
 
-  - changeSet:
-      id: 20260210-09-create-fatture-arrotondamenti-scope
-      author: mctit
-      comment: "Tabella scope arrotondamenti fattura"
-      changes:
-        - createTable:
-            schemaName: vendite
-            tableName: fatture_arrotondamenti_scope
-            remarks: "Saldo arrotondamenti per scope di fatturazione (BA, utility, tipo doc, emittente, valuta)."
-            columns:
-              - column:
-                  name: id
-                  type: bigint
-                  autoIncrement: true
-                  generationType: BY DEFAULT
-                  remarks: "PK surrogata."
-                  constraints:
-                    primaryKey: true
-                    primaryKeyName: pk_fatture_arrotondamenti_scope
-                    nullable: false
+    - changeSet:
+          id: 20260210-09-create-fatture-arrotondamenti-scope
+          author: mctit
+          comment: "Tabella scope arrotondamenti fattura"
+          changes:
+              - createTable:
+                    schemaName: vendite
+                    tableName: fatture_arrotondamenti_scope
+                    remarks: "Saldo arrotondamenti per scope di fatturazione (BA, utility, tipo doc, emittente, valuta)."
+                    columns:
+                        - column:
+                              name: id
+                              type: bigint
+                              autoIncrement: true
+                              generationType: BY DEFAULT
+                              remarks: "PK surrogata."
+                              constraints:
+                                  primaryKey: true
+                                  primaryKeyName: pk_fatture_arrotondamenti_scope
+                                  nullable: false
 
-              - column:
-                  name: billing_account_id
-                  type: BIGINT
-                  constraints:
-                    nullable: false
-              - column:
-                  name: utility_id
-                  type: INTEGER
-                  constraints:
-                    nullable: false
-              - column:
-                  name: tipo_doc_fiscale_id
-                  type: BIGINT
-                  constraints:
-                    nullable: false
-              - column:
-                  name: emittente_soggetto_ruolo_id
-                  type: BIGINT
-                  constraints:
-                    nullable: false
-              - column:
-                  name: valuta_id
-                  type: BIGINT
-                  constraints:
-                    nullable: false
-              - column:
-                  name: saldo_arrotondamento
-                  type: NUMERIC
-                  defaultValueNumeric: 0
-                  remarks: "Saldo tecnico arrotondamenti per lo scope."
-                  constraints:
-                    nullable: false
-              - column:
-                  name: data_insert
-                  type: TIMESTAMPTZ
-                  defaultValueComputed: "now()"
-                  constraints:
-                    nullable: false
-              - column:
-                  name: user_insert
-                  type: TEXT
-                  defaultValueComputed: "CURRENT_USER"
-                  constraints:
-                    nullable: false
-              - column:
-                  name: data_update
-                  type: TIMESTAMPTZ
-                  defaultValueComputed: "now()"
-                  constraints:
-                    nullable: false
-              - column:
-                  name: user_update
-                  type: TEXT
-                  defaultValueComputed: "CURRENT_USER"
-                  constraints:
-                    nullable: false
-        - createIndex:
-            schemaName: vendite
-            tableName: fatture_arrotondamenti_scope
-            indexName: uq_fatture_arrotondamenti_scope_key
-            unique: true
-            columns:
-              - column:
-                  name: billing_account_id
-              - column:
-                  name: utility_id
-              - column:
-                  name: tipo_doc_fiscale_id
-              - column:
-                  name: emittente_soggetto_ruolo_id
-              - column:
-                  name: valuta_id
-        - addForeignKeyConstraint:
-            constraintName: fk_fatture_arrotondamenti_scope_ba
-            baseTableSchemaName: vendite
-            baseTableName: fatture_arrotondamenti_scope
-            baseColumnNames: billing_account_id
-            referencedTableSchemaName: anagrafiche
-            referencedTableName: billing_account
-            referencedColumnNames: id
-        - addForeignKeyConstraint:
-            constraintName: fk_fatture_arrotondamenti_scope_utility
-            baseTableSchemaName: vendite
-            baseTableName: fatture_arrotondamenti_scope
-            baseColumnNames: utility_id
-            referencedTableSchemaName: config
-            referencedTableName: utilities
-            referencedColumnNames: id
-        - addForeignKeyConstraint:
-            constraintName: fk_fatture_arrotondamenti_scope_tipo_doc
-            baseTableSchemaName: vendite
-            baseTableName: fatture_arrotondamenti_scope
-            baseColumnNames: tipo_doc_fiscale_id
-            referencedTableSchemaName: config
-            referencedTableName: tipi_doc_fiscale
-            referencedColumnNames: id
-        - addForeignKeyConstraint:
-            constraintName: fk_fatture_arrotondamenti_scope_emittente
-            baseTableSchemaName: vendite
-            baseTableName: fatture_arrotondamenti_scope
-            baseColumnNames: emittente_soggetto_ruolo_id
-            referencedTableSchemaName: anagrafiche
-            referencedTableName: soggetti_ruoli
-            referencedColumnNames: id
-        - addForeignKeyConstraint:
-            constraintName: fk_fatture_arrotondamenti_scope_valuta
-            baseTableSchemaName: vendite
-            baseTableName: fatture_arrotondamenti_scope
-            baseColumnNames: valuta_id
-            referencedTableSchemaName: config
-            referencedTableName: valute
-            referencedColumnNames: id
+                        - column:
+                              name: billing_account_id
+                              type: BIGINT
+                              constraints:
+                                  nullable: false
+                        - column:
+                              name: utility_id
+                              type: INTEGER
+                              constraints:
+                                  nullable: false
+                        - column:
+                              name: tipo_doc_fiscale_id
+                              type: BIGINT
+                              constraints:
+                                  nullable: false
+                        - column:
+                              name: emittente_soggetto_ruolo_id
+                              type: BIGINT
+                              constraints:
+                                  nullable: false
+                        - column:
+                              name: valuta_id
+                              type: BIGINT
+                              constraints:
+                                  nullable: false
+                        - column:
+                              name: saldo_arrotondamento
+                              type: NUMERIC
+                              defaultValueNumeric: 0
+                              remarks: "Saldo tecnico arrotondamenti per lo scope."
+                              constraints:
+                                  nullable: false
+                        - column:
+                              name: data_insert
+                              type: TIMESTAMPTZ
+                              defaultValueComputed: "now()"
+                              constraints:
+                                  nullable: false
+                        - column:
+                              name: user_insert
+                              type: TEXT
+                              defaultValueComputed: "CURRENT_USER"
+                              constraints:
+                                  nullable: false
+                        - column:
+                              name: data_update
+                              type: TIMESTAMPTZ
+                              defaultValueComputed: "now()"
+                              constraints:
+                                  nullable: false
+                        - column:
+                              name: user_update
+                              type: TEXT
+                              defaultValueComputed: "CURRENT_USER"
+                              constraints:
+                                  nullable: false
+              - createIndex:
+                    schemaName: vendite
+                    tableName: fatture_arrotondamenti_scope
+                    indexName: uq_fatture_arrotondamenti_scope_key
+                    unique: true
+                    columns:
+                        - column:
+                              name: billing_account_id
+                        - column:
+                              name: utility_id
+                        - column:
+                              name: tipo_doc_fiscale_id
+                        - column:
+                              name: emittente_soggetto_ruolo_id
+                        - column:
+                              name: valuta_id
+              - addForeignKeyConstraint:
+                    constraintName: fk_fatture_arrotondamenti_scope_ba
+                    baseTableSchemaName: vendite
+                    baseTableName: fatture_arrotondamenti_scope
+                    baseColumnNames: billing_account_id
+                    referencedTableSchemaName: anagrafiche
+                    referencedTableName: billing_account
+                    referencedColumnNames: id
+              - addForeignKeyConstraint:
+                    constraintName: fk_fatture_arrotondamenti_scope_utility
+                    baseTableSchemaName: vendite
+                    baseTableName: fatture_arrotondamenti_scope
+                    baseColumnNames: utility_id
+                    referencedTableSchemaName: config
+                    referencedTableName: utilities
+                    referencedColumnNames: id
+              - addForeignKeyConstraint:
+                    constraintName: fk_fatture_arrotondamenti_scope_tipo_doc
+                    baseTableSchemaName: vendite
+                    baseTableName: fatture_arrotondamenti_scope
+                    baseColumnNames: tipo_doc_fiscale_id
+                    referencedTableSchemaName: config
+                    referencedTableName: tipi_doc_fiscale
+                    referencedColumnNames: id
+              - addForeignKeyConstraint:
+                    constraintName: fk_fatture_arrotondamenti_scope_emittente
+                    baseTableSchemaName: vendite
+                    baseTableName: fatture_arrotondamenti_scope
+                    baseColumnNames: emittente_soggetto_ruolo_id
+                    referencedTableSchemaName: anagrafiche
+                    referencedTableName: soggetti_ruoli
+                    referencedColumnNames: id
+              - addForeignKeyConstraint:
+                    constraintName: fk_fatture_arrotondamenti_scope_valuta
+                    baseTableSchemaName: vendite
+                    baseTableName: fatture_arrotondamenti_scope
+                    baseColumnNames: valuta_id
+                    referencedTableSchemaName: config
+                    referencedTableName: valute
+                    referencedColumnNames: id
+
+    - changeSet:
+          id: 20260210-09-02-update-fatture_arrotondamenti_scope
+          author: mctit
+          comment: "Aggiunta campo tx_id"
+          changes:
+              - addColumn:
+                    schemaName: vendite
+                    tableName: fatture_arrotondamenti_scope
+                    columns:
+                        - column:
+                              name: tx_id
+                              type: uuid
+                              remarks: "ID della transazione"
+                              constraints:
+                                  nullable: true

@@ -6,35 +6,47 @@
 >
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
+> • [pagamenti.centri_riscossione](/dbzero/pagamenti/tabelle/centri_riscossione)  
+> • [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
 >
 ---
 
 ### 🎯 Scopo Principale
 
-(latest review 10-02-2026)  
-`pagamenti.vendite_movimenti` registra i **movimenti di incasso/rimborso**
-associati alle fatture di vendita. Supporta piu` movimenti per fattura
-ed e` la base per determinare lo stato di pagamento.
+La tabella **`pagamenti.vendite_movimenti`** registra i movimenti di incasso/rimborso
+collegati alle fatture, con indicazione della **provenienza** (centro riscossione)
+ e dei parametri utili al calcolo interessi e alla contabilizzazione.
 
 ---
 
 ### 🧱 Campi chiave (semantica)
 
-* `fattura_id`: fattura di riferimento.
-* `billing_account_id`: denormalizzato per filtri veloci.
-* `data_effettiva`: data di incasso/rimborso.
-* `data_registrazione`: data di registrazione.
-* `data_contabile`: data contabile (opzionale).
-* `importo`: positivo = incasso, negativo = rimborso/storno.
-* `meta`: dettagli esterni (es. riferimento bonifico).
+* `fattura_id`: fattura collegata.
+* `billing_account_id`: intestatario.
+* `centro_riscossione_id`: origine incasso (banca/posta/cassa/compensazione).
+* `contabile_id`: testata contabile di riferimento.
+* `data_effettiva`, `data_registrazione`, `data_contabile`: date movimento.
+* `data_per_calcolo_interessi`: data riferimento per interessi.
+* `data_contabilizzazione`: data invio/registrazione in contabilita.
+* `escluso_da_interessi`: esclude il movimento dal calcolo interessi.
+* `importo`: valore (positivo o negativo).
 
 ---
 
-### ✅ Note operative
+### ✅ Regole principali
 
-* Il pagamento puo` essere parziale (piu` movimenti).
-* Una fattura e` considerata **pagata** quando `SUM(importo) >= totale_a_pagare`
-  (policy da formalizzare in logica applicativa).
+* Un movimento puo` essere collegato a una fattura o usato per compensazioni.
+* I movimenti possono essere esclusi dal calcolo interessi.
+
+---
+
+### 🧪 Esempio d’uso
+
+```sql
+SELECT *
+FROM pagamenti.vendite_movimenti
+WHERE fattura_id = 123;
+```
 
 ---
 

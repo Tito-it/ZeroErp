@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260211-14-create-centri-riscossione-mctit.yaml
+
+  - changeSet:
+      id: 20260211-14-create-centri-riscossione
+      author: mctit
+      comment: "Anagrafica centri di riscossione"
+      changes:
+        - createTable:
+            schemaName: pagamenti
+            tableName: centri_riscossione
+            remarks: "Anagrafica centri di riscossione (banca, posta, cassa, compensazioni)"
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_centri_riscossione
+                    nullable: false
+              - column:
+                  name: codice
+                  type: character varying
+                  remarks: "Codice centro riscossione"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: codice_interno
+                  type: character varying
+                  remarks: "Codice interno"
+                  constraints:
+                    nullable: true
+              - column:
+                  name: descrizione
+                  type: character varying
+                  remarks: "Descrizione"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: is_compensazione
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Centro usato per compensazioni"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Record attivo"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            schemaName: pagamenti
+            tableName: centri_riscossione
+            columnNames: codice
+            constraintName: uq_centri_riscossione_codice
+        - addUniqueConstraint:
+            schemaName: pagamenti
+            tableName: centri_riscossione
+            columnNames: is_compensazione
+            constraintName: uq_centri_riscossione_compensazione
+            where: "is_compensazione = true"

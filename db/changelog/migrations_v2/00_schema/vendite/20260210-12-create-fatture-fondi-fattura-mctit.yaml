@@ -120,3 +120,19 @@ databaseChangeLog:
             columns:
               - column:
                   name: tipo_fondo_fattura_id
+
+  - changeSet:
+      id: 20260210-12-02-update-fatture_fondi_fattura
+      author: mctit
+      comment: "Aggiunta campo tx_id"
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: fatture_fondi_fattura
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID della transazione"
+                  constraints:
+                    nullable: true
