@@ -99,21 +99,21 @@ BEGIN
     FOR UPDATE SKIP LOCKED
   ), upd AS (
     UPDATE vendite.fatture_fondi_fattura_source s
-       SET fattura_figlia_id = p_fattura_figlia_id,
-           data_assegnazione = now(),
-           user_assegnazione = current_user,
-           stato = 'ASSEGNATO',
-           data_update = now(),
-           user_update = current_user
+      SET fattura_figlia_id = p_fattura_figlia_id,
+          data_assegnazione = now(),
+          user_assegnazione = current_user,
+          stato = 'ASSEGNATO',
+          data_update = now(),
+          user_update = current_user
       FROM src
-     WHERE s.id = src.id
+    WHERE s.id = src.id
     RETURNING s.*
   )
   INSERT INTO vendite.fatture_fondi_fattura (
     fattura_id,
     tipo_fondo_fattura_id,
     importo,
-    fattura_riferimento_id,
+    riferimento_fattura_id,
     meta,
     attivo,
     data_insert,

@@ -26,7 +26,9 @@ che genera movimenti di compensazione tra documenti del cliente.
 ### ✅ Regole principali
 
 * Una compensazione puo` generare piu` movimenti.
-* I movimenti collegati sono tracciati in `pagamenti.vendite_movimenti.compensazione_id`.
+* La compensazione e` collegata alla testata contabile tramite
+  `pagamenti.vendite_contabili.compensazione_id`.
+* I movimenti vengono generati in fase di posting contabile.
 
 ---
 

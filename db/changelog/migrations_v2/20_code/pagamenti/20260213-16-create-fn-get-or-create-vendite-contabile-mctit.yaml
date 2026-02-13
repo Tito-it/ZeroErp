@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260213-16-create-fn-get-or-create-vendite-contabile-mctit.yaml
+
+  - changeSet:
+      id: 20260213-16-create-fn-get-or-create-vendite-contabile
+      author: mctit
+      comment: "Recupera/crea testata contabile vendite e collega opzionalmente al lotto"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_or_create_vendite_contabile(
+                p_centro_riscossione_id pagamenti.centri_riscossione.id%TYPE,
+                p_data_contabile pagamenti.vendite_contabili.data_contabile%TYPE,
+                p_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE DEFAULT current_date,
+                p_ente_incasso_id pagamenti.enti_incasso.id%TYPE DEFAULT NULL,
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE DEFAULT NULL,
+                p_codice_stato_interno pagamenti.vendite_contabili_stati.codice_interno%TYPE DEFAULT 'BOZZA',
+                p_meta jsonb DEFAULT '{}'::jsonb
+              )
+              RETURNS pagamenti.vendite_contabili.id%TYPE
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_contabile_id pagamenti.vendite_contabili.id%TYPE;
+                v_stato_id pagamenti.vendite_contabili_stati.id%TYPE;
+                v_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
+                v_codice pagamenti.vendite_contabili.codice%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Recuperare una testata contabile esistente o crearla,
+                --   con eventuale collegamento al lotto fatturazione.
+                --
+                -- Regole:
+                --   - validazione parametri obbligatori e ID > 0
+                --   - stato risolto da codice_interno (attivo)
+                --   - ricerca esistente su chiave operativa
+                --   - creazione nuova testata se assente
+                --   - link lotto in tabella ponte se p_lotto_id valorizzato
+                -- =========================================================
+
+                IF p_centro_riscossione_id IS NULL OR p_centro_riscossione_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_GENERICO',
+                    jsonb_build_object('detail','p_centro_riscossione_id obbligatorio > 0'),
+                    NULL::uuid,
+                    'p_centro_riscossione_id obbligatorio > 0'
+                  );
+                END IF;
+
+                IF p_data_contabile IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_GENERICO',
+                    jsonb_build_object('detail','p_data_contabile obbligatoria'),
+                    NULL::uuid,
+                    'p_data_contabile obbligatoria'
+                  );
+                END IF;
+
+                IF p_ente_incasso_id IS NOT NULL AND p_ente_incasso_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_GENERICO',
+                    jsonb_build_object('detail','p_ente_incasso_id deve essere > 0 se valorizzato'),
+                    NULL::uuid,
+                    'p_ente_incasso_id non valido'
+                  );
+                END IF;
+
+                IF p_lotto_id IS NOT NULL AND p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_GENERICO',
+                    jsonb_build_object('detail','p_lotto_id deve essere > 0 se valorizzato'),
+                    NULL::uuid,
+                    'p_lotto_id non valido'
+                  );
+                END IF;
+
+                IF p_codice_stato_interno IS NULL OR btrim(p_codice_stato_interno) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_GENERICO',
+                    jsonb_build_object('detail','p_codice_stato_interno obbligatorio'),
+                    NULL::uuid,
+                    'p_codice_stato_interno obbligatorio'
+                  );
+                END IF;
+
+                SELECT s.id
+                  INTO v_stato_id
+                  FROM pagamenti.vendite_contabili_stati s
+                 WHERE s.codice_interno = p_codice_stato_interno
+                   AND s.attivo IS TRUE
+                 LIMIT 1;
+
+                IF v_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_GENERICO',
+                    jsonb_build_object('detail','stato contabile non trovato/attivo', 'codice_interno', p_codice_stato_interno),
+                    NULL::uuid,
+                    format('stato contabile non trovato: %s', p_codice_stato_interno)
+                  );
+                END IF;
+
+                v_data_registrazione := COALESCE(p_data_registrazione, current_date);
+
+                IF p_lotto_id IS NULL THEN
+                  SELECT vc.id
+                    INTO v_contabile_id
+                    FROM pagamenti.vendite_contabili vc
+                   WHERE vc.centro_riscossione_id = p_centro_riscossione_id
+                     AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+                     AND vc.data_contabile = p_data_contabile
+                     AND vc.data_registrazione = v_data_registrazione
+                     AND vc.stato_id = v_stato_id
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+                ELSE
+                  SELECT vc.id
+                    INTO v_contabile_id
+                    FROM pagamenti.vendite_contabili vc
+                    JOIN pagamenti.vendite_contabili_lotti vcl
+                      ON vcl.contabile_id = vc.id
+                   WHERE vcl.lotto_id = p_lotto_id
+                     AND vc.centro_riscossione_id = p_centro_riscossione_id
+                     AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+                     AND vc.data_contabile = p_data_contabile
+                     AND vc.data_registrazione = v_data_registrazione
+                     AND vc.stato_id = v_stato_id
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+                END IF;
+
+                IF v_contabile_id IS NULL THEN
+                  v_codice := concat(
+                    'VC_',
+                    to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'),
+                    '_',
+                    substr(md5(random()::text || clock_timestamp()::text), 1, 8)
+                  );
+
+                  INSERT INTO pagamenti.vendite_contabili (
+                    codice,
+                    centro_riscossione_id,
+                    ente_incasso_id,
+                    data_contabile,
+                    data_registrazione,
+                    stato_id,
+                    meta
+                  ) VALUES (
+                    v_codice,
+                    p_centro_riscossione_id,
+                    p_ente_incasso_id,
+                    p_data_contabile,
+                    v_data_registrazione,
+                    v_stato_id,
+                    COALESCE(p_meta, '{}'::jsonb)
+                  )
+                  RETURNING id INTO v_contabile_id;
+                END IF;
+
+                IF p_lotto_id IS NOT NULL THEN
+                  INSERT INTO pagamenti.vendite_contabili_lotti (
+                    lotto_id,
+                    contabile_id,
+                    meta
+                  ) VALUES (
+                    p_lotto_id,
+                    v_contabile_id,
+                    jsonb_build_object('source','fn_get_or_create_vendite_contabile')
+                  )
+                  ON CONFLICT (lotto_id, contabile_id) DO NOTHING;
+                END IF;
+
+                RETURN v_contabile_id;
+              END;
+              $$;

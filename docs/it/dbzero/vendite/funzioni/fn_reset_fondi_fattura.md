@@ -15,7 +15,7 @@ AS $function$
 DECLARE
   v_updated_source integer := 0;
   v_deleted_fondi integer := 0;
-  v_center_fondo_id pagamenti.centri_riscossione.id%TYPE;
+  v_stato_contabile_chiusa_id pagamenti.vendite_contabili_stati.id%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -23,12 +23,12 @@ BEGIN
   --
   -- Regole:
   --   - tipo gestito: F_F_ADD_ACC
-  --   - se il movimento fondo e' contabilizzato:
+  --   - se la riga contabile fondo appartiene a testata CHIUSA:
   --       * non elimina nulla
   --       * imposta source a ANNULLATO
   --       * registra warning in fatture_log
   --   - altrimenti:
-  --       * elimina movimento fondo
+  --       * elimina riga contabile fondo
   --       * ripristina source a DISPONIBILE
   --       * elimina la riga in fatture_fondi_fattura
   -- =========================================================
@@ -42,16 +42,22 @@ BEGIN
     );
   END IF;
 
-  -- recupera centro_riscossione per fondi fattura
-  SELECT c.id
-    INTO v_center_fondo_id
-    FROM pagamenti.centri_riscossione c
-   WHERE c.attivo IS TRUE
-     AND c.is_fondo_fattura IS TRUE
-   ORDER BY c.id
+  SELECT s.id
+    INTO v_stato_contabile_chiusa_id
+    FROM pagamenti.vendite_contabili_stati s
+   WHERE s.codice_interno = 'CHIUSA'
+     AND s.attivo IS TRUE
    LIMIT 1;
-   
--- gestisce fondi con movimenti contabilizzati bloccando il reset e loggando un warning
+
+  IF v_stato_contabile_chiusa_id IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database', 'vendite.fn_reset_fondi_fattura', 'E_GENERICO',
+      jsonb_build_object('detail','Stato contabile CHIUSA non configurato'),
+      NULL::uuid,
+      'Stato contabile CHIUSA mancante'
+    );
+  END IF;
+
   WITH src AS (
     SELECT
       s.id AS source_id,
@@ -74,15 +80,13 @@ BEGIN
       src.fattura_sorgente_numero,
       src.fattura_sorgente_data
     FROM src
-    JOIN pagamenti.vendite_movimenti m
-      ON m.fattura_id = src.fattura_sorgente_id
-     AND m.attivo IS TRUE
-     AND m.data_contabilizzazione IS NOT NULL
-     AND COALESCE(m.meta ->> 'fondo_source_id', '') = src.source_id::text
-    WHERE (
-      v_center_fondo_id IS NULL
-      OR m.centro_riscossione_id = v_center_fondo_id
-    )
+    JOIN pagamenti.vendite_contabili_righe cr
+      ON cr.attivo IS TRUE
+     AND COALESCE(cr.meta ->> 'origine', '') = 'FONDO_FATTURA'
+     AND COALESCE(cr.meta ->> 'fondo_source_id', '') = src.source_id::text
+    JOIN pagamenti.vendite_contabili c
+      ON c.id = cr.contabile_id
+    WHERE c.stato_id = v_stato_contabile_chiusa_id
   ), warn AS (
     INSERT INTO vendite.fatture_log (
       fattura_id,
@@ -100,7 +104,7 @@ BEGIN
       p_fattura_id,
       now(),
       format(
-        'Minimo non ripristinabile: gia contabilizzato (fattura %s del %s)',
+        'Minimo non ripristinabile: gia postato (fattura %s del %s)',
         COALESCE(b.fattura_sorgente_numero::text, 'N/D'),
         COALESCE(to_char(b.fattura_sorgente_data, 'YYYY-MM-DD'), 'N/D')
       ),
@@ -109,7 +113,7 @@ BEGIN
       jsonb_build_object(
         'source_id', b.source_id,
         'fattura_sorgente_id', b.fattura_sorgente_id,
-        'cause', 'MOVIMENTO_GIA_CONTABILIZZATO'
+        'cause', 'CONTABILE_CHIUSA'
       ),
       now(),
       current_user,
@@ -133,18 +137,14 @@ BEGIN
       FROM bloccate b
       WHERE b.source_id = s.source_id
     )
-  ), del_mov AS (
-    DELETE FROM pagamenti.vendite_movimenti m
-    USING resettabili r
-    WHERE m.fattura_id = r.fattura_sorgente_id
-      AND m.attivo IS TRUE
-      AND COALESCE(m.meta ->> 'fondo_source_id', '') = r.source_id::text
-      AND m.data_contabilizzazione IS NULL
-      AND (
-        v_center_fondo_id IS NULL
-        OR m.centro_riscossione_id = v_center_fondo_id
-      )
-    RETURNING m.id
+  ), del_righe AS (
+    DELETE FROM pagamenti.vendite_contabili_righe cr
+    USING resettabili r, pagamenti.vendite_contabili c
+    WHERE c.id = cr.contabile_id
+      AND COALESCE(cr.meta ->> 'origine', '') = 'FONDO_FATTURA'
+      AND COALESCE(cr.meta ->> 'fondo_source_id', '') = r.source_id::text
+      AND c.stato_id IS DISTINCT FROM v_stato_contabile_chiusa_id
+    RETURNING cr.id
   ), upd AS (
     UPDATE vendite.fatture_fondi_fattura_source s
        SET fattura_figlia_id = NULL,
@@ -160,7 +160,7 @@ BEGIN
     DELETE FROM vendite.fatture_fondi_fattura ff
     USING upd u
     WHERE ff.fattura_id = p_fattura_id
-      AND ff.fattura_riferimento_id = u.fattura_sorgente_id
+      AND ff.riferimento_fattura_id = u.fattura_sorgente_id
     RETURNING ff.id
   )
   SELECT
