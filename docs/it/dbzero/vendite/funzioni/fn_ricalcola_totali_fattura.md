@@ -36,6 +36,8 @@ BEGIN
   -- Scopo:
   --   Ricalcolo totali testata a partire da riepiloghi IVA,
   --   fondi fattura e regole emittente/utility.
+  --   Al termine sincronizza anche i movimenti pagamento per
+  --   i fondi fattura assegnati alla fattura corrente.
   -- =========================================================
 
   IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
@@ -73,6 +75,7 @@ BEGIN
          )
     INTO v_utility_id;
 
+  -- recupera totali imponibile/imposta da riepiloghi IVA
   SELECT
     COALESCE(SUM(r.imponibile), 0),
     COALESCE(SUM(r.imposta), 0)
@@ -108,55 +111,52 @@ BEGIN
 
   v_raw_totale := v_totale_doc + COALESCE(v_totale_fondi, 0) + COALESCE(v_arro_precedente, 0);
   v_round_totale := 0;
-  
+
   -- Se non sono presenti regole di arrotondamento, non applica nulla
   IF v_decimali IS NULL THEN
     v_arro_attuale := 0;
     v_totale_a_pagare := v_raw_totale;
-
   ELSE
-    
-    -- Arrotondamento importi secondo metodo/decimali 
   
-      IF v_metodo = 'UP' THEN
-        v_round_totale := (CASE WHEN v_raw_totale >= 0
-          THEN ceil(v_raw_totale * power(10::numeric, v_decimali))
-          ELSE -ceil(abs(v_raw_totale) * power(10::numeric, v_decimali))
-        END) / power(10::numeric, v_decimali);
-      ELSIF v_metodo = 'DOWN' THEN
-        v_round_totale := (CASE WHEN v_raw_totale >= 0
-          THEN floor(v_raw_totale * power(10::numeric, v_decimali))
-          ELSE -floor(abs(v_raw_totale) * power(10::numeric, v_decimali))
-        END) / power(10::numeric, v_decimali);
-      ELSIF v_metodo = 'HALF_DOWN' THEN
-        v_round_totale := (CASE WHEN v_raw_totale >= 0
-          THEN ceil((v_raw_totale * power(10::numeric, v_decimali)) - 0.5)
-          ELSE -ceil((abs(v_raw_totale) * power(10::numeric, v_decimali)) - 0.5)
-        END) / power(10::numeric, v_decimali);
-      ELSE
-        -- HALF_UP default
-        v_round_totale := (CASE WHEN v_raw_totale >= 0
-          THEN floor((v_raw_totale * power(10::numeric, v_decimali)) + 0.5)
-          ELSE -floor((abs(v_raw_totale) * power(10::numeric, v_decimali)) + 0.5)
-        END) / power(10::numeric, v_decimali);
-      END IF;
+    -- Arrotondamento importi secondo metodo/decimali
+    IF v_metodo = 'UP' THEN
+      v_round_totale := (CASE WHEN v_raw_totale >= 0
+        THEN ceil(v_raw_totale * power(10::numeric, v_decimali))
+        ELSE -ceil(abs(v_raw_totale) * power(10::numeric, v_decimali))
+      END) / power(10::numeric, v_decimali);
+    ELSIF v_metodo = 'DOWN' THEN
+      v_round_totale := (CASE WHEN v_raw_totale >= 0
+        THEN floor(v_raw_totale * power(10::numeric, v_decimali))
+        ELSE -floor(abs(v_raw_totale) * power(10::numeric, v_decimali))
+      END) / power(10::numeric, v_decimali);
+    ELSIF v_metodo = 'HALF_DOWN' THEN
+      v_round_totale := (CASE WHEN v_raw_totale >= 0
+        THEN ceil((v_raw_totale * power(10::numeric, v_decimali)) - 0.5)
+        ELSE -ceil((abs(v_raw_totale) * power(10::numeric, v_decimali)) - 0.5)
+      END) / power(10::numeric, v_decimali);
+    ELSE
+      -- HALF_UP default
+      v_round_totale := (CASE WHEN v_raw_totale >= 0
+        THEN floor((v_raw_totale * power(10::numeric, v_decimali)) + 0.5)
+        ELSE -floor((abs(v_raw_totale) * power(10::numeric, v_decimali)) + 0.5)
+      END) / power(10::numeric, v_decimali);
+    END IF;
 
-      v_arro_attuale := v_round_totale - v_raw_totale;
-      v_totale_a_pagare := v_raw_totale + v_arro_attuale;
+    v_arro_attuale := v_round_totale - v_raw_totale;
+    v_totale_a_pagare := v_raw_totale + v_arro_attuale;
 
-      -- Aggiorna saldo arrotondamento tecnico
-      PERFORM vendite.fn_set_arrotondamento_scope(
-        v_billing_account_id,
-        v_utility_id,
-        v_tipo_doc_fiscale_id,
-        v_emittente_soggetto_ruolo_id,
-        v_valuta_id,
-        COALESCE(v_arro_precedente, 0) + COALESCE(v_arro_attuale, 0)
-      );
-
+    -- Aggiorna saldo arrotondamento tecnico
+    PERFORM vendite.fn_set_arrotondamento_scope(
+      v_billing_account_id,
+      v_utility_id,
+      v_tipo_doc_fiscale_id,
+      v_emittente_soggetto_ruolo_id,
+      v_valuta_id,
+      COALESCE(v_arro_precedente, 0) + COALESCE(v_arro_attuale, 0)
+    );
   END IF;
-  
-  -- aggiorna valori in fattura                
+
+  -- aggiorna valori in fattura
   UPDATE vendite.fatture f
      SET imponibile_tot = v_imponibile_tot,
          imposta_tot = v_imposta_tot,
@@ -172,6 +172,8 @@ BEGIN
          user_update = current_user
    WHERE f.id = p_fattura_id;
 
+  -- Sync movimenti pagamento legati ai fondi assegnati alla fattura.
+  PERFORM vendite.fn_sync_pagamento_fondo_fattura(p_fattura_id);
 END;
 $function$
 ```

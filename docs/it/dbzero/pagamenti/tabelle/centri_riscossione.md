@@ -15,6 +15,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| is_fondo_fattura | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -29,6 +30,13 @@
 | pk_centri_riscossione | `CREATE UNIQUE INDEX pk_centri_riscossione ON pagamenti.centri_riscossione USING btree (id)` |
 | uq_centri_riscossione_codice | `CREATE UNIQUE INDEX uq_centri_riscossione_codice ON pagamenti.centri_riscossione USING btree (codice)` |
 | uq_centri_riscossione_compensazione | `CREATE UNIQUE INDEX uq_centri_riscossione_compensazione ON pagamenti.centri_riscossione USING btree (is_compensazione)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_centri_riscossione_a10_vendite_contabili_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pagamenti', 'vendite_contabili', 'centro_riscossione_id', 'id')` |
+| trg_centri_riscossione_a10_vendite_movimenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pagamenti', 'vendite_movimenti', 'centro_riscossione_id', 'id')` |
+| trg_centri_riscossione_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

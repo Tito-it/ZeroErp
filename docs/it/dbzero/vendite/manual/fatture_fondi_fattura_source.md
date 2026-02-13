@@ -39,6 +39,8 @@ selezione deterministica dei fondi disponibili per l’addebito/accredito.
 * In caso di storni, la policy di riapertura va gestita per tipologia fondo.
 * La tabella e` pensata anche per scenari di **compensazione** tra insoluti
   e crediti cliente (tipici nei processi utilities).
+* Stato `ANNULLATO`: usato quando la source non e` piu` eseguibile
+  (es. documento sorgente gia` saldato/compensato o reset bloccato da movimenti contabilizzati).
 
 ### 🔄 Reset e riapertura
 

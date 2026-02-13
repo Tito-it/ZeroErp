@@ -1,0 +1,44 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20260213-05-upsert-pagamenti-vendite-contabili-righe-stati
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pagamenti
+            tableName: vendite_contabili_righe_stati
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pagamenti/vendite_contabili_righe_stati.csv
+            tableName: vendite_contabili_righe_stati
+            schemaName: pagamenti
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "codice"
+            columns:
+              - column: { name: codice, type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: is_postabile, type: BOOLEAN }
+              - column: { name: is_final, type: BOOLEAN }
+              - column: { name: ordine, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }

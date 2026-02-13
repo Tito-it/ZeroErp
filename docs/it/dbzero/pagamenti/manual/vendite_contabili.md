@@ -5,6 +5,9 @@
 > **Approfondimento tabelle:**
 >
 > • [pagamenti.centri_riscossione](/dbzero/pagamenti/tabelle/centri_riscossione)  
+> • [pagamenti.enti_incasso](/dbzero/pagamenti/tabelle/enti_incasso)  
+> • [pagamenti.vendite_contabili_stati](/dbzero/pagamenti/tabelle/vendite_contabili_stati)  
+> • [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)  
 > • [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
 >
 ---
@@ -13,15 +16,19 @@
 
 La tabella **`pagamenti.vendite_contabili`** rappresenta la **testata contabile**
 per l’aggregazione di movimenti vendite. Serve a raggruppare movimenti per
-centro riscossione e data contabile.
+centro riscossione e data contabile, con eventuale dettaglio del canale
+(`ente_incasso`) e stato operativo della testata.
 
 ---
 
 ### 🧱 Campi chiave (semantica)
 
 * `codice`: identificativo testata contabile.
-* `centro_riscossione_id`: riferimento al centro riscossione.
+* `centro_riscossione_id`: riferimento principale al centro riscossione.
+* `ente_incasso_id`: ente/canale specifico (opzionale).
+* `stato_id`: stato della testata contabile.
 * `data_contabile`: data contabile di riferimento.
+* `data_conferma` / `user_conferma`: tracciamento conferma testata.
 
 ---
 
@@ -29,6 +36,9 @@ centro riscossione e data contabile.
 
 * `codice` univoco.
 * Ogni testata e` collegata a un solo centro riscossione.
+* Se `ente_incasso_id` e` valorizzato, deve essere coerente con
+  `centro_riscossione_id` della testata (guard applicativa).
+* `stato_id` punta al lookup `pagamenti.vendite_contabili_stati`.
 
 ---
 

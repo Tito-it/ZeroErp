@@ -1,0 +1,34 @@
+{% include-markdown "it/dbzero/pagamenti/manual/vendite_contabili_righe_stati.md" %}
+# 📚 Tabella `vendite_contabili_righe_stati`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | smallint | NO |  |
+| codice | text | NO |  |
+| codice_interno | text | YES |  |
+| descrizione | text | NO |  |
+| is_postabile | boolean | NO | false |
+| is_final | boolean | NO | false |
+| ordine | smallint | NO | 0 |
+| attivo | boolean | NO | true |
+| meta | jsonb | NO | '{}'::jsonb |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | CURRENT_USER |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| PRIMARY KEY | pk_vendite_contabili_righe_stati | id |
+| UNIQUE | uq_vendite_contabili_righe_stati_codice | codice |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| pk_vendite_contabili_righe_stati | `CREATE UNIQUE INDEX pk_vendite_contabili_righe_stati ON pagamenti.vendite_contabili_righe_stati USING btree (id)` |
+| uq_vendite_contabili_righe_stati_codice | `CREATE UNIQUE INDEX uq_vendite_contabili_righe_stati_codice ON pagamenti.vendite_contabili_righe_stati USING btree (codice)` |
+
+---
+{% include-markdown "signature-core.md" %}

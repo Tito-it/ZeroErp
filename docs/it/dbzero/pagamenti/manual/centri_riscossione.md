@@ -11,7 +11,7 @@
 ### 🎯 Scopo Principale
 
 La tabella **`pagamenti.centri_riscossione`** definisce le **origini di incasso**
-per i movimenti vendite (banca, posta, cassa, compensazioni, ecc.).
+per i movimenti vendite (banca, posta, cassa, compensazioni, fondo fattura, ecc.).
 
 ---
 
@@ -20,6 +20,7 @@ per i movimenti vendite (banca, posta, cassa, compensazioni, ecc.).
 * `codice`: identificativo leggibile.
 * `codice_interno`: codice tecnico/integrazione.
 * `is_compensazione`: identifica il centro usato per **compensazioni**.
+* `is_fondo_fattura`: identifica il centro usato per movimenti di **fondo fattura**.
 * `attivo`: centro attivo.
 
 ---
@@ -28,6 +29,7 @@ per i movimenti vendite (banca, posta, cassa, compensazioni, ecc.).
 
 * `codice` univoco.
 * Solo **un centro** puo` avere `is_compensazione = true`.
+* Un centro non puo` essere contemporaneamente `is_compensazione = true` e `is_fondo_fattura = true`.
 
 ---
 
@@ -36,7 +38,8 @@ per i movimenti vendite (banca, posta, cassa, compensazioni, ecc.).
 ```sql
 SELECT *
 FROM pagamenti.centri_riscossione
-WHERE is_compensazione IS TRUE;
+WHERE is_compensazione IS TRUE
+   OR is_fondo_fattura IS TRUE;
 ```
 
 ---
