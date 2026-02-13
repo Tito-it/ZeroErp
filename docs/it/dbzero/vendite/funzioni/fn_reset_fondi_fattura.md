@@ -15,12 +15,22 @@ AS $function$
 DECLARE
   v_updated_source integer := 0;
   v_deleted_fondi integer := 0;
+  v_center_fondo_id pagamenti.centri_riscossione.id%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Ripristina i fondi applicati a una fattura figlia:
-  --   - riapre la source (DISPONIBILE)
-  --   - elimina le righe in fatture_fondi_fattura
+  --   Reset dei fondi applicati alla fattura figlia.
+  --
+  -- Regole:
+  --   - tipo gestito: F_F_ADD_ACC
+  --   - se il movimento fondo e' contabilizzato:
+  --       * non elimina nulla
+  --       * imposta source a ANNULLATO
+  --       * registra warning in fatture_log
+  --   - altrimenti:
+  --       * elimina movimento fondo
+  --       * ripristina source a DISPONIBILE
+  --       * elimina la riga in fatture_fondi_fattura
   -- =========================================================
 
   IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
@@ -32,15 +42,109 @@ BEGIN
     );
   END IF;
 
+  -- recupera centro_riscossione per fondi fattura
+  SELECT c.id
+    INTO v_center_fondo_id
+    FROM pagamenti.centri_riscossione c
+   WHERE c.attivo IS TRUE
+     AND c.is_fondo_fattura IS TRUE
+   ORDER BY c.id
+   LIMIT 1;
+   
+-- gestisce fondi con movimenti contabilizzati bloccando il reset e loggando un warning
   WITH src AS (
-    SELECT s.id
+    SELECT
+      s.id AS source_id,
+      s.fattura_sorgente_id,
+      fs.numero AS fattura_sorgente_numero,
+      fs.data AS fattura_sorgente_data
     FROM vendite.fatture_fondi_fattura_source s
     JOIN vendite.tipi_fondi_fattura t
       ON t.id = s.tipo_fondo_fattura_id
+    JOIN vendite.fatture fs
+      ON fs.id = s.fattura_sorgente_id
     WHERE s.fattura_figlia_id = p_fattura_id
       AND s.stato = 'ASSEGNATO'
       AND t.codice_interno = 'F_F_ADD_ACC'
     FOR UPDATE
+  ), bloccate AS (
+    SELECT DISTINCT
+      src.source_id,
+      src.fattura_sorgente_id,
+      src.fattura_sorgente_numero,
+      src.fattura_sorgente_data
+    FROM src
+    JOIN pagamenti.vendite_movimenti m
+      ON m.fattura_id = src.fattura_sorgente_id
+     AND m.attivo IS TRUE
+     AND m.data_contabilizzazione IS NOT NULL
+     AND COALESCE(m.meta ->> 'fondo_source_id', '') = src.source_id::text
+    WHERE (
+      v_center_fondo_id IS NULL
+      OR m.centro_riscossione_id = v_center_fondo_id
+    )
+  ), warn AS (
+    INSERT INTO vendite.fatture_log (
+      fattura_id,
+      data_ora,
+      messaggio,
+      status,
+      disabilitato,
+      meta,
+      data_insert,
+      user_insert,
+      data_update,
+      user_update
+    )
+    SELECT
+      p_fattura_id,
+      now(),
+      format(
+        'Minimo non ripristinabile: gia contabilizzato (fattura %s del %s)',
+        COALESCE(b.fattura_sorgente_numero::text, 'N/D'),
+        COALESCE(to_char(b.fattura_sorgente_data, 'YYYY-MM-DD'), 'N/D')
+      ),
+      'W',
+      false,
+      jsonb_build_object(
+        'source_id', b.source_id,
+        'fattura_sorgente_id', b.fattura_sorgente_id,
+        'cause', 'MOVIMENTO_GIA_CONTABILIZZATO'
+      ),
+      now(),
+      current_user,
+      now(),
+      current_user
+    FROM bloccate b
+    RETURNING id
+  ), ann AS (
+    UPDATE vendite.fatture_fondi_fattura_source s
+       SET stato = 'ANNULLATO',
+           data_update = now(),
+           user_update = current_user
+      FROM bloccate b
+     WHERE s.id = b.source_id
+    RETURNING s.id
+  ), resettabili AS (
+    SELECT s.*
+    FROM src s
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM bloccate b
+      WHERE b.source_id = s.source_id
+    )
+  ), del_mov AS (
+    DELETE FROM pagamenti.vendite_movimenti m
+    USING resettabili r
+    WHERE m.fattura_id = r.fattura_sorgente_id
+      AND m.attivo IS TRUE
+      AND COALESCE(m.meta ->> 'fondo_source_id', '') = r.source_id::text
+      AND m.data_contabilizzazione IS NULL
+      AND (
+        v_center_fondo_id IS NULL
+        OR m.centro_riscossione_id = v_center_fondo_id
+      )
+    RETURNING m.id
   ), upd AS (
     UPDATE vendite.fatture_fondi_fattura_source s
        SET fattura_figlia_id = NULL,
@@ -49,21 +153,23 @@ BEGIN
            stato = 'DISPONIBILE',
            data_update = now(),
            user_update = current_user
-      FROM src
-     WHERE s.id = src.id
-    RETURNING s.id
+      FROM resettabili r
+     WHERE s.id = r.source_id
+    RETURNING s.id, s.fattura_sorgente_id
+  ), del_ff AS (
+    DELETE FROM vendite.fatture_fondi_fattura ff
+    USING upd u
+    WHERE ff.fattura_id = p_fattura_id
+      AND ff.fattura_riferimento_id = u.fattura_sorgente_id
+    RETURNING ff.id
   )
-  SELECT count(*)::int INTO v_updated_source FROM upd;
-
-  DELETE FROM vendite.fatture_fondi_fattura ff
-  USING vendite.tipi_fondi_fattura t
-   WHERE ff.fattura_id = p_fattura_id
-     AND t.id = ff.tipo_fondo_fattura_id
-     AND t.codice_interno = 'F_F_ADD_ACC';
-  GET DIAGNOSTICS v_deleted_fondi = ROW_COUNT;
+  SELECT
+    (SELECT COUNT(*)::integer FROM upd),
+    (SELECT COUNT(*)::integer FROM del_ff)
+  INTO v_updated_source, v_deleted_fondi;
 
   RETURN QUERY
-  SELECT v_updated_source, v_deleted_fondi;
+  SELECT COALESCE(v_updated_source, 0), COALESCE(v_deleted_fondi, 0);
 END;
 $function$
 ```

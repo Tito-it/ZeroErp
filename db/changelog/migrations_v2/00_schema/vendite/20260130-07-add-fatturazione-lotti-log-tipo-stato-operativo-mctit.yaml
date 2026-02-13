@@ -40,3 +40,19 @@ databaseChangeLog:
               ALTER TABLE vendite.fatturazione_lotti_log
                 ADD CONSTRAINT chk_fatturazione_lotti_log_tipo_lotto
                 CHECK (tipo_lotto IN ('MASSIVO','GIORNALIERO'));
+
+  - changeSet:
+      id: 20260130-07-02-update-fatturazione-lotti-log
+      author: mctit
+      comment: "Aggiunta campo tx_id"
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: fatturazione_lotti_log
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID della transazione"
+                  constraints:
+                    nullable: true

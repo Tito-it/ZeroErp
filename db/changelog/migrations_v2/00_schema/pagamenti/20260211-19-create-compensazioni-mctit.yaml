@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260211-19-create-compensazioni-mctit.yaml
+
+  - changeSet:
+      id: 20260211-19-create-compensazioni
+      author: mctit
+      comment: "Testata processo compensazione pagamenti vendite"
+      changes:
+        - createTable:
+            schemaName: pagamenti
+            tableName: compensazioni
+            remarks: "Testata processo compensazione"
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_compensazioni
+                    nullable: false
+              - column:
+                  name: data_esecuzione
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Data esecuzione compensazione"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID della transazione"
+                  constraints:
+                    nullable: true

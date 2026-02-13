@@ -1,0 +1,8 @@
+codice,codice_interno,descrizione,is_postabile,is_final,ordine,attivo,meta,data_insert,user_insert,data_update,user_update
+IMPORTATA,IMPORTATA,Riga importata da flusso,false,false,10,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb
+DA_ABBINARE,DA_ABBINARE,Riga da abbinare manualmente,false,false,20,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb
+ABBINATA,ABBINATA,Riga abbinata a fattura pronta al posting,true,false,30,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb
+SOSPESA,SOSPESA,Riga sospesa in attesa di risoluzione,false,false,40,true,{},2025-11-15 10:00:00+01,titodb,2026-01-13 9:38:37.879879+8,titodb
+SCARTATA,SCARTATA,Riga scartata definitivamente,false,true,50,true,{},2025-11-15 9:38:37.879879+8,titodb,2026-01-13 9:38:37.879879+8,titodb
+POSTATA,POSTATA,Riga contabilizzata con generazione movimento,false,true,60,true,{},2025-11-15 10:00:00+01,titodb,2026-01-13 9:38:37.879879+8,titodb
+STORNATA,STORNATA,Riga con movimento stornato,false,true,70,true,{},2025-11-15 10:00:00+01,titodb,2026-01-13 9:38:37.879879+8,titodb

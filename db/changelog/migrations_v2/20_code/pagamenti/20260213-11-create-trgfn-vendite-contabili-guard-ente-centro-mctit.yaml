@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260213-11-create-trgfn-vendite-contabili-guard-ente-centro-mctit.yaml
+
+  - changeSet:
+      id: 20260213-11-create-trgfn-vendite-contabili-guard-ente-centro
+      author: mctit
+      comment: "Guard coerenza centro_riscossione_id vs ente_incasso_id su vendite_contabili"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_guard_ente_centro()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_centro_ente pagamenti.enti_incasso.centro_riscossione_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Garantire coerenza tra testata contabile e ente incasso.
+                --
+                -- Regole:
+                --   - se ente_incasso_id e' valorizzato, il suo centro
+                --     deve coincidere con centro_riscossione_id della testata
+                -- =========================================================
+
+                IF NEW.ente_incasso_id IS NOT NULL THEN
+                  SELECT ei.centro_riscossione_id
+                    INTO v_centro_ente
+                    FROM pagamenti.enti_incasso ei
+                   WHERE ei.id = NEW.ente_incasso_id;
+
+                  IF v_centro_ente IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'pagamenti', TG_NAME, 'E_GENERICO',
+                      jsonb_build_object(
+                        'detail', 'ente_incasso senza centro_riscossione valido',
+                        'ente_incasso_id', NEW.ente_incasso_id
+                      ),
+                      NULL::uuid,
+                      'ente_incasso non valido o privo di centro_riscossione'
+                    );
+                  END IF;
+
+                  IF NEW.centro_riscossione_id IS DISTINCT FROM v_centro_ente THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'pagamenti', TG_NAME, 'E_GENERICO',
+                      jsonb_build_object(
+                        'detail', 'coerenza centro/ente non rispettata',
+                        'contabile_id', NEW.id,
+                        'centro_riscossione_id', NEW.centro_riscossione_id,
+                        'ente_incasso_id', NEW.ente_incasso_id,
+                        'centro_riscossione_ente', v_centro_ente
+                      ),
+                      NULL::uuid,
+                      'Incoerenza tra centro_riscossione_id testata e centro ente_incasso'
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $$;
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_guard_ente_centro_ins_upd ON pagamenti.vendite_contabili;
+
+              CREATE TRIGGER trg_vendite_contabili_a10_guard_ente_centro_ins_upd
+              BEFORE INSERT OR UPDATE OF centro_riscossione_id, ente_incasso_id
+              ON pagamenti.vendite_contabili
+              FOR EACH ROW
+              EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_ente_centro();

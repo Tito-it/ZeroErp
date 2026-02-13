@@ -9,3 +9,4 @@ id,codice,descrizione,codice_interno,data_insert,user_insert,data_update,user_up
 14,RIS_UMANA,Risorsa umana,RIS_UMANA,2025-04-20 11:19:51.92703+02,postgres,2026-01-11 11:01:50.037039+01,titodb
 9,VETTORE,Vettore,VT,2025-11-21 16:57:34.735213+01,titodb,2026-01-11 11:01:50.037039+01,titodb
 4,VENDITORE,Venditore,VE,2025-04-05 21:01:33.884337+02,postgres,2026-01-11 11:01:50.037039+01,titodb
+15,PSP,Payment service provider,PSP,2026-02-13 10:30:00+01,titodb,2026-02-13 10:30:00+01,titodb

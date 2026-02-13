@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260213-07-create-psp-mctit.yaml
+
+  - changeSet:
+      id: 20260213-07-create-psp
+      author: mctit
+      comment: "Crea tabella anagrafiche.psp (Payment Service Provider)"
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: psp
+            remarks: "Anagrafica PSP (Payment Service Provider)"
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_psp
+                    nullable: false
+              - column:
+                  name: uid
+                  type: uuid
+                  defaultValueComputed: "uuidv7()"
+                  remarks: "UID univoco"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: soggetto_ruolo_id
+                  type: bigint
+                  remarks: "FK verso anagrafiche.soggetti_ruoli"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: codice
+                  type: character varying(50)
+                  remarks: "Codice PSP"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione
+                  type: character varying(255)
+                  remarks: "Descrizione PSP"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Record attivo"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID"
+                  constraints:
+                    nullable: true
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Abilita storico"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: psp
+            columnNames: uid
+            constraintName: uq_psp_uid
+
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: psp
+            columnNames: codice
+            constraintName: uq_psp_codice
+
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: psp
+            columnNames: soggetto_ruolo_id
+            constraintName: uq_psp_ruolo
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: psp
+            baseColumnNames: soggetto_ruolo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+            constraintName: fk_psp_ruolo
+
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: psp
+            indexName: ix_psp_attivo
+            columns:
+              - column:
+                  name: attivo
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.psp
+                ADD CONSTRAINT chk_psp_codice_non_vuoto
+                CHECK (btrim(codice) <> '');

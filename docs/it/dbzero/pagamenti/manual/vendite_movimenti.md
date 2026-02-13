@@ -6,35 +6,54 @@
 >
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
+> • [pagamenti.centri_riscossione](/dbzero/pagamenti/tabelle/centri_riscossione)  
+> • [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
+> • [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)  
+> • [pagamenti.compensazioni](/dbzero/pagamenti/tabelle/compensazioni)  
 >
 ---
 
 ### 🎯 Scopo Principale
 
-(latest review 10-02-2026)  
-`pagamenti.vendite_movimenti` registra i **movimenti di incasso/rimborso**
-associati alle fatture di vendita. Supporta piu` movimenti per fattura
-ed e` la base per determinare lo stato di pagamento.
+La tabella **`pagamenti.vendite_movimenti`** registra i movimenti di incasso/rimborso
+collegati alle fatture, con indicazione della **provenienza** (centro riscossione)
+ e dei parametri utili al calcolo interessi e alla contabilizzazione.
 
 ---
 
 ### 🧱 Campi chiave (semantica)
 
-* `fattura_id`: fattura di riferimento.
-* `billing_account_id`: denormalizzato per filtri veloci.
-* `data_effettiva`: data di incasso/rimborso.
-* `data_registrazione`: data di registrazione.
-* `data_contabile`: data contabile (opzionale).
-* `importo`: positivo = incasso, negativo = rimborso/storno.
-* `meta`: dettagli esterni (es. riferimento bonifico).
+* `fattura_id`: fattura collegata.
+* `billing_account_id`: intestatario.
+* `centro_riscossione_id`: origine incasso (banca/posta/cassa/compensazione).
+* `contabile_riga_id`: riga contabile di riferimento (se presente).
+* `contabile_id`: testata contabile (derivata da `contabile_riga_id` quando valorizzata).
+* `compensazione_id`: testata processo compensazione (se movimento da compensazione).
+* `data_effettiva`, `data_registrazione`, `data_valuta`, `data_contabile`: date movimento.
+* `data_per_calcolo_interessi`: data riferimento per interessi.
+* `data_contabilizzazione`: data invio/registrazione in contabilita.
+* `escluso_da_interessi`: esclude il movimento dal calcolo interessi.
+* `importo`: valore (positivo o negativo).
 
 ---
 
-### ✅ Note operative
+### ✅ Regole principali
 
-* Il pagamento puo` essere parziale (piu` movimenti).
-* Una fattura e` considerata **pagata** quando `SUM(importo) >= totale_a_pagare`
-  (policy da formalizzare in logica applicativa).
+* Un movimento puo` essere collegato a una fattura o usato per compensazioni.
+* I movimenti possono essere esclusi dal calcolo interessi.
+* Se `contabile_riga_id` e` valorizzato, `contabile_id` deve essere coerente
+  con la testata della riga (guard applicativa).
+* `contabile_riga_id` e` univoco quando presente (1 movimento ↔ 1 riga contabile).
+
+---
+
+### 🧪 Esempio d’uso
+
+```sql
+SELECT *
+FROM pagamenti.vendite_movimenti
+WHERE fattura_id = 123;
+```
 
 ---
 

@@ -11,13 +11,23 @@
 -- 5) Inserimento fattura figlia
 -- 6) Applicazione fondi fattura
 -- 7) Source aggiornata e righe fondi presenti
--- 8) Reset fondi fattura
--- 9) Source ripristinata e righe fondi rimosse
+-- 8) Sync movimento pagamento fondo
+-- 9) Reset fondi fattura (scenario standard)
+-- 10) Source ripristinata e righe fondi rimosse
+-- 11) Movimenti fondo rimossi
+-- 12) Re-applicazione fondi
+-- 13) Sync + contabilizzazione movimento
+-- 14) Reset bloccato da contabilizzazione
+-- 15) Source ANNULLATA e warning log
+-- 16) Source ANNULLATA su reset bloccato
+-- 17) Warning log su reset bloccato
+-- 18) Cleanup completato
+-- 19) Assert finale cleanup
 -- ------------------------------------------------------------
 
 BEGIN;
 
-SELECT plan(9);
+SELECT plan(19);
 
 -- ============================================================
 -- 0) Riferimenti e costanti
@@ -25,6 +35,39 @@ SELECT plan(9);
 CREATE TEMP TABLE tmp_costanti_ff AS
 SELECT
   'pgtap_fondi_fattura'::text AS test_scope;
+
+CREATE TEMP TABLE tmp_centro_fondo AS
+WITH existing AS (
+  SELECT c.id
+  FROM pagamenti.centri_riscossione c
+  WHERE c.attivo IS TRUE
+    AND c.is_fondo_fattura IS TRUE
+  ORDER BY c.id
+  LIMIT 1
+), ins AS (
+  INSERT INTO pagamenti.centri_riscossione (
+    codice,
+    codice_interno,
+    descrizione,
+    is_compensazione,
+    is_fondo_fattura,
+    attivo,
+    meta
+  )
+  SELECT
+    'TEST_CENTRO_FONDO_' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'),
+    'FONDO_TEST',
+    'Centro fondo test pgtap',
+    false,
+    true,
+    true,
+    jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_ff))
+  WHERE NOT EXISTS (SELECT 1 FROM existing)
+  RETURNING id
+)
+SELECT id FROM existing
+UNION ALL
+SELECT id FROM ins;
 
 CREATE TEMP TABLE tmp_refs_ff AS
 SELECT
@@ -54,7 +97,8 @@ SELECT
      FROM vendite.fatture
     WHERE emittente_soggetto_ruolo_id IS NOT NULL
     ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1) AS emittente_soggetto_ruolo_id;
+    LIMIT 1) AS emittente_soggetto_ruolo_id,
+  (SELECT id FROM tmp_centro_fondo LIMIT 1) AS centro_fondo_id;
 
 SELECT ok(
   (SELECT registro_id IS NOT NULL
@@ -63,6 +107,7 @@ SELECT ok(
      AND tipo_doc_fiscale_id IS NOT NULL
      AND valuta_id IS NOT NULL
      AND emittente_soggetto_ruolo_id IS NOT NULL
+     AND centro_fondo_id IS NOT NULL
    FROM tmp_refs_ff),
   'Riferimenti minimi presenti'
 );
@@ -218,7 +263,21 @@ SELECT ok(
 );
 
 -- ============================================================
--- 7) Reset fondi fattura
+-- 7) Sync movimento pagamento fondo
+-- ============================================================
+SELECT is(
+  (
+    SELECT inserted_movimenti
+    FROM vendite.fn_sync_pagamento_fondo_fattura(
+      p_fattura_figlia_id => (SELECT id FROM tmp_fattura_dst)
+    )
+  ),
+  1,
+  'Sync movimento pagamento fondo'
+);
+
+-- ============================================================
+-- 8) Reset fondi fattura (scenario standard)
 -- ============================================================
 SELECT is(
   (
@@ -231,6 +290,9 @@ SELECT is(
   'Reset fondi fattura (source riaperta)'
 );
 
+-- ============================================================
+-- 9) Verifica reset standard
+-- ============================================================
 SELECT ok(
   (SELECT count(*) = 1
      FROM vendite.fatture_fondi_fattura_source s
@@ -249,12 +311,104 @@ SELECT ok(
   'Righe fondi fattura rimosse'
 );
 
+SELECT ok(
+  (SELECT count(*) = 0
+     FROM pagamenti.vendite_movimenti m
+     WHERE m.fattura_id = (SELECT id FROM tmp_fattura_src)
+       AND m.attivo IS TRUE
+       AND COALESCE(m.meta ->> 'origine', '') = 'FONDO_FATTURA'
+  ),
+  'Movimenti fondo rimossi'
+);
+
+-- ============================================================
+-- 10) Re-applicazione + contabilizzazione movimento
+-- ============================================================
+SELECT is(
+  vendite.fn_applica_fondi_fattura(
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_ff),
+    p_utility_id => (SELECT utility_id FROM tmp_refs_ff),
+    p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_ff),
+    p_emittente_soggetto_ruolo_id => (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_ff),
+    p_valuta_id => (SELECT valuta_id FROM tmp_refs_ff),
+    p_fattura_figlia_id => (SELECT id FROM tmp_fattura_dst),
+    p_tipo_fondo_fattura_id => (SELECT id FROM tmp_tipo_fondo)
+  ),
+  1,
+  'Re-applicazione fondi fattura'
+);
+
+SELECT is(
+  (
+    SELECT inserted_movimenti
+    FROM vendite.fn_sync_pagamento_fondo_fattura(
+      p_fattura_figlia_id => (SELECT id FROM tmp_fattura_dst)
+    )
+  ),
+  1,
+  'Sync movimento fondo (secondo giro)'
+);
+
+UPDATE pagamenti.vendite_movimenti m
+SET data_contabilizzazione = current_date
+WHERE m.fattura_id = (SELECT id FROM tmp_fattura_src)
+  AND COALESCE(m.meta ->> 'origine', '') = 'FONDO_FATTURA'
+  AND COALESCE(m.meta ->> 'fondo_source_id', '') = (
+    SELECT s.id::text
+    FROM vendite.fatture_fondi_fattura_source s
+    WHERE s.fattura_sorgente_id = (SELECT id FROM tmp_fattura_src)
+      AND s.fattura_figlia_id = (SELECT id FROM tmp_fattura_dst)
+    ORDER BY s.id DESC
+    LIMIT 1
+  );
+
+-- ============================================================
+-- 11) Reset bloccato da contabilizzazione
+-- ============================================================
+SELECT is(
+  (
+    SELECT updated_source
+    FROM vendite.fn_reset_fondi_fattura(
+      p_fattura_id => (SELECT id FROM tmp_fattura_dst)
+    )
+  ),
+  0,
+  'Reset bloccato se movimento fondo contabilizzato'
+);
+
+SELECT ok(
+  (SELECT count(*) = 1
+     FROM vendite.fatture_fondi_fattura_source s
+     WHERE s.fattura_sorgente_id = (SELECT id FROM tmp_fattura_src)
+       AND s.fattura_figlia_id = (SELECT id FROM tmp_fattura_dst)
+       AND s.stato = 'ANNULLATO'
+  ),
+  'Source ANNULLATA su reset bloccato'
+);
+
+SELECT ok(
+  (SELECT count(*) >= 1
+     FROM vendite.fatture_log l
+     WHERE l.fattura_id = (SELECT id FROM tmp_fattura_dst)
+       AND l.status = 'W'
+       AND l.messaggio ILIKE 'Minimo non ripristinabile:%'
+  ),
+  'Warning log inserito su reset bloccato'
+);
+
 -- ============================================================
 -- Cleanup
 -- ============================================================
 UPDATE vendite.fatture
 SET storicizza = false
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_ff);
+
+DELETE FROM vendite.fatture_log
+WHERE fattura_id IN (SELECT id FROM tmp_fattura_dst);
+
+DELETE FROM pagamenti.vendite_movimenti
+WHERE fattura_id IN (SELECT id FROM tmp_fattura_src)
+  AND COALESCE(meta ->> 'origine', '') = 'FONDO_FATTURA';
 
 DELETE FROM vendite.fatture_fondi_fattura
 WHERE fattura_id IN (SELECT id FROM tmp_fattura_dst)
@@ -267,6 +421,9 @@ DELETE FROM vendite.fatture
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_ff);
 
 DELETE FROM vendite.tipi_fondi_fattura
+WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_ff);
+
+DELETE FROM pagamenti.centri_riscossione
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_ff);
 
 SELECT ok(true, 'Cleanup completato');

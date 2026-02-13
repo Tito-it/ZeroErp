@@ -35,5 +35,12 @@
 | pk_emittenti_fiscali_utilities | `CREATE UNIQUE INDEX pk_emittenti_fiscali_utilities ON anagrafiche.emittenti_fiscali_utilities USING btree (id)` |
 | uq_emittenti_fiscali_utilities_emittente_utility | `CREATE UNIQUE INDEX uq_emittenti_fiscali_utilities_emittente_utility ON anagrafiche.emittenti_fiscali_utilities USING btree (emittente_soggetto_ruolo_id, utility_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_emittenti_fiscali_utilities_a10_emittenti_fiscali_re_62dfda | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_soggetto_ruolo_id')` |
+| trg_emittenti_fiscali_utilities_a10_emittenti_fiscali_re_62dfda | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_soggetto_ruolo_id')` |
+| trg_emittenti_fiscali_utilities_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

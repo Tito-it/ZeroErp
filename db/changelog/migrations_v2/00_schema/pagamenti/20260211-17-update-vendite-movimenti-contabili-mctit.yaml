@@ -1,0 +1,32 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260211-17-update-vendite-movimenti-contabili-mctit.yaml
+
+  - changeSet:
+      id: 20260211-17-update-vendite-movimenti-contabili
+      author: mctit
+      comment: "Aggiunge riferimento contabile ai movimenti vendite"
+      changes:
+        - addColumn:
+            schemaName: pagamenti
+            tableName: vendite_movimenti
+            columns:
+              - column:
+                  name: contabile_id
+                  type: bigint
+                  remarks: "Testata contabile"
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            constraintName: fk_vendite_movimenti_contabile
+            baseTableSchemaName: pagamenti
+            baseTableName: vendite_movimenti
+            baseColumnNames: contabile_id
+            referencedTableSchemaName: pagamenti
+            referencedTableName: vendite_contabili
+            referencedColumnNames: id

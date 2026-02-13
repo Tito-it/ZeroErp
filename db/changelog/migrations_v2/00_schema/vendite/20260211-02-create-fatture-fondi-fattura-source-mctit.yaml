@@ -4,204 +4,220 @@
 # ------------------------------------------------------------
 
 databaseChangeLog:
-    - logicalFilePath: migrations_v2/00_schema/vendite/20260211-02-create-fatture-fondi-fattura-source-mctit.yaml
+      - logicalFilePath: migrations_v2/00_schema/vendite/20260211-02-create-fatture-fondi-fattura-source-mctit.yaml
 
-    - changeSet:
-          id: 20260211-02-create-fatture-fondi-fattura-source
-          author: mctit
-          comment: "Sorgente fondi fattura (credito/debito da fatture precedenti)"
-          changes:
-              - createTable:
-                    schemaName: vendite
-                    tableName: fatture_fondi_fattura_source
-                    remarks: "Sorgente fondi fattura da fatture precedenti."
-                    columns:
-                        - column:
-                              name: id
-                              type: bigint
-                              autoIncrement: true
-                              generationType: BY DEFAULT
-                              remarks: "PK surrogata."
-                              constraints:
-                                  primaryKey: true
-                                  primaryKeyName: pk_fatture_fondi_fattura_source
-                                  nullable: false
+      - changeSet:
+              id: 20260211-02-create-fatture-fondi-fattura-source
+              author: mctit
+              comment: "Sorgente fondi fattura (credito/debito da fatture precedenti)"
+              changes:
+                    - createTable:
+                            schemaName: vendite
+                            tableName: fatture_fondi_fattura_source
+                            remarks: "Sorgente fondi fattura da fatture precedenti."
+                            columns:
+                                  - column:
+                                          name: id
+                                          type: bigint
+                                          autoIncrement: true
+                                          generationType: BY DEFAULT
+                                          remarks: "PK surrogata."
+                                          constraints:
+                                                primaryKey: true
+                                                primaryKeyName: pk_fatture_fondi_fattura_source
+                                                nullable: false
 
-                        - column:
-                              name: fattura_sorgente_id
-                              type: BIGINT
-                              remarks: "Fattura sorgente del fondo"
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: tipo_fondo_fattura_id
-                              type: BIGINT
-                              remarks: "Tipologia fondo fattura"
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: importo
-                              type: NUMERIC
-                              remarks: "Importo del fondo (positivo o negativo)"
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: stato
-                              type: VARCHAR(20)
-                              remarks: "Stato fonte (DISPONIBILE/ASSEGNATO/ANNULLATO)"
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: fattura_figlia_id
-                              type: BIGINT
-                              remarks: "Fattura figlia che utilizza il fondo (opzionale)"
-                              constraints:
-                                  nullable: true
-                        - column:
-                              name: data_assegnazione
-                              type: TIMESTAMPTZ
-                              remarks: "Data assegnazione a fattura figlia"
-                              constraints:
-                                  nullable: true
-                        - column:
-                              name: user_assegnazione
-                              type: TEXT
-                              remarks: "Utente assegnazione"
-                              constraints:
-                                  nullable: true
-                        - column:
-                              name: billing_account_id
-                              type: BIGINT
-                              remarks: "Billing account (denormalizzato)"
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: utility_id
-                              type: INTEGER
-                              remarks: "Utility di riferimento"
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: tipo_doc_fiscale_id
-                              type: BIGINT
-                              remarks: "Tipo documento fiscale"
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: emittente_soggetto_ruolo_id
-                              type: BIGINT
-                              remarks: "Emittente fiscale"
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: valuta_id
-                              type: BIGINT
-                              remarks: "Valuta"
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: meta
-                              type: JSONB
-                              remarks: "Metadati sorgente"
-                              defaultValue: "{}"
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: attivo
-                              type: BOOLEAN
-                              remarks: "Flag attivo"
-                              defaultValueBoolean: true
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: data_insert
-                              type: TIMESTAMPTZ
-                              remarks: "Data inserimento"
-                              defaultValueComputed: "now()"
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: user_insert
-                              type: TEXT
-                              remarks: "Utente inserimento"
-                              defaultValueComputed: "CURRENT_USER"
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: data_update
-                              type: TIMESTAMPTZ
-                              remarks: "Data ultimo aggiornamento"
-                              defaultValueComputed: "now()"
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: user_update
-                              type: TEXT
-                              remarks: "Utente ultimo aggiornamento"
-                              defaultValueComputed: "CURRENT_USER"
-                              constraints:
-                                  nullable: false
-              - addForeignKeyConstraint:
-                    constraintName: fk_fondi_source_fattura_sorgente
-                    baseTableSchemaName: vendite
-                    baseTableName: fatture_fondi_fattura_source
-                    baseColumnNames: fattura_sorgente_id
-                    referencedTableSchemaName: vendite
-                    referencedTableName: fatture
-                    referencedColumnNames: id
-              - addForeignKeyConstraint:
-                    constraintName: fk_fondi_source_fattura_figlia
-                    baseTableSchemaName: vendite
-                    baseTableName: fatture_fondi_fattura_source
-                    baseColumnNames: fattura_figlia_id
-                    referencedTableSchemaName: vendite
-                    referencedTableName: fatture
-                    referencedColumnNames: id
-              - addForeignKeyConstraint:
-                    constraintName: fk_fondi_source_tipo
-                    baseTableSchemaName: vendite
-                    baseTableName: fatture_fondi_fattura_source
-                    baseColumnNames: tipo_fondo_fattura_id
-                    referencedTableSchemaName: vendite
-                    referencedTableName: tipi_fondi_fattura
-                    referencedColumnNames: id
-              - addForeignKeyConstraint:
-                    constraintName: fk_fondi_source_ba
-                    baseTableSchemaName: vendite
-                    baseTableName: fatture_fondi_fattura_source
-                    baseColumnNames: billing_account_id
-                    referencedTableSchemaName: anagrafiche
-                    referencedTableName: billing_account
-                    referencedColumnNames: id
-              - addForeignKeyConstraint:
-                    constraintName: fk_fondi_source_utility
-                    baseTableSchemaName: vendite
-                    baseTableName: fatture_fondi_fattura_source
-                    baseColumnNames: utility_id
-                    referencedTableSchemaName: config
-                    referencedTableName: utilities
-                    referencedColumnNames: id
-              - addForeignKeyConstraint:
-                    constraintName: fk_fondi_source_tipo_doc
-                    baseTableSchemaName: vendite
-                    baseTableName: fatture_fondi_fattura_source
-                    baseColumnNames: tipo_doc_fiscale_id
-                    referencedTableSchemaName: config
-                    referencedTableName: tipi_doc_fiscale
-                    referencedColumnNames: id
-              - addForeignKeyConstraint:
-                    constraintName: fk_fondi_source_emittente
-                    baseTableSchemaName: vendite
-                    baseTableName: fatture_fondi_fattura_source
-                    baseColumnNames: emittente_soggetto_ruolo_id
-                    referencedTableSchemaName: anagrafiche
-                    referencedTableName: soggetti_ruoli
-                    referencedColumnNames: id
-              - addForeignKeyConstraint:
-                    constraintName: fk_fondi_source_valuta
-                    baseTableSchemaName: vendite
-                    baseTableName: fatture_fondi_fattura_source
-                    baseColumnNames: valuta_id
-                    referencedTableSchemaName: config
-                    referencedTableName: valute
-                    referencedColumnNames: id
+                                  - column:
+                                          name: fattura_sorgente_id
+                                          type: BIGINT
+                                          remarks: "Fattura sorgente del fondo"
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: tipo_fondo_fattura_id
+                                          type: BIGINT
+                                          remarks: "Tipologia fondo fattura"
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: importo
+                                          type: NUMERIC
+                                          remarks: "Importo del fondo (positivo o negativo)"
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: stato
+                                          type: VARCHAR(20)
+                                          remarks: "Stato fonte (DISPONIBILE/ASSEGNATO/ANNULLATO)"
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: fattura_figlia_id
+                                          type: BIGINT
+                                          remarks: "Fattura figlia che utilizza il fondo (opzionale)"
+                                          constraints:
+                                                nullable: true
+                                  - column:
+                                          name: data_assegnazione
+                                          type: TIMESTAMPTZ
+                                          remarks: "Data assegnazione a fattura figlia"
+                                          constraints:
+                                                nullable: true
+                                  - column:
+                                          name: user_assegnazione
+                                          type: TEXT
+                                          remarks: "Utente assegnazione"
+                                          constraints:
+                                                nullable: true
+                                  - column:
+                                          name: billing_account_id
+                                          type: BIGINT
+                                          remarks: "Billing account (denormalizzato)"
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: utility_id
+                                          type: INTEGER
+                                          remarks: "Utility di riferimento"
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: tipo_doc_fiscale_id
+                                          type: BIGINT
+                                          remarks: "Tipo documento fiscale"
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: emittente_soggetto_ruolo_id
+                                          type: BIGINT
+                                          remarks: "Emittente fiscale"
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: valuta_id
+                                          type: BIGINT
+                                          remarks: "Valuta"
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: meta
+                                          type: JSONB
+                                          remarks: "Metadati sorgente"
+                                          defaultValue: "{}"
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: attivo
+                                          type: BOOLEAN
+                                          remarks: "Flag attivo"
+                                          defaultValueBoolean: true
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: data_insert
+                                          type: TIMESTAMPTZ
+                                          remarks: "Data inserimento"
+                                          defaultValueComputed: "now()"
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: user_insert
+                                          type: TEXT
+                                          remarks: "Utente inserimento"
+                                          defaultValueComputed: "CURRENT_USER"
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: data_update
+                                          type: TIMESTAMPTZ
+                                          remarks: "Data ultimo aggiornamento"
+                                          defaultValueComputed: "now()"
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: user_update
+                                          type: TEXT
+                                          remarks: "Utente ultimo aggiornamento"
+                                          defaultValueComputed: "CURRENT_USER"
+                                          constraints:
+                                                nullable: false
+                    - addForeignKeyConstraint:
+                            constraintName: fk_fondi_source_fattura_sorgente
+                            baseTableSchemaName: vendite
+                            baseTableName: fatture_fondi_fattura_source
+                            baseColumnNames: fattura_sorgente_id
+                            referencedTableSchemaName: vendite
+                            referencedTableName: fatture
+                            referencedColumnNames: id
+                    - addForeignKeyConstraint:
+                            constraintName: fk_fondi_source_fattura_figlia
+                            baseTableSchemaName: vendite
+                            baseTableName: fatture_fondi_fattura_source
+                            baseColumnNames: fattura_figlia_id
+                            referencedTableSchemaName: vendite
+                            referencedTableName: fatture
+                            referencedColumnNames: id
+                    - addForeignKeyConstraint:
+                            constraintName: fk_fondi_source_tipo
+                            baseTableSchemaName: vendite
+                            baseTableName: fatture_fondi_fattura_source
+                            baseColumnNames: tipo_fondo_fattura_id
+                            referencedTableSchemaName: vendite
+                            referencedTableName: tipi_fondi_fattura
+                            referencedColumnNames: id
+                    - addForeignKeyConstraint:
+                            constraintName: fk_fondi_source_ba
+                            baseTableSchemaName: vendite
+                            baseTableName: fatture_fondi_fattura_source
+                            baseColumnNames: billing_account_id
+                            referencedTableSchemaName: anagrafiche
+                            referencedTableName: billing_account
+                            referencedColumnNames: id
+                    - addForeignKeyConstraint:
+                            constraintName: fk_fondi_source_utility
+                            baseTableSchemaName: vendite
+                            baseTableName: fatture_fondi_fattura_source
+                            baseColumnNames: utility_id
+                            referencedTableSchemaName: config
+                            referencedTableName: utilities
+                            referencedColumnNames: id
+                    - addForeignKeyConstraint:
+                            constraintName: fk_fondi_source_tipo_doc
+                            baseTableSchemaName: vendite
+                            baseTableName: fatture_fondi_fattura_source
+                            baseColumnNames: tipo_doc_fiscale_id
+                            referencedTableSchemaName: config
+                            referencedTableName: tipi_doc_fiscale
+                            referencedColumnNames: id
+                    - addForeignKeyConstraint:
+                            constraintName: fk_fondi_source_emittente
+                            baseTableSchemaName: vendite
+                            baseTableName: fatture_fondi_fattura_source
+                            baseColumnNames: emittente_soggetto_ruolo_id
+                            referencedTableSchemaName: anagrafiche
+                            referencedTableName: soggetti_ruoli
+                            referencedColumnNames: id
+                    - addForeignKeyConstraint:
+                            constraintName: fk_fondi_source_valuta
+                            baseTableSchemaName: vendite
+                            baseTableName: fatture_fondi_fattura_source
+                            baseColumnNames: valuta_id
+                            referencedTableSchemaName: config
+                            referencedTableName: valute
+                            referencedColumnNames: id
+
+      - changeSet:
+              id: 20260211-02-02-update-fatture_fondi_fattura_source
+              author: mctit
+              comment: "Aggiunta campo tx_id"
+              changes:
+                    - addColumn:
+                            schemaName: vendite
+                            tableName: fatture_fondi_fattura_source
+                            columns:
+                                  - column:
+                                          name: tx_id
+                                          type: uuid
+                                          remarks: "ID della transazione"
+                                          constraints:
+                                                nullable: true

@@ -21,6 +21,7 @@ applicati ad una **fattura figlia**:
 
 * riapre la `source` (stato `DISPONIBILE`)
 * elimina le righe in `fatture_fondi_fattura`
+* gestisce i casi bloccati da contabilizzazione movimenti
 
 ---
 
@@ -30,6 +31,10 @@ applicati ad una **fattura figlia**:
 * Opera solo su `source` con `stato = 'ASSEGNATO'`.
 * Resetta campi di assegnazione (`fattura_figlia_id`, date/utente).
 * Applica il reset solo ai tipi con `codice_interno = 'F_F_ADD_ACC'`.
+* Se esiste un movimento fondo con `data_contabilizzazione` valorizzata:
+  * non elimina righe fondo/source
+  * imposta `source.stato = 'ANNULLATO'`
+  * inserisce warning in `vendite.fatture_log`.
 
 ---
 

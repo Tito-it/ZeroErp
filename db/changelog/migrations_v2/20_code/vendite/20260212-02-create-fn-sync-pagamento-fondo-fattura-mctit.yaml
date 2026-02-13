@@ -1,0 +1,191 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260212-02-create-fn-sync-pagamento-fondo-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20260212-02-create-fn-sync-pagamento-fondo-fattura
+      author: mctit
+      comment: "Allinea i movimenti pagamenti per fondi fattura assegnati"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_sync_pagamento_fondo_fattura(
+                p_fattura_figlia_id vendite.fatture.id%TYPE
+              )
+              RETURNS TABLE(
+                inserted_movimenti integer,
+                updated_movimenti integer,
+                annullati_source integer
+              )
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_centro_fondo_id pagamenti.centri_riscossione.id%TYPE;
+                v_inserted integer := 0;
+                v_updated integer := 0;
+                v_annullati integer := 0;
+                v_movimento_id pagamenti.vendite_movimenti.id%TYPE;
+                v_saldo numeric;
+                v_has_movimenti boolean;
+                r record;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Per ogni source fondo fattura assegnata alla fattura figlia:
+                --   - se la sorgente risulta gia' saldata -> stato ANNULLATO
+                --   - altrimenti crea/aggiorna il movimento pagamenti dedicato
+                --     con centro_riscossione is_fondo_fattura = true.
+                -- =========================================================
+
+                IF p_fattura_figlia_id IS NULL OR p_fattura_figlia_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_sync_pagamento_fondo_fattura', 'E_GENERICO',
+                    jsonb_build_object('detail','p_fattura_figlia_id obbligatorio'),
+                    NULL::uuid,
+                    'p_fattura_figlia_id non valido'
+                  );
+                END IF;
+                -- recupera centro_riscossione per fondi fattura
+                SELECT c.id
+                  INTO v_centro_fondo_id
+                  FROM pagamenti.centri_riscossione c
+                 WHERE c.attivo IS TRUE
+                   AND c.is_fondo_fattura IS TRUE
+                 ORDER BY c.id
+                 LIMIT 1;
+
+                IF v_centro_fondo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_sync_pagamento_fondo_fattura', 'E_GENERICO',
+                    jsonb_build_object('detail','Centro riscossione fondo fattura non configurato'),
+                    NULL::uuid,
+                    'Centro riscossione is_fondo_fattura mancante'
+                  );
+                END IF;
+
+
+                FOR r IN
+                  SELECT
+                    s.id AS source_id,
+                    s.fattura_sorgente_id,
+                    s.importo,
+                    s.billing_account_id,
+                    fsrc.data AS data_fattura_sorgente
+                  FROM vendite.fatture_fondi_fattura_source s
+                  JOIN vendite.tipi_fondi_fattura t
+                    ON t.id = s.tipo_fondo_fattura_id
+                  JOIN vendite.fatture fsrc
+                    ON fsrc.id = s.fattura_sorgente_id
+                  WHERE s.fattura_figlia_id = p_fattura_figlia_id
+                    AND s.attivo IS TRUE
+                    AND s.stato = 'ASSEGNATO'
+                    AND t.codice_interno = 'F_F_ADD_ACC'
+                  ORDER BY s.id
+                LOOP
+                  SELECT sf.saldo, sf.has_movimenti
+                    INTO v_saldo, v_has_movimenti
+                    FROM pagamenti.fn_get_saldo_fattura(r.fattura_sorgente_id) sf;
+                    
+                    -- se saldo = 0 e non ci sono movimenti attivi, annulla la source senza creare/aggiornare movimenti
+                  IF COALESCE(v_saldo, 0) = 0 THEN
+                    UPDATE vendite.fatture_fondi_fattura_source s
+                       SET stato = 'ANNULLATO',
+                           data_update = now(),
+                           user_update = current_user
+                     WHERE s.id = r.source_id
+                       AND s.stato IS DISTINCT FROM 'ANNULLATO';
+
+                    IF FOUND THEN
+                      v_annullati := v_annullati + 1;
+                    END IF;
+
+                    CONTINUE;
+                  END IF;
+
+                  SELECT m.id
+                    INTO v_movimento_id
+                    FROM pagamenti.vendite_movimenti m
+                   WHERE m.fattura_id = r.fattura_sorgente_id
+                     AND m.centro_riscossione_id = v_centro_fondo_id
+                     AND m.attivo IS TRUE
+                     AND COALESCE(m.meta ->> 'fondo_source_id', '') = r.source_id::text
+                   ORDER BY m.id DESC
+                   LIMIT 1;
+
+                  IF v_movimento_id IS NULL THEN
+                    INSERT INTO pagamenti.vendite_movimenti (
+                      fattura_id,
+                      billing_account_id,
+                      data_effettiva,
+                      data_registrazione,
+                      data_contabile,
+                      importo,
+                      centro_riscossione_id,
+                      data_per_calcolo_interessi,
+                      escluso_da_interessi,
+                      compensazione_id,
+                      attivo,
+                      meta,
+                      data_insert,
+                      user_insert,
+                      data_update,
+                      user_update
+                    )
+                    VALUES (
+                      r.fattura_sorgente_id,
+                      r.billing_account_id,
+                      r.data_fattura_sorgente,
+                      r.data_fattura_sorgente,
+                      r.data_fattura_sorgente,
+                      r.importo,
+                      v_centro_fondo_id,
+                      r.data_fattura_sorgente,
+                      TRUE,
+                      NULL,
+                      TRUE,
+                      jsonb_build_object(
+                        'origine', 'FONDO_FATTURA',
+                        'fondo_source_id', r.source_id,
+                        'fattura_figlia_id', p_fattura_figlia_id
+                      ),
+                      now(),
+                      current_user,
+                      now(),
+                      current_user
+                    );
+                    v_inserted := v_inserted + 1;
+                  ELSE
+                    UPDATE pagamenti.vendite_movimenti m
+                       SET billing_account_id = r.billing_account_id,
+                           data_effettiva = r.data_fattura_sorgente,
+                           data_registrazione = r.data_fattura_sorgente,
+                           data_contabile = r.data_fattura_sorgente,
+                           data_per_calcolo_interessi = r.data_fattura_sorgente,
+                           importo = r.importo,
+                           escluso_da_interessi = TRUE,
+                           meta = COALESCE(m.meta, '{}'::jsonb)
+                                  || jsonb_build_object(
+                                    'origine', 'FONDO_FATTURA',
+                                    'fondo_source_id', r.source_id,
+                                    'fattura_figlia_id', p_fattura_figlia_id
+                                  ),
+                           data_update = now(),
+                           user_update = current_user
+                     WHERE m.id = v_movimento_id;
+                    v_updated := v_updated + 1;
+                  END IF;
+                END LOOP;
+
+                RETURN QUERY
+                SELECT v_inserted, v_updated, v_annullati;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_sync_pagamento_fondo_fattura(vendite.fatture.id%TYPE)
+                IS 'Sincronizza i movimenti pagamento per fondi fattura assegnati alla fattura figlia.';
