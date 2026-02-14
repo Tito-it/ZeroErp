@@ -39,7 +39,7 @@ jobs:
         env:
           POSTGRES_DB: zeroerp
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
@@ -73,15 +73,15 @@ jobs:
 
       - name: Set custom GUCs for CI role
         env:
-          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          PGPASSWORD: postgres
         run: |
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "CREATE ROLE zeroerp LOGIN PASSWORD 'secret';"
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "ALTER ROLE zeroerp SET myapp.user_language = 'it';"
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "ALTER ROLE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp password=${PGPASSWORD}';"
-           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "ALTER ROLE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp password=postgres';"
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
              "SELECT name, setting FROM pg_settings WHERE name LIKE 'myapp.%' ORDER BY name;"
 
 
@@ -122,20 +122,19 @@ jobs:
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.env%3Dci" \
             --username=postgres \
-            --password="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
+            --password=postgres \
             --changeLogFile=db/changelog/changelog-provision-pre.yaml \
             update --contexts=provision
 
       - name: Grant CREATE on public (CI bootstrap)
         env:
-          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          PGPASSWORD: postgres
         run: |
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "GRANT USAGE, CREATE ON SCHEMA public TO zeroerp;
              GRANT CREATE ON DATABASE zeroerp TO zeroerp;
-             GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.databasechangelog TO zeroerp;
-              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.databasechangeloglock TO zeroerp;
-                "
+             GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO zeroerp;
+             GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO zeroerp;"
 
       - name: Applica migrazioni Liquibase
         run: |
@@ -154,7 +153,7 @@ jobs:
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.env%3Dci" \
             --username=postgres \
-            --password="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
+            --password=postgres \
             --changeLogFile=db/changelog/changelog-provision-post.yaml \
             update --contexts=provision
     
@@ -270,9 +269,9 @@ jobs:
             context: .
             file: ./Dockerfile
             tags: |
-              zeroerp:${{ github.sha }}
-              your-dockerhub-user/zeroerp:${{ github.sha }}
-              your-dockerhub-user/zeroerp:latest
+                zeroerp:${{ github.sha }}
+                ${{ secrets.DOCKER_USERNAME }}/zeroerp:${{ github.sha }}
+                ${{ secrets.DOCKER_USERNAME }}/zeroerp:latest
             load: ${{ github.ref != 'refs/heads/main' }}
             push: ${{ github.ref == 'refs/heads/main' }}
             cache-from: type=gha
@@ -286,8 +285,9 @@ jobs:
             # Se su main abbiamo pushato senza load, ricostruiamo/portiamo localmente la tag sha dal registry
             # (ma nei branch l'immagine zeroerp:${{ github.sha }} è già locale grazie a load:true)
             if ! docker image inspect zeroerp:${{ github.sha }} >/dev/null 2>&1; then
-              docker pull your-dockerhub-user/zeroerp:${{ github.sha }}
-              docker tag your-dockerhub-user/zeroerp:${{ github.sha }} zeroerp:${{ github.sha }}
+              docker pull ${{ secrets.DOCKER_USERNAME }}/zeroerp:${{ github.sha }}
+              docker tag ${{ secrets.DOCKER_USERNAME }}/zeroerp:${{ github.sha }} zeroerp:${{ github.sha }}
+
             fi
             docker save zeroerp:${{ github.sha }} -o image.tar
 
