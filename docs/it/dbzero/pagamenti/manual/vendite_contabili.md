@@ -26,6 +26,7 @@ centro riscossione e data contabile, con eventuale dettaglio del canale
 * `codice`: identificativo testata contabile.
 * `centro_riscossione_id`: riferimento principale al centro riscossione.
 * `ente_incasso_id`: ente/canale specifico (opzionale).
+* `compensazione_id`: testata processo compensazione (opzionale, univoca).
 * `stato_id`: stato della testata contabile.
 * `data_contabile`: data contabile di riferimento.
 * `data_conferma` / `user_conferma`: tracciamento conferma testata.
@@ -38,6 +39,9 @@ centro riscossione e data contabile, con eventuale dettaglio del canale
 * Ogni testata e` collegata a un solo centro riscossione.
 * Se `ente_incasso_id` e` valorizzato, deve essere coerente con
   `centro_riscossione_id` della testata (guard applicativa).
+* Se `compensazione_id` e` valorizzato:
+  * il centro riscossione deve avere `is_compensazione = true`
+  * la testata non puo` essere collegata a lotti (`vendite_contabili_lotti`).
 * `stato_id` punta al lookup `pagamenti.vendite_contabili_stati`.
 
 ---

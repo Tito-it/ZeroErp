@@ -14,8 +14,33 @@
 - [x] Log fatture e flag `critical` (tabella `vendite.fatture_log` + sync).
 - [x] Area geografica fatturazione e colonne correlate.
 - [x] Task pipeline `close_lotto` (chiusura operativa lotto massivo).
+- [x] Refactor fondi fattura su contabili/righe (`fn_sync_contabili_fondo_fattura`) con deprecazione wrapper legacy.
+- [x] Refactor saldi: `fn_get_saldo_fattura` come residuo documento.
+- [x] Introduzione saldo contabile postabile (`fn_get_saldo_fattura_contabili`) per evitare doppie inclusioni.
+- [x] Aggiornamento sync/generazione fondi su saldo effettivo (residuo - contabile postabile).
+- [x] Modello compensazioni spostato su `pagamenti.vendite_contabili.compensazione_id`.
+- [x] Blocco link lotto su testate di compensazione (guard su `vendite_contabili_lotti`).
+- [x] Guida tecnica pagamenti creata (`docs/it/guide/pagamenti.md`).
 - [ ] Pipeline dedicata per `attivita_fatturabili` (tabella + funzioni).
 - [ ] Registry runtime multi-dominio completo in Django (mappa per dominio).
+
+### Stato documenti WIP (allineamento)
+
+* [x] `pipeline-domini-engine.md` riallineato su scelta: pipeline DB per dominio + registry condiviso
+* [x] `fatturazione-attivita-progetto.md` aggiornato con avanzamento su fondi/contabili/saldi
+* [x] Guida `fatturazione.md` integrata con sezione minimi/fondi fattura
+* [x] Guida `pagamenti.md` introdotta con dashboard (WIP) e vincoli architetturali
+* [ ] Consolidare checklist test finali (pgtap + Django) in sezione unica di chiusura
+
+## 📌 Promemoria saldi (da formalizzare)
+
+- Saldo **contabile ufficiale** fattura: calcolato solo da `pagamenti.vendite_movimenti` (postati).
+- `pagamenti.vendite_contabili` / `pagamenti.vendite_contabili_righe` restano area pre-posting (working).
+- Mapping stati contabili concordato:
+  - `VALIDATA` = pronta al posting
+  - `CHIUSA` = postata
+- Reset fatturazione ammesso finche` la contabile collegata non e` `CHIUSA`.
+- Valutare una vista/endpoint separato per saldo previsionale (include contabili non postate), distinto dal saldo ufficiale.
 
 ## 🔁 Note migrazione DB -> Django (parti trasferite)
 

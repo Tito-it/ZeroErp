@@ -23,11 +23,14 @@ e mantiene allineata la source in base al saldo documento.
 
 * Parametri obbligatori (ID > 0).
 * Seleziona fatture con `minimo = true` nel perimetro BA/utility/tipo_doc/emittente/valuta.
-* Inserisce nuove source con stato `DISPONIBILE` solo per fatture con saldo diverso da `0`.
+* Inserisce nuove source con stato `DISPONIBILE` solo per fatture con saldo effettivo diverso da `0`.
 * Se la source esiste gia` (non assegnata), aggiorna importo e stato:
-  * `saldo = 0` -> `ANNULLATO`
-  * `saldo <> 0` -> `DISPONIBILE`
+  * `saldo_effettivo = 0` -> `ANNULLATO`
+  * `saldo_effettivo <> 0` -> `DISPONIBILE`
 * La funzione e` idempotente: riallinea i dati senza creare duplicati.
+* `saldo_effettivo` e` calcolato come:
+  * `residuo_fattura (totale_a_pagare - movimenti)`
+  * meno saldo contabile postabile (`vendite_contabili_righe_stati.is_postabile = true`).
 
 ---
 

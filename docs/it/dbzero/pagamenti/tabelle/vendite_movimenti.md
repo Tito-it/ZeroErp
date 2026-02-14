@@ -23,7 +23,6 @@
 | contabile_id | bigint | YES |  |
 | data_contabilizzazione | date | YES |  |
 | tx_id | uuid | YES |  |
-| compensazione_id | bigint | YES |  |
 | contabile_riga_id | bigint | YES |  |
 | data_valuta | date | YES |  |
 
@@ -33,7 +32,6 @@
 | FOREIGN KEY | fk_pagamenti_vendite_movimenti_ba | billing_account_id |
 | FOREIGN KEY | fk_pagamenti_vendite_movimenti_fattura | fattura_id |
 | FOREIGN KEY | fk_vendite_movimenti_centro_riscossione | centro_riscossione_id |
-| FOREIGN KEY | fk_vendite_movimenti_compensazione | compensazione_id |
 | FOREIGN KEY | fk_vendite_movimenti_contabile | contabile_id |
 | FOREIGN KEY | fk_vendite_movimenti_contabile_riga | contabile_riga_id |
 | PRIMARY KEY | pk_vendite_movimenti | id |

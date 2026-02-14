@@ -239,48 +239,92 @@ jobs:
       
   # Nuovo job per Docker
   docker:
-    needs: build
-    runs-on: ubuntu-latest
+      needs: build
+      runs-on: ubuntu-latest
+      permissions:
+        contents: read
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      steps:
+        - name: Checkout repository
+          uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: |
-          docker build -t zeroerp:${{ github.sha }} .
+        # Buildx per cache e build più veloci
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v3
 
-      - name: Scan image for vulnerabilities
-        # Usa Trivy (va installato via apt o GitHub Action specifica)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget
-          wget https://github.com/aquasecurity/trivy/releases/download/v0.45.0/trivy_0.45.0_Linux-64bit.deb
-          sudo dpkg -i trivy_0.45.0_Linux-64bit.deb
-          trivy image zeroerp:${{ github.sha }}
+        # Login a Docker Hub SOLO se siamo su main (serve per push)
+        - name: Login to Docker Hub
+          if: github.ref == 'refs/heads/main'
+          uses: docker/login-action@v3
+          with:
+            username: ${{ secrets.DOCKER_USERNAME }}
+            password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Run container and smoke-test
-        run: |
-          # Avvia il container in background
-          docker run --rm -d --name zeroerp_test -p 8000:8000 zeroerp:${{ github.sha }}
-          # Attendi che l’app sia pronta
-          for i in {1..10}; do
-              if curl -sf http://localhost:8000/health; then
+        # Build con cache GitHub Actions:
+        # - su PR/branch: builda e carica l'immagine localmente (load: true)
+        # - su main: builda e pusha direttamente con cache (push: true)
+        - name: Build (and optionally push) Docker image with cache
+          id: build
+          uses: docker/build-push-action@v6
+          with:
+            context: .
+            file: ./Dockerfile
+            tags: |
+              zeroerp:${{ github.sha }}
+              your-dockerhub-user/zeroerp:${{ github.sha }}
+              your-dockerhub-user/zeroerp:latest
+            load: ${{ github.ref != 'refs/heads/main' }}
+            push: ${{ github.ref == 'refs/heads/main' }}
+            cache-from: type=gha
+            cache-to: type=gha,mode=max
+
+        # Trivy: su main scansiona l'immagine locale (se load) oppure la tag locale "zeroerp:sha" (nei branch)
+        # Nota: quando push=true su main, l'immagine non è necessariamente "loadata" localmente.
+        # Quindi facciamo scan da TAR sempre, così è identico su tutti i casi.
+        - name: Save image to tar (for Trivy)
+          run: |
+            # Se su main abbiamo pushato senza load, ricostruiamo/portiamo localmente la tag sha dal registry
+            # (ma nei branch l'immagine zeroerp:${{ github.sha }} è già locale grazie a load:true)
+            if ! docker image inspect zeroerp:${{ github.sha }} >/dev/null 2>&1; then
+              docker pull your-dockerhub-user/zeroerp:${{ github.sha }}
+              docker tag your-dockerhub-user/zeroerp:${{ github.sha }} zeroerp:${{ github.sha }}
+            fi
+            docker save zeroerp:${{ github.sha }} -o image.tar
+
+        - name: Scan image for vulnerabilities (Trivy)
+          uses: aquasecurity/trivy-action@0.28.0
+          with:
+            input: image.tar
+            format: table
+            exit-code: 1
+            ignore-unfixed: true
+            severity: HIGH,CRITICAL
+
+        - name: Run container and smoke-test
+          run: |
+            set -euo pipefail
+
+            docker run --rm -d --name zeroerp_test -p 8000:8000 zeroerp:${{ github.sha }}
+
+            ok=0
+            for i in {1..10}; do
+              if curl -sf http://localhost:8000/health >/dev/null; then
                 echo "Health check passed"
+                ok=1
                 break
               fi
               sleep 3
             done
 
-      - name: Push to Docker Hub (solo su main)
-        if: github.ref == 'refs/heads/main'
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        run: |
-          echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
-          docker tag zeroerp:${{ github.sha }} your-dockerhub-user/zeroerp:latest
-          docker push your-dockerhub-user/zeroerp:latest
+            if [ "$ok" -ne 1 ]; then
+              echo "Health check failed"
+              docker logs zeroerp_test || true
+              exit 1
+            fi
+
+            docker stop zeroerp_test
+
+
 
   #publish-docs:
   #  needs: build

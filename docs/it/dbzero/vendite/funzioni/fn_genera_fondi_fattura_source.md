@@ -18,11 +18,8 @@ DECLARE
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Sincronizza la source dei fondi fattura per il perimetro
-  --   richiesto:
-  --   - crea nuove source DISPONIBILE per fatture minimo non saldate
-  --   - aggiorna importo/stato delle source non ancora assegnate
-  --     (saldo=0 -> ANNULLATO, saldo<>0 -> DISPONIBILE)
+  --   Sincronizza la source fondi sul saldo effettivo:
+  --     saldo_effettivo = saldo_fattura - saldo_contabile_postabile
   -- =========================================================
 
   IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
@@ -78,14 +75,16 @@ BEGIN
       'tipo_fondo_fattura_id non valido'
     );
   END IF;
-  -- aggiorna importo/stato delle source esistenti non ancora assegnate
+
+  -- 1) Update source esistenti non assegnate:
+  --    importo = saldo_effettivo; stato in base a saldo_effettivo.
   WITH base AS (
     SELECT
       f.id AS fattura_sorgente_id,
-      COALESCE(f.totale_a_pagare, 0)::numeric AS importo_target,
-      sf.saldo
+      (COALESCE(sf.saldo, 0) - COALESCE(sc.saldo_contabile, 0))::numeric AS importo_target
     FROM vendite.fatture f
     CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(f.id) sf
+    CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura_contabili(f.id) sc
     WHERE f.minimo IS TRUE
       AND f.billing_account_id = p_billing_account_id
       AND f.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
@@ -95,7 +94,7 @@ BEGIN
     UPDATE vendite.fatture_fondi_fattura_source s
        SET importo = b.importo_target,
            stato = CASE
-                     WHEN b.saldo = 0 THEN 'ANNULLATO'
+                     WHEN COALESCE(b.importo_target, 0) = 0 THEN 'ANNULLATO'
                      ELSE 'DISPONIBILE'
                    END,
            utility_id = p_utility_id,
@@ -109,7 +108,7 @@ BEGIN
          s.importo IS DISTINCT FROM b.importo_target
          OR s.stato IS DISTINCT FROM (
            CASE
-             WHEN b.saldo = 0 THEN 'ANNULLATO'
+             WHEN COALESCE(b.importo_target, 0) = 0 THEN 'ANNULLATO'
              ELSE 'DISPONIBILE'
            END
          )
@@ -118,20 +117,21 @@ BEGIN
     RETURNING s.id
   )
   SELECT COUNT(*)::integer INTO v_updated FROM upd;
-  
-  -- inserisce nuove source DISPONIBILE per fatture minimo non saldate senza source già esistente
+
+  -- 2) Insert nuove source DISPONIBILE se saldo_effettivo <> 0.
   WITH base AS (
     SELECT
       f.id AS fattura_sorgente_id,
-      COALESCE(f.totale_a_pagare, 0)::numeric AS importo_target
+      (COALESCE(sf.saldo, 0) - COALESCE(sc.saldo_contabile, 0))::numeric AS importo_target
     FROM vendite.fatture f
     CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(f.id) sf
+    CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura_contabili(f.id) sc
     WHERE f.minimo IS TRUE
       AND f.billing_account_id = p_billing_account_id
       AND f.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
       AND f.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
       AND f.valuta_id = p_valuta_id
-      AND sf.saldo <> 0
+      AND (COALESCE(sf.saldo, 0) - COALESCE(sc.saldo_contabile, 0)) <> 0
   ), ins AS (
     INSERT INTO vendite.fatture_fondi_fattura_source (
       fattura_sorgente_id,

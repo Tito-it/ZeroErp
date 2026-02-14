@@ -9,7 +9,6 @@
 > • [pagamenti.centri_riscossione](/dbzero/pagamenti/tabelle/centri_riscossione)  
 > • [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
 > • [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)  
-> • [pagamenti.compensazioni](/dbzero/pagamenti/tabelle/compensazioni)  
 >
 ---
 
@@ -23,12 +22,11 @@ collegati alle fatture, con indicazione della **provenienza** (centro riscossion
 
 ### 🧱 Campi chiave (semantica)
 
-* `fattura_id`: fattura collegata.
-* `billing_account_id`: intestatario.
+* `fattura_id`: fattura collegata (obbligatoria; derivata da riga contabile se presente).
+* `billing_account_id`: intestatario (obbligatorio; derivato da riga contabile se presente).
 * `centro_riscossione_id`: origine incasso (banca/posta/cassa/compensazione).
 * `contabile_riga_id`: riga contabile di riferimento (se presente).
 * `contabile_id`: testata contabile (derivata da `contabile_riga_id` quando valorizzata).
-* `compensazione_id`: testata processo compensazione (se movimento da compensazione).
 * `data_effettiva`, `data_registrazione`, `data_valuta`, `data_contabile`: date movimento.
 * `data_per_calcolo_interessi`: data riferimento per interessi.
 * `data_contabilizzazione`: data invio/registrazione in contabilita.
@@ -39,10 +37,12 @@ collegati alle fatture, con indicazione della **provenienza** (centro riscossion
 
 ### ✅ Regole principali
 
-* Un movimento puo` essere collegato a una fattura o usato per compensazioni.
+* I movimenti rappresentano il risultato di posting contabile.
+* Le compensazioni sono tracciate sulla testata contabile (`vendite_contabili.compensazione_id`),
+  non direttamente sul movimento.
 * I movimenti possono essere esclusi dal calcolo interessi.
-* Se `contabile_riga_id` e` valorizzato, `contabile_id` deve essere coerente
-  con la testata della riga (guard applicativa).
+* Se `contabile_riga_id` e` valorizzato, `contabile_id`, `fattura_id` e
+  `billing_account_id` devono essere coerenti con la riga (guard applicativa).
 * `contabile_riga_id` e` univoco quando presente (1 movimento ↔ 1 riga contabile).
 
 ---

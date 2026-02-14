@@ -205,6 +205,32 @@ essere inserito in qualsiasi step della pipeline o eseguito da servizio dedicato
 Nota: il ricalcolo assume che `iva_id` sia gia` valorizzato sulle righe fattura;
 questa parte e` demandata al processo di generazione righe (Python).
 
+### ✅ Minimi e fondi fattura (processo dedicato)
+La gestione dei minimi e` costruita su due tabelle con ruoli distinti:
+
+* `vendite.fatture_fondi_fattura_source`:
+  * contiene le sorgenti dei fondi da applicare (minimi non ancora assorbiti,
+    residui da compensazione, ecc.);
+  * viene aggiornata in fase di fatturazione per allineare importo e stato
+    (`DISPONIBILE` / `ASSEGNATO` / `ANNULLATO`);
+  * funziona come backlog tecnico dei fondi ancora applicabili.
+* `vendite.fatture_fondi_fattura`:
+  * contiene i fondi effettivamente applicati alla fattura figlia;
+  * raccoglie tipologie che influenzano il `totale_a_pagare` ma non il
+    `totale_doc` (es. minimi, canone RAI, altre totalizzazioni dedicate).
+
+Scelta progettuale:
+
+* separare **source** da **applicato** semplifica idempotenza, reset e ricalcolo;
+* i processi di fatturazione aggiornano entrambe le tabelle a ogni run, mantenendo
+  coerenza tra stato sorgente e righe applicate in documento.
+
+Regola di controllo operativa:
+
+* per decidere se una source e` ancora applicabile si usa il saldo effettivo
+  del documento (residuo fattura al netto delle componenti contabili postabili),
+  cosi` si evita di riincludere importi gia` in lavorazione.
+
 ### 🖥️ Dashboard “Emissione”
 * Preview del documento, controlli finali e numerazione.
 * Conferma emissione con log degli esiti.

@@ -14,16 +14,17 @@ CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_guard_ente_centro()
 AS $function$
 DECLARE
   v_centro_ente pagamenti.enti_incasso.centro_riscossione_id%TYPE;
+  v_is_compensazione pagamenti.centri_riscossione.is_compensazione%TYPE;
+  v_has_lotto_link boolean := false;
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Garantire coerenza tra testata contabile e ente incasso.
-  --
-  -- Regole:
-  --   - se ente_incasso_id e' valorizzato, il suo centro
-  --     deve coincidere con centro_riscossione_id della testata
+  --   Garantire coerenza della testata contabile:
+  --   - centro/ente incasso
+  --   - regole di compensazione
   -- =========================================================
 
+  -- 1) Coerenza ente_incasso -> centro_riscossione.
   IF NEW.ente_incasso_id IS NOT NULL THEN
     SELECT ei.centro_riscossione_id
       INTO v_centro_ente
@@ -32,19 +33,19 @@ BEGIN
 
     IF v_centro_ente IS NULL THEN
       PERFORM script.fn_log_and_raise_error(
-        'pagamenti', TG_NAME, 'E_GENERICO',
+        'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_GENERICO',
         jsonb_build_object(
           'detail', 'ente_incasso senza centro_riscossione valido',
           'ente_incasso_id', NEW.ente_incasso_id
         ),
         NULL::uuid,
-        'ente_incasso non valido o privo di centro_riscossione'
+        concat('ente_incasso non valido o privo di centro_riscossione' , ', ente_incasso_id: ', NEW.ente_incasso_id::text)
       );
     END IF;
 
     IF NEW.centro_riscossione_id IS DISTINCT FROM v_centro_ente THEN
       PERFORM script.fn_log_and_raise_error(
-        'pagamenti', TG_NAME, 'E_GENERICO',
+        'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_GENERICO',
         jsonb_build_object(
           'detail', 'coerenza centro/ente non rispettata',
           'contabile_id', NEW.id,
@@ -53,8 +54,64 @@ BEGIN
           'centro_riscossione_ente', v_centro_ente
         ),
         NULL::uuid,
-        'Incoerenza tra centro_riscossione_id testata e centro ente_incasso'
+        concat('Incoerenza tra centro_riscossione_id testata e centro ente_incasso',
+          ', contabile_id: ', NEW.id::text,
+          ', centro_riscossione_id: ', NEW.centro_riscossione_id::text,
+          ', ente_incasso_id: ', NEW.ente_incasso_id::text,
+          ', centro_ente: ', v_centro_ente::text
+        )
       );
+    END IF;
+  END IF;
+
+  -- 2) Regole specifiche compensazione.
+  IF NEW.compensazione_id IS NOT NULL THEN
+    SELECT c.is_compensazione
+      INTO v_is_compensazione
+      FROM pagamenti.centri_riscossione c
+     WHERE c.id = NEW.centro_riscossione_id;
+
+    IF COALESCE(v_is_compensazione, false) IS FALSE THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_GENERICO',
+        jsonb_build_object(
+          'detail', 'centro_riscossione non abilitato a compensazione',
+          'contabile_id', NEW.id,
+          'centro_riscossione_id', NEW.centro_riscossione_id,
+          'compensazione_id', NEW.compensazione_id
+        ),
+        NULL::uuid,
+        concat('Centro riscossione non configurato come compensazione',
+          ', contabile_id: ', NEW.id::text,
+          ', centro_riscossione_id: ', NEW.centro_riscossione_id::text,
+          ', compensazione_id: ', NEW.compensazione_id::text
+        )
+      );
+    END IF;
+
+    IF NEW.id IS NOT NULL THEN
+      SELECT EXISTS (
+        SELECT 1
+          FROM pagamenti.vendite_contabili_lotti vcl
+         WHERE vcl.contabile_id = NEW.id
+      )
+        INTO v_has_lotto_link;
+
+      IF v_has_lotto_link THEN
+        PERFORM script.fn_log_and_raise_error(
+          'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_GENERICO',
+          jsonb_build_object(
+            'detail', 'testata compensazione non compatibile con link lotto',
+            'contabile_id', NEW.id,
+            'compensazione_id', NEW.compensazione_id
+          ),
+          NULL::uuid,
+          concat('Testata compensazione gia collegata a lotto',
+            ', contabile_id: ', NEW.id::text,
+            ', compensazione_id: ', NEW.compensazione_id::text
+          )
+        );
+      END IF;
     END IF;
   END IF;
 

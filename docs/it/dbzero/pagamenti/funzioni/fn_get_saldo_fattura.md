@@ -12,10 +12,13 @@ CREATE OR REPLACE FUNCTION pagamenti.fn_get_saldo_fattura(p_fattura_id bigint)
  RETURNS TABLE(saldo numeric, has_movimenti boolean)
  LANGUAGE plpgsql
 AS $function$
+DECLARE
+  v_totale_a_pagare vendite.fatture.totale_a_pagare%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Restituisce saldo movimenti per fattura e flag presenza.
+  --   Restituisce il residuo fattura:
+  --     saldo = totale_a_pagare - somma_movimenti_attivi
   -- =========================================================
 
   IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
@@ -27,9 +30,25 @@ BEGIN
     );
   END IF;
 
+  -- Recupera totale_a_pagare da fattura
+  SELECT f.totale_a_pagare
+    INTO v_totale_a_pagare
+    FROM vendite.fatture f
+   WHERE f.id = p_fattura_id;
+
+  IF NOT FOUND THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database', 'pagamenti.fn_get_saldo_fattura', 'E_GENERICO',
+      jsonb_build_object('detail','Fattura non trovata', 'fattura_id', p_fattura_id),
+      NULL::uuid,
+      concat('Fattura non trovata, id: ', p_fattura_id)
+    );
+  END IF;
+
   RETURN QUERY
   SELECT
-    COALESCE(SUM(m.importo), 0)::numeric AS saldo,
+    COALESCE(v_totale_a_pagare, 0)::numeric
+    - COALESCE(SUM(m.importo), 0)::numeric AS saldo,
     (COUNT(*) > 0) AS has_movimenti
   FROM pagamenti.vendite_movimenti m
   WHERE m.fattura_id = p_fattura_id

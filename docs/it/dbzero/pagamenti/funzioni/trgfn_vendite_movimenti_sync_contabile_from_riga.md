@@ -14,20 +14,22 @@ CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_movimenti_sync_contabile_from
 AS $function$
 DECLARE
   v_contabile_id_riga pagamenti.vendite_contabili_righe.contabile_id%TYPE;
+  v_fattura_id_riga pagamenti.vendite_contabili_righe.fattura_id%TYPE;
+  v_billing_account_id_riga pagamenti.vendite_contabili_righe.billing_account_id%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Mantenere coerente contabile_id con contabile_riga_id.
+  --   Mantenere coerenti contabile_id/fattura_id/billing_account_id
+  --   quando viene valorizzato contabile_riga_id.
   --
   -- Regole:
-  --   - se contabile_riga_id e' valorizzato, contabile_id viene
-  --     derivato dalla riga contabile
-  --   - se contabile_id e' passato ma incoerente, errore
+  --   - derivare i riferimenti dalla riga contabile
+  --   - bloccare mismatch su valori passati manualmente
   -- =========================================================
 
   IF NEW.contabile_riga_id IS NOT NULL THEN
-    SELECT r.contabile_id
-      INTO v_contabile_id_riga
+    SELECT r.contabile_id, r.fattura_id, r.billing_account_id
+      INTO v_contabile_id_riga, v_fattura_id_riga, v_billing_account_id_riga
       FROM pagamenti.vendite_contabili_righe r
      WHERE r.id = NEW.contabile_riga_id;
 
@@ -39,7 +41,21 @@ BEGIN
           'contabile_riga_id', NEW.contabile_riga_id
         ),
         NULL::uuid,
-        'contabile_riga_id non valido'
+        concat('contabile_riga_id non valido: ', NEW.contabile_riga_id::text)
+      );
+    END IF;
+
+    IF v_fattura_id_riga IS NULL OR v_billing_account_id_riga IS NULL THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database', 'pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga', 'E_GENERICO',
+        jsonb_build_object(
+          'detail', 'riga contabile priva di fattura_id o billing_account_id',
+          'contabile_riga_id', NEW.contabile_riga_id,
+          'fattura_id_riga', v_fattura_id_riga,
+          'billing_account_id_riga', v_billing_account_id_riga
+        ),
+        NULL::uuid,
+        concat('riga contabile non utilizzabile per movimento: ', NEW.contabile_riga_id::text)
       );
     END IF;
 
@@ -54,11 +70,43 @@ BEGIN
           'contabile_id_riga', v_contabile_id_riga
         ),
         NULL::uuid,
-        concat('contabile_id incoerente con contabile_riga_id: ', NEW.contabile_id, ' != ', v_contabile_id_riga)
+        concat('contabile_id incoerente con contabile_riga_id: ', NEW.contabile_id::text, ' != ', v_contabile_id_riga::text)
+      );
+    END IF;
+
+    IF NEW.fattura_id IS NOT NULL
+       AND NEW.fattura_id IS DISTINCT FROM v_fattura_id_riga THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database', 'pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga', 'E_GENERICO',
+        jsonb_build_object(
+          'detail', 'fattura_id incoerente con contabile_riga_id',
+          'fattura_id', NEW.fattura_id,
+          'contabile_riga_id', NEW.contabile_riga_id,
+          'fattura_id_riga', v_fattura_id_riga
+        ),
+        NULL::uuid,
+        concat('fattura_id incoerente con contabile_riga_id: ', NEW.fattura_id::text, ' != ', v_fattura_id_riga::text)
+      );
+    END IF;
+
+    IF NEW.billing_account_id IS NOT NULL
+       AND NEW.billing_account_id IS DISTINCT FROM v_billing_account_id_riga THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database', 'pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga', 'E_GENERICO',
+        jsonb_build_object(
+          'detail', 'billing_account_id incoerente con contabile_riga_id',
+          'billing_account_id', NEW.billing_account_id,
+          'contabile_riga_id', NEW.contabile_riga_id,
+          'billing_account_id_riga', v_billing_account_id_riga
+        ),
+        NULL::uuid,
+        concat('billing_account_id incoerente con contabile_riga_id: ', NEW.billing_account_id::text, ' != ', v_billing_account_id_riga::text)
       );
     END IF;
 
     NEW.contabile_id := v_contabile_id_riga;
+    NEW.fattura_id := v_fattura_id_riga;
+    NEW.billing_account_id := v_billing_account_id_riga;
   END IF;
 
   RETURN NEW;
