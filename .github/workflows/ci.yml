@@ -236,93 +236,114 @@ jobs:
 #          fi
 
       
-  # Nuovo job per Docker
   docker:
-      needs: build
-      runs-on: ubuntu-latest
-      permissions:
-        contents: read
+        needs: build
+        runs-on: ubuntu-latest
+        permissions:
+          contents: read
+          packages: write   # necessario per push su GHCR
 
-      steps:
-        - name: Checkout repository
-          uses: actions/checkout@v4
+        env:
+          REGISTRY: ghcr.io
+          IMAGE_NAME: zeroerp
 
-        # Buildx per cache e build più veloci
-        - name: Set up Docker Buildx
-          uses: docker/setup-buildx-action@v3
+        steps:
+          - name: Checkout repository
+            uses: actions/checkout@v4
 
-        # Login a Docker Hub SOLO se siamo su main (serve per push)
-        - name: Login to Docker Hub
-          if: github.ref == 'refs/heads/main'
-          uses: docker/login-action@v3
-          with:
-            username: ${{ secrets.DOCKER_USERNAME }}
-            password: ${{ secrets.DOCKER_PASSWORD }}
+          - name: Set up Docker Buildx
+            uses: docker/setup-buildx-action@v3
 
-        # Build con cache GitHub Actions:
-        # - su PR/branch: builda e carica l'immagine localmente (load: true)
-        # - su main: builda e pusha direttamente con cache (push: true)
-        - name: Build (and optionally push) Docker image with cache
-          id: build
-          uses: docker/build-push-action@v6
-          with:
-            context: .
-            file: ./Dockerfile
-            tags: |
+          - name: Login to GHCR
+            uses: docker/login-action@v3
+            with:
+              registry: ${{ env.REGISTRY }}
+              username: ${{ github.actor }}
+              password: ${{ secrets.GITHUB_TOKEN }}
+
+          # -------------------------
+          # Build per branch/PR (NO push)
+          # -------------------------
+          - name: Build Docker image (local, cached)
+            if: github.ref != 'refs/heads/main'
+            uses: docker/build-push-action@v6
+            with:
+              context: .
+              file: ./Dockerfile
+              tags: |
                 zeroerp:${{ github.sha }}
-                ${{ secrets.DOCKER_USERNAME }}/zeroerp:${{ github.sha }}
-                ${{ secrets.DOCKER_USERNAME }}/zeroerp:latest
-            load: ${{ github.ref != 'refs/heads/main' }}
-            push: ${{ github.ref == 'refs/heads/main' }}
-            cache-from: type=gha
-            cache-to: type=gha,mode=max
+              load: true
+              push: false
+              cache-from: type=gha
+              cache-to: type=gha,mode=max
 
-        # Trivy: su main scansiona l'immagine locale (se load) oppure la tag locale "zeroerp:sha" (nei branch)
-        # Nota: quando push=true su main, l'immagine non è necessariamente "loadata" localmente.
-        # Quindi facciamo scan da TAR sempre, così è identico su tutti i casi.
-        - name: Save image to tar (for Trivy)
-          run: |
-            # Se su main abbiamo pushato senza load, ricostruiamo/portiamo localmente la tag sha dal registry
-            # (ma nei branch l'immagine zeroerp:${{ github.sha }} è già locale grazie a load:true)
-            if ! docker image inspect zeroerp:${{ github.sha }} >/dev/null 2>&1; then
-              docker pull ${{ secrets.DOCKER_USERNAME }}/zeroerp:${{ github.sha }}
-              docker tag ${{ secrets.DOCKER_USERNAME }}/zeroerp:${{ github.sha }} zeroerp:${{ github.sha }}
+          # -------------------------
+          # Build&Push su main (GHCR)
+          # -------------------------
+          - name: Build and push Docker image (cached)
+            if: github.ref == 'refs/heads/main'
+            uses: docker/build-push-action@v6
+            with:
+              context: .
+              file: ./Dockerfile
+              tags: |
+                ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+                ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
+              push: true
+              cache-from: type=gha
+              cache-to: type=gha,mode=max
 
-            fi
-            docker save zeroerp:${{ github.sha }} -o image.tar
+          # -------------------------
+          # Trivy scan da TAR (stabile)
+          # -------------------------
+          - name: Prepare image tar for Trivy
+            run: |
+              set -euo pipefail
 
-        - name: Scan image for vulnerabilities (Trivy)
-          uses: aquasecurity/trivy-action@0.28.0
-          with:
-            input: image.tar
-            format: table
-            exit-code: 1
-            ignore-unfixed: true
-            severity: HIGH,CRITICAL
-
-        - name: Run container and smoke-test
-          run: |
-            set -euo pipefail
-
-            docker run --rm -d --name zeroerp_test -p 8000:8000 zeroerp:${{ github.sha }}
-
-            ok=0
-            for i in {1..10}; do
-              if curl -sf http://localhost:8000/health >/dev/null; then
-                echo "Health check passed"
-                ok=1
-                break
+              # Se l'immagine locale esiste (branch/PR), ok.
+              # Su main, l'immagine non è loadata: la pulliamo da GHCR.
+              if ! docker image inspect zeroerp:${{ github.sha }} >/dev/null 2>&1; then
+                docker pull ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+                docker tag  ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.sha }} zeroerp:${{ github.sha }}
               fi
-              sleep 3
-            done
 
-            if [ "$ok" -ne 1 ]; then
-              echo "Health check failed"
-              docker logs zeroerp_test || true
-              exit 1
-            fi
+              docker save zeroerp:${{ github.sha }} -o image.tar
 
-            docker stop zeroerp_test
+          - name: Scan image for vulnerabilities (Trivy)
+            uses: aquasecurity/trivy-action@0.28.0
+            with:
+              input: image.tar
+              format: table
+              exit-code: 1
+              ignore-unfixed: true
+              severity: HIGH,CRITICAL
+
+          # -------------------------
+          # Smoke test
+          # -------------------------
+          - name: Run container and smoke-test
+            run: |
+              set -euo pipefail
+
+              docker run --rm -d --name zeroerp_test -p 8000:8000 zeroerp:${{ github.sha }}
+
+              ok=0
+              for i in {1..10}; do
+                if curl -sf http://localhost:8000/health >/dev/null; then
+                  echo "Health check passed"
+                  ok=1
+                  break
+                fi
+                sleep 3
+              done
+
+              if [ "$ok" -ne 1 ]; then
+                echo "Health check failed"
+                docker logs zeroerp_test || true
+                exit 1
+              fi
+
+              docker stop zeroerp_test
 
 
 
