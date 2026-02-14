@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260211-15-update-vendite-movimenti-mctit.yaml
+
+  - changeSet:
+      id: 20260211-15-update-vendite-movimenti
+      author: mctit
+      comment: "Aggiunta centro riscossione e campi interessi"
+      changes:
+        - addColumn:
+            schemaName: pagamenti
+            tableName: vendite_movimenti
+            columns:
+              - column:
+                  name: centro_riscossione_id
+                  type: bigint
+                  remarks: "Centro riscossione"
+                  constraints:
+                    nullable: true
+              - column:
+                  name: data_per_calcolo_interessi
+                  type: date
+                  remarks: "Data di riferimento per calcolo interessi"
+                  constraints:
+                    nullable: true
+              - column:
+                  name: escluso_da_interessi
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Movimento escluso dal calcolo interessi"
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            constraintName: fk_vendite_movimenti_centro_riscossione
+            baseTableSchemaName: pagamenti
+            baseTableName: vendite_movimenti
+            baseColumnNames: centro_riscossione_id
+            referencedTableSchemaName: pagamenti
+            referencedTableName: centri_riscossione
+            referencedColumnNames: id
+
+  - changeSet:
+      id: 20260211-15-02-update-vendite-movimenti
+      author: mctit
+      comment: "Aggiunta centro riscossione e campi interessi"
+      changes:
+        - addColumn:
+            schemaName: pagamenti
+            tableName: vendite_movimenti
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID della transazione"
+                  constraints:
+                    nullable: true

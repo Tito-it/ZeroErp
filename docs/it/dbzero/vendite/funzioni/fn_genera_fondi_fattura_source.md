@@ -13,12 +13,13 @@ CREATE OR REPLACE FUNCTION vendite.fn_genera_fondi_fattura_source(p_billing_acco
  LANGUAGE plpgsql
 AS $function$
 DECLARE
+  v_updated integer := 0;
   v_inserted integer := 0;
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Genera righe in fatture_fondi_fattura_source per fatture
-  --   con minimo=true non ancora presenti, non pagate.
+  --   Sincronizza la source fondi sul saldo effettivo:
+  --     saldo_effettivo = saldo_fattura - saldo_contabile_postabile
   -- =========================================================
 
   IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
@@ -75,62 +76,114 @@ BEGIN
     );
   END IF;
 
-  INSERT INTO vendite.fatture_fondi_fattura_source (
-    fattura_sorgente_id,
-    tipo_fondo_fattura_id,
-    importo,
-    stato,
-    fattura_figlia_id,
-    data_assegnazione,
-    user_assegnazione,
-    billing_account_id,
-    utility_id,
-    tipo_doc_fiscale_id,
-    emittente_soggetto_ruolo_id,
-    valuta_id,
-    meta,
-    attivo,
-    data_insert,
-    user_insert,
-    data_update,
-    user_update
+  -- 1) Update source esistenti non assegnate:
+  --    importo = saldo_effettivo; stato in base a saldo_effettivo.
+  WITH base AS (
+    SELECT
+      f.id AS fattura_sorgente_id,
+      (COALESCE(sf.saldo, 0) - COALESCE(sc.saldo_contabile, 0))::numeric AS importo_target
+    FROM vendite.fatture f
+    CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(f.id) sf
+    CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura_contabili(f.id) sc
+    WHERE f.minimo IS TRUE
+      AND f.billing_account_id = p_billing_account_id
+      AND f.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+      AND f.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+      AND f.valuta_id = p_valuta_id
+  ), upd AS (
+    UPDATE vendite.fatture_fondi_fattura_source s
+       SET importo = b.importo_target,
+           stato = CASE
+                     WHEN COALESCE(b.importo_target, 0) = 0 THEN 'ANNULLATO'
+                     ELSE 'DISPONIBILE'
+                   END,
+           utility_id = p_utility_id,
+           data_update = now(),
+           user_update = current_user
+      FROM base b
+     WHERE s.fattura_sorgente_id = b.fattura_sorgente_id
+       AND s.tipo_fondo_fattura_id = p_tipo_fondo_fattura_id
+       AND s.fattura_figlia_id IS NULL
+       AND (
+         s.importo IS DISTINCT FROM b.importo_target
+         OR s.stato IS DISTINCT FROM (
+           CASE
+             WHEN COALESCE(b.importo_target, 0) = 0 THEN 'ANNULLATO'
+             ELSE 'DISPONIBILE'
+           END
+         )
+         OR s.utility_id IS DISTINCT FROM p_utility_id
+       )
+    RETURNING s.id
   )
-  SELECT
-    f.id,
-    p_tipo_fondo_fattura_id,
-    coalesce(f.totale_a_pagare, 0), 
-    'DISPONIBILE',
-    NULL,
-    NULL,
-    NULL,
-    f.billing_account_id,
-    p_utility_id,
-    f.tipo_doc_fiscale_id,
-    f.emittente_soggetto_ruolo_id,
-    f.valuta_id,
-    '{}'::jsonb,
-    TRUE,
-    now(),
-    current_user,
-    now(),
-    current_user
-  FROM vendite.fatture f
-  CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(f.id) sf
-  WHERE f.minimo IS TRUE 
-    AND f.billing_account_id = p_billing_account_id
-    AND f.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
-    AND f.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
-    AND f.valuta_id = p_valuta_id
-    AND NOT EXISTS (
+  SELECT COUNT(*)::integer INTO v_updated FROM upd;
+
+  -- 2) Insert nuove source DISPONIBILE se saldo_effettivo <> 0.
+  WITH base AS (
+    SELECT
+      f.id AS fattura_sorgente_id,
+      (COALESCE(sf.saldo, 0) - COALESCE(sc.saldo_contabile, 0))::numeric AS importo_target
+    FROM vendite.fatture f
+    CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(f.id) sf
+    CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura_contabili(f.id) sc
+    WHERE f.minimo IS TRUE
+      AND f.billing_account_id = p_billing_account_id
+      AND f.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+      AND f.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+      AND f.valuta_id = p_valuta_id
+      AND (COALESCE(sf.saldo, 0) - COALESCE(sc.saldo_contabile, 0)) <> 0
+  ), ins AS (
+    INSERT INTO vendite.fatture_fondi_fattura_source (
+      fattura_sorgente_id,
+      tipo_fondo_fattura_id,
+      importo,
+      stato,
+      fattura_figlia_id,
+      data_assegnazione,
+      user_assegnazione,
+      billing_account_id,
+      utility_id,
+      tipo_doc_fiscale_id,
+      emittente_soggetto_ruolo_id,
+      valuta_id,
+      meta,
+      attivo,
+      data_insert,
+      user_insert,
+      data_update,
+      user_update
+    )
+    SELECT
+      b.fattura_sorgente_id,
+      p_tipo_fondo_fattura_id,
+      b.importo_target,
+      'DISPONIBILE',
+      NULL,
+      NULL,
+      NULL,
+      p_billing_account_id,
+      p_utility_id,
+      p_tipo_doc_fiscale_id,
+      p_emittente_soggetto_ruolo_id,
+      p_valuta_id,
+      '{}'::jsonb,
+      TRUE,
+      now(),
+      current_user,
+      now(),
+      current_user
+    FROM base b
+    WHERE NOT EXISTS (
       SELECT 1
       FROM vendite.fatture_fondi_fattura_source s
-      WHERE s.fattura_sorgente_id = f.id
+      WHERE s.fattura_sorgente_id = b.fattura_sorgente_id
+        AND s.tipo_fondo_fattura_id = p_tipo_fondo_fattura_id
     )
-    AND sf.saldo <>  f.totale_a_pagare;
+    RETURNING id
+  )
+  SELECT COUNT(*)::integer INTO v_inserted FROM ins;
 
-  GET DIAGNOSTICS v_inserted = ROW_COUNT;
-
-  RETURN v_inserted;
+  RETURN COALESCE(v_updated, 0) + COALESCE(v_inserted, 0);
 END;
 $function$
 ```

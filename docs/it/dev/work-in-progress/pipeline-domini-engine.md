@@ -308,6 +308,18 @@ Non vanno fusi.
 
 ## 8) Checklist operativa
 
+### Stato aggiornato (recap operativo)
+
+* [x] Registry DB multi-dominio creato (`dbops.domini_task`, `dbops.pipeline_task_registry`, `dbops.pipeline_task_registry_impl`)
+* [x] Funzioni DB registry operative (`fn_check_pipeline_task_registered`, `fn_get_pipeline_task_implementation`)
+* [x] Seed pipeline fatturazione con `implementation_key: default`
+* [x] Dispatch Django su registry DB + `implementation_key`
+* [x] Task `close_lotto` integrato nella pipeline massiva
+* [ ] Registry runtime Python completo multi-dominio (mappa per dominio)
+* [ ] Pipeline dedicata `attivita_fatturabili` (tabella + resolve/list + log)
+* [ ] Pacchetto test completo dominio attivita (pgtap + python)
+* [ ] Validazione pre-run unificata per tutti i domini pipeline
+
 1. **Dominio runtime**
    * Seed `dbops.domini_task` con codici standard (`FATTURAZIONE`, `ATTIVITA_FATTURABILI`).
    * Esporre mapping stabile `dominio_id` lato Python.

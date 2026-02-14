@@ -1,0 +1,211 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260212-01-update-fn-genera-fondi-fattura-source-mctit.yaml
+
+  - changeSet:
+      id: 20260212-01-update-fn-genera-fondi-fattura-source
+      author: mctit
+      comment: "Sync source fondi fattura (DISPONIBILE/ANNULLATO) con importo aggiornato"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_genera_fondi_fattura_source(
+                p_billing_account_id vendite.fatture.billing_account_id%TYPE,
+                p_utility_id config.utilities.id%TYPE,
+                p_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE,
+                p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                p_valuta_id config.valute.id%TYPE,
+                p_tipo_fondo_fattura_id vendite.tipi_fondi_fattura.id%TYPE
+              )
+              RETURNS integer
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_updated integer := 0;
+                v_inserted integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Sincronizza la source dei fondi fattura per il perimetro
+                --   richiesto:
+                --   - crea nuove source DISPONIBILE per fatture minimo non saldate
+                --   - aggiorna importo/stato delle source non ancora assegnate
+                --     (saldo=0 -> ANNULLATO, saldo<>0 -> DISPONIBILE)
+                -- =========================================================
+
+                IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_genera_fondi_fattura_source', 'E_GENERICO',
+                    jsonb_build_object('detail','billing_account_id obbligatorio'),
+                    NULL::uuid,
+                    'billing_account_id non valido'
+                  );
+                END IF;
+
+                IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_genera_fondi_fattura_source', 'E_GENERICO',
+                    jsonb_build_object('detail','utility_id obbligatorio'),
+                    NULL::uuid,
+                    'utility_id non valido'
+                  );
+                END IF;
+
+                IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_genera_fondi_fattura_source', 'E_GENERICO',
+                    jsonb_build_object('detail','tipo_doc_fiscale_id obbligatorio'),
+                    NULL::uuid,
+                    'tipo_doc_fiscale_id non valido'
+                  );
+                END IF;
+
+                IF p_emittente_soggetto_ruolo_id IS NULL OR p_emittente_soggetto_ruolo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_genera_fondi_fattura_source', 'E_GENERICO',
+                    jsonb_build_object('detail','emittente_soggetto_ruolo_id obbligatorio'),
+                    NULL::uuid,
+                    'emittente_soggetto_ruolo_id non valido'
+                  );
+                END IF;
+
+                IF p_valuta_id IS NULL OR p_valuta_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_genera_fondi_fattura_source', 'E_GENERICO',
+                    jsonb_build_object('detail','valuta_id obbligatorio'),
+                    NULL::uuid,
+                    'valuta_id non valido'
+                  );
+                END IF;
+
+                IF p_tipo_fondo_fattura_id IS NULL OR p_tipo_fondo_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_genera_fondi_fattura_source', 'E_GENERICO',
+                    jsonb_build_object('detail','tipo_fondo_fattura_id obbligatorio'),
+                    NULL::uuid,
+                    'tipo_fondo_fattura_id non valido'
+                  );
+                END IF;
+                -- aggiorna importo/stato delle source esistenti non ancora assegnate
+                WITH base AS (
+                  SELECT
+                    f.id AS fattura_sorgente_id,
+                    COALESCE(f.totale_a_pagare, 0)::numeric AS importo_target,
+                    sf.saldo
+                  FROM vendite.fatture f
+                  CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(f.id) sf
+                  WHERE f.minimo IS TRUE
+                    AND f.billing_account_id = p_billing_account_id
+                    AND f.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                    AND f.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                    AND f.valuta_id = p_valuta_id
+                ), upd AS (
+                  UPDATE vendite.fatture_fondi_fattura_source s
+                     SET importo = b.importo_target,
+                         stato = CASE
+                                   WHEN b.saldo = 0 THEN 'ANNULLATO'
+                                   ELSE 'DISPONIBILE'
+                                 END,
+                         utility_id = p_utility_id,
+                         data_update = now(),
+                         user_update = current_user
+                    FROM base b
+                   WHERE s.fattura_sorgente_id = b.fattura_sorgente_id
+                     AND s.tipo_fondo_fattura_id = p_tipo_fondo_fattura_id
+                     AND s.fattura_figlia_id IS NULL
+                     AND (
+                       s.importo IS DISTINCT FROM b.importo_target
+                       OR s.stato IS DISTINCT FROM (
+                         CASE
+                           WHEN b.saldo = 0 THEN 'ANNULLATO'
+                           ELSE 'DISPONIBILE'
+                         END
+                       )
+                       OR s.utility_id IS DISTINCT FROM p_utility_id
+                     )
+                  RETURNING s.id
+                )
+                SELECT COUNT(*)::integer INTO v_updated FROM upd;
+                
+                -- inserisce nuove source DISPONIBILE per fatture minimo non saldate senza source già esistente
+                WITH base AS (
+                  SELECT
+                    f.id AS fattura_sorgente_id,
+                    COALESCE(f.totale_a_pagare, 0)::numeric AS importo_target
+                  FROM vendite.fatture f
+                  CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(f.id) sf
+                  WHERE f.minimo IS TRUE
+                    AND f.billing_account_id = p_billing_account_id
+                    AND f.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                    AND f.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                    AND f.valuta_id = p_valuta_id
+                    AND sf.saldo <> 0
+                ), ins AS (
+                  INSERT INTO vendite.fatture_fondi_fattura_source (
+                    fattura_sorgente_id,
+                    tipo_fondo_fattura_id,
+                    importo,
+                    stato,
+                    fattura_figlia_id,
+                    data_assegnazione,
+                    user_assegnazione,
+                    billing_account_id,
+                    utility_id,
+                    tipo_doc_fiscale_id,
+                    emittente_soggetto_ruolo_id,
+                    valuta_id,
+                    meta,
+                    attivo,
+                    data_insert,
+                    user_insert,
+                    data_update,
+                    user_update
+                  )
+                  SELECT
+                    b.fattura_sorgente_id,
+                    p_tipo_fondo_fattura_id,
+                    b.importo_target,
+                    'DISPONIBILE',
+                    NULL,
+                    NULL,
+                    NULL,
+                    p_billing_account_id,
+                    p_utility_id,
+                    p_tipo_doc_fiscale_id,
+                    p_emittente_soggetto_ruolo_id,
+                    p_valuta_id,
+                    '{}'::jsonb,
+                    TRUE,
+                    now(),
+                    current_user,
+                    now(),
+                    current_user
+                  FROM base b
+                  WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM vendite.fatture_fondi_fattura_source s
+                    WHERE s.fattura_sorgente_id = b.fattura_sorgente_id
+                      AND s.tipo_fondo_fattura_id = p_tipo_fondo_fattura_id
+                  )
+                  RETURNING id
+                )
+                SELECT COUNT(*)::integer INTO v_inserted FROM ins;
+
+                RETURN COALESCE(v_updated, 0) + COALESCE(v_inserted, 0);
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_genera_fondi_fattura_source(
+                vendite.fatture.billing_account_id%TYPE,
+                config.utilities.id%TYPE,
+                config.tipi_doc_fiscale.id%TYPE,
+                anagrafiche.soggetti_ruoli.id%TYPE,
+                config.valute.id%TYPE,
+                vendite.tipi_fondi_fattura.id%TYPE
+              ) IS 'Sincronizza la source fondi fattura: crea DISPONIBILE e aggiorna ANNULLATO/DISPONIBILE in base al saldo.';

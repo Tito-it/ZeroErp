@@ -134,3 +134,19 @@ databaseChangeLog:
 
               COMMENT ON TABLE vendite.fatture_log
                 IS 'Log anomalie fattura (warning/critical) con disabilitazione.';
+
+  - changeSet:
+      id: 20260129-01-02-update-fatture_log
+      author: mctit
+      comment: "Aggiunta campo tx_id"
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: fatture_log
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID della transazione"
+                  constraints:
+                    nullable: true

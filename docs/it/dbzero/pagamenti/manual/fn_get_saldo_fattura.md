@@ -11,15 +11,18 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 11-02-2026)  
-La funzione **`pagamenti.fn_get_saldo_fattura()`** restituisce il **saldo**
-movimenti di una fattura e un flag che indica se esistono movimenti.
+(latest review 13-02-2026)  
+La funzione **`pagamenti.fn_get_saldo_fattura()`** restituisce il **residuo**
+della fattura:
+
+* `saldo = totale_a_pagare - somma(movimenti attivi)`
 
 ---
 
 ### ✅ Regole principali
 
 * `p_fattura_id` obbligatorio (`> 0`).
+* Verifica che la fattura esista.
 * Considera solo movimenti `attivo = true`.
 
 ---
@@ -28,7 +31,7 @@ movimenti di una fattura e un flag che indica se esistono movimenti.
 
 Ritorna una riga con:
 
-* `saldo` (numeric)
+* `saldo` (numeric, residuo fattura)
 * `has_movimenti` (boolean)
 
 ---

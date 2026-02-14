@@ -14,6 +14,7 @@
 > • [vendite.fn_get_totale_fondi_fattura](/dbzero/vendite/funzioni/fn_get_totale_fondi_fattura)  
 > • [vendite.fn_get_arrotondamento_scope](/dbzero/vendite/funzioni/fn_get_arrotondamento_scope)  
 > • [vendite.fn_set_arrotondamento_scope](/dbzero/vendite/funzioni/fn_set_arrotondamento_scope)  
+> • [vendite.fn_sync_contabili_fondo_fattura](/dbzero/vendite/funzioni/fn_sync_contabili_fondo_fattura)  
 >
 ---
 
@@ -36,6 +37,8 @@ applicando le regole di arrotondamento definite per **emittente/utility**.
 * Aggiorna il saldo tecnico con `fn_set_arrotondamento_scope()`.
 * Imposta `minimo = true` quando `totale_a_pagare` rientra nella soglia
   (`minimo_soglia_min`/`minimo_soglia_max`).
+* Esegue la sincronizzazione contabile dei fondi assegnati alla fattura
+  (`fn_sync_contabili_fondo_fattura`).
 
 ---
 

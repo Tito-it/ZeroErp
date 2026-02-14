@@ -12,26 +12,31 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 11-02-2026)  
+(latest review 12-02-2026)  
 La funzione **`vendite.fn_genera_fondi_fattura_source()`** genera record
 in `fatture_fondi_fattura_source` per fatture con `minimo = true`,
-non ancora presenti e non pagate.
+e mantiene allineata la source in base al saldo documento.
 
 ---
 
 ### ✅ Regole principali
 
 * Parametri obbligatori (ID > 0).
-* Seleziona fatture con `minimo = true`.
-* Esclude fatture gia` presenti in `fatture_fondi_fattura_source`.
-* Esclude fatture con saldo movimenti >= `totale_a_pagare`.
-* Inserisce record con stato `DISPONIBILE`.
+* Seleziona fatture con `minimo = true` nel perimetro BA/utility/tipo_doc/emittente/valuta.
+* Inserisce nuove source con stato `DISPONIBILE` solo per fatture con saldo effettivo diverso da `0`.
+* Se la source esiste gia` (non assegnata), aggiorna importo e stato:
+  * `saldo_effettivo = 0` -> `ANNULLATO`
+  * `saldo_effettivo <> 0` -> `DISPONIBILE`
+* La funzione e` idempotente: riallinea i dati senza creare duplicati.
+* `saldo_effettivo` e` calcolato come:
+  * `residuo_fattura (totale_a_pagare - movimenti)`
+  * meno saldo contabile postabile (`vendite_contabili_righe_stati.is_postabile = true`).
 
 ---
 
 ### ✅ Output
 
-Ritorna il numero di record inseriti.
+Ritorna il numero totale di record modificati (`insert` + `update`).
 
 ---
 
