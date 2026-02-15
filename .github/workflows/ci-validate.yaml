@@ -8,7 +8,7 @@ on:
       - backend/**
       - requirements/**
       - scripts/**
-      - .github/workflows/ci-validate.yml
+      - .github/workflows/ci-validate.yaml
   pull_request:
     branches: [Tito-dev, main]
     paths:
@@ -16,7 +16,7 @@ on:
       - backend/**
       - requirements/**
       - scripts/**
-      - .github/workflows/ci-validate.yml
+      - .github/workflows/ci-validate.yaml
 
 jobs:
   validate:
