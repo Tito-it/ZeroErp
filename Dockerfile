@@ -12,4 +12,4 @@ RUN python -m pip install --no-cache-dir -U pip wheel \
 # Ora copia il codice
 COPY backend/ .
 
-CMD ["gunicorn","backend.wsgi:application","--bind","0.0.0.0:8000","--workers","2","--timeout","60"]
+CMD ["gunicorn","zeroerp_backend.wsgi:application","--bind","0.0.0.0:8000","--workers","2","--timeout","60"]
