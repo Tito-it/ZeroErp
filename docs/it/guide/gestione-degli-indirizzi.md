@@ -221,5 +221,28 @@ erDiagram
     vw_indirizzi_resolved_soggetto ||--o{ vw_indirizzi_resolved_all : union
 ```
 
+### 8.5. Validazione pgTAP (stato punto 2.4)
+
+Il punto **2.4 - Doppio layer indirizzi (ruolo/soggetto)** e' validato da:
+
+* `db/pgtap/anagrafiche/test-indirizzi-fallback.sql`
+
+Copertura attuale (14 assert):
+
+1. Presenza Gestore di test.
+2. Presenza tipi indirizzo minimi (`RES`, `SEDELEG`).
+3. Upsert idempotente di `indirizzi_dettaglio`.
+4. Pre-condizione: assenza indirizzi ruolo `RES/SEDELEG/SEDEOP`.
+5. Guard: blocco inserimento `RES` su Gestore.
+6. Verifica post-guard: nessun `RES` inserito.
+7. Inserimento `SEDELEG` su ruolo riuscito.
+8. Fallback `fn_get_indirizzo(..., 'SEDEOP') -> SEDELEG`.
+9. Coerenza `fn_get_indirizzi_by_ruolo` con `vw_indirizzi_resolved_base` (`scope='RUOLO'`).
+10. Presenza `SEDELEG` in `fn_get_indirizzi_by_ruolo`.
+11. Coerenza `fn_get_indirizzi_by_soggetto` con `vw_indirizzi_resolved_base` (`scope='SOGGETTO'`).
+12. Dominio `source` valido in `vw_indirizzi_resolved_all` (`RUOLO`/`SOGGETTO`).
+13. `SEDELEG` di ruolo in `vw_indirizzi_resolved_all` con `source='RUOLO'`.
+14. Coerenza cardinalita: `vw_indirizzi_resolved_all = vw_indirizzi_resolved_ruolo + vw_indirizzi_resolved_soggetto`.
+
 ---
 {% include-markdown "signature-core.md" %}

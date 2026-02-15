@@ -1,0 +1,202 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260215-16-recreate-views-pdp-istanze-utility-id-mctit.yaml
+
+  - changeSet:
+      id: 20260215-16-recreate-views-pdp-istanze-utility-id
+      author: mctit
+      comment: "Recreate viste PDP/istanze con naming finale utility_id."
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Drop in ordine dipendenze: child -> parent
+              DROP VIEW IF EXISTS anagrafiche.vw_istanze_dati_precontrattuali_dettaglio;
+              DROP VIEW IF EXISTS anagrafiche.vw_istanze_utilities_dettaglio;
+              DROP VIEW IF EXISTS anagrafiche.vw_pdp;
+
+              CREATE OR REPLACE VIEW anagrafiche.vw_pdp AS
+              SELECT
+                p.id              AS pdp_id,
+                p.pdp             AS pdp_codice,
+                p.utility_id,
+                u.codice_interno  AS utility_codice_interno,
+                u.codice          AS utility_codice,
+                u.descrizione     AS utility_descrizione,
+                p.stato_pdp_id,
+                sp.codice_interno AS stato_pdp_codice_interno,
+                sp.codice         AS stato_pdp_codice,
+                sp.descrizione    AS stato_pdp_descrizione,
+                p.cliente_id,
+                v.indirizzo_dettaglio_id,
+                v.stradario_id,
+                v.comune_id,
+                v.descrizione_comune,
+                v.cap,
+                v.provincia,
+                v.indirizzo_normalizzato,
+                v.via_norm,
+                v.civico,
+                v.estensione_civico,
+                v.palazzina,
+                v.scala,
+                v.piano,
+                v.interno,
+                v.altro,
+                v.civic_geoloc,
+                v.street_geoloc,
+                v.attivo      AS indirizzo_attivo,
+                v.storicizza  AS indirizzo_storicizza,
+                v.tx_id       AS indirizzo_tx_id,
+                v.data_insert AS indirizzo_data_insert,
+                v.user_insert AS indirizzo_user_insert,
+                v.data_update AS indirizzo_data_update,
+                v.user_update AS indirizzo_user_update
+              FROM anagrafiche.pdp p
+              JOIN anagrafiche.vw_indirizzi_dettaglio v
+                ON v.indirizzo_dettaglio_id = p.indirizzo_dettaglio_id
+              JOIN config.utilities u
+                ON u.id = p.utility_id
+              JOIN config.stati_pdp sp
+                ON sp.id = p.stato_pdp_id
+              LEFT JOIN anagrafiche.clienti c
+                ON c.id = p.cliente_id;
+
+              COMMENT ON VIEW anagrafiche.vw_pdp IS
+                'Vista di comodo per la consultazione dei punti di prelievo (PDP) con indirizzo normalizzato, utility, stato tecnico e cliente corrente.';
+
+              CREATE OR REPLACE VIEW anagrafiche.vw_istanze_utilities_dettaglio AS
+              SELECT
+                iu.id                          AS istanza_id,
+                iu.codice                      AS istanza_codice,
+                iu.proprietario_inquilino,
+                iu.fittizia,
+                iu.soggetto_id,
+                s.ragione_sociale_completa,
+                s.id_fiscale_univoco_cf_piva,
+                iu.pdp_id,
+                p.pdp                          AS pdp_codice,
+                p.stato_pdp_id,
+                sp.codice_interno              AS stato_pdp_codice,
+                sp.codice                      AS stato_pdp_descrizione,
+                p.utility_id,
+                u.codice_interno               AS utility_codice,
+                u.descrizione                  AS utility_descrizione,
+                iu.parent_istanza_id,
+                iu.indirizzo_dettaglio_id,
+                idv.indirizzo_normalizzato,
+                idv.via_norm,
+                idv.civico,
+                idv.estensione_civico,
+                idv.palazzina,
+                idv.scala,
+                idv.piano,
+                idv.interno,
+                idv.altro,
+                idv.civic_geoloc,
+                idv.street_geoloc,
+                idv.comune_id                  AS indirizzo_comune_id,
+                ic.comune                      AS comune_descrizione,
+                ic.provincia                   AS provincia_sigla,
+                ic.codice_postale              AS cap,
+                ic.indirizzo_generale,
+                ic.tipo_toponimo,
+                ic.nome_strada,
+                iu.tx_id,
+                iu.data_insert,
+                iu.user_insert,
+                iu.data_update,
+                iu.user_update
+              FROM anagrafiche.istanze_utilities iu
+              JOIN anagrafiche.soggetti s
+                ON s.id = iu.soggetto_id
+              LEFT JOIN anagrafiche.pdp p
+                ON p.id = iu.pdp_id
+              LEFT JOIN config.stati_pdp sp
+                ON sp.id = p.stato_pdp_id
+              LEFT JOIN config.utilities u
+                ON u.id = p.utility_id
+              LEFT JOIN anagrafiche.vw_indirizzi_dettaglio idv
+                ON idv.indirizzo_dettaglio_id = iu.indirizzo_dettaglio_id
+              LEFT JOIN script.vw_indirizzo_completo ic
+                ON ic.id_stradario = idv.stradario_id;
+
+              COMMENT ON VIEW anagrafiche.vw_istanze_utilities_dettaglio IS
+                'Vista di dettaglio sulle istanze utility: include soggetto, PDP, stato tecnico, utility e indirizzo completo (comune, provincia, CAP, via, civico).';
+
+              CREATE OR REPLACE VIEW anagrafiche.vw_istanze_dati_precontrattuali_dettaglio AS
+              SELECT
+                idp.id AS istanza_dati_precontrattuali_id,
+                idp.istanza_utility_id,
+                idp.utility_id AS istanza_dati_utility_id,
+                idp.classe_utenza_id,
+                cu.descrizione AS classe_utenza_descrizione,
+                cu.codice AS classe_utenza_codice,
+                tu.id AS tipo_utenza_id,
+                tu.descrizione AS tipo_utenza_descrizione,
+                tu.codice AS tipo_utenza_codice,
+                idp.param_1_num,
+                idp.param_2_txt,
+                idp.meta,
+                idp.tx_id,
+                idp.storicizza,
+                idp.data_insert,
+                idp.user_insert,
+                idp.data_update,
+                idp.user_update,
+                iud.istanza_id,
+                iud.istanza_codice,
+                iud.proprietario_inquilino,
+                iud.fittizia,
+                iud.soggetto_id,
+                iud.ragione_sociale_completa,
+                iud.id_fiscale_univoco_cf_piva,
+                iud.pdp_id,
+                iud.pdp_codice,
+                iud.stato_pdp_id,
+                iud.stato_pdp_codice,
+                iud.stato_pdp_descrizione,
+                iud.utility_id,
+                iud.utility_codice,
+                iud.utility_descrizione,
+                iud.parent_istanza_id,
+                iud.indirizzo_dettaglio_id,
+                iud.indirizzo_normalizzato,
+                iud.via_norm,
+                iud.civico,
+                iud.estensione_civico,
+                iud.palazzina,
+                iud.scala,
+                iud.piano,
+                iud.interno,
+                iud.altro,
+                iud.civic_geoloc,
+                iud.street_geoloc,
+                iud.indirizzo_comune_id,
+                iud.comune_descrizione,
+                iud.provincia_sigla,
+                iud.cap,
+                iud.indirizzo_generale,
+                iud.tipo_toponimo,
+                iud.nome_strada,
+                iud.tx_id AS istanza_tx_id,
+                iud.data_insert AS istanza_data_insert,
+                iud.user_insert AS istanza_user_insert,
+                iud.data_update AS istanza_data_update,
+                iud.user_update AS istanza_user_update
+              FROM anagrafiche.istanze_dati_precontrattuali idp
+              JOIN anagrafiche.vw_istanze_utilities_dettaglio iud
+                ON iud.istanza_id = idp.istanza_utility_id
+              LEFT JOIN config.classi_utenze cu
+                ON cu.id = idp.classe_utenza_id
+              LEFT JOIN config.tipi_utenze tu
+                ON tu.id = cu.tipo_utenza_id;
+
+              COMMENT ON VIEW anagrafiche.vw_istanze_dati_precontrattuali_dettaglio IS
+                'Vista di dettaglio delle istanze dati precontrattuali con classe/tipo utenza e dati istanza utilities.';

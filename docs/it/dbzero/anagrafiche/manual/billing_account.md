@@ -43,6 +43,13 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 * Gestione di più codici nel tempo tramite il campo `parent_account_id`
 * Unicità per coppia `istanza_utility_id` + `utility_id`
 
+Nota naming utility:
+
+* `anagrafiche.billing_account` usa `utility_id`;
+* `anagrafiche.pdp` usa `utility_id`.
+
+Entrambe puntano a `config.utilities.id`; il naming e' uniforme anche nelle query/join.
+
 ---
 
 ### 🔗 Collegamenti con Altre Tabelle
@@ -100,7 +107,7 @@ La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici client
 ### ✅ Controlli di Coerenza
 
 * FK e vincoli CHECK assicurano la validità dei periodi (`valido_dal`, `valido_al`) e delle gerarchie.
-* Il trigger `clean_fields` genera `codice` se mancante.
+* Il trigger `trgfn_billing_account_gen_codice` genera `codice` se mancante.
 
 ---
 

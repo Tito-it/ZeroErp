@@ -1,0 +1,39 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260215-15-upsert-fk-index-policy-pdp-utility-id-mctit.yaml
+
+  - changeSet:
+      id: 20260215-15-upsert-fk-index-policy-pdp-utility-id
+      author: mctit
+      comment: "Allinea dbops.fk_index_policy per PDP alla colonna utility_id (run chain-safe)."
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.fk_index_policy
+              WHERE schema_name = 'anagrafiche'
+                AND table_name = 'pdp'
+                AND constraint_name IN ('fk_pdp_utilities', 'fk_pdp_utility');
+
+              INSERT INTO dbops.fk_index_policy (
+                schema_name,
+                table_name,
+                constraint_name,
+                consentito,
+                dll_command,
+                generated_by_script
+              )
+              VALUES (
+                'anagrafiche',
+                'pdp',
+                'fk_pdp_utility',
+                true,
+                'CREATE INDEX IF NOT EXISTS ix_anagrafiche_pdp_utility_id ON anagrafiche.pdp(utility_id);',
+                false
+              );

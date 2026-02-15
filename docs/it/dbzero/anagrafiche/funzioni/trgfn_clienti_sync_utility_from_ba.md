@@ -17,12 +17,10 @@ DECLARE
   v_pdp_utility_id bigint;
   v_richiede_pdp boolean := false;
 BEGIN
-  -- Se non è valorizzato il billing_account, non applichiamo regole di sync utility.
   IF NEW.billing_account_id IS NULL THEN
     RETURN NEW;
   END IF;
 
-  -- Recupero utility_id dal billing_account.
   SELECT ba.utility_id
     INTO v_utility_id
   FROM anagrafiche.billing_account ba
@@ -33,15 +31,12 @@ BEGIN
       'database',
       'anagrafiche.trgfn_clienti_sync_utility_from_ba',
       'E_BILLING_ACCOUNT_UTILITY_NULL',
-      jsonb_build_object(
-        'billing_account_id', NEW.billing_account_id
-      ),
+      jsonb_build_object('billing_account_id', NEW.billing_account_id),
       NEW.tx_id,
       coalesce(NEW.billing_account_id::text, 'NULL')
     );
   END IF;
 
-  -- Se il cliente non ha ancora utility, la eredita dal billing_account.
   IF NEW.utility_id IS NULL THEN
     NEW.utility_id := v_utility_id;
   ELSIF NEW.utility_id <> v_utility_id THEN
@@ -61,7 +56,6 @@ BEGIN
     );
   END IF;
 
-  -- Utility policy: PDP richiesto sì/no da config.utilities.richiede_pdp.
   SELECT coalesce(u.richiede_pdp, false)
     INTO v_richiede_pdp
   FROM config.utilities u
@@ -92,13 +86,12 @@ BEGIN
         'utility_id', v_utility_id
       ),
       NEW.tx_id,
-      concat('PDP obbligatorio per utility ', v_utility_id::text , ' billing_account_id ', NEW.billing_account_id::text)
+      concat('PDP obbligatorio per utility ', v_utility_id::text, ' billing_account_id ', NEW.billing_account_id::text)
     );
   END IF;
 
-  -- Se PDP presente, la utility del PDP deve coincidere con quella del billing_account.
   IF NEW.pdp_id IS NOT NULL THEN
-    SELECT p.utilities_id
+    SELECT p.utility_id
       INTO v_pdp_utility_id
     FROM anagrafiche.pdp p
     WHERE p.id = NEW.pdp_id;
@@ -116,9 +109,16 @@ BEGIN
           'utility_da_pdp', v_pdp_utility_id
         ),
         NEW.tx_id,
-        concat('Mismatch utility tra billing_account e PDP: billing_account_id ',
-         NEW.billing_account_id::text, ' pdp_id ', NEW.pdp_id::text , 
-        ' utility_da_billing ', v_utility_id::text, ' utility_da_pdp ', v_pdp_utility_id::text)
+        concat(
+          'Mismatch utility tra billing_account e PDP: billing_account_id ',
+          NEW.billing_account_id::text,
+          ' pdp_id ',
+          NEW.pdp_id::text,
+          ' utility_da_billing ',
+          v_utility_id::text,
+          ' utility_da_pdp ',
+          v_pdp_utility_id::text
+        )
       );
     END IF;
   END IF;

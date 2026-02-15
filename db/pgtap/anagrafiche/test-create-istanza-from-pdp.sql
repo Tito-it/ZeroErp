@@ -42,7 +42,7 @@ SELECT p.id,
        p.indirizzo_dettaglio_id
 FROM anagrafiche.pdp p
 JOIN tmp_utility_gas u
-  ON p.utilities_id = u.id
+  ON p.utility_id = u.id
 WHERE p.indirizzo_dettaglio_id IS NOT NULL
 LIMIT 1;
 

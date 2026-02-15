@@ -6,10 +6,30 @@
 --   - Guard anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo
 --     su RES/SEDELEG per Gestore
 --   - Fallback fn_get_indirizzo per SEDEOP → SEDELEG
+--   - Coerenza funzioni/vista resolved:
+--       script.fn_get_indirizzi_by_ruolo
+--       script.fn_get_indirizzi_by_soggetto
+--       anagrafiche.vw_indirizzi_resolved_all
 -- ------------------------------------------------------------
 
-SELECT plan(8);
+SELECT plan(14);
 
+-- Catalogo assert (14/14)
+--  1) Esiste almeno un Gestore (tmp_gestore_guard valorizzata)
+--  2) Esistono almeno RES e SEDELEG in config.tipi_indirizzi
+--  3) Upsert indirizzo_dettaglio di test produce esattamente 1 id
+--  4) Pre-condizione: nessun indirizzo RES/SEDELEG/SEDEOP sul ruolo test
+--  5) Guard blocca inserimento RES per Gestore (throws_ok)
+--  6) Dopo il tentativo RES fallito non esistono RES sul ruolo test
+--  7) Inserimento SEDELEG sul ruolo test riuscito (count=1)
+--  8) fn_get_indirizzo(SEDEOP) applica fallback a SEDELEG
+--  9) fn_get_indirizzi_by_ruolo allineata a vw_indirizzi_resolved_base scope=RUOLO
+-- 10) fn_get_indirizzi_by_ruolo include SEDELEG del ruolo test
+-- 11) fn_get_indirizzi_by_soggetto allineata a vw_indirizzi_resolved_base scope=SOGGETTO
+-- 12) vw_indirizzi_resolved_all ha source valorizzato nel dominio RUOLO/SOGGETTO
+-- 13) vw_indirizzi_resolved_all espone SEDELEG del ruolo test con source=RUOLO
+-- 14) Coerenza cardinalita viste: ALL = RUOLO + SOGGETTO
+--
 -- =========================================================
 -- 0) Costanti per indirizzo_dettaglio di test
 -- =========================================================
@@ -297,6 +317,104 @@ SELECT results_eq(
     VALUES ('SEDELEG'::varchar)
     $$,
     'fn_get_indirizzo: richiesta SEDEOP per Gestore usa fallback SEDELEG'
+);
+
+-- =========================================================
+-- 8) fn_get_indirizzi_by_ruolo: set coerente con vista base scope=RUOLO
+-- =========================================================
+SELECT results_eq(
+    $$
+    SELECT f.tipo_indirizzo, f.indirizzo_id
+    FROM script.fn_get_indirizzi_by_ruolo(
+        (SELECT soggetto_ruolo_id FROM tmp_gestore_guard)
+    ) f
+    ORDER BY f.tipo_indirizzo, f.indirizzo_id
+    $$,
+    $$
+    SELECT r.tipo_indirizzo_codice, r.indirizzo_id
+    FROM anagrafiche.vw_indirizzi_resolved_base r
+    WHERE r.scope = 'RUOLO'
+      AND r.soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM tmp_gestore_guard)
+    ORDER BY r.tipo_indirizzo_codice, r.indirizzo_id
+    $$,
+    'fn_get_indirizzi_by_ruolo: risultato allineato a vw_indirizzi_resolved_base (scope=RUOLO)'
+);
+
+-- =========================================================
+-- 9) fn_get_indirizzi_by_ruolo: presenza SEDELEG inserito nel test
+-- =========================================================
+SELECT is(
+    (
+      SELECT count(*)::int
+      FROM script.fn_get_indirizzi_by_ruolo(
+          (SELECT soggetto_ruolo_id FROM tmp_gestore_guard)
+      ) f
+      WHERE f.tipo_indirizzo = 'SEDELEG'
+    ),
+    1,
+    'fn_get_indirizzi_by_ruolo include SEDELEG del soggetto_ruolo di test'
+);
+
+-- =========================================================
+-- 10) fn_get_indirizzi_by_soggetto: set coerente con vista base scope=SOGGETTO
+-- =========================================================
+SELECT results_eq(
+    $$
+    SELECT f.tipo_indirizzo_codice, f.indirizzo_id
+    FROM script.fn_get_indirizzi_by_soggetto(
+      (SELECT soggetto_id FROM tmp_gestore_guard)
+    ) f
+    ORDER BY f.tipo_indirizzo_codice, f.indirizzo_id
+    $$,
+    $$
+    SELECT r.tipo_indirizzo_codice, r.indirizzo_id
+    FROM anagrafiche.vw_indirizzi_resolved_base r
+    WHERE r.scope = 'SOGGETTO'
+      AND r.soggetto_id = (SELECT soggetto_id FROM tmp_gestore_guard)
+    ORDER BY r.tipo_indirizzo_codice, r.indirizzo_id
+    $$,
+    'fn_get_indirizzi_by_soggetto: risultato allineato a vw_indirizzi_resolved_base (scope=SOGGETTO)'
+);
+
+-- =========================================================
+-- 11) vw_indirizzi_resolved_all: source valorizzato solo RUOLO/SOGGETTO
+-- =========================================================
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1
+    FROM anagrafiche.vw_indirizzi_resolved_all a
+    WHERE a.source IS NULL
+       OR a.source NOT IN ('RUOLO', 'SOGGETTO')
+  ),
+  'vw_indirizzi_resolved_all: source sempre valorizzato e nel dominio RUOLO/SOGGETTO'
+);
+
+-- =========================================================
+-- 12) vw_indirizzi_resolved_all: riga SEDELEG di ruolo marcata source=RUOLO
+-- =========================================================
+SELECT is(
+  (
+    SELECT count(*)::int
+    FROM anagrafiche.vw_indirizzi_resolved_all a
+    WHERE a.soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM tmp_gestore_guard)
+      AND a.tipo_indirizzo_codice = 'SEDELEG'
+      AND a.source = 'RUOLO'
+  ),
+  1,
+  'vw_indirizzi_resolved_all: SEDELEG del ruolo di test ha source=RUOLO'
+);
+
+-- =========================================================
+-- 13) Partizionamento viste: ALL = RUOLO + SOGGETTO
+-- =========================================================
+SELECT ok(
+  (
+    SELECT count(*) FROM anagrafiche.vw_indirizzi_resolved_all
+  ) = (
+    (SELECT count(*) FROM anagrafiche.vw_indirizzi_resolved_ruolo) +
+    (SELECT count(*) FROM anagrafiche.vw_indirizzi_resolved_soggetto)
+  ),
+  'vw_indirizzi_resolved_all coerente con union logica di ruolo+soggetto'
 );
 
 -- Fine test

@@ -21,7 +21,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 06-12-25)
+(latest review 15-02-26)
 La tabella **`anagrafiche.pdp`** rappresenta i **Punti di Prelievo (PDP)**, entità fisiche ancorate a un indirizzo e identificate da un codice univoco globale (POD/PDR/altro). Ogni PDP appartiene a una utility (GAS, ENERGIA, ecc.) ed espone **lo stato tecnico corrente**, distinto dagli stati commerciali del cliente.
 
 La progettazione segue tre principi chiave:
@@ -44,13 +44,22 @@ Questo modello consente di:
 
 * **PK**: `id BIGINT IDENTITY`
 * **Codice PDP**: `pdp VARCHAR(30)`, **univoco globale e immutabile**
-* **Utility**: `utilities_id BIGINT NOT NULL` → FK `config.utilities(id)`
+* **Utility**: `utility_id BIGINT NOT NULL` → FK `config.utilities(id)`
 * **Indirizzo fisico**: `indirizzo_dettaglio_id BIGINT NOT NULL` → FK
 * **Cliente corrente**: `cliente_id BIGINT NULL` → FK
 * **Stato tecnico**: `stato_pdp_id BIGINT NOT NULL` → FK `config.stati_pdp(id)`
 * **Audit**: `tx_id`, `data_insert/update`, `user_insert/update`
 * **Storicizzazione**: `storicizza BOOLEAN DEFAULT TRUE`
 * **Extra info**: JSONB
+
+### 2.2 Nota naming
+
+Nel modello attuale:
+
+* `anagrafiche.pdp` usa **`utility_id`**;
+* la documentazione e le viste applicative sono allineate allo stesso naming.
+
+Il riferimento funzionale resta unico: FK verso `config.utilities.id`.
 
 ---
 
@@ -84,11 +93,11 @@ Questo modello consente coerenza e accuratezza anche in domini complessi (gas/en
 ### ⚙️ Vincoli e Relazioni
 
 * **UNIQUE (pdp)** → codice univoco globale
-* **UNIQUE (indirizzo_dettaglio_id, utilities_id)** → massimo un PDP per utility per indirizzo
+* **UNIQUE (indirizzo_dettaglio_id, utility_id)** → massimo un PDP per utility per indirizzo
 * **UNIQUE (id, indirizzo_dettaglio_id)** → supporto alla FK composita da istanze
 * **CHECK length(pdp)** → verifica formale
 * **FK stato_pdp_id → config.stati_pdp**
-* Indici: `idx_pdp_utilities_id`, `idx_pdp_indirizzo_dettaglio_id`, `idx_pdp_cliente_id`, `idx_pdp_stato_pdp_id`
+* Indici: `ix_anagrafiche_pdp_utility_id`, `ix_anagrafiche_pdp_indirizzo_dettaglio_id`, `ix_anagrafiche_pdp_cliente_id`
 
 ---
 

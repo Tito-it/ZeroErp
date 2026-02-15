@@ -123,10 +123,10 @@ FROM tmp_soggetto_test s;
 CREATE TEMP TABLE tmp_pdp_gas AS
 SELECT p.id,
        p.indirizzo_dettaglio_id,
-       p.utilities_id AS utility_id
+       p.utility_id AS utility_id
 FROM anagrafiche.pdp p
 JOIN tmp_utility_gas ug
-  ON ug.id = p.utilities_id
+  ON ug.id = p.utility_id
 WHERE p.indirizzo_dettaglio_id IS NOT NULL
 LIMIT 1;
 

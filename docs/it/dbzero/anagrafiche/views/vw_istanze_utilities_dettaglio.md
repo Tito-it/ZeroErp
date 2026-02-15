@@ -15,7 +15,7 @@ SELECT iu.id AS istanza_id,
     p.stato_pdp_id,
     sp.codice_interno AS stato_pdp_codice,
     sp.codice AS stato_pdp_descrizione,
-    p.utilities_id,
+    p.utility_id,
     u.codice_interno AS utility_codice,
     u.descrizione AS utility_descrizione,
     iu.parent_istanza_id,
@@ -47,7 +47,7 @@ SELECT iu.id AS istanza_id,
      JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)))
      LEFT JOIN anagrafiche.pdp p ON ((p.id = iu.pdp_id)))
      LEFT JOIN config.stati_pdp sp ON ((sp.id = p.stato_pdp_id)))
-     LEFT JOIN config.utilities u ON ((u.id = p.utilities_id)))
+     LEFT JOIN config.utilities u ON ((u.id = p.utility_id)))
      LEFT JOIN anagrafiche.vw_indirizzi_dettaglio idv ON ((idv.indirizzo_dettaglio_id = iu.indirizzo_dettaglio_id)))
      LEFT JOIN script.vw_indirizzo_completo ic ON ((ic.id_stradario = idv.stradario_id)));
 ```

@@ -88,7 +88,7 @@ Stato:
 
 ---
 
-### 2.3 Semantica trigger guard indirizzi obbligatori non chiarita (immediata vs deferita)
+### 2.3 Semantica trigger guard indirizzi obbligatori non chiarita (immediata vs deferita)   **CHIUSO**
 
 Problema:
 
@@ -103,12 +103,30 @@ Rischio:
 Riferimenti:
 
 - `docs/it/dbzero/anagrafiche/manual/trgfn_soggetti_ruoli_guard_indirizzi_required.md`
+- `docs/it/dbzero/anagrafiche/manual/trgfn_soggetti_guard_indirizzi_required.md`
 - `docs/it/dbzero/anagrafiche/tabelle/soggetti_ruoli.md`
+- `docs/it/dbzero/anagrafiche/tabelle/soggetti.md`
 - `docs/it/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_guard_indirizzi_required.md`
+- `docs/it/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_indirizzi_required.md`
+
+Stato:
+
+- RISOLTO (15-02-2026).
+- Allineata la documentazione `manual` e `funzioni` alla semantica reale:
+  - trigger di tipo `CONSTRAINT`,
+  - `DEFERRABLE INITIALLY DEFERRED`,
+  - enforcement a `COMMIT` o via `SET CONSTRAINTS ... IMMEDIATE`.
+- Aggiornate anche le pagine tabellari (`soggetti`, `soggetti_ruoli`) con nota esplicita sui trigger deferred.
+- Copertura test confermata:
+  - `db/pgtap/anagrafiche/test-soggetti-indirizzi-required.sql` (layer soggetto),
+  - `db/pgtap/anagrafiche/test-soggetti-ruoli-indirizzi-required.sql` (layer ruolo, aggiunto).
+- Correzione strutturale emersa durante i test e già inclusa:
+  - fix trigger storico `anagrafiche.soggetti` su FK logica `soggetto_id`,
+  - override automazione `dbops.automation_overrides_cols` per evitare rigenerazioni errate.
 
 ---
 
-### 2.4 Doppio layer indirizzi (ruolo/soggetto) corretto ma con governance incompleta
+### 2.4 Doppio layer indirizzi (ruolo/soggetto) corretto ma con governance incompleta    **CHIUSO**
 
 Problema:
 
@@ -153,6 +171,10 @@ Stato implementativo (aggiornato 15-02-2026):
 - aggiornata `script.fn_get_indirizzo(...)` con policy operativa:
   - master su layer ruolo (inclusa catena fallback per tipo su matrice ruolo/tipo),
   - fallback su layer soggetto solo se nessun indirizzo ruolo risolto.
+- RISOLTO (15-02-2026):
+  - policy formalizzata in documentazione;
+  - viste/funzioni allineate alla governance ruolo-master + soggetto-fallback;
+  - copertura test aggiornata in `db/pgtap/anagrafiche/test-indirizzi-fallback.sql` (14 assert).
 
 Riferimenti:
 
@@ -188,7 +210,7 @@ Riferimenti:
 
 ## 3. Findings a media gravita
 
-### 3.1 Residui documentali obsoleti su `istanze_utilities`
+### 3.1 Residui documentali obsoleti su `istanze_utilities`  **(CHIUSO)**
 
 Problema:
 
@@ -204,9 +226,17 @@ Riferimenti:
 - `docs/it/dbzero/anagrafiche/manual/istanze_utilities.md`
 - `docs/it/dbzero/anagrafiche/tabelle/istanze_utilities.md`
 
+Stato:
+
+- RISOLTO (15-02-2026).
+- Allineata la manualistica di `istanze_utilities`:
+  - naming corrente `codice` (non `codice_istanza`),
+  - trigger correnti (`..._normalize`, `..._gen_codice`, `..._gen_tx_id`, audit),
+  - riferimenti funzione aggiornati.
+
 ---
 
-### 3.2 Naming eterogeneo `utility_id` vs `utilities_id`
+### 3.2 Naming eterogeneo `utility_id` vs `utilities_id`  **(CHIUSO)**
 
 Problema:
 
@@ -224,24 +254,72 @@ Riferimenti:
 - `docs/it/dbzero/anagrafiche/tabelle/clienti.md`
 - `docs/it/dbzero/anagrafiche/tabelle/billing_account.md`
 
+Stato:
+
+- RISOLTO (15-02-2026) lato documentale.
+- Inserita nota esplicita di mapping naming:
+  - `utilities_id` nel perimetro PDP/vista dettaglio istanza,
+  - `utility_id` in `clienti` e `billing_account`.
+- Corrette anche alcune tipizzazioni descrittive errate nella vista `vw_istanze_utilities_dettaglio`.
+
 ---
 
-### 3.3 Policy fail-open sulle matrici indirizzo (ruolo/soggetto)
+### 3.3 Matrice configurativa: stato reale, gap e azioni
 
-Problema:
+Cosa e stato verificato:
 
-- se la matrice configurativa e assente, il comportamento dichiarato e "nessuna restrizione".
+- la matrice indirizzi per ruolo esiste: `config.tipi_ruolo_tipi_indirizzo`;
+- la matrice indirizzi per tipo soggetto dettaglio esiste: `config.tipi_soggetto_dettaglio_tipi_indirizzo`;
+- i guard su indirizzi e required si appoggiano gia a queste matrici;
+- e presente la policy utility `richiede_pdp` su `config.utilities`.
 
-Rischio:
+Cosa manca (gap reale):
 
-- data quality degradabile in ambienti dove configurazione non e completa;
-- divergenza tra attese funzionali e comportamento effettivo.
+- non esiste una matrice generale `utility -> tipo_soggetto` e `utility -> tipo_ruolo` per governare ammissibilita cross-dominio;
+- quindi la regola "quali ruoli/soggetti sono ammessi per una utility" non e configurata in modo esplicito e centralizzato;
+- il comportamento fail-open delle matrici indirizzi (se assenti: nessuna restrizione) resta un rischio operativo in ambienti non completamente configurati.
+
+Impatto:
+
+- possibile disallineamento tra aspettative funzionali e comportamento effettivo;
+- maggiore dipendenza da convenzioni applicative implicite;
+- maggiore rischio di data quality non uniforme tra ambienti.
+
+Cosa aggiornare in documentazione (esiste ma non era esplicitato):
+
+1. esplicitare in modo univoco che le matrici indirizzi gia presenti sono:
+   - `config.tipi_ruolo_tipi_indirizzo`
+   - `config.tipi_soggetto_dettaglio_tipi_indirizzo`
+2. esplicitare che la policy utility oggi copre solo `richiede_pdp` (non copre ammissibilita ruoli/soggetti);
+3. esplicitare il comportamento fail-open attuale e quando puo essere accettabile;
+4. aggiungere una nota architetturale che separi:
+   - governance indirizzi (coperta),
+   - governance utility->ruolo/soggetto (non ancora coperta).
+
+Cosa sviluppare:
+
+1. introdurre una nuova matrice configurativa per ammissibilita utility:
+   - opzione A: `config.utilities_tipi_ruolo`
+   - opzione B: `config.utilities_tipi_soggetto_dettaglio`
+   - opzione C: entrambe (consigliata per chiarezza semantica)
+2. aggiungere guard DB che validino la coerenza utility con ruolo/soggetto nei punti di ingresso principali (es. clienti/istanze/billing account secondo ownership);
+3. aggiungere pgtap dedicati:
+   - caso ammesso,
+   - caso non ammesso,
+   - caso matrice assente (comportamento esplicito: fail-open o fail-closed);
+4. dopo introduzione matrice utility, rivalutare policy default:
+   - mantenere fail-open solo dove serve per bootstrap,
+   - portare fail-closed negli ambienti operativi stabili.
 
 Riferimenti:
 
+- `db/changelog/migrations_v2/00_schema/config/20251129-01-ruoli-tipi-indirizzo-mctit.yaml`
+- `db/changelog/migrations_v2/00_schema/config/20251218-06-create-tipi-soggetto-dettaglio-tipi-indirizzo-mctit.yaml`
+- `db/changelog/migrations_v2/00_schema/config/20260215-01-add-richiede-pdp-utilities-mctit.yaml`
+- `docs/it/dbzero/config/manual/tipi_ruolo_tipi_indirizzo.md`
+- `docs/it/dbzero/config/manual/tipi_soggetto_dettaglio_tipi_indirizzo.md`
 - `docs/it/dbzero/anagrafiche/manual/trgfn_soggetti_ruoli_guard_indirizzi_required.md`
-- `docs/it/dbzero/anagrafiche/manual/indirizzi_soggetti.md`
-- `docs/it/dbzero/anagrafiche/manual/trgfn_indirizzi_soggetti_guard_tipo_indirizzo.md`
+- `docs/it/dbzero/anagrafiche/manual/trgfn_soggetti_guard_indirizzi_required.md`
 
 ---
 

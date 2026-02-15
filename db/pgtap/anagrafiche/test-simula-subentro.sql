@@ -62,7 +62,7 @@ WHERE foglio_catastale = 'TST01'
 CREATE TEMP TABLE tmp_pdp AS
 SELECT id,
        indirizzo_dettaglio_id,
-       utilities_id AS utility_id
+       utility_id AS utility_id
 FROM anagrafiche.pdp
 WHERE pdp = 'GAS-PDP-0002'
 LIMIT 1;
