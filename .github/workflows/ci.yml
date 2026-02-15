@@ -63,10 +63,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install -U pip
+          python -m pip install -U pip wheel
           python -m pip install -r requirements.txt
-          #  - name: Show MkDocs version
-
+          
 
       - name: Set custom GUCs for CI role
         env:
@@ -98,7 +97,14 @@ jobs:
           liquibase lpm add postgresql --global
           liquibase --version
  # Dicembre 2025 fine passaggio a Liquibase 5 Community
+      
 
+      - name: Cache pre-commit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+    
           
       - name: Run pre-commit hooks
         run: |
@@ -322,10 +328,29 @@ jobs:
             run: |
               set -euo pipefail
 
-              docker run --rm -d --name zeroerp_test -p 8000:8000 zeroerp:${{ github.sha }}
+              # Avvia SENZA --rm così possiamo leggere i log se crasha
+              docker run -d --name zeroerp_test -p 8000:8000 zeroerp:${{ github.sha }}
+
+              # Se il container muore subito, stampiamo log e falliamo
+              if ! docker ps --filter "name=^/zeroerp_test$" --format '{{.Names}}' | grep -q zeroerp_test; then
+                echo "Container exited immediately."
+                docker ps -a
+                docker logs zeroerp_test || true
+                docker rm -f zeroerp_test || true
+                exit 1
+              fi
 
               ok=0
               for i in {1..10}; do
+                # se nel frattempo è morto, stampa log e fallisci
+                if ! docker ps --filter "name=^/zeroerp_test$" --format '{{.Names}}' | grep -q zeroerp_test; then
+                  echo "Container exited before becoming healthy."
+                  docker ps -a
+                  docker logs zeroerp_test || true
+                  docker rm -f zeroerp_test || true
+                  exit 1
+                fi
+
                 if curl -sf http://localhost:8000/health >/dev/null; then
                   echo "Health check passed"
                   ok=1
@@ -336,11 +361,13 @@ jobs:
 
               if [ "$ok" -ne 1 ]; then
                 echo "Health check failed"
+                docker ps -a
                 docker logs zeroerp_test || true
+                docker rm -f zeroerp_test || true
                 exit 1
               fi
 
-              docker stop zeroerp_test
+              docker rm -f zeroerp_test
 
            #  Promemoria comando per scaricare l'immagine localmente (dopo push su main):
             #  docker pull ghcr.io/<tuo_owner>/zeroerp:latest
