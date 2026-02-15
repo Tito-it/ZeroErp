@@ -21,7 +21,7 @@ ZeroErp/
 └── .github/
     └── workflows/
         ├── ci.yml        # CI principale (Liquibase + Docs)
-        └── ci-validate.yml # CI validate (Liquibase + Django backend)
+        └── ci-validate.yaml # CI validate (Liquibase + Django backend)
 ```
 
 ---
@@ -35,7 +35,7 @@ ZeroErp/
 * Genera documentazione.
 * Build immagine Docker.
 
-### `ci-validate.yml` (Backend)
+### `ci-validate.yaml` (Backend)
 
 * Lanciato sempre su `Tito-dev` quando tocchi `backend/` o `requirements/`.
 * Crea DB effimero PostgreSQL con PostGIS.
