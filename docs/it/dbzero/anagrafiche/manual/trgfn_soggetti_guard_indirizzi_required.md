@@ -17,7 +17,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 28-12-25)
+(latest review 15-02-26)
 Verificare che un soggetto possieda tutti i **tipi di indirizzo obbligatori** definiti nella matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
 
 Se per il tipo soggetto dettaglio sono presenti righe di matrice con `obbligatorio = true`, la funzione controlla l'esistenza di almeno un indirizzo (anche tramite fallback) per ciascun tipo obbligatorio.
@@ -35,6 +35,9 @@ Se per il tipo soggetto dettaglio sono presenti righe di matrice con `obbligator
    * validita' temporale (`valido_dal`/`valido_al`)
    * presenza di un indirizzo con `tipo_indirizzo_id` oppure il relativo `fallback_tipo_indirizzo_id`.
 5. Se trova un obbligatorio mancante, genera errore applicativo.
+6. Il controllo e' eseguito da **constraint trigger deferrable**:
+   * default: a fine transazione (`COMMIT`);
+   * anticipabile con `SET CONSTRAINTS ... IMMEDIATE`.
 
 ---
 
@@ -51,12 +54,13 @@ Gli errori sono prodotti tramite:
 
 ## 🔗 Trigger Associato
 
-Questa funzione e' tipicamente usata come constraint/guard sui soggetti, ad esempio:
+Questa funzione e' usata come **constraint trigger DEFERRABLE INITIALLY DEFERRED** su `anagrafiche.soggetti`:
 
 ```sql
-CREATE TRIGGER trg_soggetti_guard_indirizzi_required
-  BEFORE INSERT OR UPDATE
+CREATE CONSTRAINT TRIGGER trg_soggetti_def_guard_indirizzi_required_aft_ins_upd
+  AFTER INSERT OR UPDATE
   ON anagrafiche.soggetti
+  DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW
   EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required();
 ```

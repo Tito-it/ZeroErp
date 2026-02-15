@@ -2,6 +2,16 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
+-- Elenco test:
+-- 1) Esiste esattamente 1 utility con codice_interno = GAS
+-- 2) Sono presenti in config.stradario gli id 1, 3, 4
+-- 3) Generati/riusati 3 indirizzi_dettaglio (stradario_id 1,3,4 con estensioni T1/T2/T3)
+-- 4) Gli indirizzi_dettaglio di test coprono esattamente i 3 stradario_id richiesti
+-- 5) Inseriti/riusati esattamente 3 PDP di test
+-- 6) Tutti i PDP di test appartengono alla stessa utility (GAS)
+-- 7) Esiste lo stato tecnico DISP (DISPONIBILE) in config.stati_pdp
+-- 8) Tutti i PDP creati dal test sono inizialmente in stato DISPONIBILE
+--
 -- Test: creazione indirizzi_dettaglio + PDP di esempio (GAS)
 --       partendo da config.stradario.id IN (1,3,4)
 -- ------------------------------------------------------------
@@ -74,8 +84,21 @@ WITH addr_params AS (
         FROM anagrafiche.indirizzi_dettaglio idd
         WHERE idd.stradario_id = p.stradario_id
           AND idd.civico       = p.civico
-          AND COALESCE(idd.estensione_civico, '') =
-              COALESCE(p.estensione_civico, '')
+          AND COALESCE(
+                CASE
+                  WHEN idd.estensione_civico IS NULL OR idd.estensione_civico = '' THEN ''
+                  WHEN LEFT(idd.estensione_civico, 1) = '/' THEN idd.estensione_civico
+                  ELSE '/' || idd.estensione_civico
+                END,
+                ''
+              ) = COALESCE(
+                CASE
+                  WHEN p.estensione_civico IS NULL OR p.estensione_civico = '' THEN ''
+                  WHEN LEFT(p.estensione_civico, 1) = '/' THEN p.estensione_civico
+                  ELSE '/' || p.estensione_civico
+                END,
+                ''
+              )
     )
     RETURNING id, stradario_id, civico, estensione_civico
 ),
@@ -100,8 +123,21 @@ all_addr AS (
     JOIN addr_params p
       ON idd.stradario_id = p.stradario_id
      AND idd.civico       = p.civico
-     AND COALESCE(idd.estensione_civico, '') =
-         COALESCE(p.estensione_civico, '')
+     AND COALESCE(
+           CASE
+             WHEN idd.estensione_civico IS NULL OR idd.estensione_civico = '' THEN ''
+             WHEN LEFT(idd.estensione_civico, 1) = '/' THEN idd.estensione_civico
+             ELSE '/' || idd.estensione_civico
+           END,
+           ''
+         ) = COALESCE(
+           CASE
+             WHEN p.estensione_civico IS NULL OR p.estensione_civico = '' THEN ''
+             WHEN LEFT(p.estensione_civico, 1) = '/' THEN p.estensione_civico
+             ELSE '/' || p.estensione_civico
+           END,
+           ''
+         )
 )
 SELECT *
 INTO TEMP TABLE tmp_indirizzi_test
@@ -130,11 +166,8 @@ SELECT is(
 -- 2) Generazione PDP GAS (GAS-PDP-0001/0002/0003)
 -- ============================================================
 
--- 2.1: Cleanup eventuali vecchi PDP di test con quei codici
-DELETE FROM anagrafiche.pdp
-WHERE pdp IN ('GAS-PDP-0001', 'GAS-PDP-0002', 'GAS-PDP-0003');
-
--- 2.2: Inserimento PDP, uno per ciascun indirizzo di test
+-- 2.1: Inserimento/riuso PDP, uno per ciascun indirizzo di test
+--      (idempotente: non elimina record esistenti referenziati da istanze_utilities)
 WITH gas AS (
     SELECT utility_id
     FROM tmp_utility_gas
@@ -149,18 +182,14 @@ addr_ordered AS (
 ),
 pdp_params AS (
     SELECT
-        CASE rn
-            WHEN 1 THEN 'GAS-PDP-0001'
-            WHEN 2 THEN 'GAS-PDP-0002'
-            WHEN 3 THEN 'GAS-PDP-0003'
-        END AS pdp_code,
+        ('GAS-PDP-I' || a.indirizzo_dettaglio_id::text) AS pdp_code,
         a.indirizzo_dettaglio_id
     FROM addr_ordered a
 ),
 ins AS (
     INSERT INTO anagrafiche.pdp (
         pdp,
-        utilities_id,
+        utility_id,
         indirizzo_dettaglio_id,
         cliente_id
     )
@@ -169,24 +198,66 @@ ins AS (
         g.utility_id,
         p.indirizzo_dettaglio_id,
         NULL::bigint
-    FROM pdp_params p,
-         gas g
-    RETURNING id, pdp, utilities_id, indirizzo_dettaglio_id, cliente_id, stato_pdp_id
+    FROM pdp_params p
+    CROSS JOIN gas g
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM anagrafiche.pdp px
+        WHERE px.indirizzo_dettaglio_id = p.indirizzo_dettaglio_id
+          AND px.utility_id = g.utility_id
+    )
+    RETURNING
+        id,
+        pdp,
+        utility_id,
+        indirizzo_dettaglio_id,
+        cliente_id,
+        stato_pdp_id,
+        TRUE AS created_now
+),
+all_pdp AS (
+    -- appena inseriti
+    SELECT
+        i.id,
+        i.pdp,
+        i.utility_id,
+        i.indirizzo_dettaglio_id,
+        i.cliente_id,
+        i.stato_pdp_id,
+        i.created_now
+    FROM ins i
+
+    UNION ALL
+
+    -- già esistenti, riusati per coppia (indirizzo, utility)
+    SELECT
+        px.id,
+        px.pdp,
+        px.utility_id,
+        px.indirizzo_dettaglio_id,
+        px.cliente_id,
+        px.stato_pdp_id,
+        FALSE AS created_now
+    FROM anagrafiche.pdp px
+    JOIN pdp_params p
+      ON p.indirizzo_dettaglio_id = px.indirizzo_dettaglio_id
+    JOIN gas g
+      ON g.utility_id = px.utility_id
 )
 SELECT *
 INTO TEMP TABLE tmp_pdp_test
-FROM ins;
+FROM all_pdp;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_pdp_test),
     3,
-    'Inseriti esattamente 3 PDP di test (GAS-PDP-0001..0003)'
+    'Inseriti/riusati esattamente 3 PDP di test'
 );
 
 -- Verifica che siano tutti GAS
 SELECT is(
     (
-        SELECT count(DISTINCT utilities_id)::int
+        SELECT count(DISTINCT utility_id)::int
         FROM tmp_pdp_test
     ),
     1,
@@ -216,9 +287,14 @@ SELECT is(
         FROM tmp_pdp_test p
         JOIN tmp_stato_disp d
           ON p.stato_pdp_id = d.stato_id
+        WHERE p.created_now = TRUE
     ),
-    3,
-    'Tutti i PDP di test sono inizialmente in stato DISPONIBILE'
+    (
+        SELECT count(*)::int
+        FROM tmp_pdp_test
+        WHERE created_now = TRUE
+    ),
+    'Tutti i PDP creati dal test sono inizialmente in stato DISPONIBILE'
 );
 
 -- ============================================================

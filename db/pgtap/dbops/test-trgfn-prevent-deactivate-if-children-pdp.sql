@@ -97,7 +97,7 @@ SELECT CASE
     WHEN (SELECT utility_id IS NOT NULL AND indirizzo_id IS NOT NULL FROM tmp_pdp_base) THEN
         lives_ok(
             $$
-            INSERT INTO anagrafiche.pdp (pdp, utilities_id, indirizzo_dettaglio_id, stato_pdp_id)
+            INSERT INTO anagrafiche.pdp (pdp, utility_id, indirizzo_dettaglio_id, stato_pdp_id)
             SELECT
                 'PDP-TST-BLOCK-' || (SELECT ts FROM tmp_test_keys),
                 utility_id,

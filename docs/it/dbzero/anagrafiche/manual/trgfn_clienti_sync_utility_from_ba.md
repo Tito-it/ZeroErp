@@ -129,7 +129,7 @@ Tx context:
 
  **6) Coerenza utility tra PDP e billing account**
 
-* Se `NEW.pdp_id IS NOT NULL`, legge `anagrafiche.pdp.utilities_id`.
+* Se `NEW.pdp_id IS NOT NULL`, legge `anagrafiche.pdp.utility_id`.
 * Se diversa da `v_utility_id` -> errore applicativo (`E_GENERICO` con dettaglio mismatch).
 
 Payload log include:
@@ -213,7 +213,7 @@ Casi minimi consigliati:
 3. `billing_account_id` valido con `ba.utility_id NULL` → errore `E_BILLING_ACCOUNT_UTILITY_NULL`.
 4. `billing_account_id` valido con mismatch → errore `E_CLIENTE_UTILITY_MISMATCH_BA`.
 5. Utility con `richiede_pdp=true` e `pdp_id` assente -> errore applicativo.
-6. `pdp_id` presente con `pdp.utilities_id` diverso da utility BA -> errore applicativo.
+6. `pdp_id` presente con `pdp.utility_id` diverso da utility BA -> errore applicativo.
 
 ---
 

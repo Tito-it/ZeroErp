@@ -4,7 +4,7 @@
 CREATE OR REPLACE VIEW anagrafiche.vw_pdp AS
 SELECT p.id AS pdp_id,
     p.pdp AS pdp_codice,
-    p.utilities_id,
+    p.utility_id,
     u.codice_interno AS utility_codice_interno,
     u.codice AS utility_codice,
     u.descrizione AS utility_descrizione,
@@ -39,7 +39,7 @@ SELECT p.id AS pdp_id,
     v.user_update AS indirizzo_user_update
    FROM ((((anagrafiche.pdp p
      JOIN anagrafiche.vw_indirizzi_dettaglio v ON ((v.indirizzo_dettaglio_id = p.indirizzo_dettaglio_id)))
-     JOIN config.utilities u ON ((u.id = p.utilities_id)))
+     JOIN config.utilities u ON ((u.id = p.utility_id)))
      JOIN config.stati_pdp sp ON ((sp.id = p.stato_pdp_id)))
      LEFT JOIN anagrafiche.clienti c ON ((c.id = p.cliente_id)));
 ```

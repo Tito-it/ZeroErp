@@ -15,7 +15,8 @@
 >
 > Approfondimeto funzioni:
 >
-> * [anagrafiche.trgfn_istanze_utilities_clean_fields](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_clean_fields)   
+> * [anagrafiche.trgfn_istanze_utilities_normalize](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_normalize)   
+> * [anagrafiche.trgfn_istanze_utilities_gen_codice](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_gen_codice)   
 > * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
 > * [config.sistema_codici](/dbzero/config/manual/sistema_codici)   
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
@@ -24,7 +25,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 08-12-25)
+(latest review 15-02-26)
 * Registrare ogni **attivazione** di servizio (volta) per un soggetto su un punto di erogazione.
 * Gestire la **gerarchia** delle attivazioni successive (subentri/volture) tramite `parent_istanza_id`.
 * Supportare record **fittizi**, ossia senza indirizzo obbligatorio.
@@ -53,7 +54,7 @@
 
 * **`ix_istanze_utilities_soggetto_id`**: ricerca rapida per soggetto.
 * **`ix_istanze_utilities_indirizzo_dettaglio_id`**: filtri per indirizzo di dettaglio.
-* **`uq_istanze_utilities_codice_istanza`**: garantisce l’unicità di `codice_istanza`.
+* **`uq_istanze_utilities_codice`**: garantisce l’unicità di `codice`.
 
 ---
 
@@ -61,17 +62,18 @@
 
 * **Tracciabilità subentri**: `parent_istanza_id` consente di ricostruire facilmente la sequenza di attivazioni.
 * **Flessibilità**: supporto per istanze senza indirizzo tramite flag `fittizia`.
-* **Coerenza**: `codice_istanza` e `tx_id` generati automaticamente via trigger (sistema_codici + tx_id).
+* **Coerenza**: `codice` e `tx_id` generati automaticamente via trigger (sistema_codici + tx_id).
 
 ---
 
 ### ⚙️ Trigger e Funzioni Coinvolte
 
-| Trigger                                      | Evento                  | Funzione                                                     |
-| -------------------------------------------- | ----------------------- | ------------------------------------------------------------ |
-| `trg_istanze_utilities_clean_fields_ins_upd` | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_istanze_utilities_clean_fields_ins_upd()` |
-| `trg_istanze_utilities_gen_tx_id_ins_upd`    | BEFORE INSERT OR UPDATE | `dbops.trgfn_tx_id_managed()`                                |
-| `trg_istanze_utilities_audit_data_user_upd`  | BEFORE UPDATE           | `script.trgfn_audit_data_user_generic()`                     |
+| Trigger                                     | Evento                  | Funzione                                              |
+| ------------------------------------------- | ----------------------- | ----------------------------------------------------- |
+| `trg_istanze_utilities_normalize_ins_upd`   | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_istanze_utilities_normalize()`    |
+| `trg_istanze_utilities_a10_gen_codice_ins_upd` | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_istanze_utilities_gen_codice()` |
+| `trg_istanze_utilities_gen_tx_id_ins_upd`   | BEFORE INSERT OR UPDATE | `dbops.trgfn_tx_id_managed()`                         |
+| `trg_istanze_utilities_audit_data_user_upd` | BEFORE UPDATE           | `script.trgfn_audit_data_user_generic()`              |
 
 ---
 
@@ -79,7 +81,7 @@
 
 * `parent_istanza_id`, `soggetto_id` e `indirizzo_dettaglio_id` garantiscono integrità referenziale.
 * Vincolo `CHECK (fittizia = true OR indirizzo_dettaglio_id IS NOT NULL)` assicura coerenza tra flag e indirizzo.
-* Unicità di `codice_istanza` evita duplicazioni su punti di erogazione.
+* Unicità di `codice` evita duplicazioni su punti di erogazione.
 
 ---
 
@@ -101,7 +103,7 @@
 
 1. **Coerenza fisica**: il PDP è un’entità **ancorata** all’indirizzo; il link con la stessa `istanze_utilities` evita mismatch.
 2. **Pre‑attivazione supportata**: istanze senza PDP sono lecite; l’associazione avviene solo quando disponibile.
-3. **Cardinalità controllata**: grazie a `UNIQUE (indirizzo_dettaglio_id, utilities_id)` su `anagrafiche.pdp`, per uno stesso indirizzo esiste **al più un PDP per utility**; l’istanza si lega quindi ad **al più un PDP** coerente con il proprio indirizzo.
+3. **Cardinalità controllata**: grazie a `UNIQUE (indirizzo_dettaglio_id, utility_id)` su `anagrafiche.pdp`, per uno stesso indirizzo esiste **al più un PDP per utility**; l’istanza si lega quindi ad **al più un PDP** coerente con il proprio indirizzo.
 4. **Query più semplici**: la FK composita consente join diretti e sicuri senza ulteriori condizioni sull’indirizzo.
 
 ---

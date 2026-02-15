@@ -19,7 +19,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 29-12-25)
+(latest review 15-02-26)
 La vista **`anagrafiche.vw_istanze_utilities_dettaglio`** aggrega le informazioni di un'istanza utility con:
 
 * dati soggetto (ragione sociale, identificativo fiscale),
@@ -28,6 +28,11 @@ La vista **`anagrafiche.vw_istanze_utilities_dettaglio`** aggrega le informazion
 * dettaglio indirizzo normalizzato e decodifiche di comune/strada.
 
 E' pensata per **consultazione applicativa** e reportistica, riducendo il numero di join necessari.
+
+Nota naming utility:
+
+* la vista espone `utility_id` (allineato a `anagrafiche.pdp.utility_id`);
+* le altre tabelle del dominio (`clienti`, `billing_account`) usano lo stesso naming.
 
 ---
 
@@ -46,19 +51,19 @@ La vista parte da `anagrafiche.istanze_utilities` e aggiunge:
 
 | Colonna                      | Tipo       | Descrizione                        |
 | ---------------------------- | ---------- | ---------------------------------- |
-| `istanza_id`                 | `uuid`     | Identificativo istanza utility.    |
+| `istanza_id`                 | `bigint`   | Identificativo istanza utility.    |
 | `istanza_codice`             | `text`     | Codice istanza.                    |
 | `proprietario_inquilino`     | `text`     | Indicatore proprietario/inquilino. |
 | `fittizia`                   | `boolean`  | Flag istanza fittizia.             |
 | `soggetto_id`                | `uuid`     | Soggetto associato.                |
 | `ragione_sociale_completa`   | `text`     | Ragione sociale del soggetto.      |
 | `id_fiscale_univoco_cf_piva` | `text`     | Identificativo fiscale univoco.    |
-| `pdp_id`                     | `uuid`     | Identificativo PDP.                |
+| `pdp_id`                     | `bigint`   | Identificativo PDP.                |
 | `pdp_codice`                 | `text`     | Codice PDP.                        |
 | `stato_pdp_id`               | `integer`  | Stato PDP (ID).                    |
 | `stato_pdp_codice`           | `text`     | Codice interno stato PDP.          |
 | `stato_pdp_descrizione`      | `text`     | Descrizione stato PDP.             |
-| `utilities_id`               | `uuid`     | Utility associata.                 |
+| `utility_id`                 | `bigint`   | Utility associata.                  |
 | `utility_codice`             | `text`     | Codice utility.                    |
 | `utility_descrizione`        | `text`     | Descrizione utility.               |
 | `indirizzo_dettaglio_id`     | `bigint`   | Riferimento indirizzo dettaglio.   |

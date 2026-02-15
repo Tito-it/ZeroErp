@@ -28,8 +28,15 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 02-12-25)
+(latest review 15-02-26)
 La tabella `anagrafiche.clienti` memorizza le informazioni contrattuali e di fatturazione di un soggetto per una specifica *istanza* di servizio. Rappresenta la fase in cui un'attivazione (istanza) diventa un cliente ufficiale, includendo dettagli di scadenze, pagamento e classificazioni speciali (PA, split payment).
+
+Nota naming utility:
+
+* `anagrafiche.clienti` usa la colonna `utility_id`;
+* il PDP collegato usa `utility_id` (`anagrafiche.pdp`).
+
+Il significato funzionale e' identico (FK verso `config.utilities.id`) e ora anche il naming e' uniforme.
 
 ---
 

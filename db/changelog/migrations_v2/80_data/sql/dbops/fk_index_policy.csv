@@ -11,7 +11,7 @@ anagrafiche,soggetti,fk_comuni_config,t,CREATE INDEX IF NOT EXISTS ix_anagrafich
 anagrafiche,risorse_umane,fk_risorse_umane_unita_organizzative,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_risorse_umane_unita_organizzativa_id ON anagrafiche.risorse_umane(unita_organizzativa_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
 anagrafiche,risorse_umane,fk_risorse_umane_soggetti,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_risorse_umane_soggetto_id ON anagrafiche.risorse_umane(soggetto_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
 anagrafiche,risorse_umane,fk_risorse_umane_qualifiche,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_risorse_umane_qualifica_id ON anagrafiche.risorse_umane(qualifica_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
-anagrafiche,pdp,fk_pdp_utilities,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_pdp_utilities_id ON anagrafiche.pdp(utilities_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
+anagrafiche,pdp,fk_pdp_utility,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_pdp_utility_id ON anagrafiche.pdp(utility_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
 anagrafiche,pdp,fk_pdp_indirizzi_dettaglio,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_pdp_indirizzo_dettaglio_id ON anagrafiche.pdp(indirizzo_dettaglio_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
 anagrafiche,pdp,fk_pdp_clienti,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_pdp_cliente_id ON anagrafiche.pdp(cliente_id);,t,titodb,2026-01-16 11:59:34.020049+01,,
 anagrafiche,istanze_utilities,fk_istanze_utilities_soggetto,t,CREATE INDEX IF NOT EXISTS ix_anagrafiche_istanze_utilities_soggetto_id ON anagrafiche.istanze_utilities(soggetto_id);,t,titodb,2026-01-16 11:59:34.020049+01,,

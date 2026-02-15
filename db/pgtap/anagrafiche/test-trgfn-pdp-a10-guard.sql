@@ -75,8 +75,21 @@ ins AS (
         FROM anagrafiche.indirizzi_dettaglio idd
         WHERE idd.stradario_id = p.stradario_id
           AND idd.civico       = p.civico
-          AND COALESCE(idd.estensione_civico, '') =
-              COALESCE(p.estensione_civico, '')
+          AND COALESCE(
+                CASE
+                  WHEN idd.estensione_civico IS NULL OR idd.estensione_civico = '' THEN ''
+                  WHEN LEFT(idd.estensione_civico, 1) = '/' THEN idd.estensione_civico
+                  ELSE '/' || idd.estensione_civico
+                END,
+                ''
+              ) = COALESCE(
+                CASE
+                  WHEN p.estensione_civico IS NULL OR p.estensione_civico = '' THEN ''
+                  WHEN LEFT(p.estensione_civico, 1) = '/' THEN p.estensione_civico
+                  ELSE '/' || p.estensione_civico
+                END,
+                ''
+              )
     )
     RETURNING id, stradario_id, civico, estensione_civico
 ),
@@ -89,8 +102,21 @@ all_addr AS (
     JOIN addr_params p
       ON idd.stradario_id = p.stradario_id
      AND idd.civico       = p.civico
-     AND COALESCE(idd.estensione_civico, '') =
-         COALESCE(p.estensione_civico, '')
+     AND COALESCE(
+           CASE
+             WHEN idd.estensione_civico IS NULL OR idd.estensione_civico = '' THEN ''
+             WHEN LEFT(idd.estensione_civico, 1) = '/' THEN idd.estensione_civico
+             ELSE '/' || idd.estensione_civico
+           END,
+           ''
+         ) = COALESCE(
+           CASE
+             WHEN p.estensione_civico IS NULL OR p.estensione_civico = '' THEN ''
+             WHEN LEFT(p.estensione_civico, 1) = '/' THEN p.estensione_civico
+             ELSE '/' || p.estensione_civico
+           END,
+           ''
+         )
 )
 SELECT *
 INTO TEMP TABLE tmp_indirizzi_guard
@@ -118,7 +144,7 @@ WITH addr AS (
 ins AS (
     INSERT INTO anagrafiche.pdp (
         pdp,
-        utilities_id,
+        utility_id,
         indirizzo_dettaglio_id,
         cliente_id
     )
