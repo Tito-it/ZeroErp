@@ -17,12 +17,17 @@ on:
   push:
     branches: [Tito-dev,main]
     paths:
-      - db/** # <— aggiunto: migrazioni Liquibase
-      #- zeroerp/zeroerp_backend/** # Django backend
-      - zeroerp/requirements/** # requirements
+      - db/** # migrazioni Liquibase
+      - backend/** # Django backend
+      - requirements.txt
+      - backend/requirements.in
+      - backend/requirements.txt
+      - Dockerfile
+      - .dockerignore
+      - .github/workflows/ci.yaml
       - docs/**
       - mkdocs.yml
-      - scripts/*
+      - scripts/**
   pull_request:
     branches: [Tito-dev,main]
 
@@ -329,7 +334,15 @@ jobs:
               set -euo pipefail
 
               # Avvia SENZA --rm così possiamo leggere i log se crasha
-              docker run -d --name zeroerp_test -p 8000:8000 zeroerp:${{ github.sha }}
+              docker run -d --name zeroerp_test -p 8000:8000 \
+                -e DJANGO_SECRET_KEY=ci-smoke-secret \
+                -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1 \
+                -e DB_NAME=zeroerp \
+                -e DB_USER=zeroerp \
+                -e DB_PASSWORD=secret \
+                -e DB_HOST=127.0.0.1 \
+                -e DB_PORT=5432 \
+                zeroerp:${{ github.sha }}
 
               # Se il container muore subito, stampiamo log e falliamo
               if ! docker ps --filter "name=^/zeroerp_test$" --format '{{.Names}}' | grep -q zeroerp_test; then
