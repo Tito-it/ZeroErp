@@ -6,7 +6,7 @@ La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si 
 
 ### 🎯 Scopo Principale
 
-(latest review 24-01-2026)
+(latest review 15-02-2026)
 * **Definizione del settore**
   Tabella dove si definiscono i tipi di "utilities" a cui l’azienda è rivolta. Ogni record identifica un settore di business specifico: per esempio manifatturiero, gas o telecom.
 * **Componente standard e specifica**
@@ -22,6 +22,9 @@ La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si 
   Per ogni nuovo settore (manifatturiero, gas, acqua, elettricità, fonia/telecom, ecc.) si sfruttano gli stessi schemi dati e servizi condivisi, evitando duplicazioni di codice e accelerando i tempi di sviluppo.
 * **Configurazione dinamica**
   La definizione  di un record di `utilities` abilita  il modulo corrispondente senza intervenire sul codice, permettendo adattamenti rapidi alle esigenze aziendali.
+
+* **Policy PDP configurabile**
+  Il flag `richiede_pdp` definisce a livello configurativo se, per quella utility, il PDP e` un requisito operativo.
 
 ---
 
@@ -57,6 +60,23 @@ La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si 
   Le nuove verticalizzazioni si costruiscono sulle componenti esistenti, riducendo tempi e costi di realizzazione.
 * **Manutenzione Semplificata**
   Tutte le regole di attivazione e configurazione dei moduli risiedono in un’unica tabella, evitando la dispersione in configurazioni multiple.
+
+* **Regole uniformi PDP/non-PDP**
+  Le validazioni su istanze/clienti possono usare un solo punto di verita` (`config.utilities.richiede_pdp`) senza hardcode per singolo settore.
+
+---
+
+### 🔒 Regola `richiede_pdp`
+
+`config.utilities.richiede_pdp`:
+
+* `true` -> PDP obbligatorio nelle transizioni operative dell’utility (es. attivazione).
+* `false` -> PDP opzionale/assente ammesso.
+
+Setup atteso:
+
+* utility `GAS`, `ENERGIA`, `IDRICO` -> `richiede_pdp = true`
+* quando non sono `GAS`, `ENERGIA`, `IDRICO` -> `richiede_pdp = false`
 
 ---
 

@@ -13,10 +13,11 @@ CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_soggetto(p_soggetto_id uui
  LANGUAGE sql
  STABLE
 AS $function$
-  SELECT *
-  FROM anagrafiche.vw_indirizzi_resolved_soggetto
-  WHERE soggetto_id = p_soggetto_id
-  ORDER BY tipo_indirizzo_codice;
+  SELECT r.*
+  FROM anagrafiche.vw_indirizzi_resolved_base r
+  WHERE r.scope = 'SOGGETTO'
+    AND r.soggetto_id = p_soggetto_id
+  ORDER BY r.tipo_indirizzo_codice, r.indirizzo_id;
 $function$
 ```
 

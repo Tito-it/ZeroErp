@@ -1,0 +1,209 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260215-07-update-fn-get-indirizzi-star-policy-mctit.yaml
+
+  - changeSet:
+      id: 20260215-07-update-fn-get-indirizzi-star-policy
+      author: mctit
+      comment: "Allinea fn_get_indirizzi_by_ruolo alla policy ruolo-master e viste resolved base."
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_ruolo(
+                p_soggetto_ruolo_id bigint
+              )
+              RETURNS TABLE(
+                tipo_indirizzo character varying,
+                indirizzo_completo text,
+                geoloc geometry,
+                indirizzo_id bigint,
+                soggetto_ruolo_id bigint,
+                tipo_indirizzo_id integer,
+                indirizzo_dettaglio_id bigint,
+                indirizzo_libero text,
+                is_normalizzato boolean,
+                stato_id integer,
+                stato_descrizione character varying,
+                stato_iso2 character,
+                regione_id integer,
+                regione_descrizione character varying,
+                provincia_id integer,
+                provincia_sigla character varying,
+                provincia_descrizione character varying,
+                comune_id integer,
+                comune_descrizione character varying,
+                codice_postale_id integer,
+                cap_codice character,
+                locality character varying,
+                administrative_area character varying,
+                sublocality character varying,
+                postal_box character varying
+              )
+              LANGUAGE sql
+              STABLE
+              PARALLEL UNSAFE
+              AS $function$
+                SELECT
+                  r.tipo_indirizzo_codice AS tipo_indirizzo,
+                  r.indirizzo_display     AS indirizzo_completo,
+                  r.geoloc,
+                  r.indirizzo_id,
+                  r.soggetto_ruolo_id,
+                  r.tipo_indirizzo_id,
+                  r.indirizzo_dettaglio_id,
+                  r.indirizzo_libero,
+                  r.is_normalizzato,
+                  r.stato_id,
+                  r.stato_descrizione,
+                  r.stato_iso2,
+                  r.regione_id,
+                  r.regione_descrizione,
+                  r.provincia_id,
+                  r.provincia_sigla,
+                  r.provincia_descrizione,
+                  r.comune_id,
+                  r.comune_descrizione,
+                  r.codice_postale_id,
+                  r.cap_codice,
+                  r.locality,
+                  r.administrative_area,
+                  r.sublocality,
+                  r.postal_box
+                FROM anagrafiche.vw_indirizzi_resolved_base r
+                WHERE r.scope = 'RUOLO'
+                  AND r.soggetto_ruolo_id = p_soggetto_ruolo_id
+                ORDER BY r.tipo_indirizzo_codice, r.indirizzo_id;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_indirizzi_by_ruolo(bigint)
+              IS 'Restituisce indirizzi del layer RUOLO (master) da vw_indirizzi_resolved_base; non applica fallback su soggetto.';
+
+  - changeSet:
+      id: 20260215-07-02-update-fn-get-indirizzi-star-policy
+      author: mctit
+      comment: "Allinea fn_get_indirizzi_by_soggetto alla policy ruolo-master e viste resolved base."
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+
+              CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_soggetto(
+                p_soggetto_id uuid
+              )
+              RETURNS SETOF anagrafiche.vw_indirizzi_resolved_soggetto
+              LANGUAGE sql
+              STABLE
+              PARALLEL UNSAFE
+              AS $function$
+                SELECT r.*
+                FROM anagrafiche.vw_indirizzi_resolved_base r
+                WHERE r.scope = 'SOGGETTO'
+                  AND r.soggetto_id = p_soggetto_id
+                ORDER BY r.tipo_indirizzo_codice, r.indirizzo_id;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_indirizzi_by_soggetto(uuid)
+              IS 'Restituisce indirizzi del layer SOGGETTO (identitario) da vw_indirizzi_resolved_base.';
+
+  - changeSet:
+      id: 20260215-07-03-update-fn-get-indirizzo-by-soggetto-star-policy
+      author: mctit
+      comment: "Allinea fn_get_indirizzo_by_soggetto alla policy ruolo-master e viste resolved base."
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+
+
+              CREATE OR REPLACE FUNCTION script.fn_get_indirizzo_by_soggetto(
+                p_soggetto_id uuid,
+                p_tipo_codice character varying)
+                  RETURNS SETOF anagrafiche.vw_indirizzi_resolved_soggetto 
+                  LANGUAGE 'plpgsql'
+                  COST 100
+                  STABLE PARALLEL UNSAFE
+                  ROWS 1000
+
+              AS $BODY$
+              DECLARE
+                v_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE;
+                v_current_codice config.tipi_indirizzi.codice_interno%TYPE := p_tipo_codice;
+                v_current_tipo_id config.tipi_indirizzi.id%TYPE;
+                v_fallback_tipo_id config.tipi_soggetto_dettaglio_tipi_indirizzo.fallback_tipo_indirizzo_id%TYPE;
+                v_rows_found integer;
+                v_visited_tipo_ids config.tipi_indirizzi.id%TYPE[] := '{}'::integer[];
+              BEGIN
+                SELECT s.tipo_soggetto_dettaglio_id
+                INTO v_tipo_soggetto_dettaglio_id
+                FROM anagrafiche.soggetti s
+                WHERE s.id = p_soggetto_id;
+
+                IF v_tipo_soggetto_dettaglio_id IS NULL THEN
+                  RETURN;
+                END IF;
+
+                LOOP
+                  RETURN QUERY
+                  SELECT *
+                  FROM anagrafiche.vw_indirizzi_resolved_soggetto r
+                  WHERE r.soggetto_id = p_soggetto_id
+                    AND r.tipo_indirizzo_codice = v_current_codice;
+
+                  GET DIAGNOSTICS v_rows_found = ROW_COUNT;
+                  IF v_rows_found > 0 THEN
+                    RETURN;
+                  END IF;
+
+                  SELECT ti.id
+                  INTO v_current_tipo_id
+                  FROM config.tipi_indirizzi ti
+                  WHERE ti.codice_interno = v_current_codice;
+
+                  IF v_current_tipo_id IS NULL THEN
+                    RETURN;
+                  END IF;
+
+                  IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN
+                    RETURN;
+                  END IF;
+
+                  v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
+
+                  SELECT m.fallback_tipo_indirizzo_id
+                  INTO v_fallback_tipo_id
+                  FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                  WHERE m.tipo_soggetto_dettaglio_id = v_tipo_soggetto_dettaglio_id
+                    AND m.tipo_indirizzo_id = v_current_tipo_id
+                    AND m.attivo = TRUE
+                    AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
+                    AND (m.valido_al IS NULL OR m.valido_al >= current_date)
+                  LIMIT 1;
+
+                  IF v_fallback_tipo_id IS NULL THEN
+                    RETURN;
+                  END IF;
+
+                  SELECT ti.codice_interno
+                  INTO v_current_codice
+                  FROM config.tipi_indirizzi ti
+                  WHERE ti.id = v_fallback_tipo_id;
+
+                  IF v_current_codice IS NULL THEN
+                    RETURN;
+                  END IF;
+                END LOOP;
+              END;
+              $BODY$;

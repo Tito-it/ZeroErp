@@ -15,7 +15,7 @@
 ---
 
 ### 🎯 Scopo Principale
-(latest review 15-12-25)
+(latest review 15-02-26)
 La trigger function **`anagrafiche.trgfn_clienti_sync_utility_from_ba()`** garantisce la **coerenza** tra:
 
 * `anagrafiche.clienti.utility_id`
@@ -27,6 +27,8 @@ Regola principale:
 
 1. Se `clienti.utility_id` è **NULL**, viene **ereditato** da `billing_account.utility_id`.
 2. Se `clienti.utility_id` è valorizzato ma **diverso** da quello del billing account, viene generato un **errore applicativo**.
+3. Se `config.utilities.richiede_pdp = true` per l’utility risolta dal billing account, `clienti.pdp_id` deve essere valorizzato.
+4. Se `clienti.pdp_id` è valorizzato, la utility del PDP deve coincidere con la utility del billing account.
 
 ---
 
@@ -119,6 +121,17 @@ Tx context:
 
   * `E_CLIENTE_UTILITY_MISMATCH_BA`
 
+ **5) Policy PDP da configurazione utility**
+
+* Legge `config.utilities.richiede_pdp` per `v_utility_id`.
+* Se la utility non è trovata in configurazione -> errore applicativo (`E_GENERICO` con dettaglio).
+* Se `richiede_pdp = true` e `NEW.pdp_id IS NULL` -> errore applicativo (`E_GENERICO` con dettaglio).
+
+ **6) Coerenza utility tra PDP e billing account**
+
+* Se `NEW.pdp_id IS NOT NULL`, legge `anagrafiche.pdp.utilities_id`.
+* Se diversa da `v_utility_id` -> errore applicativo (`E_GENERICO` con dettaglio mismatch).
+
 Payload log include:
 
 * `billing_account_id`
@@ -139,6 +152,7 @@ Errori gestiti (hard):
 | -------------------------------- | ------------------------------------- | ------------------------------ |
 | `E_BILLING_ACCOUNT_UTILITY_NULL` | BA senza `utility_id`                 | errore applicativo (bloccante) |
 | `E_CLIENTE_UTILITY_MISMATCH_BA`  | utility cliente diversa da utility BA | errore applicativo (bloccante) |
+| `E_GENERICO`                     | utility non configurata / PDP richiesto mancante / mismatch utility BA↔PDP | errore applicativo (bloccante) |
 
 > I `RAISE EXCEPTION` sono presenti ma commentati: l’implementazione adotta la strategia centralizzata `fn_log_and_raise_error`.
 
@@ -198,6 +212,8 @@ Casi minimi consigliati:
 2. `billing_account_id` valido con `ba.utility_id` non null + `NEW.utility_id NULL` → utility valorizzata automaticamente.
 3. `billing_account_id` valido con `ba.utility_id NULL` → errore `E_BILLING_ACCOUNT_UTILITY_NULL`.
 4. `billing_account_id` valido con mismatch → errore `E_CLIENTE_UTILITY_MISMATCH_BA`.
+5. Utility con `richiede_pdp=true` e `pdp_id` assente -> errore applicativo.
+6. `pdp_id` presente con `pdp.utilities_id` diverso da utility BA -> errore applicativo.
 
 ---
 

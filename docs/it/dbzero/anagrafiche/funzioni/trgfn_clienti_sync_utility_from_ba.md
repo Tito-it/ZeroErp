@@ -13,60 +13,117 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_utility_id integer;
+  v_utility_id integer;
+  v_pdp_utility_id bigint;
+  v_richiede_pdp boolean := false;
 BEGIN
-    -- Se non è valorizzato il billing_account, non facciamo nulla
-    IF NEW.billing_account_id IS NULL THEN
-        RETURN NEW;
-    END IF;
-
-    -- Recupero utility_id dal billing_account
-    SELECT ba.utility_id
-      INTO v_utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.id = NEW.billing_account_id;
-
-    IF v_utility_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database',
-            'trgfn_clienti_sync_utility_from_ba',
-            'E_BILLING_ACCOUNT_UTILITY_NULL',
-            jsonb_build_object(
-                'billing_account_id', NEW.billing_account_id
-            ),
-            NEW.tx_id,
-            coalesce(NEW.billing_account_id::text, 'NULL')
-        );
-        --RAISE EXCEPTION 'Billing account % senza utility associata.', NEW.billing_account_id
-        --    USING ERRCODE = 'P0001';
-    END IF;
-
-    -- Se il cliente non ha ancora utility, la eredita dal billing_account
-    IF NEW.utility_id IS NULL THEN
-        NEW.utility_id := v_utility_id;
-    ELSIF NEW.utility_id <> v_utility_id THEN
-        -- Coerenza violata: utility del cliente diversa da quella del BA
-        PERFORM script.fn_log_and_raise_error(
-            'database',
-            'trgfn_clienti_sync_utility_from_ba',
-            'E_CLIENTE_UTILITY_MISMATCH_BA',
-            jsonb_build_object(
-                'billing_account_id', NEW.billing_account_id,
-                'utility_da_cliente', NEW.utility_id,
-                'utility_da_billing', v_utility_id
-            ),
-            NEW.tx_id,
-            coalesce(NEW.billing_account_id::text, 'NULL'),
-            coalesce(NEW.utility_id::text, 'NULL'),
-            coalesce(v_utility_id::text, 'NULL')
-        );
-       /* RAISE EXCEPTION
-            'Utility del cliente (%) diversa da quella del billing_account (%).',
-            NEW.utility_id, v_utility_id
-            USING ERRCODE = 'P0001';  */
-    END IF;
-
+  -- Se non è valorizzato il billing_account, non applichiamo regole di sync utility.
+  IF NEW.billing_account_id IS NULL THEN
     RETURN NEW;
+  END IF;
+
+  -- Recupero utility_id dal billing_account.
+  SELECT ba.utility_id
+    INTO v_utility_id
+  FROM anagrafiche.billing_account ba
+  WHERE ba.id = NEW.billing_account_id;
+
+  IF v_utility_id IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'anagrafiche.trgfn_clienti_sync_utility_from_ba',
+      'E_BILLING_ACCOUNT_UTILITY_NULL',
+      jsonb_build_object(
+        'billing_account_id', NEW.billing_account_id
+      ),
+      NEW.tx_id,
+      coalesce(NEW.billing_account_id::text, 'NULL')
+    );
+  END IF;
+
+  -- Se il cliente non ha ancora utility, la eredita dal billing_account.
+  IF NEW.utility_id IS NULL THEN
+    NEW.utility_id := v_utility_id;
+  ELSIF NEW.utility_id <> v_utility_id THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'anagrafiche.trgfn_clienti_sync_utility_from_ba',
+      'E_CLIENTE_UTILITY_MISMATCH_BA',
+      jsonb_build_object(
+        'billing_account_id', NEW.billing_account_id,
+        'utility_da_cliente', NEW.utility_id,
+        'utility_da_billing', v_utility_id
+      ),
+      NEW.tx_id,
+      coalesce(NEW.billing_account_id::text, 'NULL'),
+      coalesce(NEW.utility_id::text, 'NULL'),
+      coalesce(v_utility_id::text, 'NULL')
+    );
+  END IF;
+
+  -- Utility policy: PDP richiesto sì/no da config.utilities.richiede_pdp.
+  SELECT coalesce(u.richiede_pdp, false)
+    INTO v_richiede_pdp
+  FROM config.utilities u
+  WHERE u.id = v_utility_id;
+
+  IF NOT FOUND THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'anagrafiche.trgfn_clienti_sync_utility_from_ba',
+      'E_GENERICO',
+      jsonb_build_object(
+        'detail', 'Utility non trovata in config.utilities',
+        'utility_id', v_utility_id
+      ),
+      NEW.tx_id,
+      concat('Utility non trovata in config.utilities ', v_utility_id::text)
+    );
+  END IF;
+
+  IF v_richiede_pdp AND NEW.pdp_id IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'anagrafiche.trgfn_clienti_sync_utility_from_ba',
+      'E_GENERICO',
+      jsonb_build_object(
+        'detail', 'PDP obbligatorio per utility con richiede_pdp=true',
+        'billing_account_id', NEW.billing_account_id,
+        'utility_id', v_utility_id
+      ),
+      NEW.tx_id,
+      concat('PDP obbligatorio per utility ', v_utility_id::text , ' billing_account_id ', NEW.billing_account_id::text)
+    );
+  END IF;
+
+  -- Se PDP presente, la utility del PDP deve coincidere con quella del billing_account.
+  IF NEW.pdp_id IS NOT NULL THEN
+    SELECT p.utilities_id
+      INTO v_pdp_utility_id
+    FROM anagrafiche.pdp p
+    WHERE p.id = NEW.pdp_id;
+
+    IF v_pdp_utility_id IS NULL OR v_pdp_utility_id::integer <> v_utility_id THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database',
+        'anagrafiche.trgfn_clienti_sync_utility_from_ba',
+        'E_GENERICO',
+        jsonb_build_object(
+          'detail', 'Mismatch utility tra billing_account e PDP',
+          'billing_account_id', NEW.billing_account_id,
+          'pdp_id', NEW.pdp_id,
+          'utility_da_billing', v_utility_id,
+          'utility_da_pdp', v_pdp_utility_id
+        ),
+        NEW.tx_id,
+        concat('Mismatch utility tra billing_account e PDP: billing_account_id ',
+         NEW.billing_account_id::text, ' pdp_id ', NEW.pdp_id::text , 
+        ' utility_da_billing ', v_utility_id::text, ' utility_da_pdp ', v_pdp_utility_id::text)
+      );
+    END IF;
+  END IF;
+
+  RETURN NEW;
 END;
 $function$
 ```

@@ -29,14 +29,17 @@ La funzione:
 * **delega integralmente** il recupero e la normalizzazione dei dati a `script.fn_get_indirizzi_by_ruolo`,
 * aggiunge una logica di **fallback multi-livello** basata sulla matrice di configurazione
   [`config.tipi_ruolo_tipi_indirizzo`](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo).
+* se il layer ruolo non risolve alcun indirizzo, applica fallback sul layer soggetto
+  tramite `script.fn_get_indirizzo_by_soggetto`.
 
 In pratica:
 
-> “Dammi l’indirizzo per questo tipo; se non esiste, segui la catena di fallback definita in `config.tipi_ruolo_tipi_indirizzo` finché trovi uno o più indirizzi utilizzabili, o finché la catena termina.”
+> “Dammi l’indirizzo per questo tipo dal layer ruolo; se non esiste, segui la catena fallback del ruolo e, in ultima istanza, usa il layer soggetto.”
 
 📌 **Nota di ambito**
-La funzione opera **esclusivamente a livello di `soggetto_ruolo`** e utilizza la matrice **ruolo ↔ tipo indirizzo**.
-Non coinvolge né consulta la matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`, che è invece riferita agli indirizzi **diretti del soggetto**.
+La funzione opera con policy:
+* **master** su `soggetto_ruolo` (matrice **ruolo ↔ tipo indirizzo**),
+* **fallback finale** su indirizzi diretti del soggetto (matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`).
 
 ---
 
@@ -118,18 +121,19 @@ Alcuni campi rilevanti:
 La funzione implementa una **ricerca iterativa con fallback configurabile**:
 
 1. Determina il **tipo ruolo** associato al `soggetto_ruolo`.
-2. Prova a recuperare indirizzi del tipo richiesto (`p_tipo_codice`).
+2. Prova a recuperare indirizzi del tipo richiesto (`p_tipo_codice`) nel layer ruolo.
 3. Se vengono trovati uno o più record, **li restituisce e termina**.
-4. In assenza di risultati:
+4. In assenza di risultati nel layer ruolo:
 
    * consulta `config.tipi_ruolo_tipi_indirizzo` per individuare un `fallback_tipo_indirizzo_id`,
    * traduce l’ID in `codice_interno`,
    * ripete il tentativo.
-5. La catena termina quando:
+5. La catena ruolo termina quando:
 
    * viene trovato almeno un indirizzo,
    * il fallback è `NULL`,
    * viene rilevato un **loop** nella catena (protezione A → B → A).
+6. Se il layer ruolo non produce risultati, applica fallback su `script.fn_get_indirizzo_by_soggetto(...)`.
 
 📌 **Comportamento intenzionale**: la funzione **non solleva errori** se nessun indirizzo è disponibile; restituisce semplicemente zero righe.
 

@@ -1,0 +1,32 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260215-01-add-richiede-pdp-utilities-mctit.yaml
+
+  - changeSet:
+      id: 20260215-01-add-richiede-pdp-utilities
+      author: mctit
+      comment: "Aggiunge flag richiede_pdp su config.utilities"
+      changes:
+        - addColumn:
+            schemaName: config
+            tableName: utilities
+            columns:
+              - column:
+                  name: richiede_pdp
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Se true, il PDP e` obbligatorio nelle transizioni operative dell'utility."
+                  constraints:
+                    nullable: false
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON COLUMN config.utilities.richiede_pdp
+                IS 'Flag dominio: true=utility con PDP richiesto (es. gas/energia/idrico), false=PDP opzionale.';
+

@@ -49,6 +49,7 @@
 - [parameter_overrides](tabelle/parameter_overrides.md) — * **Versionamento degli override**   Catturare ogni modifica ai record di `config.parameter_overrides`, consentendo di risalire allo stato precedente o iniziale di un override. * **Audit e compliance**   Archivio immutabile di tutte le operazioni, con metadati di utente e timestamp, per garantire tracciabilità e analisi storiche.
 - [parameters](tabelle/parameters.md) — * **Versionamento dei parametri**   Registrare ogni modifica (INSERT, UPDATE, DELETE) sui parametri definiti in `config.parameters`, abilitando rollback e analisi storica. * **Audit e compliance**   Documentare chi (`user_insert`) e quando (`data_insert`) hanno effettuato le modifiche, mantenendo un registro immutabile.
 - [pdp](tabelle/pdp.md) — `storico.pdp` conserva la **timeline** dei Punti di Prelievo: per ogni modifica allo stato corrente (`anagrafiche.pdp`) registra uno **snapshot JSONB**, la **tipologia di operazione** (`I`,`U`,`D`), il **tx_id** e la **finestra di validità** (`valid_from`, `valid_to`). È di fatto una **SCD Type 2** (Slowly Changing Dimension) specializzata per i PDP.
+- [psp](tabelle/psp.md)
 - [registri_fatturazione](tabelle/registri_fatturazione.md)
 - [regole_fatturazione_articolo](tabelle/regole_fatturazione_articolo.md)
 - [resellers](tabelle/resellers.md)
