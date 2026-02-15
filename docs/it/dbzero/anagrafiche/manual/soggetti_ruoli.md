@@ -17,9 +17,9 @@ La tabella **`anagrafiche.soggetti_ruoli`** funge da collegamento (linking table
 
 ### 🎯 Scopo Principale
 
-(latest review 10-01-26)
+(latest review 15-02-26)
 * **Associazione molti-a-molti**: stabilisce una relazione N\:N tra la tabella `anagrafiche.soggetti` e `config.tipi_ruoli`, consentendo a ogni soggetto di rivestire più ruoli (es. cliente, fornitore, gestore) e a ogni ruolo di essere assegnato a molti soggetti.
-* **Estensione semantica**: il campo `extra` (JSONB) offre la possibilità di collegare metadati aggiuntivi per la singola associazione soggetto-ruolo (ad esempio, parametri contrattuali specifici se il ruolo è “fornitore” o date di attivazione per il ruolo “cliente”).
+* **Estensione semantica**: il campo `meta` (JSONB) offre la possibilità di collegare metadati aggiuntivi per la singola associazione soggetto-ruolo (ad esempio, parametri contrattuali specifici se il ruolo è “fornitore” o date di attivazione per il ruolo “cliente”).
 * **Tracciatura delle modifiche**: grazie ai campi di audit (`user_insert`, `data_insert`, `user_update`, `data_update`) aggiornati automaticamente, la tabella conserva la cronologia di creazione e aggiornamento di ciascuna associazione.
 
 ---
@@ -33,12 +33,12 @@ La tabella **`anagrafiche.soggetti_ruoli`** funge da collegamento (linking table
 
 * **`config.tipi_ruoli`**
 
-  * Il campo `ruolo_id` (integer) fa riferimento alla chiave primaria di `config.tipi_ruoli`.
+  * Il campo `tipo_ruolo_id` (integer) fa riferimento alla chiave primaria di `config.tipi_ruoli`.
   * Vincolo `fk_tipi_ruoli_config`: impedisce la cancellazione di un ruolo se esistono associazioni attive (ON DELETE RESTRICT), garantendo la coerenza referenziale.
 
 * **Unicità dell’associazione**
 
-  * Il vincolo `uq_soggetto_ruolo` su `(soggetto_id, ruolo_id)` garantisce che non esistano duplicati: uno stesso soggetto non può avere due volte lo stesso ruolo.
+  * Il vincolo `uq_soggetto_ruolo` su `(soggetto_id, tipo_ruolo_id)` garantisce che non esistano duplicati: uno stesso soggetto non può avere due volte lo stesso ruolo.
 
 ---
 
@@ -48,7 +48,7 @@ La tabella **`anagrafiche.soggetti_ruoli`** funge da collegamento (linking table
   Separando i dati anagrafici base (in `anagrafiche.soggetti`) dall’assegnazione dei ruoli, si evita di dover ripetere attributi del soggetto ogni qualvolta cambia un ruolo. Questo design semplifica le query e migliora le performance.
 
 * **Flessibilità nella configurazione dei ruoli**
-  Grazie al campo `extra` in JSONB, è possibile aggiungere informazioni contestuali per ogni associazione (es. contratti specifici, date di validità, note), senza dover modificare lo schema SQL.
+  Grazie al campo `meta` in JSONB, è possibile aggiungere informazioni contestuali per ogni associazione (es. contratti specifici, date di validità, note), senza dover modificare lo schema SQL.
 
 * **Garanzia di coerenza referenziale**
   I vincoli di chiave esterna e di unicità assicurano che ogni associazione sia valida (il soggetto e il ruolo devono esistere) e che non vi siano duplicazioni.
@@ -81,14 +81,14 @@ erDiagram
     soggetti_ruoli {
         bigint id PK
         uuid soggetto_id FK
-        int ruolo_id FK
-        jsonb extra
+        int tipo_ruolo_id FK
+        jsonb meta
         uuid tx_id
         timestamptz data_insert
         timestamptz data_update
         varchar user_insert
         varchar user_update
-        %% Nota: vincolo UNIQUE (soggetto_id, ruolo_id) non rappresentabile qui
+        %% Nota: vincolo UNIQUE (soggetto_id, tipo_ruolo_id) non rappresentabile qui
     }
 ```
 

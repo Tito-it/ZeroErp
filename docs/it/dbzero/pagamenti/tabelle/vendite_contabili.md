@@ -44,11 +44,15 @@
 |------|--------|--------|--------|
 | trg_vendite_contabili_a10_centri_riscossione_require_att_2ae3a9 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'centri_riscossione', 'attivo', 'centro_riscossione_id')` |
 | trg_vendite_contabili_a10_centri_riscossione_require_att_2ae3a9 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'centri_riscossione', 'attivo', 'centro_riscossione_id')` |
+| trg_vendite_contabili_a10_enti_incasso_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'enti_incasso', 'attivo', 'ente_incasso_id')` |
+| trg_vendite_contabili_a10_enti_incasso_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'enti_incasso', 'attivo', 'ente_incasso_id')` |
 | trg_vendite_contabili_a10_guard_ente_centro_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_ente_centro()` |
 | trg_vendite_contabili_a10_guard_ente_centro_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_ente_centro()` |
+| trg_vendite_contabili_a10_vendite_contabili_stati_requir_c1cc51 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_stati', 'attivo', 'stato_id')` |
+| trg_vendite_contabili_a10_vendite_contabili_stati_requir_c1cc51 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_stati', 'attivo', 'stato_id')` |
 | trg_vendite_contabili_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_vendite_contabili_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_vendite_contabili_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_vendite_contabili_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

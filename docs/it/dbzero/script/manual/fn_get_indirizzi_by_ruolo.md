@@ -16,7 +16,7 @@
 ---
 
 ### 🎯 Scopo Principale
-(latest review 30-11-25)
+(latest review 15-02-26)
 Restituisce tutti gli **indirizzi** associati a uno specifico `soggetto_ruolo`, producendo per ciascuno:
 
 * il **tipo di indirizzo** (`codice_interno`) e indicazione se **normalizzato**;
@@ -29,7 +29,8 @@ Restituisce tutti gli **indirizzi** associati a uno specifico `soggetto_ruolo`, 
   * `stato_id`, `stato_iso2`, `stato_descrizione`,
   * `cap_codice`.
 
-Questa funzione centralizza la composizione dell’indirizzo, garantendo consistenza ed evitando ridondanza in query applicative o viste.
+Questa funzione usa il layer **RUOLO** come sorgente master e legge dalla vista resolved base.
+Non applica fallback su indirizzi soggetto (la policy master/fallback e demandata a `script.fn_get_indirizzo`).
 
 ---
 
@@ -114,29 +115,19 @@ PARALLEL UNSAFE;
 
 ---
 
-### 🗺️ Logica di Composizione (priorità indirizzo)
+### 🗺️ Logica (attuale)
 
-1. **A → Normalizzato** (`indirizzo_dettaglio_id` NOT NULL):
-   → `ad.indirizzo_normalizzato`, + `Comune`, `CAP`.
-2. **B → Indirizzo libero nazionale** (`indirizzo_libero` NOT NULL):
-   → `ai.indirizzo_libero`, + `Comune`, `CAP`.
-3. **C → Internazionale / fallback**:
-   → combinazione di `indirizzo_libero`, `locality`, `administrative_area`, `postal_box`.
-
- Recupero dati territoriali indipendente: anche se campi mancanti nella tabella, vengono derivati attraverso join (`indirizzo_dettaglio → stradario → comune → provincia → stato`).
+1. Legge da `anagrafiche.vw_indirizzi_resolved_base`.
+2. Filtra `scope = 'RUOLO'`.
+3. Filtra per `soggetto_ruolo_id = p_soggetto_ruolo_id`.
+4. Ordina per `tipo_indirizzo_codice, indirizzo_id`.
 
 ---
 
 ### 🧷 Dipendenze principali
 
-* `anagrafiche.indirizzi` (ai)
-* `anagrafiche.indirizzi_dettaglio` (ad)
-* `config.tipi_indirizzi` (ti)
-* `config.comuni` (co)
-* `config.codici_postali` (cp)
-* `config.province` (pr)
-* `config.stati` (st)
-* `config.stradario` e `config.stradario_generale` (indiretto via ad)
+* `anagrafiche.vw_indirizzi_resolved_base`
+* `anagrafiche.vw_indirizzi_resolved_ruolo`
 
 ---
 

@@ -4,6 +4,7 @@
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_all AS
 SELECT scope,
+    source,
     indirizzo_id,
     soggetto_id,
     soggetto_ruolo_id,

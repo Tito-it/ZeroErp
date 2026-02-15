@@ -39,9 +39,10 @@ AS $function$
     r.administrative_area,
     r.sublocality,
     r.postal_box
-  FROM anagrafiche.vw_indirizzi_resolved_ruolo r
-  WHERE r.soggetto_ruolo_id = p_soggetto_ruolo_id
-  ORDER BY r.tipo_indirizzo_codice;
+  FROM anagrafiche.vw_indirizzi_resolved_base r
+  WHERE r.scope = 'RUOLO'
+    AND r.soggetto_ruolo_id = p_soggetto_ruolo_id
+  ORDER BY r.tipo_indirizzo_codice, r.indirizzo_id;
 $function$
 ```
 

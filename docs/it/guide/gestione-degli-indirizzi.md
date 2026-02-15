@@ -1,7 +1,7 @@
 # 🌱 Guida alla Gestione degli Indirizzi
 Questa guida illustra l’architettura, le scelte progettuali e i componenti coinvolti nella gestione degli indirizzi in Zero ERP.
 
-> (latest review 02-01-26)
+> (latest review 15-02-26)
 >
 > 👀 **Vedi anche**
 >
@@ -42,7 +42,7 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 * **[config.stati](/dbzero/config/tabelle/stati)** : Stati con `iso_code2`, `iso_code3`.
 * **[config.regioni](/dbzero/config/tabelle/regioni)**, **[config.province](/dbzero/config/tabelle/province)**, **[config.comuni](/dbzero/config/tabelle/comuni)**: gerarchia geografica.
 * **[config.codici_postali](/dbzero/config/tabelle/codici_postali)**: CAP per comune.
-* **[config.toponomastica](/dbzero/config/tabelle/toponomastica`)**: tipologie di toponimo (via, strada, etc.).
+* **[config.toponomastica](/dbzero/config/tabelle/toponomastica)**: tipologie di toponimo (via, strada, etc.).
 * **[config.stradario_generale](/dbzero/config/tabelle/stradario_generale)**: anagrafica delle vie (toponomastica + nome.).
 * **[config.stradario](/dbzero/config/tabelle/stradario)**: stradario per via di un luogo (comune + stradario_generale).
 * **[config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)**: classi di indirizzo(residenza, posta, etc.).
@@ -50,7 +50,7 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 ### 2.2. Dettaglio Civico e Associazione (`anagrafiche`)
 
 * **[anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)**: via_norm, civico_norm, interno, piano, palazzina, geoloc.
-* **[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)**: associa soggetto/ruolo a indirizzo normalizzato (`indirizzi_dettaglio_id`) o libero (`indirizzo_libero`, `comune_id`, ecc.).
+* **[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)**: associa il **ruolo** (`soggetto_ruolo_id`) a indirizzo normalizzato (`indirizzi_dettaglio_id`) o libero (`indirizzo_libero`, `comune_id`, ecc.).
 
 ### 2.3. Storico (`storico`)
 
@@ -65,7 +65,7 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 | [script.fn_get_parameter_full(...)](/dbzero/script/funzioni/fn_get_parameter_full)                                    | helper           | Parametri e override (tenant, user, session, funzione)   |
 | [script.fn_get_default_by_param(...)](/dbzero/script/funzioni/fn_get_default_by_param)                                | helper           | Default generico da lookup table + parametro             |
 | [script.fn_get_snapshot_as_of(...)](/dbzero/script/funzioni/fn_get_snapshot_as_of)                                    | helper           | JSONB snapshot “as of” data                              |
-| [script.fn_get_record_id_as_of(...)](/dbzero/script/funzioni/fn_get_record_as_of)                                     | helper           | ID record “as of” data, solo storico                     |
+| [script.fn_get_record_id_as_of(...)](/dbzero/script/funzioni/fn_get_record_id_as_of)                                  | helper           | ID record “as of” data, solo storico                     |
 | [script.fn_generate_codice(tipo)](/dbzero/script/funzioni/fn_generate_codice)                                         | helper           | Genera codici progressivi da `sistema_codici`            |
 | [script.trgfn_storico_generic()](/dbzero/script/funzioni/trgfn_storico_generic)                                       | trigger function | Storicizzazione generica con JSONB snapshot              |
 | [script.trgfn_sync_stato_iso2()](/dbzero/script/funzioni/trgfn_sync_stato_iso2)                                       | trigger function | Sincronizza `stato_iso2` da `config.stati`               |
@@ -77,7 +77,7 @@ Questa guida illustra l’architettura, le scelte progettuali e i componenti coi
 ## 4. Flusso di Vita di un Indirizzo
 
 1. **Inserimento**: normalizzazione via trigger su `indirizzi_dettaglio` o inserimento di `indirizzo_libero`.
-2. **Associazione**: `anagrafiche.indirizzi` collega soggetto/ruolo a riga di dettaglio o a indirizzo libero.
+2. **Associazione**: `anagrafiche.indirizzi` collega il ruolo (`soggetto_ruolo_id`) a riga di dettaglio o a indirizzo libero; `anagrafiche.indirizzi_soggetti` copre il layer identitario del soggetto.
 3. **Storicizzazione**: `trgfn_storico_generic('indirizzi_id')` registra snapshot.
 4. **Lettura storica**: `fn_get_snapshot_as_of()`/`fn_get_record_id_as_of()` ricostruiscono lo stato di un record a una data.
 
@@ -171,6 +171,11 @@ Questa appendice descrive la separazione tra indirizzi **per ruolo** e **per sog
   - Rappresentano indirizzi identitari del soggetto (es. residenza, sede legale primaria).
   - Sono indipendenti dai ruoli e possono essere usati come fallback.
 
+* **Policy di risoluzione (master/fallback)**
+  - **Master**: indirizzo del ruolo (`anagrafiche.indirizzi`).
+  - **Fallback**: indirizzo del soggetto (`anagrafiche.indirizzi_soggetti`) solo quando il layer ruolo non risolve il tipo richiesto.
+  - Nei processi critici, se mancano entrambi, il comportamento atteso è fail-closed (errore bloccante).
+
 * **Regole di coerenza (indirizzi liberi)**
   - La modalità normalizzata è sempre preferibile.
   - Gli indirizzi liberi sono ammessi solo quando `indirizzo_dettaglio_id` è `NULL`,
@@ -188,12 +193,15 @@ Le viste resolved centralizzano la composizione dell’indirizzo human‑readabl
 * [`anagrafiche.vw_indirizzi_resolved_all`](/dbzero/anagrafiche/views/vw_indirizzi_resolved_all)
 * [`anagrafiche.vw_indirizzi_dettaglio`](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)
 
+Nota:
+* Le viste resolved espongono anche la provenienza (`source`: `RUOLO` / `SOGGETTO`) come campo derivato utile per audit/debug.
+
 ### 8.3. Funzioni di lettura
 
-* [`script.fn_get_indirizzi_by_ruolo`](/dbzero/script/funzioni/vw_fn_get_indirizzi_by_ruolo)
-* [`script.fn_get_indirizzo`](/dbzero/script/funzioni/vw_fn_get_indirizzo)
-* [`script.fn_get_indirizzi_by_soggetto`](/dbzero/script/funzioni/vw_fn_get_indirizzi_by_soggetto)
-* [`script.fn_get_indirizzo_by_soggetto`](/dbzero/script/funzioni/vw_fn_get_indirizzo_by_soggetto)
+* [`script.fn_get_indirizzi_by_ruolo`](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo)
+* [`script.fn_get_indirizzo`](/dbzero/script/funzioni/fn_get_indirizzo)
+* [`script.fn_get_indirizzi_by_soggetto`](/dbzero/script/funzioni/fn_get_indirizzi_by_soggetto)
+* [`script.fn_get_indirizzo_by_soggetto`](/dbzero/script/funzioni/fn_get_indirizzo_by_soggetto)
 
 ### 8.4. Diagramma logico (ruolo vs soggetto)
 

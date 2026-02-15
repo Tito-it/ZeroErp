@@ -13,50 +13,27 @@ CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(p_soggetto_ruolo_id bigint, p
  LANGUAGE plpgsql
  STABLE ROWS 10
 AS $function$
-/*
-    Funzione: script.fn_get_indirizzo(p_soggetto_ruolo_id, p_tipo_codice)
-
-    Nuova logica:
-    - Prova il tipo richiesto (p_tipo_codice).
-    - Se non trova indirizzi:
-        * legge da config.tipi_ruolo_tipi_indirizzo il fallback_tipo_indirizzo_id
-          per (tipo_ruolo del soggetto_ruolo, tipo_indirizzo corrente),
-        * risale la catena di fallback finché:
-            - trova almeno un indirizzo per un tipo, oppure
-            - la catena termina (fallback NULL), oppure
-            - rileva un loop nella catena (ciclo A→B→A).
-
-    Per ogni tipo provato, i dati vengono recuperati da:
-        script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id)
-  Output:
-  - Stesso schema di fn_get_indirizzi_by_ruolo:
-    tipo_indirizzo, indirizzo_completo, geoloc,
-    id tecnici, flag is_normalizzato,
-    stato/regione/provincia/comune/CAP,
-    campi "raw" internazionali.
-*/
-
 DECLARE
     v_tipo_ruolo_id      bigint;
+    v_soggetto_id        uuid;
     v_current_codice     text := p_tipo_codice;
     v_current_tipo_id    bigint;
     v_fallback_tipo_id   bigint;
     v_rows_found         integer;
     v_visited_tipo_ids   bigint[] := '{}'::bigint[];
 BEGIN
-    -- Ricavo il tipo_ruolo legato al soggetto_ruolo
-    SELECT sr.tipo_ruolo_id
-    INTO v_tipo_ruolo_id
+    -- soggetto+ruolo del contesto richiesto
+    SELECT sr.tipo_ruolo_id, sr.soggetto_id
+      INTO v_tipo_ruolo_id, v_soggetto_id
     FROM anagrafiche.soggetti_ruoli sr
     WHERE sr.id = p_soggetto_ruolo_id;
 
     IF v_tipo_ruolo_id IS NULL THEN
-        -- soggetto_ruolo non valido: nessun indirizzo
         RETURN;
     END IF;
 
+    -- 1) MASTER = RUOLO con fallback su matrice ruolo/tipo
     LOOP
-        -- 1) Provo il tipo corrente (v_current_codice)
         RETURN QUERY
         SELECT
             f.tipo_indirizzo,
@@ -88,62 +65,80 @@ BEGIN
         WHERE f.tipo_indirizzo = v_current_codice;
 
         GET DIAGNOSTICS v_rows_found = ROW_COUNT;
-
-        -- Se ho trovato almeno un indirizzo, ho finito
         IF v_rows_found > 0 THEN
             RETURN;
         END IF;
 
-        -- 2) Nessun indirizzo per questo tipo: cerco fallback in matrice
-
-        -- Ricavo id del tipo_indirizzo corrente
         SELECT ti.id
-        INTO v_current_tipo_id
+          INTO v_current_tipo_id
         FROM config.tipi_indirizzi ti
         WHERE ti.codice_interno = v_current_codice;
 
         IF v_current_tipo_id IS NULL THEN
-            -- Tipo non riconosciuto: non posso proseguire
-            RETURN;
+            EXIT;
         END IF;
 
-        -- Protezione da loop nella catena di fallback
         IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN
-            -- Rilevato ciclo A->B->A: esco senza risultati
-            RETURN;
+            EXIT;
         END IF;
 
         v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
 
-        -- Cerco il prossimo fallback per (tipo_ruolo, tipo_indirizzo corrente)
         SELECT m.fallback_tipo_indirizzo_id
-        INTO v_fallback_tipo_id
+          INTO v_fallback_tipo_id
         FROM config.tipi_ruolo_tipi_indirizzo m
-        WHERE m.tipo_ruolo_id     = v_tipo_ruolo_id
+        WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
           AND m.tipo_indirizzo_id = v_current_tipo_id
-          AND m.attivo            = TRUE
+          AND m.attivo = TRUE
           AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
-          AND (m.valido_al  IS NULL OR m.valido_al  >= current_date)
+          AND (m.valido_al IS NULL OR m.valido_al >= current_date)
         LIMIT 1;
 
-        -- Nessun fallback configurato: esco senza risultati
         IF v_fallback_tipo_id IS NULL THEN
-            RETURN;
+            EXIT;
         END IF;
 
-        -- Traduco il fallback id in codice_interno per il prossimo ciclo
         SELECT ti.codice_interno
-        INTO v_current_codice
+          INTO v_current_codice
         FROM config.tipi_indirizzi ti
         WHERE ti.id = v_fallback_tipo_id;
 
         IF v_current_codice IS NULL THEN
-            -- Configurazione incoerente (id senza codice_interno): esco
-            RETURN;
+            EXIT;
         END IF;
-
-        -- Loop: riprovo con il nuovo tipo (v_current_codice)
     END LOOP;
+
+    -- 2) FALLBACK = SOGGETTO (stesso tipo richiesto + catena soggetto)
+    RETURN QUERY
+    SELECT
+        r.tipo_indirizzo_codice         AS tipo_indirizzo,
+        r.indirizzo_display             AS indirizzo_completo,
+        r.geoloc,
+        r.indirizzo_id,
+        p_soggetto_ruolo_id             AS soggetto_ruolo_id,
+        r.tipo_indirizzo_id,
+        r.indirizzo_dettaglio_id,
+        r.indirizzo_libero,
+        r.is_normalizzato,
+        r.stato_id,
+        r.stato_descrizione,
+        r.stato_iso2,
+        r.regione_id,
+        r.regione_descrizione,
+        r.provincia_id,
+        r.provincia_sigla,
+        r.provincia_descrizione,
+        r.comune_id,
+        r.comune_descrizione,
+        r.codice_postale_id,
+        r.cap_codice,
+        r.locality,
+        r.administrative_area,
+        r.sublocality,
+        r.postal_box
+    FROM script.fn_get_indirizzo_by_soggetto(v_soggetto_id, p_tipo_codice) r;
+
+    RETURN;
 END;
 $function$
 ```

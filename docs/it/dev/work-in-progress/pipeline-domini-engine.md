@@ -382,3 +382,82 @@ Non vanno fusi.
 * Verificare validazione JSON pipeline (task/implementation) prima dell'esecuzione.
 * Verificare che il fallback `implementation_key -> default` sia sempre loggato.
 * Verificare coerenza fra seed DB e registry Python (task registrati e attivi).
+
+---
+
+## 10) Note critiche aperte (da chiudere)
+
+## 10.1 Baseline runtime Python non allineata (CI/dev vs Docker)
+
+### Problema
+
+Ad oggi la baseline runtime non e` unica:
+
+* linee guida e toolchain backend puntano a Python `3.14`
+* CI usa Python `3.14`
+* `Dockerfile` usa ancora base image Python `3.13`
+
+Questa divergenza puo` introdurre bug non riproducibili tra locale, CI e container runtime.
+
+### Rischio tecnico
+
+* differenze di risoluzione dipendenze e wheel
+* differenze di comportamento runtime (stdlib/interprete)
+* falsi verdi in CI o regressioni solo in produzione
+
+### Soluzioni possibili
+
+1. **Allineamento completo a 3.14 (consigliato)**
+   * aggiornare `Dockerfile` a base `python:3.14-slim`
+   * mantenere `backend/.python-version` e CI su 3.14
+   * verificare lock/compile requirements con 3.14
+
+2. **Rollback coordinato a 3.13**
+   * portare CI, `.python-version` e linee guida a 3.13
+   * rigenerare requirements su 3.13
+   * documentare motivazione e data target per ritorno a 3.14
+
+### Decisione proposta
+
+Adottare opzione 1: una sola baseline `3.14` su tutti gli ambienti.
+
+---
+
+## 10.2 Pipeline giornaliera: doppio canale di chiusura lotto
+
+### Problema
+
+Nell'implementazione attuale convivono due meccanismi di chiusura:
+
+1. chiusura implicita in runner (`fn_close_giornaliero_lotto` quando step = `INVIATA`)
+2. task pipeline `close_lotto` che chiude operativamente con update diretto
+
+Se la configurazione pipeline non e` rigorosa, i due canali possono concorrere sullo stesso stato operativo/documentale.
+
+### Rischio tecnico
+
+* transizioni duplicate o non deterministiche
+* log step meno leggibili (chiusura avvenuta fuori task esplicito)
+* maggior rischio regressioni quando si estende a nuovi domini pipeline
+
+### Soluzioni possibili
+
+1. **Canale unico via task pipeline (consigliato)**
+   * il runner non chiude automaticamente allo step `INVIATA`
+   * la chiusura avviene solo tramite task esplicito (`close_lotto`) risolto da registry
+   * il task deve delegare a funzione DB canonica (no update diretto duplicato)
+
+2. **Canale unico via runner**
+   * mantenere chiusura automatica nel runner
+   * rimuovere `close_lotto` dagli step giornalieri
+   * vietare da validazione pre-run l'uso del task `close_lotto` per `GIORNALIERO`
+
+3. **Hardening ibrido transitorio**
+   * mantenere assetto attuale ma con guard espliciti:
+     * validazione pre-run: errore se in pipeline `GIORNALIERO` coesistono auto-close e task `close_lotto`
+     * idempotenza forte lato DB: seconda chiusura no-op con log warning
+   * pianificare convergenza a canale unico
+
+### Decisione proposta
+
+Convergere a canale unico (opzione 1) per avere comportamento esplicito, testabile e coerente con il modello registry/task.

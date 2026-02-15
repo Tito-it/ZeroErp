@@ -17,15 +17,15 @@
 ---
 
 ### 🎯 Scopo Principale
-(latest review 23-12-25)
+(latest review 15-02-26)
 Restituisce tutti gli **indirizzi** associati direttamente a un **soggetto** (`anagrafiche.indirizzi_soggetti`), utilizzando come sorgente la vista
 `anagrafiche.vw_indirizzi_resolved_soggetto` per ottenere un output **uniforme e human-readable**.
 
 Questa funzione:
 
-* centralizza la lettura degli indirizzi soggetto,
-* evita la duplicazione della logica di formattazione,
-* garantisce un output stabile per API/UI.
+* centralizza la lettura del layer **SOGGETTO**,
+* evita duplicazione della logica di composizione,
+* garantisce ordinamento deterministico (`tipo_indirizzo_codice`, `indirizzo_id`).
 
 ---
 
@@ -86,6 +86,7 @@ WHERE is_normalizzato = TRUE;
 ### ✅ Note e Best Practice
 
 * Usare questa funzione come **entry point** per gli indirizzi soggetto.
+* La provenienza e tracciabile nelle viste resolved tramite campo derivato `source`.
 * Per risolvere un solo indirizzo con fallback, usare `script.fn_get_indirizzo_by_soggetto`.
 
 ---

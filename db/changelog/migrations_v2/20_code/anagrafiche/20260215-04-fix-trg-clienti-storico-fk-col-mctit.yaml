@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260215-04-fix-trg-clienti-storico-fk-col-mctit.yaml
+
+  - changeSet:
+      id: 20260215-04-fix-trg-clienti-storico-fk-col
+      author: mctit
+      comment: "Fix trigger storico su anagrafiche.clienti: usa cliente_id (non clienti_id)."
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $do$
+              DECLARE
+                v_has_cliente_id boolean;
+                r record;
+              BEGIN
+                SELECT EXISTS (
+                  SELECT 1
+                  FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  WHERE n.nspname = 'storico'
+                    AND c.relname = 'clienti'
+                    AND a.attname = 'cliente_id'
+                    AND NOT a.attisdropped
+                )
+                INTO v_has_cliente_id;
+
+                IF NOT v_has_cliente_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'fix-trg-clienti-storico-fk-col',
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'detail', 'Colonna storico.clienti.cliente_id non trovata'
+                    ),
+                    NULL::uuid,
+                    'Colonna storico.clienti.cliente_id non trovata'
+                  );
+                END IF;
+
+                -- Rimuove eventuali trigger storico generic presenti su anagrafiche.clienti
+                FOR r IN
+                  SELECT t.tgname
+                  FROM pg_trigger t
+                  JOIN pg_class c ON c.oid = t.tgrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  JOIN pg_proc p ON p.oid = t.tgfoid
+                  JOIN pg_namespace pn ON pn.oid = p.pronamespace
+                  WHERE n.nspname = 'anagrafiche'
+                    AND c.relname = 'clienti'
+                    AND NOT t.tgisinternal
+                    AND pn.nspname = 'script'
+                    AND p.proname = 'trgfn_storico_generic'
+                LOOP
+                  EXECUTE format('DROP TRIGGER IF EXISTS %I ON anagrafiche.clienti', r.tgname);
+                END LOOP;
+
+                -- Trigger unico con FK corretta verso storico.clienti
+                CREATE TRIGGER trg_clienti_z90_storico_upd_dlt
+                BEFORE UPDATE OR DELETE
+                ON anagrafiche.clienti
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_storico_generic('cliente_id');
+
+                COMMENT ON TRIGGER trg_clienti_z90_storico_upd_dlt ON anagrafiche.clienti
+                IS 'Storico clienti: snapshot UPDATE/DELETE in storico.clienti con FK logica cliente_id.';
+              END;
+              $do$;

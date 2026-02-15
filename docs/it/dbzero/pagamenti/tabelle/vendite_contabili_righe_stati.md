@@ -30,5 +30,11 @@
 | pk_vendite_contabili_righe_stati | `CREATE UNIQUE INDEX pk_vendite_contabili_righe_stati ON pagamenti.vendite_contabili_righe_stati USING btree (id)` |
 | uq_vendite_contabili_righe_stati_codice | `CREATE UNIQUE INDEX uq_vendite_contabili_righe_stati_codice ON pagamenti.vendite_contabili_righe_stati USING btree (codice)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_vendite_contabili_righe_stati_a10_vendite_contabili__b3c071 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pagamenti', 'vendite_contabili_righe', 'stato_id', 'id')` |
+| trg_vendite_contabili_righe_stati_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}
