@@ -1,12 +1,15 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
+
 WORKDIR /app
 
-# ora il contesto è la root, trova requirements.txt
-COPY requirements.txt .       
+# Copia solo requirements prima (per sfruttare cache Docker)
+COPY backend/requirements.txt ./requirements.txt
 
-RUN pip install --no-cache-dir -r requirements.txt
+# Upgrade pip + wheel (fix CVE) e install deps
+RUN python -m pip install --no-cache-dir -U pip wheel \
+  && python -m pip install --no-cache-dir -r requirements.txt
 
-# poi copi il codice Django dentro /app
-COPY backend/ .                
+# Ora copia il codice
+COPY backend/ .
 
-CMD ["gunicorn","backend.wsgi:application","--bind","0.0.0.0:8000"]
+CMD ["gunicorn","backend.wsgi:application","--bind","0.0.0.0:8000","--workers","2","--timeout","60"]

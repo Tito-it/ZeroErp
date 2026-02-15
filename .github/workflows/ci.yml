@@ -63,10 +63,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install -U pip
+          python -m pip install -U pip wheel
           python -m pip install -r requirements.txt
-          #  - name: Show MkDocs version
-
+          
 
       - name: Set custom GUCs for CI role
         env:
@@ -98,7 +97,14 @@ jobs:
           liquibase lpm add postgresql --global
           liquibase --version
  # Dicembre 2025 fine passaggio a Liquibase 5 Community
+      
 
+      - name: Cache pre-commit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+    
           
       - name: Run pre-commit hooks
         run: |
