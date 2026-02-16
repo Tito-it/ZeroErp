@@ -19,7 +19,7 @@ in fatturazione, alimentazione attivita`, pratiche o utility verticali (idrico/g
 
 1. Pipeline DB separate per dominio:
 * `vendite.fatturazione_pipeline` (gia` presente)
-* `vendite.attivita_fatturabili_pipeline` (da introdurre)
+* `vendite.attivita_fatturabili_pipeline` (introdotta - step base)
 * eventuali pipeline verticali future (se necessarie)
 
 2. Engine applicativo unico condiviso:
@@ -230,7 +230,7 @@ Rendere parametrico il dispatch task senza esecuzione dinamica libera.
 
 ## 4.3 Nuova pipeline attivita fatturabili (DB)
 
-### Nuova tabella `vendite.attivita_fatturabili_pipeline` (da creare)
+### Tabella `vendite.attivita_fatturabili_pipeline` (introdotta)
 
 Scopo:
 configurare step/task del processo di alimentazione e preparazione attivita` fatturabili.
@@ -256,8 +256,9 @@ Scopo:
 stessa logica di risoluzione configurazione, ma limitata al dominio attivita.
 
 ### Stato
-* [ ] Tabella `vendite.attivita_fatturabili_pipeline`
-* [ ] Funzioni `fn_resolve_attivita_pipeline_step` e `fn_list_attivita_pipeline_steps`
+* [x] Tabella `vendite.attivita_fatturabili_pipeline`
+* [x] Funzioni `fn_resolve_attivita_pipeline_step` e `fn_list_attivita_pipeline_steps`
+* [ ] Log dedicato dominio attivita (tabella/funzioni)
 
 ---
 
@@ -316,9 +317,30 @@ Non vanno fusi.
 * [x] Dispatch Django su registry DB + `implementation_key`
 * [x] Task `close_lotto` integrato nella pipeline massiva
 * [ ] Registry runtime Python completo multi-dominio (mappa per dominio)
-* [ ] Pipeline dedicata `attivita_fatturabili` (tabella + resolve/list + log)
+* [ ] Pipeline dedicata `attivita_fatturabili` (log + runner/handler dominio)
 * [ ] Pacchetto test completo dominio attivita (pgtap + python)
 * [ ] Validazione pre-run unificata per tutti i domini pipeline
+
+## 9) Test gravita (stato corrente)
+
+### Alta
+
+* [ ] Pipeline dominio `attivita_fatturabili` non ancora implementata.
+  Impatto: non e` completata la convergenza su modello pipeline per l'intero flusso vendite.
+
+### Media
+
+* [ ] Registry runtime Python multi-dominio non completato.
+  Impatto: il modello DB e` pronto, ma la generalizzazione runtime non e` ancora chiusa.
+
+* [ ] Validazione pre-run unificata non ancora consolidata.
+  Impatto: rischio eterogeneita` nei controlli tra domini quando verra` introdotto il secondo dominio attivo.
+
+### Bassa
+
+* [x] Seed e funzioni DB per dominio `FATTURAZIONE` completati.
+* [x] Dispatch `implementation_key` operativo sul dominio fatturazione.
+* [x] Documentazione strategica allineata alla scelta: pipeline per dominio + registry condiviso.
 
 1. **Dominio runtime**
    * Seed `dbops.domini_task` con codici standard (`FATTURAZIONE`, `ATTIVITA_FATTURABILI`).

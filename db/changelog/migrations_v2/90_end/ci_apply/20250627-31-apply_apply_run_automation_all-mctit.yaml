@@ -39,6 +39,8 @@ databaseChangeLog:
               SELECT dbops.fn_run_automations_attivo('CI', NULL, false);
               SELECT dbops.fn_run_automations_lock_columns('CI', NULL, false);
               SELECT dbops.fn_run_automations_delete_block('CI', NULL, false);
+              SELECT dbops.fn_seed_automazione_guard_utility_tipo_ruolo(NULL);
+              SELECT dbops.fn_apply_automazione_guard_utility_tipo_ruolo('CI', false);
 
   - changeSet:
       id: 9099-tag-after-automations-ci

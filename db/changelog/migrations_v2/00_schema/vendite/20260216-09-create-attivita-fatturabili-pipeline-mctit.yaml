@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260216-09-create-attivita-fatturabili-pipeline-mctit.yaml
+
+  - changeSet:
+      id: 20260216-09-create-attivita-fatturabili-pipeline
+      author: mctit
+      comment: "Pipeline dominio attivita_fatturabili con fallback utility/sorgente"
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: attivita_fatturabili_pipeline
+            remarks: "Configurazione pipeline dominio attivita_fatturabili."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_attivita_fatturabili_pipeline
+                    nullable: false
+
+              - column:
+                  name: codice_step
+                  type: text
+                  remarks: "Codice logico dello step pipeline."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione step pipeline."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: ordine
+                  type: smallint
+                  defaultValueNumeric: 10
+                  remarks: "Ordine di esecuzione step."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: processi
+                  type: jsonb
+                  defaultValueComputed: "'[]'::jsonb"
+                  remarks: "Lista task dello step."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: rollback
+                  type: jsonb
+                  defaultValueComputed: "'[]'::jsonb"
+                  remarks: "Lista task di rollback dello step."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: utility_id
+                  type: integer
+                  remarks: "Filtro opzionale per utility (fallback su NULL)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: sorgente_tipo_id
+                  type: bigint
+                  remarks: "Filtro opzionale per sorgente tipo (fallback su NULL)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag attivazione step."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento audit."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento audit."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp modifica audit."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente modifica audit."
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili_pipeline
+            baseColumnNames: utility_id
+            constraintName: fk_attivita_fatturabili_pipeline_utility
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili_pipeline
+            baseColumnNames: sorgente_tipo_id
+            constraintName: fk_attivita_fatturabili_pipeline_sorgente_tipo
+            referencedTableSchemaName: config
+            referencedTableName: sorgenti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Evitare ambiguita` di configurazione ai vari livelli di
+              --   specificita` (utility/sorgente/fallback).
+              --
+              -- Regole:
+              --   - una sola riga per livello e codice_step
+              --   - livelli supportati:
+              --       1) codice_step + utility + sorgente
+              --       2) codice_step + utility
+              --       3) codice_step + sorgente
+              --       4) codice_step (fallback globale)
+              -- =========================================================
+
+              CREATE UNIQUE INDEX uq_attivita_pipeline_step_utility_sorgente
+                ON vendite.attivita_fatturabili_pipeline (codice_step, utility_id, sorgente_tipo_id)
+               WHERE utility_id IS NOT NULL AND sorgente_tipo_id IS NOT NULL;
+
+              CREATE UNIQUE INDEX uq_attivita_pipeline_step_utility
+                ON vendite.attivita_fatturabili_pipeline (codice_step, utility_id)
+               WHERE utility_id IS NOT NULL AND sorgente_tipo_id IS NULL;
+
+              CREATE UNIQUE INDEX uq_attivita_pipeline_step_sorgente
+                ON vendite.attivita_fatturabili_pipeline (codice_step, sorgente_tipo_id)
+               WHERE utility_id IS NULL AND sorgente_tipo_id IS NOT NULL;
+
+              CREATE UNIQUE INDEX uq_attivita_pipeline_step_fallback
+                ON vendite.attivita_fatturabili_pipeline (codice_step)
+               WHERE utility_id IS NULL AND sorgente_tipo_id IS NULL;

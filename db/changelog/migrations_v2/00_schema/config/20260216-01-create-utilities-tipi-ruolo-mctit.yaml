@@ -1,0 +1,174 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Creazione tabella config.utilities_tipi_ruolo
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260216-01-create-utilities-tipi-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20260216-01-create-utilities-tipi-ruolo
+      author: mctit
+      comment: >
+        Crea la matrice opzionale utility ↔ tipo_ruolo.
+        Semantica applicativa prevista:
+        - se non esistono righe per utility: fail-open (nessun vincolo);
+        - se esistono righe attive/valide: ammessi solo i tipo_ruolo configurati.
+
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: utilities_tipi_ruolo
+            remarks: "Matrice utility ↔ tipo ruolo (whitelist opzionale per policy dominio)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "Identificativo tecnico (PK)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_utilities_tipi_ruolo
+                    nullable: false
+
+              - column:
+                  name: utility_id
+                  type: integer
+                  remarks: "FK -> config.utilities.id."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tipo_ruolo_id
+                  type: integer
+                  remarks: "FK -> config.tipi_ruoli.id."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag attivazione logica della regola."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: valido_dal
+                  type: date
+                  remarks: "Data inizio validita (NULL = sempre valido in passato)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: valido_al
+                  type: date
+                  remarks: "Data fine validita (NULL = valido a tempo indeterminato)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente di inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente ultima modifica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Flag framework storico."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: utilities_tipi_ruolo
+            columnNames: utility_id, tipo_ruolo_id
+            constraintName: uq_utilities_tipi_ruolo_utility_tipo_ruolo
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: utilities_tipi_ruolo
+            baseColumnNames: utility_id
+            constraintName: fk_utilities_tipi_ruolo_utility
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: utilities_tipi_ruolo
+            baseColumnNames: tipo_ruolo_id
+            constraintName: fk_utilities_tipi_ruolo_tipo_ruolo
+            referencedTableSchemaName: config
+            referencedTableName: tipi_ruoli
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.utilities_tipi_ruolo
+              ADD CONSTRAINT chk_utilities_tipi_ruolo_validita
+              CHECK (valido_dal IS NULL OR valido_al IS NULL OR valido_al >= valido_dal);
+
+              COMMENT ON TABLE config.utilities_tipi_ruolo
+                IS 'Matrice opzionale utility->tipo_ruolo: se assente per utility resta fail-open; se presente limita ai ruoli configurati.';
+
+        - createIndex:
+            schemaName: config
+            tableName: utilities_tipi_ruolo
+            indexName: ix_utilities_tipi_ruolo_utility_id
+            columns:
+              - column:
+                  name: utility_id
+
+        - createIndex:
+            schemaName: config
+            tableName: utilities_tipi_ruolo
+            indexName: ix_utilities_tipi_ruolo_tipo_ruolo_id
+            columns:
+              - column:
+                  name: tipo_ruolo_id

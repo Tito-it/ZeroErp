@@ -264,7 +264,7 @@ Stato:
 
 ---
 
-### 3.3 Matrice configurativa: stato reale, gap e azioni
+### 3.3 Matrice configurativa: stato reale, gap e azioni **(CHIUSO)**
 
 Cosa e stato verificato:
 
@@ -275,8 +275,8 @@ Cosa e stato verificato:
 
 Cosa manca (gap reale):
 
-- non esiste una matrice generale `utility -> tipo_soggetto` e `utility -> tipo_ruolo` per governare ammissibilita cross-dominio;
-- quindi la regola "quali ruoli/soggetti sono ammessi per una utility" non e configurata in modo esplicito e centralizzato;
+- non esiste una matrice generale `utility -> tipo_ruolo` per governare ammissibilita ruolo-specifica per utility;
+- per `tipo_soggetto` la scelta architetturale confermata e: nessun vincolo dedicato (potenzialmente tutti ammessi);
 - il comportamento fail-open delle matrici indirizzi (se assenti: nessuna restrizione) resta un rischio operativo in ambienti non completamente configurati.
 
 Impatto:
@@ -291,25 +291,98 @@ Cosa aggiornare in documentazione (esiste ma non era esplicitato):
    - `config.tipi_ruolo_tipi_indirizzo`
    - `config.tipi_soggetto_dettaglio_tipi_indirizzo`
 2. esplicitare che la policy utility oggi copre solo `richiede_pdp` (non copre ammissibilita ruoli/soggetti);
-3. esplicitare il comportamento fail-open attuale e quando puo essere accettabile;
-4. aggiungere una nota architetturale che separi:
+3. esplicitare la decisione architetturale: nessuna matrice `utility -> tipo_soggetto` (ammissibilita ampia by design);
+4. esplicitare il comportamento fail-open attuale e quando puo essere accettabile;
+5. aggiungere una nota architetturale che separi:
    - governance indirizzi (coperta),
-   - governance utility->ruolo/soggetto (non ancora coperta).
+   - governance utility->ruolo (eventuale estensione futura),
+   - governance utility->tipo_soggetto (scelta consapevole: non vincolata).
 
 Cosa sviluppare:
 
 1. introdurre una nuova matrice configurativa per ammissibilita utility:
-   - opzione A: `config.utilities_tipi_ruolo`
-   - opzione B: `config.utilities_tipi_soggetto_dettaglio`
-   - opzione C: entrambe (consigliata per chiarezza semantica)
-2. aggiungere guard DB che validino la coerenza utility con ruolo/soggetto nei punti di ingresso principali (es. clienti/istanze/billing account secondo ownership);
-3. aggiungere pgtap dedicati:
-   - caso ammesso,
-   - caso non ammesso,
-   - caso matrice assente (comportamento esplicito: fail-open o fail-closed);
-4. dopo introduzione matrice utility, rivalutare policy default:
-   - mantenere fail-open solo dove serve per bootstrap,
-   - portare fail-closed negli ambienti operativi stabili.
+   - proposta: `config.utilities_tipi_ruolo`;
+   - comportamento default raccomandato: se non configurata nessuna riga per una utility -> nessun vincolo (fail-open controllato).
+2. non introdurre matrice `utility -> tipo_soggetto_dettaglio` (scelta progettuale: tutti i tipi soggetto potenzialmente ammessi).
+3. aggiungere guard DB opzionali che validino la coerenza utility con tipo_ruolo nei punti di ingresso principali (es. clienti/istanze/billing account secondo ownership);
+4. aggiungere pgtap dedicati:
+   - caso matrice utility/ruolo assente (nessun vincolo),
+   - caso riga presente ammessa,
+   - caso riga presente non ammessa (bloccante).
+5. dopo introduzione matrice utility/ruolo, mantenere policy default fail-open e valutare eventuale fail-closed solo per utilities specifiche.
+
+Stato implementativo (aggiornato 16-02-2026):
+
+- introdotta matrice `config.utilities_tipi_ruolo`;
+- introdotta guard centralizzata `script.fn_guard_utility_tipo_ruolo(...)`;
+- introdotta trigger function generica `script.trgfn_guard_utility_tipo_ruolo_by_cols()`;
+- introdotta automazione `dbops`:
+  - tabella `dbops.automazione_guard_utility_tipo_ruolo`,
+  - seed `dbops.fn_seed_automazione_guard_utility_tipo_ruolo(...)`,
+  - apply `dbops.fn_apply_automazione_guard_utility_tipo_ruolo(...)`;
+- collegata esecuzione in `90_end/ci_apply` per evitare step manuali;
+- aggiunto test pgTap dedicato all'automazione.
+
+Progettazione proposta tabella `config.utilities_tipi_ruolo`:
+
+- scopo: whitelist opzionale dei `tipo_ruolo` ammessi per una `utility`;
+- semantica:
+  - se per una utility non esistono righe attive/valide -> nessun vincolo (fail-open);
+  - se esistono righe attive/valide -> sono ammessi solo i `tipo_ruolo_id` presenti.
+
+Schema proposto (v1):
+
+1. `id bigint` identity PK
+2. `utility_id integer not null` FK -> `config.utilities(id)`
+3. `tipo_ruolo_id bigint not null` FK -> `config.tipi_ruoli(id)`
+4. `attivo boolean not null default true`
+5. `valido_dal date null`
+6. `valido_al date null`
+7. `meta jsonb not null default '{}'::jsonb`
+8. `user_insert text not null default CURRENT_USER`
+9. `user_update text not null default CURRENT_USER`
+10. `data_insert timestamptz not null default now()`
+11. `data_update timestamptz not null default now()`
+12. `storicizza boolean not null default false`
+
+Vincoli/indici proposti:
+
+1. `UNIQUE (utility_id, tipo_ruolo_id)` per evitare duplicati configurativi.
+2. `CHECK (valido_al IS NULL OR valido_dal IS NULL OR valido_al >= valido_dal)`.
+3. indice `ix_utilities_tipi_ruolo_utility_id` su `utility_id`.
+4. indice `ix_utilities_tipi_ruolo_tipo_ruolo_id` su `tipo_ruolo_id`.
+
+Funzione di guard consigliata (riuso centralizzato):
+
+- nuova funzione `script.fn_guard_utility_tipo_ruolo(p_utility_id, p_tipo_ruolo_id, p_context text default null)`:
+  1. se `p_utility_id` o `p_tipo_ruolo_id` null -> return (non blocca);
+  2. verifica se esiste almeno una riga attiva/valida per `p_utility_id`;
+  3. se no -> return (fail-open);
+  4. se si -> richiede match su `p_tipo_ruolo_id`, altrimenti errore applicativo.
+
+Punti di integrazione guard (solo entita con contesto ruolo):
+
+1. applicare la guard dove l'entita espone esplicitamente un riferimento ruolo (`soggetto_ruolo_id` o equivalente) e un contesto utility;
+2. riferimento prioritario ai ruoli censiti in `db/changelog/migrations_v2/80_data/sql/config/tipi_ruoli.csv` (es. `CL`, `FO`, `GE`, `RE`, `EF`, `DI`, `RIS_UMANA`, `VT`, `VE`, `BANK_B`, `PSP`);
+3. primo candidato naturale: `anagrafiche.emittenti_fiscali_utilities` (ha `emittente_soggetto_ruolo_id` + `utility_id`).
+
+Nota su `billing_account`:
+
+- `billing_account` non e` un ruolo; l'eventuale uso di `utility_tipi_ruolo` va fatto sulle entita ruolo-centriche, non sul solo fatto che `billing_account` possieda `utility_id`.
+
+Test pgtap minimi proposti:
+
+1. utility senza righe matrice -> inserimento consentito (fail-open).
+2. utility con matrice e ruolo ammesso -> consentito.
+3. utility con matrice e ruolo non ammesso -> bloccato con errore atteso.
+4. utility con riga non attiva o fuori validita -> non considerata nel match.
+5. duplicate `(utility_id, tipo_ruolo_id)` -> bloccato da unique.
+
+Aggiornamenti documentazione conseguenti:
+
+1. nuova manualistica `config/manual/utilities_tipi_ruolo.md`.
+2. aggiornare `config/manual/utilities.md` con sezione "policy ruoli per utility (opzionale, fail-open)".
+3. aggiornare manual trigger/funzioni che applicano il guard, esplicitando il comportamento quando la matrice non e configurata.
 
 Riferimenti:
 
@@ -323,7 +396,7 @@ Riferimenti:
 
 ---
 
-### 3.4 Incoerenza narrativa tra guide su indirizzi per ruolo vs soggetto
+### 3.4 Incoerenza narrativa tra guide su indirizzi per ruolo vs soggetto **(CHIUSO)**
 
 Problema:
 
@@ -342,28 +415,34 @@ Riferimenti:
 
 ---
 
-### 3.5 Punto da verificare: indice geoloc documentato come GIST ma definito BTREE
+### 3.5 Indice geoloc `indirizzi`: mismatch naming/engine (in remediation)
 
 Problema:
 
-- in documentazione tabellare l'indice `ix_indirizzi_geoloc_gist` e riportato con definizione BTREE.
+- l'indice `anagrafiche.ix_indirizzi_geoloc_gist` risulta con naming "gist" ma definizione BTREE.
 
 Rischio:
 
-- possibile mismatch tra naming e implementazione effettiva;
-- rischio performance su query spaziali se l'indice reale non e coerente al tipo dati/uso.
+- mismatch semantico tra naming e implementazione reale;
+- possibile degrado performance su filtri/operatori spaziali.
 
 Riferimenti:
 
 - `docs/it/dbzero/anagrafiche/tabelle/indirizzi.md`
 - `docs/it/dbzero/anagrafiche/tabelle/indirizzi_dettaglio.md`
+- `db/changelog/migrations_v2/00_schema/anagrafiche/20260216-07-fix-index-indirizzi-geoloc-gist-mctit.yaml`
+
+Stato:
+
+- fix strutturale preparato in migration v2 (`DROP/CREATE` su `ix_indirizzi_geoloc_gist` con `USING gist`);
+- da considerare chiuso dopo apply migration sull'ambiente target.
 
 ## 4. Migliorie architetturali raccomandate
 
-1. Definire una source-of-truth unica per utility istanza (non implicita).
-2. Riallineare documentazione core con naming e trigger reali.
-3. Esplicitare formalmente la semantica dei guard (deferred/immediate) nei contratti applicativi.
-4. Formalizzare la policy "indirizzo master" (soggetto vs ruolo) per ciascun processo.
+1. ✅Definire una source-of-truth unica per utility istanza (non implicita).
+2. ✅Riallineare documentazione core con naming e trigger reali.
+3. ✅Esplicitare formalmente la semantica dei guard (deferred/immediate) nei contratti applicativi.
+4. ✅Formalizzare la policy "indirizzo master" (soggetto vs ruolo) per ciascun processo.
 5. Avviare backend anagrafiche con perimetro minimo ma completo (service + API + test).
 
 ## 5. Backend anagrafiche: cosa serve per iniziare (piano di avvio)

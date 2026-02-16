@@ -34,6 +34,10 @@ specifici di fatturazione per **emittente fiscale** e **utility**:
 * Unica riga per coppia **(emittente, utility)**.
 * Se entrambe le soglie sono valorizzate: `minimo_soglia_min <= minimo_soglia_max`.
 * Arrotondamento importi limitato a **max 2 decimali**.
+* Guard utility/ruolo applicata via trigger:
+  * risolve il `tipo_ruolo_id` dall'`emittente_soggetto_ruolo_id`;
+  * valida con `script.fn_guard_utility_tipo_ruolo(...)`;
+  * semantica fail-open se la matrice `config.utilities_tipi_ruolo` non e configurata per la utility.
 
 ---
 
