@@ -23,6 +23,8 @@
 >
 > * [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap)
 >
+> * [dbops.automazione_guard_utility_tipo_ruolo](/dbzero/dbops/tabelle/automazione_guard_utility_tipo_ruolo)
+>
 > * *Orchestratori:*
 >
 > * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations),  
@@ -169,6 +171,26 @@ Parametri JSON tipici:
 
 * `CLEANUP_AT`: `ttl_days`, `cleanup_column`, `base_ts_column`, `apply_on_update`
 * `CLEANUP_PURGE`: `cleanup_column`, `batch_limit`
+
+**3.10 GUARD utility->tipo_ruolo**
+
+Automazione dedicata ai casi in cui una tabella espone:
+
+* una colonna utility (tipicamente `utility_id`);
+* una colonna ruolo (`soggetto_ruolo_id` o `*_soggetto_ruolo_id`).
+
+Componenti principali:
+
+* **Config**: `dbops.automazione_guard_utility_tipo_ruolo`
+* **Seed**: `dbops.fn_seed_automazione_guard_utility_tipo_ruolo()` autodetect tabelle candidate
+* **Apply**: `dbops.fn_apply_automazione_guard_utility_tipo_ruolo()`
+* **Trigger function**: `script.trgfn_guard_utility_tipo_ruolo_by_cols()`
+
+Semantica:
+
+* il trigger risolve `tipo_ruolo_id` da `anagrafiche.soggetti_ruoli`;
+* delega il controllo a `script.fn_guard_utility_tipo_ruolo(...)`;
+* se la matrice `config.utilities_tipi_ruolo` non e configurata per la utility, resta il comportamento fail-open.
 
 ---
 

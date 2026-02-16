@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260216-03-create-automation-guard-utility-tipo-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20260216-03-create-automation-guard-utility-tipo-ruolo
+      author: mctit
+      comment: >
+        Tabella di configurazione per automazione trigger guard utility->tipo_ruolo
+        sulle tabelle con contesto ruolo.
+
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: automazione_guard_utility_tipo_ruolo
+            remarks: "Config trigger guard utility->tipo_ruolo per tabelle ruolo-centriche."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_automazione_guard_utility_tipo_ruolo
+                    nullable: false
+
+              - column:
+                  name: schema_name
+                  type: text
+                  remarks: "Schema tabella target."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: table_name
+                  type: text
+                  remarks: "Tabella target."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: utility_column
+                  type: text
+                  defaultValue: utility_id
+                  remarks: "Colonna utility nella tabella target."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: soggetto_ruolo_column
+                  type: text
+                  remarks: "Colonna FK verso anagrafiche.soggetti_ruoli."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: enabled
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Se TRUE, il trigger viene applicato."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: exec_mode
+                  type: text
+                  defaultValue: AUTO
+                  remarks: "Modalita esecuzione automazione (AUTO/CI/etc)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: trigger_name
+                  type: text
+                  remarks: "Override nome trigger (opzionale)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: dbops
+            tableName: automazione_guard_utility_tipo_ruolo
+            columnNames: schema_name, table_name
+            constraintName: uq_automazione_guard_utility_tipo_ruolo_table
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_guard_utility_tipo_ruolo
+              ADD CONSTRAINT chk_automazione_guard_utility_tipo_ruolo_exec_mode
+              CHECK (btrim(exec_mode) <> '');
+
+              COMMENT ON TABLE dbops.automazione_guard_utility_tipo_ruolo
+              IS 'Configurazione automazione trigger guard utility->tipo_ruolo su tabelle con contesto ruolo.';

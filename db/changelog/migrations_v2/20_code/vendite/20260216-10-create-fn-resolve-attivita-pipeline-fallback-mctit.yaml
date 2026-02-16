@@ -1,0 +1,174 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260216-10-create-fn-resolve-attivita-pipeline-fallback-mctit.yaml
+
+  - changeSet:
+      id: 20260216-10-create-fn-resolve-attivita-pipeline-fallback
+      author: mctit
+      comment: "Funzioni SQL per risoluzione pipeline dominio attivita_fatturabili con fallback"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_resolve_attivita_pipeline_step(
+                p_codice_step vendite.attivita_fatturabili_pipeline.codice_step%TYPE,
+                p_utility_id vendite.attivita_fatturabili_pipeline.utility_id%TYPE DEFAULT NULL,
+                p_sorgente_tipo_id vendite.attivita_fatturabili_pipeline.sorgente_tipo_id%TYPE DEFAULT NULL,
+                p_rollback boolean DEFAULT false
+              )
+              RETURNS TABLE(
+                pipeline_id vendite.attivita_fatturabili_pipeline.id%TYPE,
+                codice_step vendite.attivita_fatturabili_pipeline.codice_step%TYPE,
+                descrizione vendite.attivita_fatturabili_pipeline.descrizione%TYPE,
+                ordine vendite.attivita_fatturabili_pipeline.ordine%TYPE,
+                processi jsonb,
+                utility_id vendite.attivita_fatturabili_pipeline.utility_id%TYPE,
+                sorgente_tipo_id vendite.attivita_fatturabili_pipeline.sorgente_tipo_id%TYPE,
+                livello_match text
+              )
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Risolve la configurazione di uno step pipeline dominio
+                --   attivita_fatturabili applicando fallback.
+                --
+                -- Regole precedenza:
+                --   1) utility + sorgente
+                --   2) utility
+                --   3) sorgente
+                --   4) fallback globale
+                -- =========================================================
+
+                IF p_codice_step IS NULL OR btrim(p_codice_step) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_resolve_attivita_pipeline_step', 'E_GENERICO',
+                    jsonb_build_object('detail', 'p_codice_step obbligatorio'),
+                    NULL::uuid,
+                    'p_codice_step obbligatorio'
+                  );
+                END IF;
+
+                IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_resolve_attivita_pipeline_step', 'E_GENERICO',
+                    jsonb_build_object('detail', 'p_utility_id non valido'),
+                    NULL::uuid,
+                    'p_utility_id deve essere > 0'
+                  );
+                END IF;
+
+                IF p_sorgente_tipo_id IS NOT NULL AND p_sorgente_tipo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_resolve_attivita_pipeline_step', 'E_GENERICO',
+                    jsonb_build_object('detail', 'p_sorgente_tipo_id non valido'),
+                    NULL::uuid,
+                    'p_sorgente_tipo_id deve essere > 0'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  ap.id AS pipeline_id,
+                  ap.codice_step,
+                  ap.descrizione,
+                  ap.ordine,
+                  CASE WHEN p_rollback THEN ap.rollback ELSE ap.processi END AS processi,
+                  ap.utility_id,
+                  ap.sorgente_tipo_id,
+                  CASE
+                    WHEN ap.utility_id IS NOT NULL AND ap.sorgente_tipo_id IS NOT NULL THEN 'UTILITY_SORGENTE'
+                    WHEN ap.utility_id IS NOT NULL AND ap.sorgente_tipo_id IS NULL THEN 'UTILITY'
+                    WHEN ap.utility_id IS NULL AND ap.sorgente_tipo_id IS NOT NULL THEN 'SORGENTE'
+                    ELSE 'FALLBACK'
+                  END AS livello_match
+                FROM vendite.attivita_fatturabili_pipeline ap
+                WHERE ap.attivo IS TRUE
+                  AND ap.codice_step = p_codice_step
+                  AND (ap.utility_id = p_utility_id OR ap.utility_id IS NULL)
+                  AND (ap.sorgente_tipo_id = p_sorgente_tipo_id OR ap.sorgente_tipo_id IS NULL)
+                ORDER BY
+                  CASE
+                    WHEN ap.utility_id IS NOT NULL AND ap.sorgente_tipo_id IS NOT NULL THEN 4
+                    WHEN ap.utility_id IS NOT NULL AND ap.sorgente_tipo_id IS NULL THEN 3
+                    WHEN ap.utility_id IS NULL AND ap.sorgente_tipo_id IS NOT NULL THEN 2
+                    ELSE 1
+                  END DESC,
+                  ap.id ASC
+                LIMIT 1;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_resolve_attivita_pipeline_step(
+                vendite.attivita_fatturabili_pipeline.codice_step%TYPE,
+                vendite.attivita_fatturabili_pipeline.utility_id%TYPE,
+                vendite.attivita_fatturabili_pipeline.sorgente_tipo_id%TYPE,
+                boolean
+              ) IS 'Risoluzione step pipeline attivita_fatturabili con fallback utility/sorgente e precedenza deterministica.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_list_attivita_pipeline_steps(
+                p_utility_id vendite.attivita_fatturabili_pipeline.utility_id%TYPE DEFAULT NULL,
+                p_sorgente_tipo_id vendite.attivita_fatturabili_pipeline.sorgente_tipo_id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE(
+                codice_step vendite.attivita_fatturabili_pipeline.codice_step%TYPE,
+                descrizione vendite.attivita_fatturabili_pipeline.descrizione%TYPE,
+                ordine vendite.attivita_fatturabili_pipeline.ordine%TYPE
+              )
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Elenca gli step pipeline dominio attivita_fatturabili
+                --   risolti con fallback utility/sorgente.
+                -- =========================================================
+
+                IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_list_attivita_pipeline_steps', 'E_GENERICO',
+                    jsonb_build_object('detail', 'p_utility_id non valido'),
+                    NULL::uuid,
+                    'p_utility_id deve essere > 0'
+                  );
+                END IF;
+
+                IF p_sorgente_tipo_id IS NOT NULL AND p_sorgente_tipo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_list_attivita_pipeline_steps', 'E_GENERICO',
+                    jsonb_build_object('detail', 'p_sorgente_tipo_id non valido'),
+                    NULL::uuid,
+                    'p_sorgente_tipo_id deve essere > 0'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  rs.codice_step,
+                  rs.descrizione,
+                  rs.ordine
+                FROM (
+                  SELECT DISTINCT ap.codice_step
+                  FROM vendite.attivita_fatturabili_pipeline ap
+                  WHERE ap.attivo IS TRUE
+                ) AS s
+                JOIN LATERAL vendite.fn_resolve_attivita_pipeline_step(
+                  p_codice_step => s.codice_step,
+                  p_utility_id => p_utility_id,
+                  p_sorgente_tipo_id => p_sorgente_tipo_id,
+                  p_rollback => false
+                ) rs ON TRUE
+                ORDER BY rs.ordine, rs.codice_step;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_list_attivita_pipeline_steps(
+                vendite.attivita_fatturabili_pipeline.utility_id%TYPE,
+                vendite.attivita_fatturabili_pipeline.sorgente_tipo_id%TYPE
+              ) IS 'Lista step pipeline attivita_fatturabili risolti con fallback utility/sorgente.';

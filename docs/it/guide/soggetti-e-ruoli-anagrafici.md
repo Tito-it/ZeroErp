@@ -4,7 +4,7 @@
 >
 > 🎯 **Destinatari:** sviluppatori database, backend e analisti funzionali
 >
-> 🧩 **Fondamentale per comprendere tutte le altre guide anagrafiche (clienti, indirizzi, contatti, conti bancari, istanze)**.
+> 🧩 **Fondamentale per comprendere tutte le altre guide anagrafiche (clienti, contatti, conti bancari, istanze)**.
 
 ---
 
@@ -19,7 +19,7 @@ Questa guida descrive i principi fondamentali dei componenti:
 * `anagrafiche.soggetti_ruoli`
 * Tabelle specializzate dei ruoli (es. `clienti`, `gestori`, ecc.)
 
-L’obiettivo è fornire una visione chiara e coerente che consenta di capire **come nascono i ruoli**, come vengono **utilizzati nei processi**, e perché questo modello consente di gestire in modo naturale indirizzi, contatti, conti bancari e relazioni commerciali.
+L’obiettivo è fornire una visione chiara e coerente che consenta di capire **come nascono i ruoli**, come vengono **utilizzati nei processi**, e perché questo modello consente di gestire in modo naturale contatti, conti bancari e relazioni commerciali.
 
 ---
 ## 🧱 Tabelle coinvolte
@@ -29,8 +29,6 @@ L’obiettivo è fornire una visione chiara e coerente che consenta di capire **
 * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
 * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
-* [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
-* [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)
 * [config.utilities](/dbzero/config/tabelle/utilities)
 * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)
 * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)
@@ -90,7 +88,7 @@ Da un punto di vista tecnico:
   * da un soggetto → tutti i ruoli associati,
   * da un ruolo → tutti i soggetti che lo ricoprono.
 
-L'utilizzo di `soggetto_ruolo_id` come FK nelle tabelle specializzate (es. `clienti`, `gestori`, `fornitori`, conti bancari, contatti, indirizzi) consente di:
+L'utilizzo di `soggetto_ruolo_id` come FK nelle tabelle specializzate (es. `clienti`, `gestori`, `fornitori`, conti bancari, contatti) consente di:
 
 * risalire **in un solo join** al soggetto di origine;
 * mantenere chiara la separazione tra *identità* (soggetto) e *ruolo di dominio* (cliente, gestore, ecc.);
@@ -125,7 +123,7 @@ soggetto_ruolo_id → anagrafiche.soggetti_ruoli.id
 * `soggetti`: Mario Rossi
 * `soggetti_ruoli`: record CLIENTE
 * `clienti`: contiene dati contrattuali, condizioni, utility_id
-* indirizzi e contatti: legati al ruolo cliente
+* contatti: legati al ruolo cliente
 
 ---
 
@@ -135,7 +133,7 @@ soggetto_ruolo_id → anagrafiche.soggetti_ruoli.id
 * `soggetti_ruoli`: CLIENTE, FORNITORE
 * `clienti`: condizioni commerciali
 * `fornitori`: dati amministrativi
-* indirizzi: distinti per ruolo (es. indirizzo spedizioni CLIENTE, indirizzo amministrativo FORNITORE)
+* contatti: gestibili in modo separato per ruolo
 
 ---
 
@@ -147,13 +145,13 @@ soggetto_ruolo_id → anagrafiche.soggetti_ruoli.id
 
 ---
 
-## 📍 Indirizzi e contatti appesi al ruolo
+## 📍 Contatti appesi al ruolo
 
 Grazie al modello soggetti/ruoli:
 
-* un indirizzo o contatto può essere assegnato **al ruolo**, non all’identità generica
+* un contatto può essere assegnato **al ruolo**, non all’identità generica
 * si evitano collisioni tra usi diversi dello stesso soggetto
-* la gestione diventa coerente: indirizzo di fatturazione CLIENTE ≠ indirizzo operativo FORNITORE
+* la gestione resta coerente con i processi di dominio per cliente/fornitore/gestore
 
 > 🔑 Questo permette una gestione nativamente multi-ruolo senza duplicazioni.
 
@@ -201,7 +199,6 @@ erDiagram
     soggetti_ruoli ||--o{ gestori : specializes
 
     soggetti_ruoli ||--o{ contatti : has
-    soggetti_ruoli ||--o{ indirizzi : has
     soggetti_ruoli ||--o{ conti_bancari : uses
 ```
 
@@ -213,11 +210,10 @@ Questa guida fornisce le basi concettuali per comprendere:
 
 * [`la gestione istanze utility`](/guide/gestione-delle-istanze-utility),
 * [`la generazione di un cliente`](/guide/generazione-cliente),
-* [`la gestione degli indirizzi`](/guide/gestione-degli-indirizzi),
 * [`la logica dei conti bancari`](/guide/gestione-conti-bancari),
 * [`la gestione dei contatti`](/guide/gestione-dei-contatti),
 
-Le altre guide (clienti, indirizzi, contatti, fatturazione) assumono **come prerequisito** la comprensione di questo modello.
+Le altre guide (clienti, contatti, fatturazione) assumono **come prerequisito** la comprensione di questo modello.
 
 ---
 

@@ -1,5 +1,12 @@
 # AGENTS.md
 
+
+## Quick Start per AI Agent
+- Progetto: ERP Django + PostgreSQL
+- Stack: Python 3.14, Django 6.01, Liquibase v2
+- Prima di implementare: leggi docs in `docs/it/` pertinenti
+- Struttura: backend in `backend/`, DB migrations in `db/changelog/migrations_v2/`
+
 ## Scope
 - Repo: ZeroErp
 - Default language: it-IT

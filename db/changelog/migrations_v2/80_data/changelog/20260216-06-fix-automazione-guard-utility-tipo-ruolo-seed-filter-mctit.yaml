@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260216-06-fix-automazione-guard-utility-tipo-ruolo-seed-filter-mctit.yaml
+
+  - changeSet:
+      id: 20260216-06-fix-automazione-guard-utility-tipo-ruolo-seed-filter
+      author: mctit
+      comment: >
+        Bonifica configurazioni seedate con colonna ruolo generica soggetto_ruolo_id:
+        la guard utility->tipo_ruolo usa solo contesti *_soggetto_ruolo_id.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $do$
+              DECLARE
+                r record;
+                v_trigger_name text;
+              BEGIN
+                FOR r IN
+                  SELECT schema_name, table_name, trigger_name
+                    FROM dbops.automazione_guard_utility_tipo_ruolo
+                   WHERE soggetto_ruolo_column = 'soggetto_ruolo_id'
+                LOOP
+                  v_trigger_name := COALESCE(
+                    r.trigger_name,
+                    dbops.fn_name_from_template(
+                      'trg_{table}_a10_guard_utility_tipo_ruolo_ins_upd',
+                      r.schema_name,
+                      r.table_name,
+                      NULL,
+                      NULL,
+                      NULL,
+                      NULL
+                    )
+                  );
+
+                  EXECUTE format(
+                    'DROP TRIGGER IF EXISTS %I ON %I.%I;',
+                    v_trigger_name,
+                    r.schema_name,
+                    r.table_name
+                  );
+                END LOOP;
+              END
+              $do$;
+
+              UPDATE dbops.automazione_guard_utility_tipo_ruolo
+                 SET enabled = false,
+                     meta = COALESCE(meta, '{}'::jsonb) || jsonb_build_object(
+                       'disabled_reason', 'filtered_generic_soggetto_ruolo_id',
+                       'disabled_at', now()
+                     ),
+                     data_update = now(),
+                     user_update = CURRENT_USER
+               WHERE soggetto_ruolo_column = 'soggetto_ruolo_id'
+                 AND enabled = true;

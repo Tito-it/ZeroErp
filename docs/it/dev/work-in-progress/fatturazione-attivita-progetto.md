@@ -21,8 +21,81 @@
 - [x] Modello compensazioni spostato su `pagamenti.vendite_contabili.compensazione_id`.
 - [x] Blocco link lotto su testate di compensazione (guard su `vendite_contabili_lotti`).
 - [x] Guida tecnica pagamenti creata (`docs/it/guide/pagamenti.md`).
-- [ ] Pipeline dedicata per `attivita_fatturabili` (tabella + funzioni).
+- [x] Pipeline dedicata per `attivita_fatturabili` (tabella + funzioni resolve/list).
+- [ ] Pipeline `attivita_fatturabili`: completamento log/runner/handler dominio.
 - [ ] Registry runtime multi-dominio completo in Django (mappa per dominio).
+
+## 🚦 Test gravita disallineamenti (guida vs WIP)
+
+Riferimento confronto:
+
+* `docs/it/guide/fatturazione.md`
+* `docs/it/dev/work-in-progress/fatturazione-attivita-progetto.md`
+* `docs/it/dev/work-in-progress/pipeline-domini-engine.md`
+
+Esito sintetico:
+
+* **ALTA**: 1 area
+* **MEDIA**: 3 aree
+* **BASSA**: 2 aree
+
+### Alta gravita
+
+* **Pipeline `attivita_fatturabili` non ancora attiva**
+  * Impatto: blocca la chiusura completa del disegno end-to-end (alimentazione -> fatturazione) in modalita pipeline uniforme.
+  * Azione: introdurre tabella/funzioni pipeline dominio attivita e relativo pacchetto test.
+  * Stato: **aperta**.
+
+### Media gravita
+
+* **Registry runtime Python multi-dominio non completato**
+  * Impatto: il modello e` pronto lato DB ma non ancora esteso a tutti i domini futuri.
+  * Azione: completare mappa runtime per dominio e validazione pre-run unificata.
+  * Stato: **aperta**.
+
+* **Checklist test finale non unificata**
+  * Impatto: bassa visibilita` di regressione globale tra pgtap e test Django.
+  * Azione: creare una sezione unica “go-live checklist” con test minimi obbligatori.
+  * Stato: **aperta**.
+
+* **Contenuti guida/WIP parzialmente duplicati**
+  * Impatto: rischio drift documentale su sezioni operative lunghe replicate.
+  * Azione: mantenere in WIP solo stato lavori/checklist e lasciare i dettagli di processo nella guida.
+  * Stato: **in rifinitura**.
+
+### Bassa gravita
+
+* **Terminologia mista in alcune sezioni WIP**
+  * Impatto: solo leggibilita`.
+  * Azione: uniformare lessico su “lotto massivo/giornaliero”, “contabile”, “source fondi”.
+  * Stato: **pianificata**.
+
+* **Promemoria tecnici sparsi**
+  * Impatto: nessun blocco funzionale, ma minore tracciabilita`.
+  * Azione: concentrare i TODO residui in checklist finale.
+  * Stato: **pianificata**.
+
+## ✅ Attivita chiuse (formalizzazione)
+
+Le seguenti attivita sono considerate **chiuse** e allineate con la guida principale:
+
+* [x] Pipeline fatturazione configurabile (`vendite.fatturazione_pipeline`) con fallback.
+* [x] Orchestrazione spostata in Django (runner/step executor).
+* [x] Registry task DB multi-dominio introdotto (`dbops.*`).
+* [x] Dispatch con `implementation_key` e binding controllato.
+* [x] Gestione log fatture e allineamento flag `critical`.
+* [x] Chiusura operativa lotto massivo via task pipeline (`close_lotto`).
+* [x] Refactor fondi fattura verso contabili/righe.
+* [x] Refactor saldo fattura (residuo documento) + saldo contabile postabile.
+* [x] Compensazioni agganciate a testata contabile.
+* [x] Guida pagamenti pubblicata e coerente col modello contabile.
+
+Nota:
+le chiusure sopra restano valide salvo refactor strutturali successivi.
+
+
+***Fine test gravità***
+
 
 ### Stato documenti WIP (allineamento)
 
