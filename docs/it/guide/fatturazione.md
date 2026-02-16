@@ -19,7 +19,7 @@ La fatturazione in Zero ERP e` progettata come **pipeline in piu` fasi**:
 
 1. **Alimentazione** di `vendite.attivita_fatturabili` a partire dalle sorgenti.
 2. **Calcolo** e generazione delle righe di fattura (`vendite.fatture_righe`).
-3. **Emissione** e numerazione del documento (`vendite.fatture`).
+3. **Emissione** del documento (`vendite.fatture`) e numerazione nello step **DEFINITIVA**.
 
 Questa separazione garantisce **idempotenza**, **controllo** e **revisionabilita`** prima dell’emissione fiscale.
 
@@ -97,7 +97,8 @@ flowchart TD
   C --> D[Dashboard Pre‑Calcolo<br/>Filtri + approvazione]
   D --> E[Calcolo righe<br/>vendite.fatture_righe]
   E --> F[Dashboard Emissione<br/>Conferma documento]
-  F --> G[Emissione + numerazione<br/>vendite.fatture]
+  F --> G[Emissione<br/>vendite.fatture]
+  G --> GD[DEFINITIVA + numerazione]
   G --> H[Output/Invio/Statistiche]
 ```
 
@@ -185,11 +186,19 @@ Trasformare attivita` approvate e fatturabili in **righe economiche** di fattura
 Convertire il risultato del calcolo in **documento fiscale numerato**.
 
 ### ✅ Separazione dal calcolo
-Il **calcolo** produce righe; l’**emissione** produce la testata, la numerazione e gli output fiscali.
+Il **calcolo** produce righe; l’**emissione** produce la testata.
+La **numerazione** avviene nello step **DEFINITIVA**.
 
 ### 🔢 Numerazione
-* Assegnata **solo** in fase di emissione (cambio di stato).
+* Assegnata **solo** nello step **DEFINITIVA** (non in `EMESSA`).
 * Regole gestite da `vendite.registri_fatturazione`.
+
+### ⚙️ Step `EMESSA` (massivo)
+Nello step `EMESSA` del lotto massivo sono previsti i task pre-fiscali:
+
+* generazione source minimi/fondi
+* applicazione fondi alle fatture del lotto
+* ricalcolo IVA lotto (con aggiornamento totali testata)
 
 ### 📦 Output correlati
 * `vendite.fatture_riepiloghi_iva`
@@ -232,7 +241,7 @@ Regola di controllo operativa:
   cosi` si evita di riincludere importi gia` in lavorazione.
 
 ### 🖥️ Dashboard “Emissione”
-* Preview del documento, controlli finali e numerazione.
+* Preview del documento e controlli finali pre-fiscali.
 * Conferma emissione con log degli esiti.
 
 ---
@@ -242,7 +251,8 @@ Regola di controllo operativa:
 ### ✅ Dashboard standard
 * **Input Fatturazione** → alimenta `attivita_fatturabili`
 * **Pre‑Calcolo** → selezione, approvazione, calcolo righe
-* **Emissione** → numerazione e creazione documento
+* **Emissione** → creazione/validazione documento (pre-fiscale)
+* **Definitiva** → numerazione documento
 
 ### 🔁 Variante: invio SDI (Italia)
 * **Estrazione** del documento in formato fiscale (es. XML FatturaPA).

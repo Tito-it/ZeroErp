@@ -2,8 +2,12 @@
 Indice test eseguiti:
 1) PipelineStepExecutorUnitTests.test_execute_step_runs_generate_fatture_righe_task
 2) PipelineStepExecutorUnitTests.test_execute_step_rejects_generate_fatture_righe_fn_override
-3) PipelineStepExecutorUnitTests.test_execute_step_runs_numera_fatture_task
-4) PipelineStepExecutorUnitTests.test_execute_step_runs_close_lotto_task
+3) PipelineStepExecutorUnitTests.test_execute_step_runs_genera_fondi_source_lotto_task
+4) PipelineStepExecutorUnitTests.test_execute_step_runs_applica_fondi_lotto_task
+5) PipelineStepExecutorUnitTests.test_execute_step_runs_ricalcola_iva_lotto_task
+6) PipelineStepExecutorUnitTests.test_execute_step_runs_numera_fatture_task
+7) PipelineStepExecutorUnitTests.test_execute_step_runs_close_lotto_task
+8) PipelineStepExecutorUnitTests.test_execute_step_runs_reset_lotto_draft_task
 """
 
 from unittest.mock import MagicMock
@@ -29,8 +33,12 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.ALLOWED_TASK_FUNCTIONS = {
             "select_attivita": "vendite.fn_select_attivita_fatturabili",
             "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
+            "genera_fondi_source_lotto": "vendite.fn_genera_fondi_fattura_source",
+            "applica_fondi_lotto": "vendite.fn_applica_fondi_fattura",
+            "ricalcola_iva_lotto": "vendite.fn_ricalcola_riepiloghi_iva_lotto",
             "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
             "close_lotto": None,
+            "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
         }
         fatture_righe_service = MagicMock()
         executor = PipelineStepExecutor(
@@ -61,6 +69,60 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             implementation_key=None,
         )
         fatture_righe_service.generate_fatture_righe.assert_called_once_with(1, dry_run=False)
+
+    def test_execute_step_runs_genera_fondi_source_lotto_task(self):
+        processi = [{"task": "genera_fondi_source_lotto", "fase": "Genera fondi", "params": {}}]
+        executor, repo, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "genera_fondi_source_lotto_default"
+
+        executor.execute_step(
+            lotto_id=11,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.run_genera_fondi_source_lotto_task.assert_called_once_with(
+            lotto_id=11,
+            tipo_fondo_codice_interno="F_F_ADD_ACC",
+        )
+
+    def test_execute_step_runs_applica_fondi_lotto_task(self):
+        processi = [{"task": "applica_fondi_lotto", "fase": "Applica fondi", "params": {}}]
+        executor, repo, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "applica_fondi_lotto_default"
+
+        executor.execute_step(
+            lotto_id=11,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.run_applica_fondi_lotto_task.assert_called_once_with(
+            lotto_id=11,
+            tipo_fondo_codice_interno="F_F_ADD_ACC",
+        )
+
+    def test_execute_step_runs_ricalcola_iva_lotto_task(self):
+        processi = [{"task": "ricalcola_iva_lotto", "fase": "Ricalcolo IVA", "params": {"batch_size": 500}}]
+        executor, repo, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "ricalcola_iva_lotto_default"
+
+        executor.execute_step(
+            lotto_id=11,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.run_ricalcola_iva_lotto_task.assert_called_once_with(
+            lotto_id=11,
+            batch_size=500,
+        )
 
     def test_execute_step_rejects_generate_fatture_righe_fn_override(self):
         processi = [
@@ -118,3 +180,18 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         )
 
         repo.close_lotto_operativo.assert_called_once_with(5)
+
+    def test_execute_step_runs_reset_lotto_draft_task(self):
+        processi = [{"task": "reset_lotto_draft", "fase": "Reset lotto", "params": {}}]
+        executor, repo, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "reset_lotto_draft_default"
+
+        executor.execute_step(
+            lotto_id=12,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=True,
+            dry_run=False,
+        )
+
+        repo.reset_lotto_draft.assert_called_once_with(12)
