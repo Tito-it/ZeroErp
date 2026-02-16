@@ -14,6 +14,9 @@
 - [x] Log fatture e flag `critical` (tabella `vendite.fatture_log` + sync).
 - [x] Area geografica fatturazione e colonne correlate.
 - [x] Task pipeline `close_lotto` (chiusura operativa lotto massivo).
+- [x] Numerazione spostata a step `DEFINITIVA` (pipeline massiva); `EMESSA` resta pre-fiscale/riapribile.
+- [x] Reset tecnico modellato in pipeline (`rollback` step `EMESSA`) solo per `MASSIVO`.
+- [x] Step `EMESSA` massivo configurato con task minimi/fondi + ricalcolo IVA/totali.
 - [x] Refactor fondi fattura su contabili/righe (`fn_sync_contabili_fondo_fattura`) con deprecazione wrapper legacy.
 - [x] Refactor saldi: `fn_get_saldo_fattura` come residuo documento.
 - [x] Introduzione saldo contabile postabile (`fn_get_saldo_fattura_contabili`) per evitare doppie inclusioni.

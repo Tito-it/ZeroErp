@@ -77,8 +77,12 @@ class VenditePipelineRepository:
     ALLOWED_TASK_FUNCTIONS = {
         "select_attivita": "vendite.fn_select_attivita_fatturabili",
         "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
+        "genera_fondi_source_lotto": "vendite.fn_genera_fondi_fattura_source",
+        "applica_fondi_lotto": "vendite.fn_applica_fondi_fattura",
+        "ricalcola_iva_lotto": "vendite.fn_ricalcola_riepiloghi_iva_lotto",
         "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
         "close_lotto": None,
+        "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
     }
 
     @staticmethod
@@ -560,6 +564,161 @@ class VenditePipelineRepository:
             )
             rows = cursor.fetchall()
         return [int(row[0]) for row in rows]
+
+    def get_tipo_fondo_fattura_id(self, codice_interno: str = "F_F_ADD_ACC") -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM vendite.tipi_fondi_fattura
+                WHERE codice_interno = %s
+                  AND attivo IS TRUE
+                ORDER BY id
+                LIMIT 1
+                """,
+                [codice_interno],
+            )
+            row = cursor.fetchone()
+        if not row:
+            ErrorManager.raise_error(
+                code="E_TIPO_FONDO_NOT_FOUND",
+                message="Tipo fondo fattura non trovato.",
+                detail=f"Tipo fondo non trovato: {codice_interno}",
+                context={"codice_interno": codice_interno},
+                function_name="vendite.pipeline_repository.get_tipo_fondo_fattura_id",
+                log_to_db=True,
+            )
+        return int(row[0])
+
+    def list_fatture_scope_by_lotto(self, lotto_id: int) -> list[dict[str, int]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT
+                  f.id AS fattura_id,
+                  f.billing_account_id,
+                  COALESCE(fl.utility_id, ba.utility_id) AS utility_id,
+                  f.tipo_doc_fiscale_id,
+                  f.emittente_soggetto_ruolo_id,
+                  f.valuta_id
+                FROM vendite.fatturazione_lotti_fatture lf
+                JOIN vendite.fatture f
+                  ON f.id = lf.fattura_id
+                JOIN vendite.fatturazione_lotti fl
+                  ON fl.id = lf.lotto_id
+                LEFT JOIN anagrafiche.billing_account ba
+                  ON ba.id = f.billing_account_id
+                WHERE lf.lotto_id = %s
+                ORDER BY f.id
+                """,
+                [lotto_id],
+            )
+            rows = cursor.fetchall()
+        scopes: list[dict[str, int]] = []
+        for row in rows:
+            if (
+                row[0] is None
+                or row[1] is None
+                or row[2] is None
+                or row[3] is None
+                or row[4] is None
+                or row[5] is None
+            ):
+                ErrorManager.raise_error(
+                    code="E_PIPELINE_SCOPE_INCOMPLETE",
+                    message="Scope fattura incompleto per task EMESSA.",
+                    detail=(
+                        "Dati mancanti su fattura lotto: utility/tipo_doc/"
+                        "emittente/valuta obbligatori"
+                    ),
+                    context={
+                        "lotto_id": lotto_id,
+                        "fattura_id": row[0],
+                        "billing_account_id": row[1],
+                        "utility_id": row[2],
+                        "tipo_doc_fiscale_id": row[3],
+                        "emittente_soggetto_ruolo_id": row[4],
+                        "valuta_id": row[5],
+                    },
+                    function_name="vendite.pipeline_repository.list_fatture_scope_by_lotto",
+                    log_to_db=True,
+                )
+            scopes.append(
+                {
+                    "fattura_id": int(row[0]),
+                    "billing_account_id": int(row[1]),
+                    "utility_id": int(row[2]),
+                    "tipo_doc_fiscale_id": int(row[3]),
+                    "emittente_soggetto_ruolo_id": int(row[4]),
+                    "valuta_id": int(row[5]),
+                }
+            )
+        return scopes
+
+    def run_genera_fondi_source_lotto_task(
+        self,
+        *,
+        lotto_id: int,
+        tipo_fondo_codice_interno: str = "F_F_ADD_ACC",
+    ) -> None:
+        tipo_fondo_id = self.get_tipo_fondo_fattura_id(tipo_fondo_codice_interno)
+        for scope in self.list_fatture_scope_by_lotto(lotto_id):
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT vendite.fn_genera_fondi_fattura_source(
+                      %s, %s, %s, %s, %s, %s
+                    )
+                    """,
+                    [
+                        scope["billing_account_id"],
+                        scope["utility_id"],
+                        scope["tipo_doc_fiscale_id"],
+                        scope["emittente_soggetto_ruolo_id"],
+                        scope["valuta_id"],
+                        tipo_fondo_id,
+                    ],
+                )
+
+    def run_applica_fondi_lotto_task(
+        self,
+        *,
+        lotto_id: int,
+        tipo_fondo_codice_interno: str = "F_F_ADD_ACC",
+    ) -> None:
+        tipo_fondo_id = self.get_tipo_fondo_fattura_id(tipo_fondo_codice_interno)
+        for scope in self.list_fatture_scope_by_lotto(lotto_id):
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT vendite.fn_applica_fondi_fattura(
+                      %s, %s, %s, %s, %s, %s, %s
+                    )
+                    """,
+                    [
+                        scope["billing_account_id"],
+                        scope["utility_id"],
+                        scope["tipo_doc_fiscale_id"],
+                        scope["emittente_soggetto_ruolo_id"],
+                        scope["valuta_id"],
+                        scope["fattura_id"],
+                        tipo_fondo_id,
+                    ],
+                )
+
+    def run_ricalcola_iva_lotto_task(
+        self,
+        *,
+        lotto_id: int,
+        batch_size: int = 1000,
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT * FROM vendite.fn_ricalcola_riepiloghi_iva_lotto(%s, %s)
+                """,
+                [lotto_id, batch_size],
+            )
 
     def numera_fattura_opz_emessa(self, fattura_id: int) -> None:
         with connection.cursor() as cursor:

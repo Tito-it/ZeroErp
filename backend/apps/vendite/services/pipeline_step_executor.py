@@ -27,8 +27,12 @@ class PipelineStepExecutor:
         self.handler_registry = {
             "select_attivita_default": self._handle_select_attivita_task,
             "generate_fatture_righe_default": self._handle_generate_fatture_righe_task,
+            "genera_fondi_source_lotto_default": self._handle_genera_fondi_source_lotto_task,
+            "applica_fondi_lotto_default": self._handle_applica_fondi_lotto_task,
+            "ricalcola_iva_lotto_default": self._handle_ricalcola_iva_lotto_task,
             "numera_fatture_default": self._handle_numera_fatture_task,
             "close_lotto_default": self._handle_close_lotto_task,
+            "reset_lotto_draft_default": self._handle_reset_lotto_draft_task,
         }
 
     def execute_step(
@@ -235,6 +239,70 @@ class PipelineStepExecutor:
             stato_doc_fiscale_id=stato_doc_fiscale_id,
         )
 
+    def _handle_genera_fondi_source_lotto_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> None:
+        # Genera/aggiorna source fondi su tutte le fatture del lotto.
+        self._validate_task_function_name(task=task, fn_name=fn_name)
+        if dry_run:
+            return
+        tipo_fondo = str(params.get("tipo_fondo_codice_interno") or "F_F_ADD_ACC")
+        self.repository.run_genera_fondi_source_lotto_task(
+            lotto_id=lotto_id,
+            tipo_fondo_codice_interno=tipo_fondo,
+        )
+
+    def _handle_applica_fondi_lotto_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> None:
+        # Applica i fondi source alle fatture del lotto.
+        self._validate_task_function_name(task=task, fn_name=fn_name)
+        if dry_run:
+            return
+        tipo_fondo = str(params.get("tipo_fondo_codice_interno") or "F_F_ADD_ACC")
+        self.repository.run_applica_fondi_lotto_task(
+            lotto_id=lotto_id,
+            tipo_fondo_codice_interno=tipo_fondo,
+        )
+
+    def _handle_ricalcola_iva_lotto_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> None:
+        # Ricalcolo IVA lotto; include aggiornamento totali testata.
+        self._validate_task_function_name(task=task, fn_name=fn_name)
+        if dry_run:
+            return
+        batch_size_raw = params.get("batch_size")
+        batch_size = int(batch_size_raw) if batch_size_raw is not None else 1000
+        self.repository.run_ricalcola_iva_lotto_task(
+            lotto_id=lotto_id,
+            batch_size=batch_size,
+        )
+
     def _handle_close_lotto_task(
         self,
         *,
@@ -251,3 +319,20 @@ class PipelineStepExecutor:
         if dry_run:
             return
         self.repository.close_lotto_operativo(lotto_id)
+
+    def _handle_reset_lotto_draft_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> None:
+        # Reset tecnico completo del lotto massivo in bozza.
+        self._validate_task_function_name(task=task, fn_name=fn_name)
+        if dry_run:
+            return
+        self.repository.reset_lotto_draft(lotto_id)
