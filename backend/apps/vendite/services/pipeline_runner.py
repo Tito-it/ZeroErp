@@ -8,6 +8,7 @@
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Any
 
 from django.db import transaction
 
@@ -112,6 +113,7 @@ class LottoPipelineRunner:
                 lotto_tipo_db = self.repository.get_lotto_tipo(lotto_id)
                 effective_tipo_lotto = lotto_tipo_db or effective_tipo_lotto
                 lotto_stato_corrente = self.repository.get_lotto_job_stato(lotto_id)
+                lotto_stato_doc_corrente = self.repository.get_lotto_stato_doc_fiscale_id(lotto_id)
                 if normalized_lotto_id is None and lotto_stato_corrente == "COMPLETATO":
                     ErrorManager.raise_error(
                         code="E_PIPELINE_LOTTO_COMPLETATO_REUSE",
@@ -128,6 +130,17 @@ class LottoPipelineRunner:
                         function_name="vendite.pr_run_lotto_pipeline",
                         log_to_db=True,
                     )
+                is_massivo_error_rerun = (
+                    effective_tipo_lotto == "MASSIVO"
+                    and lotto_stato_corrente == "ERRORE"
+                )
+                draft_id = self.repository.get_stato_doc_fiscale_id("DRAFT")
+                emessa_id = self.repository.get_stato_doc_fiscale_id("EMESSA")
+                rerun_reset_step_ids = {
+                    step_id for step_id in (draft_id, emessa_id) if step_id is not None
+                }
+                meta: dict[str, Any] = params.meta or {}
+                auto_step_rollback_enabled = bool(meta.get("auto_step_rollback"))
                 inviata_id = self.repository.get_stato_doc_fiscale_id("INVIATA")
 
                 self.repository.set_lotto_job_stato(lotto_id, "IN_ESECUZIONE", "Avvio pipeline")
@@ -144,11 +157,47 @@ class LottoPipelineRunner:
                 )
                 assert lotto_context is not None
 
-                for step in self.repository.list_pipeline_steps(
+                steps = self.repository.list_pipeline_steps(
                     effective_tipo_lotto,
                     utility_id=lotto_context.utility_id,
                     tipo_doc_fiscale_id=lotto_context.tipo_doc_fiscale_id,
-                ):
+                )
+                if is_massivo_error_rerun and lotto_stato_doc_corrente is not None:
+                    step_index_by_stato = {
+                        step.stato_doc_fiscale_id: index for index, step in enumerate(steps)
+                    }
+                    current_index = step_index_by_stato.get(lotto_stato_doc_corrente)
+                    if current_index is not None:
+                        # Resume su step corrente in errore; evita transizioni retroattive non ammesse.
+                        steps = steps[current_index:]
+
+                for step in steps:
+                    rollback_processes = self.repository.get_step_processes(
+                        step.stato_doc_fiscale_id,
+                        tipo_lotto=effective_tipo_lotto,
+                        utility_id=lotto_context.utility_id,
+                        tipo_doc_fiscale_id=lotto_context.tipo_doc_fiscale_id,
+                        rollback=True,
+                    )
+                    rollback_auto_safe = all(
+                        str(process.get("task", "")).strip() != "reset_lotto_draft"
+                        for process in rollback_processes
+                    )
+                    if (
+                        is_massivo_error_rerun
+                        and auto_step_rollback_enabled
+                        and step.stato_doc_fiscale_id in rerun_reset_step_ids
+                        and rollback_processes
+                        and rollback_auto_safe
+                    ):
+                        self.step_executor.execute_step(
+                            lotto_id=lotto_id,
+                            stato_doc_fiscale_id=step.stato_doc_fiscale_id,
+                            tipo_lotto=effective_tipo_lotto,
+                            rollback=True,
+                            dry_run=params.dry_run,
+                        )
+
                     # Traccia avanzamento step coerente con il flusso SQL originale.
                     self.repository.update_lotto_stato_doc(lotto_id, step.stato_doc_fiscale_id)
                     if (
