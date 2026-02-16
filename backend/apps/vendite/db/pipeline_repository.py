@@ -148,6 +148,21 @@ class VenditePipelineRepository:
             return None
         return row[0]
 
+    def get_lotto_stato_doc_fiscale_id(self, lotto_id: int) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT stato_doc_fiscale_id
+                FROM vendite.fatturazione_lotti
+                WHERE id = %s
+                """,
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+        if not row or row[0] is None:
+            return None
+        return int(row[0])
+
     def get_dominio_id(self, codice: str | None = None) -> int:
         dominio_code = codice or self.DOMINIO_CODE
         ErrorManager.require(
@@ -411,6 +426,25 @@ class VenditePipelineRepository:
                 return decoded
             return []
         return []
+
+    def has_step_processes(
+        self,
+        *,
+        stato_doc_fiscale_id: int,
+        tipo_lotto: str,
+        utility_id: int | None,
+        tipo_doc_fiscale_id: int | None,
+        rollback: bool,
+    ) -> bool:
+        return bool(
+            self.get_step_processes(
+                stato_doc_fiscale_id,
+                tipo_lotto=tipo_lotto,
+                utility_id=utility_id,
+                tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+                rollback=rollback,
+            )
+        )
 
     def run_select_attivita_task(
         self,

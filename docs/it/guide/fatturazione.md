@@ -192,6 +192,7 @@ La **numerazione** avviene nello step **DEFINITIVA**.
 ### 🔢 Numerazione
 * Assegnata **solo** nello step **DEFINITIVA** (non in `EMESSA`).
 * Regole gestite da `vendite.registri_fatturazione`.
+* In caso di errore in `DEFINITIVA`, la riesecuzione deve ripartire dalle sole fatture non numerate/in errore, senza reset globale del lotto.
 
 ### ⚙️ Step `EMESSA` (massivo)
 Nello step `EMESSA` del lotto massivo sono previsti i task pre-fiscali:
@@ -199,6 +200,9 @@ Nello step `EMESSA` del lotto massivo sono previsti i task pre-fiscali:
 * generazione source minimi/fondi
 * applicazione fondi alle fatture del lotto
 * ricalcolo IVA lotto (con aggiornamento totali testata)
+
+Prerequisito operativo:
+* Le transizioni in `config.stati_doc_fiscale_transizioni` devono essere configurate (es. `DRAFT -> EMESSA` con `solo_fattura=false`), altrimenti il trigger lotto blocca l'avanzamento step.
 
 ### 📦 Output correlati
 * `vendite.fatture_riepiloghi_iva`
@@ -239,6 +243,13 @@ Regola di controllo operativa:
 * per decidere se una source e` ancora applicabile si usa il saldo effettivo
   del documento (residuo fattura al netto delle componenti contabili postabili),
   cosi` si evita di riincludere importi gia` in lavorazione.
+
+### 🔁 Riesecuzione e reset (stato attuale)
+* `MASSIVO`: gli step `DRAFT` e `EMESSA` sono rieseguibili con reset tecnico di step.
+* `GIORNALIERO`: niente reset lotto su `EMESSA` (emissione fuori lotto).
+* Runner Django:
+  * su lotto `MASSIVO` in `ERRORE`, la riesecuzione riparte dallo step corrente (resume) per evitare transizioni retroattive non ammesse;
+  * il rollback step (`rollback=true`) e` supportato in modo opzionale tramite `meta.auto_step_rollback=true`, con guard applicativa che evita rollback distruttivi (`reset_lotto_draft`) in auto-run.
 
 ### 🖥️ Dashboard “Emissione”
 * Preview del documento e controlli finali pre-fiscali.
@@ -292,6 +303,47 @@ Un processo fatturazione **modulare**, verificabile e scalabile:
 * calcolo controllato → `fatture_righe`
 * emissione separata → `fatture` numerate
 * dashboard e output fiscali governati
+
+---
+
+## ✅ Checklist prima esecuzione pipeline
+
+Usare questa checklist prima di lanciare i primi run su un ambiente.
+
+1. Verificare che gli step pipeline siano presenti per il dominio/tipo lotto:
+   * `vendite.fatturazione_pipeline` popolata per `MASSIVO` e (se usato) `GIORNALIERO`.
+2. Verificare task registry e implementazioni:
+   * `dbops.pipeline_task_registry` e `dbops.pipeline_task_registry_impl` allineate con i task JSON.
+3. Verificare transizioni stati documento lotto:
+   * `config.stati_doc_fiscale_transizioni` deve consentire i passaggi richiesti dagli step (es. `DRAFT -> EMESSA` con `solo_fattura=false`).
+4. Verificare prerequisiti dati per task EMESSA:
+   * tipo fondo attivo (`vendite.tipi_fondi_fattura.codice_interno`)
+   * scope fatture lotto completo (utility/tipo_doc/emittente/valuta valorizzati).
+5. Verificare policy riesecuzione:
+   * `MASSIVO` step `DRAFT/EMESSA` rieseguibili con reset tecnico step.
+   * `DEFINITIVA` in resume per fattura (no reset globale).
+   * `GIORNALIERO` senza reset lotto su emissione.
+
+Query di controllo rapido:
+
+```sql
+-- Step risolti per tipo lotto
+SELECT stato_doc_fiscale_id, descrizione, ordine
+FROM vendite.fn_list_fatturazione_pipeline_steps('MASSIVO', 1, 2);
+
+-- Transizioni stato lotto critiche
+SELECT stato_from_id, stato_to_id, ammesso, solo_fattura
+FROM config.stati_doc_fiscale_transizioni
+WHERE stato_from_id = 1;
+
+-- Task registrati dominio FATTURAZIONE
+SELECT r.task_code, i.implementation_key, i.handler_code, i.is_default
+FROM dbops.pipeline_task_registry r
+JOIN dbops.pipeline_task_registry_impl i ON i.task_registry_id = r.id
+JOIN dbops.domini_task d ON d.id = r.dominio_id
+WHERE d.codice = 'FATTURAZIONE' AND r.attivo AND i.attivo
+ORDER BY r.task_code, i.implementation_key;
+```
 
 ---
 

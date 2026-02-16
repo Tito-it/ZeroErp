@@ -27,6 +27,9 @@
 - [x] Pipeline dedicata per `attivita_fatturabili` (tabella + funzioni resolve/list).
 - [ ] Pipeline `attivita_fatturabili`: completamento log/runner/handler dominio.
 - [ ] Registry runtime multi-dominio completo in Django (mappa per dominio).
+- [x] Resume `DEFINITIVA` a livello fattura (ripartenza da errore senza reset globale).
+- [x] Policy rerun `MASSIVO` nel runner Django: resume dallo step corrente + rollback step opzionale con `meta.auto_step_rollback=true` (skip rollback distruttivi in auto-run).
+- [x] Seed transizioni `config.stati_doc_fiscale_transizioni` allineato agli step lotto (incluso `MASSIVO` 8 -> 3).
 
 ## 🚦 Test gravita disallineamenti (guida vs WIP)
 
@@ -677,6 +680,16 @@ Proposta di base:
 
 * da **EMESSA** → **DRAFT** ammesso per consentire ricalcolo (prima dell’invio)
 * **REGISTRATA** e **ANNULLATA** non sono rollbackabili (salvo processo amministrativo dedicato)
+
+Regola operativa confermata:
+* `MASSIVO`
+  * `DRAFT` e `EMESSA`: rieseguibili con reset tecnico di step.
+  * `DEFINITIVA`: niente reset globale; resume dalle sole fatture non numerate/in errore.
+* `GIORNALIERO`
+  * nessun reset lotto per `EMESSA`; emissione gestita fuori pipeline lotto.
+
+Nota implementativa corrente:
+* Il runner Django esegue gli step con `rollback=false` fisso; il rollback automatico su errore step e` ancora da introdurre.
 
 **Regola proposta (config)**:
 
