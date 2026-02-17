@@ -316,6 +316,8 @@ Usare questa checklist prima di lanciare i primi run su un ambiente.
    * `dbops.pipeline_task_registry` e `dbops.pipeline_task_registry_impl` allineate con i task JSON.
 3. Verificare transizioni stati documento lotto:
    * `config.stati_doc_fiscale_transizioni` deve consentire i passaggi richiesti dagli step (es. `DRAFT -> EMESSA` con `solo_fattura=false`).
+   * Se la stessa transizione vale per piu` `tipo_lotto` (es. `DEFINITIVA -> INVIATA`),
+     usare **una sola riga** con `meta = {}` (senza `meta.tipo_lotto`) per evitare conflitti sul vincolo unico.
 4. Verificare prerequisiti dati per task EMESSA:
    * tipo fondo attivo (`vendite.tipi_fondi_fattura.codice_interno`)
    * scope fatture lotto completo (utility/tipo_doc/emittente/valuta valorizzati).

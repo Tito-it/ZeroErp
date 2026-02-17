@@ -69,6 +69,7 @@
 - [tipi_soggetto_dettaglio_tipi_indirizzo](tabelle/tipi_soggetto_dettaglio_tipi_indirizzo.md)
 - [trasferimenti](tabelle/trasferimenti.md)
 - [trasferimenti_righe](tabelle/trasferimenti_righe.md)
+- [utilities_tipi_ruolo](tabelle/utilities_tipi_ruolo.md)
 - [vettori](tabelle/vettori.md)
 
 ## ⚙️ Funzioni

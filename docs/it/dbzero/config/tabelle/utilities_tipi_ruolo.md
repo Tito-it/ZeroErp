@@ -34,5 +34,10 @@
 | pk_utilities_tipi_ruolo | `CREATE UNIQUE INDEX pk_utilities_tipi_ruolo ON config.utilities_tipi_ruolo USING btree (id)` |
 | uq_utilities_tipi_ruolo_utility_tipo_ruolo | `CREATE UNIQUE INDEX uq_utilities_tipi_ruolo_utility_tipo_ruolo ON config.utilities_tipi_ruolo USING btree (utility_id, tipo_ruolo_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_utilities_tipi_ruolo_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

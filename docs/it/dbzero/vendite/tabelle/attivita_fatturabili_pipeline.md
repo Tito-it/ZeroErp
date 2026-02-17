@@ -35,5 +35,12 @@
 | uq_attivita_pipeline_step_utility | `CREATE UNIQUE INDEX uq_attivita_pipeline_step_utility ON vendite.attivita_fatturabili_pipeline USING btree (codice_step, utility_id) WHERE ((utility_id IS NOT NULL) AND (sorgente_tipo_id IS NULL))` |
 | uq_attivita_pipeline_step_utility_sorgente | `CREATE UNIQUE INDEX uq_attivita_pipeline_step_utility_sorgente ON vendite.attivita_fatturabili_pipeline USING btree (codice_step, utility_id, sorgente_tipo_id) WHERE ((utility_id IS NOT NULL) AND (sorgente_tipo_id IS NOT NULL))` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_attivita_fatturabili_pipeline_a10_sorgenti_require_a_7092b0 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
+| trg_attivita_fatturabili_pipeline_a10_sorgenti_require_a_7092b0 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
+| trg_attivita_fatturabili_pipeline_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

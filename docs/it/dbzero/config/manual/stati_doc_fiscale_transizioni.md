@@ -34,6 +34,11 @@ documento, con validita` separata per **lotti** e **fatture**.
 * I guard di stato su `fatture` e `fatturazione_lotti` usano questa tabella.
 * Se `meta.tipo_lotto` e` valorizzato (es. `MASSIVO`, `GIORNALIERO`),
   la transizione e` ammessa **solo** per lotti con lo stesso `tipo_lotto`.
+* Se una transizione deve valere per **piu` tipi lotto** con la stessa coppia
+  `stato_from_id -> stato_to_id` (es. `DEFINITIVA -> INVIATA`), **non**
+  valorizzare `meta.tipo_lotto` e usare `meta = {}`.
+  Questo evita duplicati sul vincolo unico
+  `(stato_from_id, stato_to_id, solo_lotto, solo_fattura)`.
 * La tabella sostituisce i flag generici di rollback.
 
 ---
