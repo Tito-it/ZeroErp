@@ -31,6 +31,101 @@
 - [x] Policy rerun `MASSIVO` nel runner Django: resume dallo step corrente + rollback step opzionale con `meta.auto_step_rollback=true` (skip rollback distruttivi in auto-run).
 - [x] Seed transizioni `config.stati_doc_fiscale_transizioni` allineato agli step lotto (incluso `MASSIVO` 8 -> 3).
 
+## ✅ Recap operativo pipeline fatturazione (DB + Django)
+
+- [x] Runner Django in produzione logica pipeline (`LottoPipelineRunner` + `PipelineStepExecutor`).
+- [x] Config pipeline DB allineata agli step `DRAFT` -> `EMESSA` -> `DEFINITIVA`.
+- [x] Step `EMESSA` massivo con task fondi/IVA e chiusure operative coerenti.
+- [x] Policy rerun `MASSIVO` in errore: resume dallo step corrente.
+- [x] Rollback step opzionale (`meta.auto_step_rollback=true`) con guard su rollback distruttivi.
+- [x] `DEFINITIVA` in modalita resume (no reset globale lotto).
+- [x] Error envelope + idempotency API centralizzati e allineati al flusso.
+- [x] Test unit runner aggiornati e verdi (`apps.vendite.tests.services.test_pipeline_runner`).
+
+## ✅ Go-live checklist tecnica (stato)
+
+- [x] Seed transizioni lotto coerente con step pipeline (evitati duplicati logici su `8 -> 3`).
+- [x] Seed registry task/implementation coerente con task JSON pipeline.
+- [x] Documentazione guida + WIP riallineata al comportamento reale runner.
+- [x] Consolidare checklist test finale unica (pgtap + Django + smoke API end-to-end).
+- [ ] Estendere stesso pattern a pipeline `attivita_fatturabili` (runner/handler/test).
+
+## ✅ Checklist test go-live unificata (esecutiva)
+
+### 0) Pre-flight ambiente
+
+- [ ] Branch allineato (`main`/`Tito-dev`/`dev/*`) e working tree pulita.
+- [ ] `.env`/utenza DB runtime corrette per backend (`zeroerp_app` o utente ambiente).
+- [ ] Changelog Liquibase applicato all'ambiente target (schema + code + data).
+
+### 1) Test DB (pgtap / SQL policy)
+
+- [ ] Eseguire suite pgtap dominio vendite (funzioni reset, trigger guard stato, pipeline resolve).
+- [ ] Verificare seed `config.stati_doc_fiscale_transizioni` senza duplicati logici.
+- [ ] Verificare `vendite.fatturazione_pipeline` + `dbops.pipeline_task_registry*` coerenti.
+
+### 2) Test Django unit/service
+
+- [ ] `apps.vendite.tests.services.test_pipeline_runner` (resume/rollback policy).
+- [ ] `apps.vendite.tests.services.test_pipeline_step_executor` (task mapping/handler).
+- [ ] test reset lotto/fattura (`test_lotto_reset_service`, `test_lotto_reset_fattura_service`).
+
+### 3) Test API (contratto + sicurezza)
+
+- [ ] `apps.vendite.tests.api.test_pipeline_api` (JWT, idempotency, envelope errori).
+- [ ] `apps.vendite.tests.api.test_reset_lotto_draft_api`.
+- [ ] `apps.vendite.tests.api.test_reset_lotto_fattura_draft_api`.
+
+### 4) Smoke end-to-end manuale (ambiente integrato)
+
+- [ ] POST `/api/v1/vendite/pipeline/run/` con `lotto_id=0` e `Idempotency-Key` nuovo -> atteso `status=ok`.
+- [ ] Riesecuzione stessa key -> atteso replay/in-progress coerente con policy idempotency.
+- [ ] Simulare errore step e rilancio lotto `MASSIVO`:
+  - [ ] resume da step corrente confermato;
+  - [ ] con `meta.auto_step_rollback=true` esegue solo rollback non distruttivi.
+- [ ] Step `DEFINITIVA`: confermare numerazione idempotente e assenza reset globale lotto.
+
+### 5) Exit criteria go-live
+
+- [ ] Nessun test bloccante fallito (DB + Django + API).
+- [ ] Nessun errore tecnico non sanitizzato in response pubbliche.
+- [ ] Log e request_id tracciabili per analisi supporto.
+- [ ] Checklist firmata con data e commit SHA di riferimento.
+
+### 6) Runbook comandi rapidi (operativo)
+
+```bash
+# 0) Pre-flight: branch/stato repo
+git fetch origin
+git status
+git rev-parse --short HEAD
+
+# 1) Test Django vendite (service + api)
+cd backend
+./manage-test.sh apps.vendite.tests.services.test_pipeline_runner -v 2
+./manage-test.sh apps.vendite.tests.services.test_pipeline_step_executor -v 2
+./manage-test.sh apps.vendite.tests.api.test_pipeline_api -v 2
+./manage-test.sh apps.vendite.tests.api.test_reset_lotto_draft_api -v 2
+./manage-test.sh apps.vendite.tests.api.test_reset_lotto_fattura_draft_api -v 2
+
+# 2) Smoke API manuale (JWT + Idempotency-Key)
+curl -k -X POST "https://<host>/api/v1/vendite/pipeline/run/" \
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -H "Idempotency-Key: lotto-smoke-$(date +%Y%m%d%H%M%S)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "lotto_id": 0,
+    "competenza_mese": "2026-02-07",
+    "tipo_doc_fiscale_id": 2,
+    "utility_id": 1,
+    "billing_account_id": 0,
+    "lock_batch_id": null,
+    "meta": {"auto_step_rollback": false},
+    "dry_run": true,
+    "tipo_lotto": "MASSIVO"
+  }'
+```
+
 ## 🚦 Test gravita disallineamenti (guida vs WIP)
 
 Riferimento confronto:
@@ -62,7 +157,7 @@ Esito sintetico:
 * **Checklist test finale non unificata**
   * Impatto: bassa visibilita` di regressione globale tra pgtap e test Django.
   * Azione: creare una sezione unica “go-live checklist” con test minimi obbligatori.
-  * Stato: **aperta**.
+  * Stato: **chiusa** (sezione unica introdotta in questo documento).
 
 * **Contenuti guida/WIP parzialmente duplicati**
   * Impatto: rischio drift documentale su sezioni operative lunghe replicate.

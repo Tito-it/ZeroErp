@@ -188,9 +188,11 @@ Rendere parametrico il dispatch task senza esecuzione dinamica libera.
 * [x] Pipeline massiva (EMESSA) include task `close_lotto`
 * [x] Runner Django: policy rerun su lotto `MASSIVO` in errore (resume dallo step corrente + rollback step opzionale via `meta.auto_step_rollback=true`, con skip automatico dei rollback distruttivi)
 * [x] Resume `DEFINITIVA` per fattura (senza reset globale lotto)
+* [x] Seed transizioni `config.stati_doc_fiscale_transizioni` coerente con avanzamento step lotto
 
 Vincolo operativo:
 * Le transizioni in `config.stati_doc_fiscale_transizioni` devono essere seedate in modo coerente con gli step pipeline lotto (`DRAFT -> EMESSA`, ecc.), altrimenti il trigger stato lotto blocca l'avanzamento.
+* Se una transizione lotto e` comune a piu` tipi lotto, usare riga unica (`meta = {}`) per evitare duplicazioni logiche.
 
 ### Funzioni SQL fatturazione
 
