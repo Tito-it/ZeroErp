@@ -219,6 +219,38 @@ L’applicazione riceverà l’errore formattato, mentre il database manterrà u
 
 ---
 
+## 🧭 Routing Errori Applicativi (pipeline/domini)
+
+Per i processi applicativi (es. pipeline fatturazione) il log tecnico generale su
+`dbops.error_log` **non sostituisce** i log di dominio.  
+Si applica quindi un routing esplicito:
+
+* `scope = LOTTO` -> log su `vendite.fatturazione_lotti_log`
+* `scope = FATTURA` -> log su `vendite.fatture_log`
+* in entrambi i casi resta attivo anche il log tecnico standard (`dbops.error_log`)
+
+### Contratto minimo consigliato (backend)
+
+* `scope`: `LOTTO` | `FATTURA`
+* `severity`: `I` | `W` | `C`
+* `code`: codice errore stabile
+* `message`: messaggio sintetico
+* `detail`: dettaglio tecnico
+* `lotto_id`: obbligatorio nei processi pipeline
+* `fattura_id`: obbligatorio se `scope = FATTURA`
+* `context/meta`: JSON con task, step, funzione, parametri
+
+### Esempi pratici (stato attuale vendite)
+
+* Avanzamento step pipeline -> `vendite.fn_log_pipeline_fase(...)` su `fatturazione_lotti_log`.
+* Esito severità lotto (C > W > I) -> `vendite.fn_log_lotto_esito_fatture(...)`.
+* Errori documento specifici (es. reset fondi bloccato da contabilizzazione) -> `vendite.fatture_log`.
+* Errori SQL/raise (`script.fn_log_and_raise_error`) -> `dbops.error_log`.
+
+Questa regola è riusabile per altri domini (es. `ATTIVITA_FATTURABILI`, `PRATICHE`) mantenendo lo stesso contratto (`scope`, `severity`, `code`, `context`) e cambiando solo i target log di dominio.
+
+---
+
 ## 💡 Best Practices
 
 * **Centralizzare tutti i messaggi** in `config.messaggi_errore`, senza hard‑coding di testi.

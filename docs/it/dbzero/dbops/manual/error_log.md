@@ -105,4 +105,25 @@ Non rappresenta una scadenza “funzionale” dell’errore, ma solo un **timest
 
 ---
 
+### 🧩 Pattern di integrazione con log di dominio
+
+`dbops.error_log` è il **log tecnico centralizzato**.  
+Nei domini applicativi è consigliato affiancarlo con log funzionali dedicati.
+
+Esempio dominio vendite/fatturazione:
+
+* log tecnico: `dbops.error_log` (raise SQL / ErrorManager backend)
+* log di processo lotto: `vendite.fatturazione_lotti_log`
+* log documento: `vendite.fatture_log`
+
+Regola operativa:
+
+* errore di orchestrazione/processo -> log di dominio `LOTTO` + `error_log`
+* errore su singolo documento -> log di dominio `FATTURA` + `error_log`
+
+Questo approccio evita ambiguità: `error_log` conserva il dettaglio tecnico,
+mentre i log di dominio governano stato/esito funzionale visibile in dashboard.
+
+---
+
 > 🧠 **“Un error log strutturato con identità transazionale e contesto dettagliato semplifica il debug e il monitoraggio degli incidenti applicativi.”**

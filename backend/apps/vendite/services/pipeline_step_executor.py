@@ -9,6 +9,7 @@
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.value_normalizer import as_bool
 from apps.vendite.db.pipeline_repository import LottoContext, VenditePipelineRepository
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 
@@ -30,6 +31,7 @@ class PipelineStepExecutor:
             "genera_fondi_source_lotto_default": self._handle_genera_fondi_source_lotto_task,
             "applica_fondi_lotto_default": self._handle_applica_fondi_lotto_task,
             "ricalcola_iva_lotto_default": self._handle_ricalcola_iva_lotto_task,
+            "prepare_sdi_payload_lotto_default": self._handle_prepare_sdi_payload_lotto_task,
             "numera_fatture_default": self._handle_numera_fatture_task,
             "close_lotto_default": self._handle_close_lotto_task,
             "reset_lotto_draft_default": self._handle_reset_lotto_draft_task,
@@ -301,6 +303,29 @@ class PipelineStepExecutor:
         self.repository.run_ricalcola_iva_lotto_task(
             lotto_id=lotto_id,
             batch_size=batch_size,
+        )
+
+    def _handle_prepare_sdi_payload_lotto_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> None:
+        # Preparazione dataset SDI e apertura tentativi per le fatture del lotto.
+        self._validate_task_function_name(task=task, fn_name=fn_name)
+        if dry_run:
+            return
+        stato_sdi_codice_interno = str(params.get("stato_sdi_codice_interno") or "DA_INVIARE")
+        force_new_tentativo = as_bool(params.get("force_new_tentativo"), default=False)
+        self.repository.run_prepare_sdi_payload_lotto_task(
+            lotto_id=lotto_id,
+            stato_sdi_codice_interno=stato_sdi_codice_interno,
+            force_new_tentativo=force_new_tentativo,
         )
 
     def _handle_close_lotto_task(

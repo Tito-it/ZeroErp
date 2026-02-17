@@ -201,6 +201,13 @@ Nello step `EMESSA` del lotto massivo sono previsti i task pre-fiscali:
 * applicazione fondi alle fatture del lotto
 * ricalcolo IVA lotto (con aggiornamento totali testata)
 
+### ⚙️ Step `INVIATA` (massivo)
+Nello step `INVIATA` del lotto massivo e` previsto il task di preparazione payload SDI:
+
+* apertura/riuso tentativi in `vendite.fatture_sdi`
+* registrazione eventi `PREPARED` in `vendite.fatture_sdi_eventi`
+* dataset pronto per generazione file di invio
+
 Prerequisito operativo:
 * Le transizioni in `config.stati_doc_fiscale_transizioni` devono essere configurate (es. `DRAFT -> EMESSA` con `solo_fattura=false`), altrimenti il trigger lotto blocca l'avanzamento step.
 

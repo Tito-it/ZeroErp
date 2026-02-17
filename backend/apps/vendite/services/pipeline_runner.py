@@ -55,6 +55,7 @@ class LottoPipelineRunner:
         # Mantiene stato lotto coerente e traccia errore con codice uniforme.
         with transaction.atomic():
             self.repository.set_lotto_job_stato(lotto_id, "ERRORE", "Errore pipeline")
+            self.repository.log_lotto_esito_fatture(lotto_id)
             ErrorManager.log_error_only(
                 code=code,
                 context={"lotto_id": lotto_id, "tipo_lotto": tipo_lotto, "detail": detail},
@@ -114,18 +115,14 @@ class LottoPipelineRunner:
                 effective_tipo_lotto = lotto_tipo_db or effective_tipo_lotto
                 lotto_stato_corrente = self.repository.get_lotto_job_stato(lotto_id)
                 lotto_stato_doc_corrente = self.repository.get_lotto_stato_doc_fiscale_id(lotto_id)
-                if normalized_lotto_id is None and lotto_stato_corrente == "COMPLETATO":
+                if lotto_stato_corrente == "IN_ESECUZIONE":
                     ErrorManager.raise_error(
-                        code="E_PIPELINE_LOTTO_COMPLETATO_REUSE",
-                        message="Lotto completato non riutilizzabile.",
-                        detail=(
-                            "Risolto lotto gia` completato durante creazione automatica: "
-                            f"lotto_id={lotto_id}. Usa lock_batch_id diverso o lotto esplicito."
-                        ),
+                        code="E_PIPELINE_LOTTO_IN_ESECUZIONE",
+                        message="Lotto gia` in esecuzione.",
+                        detail=f"Rilancio non consentito su lotto in esecuzione: {lotto_id}",
                         context={
                             "lotto_id": lotto_id,
                             "tipo_lotto": effective_tipo_lotto,
-                            "lock_batch_id": params.lock_batch_id,
                         },
                         function_name="vendite.pr_run_lotto_pipeline",
                         log_to_db=True,
@@ -199,6 +196,11 @@ class LottoPipelineRunner:
                         )
 
                     # Traccia avanzamento step coerente con il flusso SQL originale.
+                    self.repository.set_lotto_job_stato(
+                        lotto_id,
+                        "IN_ESECUZIONE",
+                        f"Esecuzione step: {step.descrizione or step.stato_doc_fiscale_id}",
+                    )
                     self.repository.update_lotto_stato_doc(lotto_id, step.stato_doc_fiscale_id)
                     if (
                         effective_tipo_lotto == "GIORNALIERO"
@@ -228,6 +230,7 @@ class LottoPipelineRunner:
                         rollback=False,
                         dry_run=params.dry_run,
                     )
+                    self.repository.log_lotto_esito_fatture(lotto_id)
 
                 self.repository.set_lotto_job_stato(lotto_id, "COMPLETATO", "Pipeline completata")
                 return lotto_id

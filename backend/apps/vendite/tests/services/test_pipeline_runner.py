@@ -4,10 +4,11 @@ Indice test eseguiti:
 2) LottoPipelineRunnerUnitTests.test_runner_wraps_unexpected_error_with_service_error
 3) LottoPipelineRunnerUnitTests.test_runner_preserves_service_error_code
 4) LottoPipelineRunnerUnitTests.test_runner_does_not_mask_error_when_mark_fails
-5) LottoPipelineRunnerUnitTests.test_runner_rejects_auto_reuse_of_completed_lotto
+5) LottoPipelineRunnerUnitTests.test_runner_completed_lotto_reexecutes_pipeline_steps
 6) LottoPipelineRunnerUnitTests.test_runner_massivo_error_rerun_resumes_from_current_step
 7) LottoPipelineRunnerUnitTests.test_runner_massivo_error_rerun_executes_step_rollback_when_enabled
 8) LottoPipelineRunnerUnitTests.test_runner_massivo_error_rerun_skips_destructive_reset_lotto_rollback
+9) LottoPipelineRunnerUnitTests.test_runner_blocks_when_lotto_in_esecuzione
 """
 
 from contextlib import nullcontext
@@ -64,6 +65,12 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             return None
 
         def log_pipeline_fase(self, **kwargs):
+            return None
+
+        def log_lotto_esito_fatture(self, lotto_id):
+            return None
+
+        def log_fatture_lotto(self, **kwargs):
             return None
 
         def get_step_processes(
@@ -169,7 +176,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(exc.exception.code, "E_TASK_NOT_IMPLEMENTED")
 
-    def test_runner_rejects_auto_reuse_of_completed_lotto(self):
+    def test_runner_completed_lotto_reexecutes_pipeline_steps(self):
         class _CompletedRepo(self._RepoMock):
             def get_lotto_job_stato(self, lotto_id):
                 return "COMPLETATO"
@@ -178,10 +185,12 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
         with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
-            with self.assertRaises(ServiceError) as exc:
-                runner.run_pipeline(LottoPipelineParams(lotto_id=0, dry_run=True))
-        self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_COMPLETATO_REUSE")
-        self.assertFalse(step_executor.called)
+            result = runner.run_pipeline(LottoPipelineParams(lotto_id=0, dry_run=True))
+        self.assertEqual(result, 10)
+        self.assertEqual(len(step_executor.calls), 3)
+        self.assertEqual(step_executor.calls[0]["stato_doc_fiscale_id"], 1)
+        self.assertEqual(step_executor.calls[1]["stato_doc_fiscale_id"], 2)
+        self.assertEqual(step_executor.calls[2]["stato_doc_fiscale_id"], 8)
 
     def test_runner_massivo_error_rerun_resumes_from_current_step(self):
         class _ErroredRepo(self._RepoMock):
@@ -267,3 +276,17 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertFalse(step_executor.calls[0]["rollback"])
         self.assertEqual(step_executor.calls[1]["stato_doc_fiscale_id"], 8)
         self.assertFalse(step_executor.calls[1]["rollback"])
+
+    def test_runner_blocks_when_lotto_in_esecuzione(self):
+        class _RunningRepo(self._RepoMock):
+            def get_lotto_job_stato(self, lotto_id):
+                return "IN_ESECUZIONE"
+
+        repo = _RunningRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            with self.assertRaises(ServiceError) as exc:
+                runner.run_pipeline(LottoPipelineParams(dry_run=True))
+        self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_IN_ESECUZIONE")
+        self.assertFalse(step_executor.called)

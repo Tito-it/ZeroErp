@@ -1,0 +1,256 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260217-02-create-fn-prepare-sdi-payload-mctit.yaml
+
+  - changeSet:
+      id: 20260217-02-create-fn-prepare-sdi-payload
+      author: mctit
+      comment: "Preparazione payload SDI per lotto con apertura tentativi in fatture_sdi"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_prepare_sdi_payload(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                p_stato_sdi_codice_interno config.stati_sdi.codice_interno%TYPE DEFAULT 'DA_INVIARE',
+                p_force_new_tentativo boolean DEFAULT false
+              )
+              RETURNS TABLE(
+                fattura_sdi_id vendite.fatture_sdi.id%TYPE,
+                fattura_id vendite.fatture.id%TYPE,
+                tentativo_num vendite.fatture_sdi.tentativo_num%TYPE,
+                stato_sdi_id vendite.fatture_sdi.stato_sdi_id%TYPE,
+                codice_documento text,
+                numero_fattura vendite.fatture.numero%TYPE,
+                data_fattura vendite.fatture.data%TYPE,
+                billing_account_id vendite.fatture.billing_account_id%TYPE,
+                emittente_soggetto_ruolo_id vendite.fatture.emittente_soggetto_ruolo_id%TYPE,
+                valuta_id vendite.fatture.valuta_id%TYPE,
+                totale_a_pagare vendite.fatture.totale_a_pagare%TYPE
+              )
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_stato_sdi_id config.stati_sdi.id%TYPE;
+                v_exists_lotto boolean := false;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Preparare il dataset SDI per un lotto.
+                --   Se assente, crea il tentativo su vendite.fatture_sdi.
+                --
+                -- Regole:
+                --   - lotto obbligatorio e valido
+                --   - stato SDI risolto da codice_interno (default DA_INVIARE)
+                --   - idempotenza: riusa tentativo aperto (data_invio IS NULL)
+
+                -- Parametri:
+                -- p_force_new_tentativo:
+                -- `false` (default): comportamento consigliato. Se il tentativo aperto esiste, la funzione lo riusa.  
+                --   Utile per rilanciare un processo interrotto senza creare duplicati.
+                -- `true`: forza sempre un nuovo tentativo (`tentativo_num` incrementale), anche se ne esiste uno aperto.  
+                --    Da usare solo quando si vuole esplicitamente una nuova estrazione (retry controllato / nuova revisione payload).
+
+                -- =========================================================
+
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_prepare_sdi_payload', 'E_GENERICO',
+                    jsonb_build_object('detail','p_lotto_id obbligatorio'),
+                    NULL::uuid,
+                    'p_lotto_id obbligatorio e > 0'
+                  );
+                END IF;
+
+                IF p_stato_sdi_codice_interno IS NULL OR btrim(p_stato_sdi_codice_interno) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_prepare_sdi_payload', 'E_GENERICO',
+                    jsonb_build_object('detail','p_stato_sdi_codice_interno obbligatorio'),
+                    NULL::uuid,
+                    'p_stato_sdi_codice_interno obbligatorio'
+                  );
+                END IF;
+
+                SELECT EXISTS (
+                  SELECT 1
+                  FROM vendite.fatturazione_lotti fl
+                  WHERE fl.id = p_lotto_id
+                )
+                INTO v_exists_lotto;
+
+                IF NOT COALESCE(v_exists_lotto, false) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_prepare_sdi_payload', 'E_GENERICO',
+                    jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id),
+                    NULL::uuid,
+                    concat('lotto non trovato: ', p_lotto_id::text)
+                  );
+                END IF;
+
+                SELECT s.id
+                  INTO v_stato_sdi_id
+                  FROM config.stati_sdi s
+                 WHERE s.codice_interno = p_stato_sdi_codice_interno
+                   AND s.attivo IS TRUE
+                 ORDER BY s.ordine NULLS LAST, s.id
+                 LIMIT 1;
+
+                IF v_stato_sdi_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'vendite.fn_prepare_sdi_payload', 'E_GENERICO',
+                    jsonb_build_object('detail','stato_sdi non trovato', 'codice_interno', p_stato_sdi_codice_interno),
+                    NULL::uuid,
+                    concat('stato_sdi non trovato: ', p_stato_sdi_codice_interno)
+                  );
+                END IF;
+
+                CREATE TEMP TABLE tmp_sdi_prepared (
+                  fattura_sdi_id bigint,
+                  fattura_id bigint,
+                  tentativo_num smallint
+                ) ON COMMIT DROP;
+
+                IF COALESCE(p_force_new_tentativo, false) IS FALSE THEN
+                  INSERT INTO tmp_sdi_prepared (fattura_sdi_id, fattura_id, tentativo_num)
+                  SELECT
+                    fs.id,
+                    fs.fattura_id,
+                    fs.tentativo_num
+                  FROM vendite.fatturazione_lotti_fatture lf
+                  JOIN LATERAL (
+                    SELECT s.id, s.fattura_id, s.tentativo_num
+                    FROM vendite.fatture_sdi s
+                    WHERE s.fattura_id = lf.fattura_id
+                      AND s.stato_sdi_id = v_stato_sdi_id
+                      AND s.data_invio IS NULL
+                    ORDER BY s.tentativo_num DESC, s.id DESC
+                    LIMIT 1
+                  ) fs ON TRUE
+                  WHERE lf.lotto_id = p_lotto_id;
+                END IF;
+
+                WITH to_insert AS (
+                  SELECT lf.fattura_id
+                  FROM vendite.fatturazione_lotti_fatture lf
+                  WHERE lf.lotto_id = p_lotto_id
+                    AND NOT EXISTS (
+                      SELECT 1
+                      FROM tmp_sdi_prepared p
+                      WHERE p.fattura_id = lf.fattura_id
+                    )
+                ),
+                next_try AS (
+                  SELECT
+                    t.fattura_id,
+                    COALESCE(MAX(fs.tentativo_num), 0)::smallint + 1 AS tentativo_num
+                  FROM to_insert t
+                  LEFT JOIN vendite.fatture_sdi fs
+                    ON fs.fattura_id = t.fattura_id
+                  GROUP BY t.fattura_id
+                ),
+                ins AS (
+                  INSERT INTO vendite.fatture_sdi (
+                    fattura_id,
+                    tentativo_num,
+                    stato_sdi_id,
+                    data_invio,
+                    data_ricezione,
+                    identificativo_sdi,
+                    nome_file,
+                    messaggio_errore,
+                    critical,
+                    meta,
+                    data_insert,
+                    user_insert,
+                    data_update,
+                    user_update
+                  )
+                  SELECT
+                    n.fattura_id,
+                    n.tentativo_num,
+                    v_stato_sdi_id,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    false,
+                    '{}'::jsonb,
+                    now(),
+                    current_user,
+                    now(),
+                    current_user
+                  FROM next_try n
+                  RETURNING id, fattura_id, tentativo_num
+                )
+                INSERT INTO tmp_sdi_prepared (fattura_sdi_id, fattura_id, tentativo_num)
+                SELECT i.id, i.fattura_id, i.tentativo_num
+                FROM ins i;
+
+                INSERT INTO vendite.fatture_sdi_eventi (
+                  fattura_sdi_id,
+                  stato_sdi_id,
+                  data_evento,
+                  codice_evento,
+                  messaggio,
+                  origine,
+                  meta,
+                  data_insert,
+                  user_insert,
+                  data_update,
+                  user_update
+                )
+                SELECT
+                  p.fattura_sdi_id,
+                  v_stato_sdi_id,
+                  now(),
+                  'PREPARED',
+                  'Tentativo SDI preparato dal lotto',
+                  'SISTEMA',
+                  jsonb_build_object('lotto_id', p_lotto_id),
+                  now(),
+                  current_user,
+                  now(),
+                  current_user
+                FROM tmp_sdi_prepared p
+                WHERE NOT EXISTS (
+                  SELECT 1
+                  FROM vendite.fatture_sdi_eventi e
+                  WHERE e.fattura_sdi_id = p.fattura_sdi_id
+                    AND e.codice_evento = 'PREPARED'
+                );
+
+                RETURN QUERY
+                SELECT
+                  p.fattura_sdi_id,
+                  f.id AS fattura_id,
+                  p.tentativo_num,
+                  v_stato_sdi_id AS stato_sdi_id,
+                  concat_ws('/',
+                    f.anno::text,
+                    NULLIF(f.serie, ''),
+                    f.numero::text
+                  ) AS codice_documento,
+                  f.numero AS numero_fattura,
+                  f.data AS data_fattura,
+                  f.billing_account_id,
+                  f.emittente_soggetto_ruolo_id,
+                  f.valuta_id,
+                  f.totale_a_pagare
+                FROM tmp_sdi_prepared p
+                JOIN vendite.fatture f
+                  ON f.id = p.fattura_id
+                ORDER BY f.id;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION vendite.fn_prepare_sdi_payload(
+                vendite.fatturazione_lotti.id%TYPE,
+                config.stati_sdi.codice_interno%TYPE,
+                boolean
+              ) IS 'Prepara il payload SDI di un lotto aprendo/riusando tentativi in fatture_sdi e restituendo il dataset per generazione file.';

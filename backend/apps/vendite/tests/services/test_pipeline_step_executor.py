@@ -5,9 +5,10 @@ Indice test eseguiti:
 3) PipelineStepExecutorUnitTests.test_execute_step_runs_genera_fondi_source_lotto_task
 4) PipelineStepExecutorUnitTests.test_execute_step_runs_applica_fondi_lotto_task
 5) PipelineStepExecutorUnitTests.test_execute_step_runs_ricalcola_iva_lotto_task
-6) PipelineStepExecutorUnitTests.test_execute_step_runs_numera_fatture_task
-7) PipelineStepExecutorUnitTests.test_execute_step_runs_close_lotto_task
-8) PipelineStepExecutorUnitTests.test_execute_step_runs_reset_lotto_draft_task
+6) PipelineStepExecutorUnitTests.test_execute_step_runs_prepare_sdi_payload_lotto_task
+7) PipelineStepExecutorUnitTests.test_execute_step_runs_numera_fatture_task
+8) PipelineStepExecutorUnitTests.test_execute_step_runs_close_lotto_task
+9) PipelineStepExecutorUnitTests.test_execute_step_runs_reset_lotto_draft_task
 """
 
 from unittest.mock import MagicMock
@@ -36,6 +37,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             "genera_fondi_source_lotto": "vendite.fn_genera_fondi_fattura_source",
             "applica_fondi_lotto": "vendite.fn_applica_fondi_fattura",
             "ricalcola_iva_lotto": "vendite.fn_ricalcola_riepiloghi_iva_lotto",
+            "prepare_sdi_payload_lotto": "vendite.fn_prepare_sdi_payload",
             "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
             "close_lotto": None,
             "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
@@ -122,6 +124,34 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.run_ricalcola_iva_lotto_task.assert_called_once_with(
             lotto_id=11,
             batch_size=500,
+        )
+
+    def test_execute_step_runs_prepare_sdi_payload_lotto_task(self):
+        processi = [
+            {
+                "task": "prepare_sdi_payload_lotto",
+                "fase": "Preparazione payload SDI",
+                "params": {
+                    "stato_sdi_codice_interno": "DA_INVIARE",
+                    "force_new_tentativo": False,
+                },
+            }
+        ]
+        executor, repo, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "prepare_sdi_payload_lotto_default"
+
+        executor.execute_step(
+            lotto_id=11,
+            stato_doc_fiscale_id=3,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.run_prepare_sdi_payload_lotto_task.assert_called_once_with(
+            lotto_id=11,
+            stato_sdi_codice_interno="DA_INVIARE",
+            force_new_tentativo=False,
         )
 
     def test_execute_step_rejects_generate_fatture_righe_fn_override(self):
