@@ -8,6 +8,7 @@
 
 from datetime import date
 
+from apps.vendite.db.pipeline_repository import SdiPayloadRow, VenditePipelineRepository
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 from apps.vendite.services.fatture_righe_service import FattureRigheService
@@ -67,6 +68,21 @@ def fn_execute_pipeline_step(
         tipo_lotto=tipo_lotto,
         rollback=rollback,
         dry_run=dry_run,
+    )
+
+
+def fn_prepare_sdi_payload_lotto(
+    *,
+    lotto_id: int,
+    stato_sdi_codice_interno: str = "DA_INVIARE",
+    force_new_tentativo: bool = False,
+) -> list[SdiPayloadRow]:
+    """Entrypoint servizio Python per estrazione payload SDI da lotto."""
+    repository = VenditePipelineRepository()
+    return repository.run_prepare_sdi_payload_lotto_task(
+        lotto_id=lotto_id,
+        stato_sdi_codice_interno=stato_sdi_codice_interno,
+        force_new_tentativo=force_new_tentativo,
     )
 
 

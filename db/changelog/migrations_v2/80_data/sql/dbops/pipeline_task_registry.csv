@@ -7,3 +7,4 @@ id,dominio_id,task_code,descrizione,attivo,meta,data_insert,user_insert,data_upd
 6,1,genera_fondi_source_lotto,Generazione/aggiornamento source fondi per lotto,true,{},2026-02-16 12:45:00+01,titodb,,
 7,1,applica_fondi_lotto,Applicazione fondi source alle fatture del lotto,true,{},2026-02-16 12:45:00+01,titodb,,
 8,1,ricalcola_iva_lotto,Ricalcolo IVA lotto con aggiornamento totali,true,{},2026-02-16 12:45:00+01,titodb,,
+9,1,prepare_sdi_payload_lotto,Preparazione payload SDI e apertura tentativi lotto,true,{},2026-02-16 19:00:00+01,titodb,,

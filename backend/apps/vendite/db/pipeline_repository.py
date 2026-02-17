@@ -68,6 +68,21 @@ class AttivitaDaFatturare:
     articolo_descrizione: str | None
 
 
+@dataclass(frozen=True)
+class SdiPayloadRow:
+    fattura_sdi_id: int
+    fattura_id: int
+    tentativo_num: int
+    stato_sdi_id: int
+    codice_documento: str | None
+    numero_fattura: int | None
+    data_fattura: date | None
+    billing_account_id: int
+    emittente_soggetto_ruolo_id: int
+    valuta_id: int | None
+    totale_a_pagare: Decimal | None
+
+
 class VenditePipelineRepository:
     """Wrapper SQL a basso livello per l'orchestrazione pipeline vendite."""
 
@@ -80,6 +95,7 @@ class VenditePipelineRepository:
         "genera_fondi_source_lotto": "vendite.fn_genera_fondi_fattura_source",
         "applica_fondi_lotto": "vendite.fn_applica_fondi_fattura",
         "ricalcola_iva_lotto": "vendite.fn_ricalcola_riepiloghi_iva_lotto",
+        "prepare_sdi_payload_lotto": "vendite.fn_prepare_sdi_payload",
         "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
         "close_lotto": None,
         "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
@@ -351,6 +367,55 @@ class VenditePipelineRepository:
                     status,
                     messaggio,
                     self._to_jsonb_param(meta),
+                ],
+            )
+
+    def log_lotto_esito_fatture(self, lotto_id: int) -> None:
+        # Deriva severita` lotto da fatture_log (C > W > I) e scrive su fatturazione_lotti_log.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_log_lotto_esito_fatture(%s)",
+                [lotto_id],
+            )
+
+    def log_fatture_lotto(
+        self,
+        *,
+        lotto_id: int,
+        status: str,
+        messaggio: str,
+        meta: LottoPipelineMeta | None = None,
+    ) -> None:
+        # Logga un messaggio tecnico su tutte le fatture collegate al lotto.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO vendite.fatture_log (
+                    fattura_id,
+                    data_ora,
+                    messaggio,
+                    status,
+                    disabilitato,
+                    critical,
+                    meta
+                )
+                SELECT
+                    lf.fattura_id,
+                    now(),
+                    %s,
+                    %s,
+                    false,
+                    (%s = 'C'),
+                    COALESCE(%s::jsonb, '{}'::jsonb)
+                FROM vendite.fatturazione_lotti_fatture lf
+                WHERE lf.lotto_id = %s
+                """,
+                [
+                    messaggio,
+                    status,
+                    status,
+                    self._to_jsonb_param(meta),
+                    lotto_id,
                 ],
             )
 
@@ -753,6 +818,40 @@ class VenditePipelineRepository:
                 """,
                 [lotto_id, batch_size],
             )
+
+    def run_prepare_sdi_payload_lotto_task(
+        self,
+        *,
+        lotto_id: int,
+        stato_sdi_codice_interno: str = "DA_INVIARE",
+        force_new_tentativo: bool = False,
+    ) -> list[SdiPayloadRow]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM vendite.fn_prepare_sdi_payload(%s, %s, %s)
+                """,
+                [lotto_id, stato_sdi_codice_interno, force_new_tentativo],
+            )
+            rows = cursor.fetchall()
+        # Il payload viene preparato lato DB e qui reso disponibile all'applicazione.
+        return [
+            SdiPayloadRow(
+                fattura_sdi_id=int(row[0]),
+                fattura_id=int(row[1]),
+                tentativo_num=int(row[2]),
+                stato_sdi_id=int(row[3]),
+                codice_documento=row[4],
+                numero_fattura=None if row[5] is None else int(row[5]),
+                data_fattura=row[6],
+                billing_account_id=int(row[7]),
+                emittente_soggetto_ruolo_id=int(row[8]),
+                valuta_id=None if row[9] is None else int(row[9]),
+                totale_a_pagare=row[10],
+            )
+            for row in rows
+        ]
 
     def numera_fattura_opz_emessa(self, fattura_id: int) -> None:
         with connection.cursor() as cursor:

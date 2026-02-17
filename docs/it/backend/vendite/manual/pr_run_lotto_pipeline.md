@@ -33,9 +33,17 @@ I vincoli di coerenza dati e le operazioni DB specialistiche restano delegate al
 ## Regole
 - Se il lotto non esiste viene creato/risolto via DB.
 - Il tipo lotto effettivo usa DB come fonte autoritativa; input come fallback.
+- Se `stato_lotto = IN_ESECUZIONE` il rilancio pipeline e` bloccato.
+- Se il lotto e` chiuso (`COMPLETATO`/`ERRORE`), le transizioni di stato documento sono governate da `config.stati_doc_fiscale_transizioni` (enforcement DB).
 - Per lotto `GIORNALIERO`, allo stato `INVIATA` viene eseguita chiusura operativa lotto.
 - Errori applicativi (`ServiceError`) preservano codice dominio e marcano lotto in errore.
 - Errori inattesi vengono wrappati in `E_PIPELINE` con causa agganciata (`raise ... from ...`).
+
+## Logging e routing errori
+- Log tecnico centralizzato: `dbops.error_log` (via `ErrorManager` lato backend e `fn_log_and_raise_error` lato SQL).
+- Log dominio lotto: `vendite.fatturazione_lotti_log` (fasi step + esito severita` dedotto).
+- Log dominio fattura: `vendite.fatture_log` solo per errori attribuibili alla singola fattura (non massivamente a tutto il lotto).
+- Contratto consigliato per errori applicativi: `scope` (`LOTTO`/`FATTURA`), `severity` (`I/W/C`), `code`, `lotto_id`, `fattura_id` (se `FATTURA`), `context/meta`.
 
 ## Dipendenze DB
 - `vendite.fn_get_or_create_lotto(...)`
