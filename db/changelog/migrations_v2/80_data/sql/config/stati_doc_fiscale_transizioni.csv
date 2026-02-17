@@ -9,4 +9,3 @@ id,stato_from_id,stato_to_id,ammesso,solo_lotto,solo_fattura,meta,data_insert,us
 8,2,8,t,f,t,{},2026-02-10 09:00:00+01,titodb,2026-02-10 09:00:00+01,titodb
 9,8,3,t,f,t,{},2026-02-10 09:00:00+01,titodb,2026-02-10 09:00:00+01,titodb
 10,3,6,t,f,t,{},2026-02-10 09:00:00+01,titodb,2026-02-10 09:00:00+01,titodb
-11,8,3,t,t,f,"{""tipo_lotto"":""MASSIVO""}",2026-02-16 18:00:00+01,titodb,2026-02-16 18:00:00+01,titodb
