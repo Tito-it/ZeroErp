@@ -243,3 +243,16 @@ databaseChangeLog:
                 RETURN v_contabile_id;
               END;
               $$;
+
+  - changeSet:
+      id: 20260213-35-02-update-fn-get-or-create-vendite-contabile-compensazione
+      author: mctit
+      comment: "drop vecchia versione della funzione"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              DROP FUNCTION IF EXISTS 
+              pagamenti.fn_get_or_create_vendite_contabile(bigint, date, date, bigint, bigint, text, jsonb);

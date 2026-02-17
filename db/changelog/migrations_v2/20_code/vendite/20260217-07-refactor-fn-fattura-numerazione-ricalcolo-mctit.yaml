@@ -1,0 +1,799 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260217-07-refactor-fn-fattura-numerazione-ricalcolo-mctit.yaml
+
+  - changeSet:
+      id: 20260217-07-01-update-fn-assign-numero-fattura
+      author: mctit
+      comment: "Refactor scope FATTURA, %TYPE e contratto errori"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_assign_numero_fattura(
+                p_fattura_id vendite.fatture.id%TYPE
+              )
+               RETURNS TABLE(
+                registro_id vendite.registri_fatturazione.id%TYPE,
+                anno vendite.fatture.anno%TYPE,
+                mese smallint,
+                serie vendite.fatture.serie%TYPE,
+                numero vendite.fatture.numero%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_registro_id vendite.fatture.registro_id%TYPE;
+                v_data vendite.fatture.data%TYPE;
+                v_serie vendite.fatture.serie%TYPE;
+                v_reset vendite.registri_fatturazione.reset_policy%TYPE;
+                v_anno vendite.fatture.anno%TYPE;
+                v_mese smallint;
+                v_numero vendite.fatture.numero%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Assegnare progressivo di fattura usando il registro
+                --   e aggiornare anno/serie/numero sulla testata.
+                --
+                -- Regole:
+                --   - p_fattura_id obbligatorio (> 0)
+                --   - usa fn_get_next_progressivo
+                --   - mese valorizzato solo se reset_policy = MENSILE
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_assign_numero_fattura',
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','p_fattura_id obbligatorio', 'fattura_id', p_fattura_id)
+                    ),
+                    NULL::uuid,
+                    concat('p_fattura_id obbligatorio: ', COALESCE(p_fattura_id::text, 'NULL'))
+                  );
+                END IF;
+
+                SELECT f.registro_id,
+                       f.data,
+                       COALESCE(f.serie, r.serie_default, ''),
+                       r.reset_policy
+                  INTO v_registro_id,
+                       v_data,
+                       v_serie,
+                       v_reset
+                  FROM vendite.fatture f
+                  JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
+                 WHERE f.id = p_fattura_id
+                 FOR UPDATE;
+
+                IF v_registro_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_assign_numero_fattura',
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','fattura non trovata', 'fattura_id', p_fattura_id)
+                    ),
+                    NULL::uuid,
+                    concat('fattura non trovata: ', p_fattura_id)
+                  );
+                END IF;
+
+                v_anno := vendite.fn_get_anno_registro(v_data);
+                v_numero := vendite.fn_get_next_progressivo(v_registro_id, v_data, v_serie);
+                v_mese := CASE WHEN v_reset = 'MENSILE'
+                                 THEN EXTRACT(MONTH FROM v_data)::smallint
+                                 ELSE NULL
+                               END;
+
+                UPDATE vendite.fatture
+                   SET anno = v_anno,
+                       serie = NULLIF(v_serie, ''),
+                       numero = v_numero,
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE id = p_fattura_id;
+
+                RETURN QUERY SELECT v_registro_id, v_anno, v_mese, NULLIF(v_serie, '')::varchar, v_numero;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_assign_numero_fattura(bigint)
+              IS 'Assegna anno/serie/numero alla fattura usando il registro e il progressivo con lock del contatore.';
+
+  - changeSet:
+      id: 20260217-07-02-update-fn-numera-fattura-opz-emessa
+      author: mctit
+      comment: "Refactor scope FATTURA, %TYPE e contratto errori"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_numera_fattura_opz_emessa(
+                p_fattura_id vendite.fatture.id%TYPE,
+                p_set_emessa boolean DEFAULT true,
+                p_codice_interno_emessa config.stati_doc_fiscale.codice_interno%TYPE DEFAULT 'EMESSA'::text
+              )
+               RETURNS TABLE(
+                registro_id vendite.registri_fatturazione.id%TYPE,
+                anno vendite.fatture.anno%TYPE,
+                mese smallint,
+                serie vendite.fatture.serie%TYPE,
+                numero vendite.fatture.numero%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_is_numbered boolean;
+                v_reset vendite.registri_fatturazione.reset_policy%TYPE;
+                v_data vendite.fatture.data%TYPE;
+                v_registro_id vendite.fatture.registro_id%TYPE;
+                v_anno vendite.fatture.anno%TYPE;
+                v_mese smallint;
+                v_serie vendite.fatture.serie%TYPE;
+                v_numero vendite.fatture.numero%TYPE;
+                v_stato_emessa_id config.stati_doc_fiscale.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Assegna il numero fattura a fine flusso (idempotente)
+                --   e, opzionalmente, imposta lo stato EMESSA.
+                --
+                -- Regole:
+                --   - p_fattura_id obbligatorio (> 0)
+                --   - lock solo della riga fattura per minimizzare concorrenza
+                --   - se gia' numerata: ritorna valori correnti
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_numera_fattura_opz_emessa',
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','p_fattura_id obbligatorio', 'fattura_id', p_fattura_id)
+                    ),
+                    NULL::uuid,
+                    concat('p_fattura_id obbligatorio: ', COALESCE(p_fattura_id::text, 'NULL'))
+                  );
+                END IF;
+
+                IF p_set_emessa IS TRUE AND (p_codice_interno_emessa IS NULL OR btrim(p_codice_interno_emessa) = '') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_numera_fattura_opz_emessa',
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','p_codice_interno_emessa obbligatorio se p_set_emessa=true')
+                    ),
+                    NULL::uuid,
+                    'p_codice_interno_emessa obbligatorio'
+                  );
+                END IF;
+
+                -- 1) Lock solo la riga fattura per minimizzare concorrenza
+                SELECT f.numero IS NOT NULL AS is_numbered,
+                       f.data,
+                       f.registro_id,
+                       r.reset_policy,
+                       f.anno,
+                       f.serie,
+                       f.numero
+                  INTO v_is_numbered,
+                       v_data,
+                       v_registro_id,
+                       v_reset,
+                       v_anno,
+                       v_serie,
+                       v_numero
+                  FROM vendite.fatture f
+                  JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
+                 WHERE f.id = p_fattura_id
+                 FOR UPDATE;
+
+                IF v_registro_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_numera_fattura_opz_emessa',
+                    'E_FATTURA_NON_TROVATA',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_FATTURA_NON_TROVATA',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('fattura_id', p_fattura_id)
+                    ),
+                    NULL::uuid,
+                    p_fattura_id::text
+                  );
+                END IF;
+
+                -- 2) Se gia' numerata: ritorna i valori correnti (idempotente)
+                IF v_is_numbered THEN
+                  v_mese := CASE WHEN v_reset = 'MENSILE'
+                                   THEN EXTRACT(MONTH FROM v_data)::smallint
+                                   ELSE NULL
+                                 END;
+                  RETURN QUERY SELECT v_registro_id, v_anno, v_mese, v_serie, v_numero;
+                  RETURN;
+                END IF;
+
+                -- 3) Assegna il numero (blocca la riga progressivi solo per l'incremento)
+                SELECT t.registro_id, t.anno, t.mese, t.serie, t.numero
+                  INTO v_registro_id, v_anno, v_mese, v_serie, v_numero
+                  FROM vendite.fn_assign_numero_fattura(p_fattura_id) AS t;
+
+                -- 4) (Opzionale) Imposta stato EMESSA usando il codice_interno stabile
+                IF p_set_emessa THEN
+                  SELECT id
+                    INTO v_stato_emessa_id
+                    FROM config.stati_doc_fiscale
+                   WHERE codice_interno = p_codice_interno_emessa
+                   LIMIT 1;
+
+                  IF v_stato_emessa_id IS NOT NULL THEN
+                    UPDATE vendite.fatture
+                       SET stato_doc_fiscale_id = COALESCE(stato_doc_fiscale_id, v_stato_emessa_id)
+                     WHERE id = p_fattura_id;
+                  END IF;
+                END IF;
+
+                -- 5) Ritorna i dati assegnati -> il chiamante puo' COMMITtare subito
+                RETURN QUERY SELECT v_registro_id, v_anno, v_mese, v_serie, v_numero;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_numera_fattura_opz_emessa(bigint, boolean, text)
+              IS 'Numera la fattura in modo idempotente e, opzionalmente, imposta lo stato documentale EMESSA.';
+
+  - changeSet:
+      id: 20260217-07-03-update-fn-ricalcola-riepilogo-iva-fattura
+      author: mctit
+      comment: "Refactor scope FATTURA, %TYPE e contratto errori"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(
+                p_fattura_id vendite.fatture.id%TYPE
+              )
+               RETURNS TABLE(deleted_rows integer, inserted_rows integer)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_deleted_rows integer := 0;
+                v_inserted_rows integer := 0;
+                v_stato_id vendite.fatture.stato_doc_fiscale_id%TYPE;
+                v_codice_interno config.stati_doc_fiscale.codice_interno%TYPE;
+                v_stato_emittente_id anagrafiche.soggetti.stato_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Ricalcolo riepiloghi IVA per singola fattura.
+                --
+                -- Regole:
+                --   - p_fattura_id obbligatorio
+                --   - ammesso solo per stati DRAFT/EMESSA
+                --   - imponibile arrotondato a 2 dec (half-up)
+                --   - imposta calcolata da imponibile arrotondato * aliquota_iva
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','p_fattura_id obbligatorio')
+                    ),
+                    NULL::uuid,
+                    'p_fattura_id obbligatorio e > 0'
+                  );
+                END IF;
+
+                SELECT f.stato_doc_fiscale_id
+                  INTO v_stato_id
+                  FROM vendite.fatture f
+                 WHERE f.id = p_fattura_id;
+
+                IF v_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','stato_doc_fiscale_id mancante')
+                    ),
+                    NULL::uuid,
+                    'Stato documento non valorizzato'
+                  );
+                END IF;
+
+                SELECT s.codice_interno
+                  INTO v_codice_interno
+                  FROM config.stati_doc_fiscale s
+                 WHERE s.id = v_stato_id;
+
+                IF v_codice_interno NOT IN ('DRAFT', 'EMESSA') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','ricalcolo IVA non ammesso', 'stato', v_codice_interno)
+                    ),
+                    NULL::uuid,
+                    concat('Ricalcolo IVA non ammesso per stato documento ', v_codice_interno)
+                  );
+                END IF;
+
+                -- recupero stato emittente per eventuale override aliquota IVA 
+                SELECT s.stato_id
+                  INTO v_stato_emittente_id
+                  FROM vendite.fatture f
+                  JOIN anagrafiche.soggetti_ruoli sr
+                    ON sr.id = f.emittente_soggetto_ruolo_id
+                  JOIN anagrafiche.soggetti s
+                    ON s.id = sr.soggetto_id
+                 WHERE f.id = p_fattura_id;
+
+                -- Reset riepiloghi esistenti (se presenti) 
+                DELETE FROM vendite.fatture_riepiloghi_iva
+                 WHERE fattura_id = p_fattura_id;
+                GET DIAGNOSTICS v_deleted_rows = ROW_COUNT;
+
+
+
+                -- Ricalcolo riepiloghi IVA con imponibile arrotondato a 2 decimali (half-up) e 
+                -- imposta calcolata da imponibile arrotondato * aliquota_iva, 
+                -- recuperando aliquota con eventuale override per stato emittente tramite fn_get_aliquota_iva
+                INSERT INTO vendite.fatture_riepiloghi_iva (
+                  fattura_id,
+                  iva_id,
+                  natura_id,
+                  esigibilita,
+                  split_payment,
+                  imponibile,
+                  imposta,
+                  arrotondamento
+                )
+                SELECT
+                  r.fattura_id,
+                  r.iva_id,
+                  n.id AS natura_id,
+                  r.esigibilita,
+                  r.split_payment,
+                  ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2) AS imponibile,
+                  ROUND(
+                    ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2)
+                    * (
+                        COALESCE(
+                          config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id),
+                          0
+                        )::numeric / 100::numeric
+                      ),
+                    2
+                  ) AS imposta,
+                  SUM(COALESCE(r.imponibile_riga, 0)) - ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2) AS arrotondamento
+                
+                FROM vendite.fatture_righe r
+                LEFT JOIN config.iva i
+                  ON i.id = r.iva_id
+                LEFT JOIN config.iva_natura n
+                  ON n.codice = r.iva_natura
+                WHERE r.fattura_id = p_fattura_id
+                GROUP BY r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment;
+                GET DIAGNOSTICS v_inserted_rows = ROW_COUNT;
+
+                RETURN QUERY
+                SELECT v_deleted_rows, v_inserted_rows;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(bigint)
+              IS 'Ricalcola i riepiloghi IVA della fattura, ammesso solo per stati documento DRAFT/EMESSA.';
+
+  - changeSet:
+      id: 20260217-07-04-update-fn-ricalcola-totali-fattura
+      author: mctit
+      comment: "Refactor scope FATTURA, %TYPE e contratto errori"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_totali_fattura(
+                p_fattura_id vendite.fatture.id%TYPE
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_imponibile_tot vendite.fatture.imponibile_tot%TYPE;
+                v_imposta_tot vendite.fatture.imposta_tot%TYPE;
+                v_totale_doc vendite.fatture.totale_doc%TYPE;
+                v_totale_fondi vendite.fatture_fondi_fattura.importo%TYPE;
+                v_totale_a_pagare vendite.fatture.totale_a_pagare%TYPE;
+                v_raw_totale vendite.fatture.totale_a_pagare%TYPE;
+                v_round_totale vendite.fatture.totale_a_pagare%TYPE;
+                v_arro_attuale vendite.fatture.arrotondamento_attuale%TYPE;
+                v_arro_precedente vendite.fatture.arrotondamento_precedente%TYPE;
+                v_billing_account_id vendite.fatture.billing_account_id%TYPE;
+                v_tipo_doc_fiscale_id vendite.fatture.tipo_doc_fiscale_id%TYPE;
+                v_emittente_soggetto_ruolo_id vendite.fatture.emittente_soggetto_ruolo_id%TYPE;
+                v_valuta_id vendite.fatture.valuta_id%TYPE;
+                v_utility_id config.utilities.id%TYPE;
+                v_min_soglia_min anagrafiche.emittenti_fiscali_utilities.minimo_soglia_min%TYPE;
+                v_min_soglia_max anagrafiche.emittenti_fiscali_utilities.minimo_soglia_max%TYPE;
+                v_decimali anagrafiche.emittenti_fiscali_utilities.arrotondamento_importi_dec%TYPE;
+                v_metodo anagrafiche.emittenti_fiscali_utilities.metodo_arrotondamento_importi%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Ricalcolo totali testata a partire da riepiloghi IVA,
+                --   fondi fattura e regole emittente/utility.
+                --   Al termine sincronizza anche le righe contabili per
+                --   i fondi fattura assegnati alla fattura corrente.
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_ricalcola_totali_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','fattura_id obbligatoria')
+                    ),
+                    NULL::uuid,
+                    'fattura_id non valido'
+                  );
+                END IF;
+
+                SELECT f.billing_account_id,
+                       f.tipo_doc_fiscale_id,
+                       f.emittente_soggetto_ruolo_id,
+                       f.valuta_id
+                  INTO v_billing_account_id,
+                       v_tipo_doc_fiscale_id,
+                       v_emittente_soggetto_ruolo_id,
+                       v_valuta_id
+                  FROM vendite.fatture f
+                 WHERE f.id = p_fattura_id;
+
+                SELECT COALESCE(
+                         (SELECT fl.utility_id
+                            FROM vendite.fatturazione_lotti_fatture lf
+                            JOIN vendite.fatturazione_lotti fl ON fl.id = lf.lotto_id
+                           WHERE lf.fattura_id = p_fattura_id
+                           ORDER BY lf.id DESC
+                           LIMIT 1),
+                         (SELECT ba.utility_id
+                            FROM anagrafiche.billing_account ba
+                           WHERE ba.id = v_billing_account_id)
+                       )
+                  INTO v_utility_id;
+
+                -- otteengo i totali da riepiloghi IVA. Se non ci sono, imposto a 0 per evitare null nei calcoli successivi
+                SELECT
+                  COALESCE(SUM(r.imponibile), 0),
+                  COALESCE(SUM(r.imposta), 0)
+                  INTO v_imponibile_tot, v_imposta_tot
+                FROM vendite.fatture_riepiloghi_iva r
+                WHERE r.fattura_id = p_fattura_id;
+
+                -- ottengo il totale fondi associati alla fattura (se presenti)
+                v_totale_fondi := vendite.fn_get_totale_fondi_fattura(p_fattura_id);
+                v_totale_doc := COALESCE(v_imponibile_tot, 0) + COALESCE(v_imposta_tot, 0);
+
+                -- parametri di arrotondamento e soglie minime da regole emittente/utility
+                SELECT
+                  e.minimo_soglia_min,
+                  e.minimo_soglia_max,
+                  e.arrotondamento_importi_dec,
+                  COALESCE(e.metodo_arrotondamento_importi, 'HALF_UP')
+                  INTO v_min_soglia_min, v_min_soglia_max, v_decimali, v_metodo
+                FROM anagrafiche.emittenti_fiscali_utilities e
+                WHERE e.emittente_soggetto_ruolo_id = v_emittente_soggetto_ruolo_id
+                  AND e.utility_id = v_utility_id
+                  AND e.attivo IS TRUE
+                LIMIT 1;
+
+                -- recupero arrotondamento precedente per ricalcolare arrotondamento attuale e totale a pagare
+                v_arro_precedente := vendite.fn_get_arrotondamento_scope(
+                  v_billing_account_id,
+                  v_utility_id,
+                  v_tipo_doc_fiscale_id,
+                  v_emittente_soggetto_ruolo_id,
+                  v_valuta_id
+                );
+
+                v_raw_totale := v_totale_doc + COALESCE(v_totale_fondi, 0) + COALESCE(v_arro_precedente, 0);
+                v_round_totale := 0;
+
+                -- Se non ci sono decimali di arrotondamento, o se il totale da pagare e' 0, non applico arrotondamento
+                IF v_decimali IS NULL THEN
+                  v_arro_attuale := 0;
+                  v_totale_a_pagare := v_raw_totale;
+                ELSE
+
+                  -- Applico arrotondamento secondo metodo specificato nelle regole emittente/utility. 
+                  -- L'arrotondamento viene applicato al totale a pagare (imponibile + imposta + fondi) e non solo al totale documento, 
+                  -- perche' i fondi sono comunque una componente della fattura figlia e devono essere considerati nel calcolo dell'arrotondamento.
+                  IF v_metodo = 'UP' THEN
+                    v_round_totale := (CASE WHEN v_raw_totale >= 0
+                      THEN ceil(v_raw_totale * power(10::numeric, v_decimali))
+                      ELSE -ceil(abs(v_raw_totale) * power(10::numeric, v_decimali))
+                    END) / power(10::numeric, v_decimali);
+                  ELSIF v_metodo = 'DOWN' THEN
+                    v_round_totale := (CASE WHEN v_raw_totale >= 0
+                      THEN floor(v_raw_totale * power(10::numeric, v_decimali))
+                      ELSE -floor(abs(v_raw_totale) * power(10::numeric, v_decimali))
+                    END) / power(10::numeric, v_decimali);
+                  ELSIF v_metodo = 'HALF_DOWN' THEN
+                    v_round_totale := (CASE WHEN v_raw_totale >= 0
+                      THEN ceil((v_raw_totale * power(10::numeric, v_decimali)) - 0.5)
+                      ELSE -ceil((abs(v_raw_totale) * power(10::numeric, v_decimali)) - 0.5)
+                    END) / power(10::numeric, v_decimali);
+                  ELSE
+                    v_round_totale := (CASE WHEN v_raw_totale >= 0
+                      THEN floor((v_raw_totale * power(10::numeric, v_decimali)) + 0.5)
+                      ELSE -floor((abs(v_raw_totale) * power(10::numeric, v_decimali)) + 0.5)
+                    END) / power(10::numeric, v_decimali);
+                  END IF;
+
+                  v_arro_attuale := v_round_totale - v_raw_totale;
+                  v_totale_a_pagare := v_raw_totale + v_arro_attuale;
+
+                  -- Salvo il valore dell'arrotondamento attuale in una variabile di scope per poterla utilizzare nella funzione di sync dei fondi, 
+                  -- in modo da mantenere coerenza tra arrotondamento della fattura e righe contabili generate per i fondi 
+                  PERFORM vendite.fn_set_arrotondamento_scope(
+                    v_billing_account_id,
+                    v_utility_id,
+                    v_tipo_doc_fiscale_id,
+                    v_emittente_soggetto_ruolo_id,
+                    v_valuta_id,
+                    COALESCE(v_arro_precedente, 0) + COALESCE(v_arro_attuale, 0)
+                  );
+                END IF;
+                
+                -- Calcolo totale a pagare come somma di totale documento, totale fondi e arrotondamento attuale, 
+                -- e verifico se rientra nelle soglie minime per attivare il flag "minimo"
+                UPDATE vendite.fatture f
+                   SET imponibile_tot = v_imponibile_tot,
+                       imposta_tot = v_imposta_tot,
+                       totale_doc = v_totale_doc,
+                       arrotondamento_precedente = v_arro_precedente,
+                       arrotondamento_attuale = v_arro_attuale,
+                       totale_a_pagare = v_totale_a_pagare,
+                       minimo = (
+                         (v_min_soglia_min IS NOT NULL AND v_totale_a_pagare >= v_min_soglia_min)
+                         AND (v_min_soglia_max IS NULL OR v_totale_a_pagare <= v_min_soglia_max)
+                       ),
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE f.id = p_fattura_id;
+
+
+                -- Sync contabili/righe legate ai fondi assegnati alla fattura.
+                PERFORM vendite.fn_sync_contabili_fondo_fattura(p_fattura_id);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ricalcola_totali_fattura(bigint)
+              IS 'Ricalcola i totali di testata fattura (imponibile/imposta/doc/pagare) e sincronizza le contabili dei fondi fattura.';
+
+  - changeSet:
+      id: 20260217-07-05-update-fn-ricalcola-fattura
+      author: mctit
+      comment: "Refactor scope FATTURA, %TYPE e contratto errori"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_fattura(
+                p_fattura_id vendite.fatture.id%TYPE
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Wrapper per ricalcolo riepiloghi IVA e totali testata.
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_ricalcola_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','p_fattura_id obbligatorio')
+                    ),
+                    NULL::uuid,
+                    'p_fattura_id obbligatorio e > 0'
+                  );
+                END IF;
+
+                PERFORM vendite.fn_ricalcola_riepilogo_iva_fattura(p_fattura_id);
+                PERFORM vendite.fn_ricalcola_totali_fattura(p_fattura_id);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ricalcola_fattura(bigint)
+              IS 'Wrapper di ricalcolo fattura: esegue in sequenza ricalcolo riepiloghi IVA e ricalcolo totali testata.';
+
+  - changeSet:
+      id: 20260217-07-06-update-fn-ricalcola-riepiloghi-iva-lotto
+      author: mctit
+      comment: "Refactor scope FATTURA, %TYPE e contratto errori"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_riepiloghi_iva_lotto(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                p_batch_size integer DEFAULT 1000
+              )
+               RETURNS TABLE(fatture_count integer, deleted_rows integer, inserted_rows integer)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_deleted_rows integer := 0;
+                v_inserted_rows integer := 0;
+                v_fatture_count integer := 0;
+                v_batch_size integer := 1000;
+                v_ids bigint[];
+                v_slice bigint[];
+                v_fattura_id vendite.fatture.id%TYPE;
+                v_start integer := 1;
+                v_end integer := 0;
+                v_max integer := 0;
+                v_tmp_deleted integer;
+                v_tmp_inserted integer;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Ricalcolo riepiloghi IVA per lotto con batch.
+                --   Ricalcola anche i totali testata.
+                --
+                -- Regole:
+                --   - p_lotto_id obbligatorio
+                --   - batch_size > 0
+                --   - usa fn_ricalcola_riepilogo_iva_fattura
+                --   - usa fn_ricalcola_totali_fattura
+                -- =========================================================
+
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_ricalcola_riepiloghi_iva_lotto', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', p_lotto_id,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','p_lotto_id obbligatorio')
+                    ),
+                    NULL::uuid,
+                    'p_lotto_id obbligatorio e > 0'
+                  );
+                END IF;
+
+                IF p_batch_size IS NULL OR p_batch_size <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_ricalcola_riepiloghi_iva_lotto', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', p_lotto_id,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','p_batch_size non valido')
+                    ),
+                    NULL::uuid,
+                    'p_batch_size obbligatorio e > 0'
+                  );
+                END IF;
+
+                v_batch_size := p_batch_size;
+
+                SELECT array_agg(lf.fattura_id ORDER BY lf.fattura_id)
+                  INTO v_ids
+                  FROM vendite.fatturazione_lotti_fatture lf
+                 WHERE lf.lotto_id = p_lotto_id;
+
+                IF v_ids IS NULL THEN
+                  RETURN QUERY SELECT 0, 0, 0;
+                  RETURN;
+                END IF;
+
+                v_fatture_count := COALESCE(array_length(v_ids, 1), 0);
+                v_max := v_fatture_count;
+
+                WHILE v_start <= v_max LOOP
+                  v_end := LEAST(v_start + v_batch_size - 1, v_max);
+                  v_slice := v_ids[v_start:v_end];
+
+                  IF v_slice IS NOT NULL AND array_length(v_slice, 1) IS NOT NULL THEN
+                    FOREACH v_fattura_id IN ARRAY v_slice
+                    LOOP
+                      SELECT t.deleted_rows, t.inserted_rows
+                        INTO v_tmp_deleted, v_tmp_inserted
+                        FROM vendite.fn_ricalcola_riepilogo_iva_fattura(v_fattura_id) AS t;
+                      v_deleted_rows := v_deleted_rows + COALESCE(v_tmp_deleted, 0);
+                      v_inserted_rows := v_inserted_rows + COALESCE(v_tmp_inserted, 0);
+
+                      PERFORM vendite.fn_ricalcola_totali_fattura(v_fattura_id);
+                    END LOOP;
+                  END IF;
+
+                  v_start := v_end + 1;
+                END LOOP;
+
+                RETURN QUERY
+                SELECT v_fatture_count, v_deleted_rows, v_inserted_rows;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ricalcola_riepiloghi_iva_lotto(bigint, integer)
+              IS 'Ricalcola IVA e totali per tutte le fatture del lotto con elaborazione a batch.';
+
+  - changeSet:
+      id: 20260217-07-07-update-fn-ricalcola-riepiloghi-iva-lotto
+      author: mctit
+      comment: "drop funzioni con parametri errati"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS 
+              vendite.fn_numera_fattura_opz_emessa(bigint, boolean, text);

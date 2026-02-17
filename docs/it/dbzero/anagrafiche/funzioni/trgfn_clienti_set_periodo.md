@@ -88,6 +88,12 @@ END IF;
 RETURN NEW;
 END
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_clienti_set_periodo()
+IS 'Imposta periodo = [data_attivazione, data_chiusura] 
+     per modellare fine inclusiva in un range con estremo destro esclusivo. imposta
+     controlli di coerenza date in base allo stato cliente.
+     Solo per stati AT, CH, AN.';
 ```
 
 ---

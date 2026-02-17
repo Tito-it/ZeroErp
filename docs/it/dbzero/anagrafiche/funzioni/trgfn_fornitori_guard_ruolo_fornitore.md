@@ -28,6 +28,11 @@ BEGIN
 END;
 
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_fornitori_guard_ruolo_fornitore()
+IS 'Trigger che, prima di inserire/aggiornare in anagrafiche.fornitori,
+chiama fn_guard_soggetto_ruolo per validare il legame
+soggetto→ruolo (cd_int_ruolo = ''FO'').';
 ```
 
 ---

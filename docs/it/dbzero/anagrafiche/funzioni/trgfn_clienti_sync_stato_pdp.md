@@ -122,6 +122,21 @@ BEGIN
     RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp()
+IS 'Sincronizza lo stato tecnico del PDP (config.stati_pdp)
+    in base al cambio di stato_cliente del cliente.
+    
+    Regole implementate (SOLO AT e CH):
+     - Se stato_cliente = ''AT'' (Attivo)
+         -> PDP passa a ''ATT'' (Attivo) se non DISMESSO
+     
+     - Se stato_cliente = ''CH'' (Chiuso)
+         -> se NON esistono altri clienti ATTIVI sullo stesso PDP
+            PDP passa a ''DISP'' (Disponibile)
+     
+     Tutti gli altri casi NON modificano lo stato_pdp.
+     Gli stati ''DTEC'' e ''DISM'' saranno gestiti da processi/azioni specifiche.';
 ```
 
 ---

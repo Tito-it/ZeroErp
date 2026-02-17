@@ -37,8 +37,15 @@ BEGIN
 
   IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_build_fattura_key', 'E_GENERICO',
-      jsonb_build_object('detail','attivita_id obbligatorio'),
+      'vendite', 'fn_build_fattura_key', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','attivita_id obbligatorio', 'attivita_id', p_attivita_id)
+      ),
       NULL::uuid, 'attivita_id obbligatorio'
     );
   END IF;
@@ -60,8 +67,15 @@ BEGIN
 
   IF v_ba_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_build_fattura_key', 'E_GENERICO',
-      jsonb_build_object('detail','attivita non trovata o BA mancante', 'attivita_id', p_attivita_id),
+      'vendite', 'fn_build_fattura_key', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','attivita non trovata o BA mancante', 'attivita_id', p_attivita_id)
+      ),
       NULL::uuid, 
       concat('Attivita non trovata o BA mancante, attivita_id: ', p_attivita_id)
     );
@@ -90,6 +104,9 @@ BEGIN
   );
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_build_fattura_key(p_attivita_id bigint)
+IS 'Costruisce la chiave logica documento per aggregazione fattura a partire da una riga di attivita_fatturabili.';
 ```
 
 ---

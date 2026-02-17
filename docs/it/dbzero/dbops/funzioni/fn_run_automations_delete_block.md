@@ -100,6 +100,9 @@ BEGIN
   END LOOP;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_run_automations_delete_block(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+IS 'Applica i trigger DELETE_BLOCK configurati in dbops.automation_delete_block.';
 ```
 
 ---

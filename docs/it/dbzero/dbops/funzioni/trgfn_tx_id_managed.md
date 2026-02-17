@@ -167,6 +167,9 @@ BEGIN
 
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.trgfn_tx_id_managed()
+IS 'Trigger function che assegna e verifica transaction ID con log centralizzato';
 ```
 
 ---

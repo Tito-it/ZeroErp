@@ -61,6 +61,9 @@ AS $function$
                   HINT   = coalesce(v_hint, '');
        END;
        $function$
+
+COMMENT ON FUNCTION script.fn_log_and_raise_error(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
+IS 'Logga e poi solleva exception con messaggio custom';
 ```
 
 ---

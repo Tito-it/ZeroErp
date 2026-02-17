@@ -172,6 +172,23 @@ AS $function$
       
   
 $function$
+
+COMMENT ON FUNCTION script.trgfn_storico_generic()
+IS 'Funzione generica per la gestione dello storico delle modifiche.
+      Gestisce automaticamente:
+      1. Chiusura degli snapshot aperti (imposta valid_to = CURRENT_DATE)
+      2. Creazione snapshot iniziale (se necessario) con valid_from fisso a 1950-01-01
+      3. Creazione snapshot finale con valid_from = CURRENT_DATE e valid_to NULL
+      4. Logging degli errori tramite script.fn_log_and_raise_error
+      5. Importante deve essere sempre definita la colonna "storicizza"
+      per la PK originale (in questo modo la funzione può identificare
+      il record originale e gestire la chiusura del snapshot corretto).
+      Parametri:
+      - TG_ARGV[0]: Nome della colonna FK nella tabella storica che riferisce alla PK originale
+      Utilizzo tipico:
+      CREATE TRIGGER trg_storico AFTER UPDATE OR DELETE ON tabella_origine
+      FOR EACH ROW EXECUTE FUNCTION script.trgfn_upd_dlt_storico_generic(''nome_colonna_fk'');
+      ';
 ```
 
 ---

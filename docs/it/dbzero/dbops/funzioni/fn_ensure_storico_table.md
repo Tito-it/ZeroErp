@@ -199,6 +199,11 @@ BEGIN
   END;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_ensure_storico_table(p_schema_base text, p_table_base text, p_fk_col text, p_create_gin_index boolean, p_dry_run boolean)
+IS 'Provisioning idempotente della tabella di storico (schema storico) per una tabella base.
+Crea storico.<table_base> se mancante, con struttura standard (snapshot jsonb, audit cols, finestre valid_from/to)
+e indice BTree su fk logica. La FK fisica verso la tabella base NON viene creata per scelta progettuale. Supporta dry-run con audit.';
 ```
 
 ---

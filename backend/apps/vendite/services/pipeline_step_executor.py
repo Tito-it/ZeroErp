@@ -9,8 +9,10 @@
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.service_errors import ServiceError
 from apps.core.services.value_normalizer import as_bool
 from apps.vendite.db.pipeline_repository import LottoContext, VenditePipelineRepository
+from apps.vendite.services.pipeline_error_logger import PipelineErrorLogger
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 
 # Esecutore di singolo step pipeline con mapping task JSON -> azioni applicative.
@@ -22,9 +24,11 @@ class PipelineStepExecutor:
         self,
         repository: VenditePipelineRepository | None = None,
         fatture_righe_service: FattureRigheService | None = None,
+        error_logger: PipelineErrorLogger | None = None,
     ) -> None:
         self.repository = repository or VenditePipelineRepository()
         self.fatture_righe_service = fatture_righe_service or FattureRigheService(self.repository)
+        self.error_logger = error_logger or PipelineErrorLogger(self.repository)
         self.handler_registry = {
             "select_attivita_default": self._handle_select_attivita_task,
             "generate_fatture_righe_default": self._handle_generate_fatture_righe_task,
@@ -160,6 +164,23 @@ class PipelineStepExecutor:
             )
             return
 
+        self.error_logger.log_error(
+            scope="LOTTO",
+            severity="C",
+            code="E_TASK_IMPLEMENTATION_NOT_FOUND",
+            message="Implementazione task pipeline non trovata.",
+            detail=f"Implementazione task non trovata: {task} ({handler_code})",
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+            context={
+                "task": task,
+                "fase": fase,
+                "implementation_key": implementation_key,
+                "handler_code": handler_code,
+                "rollback": rollback,
+            },
+            function_name="vendite.pipeline_step_executor._run_task",
+        )
         ErrorManager.raise_error(
             code="E_TASK_IMPLEMENTATION_NOT_FOUND",
             message="Implementazione task pipeline non trovata.",
@@ -174,12 +195,31 @@ class PipelineStepExecutor:
             log_to_db=True,
         )
 
-    def _validate_task_function_name(self, *, task: str, fn_name: str | None) -> None:
+    def _validate_task_function_name(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int | None = None,
+        stato_doc_fiscale_id: int | None = None,
+    ) -> None:
         # `fn` resta un token di compatibilita` SQL nella configurazione processi.
         allowed = self.repository.ALLOWED_TASK_FUNCTIONS.get(task)
         if allowed is None:
             return
         if fn_name and fn_name != allowed:
+            if lotto_id is not None:
+                self.error_logger.log_error(
+                    scope="LOTTO",
+                    severity="C",
+                    code="E_TASK_NOT_ALLOWED",
+                    message="Funzione task non ammessa.",
+                    detail=f"Funzione non ammessa per task {task}: {fn_name}",
+                    lotto_id=lotto_id,
+                    stato_doc_fiscale_id=stato_doc_fiscale_id,
+                    context={"task": task, "fn": fn_name, "allowed": allowed},
+                    function_name="vendite.pipeline_step_executor._validate_task_function_name",
+                )
             ErrorManager.raise_error(
                 code="E_TASK_NOT_ALLOWED",
                 message="Funzione task non ammessa.",
@@ -188,6 +228,61 @@ class PipelineStepExecutor:
                 function_name="vendite.pipeline_step_executor._validate_task_function_name",
                 log_to_db=True,
             )
+
+    def _run_per_fattura_task(
+        self,
+        *,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        task: str,
+        fattura_ids: list[int],
+        action: Any,
+    ) -> None:
+        # Helper riusabile: esecuzione task per-fattura con logging scope FATTURA.
+        for fattura_id in fattura_ids:
+            try:
+                action(fattura_id)
+            except ServiceError as exc:
+                self.error_logger.log_error(
+                    scope="FATTURA",
+                    severity="C",
+                    code=exc.code,
+                    message=f"Errore task {task} su fattura {fattura_id}",
+                    detail=exc.detail or str(exc),
+                    lotto_id=lotto_id,
+                    fattura_id=fattura_id,
+                    stato_doc_fiscale_id=stato_doc_fiscale_id,
+                    context={"task": task},
+                    function_name="vendite.pipeline_step_executor._run_per_fattura_task",
+                )
+                raise
+            except Exception as exc:
+                self.error_logger.log_error(
+                    scope="FATTURA",
+                    severity="C",
+                    code="E_TASK_FATTURA",
+                    message=f"Errore task {task} su fattura {fattura_id}",
+                    detail=str(exc),
+                    lotto_id=lotto_id,
+                    fattura_id=fattura_id,
+                    stato_doc_fiscale_id=stato_doc_fiscale_id,
+                    context={"task": task},
+                    function_name="vendite.pipeline_step_executor._run_per_fattura_task",
+                )
+                ErrorManager.raise_error(
+                    code="E_TASK_FATTURA",
+                    message="Errore su singola fattura durante task pipeline.",
+                    detail=f"Task {task} fallito su fattura_id={fattura_id}: {exc}",
+                    context={
+                        "lotto_id": lotto_id,
+                        "fattura_id": fattura_id,
+                        "stato_doc_fiscale_id": stato_doc_fiscale_id,
+                        "task": task,
+                    },
+                    function_name="vendite.pipeline_step_executor._run_per_fattura_task",
+                    log_to_db=True,
+                    cause=exc,
+                )
 
     def _handle_select_attivita_task(
         self,
@@ -200,7 +295,12 @@ class PipelineStepExecutor:
         params: dict[str, Any],
         dry_run: bool,
     ) -> None:
-        self._validate_task_function_name(task=task, fn_name=fn_name)
+        self._validate_task_function_name(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+        )
         self.repository.run_select_attivita_task(context=context, params=params)
 
     def _handle_generate_fatture_righe_task(
@@ -214,7 +314,12 @@ class PipelineStepExecutor:
         params: dict[str, Any],
         dry_run: bool,
     ) -> None:
-        self._validate_task_function_name(task=task, fn_name=fn_name)
+        self._validate_task_function_name(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+        )
         self.fatture_righe_service.generate_fatture_righe(lotto_id, dry_run=dry_run)
 
     def _handle_numera_fatture_task(
@@ -229,12 +334,23 @@ class PipelineStepExecutor:
         dry_run: bool,
     ) -> None:
         # Numerazione documenti per lotto massivo con sync stato documento.
-        self._validate_task_function_name(task=task, fn_name=fn_name)
+        self._validate_task_function_name(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+        )
         if dry_run:
             return
 
-        for fattura_id in self.repository.list_fatture_by_lotto(lotto_id):
-            self.repository.numera_fattura_opz_emessa(fattura_id)
+        fattura_ids = self.repository.list_fatture_by_lotto(lotto_id)
+        self._run_per_fattura_task(
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+            task=task,
+            fattura_ids=fattura_ids,
+            action=self.repository.numera_fattura_opz_emessa,
+        )
 
         self.repository.sync_lotto_fatture_stato(
             lotto_id=lotto_id,
@@ -253,7 +369,12 @@ class PipelineStepExecutor:
         dry_run: bool,
     ) -> None:
         # Genera/aggiorna source fondi su tutte le fatture del lotto.
-        self._validate_task_function_name(task=task, fn_name=fn_name)
+        self._validate_task_function_name(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+        )
         if dry_run:
             return
         tipo_fondo = str(params.get("tipo_fondo_codice_interno") or "F_F_ADD_ACC")
@@ -274,7 +395,12 @@ class PipelineStepExecutor:
         dry_run: bool,
     ) -> None:
         # Applica i fondi source alle fatture del lotto.
-        self._validate_task_function_name(task=task, fn_name=fn_name)
+        self._validate_task_function_name(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+        )
         if dry_run:
             return
         tipo_fondo = str(params.get("tipo_fondo_codice_interno") or "F_F_ADD_ACC")
@@ -295,7 +421,12 @@ class PipelineStepExecutor:
         dry_run: bool,
     ) -> None:
         # Ricalcolo IVA lotto; include aggiornamento totali testata.
-        self._validate_task_function_name(task=task, fn_name=fn_name)
+        self._validate_task_function_name(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+        )
         if dry_run:
             return
         batch_size_raw = params.get("batch_size")
@@ -317,7 +448,12 @@ class PipelineStepExecutor:
         dry_run: bool,
     ) -> None:
         # Preparazione dataset SDI e apertura tentativi per le fatture del lotto.
-        self._validate_task_function_name(task=task, fn_name=fn_name)
+        self._validate_task_function_name(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+        )
         if dry_run:
             return
         stato_sdi_codice_interno = str(params.get("stato_sdi_codice_interno") or "DA_INVIARE")
@@ -340,7 +476,12 @@ class PipelineStepExecutor:
         dry_run: bool,
     ) -> None:
         # Chiusura operativa lotto: stato_operativo=CHIUSO.
-        self._validate_task_function_name(task=task, fn_name=fn_name)
+        self._validate_task_function_name(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+        )
         if dry_run:
             return
         self.repository.close_lotto_operativo(lotto_id)
@@ -357,7 +498,12 @@ class PipelineStepExecutor:
         dry_run: bool,
     ) -> None:
         # Reset tecnico completo del lotto massivo in bozza.
-        self._validate_task_function_name(task=task, fn_name=fn_name)
+        self._validate_task_function_name(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+        )
         if dry_run:
             return
         self.repository.reset_lotto_draft(lotto_id)

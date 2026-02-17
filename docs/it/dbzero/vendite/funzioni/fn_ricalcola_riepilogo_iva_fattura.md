@@ -32,8 +32,15 @@ BEGIN
 
   IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_ricalcola_riepilogo_iva_fattura', 'E_GENERICO',
-      jsonb_build_object('detail','p_fattura_id obbligatorio'),
+      'vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', p_fattura_id,
+        'context', jsonb_build_object('detail','p_fattura_id obbligatorio')
+      ),
       NULL::uuid,
       'p_fattura_id obbligatorio e > 0'
     );
@@ -46,8 +53,15 @@ BEGIN
 
   IF v_stato_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_ricalcola_riepilogo_iva_fattura', 'E_GENERICO',
-      jsonb_build_object('detail','stato_doc_fiscale_id mancante'),
+      'vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', p_fattura_id,
+        'context', jsonb_build_object('detail','stato_doc_fiscale_id mancante')
+      ),
       NULL::uuid,
       'Stato documento non valorizzato'
     );
@@ -60,8 +74,15 @@ BEGIN
 
   IF v_codice_interno NOT IN ('DRAFT', 'EMESSA') THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_ricalcola_riepilogo_iva_fattura', 'E_GENERICO',
-      jsonb_build_object('detail','ricalcolo IVA non ammesso', 'stato', v_codice_interno),
+      'vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', p_fattura_id,
+        'context', jsonb_build_object('detail','ricalcolo IVA non ammesso', 'stato', v_codice_interno)
+      ),
       NULL::uuid,
       concat('Ricalcolo IVA non ammesso per stato documento ', v_codice_interno)
     );
@@ -129,6 +150,9 @@ BEGIN
   SELECT v_deleted_rows, v_inserted_rows;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(p_fattura_id bigint)
+IS 'Ricalcola i riepiloghi IVA della fattura, ammesso solo per stati documento DRAFT/EMESSA.';
 ```
 
 ---

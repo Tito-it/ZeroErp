@@ -140,6 +140,11 @@ AS $function$
    RETURN v_snapshot;
  END;
  $function$
+
+COMMENT ON FUNCTION script.fn_get_snapshot_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp without time zone)
+IS 'Restituisce il JSONB di un record al momento p_as_of: 1) dallo storico se esiste,
+    2) altrimenti serializza la riga corrente. In caso di errore nelle query, chiama
+    fn_log_and_raise_error con dettagli contestuali.';
 ```
 
 ---

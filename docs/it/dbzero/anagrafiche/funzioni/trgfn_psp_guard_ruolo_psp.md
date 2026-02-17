@@ -28,6 +28,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_psp_guard_ruolo_psp()
+IS 'Valida che soggetto_ruolo_id sia coerente con il ruolo PSP.';
 ```
 
 ---

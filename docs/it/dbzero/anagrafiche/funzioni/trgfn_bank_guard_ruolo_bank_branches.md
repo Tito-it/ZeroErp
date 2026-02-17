@@ -29,6 +29,11 @@ BEGIN
 END;
 
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_bank_guard_ruolo_bank_branches()
+IS 'Trigger che, prima di inserire/aggiornare in anagrafiche.bank,
+chiama fn_guard_soggetto_ruolo per validare il legame
+soggetto→ruolo (cd_int_ruolo = ''BANK_B'').';
 ```
 
 ---

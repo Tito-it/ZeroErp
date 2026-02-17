@@ -160,6 +160,9 @@ BEGIN
   END LOOP;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_run_automations_tx_id(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+IS 'Crea i trigger TX_ID dove esiste tx_id UUID.';
 ```
 
 ---

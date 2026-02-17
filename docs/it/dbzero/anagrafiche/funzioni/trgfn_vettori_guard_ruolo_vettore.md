@@ -28,6 +28,11 @@ BEGIN
 END;
 
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_vettori_guard_ruolo_vettore()
+IS 'Trigger che, prima di inserire/aggiornare in anagrafiche.vettori,
+chiama fn_guard_soggetto_ruolo per validare il legame
+soggetto→ruolo (cd_int_ruolo = ''VT'').';
 ```
 
 ---

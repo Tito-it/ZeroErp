@@ -81,6 +81,28 @@ AS $function$
         END LOOP;
       END;
       $function$
+
+COMMENT ON FUNCTION dbops.fn_run_automations_storico_provision(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+IS '
+  Provisioning automatico delle tabelle storico (storico.<tabella>) tramite regole in dbops.automation_rules_tbl.
+
+  Scopo:
+  - Scansiona le tabelle degli schemi in scope (risolti da fn_resolve_scope), escludendo lo schema storico.
+  - Per ogni tabella, applica le regole abilitate con rule_type = ''''STORICO_PROVISION'''' compatibili con exec_mode e target schema/table.
+  - Se la tabella espone una colonna di flag storicizza (default ''''storicizza'''', override tramite automation_overrides_cols: key ''''STORICIZZA_COL''''),
+    invoca fn_ensure_storico_table per creare/aggiornare la corrispondente tabella in storico.*.
+  - La colonna FK nello storico è calcolata come <table_name>_id (override tramite automation_overrides_cols: key ''''STORICO_FK'''').
+  - Parametro create_gin_index (in params JSON della regola) abilita la creazione dell''''indice GIN sullo snapshot nello storico.
+
+  Parametri:
+  - p_exec_mode: modalità di esecuzione (es. ''''AUTO'''', ''''MANUAL''''); una regola è applicata se exec_mode = ''''AUTO'''' oppure exec_mode = p_exec_mode.
+  - p_schemas: lista schemi target; può includere scope/wildcard risolti da fn_resolve_scope.
+  - p_dry_run: se TRUE, esegue in modalità simulata (nessun DDL effettivo), demandando la gestione al helper fn_ensure_storico_table.
+
+  Note:
+  - Le tabelle prive della colonna storicizza (o override) vengono ignorate.
+  - La funzione è pensata per essere richiamata da automazioni/maintenance e si appoggia agli helper dbops per scope, override e provisioning.
+  ';
 ```
 
 ---

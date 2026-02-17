@@ -26,6 +26,9 @@ BEGIN
   END IF;
   RETURN NEW;
 END$function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_clienti_sync_pdp()
+IS 'Allinea la colonna denormalizzata pdp_id in base a anagrafiche.istanze_utilities(istanza_utility_id)';
 ```
 
 ---

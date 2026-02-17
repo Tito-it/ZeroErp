@@ -39,6 +39,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION config.trgfn_toponomastica_normalize()
+IS 'Trigger function per default stato_id e validazione obbligatoria su config.toponomastica.';
 ```
 
 ---

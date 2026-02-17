@@ -24,8 +24,15 @@ BEGIN
 
   IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_genera_fondi_fattura_source', 'E_GENERICO',
-      jsonb_build_object('detail','billing_account_id obbligatorio'),
+      'vendite', 'fn_genera_fondi_fattura_source', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','billing_account_id obbligatorio', 'billing_account_id', p_billing_account_id)
+      ),
       NULL::uuid,
       'billing_account_id non valido'
     );
@@ -33,8 +40,15 @@ BEGIN
 
   IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_genera_fondi_fattura_source', 'E_GENERICO',
-      jsonb_build_object('detail','utility_id obbligatorio'),
+      'vendite', 'fn_genera_fondi_fattura_source', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','utility_id obbligatorio', 'utility_id', p_utility_id)
+      ),
       NULL::uuid,
       'utility_id non valido'
     );
@@ -42,8 +56,15 @@ BEGIN
 
   IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_genera_fondi_fattura_source', 'E_GENERICO',
-      jsonb_build_object('detail','tipo_doc_fiscale_id obbligatorio'),
+      'vendite', 'fn_genera_fondi_fattura_source', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','tipo_doc_fiscale_id obbligatorio', 'tipo_doc_fiscale_id', p_tipo_doc_fiscale_id)
+      ),
       NULL::uuid,
       'tipo_doc_fiscale_id non valido'
     );
@@ -51,8 +72,15 @@ BEGIN
 
   IF p_emittente_soggetto_ruolo_id IS NULL OR p_emittente_soggetto_ruolo_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_genera_fondi_fattura_source', 'E_GENERICO',
-      jsonb_build_object('detail','emittente_soggetto_ruolo_id obbligatorio'),
+      'vendite', 'fn_genera_fondi_fattura_source', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','emittente_soggetto_ruolo_id obbligatorio', 'emittente_soggetto_ruolo_id', p_emittente_soggetto_ruolo_id)
+      ),
       NULL::uuid,
       'emittente_soggetto_ruolo_id non valido'
     );
@@ -60,8 +88,15 @@ BEGIN
 
   IF p_valuta_id IS NULL OR p_valuta_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_genera_fondi_fattura_source', 'E_GENERICO',
-      jsonb_build_object('detail','valuta_id obbligatorio'),
+      'vendite', 'fn_genera_fondi_fattura_source', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','valuta_id obbligatorio', 'valuta_id', p_valuta_id)
+      ),
       NULL::uuid,
       'valuta_id non valido'
     );
@@ -69,8 +104,15 @@ BEGIN
 
   IF p_tipo_fondo_fattura_id IS NULL OR p_tipo_fondo_fattura_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_genera_fondi_fattura_source', 'E_GENERICO',
-      jsonb_build_object('detail','tipo_fondo_fattura_id obbligatorio'),
+      'vendite', 'fn_genera_fondi_fattura_source', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','tipo_fondo_fattura_id obbligatorio', 'tipo_fondo_fattura_id', p_tipo_fondo_fattura_id)
+      ),
       NULL::uuid,
       'tipo_fondo_fattura_id non valido'
     );
@@ -186,6 +228,9 @@ BEGIN
   RETURN COALESCE(v_updated, 0) + COALESCE(v_inserted, 0);
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_genera_fondi_fattura_source(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id integer, p_tipo_fondo_fattura_id bigint)
+IS 'Sincronizza la source dei fondi fattura sul saldo effettivo (saldo fattura meno saldo contabile postabile).';
 ```
 
 ---

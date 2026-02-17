@@ -52,6 +52,9 @@ BEGIN
   RETURN NEW;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()
+IS 'Blocca update/delete se fattura_riga_id e'' valorizzato; bypass via GUC zeroerp.maintenance_reset_lotto_draft.';
 ```
 
 ---

@@ -96,6 +96,12 @@ BEGIN
   RETURN v_lookup_id;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_get_default_by_param(p_table_schema text, p_table_name text, p_filter_column text, p_param_code text, p_function_name text)
+IS 'Lookup dinamico di un ID (come TEXT) dato un parametro di configurazione. 
+      1) Ricava il valore del filtro con script.fn_get_parameter_full().
+      2) SELECT pk FROM schema.tabella WHERE filter_column::text = param_value.
+      Se non trova, logga e solleva E_DEFAULT_ERRATO.';
 ```
 
 ---

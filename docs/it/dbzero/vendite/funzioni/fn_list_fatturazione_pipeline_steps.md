@@ -22,9 +22,63 @@ BEGIN
   IF p_tipo_lotto IS NULL OR btrim(p_tipo_lotto) = '' THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_list_fatturazione_pipeline_steps', 'E_GENERICO',
-      jsonb_build_object('detail', 'p_tipo_lotto obbligatorio'),
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object(
+          'detail', 'p_tipo_lotto obbligatorio',
+          'p_tipo_lotto', p_tipo_lotto,
+          'p_utility_id', p_utility_id,
+          'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
+        )
+      ),
       NULL::uuid,
       'p_tipo_lotto obbligatorio'
+    );
+  END IF;
+
+  IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_list_fatturazione_pipeline_steps', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object(
+          'detail', 'p_utility_id non valido',
+          'p_tipo_lotto', p_tipo_lotto,
+          'p_utility_id', p_utility_id,
+          'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
+        )
+      ),
+      NULL::uuid,
+      'p_utility_id non valido'
+    );
+  END IF;
+
+  IF p_tipo_doc_fiscale_id IS NOT NULL AND p_tipo_doc_fiscale_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_list_fatturazione_pipeline_steps', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object(
+          'detail', 'p_tipo_doc_fiscale_id non valido',
+          'p_tipo_lotto', p_tipo_lotto,
+          'p_utility_id', p_utility_id,
+          'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
+        )
+      ),
+      NULL::uuid,
+      'p_tipo_doc_fiscale_id non valido'
     );
   END IF;
 
@@ -45,6 +99,9 @@ BEGIN
   ORDER BY sd.ordine;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_list_fatturazione_pipeline_steps(p_tipo_lotto text, p_utility_id integer, p_tipo_doc_fiscale_id bigint)
+IS 'Elenca gli step pipeline fatturazione risolti per tipo_lotto con fallback utility/tipo_doc_fiscale.';
 ```
 
 ---

@@ -36,6 +36,12 @@ AS $function$
    RETURN NEW;
  END;
  $function$
+
+COMMENT ON FUNCTION config.trgfn_iva_stati_normalize()
+IS '
+ ''Function che pulisce i campi di iva_stati in config.iva_stati e imposta i valori di default
+      per le colonne che non hanno un valore specificato. (esempio: stato_id)'';
+    ';
 ```
 
 ---

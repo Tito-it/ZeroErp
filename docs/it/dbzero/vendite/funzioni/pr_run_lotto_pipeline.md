@@ -132,6 +132,9 @@ EXCEPTION
     RAISE;
 END
 $procedure$
+
+COMMENT ON PROCEDURE vendite.pr_run_lotto_pipeline(IN p_lotto_id bigint, IN p_competenza_mese date, IN p_tipo_doc_fiscale_id bigint, IN p_utility_id integer, IN p_billing_account_id bigint, IN p_lock_batch_id uuid, IN p_meta jsonb, IN p_dry_run boolean, IN p_tipo_lotto text)
+IS 'Orchestratore pipeline lotto per tipo_lotto.';
 ```
 
 ---

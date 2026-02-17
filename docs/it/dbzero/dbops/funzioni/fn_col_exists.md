@@ -19,6 +19,32 @@ AS $function$
         AND column_name=p_col
     );
   $function$
+
+COMMENT ON FUNCTION dbops.fn_col_exists(p_schema text, p_table text, p_col text)
+IS '
+    Verifica se una **colonna** esiste in una tabella specificata, interrogando
+    `information_schema.columns`.
+
+    • **Ritorno**: `boolean` — TRUE se la colonna esiste (`schema`, `table`, `column`),
+      altrimenti FALSE.
+
+    • **Parametri**
+      - `p_schema text`: schema della tabella.
+      - `p_table  text`: nome della tabella.
+      - `p_col    text`: nome della colonna.
+
+    • **Note implementative**
+      - Usa `EXISTS(...)` su `information_schema.columns` con match esatto su `table_schema`,
+        `table_name`, `column_name`.
+      - Leggera e **idempotente**, adatta a controlli pre-creazione di trigger/constraint.
+
+    • **Casi d’uso tipici**
+      - Pipeline di automazione per generare solo ciò che è coerente con lo schema corrente.
+      - Validazioni in funzioni di provisioning/maintenance.
+
+    • **Limitazioni**
+      - Sensibile a maiuscole/minuscole se i nomi sono stati creati con doppie virgolette e case mixing.
+    ';
 ```
 
 ---

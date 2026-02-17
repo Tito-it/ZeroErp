@@ -75,6 +75,9 @@ BEGIN
   RETURN NEW;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
+IS 'Normalizza competenze/sorgente; risolve tipo_doc_fiscale_id e valuta_id.';
 ```
 
 ---

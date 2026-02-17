@@ -49,6 +49,9 @@ AS $function$
     RETURN NEW;
   END;
   $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_soggetto_contatti()
+IS 'Trigger che verifica al commit che un soggetto abbia almeno un contatto valido;utilizza fn_log_and_raise_error per log e exception.';
 ```
 
 ---

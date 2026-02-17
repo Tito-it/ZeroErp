@@ -23,6 +23,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.trgfn_preventivi_normalize()
+IS 'Normalize: imposta data se numero presente e valore mancante.';
 ```
 
 ---

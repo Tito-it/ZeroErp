@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_get_or_create_vendite_contabile`
 
 ```sql
-CREATE FUNCTION fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date, p_ente_incasso_id bigint, p_lotto_id bigint, p_codice_stato_interno text, p_meta jsonb)
+CREATE FUNCTION fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date, p_ente_incasso_id bigint, p_compensazione_id bigint, p_lotto_id bigint, p_codice_stato_interno text, p_meta jsonb)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date DEFAULT CURRENT_DATE, p_ente_incasso_id bigint DEFAULT NULL::bigint, p_lotto_id bigint DEFAULT NULL::bigint, p_codice_stato_interno text DEFAULT 'BOZZA'::text, p_meta jsonb DEFAULT '{}'::jsonb)
+CREATE OR REPLACE FUNCTION pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date DEFAULT CURRENT_DATE, p_ente_incasso_id bigint DEFAULT NULL::bigint, p_compensazione_id bigint DEFAULT NULL::bigint, p_lotto_id bigint DEFAULT NULL::bigint, p_codice_stato_interno text DEFAULT 'BOZZA'::text, p_meta jsonb DEFAULT '{}'::jsonb)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
@@ -17,18 +17,20 @@ DECLARE
   v_stato_id pagamenti.vendite_contabili_stati.id%TYPE;
   v_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
   v_codice pagamenti.vendite_contabili.codice%TYPE;
+  v_existing_centro_id pagamenti.vendite_contabili.centro_riscossione_id%TYPE;
+  v_existing_ente_id pagamenti.vendite_contabili.ente_incasso_id%TYPE;
+  v_existing_data_contabile pagamenti.vendite_contabili.data_contabile%TYPE;
+  v_existing_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
+  v_existing_stato_id pagamenti.vendite_contabili.stato_id%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Recuperare una testata contabile esistente o crearla,
-  --   con eventuale collegamento al lotto fatturazione.
+  --   Recuperare o creare una testata contabile vendite.
   --
-  -- Regole:
-  --   - validazione parametri obbligatori e ID > 0
-  --   - stato risolto da codice_interno (attivo)
-  --   - ricerca esistente su chiave operativa
-  --   - creazione nuova testata se assente
-  --   - link lotto in tabella ponte se p_lotto_id valorizzato
+  -- Regole principali:
+  --   - p_compensazione_id e p_lotto_id sono mutualmente esclusivi
+  --   - se p_compensazione_id e' valorizzato, la testata e' unica
+  --     per compensazione (vincolo applicativo + unique DB)
   -- =========================================================
 
   IF p_centro_riscossione_id IS NULL OR p_centro_riscossione_id <= 0 THEN
@@ -58,12 +60,30 @@ BEGIN
     );
   END IF;
 
+  IF p_compensazione_id IS NOT NULL AND p_compensazione_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_GENERICO',
+      jsonb_build_object('detail','p_compensazione_id deve essere > 0 se valorizzato'),
+      NULL::uuid,
+      'p_compensazione_id non valido'
+    );
+  END IF;
+
   IF p_lotto_id IS NOT NULL AND p_lotto_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_GENERICO',
       jsonb_build_object('detail','p_lotto_id deve essere > 0 se valorizzato'),
       NULL::uuid,
       'p_lotto_id non valido'
+    );
+  END IF;
+
+  IF p_compensazione_id IS NOT NULL AND p_lotto_id IS NOT NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_GENERICO',
+      jsonb_build_object('detail','p_compensazione_id e p_lotto_id non possono coesistere'),
+      NULL::uuid,
+      'Compensazione e lotto non compatibili sulla stessa testata'
     );
   END IF;
 
@@ -94,7 +114,45 @@ BEGIN
 
   v_data_registrazione := COALESCE(p_data_registrazione, current_date);
 
-  IF p_lotto_id IS NULL THEN
+  -- Ricerca/riuso su compensazione (chiave primaria di processo).
+  IF p_compensazione_id IS NOT NULL THEN
+    SELECT vc.id,
+           vc.centro_riscossione_id,
+           vc.ente_incasso_id,
+           vc.data_contabile,
+           vc.data_registrazione,
+           vc.stato_id
+      INTO v_contabile_id,
+           v_existing_centro_id,
+           v_existing_ente_id,
+           v_existing_data_contabile,
+           v_existing_data_registrazione,
+           v_existing_stato_id
+      FROM pagamenti.vendite_contabili vc
+     WHERE vc.compensazione_id = p_compensazione_id
+     ORDER BY vc.id DESC
+     LIMIT 1;
+
+    IF v_contabile_id IS NOT NULL THEN
+      IF v_existing_centro_id IS DISTINCT FROM p_centro_riscossione_id
+         OR v_existing_ente_id IS DISTINCT FROM p_ente_incasso_id
+         OR v_existing_data_contabile IS DISTINCT FROM p_data_contabile
+         OR v_existing_data_registrazione IS DISTINCT FROM v_data_registrazione
+         OR v_existing_stato_id IS DISTINCT FROM v_stato_id THEN
+        PERFORM script.fn_log_and_raise_error(
+          'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_GENERICO',
+          jsonb_build_object(
+            'detail','Parametri incoerenti con testata gia associata alla compensazione',
+            'compensazione_id', p_compensazione_id,
+            'contabile_id', v_contabile_id
+          ),
+          NULL::uuid,
+          'Testata compensazione gia presente con parametri differenti'
+        );
+      END IF;
+    END IF;
+
+  ELSIF p_lotto_id IS NULL THEN
     SELECT vc.id
       INTO v_contabile_id
       FROM pagamenti.vendite_contabili vc
@@ -103,6 +161,7 @@ BEGIN
        AND vc.data_contabile = p_data_contabile
        AND vc.data_registrazione = v_data_registrazione
        AND vc.stato_id = v_stato_id
+       AND vc.compensazione_id IS NULL
      ORDER BY vc.id DESC
      LIMIT 1;
   ELSE
@@ -117,6 +176,7 @@ BEGIN
        AND vc.data_contabile = p_data_contabile
        AND vc.data_registrazione = v_data_registrazione
        AND vc.stato_id = v_stato_id
+       AND vc.compensazione_id IS NULL
      ORDER BY vc.id DESC
      LIMIT 1;
   END IF;
@@ -133,6 +193,7 @@ BEGIN
       codice,
       centro_riscossione_id,
       ente_incasso_id,
+      compensazione_id,
       data_contabile,
       data_registrazione,
       stato_id,
@@ -141,6 +202,7 @@ BEGIN
       v_codice,
       p_centro_riscossione_id,
       p_ente_incasso_id,
+      p_compensazione_id,
       p_data_contabile,
       v_data_registrazione,
       v_stato_id,

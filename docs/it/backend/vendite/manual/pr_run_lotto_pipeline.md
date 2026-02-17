@@ -11,6 +11,7 @@ La procedura SQL `vendite.pr_run_lotto_pipeline()` e` stata migrata lato backend
 L'orchestrazione ora vive in:
 - `apps/vendite/services/pipeline_service.py` (`pr_run_lotto_pipeline`)
 - `apps/vendite/services/pipeline_runner.py` (`LottoPipelineRunner.run_pipeline`)
+- `apps/vendite/services/pipeline_error_logger.py` (`PipelineErrorLogger`, routing errori `LOTTO`/`FATTURA`)
 
 I vincoli di coerenza dati e le operazioni DB specialistiche restano delegate al database.
 

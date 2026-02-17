@@ -169,6 +169,9 @@ AS $function$
     END;
     
 $function$
+
+COMMENT ON FUNCTION dbops.fn_run_automations_audit_update(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+IS 'Crea i trigger di audit update (timestamp/utente).';
 ```
 
 ---

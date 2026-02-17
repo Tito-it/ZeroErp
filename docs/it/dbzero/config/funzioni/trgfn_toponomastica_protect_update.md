@@ -41,6 +41,10 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION config.trgfn_toponomastica_protect_update()
+IS 'Trigger function per proteggere aggiornamenti non autorizzati su config.toponomastica.
+  Operazioni di manutenzione possono essere abilitate tramite la GUC ''zeroerp.maintenance_toponomastica''.';
 ```
 
 ---

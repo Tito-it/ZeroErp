@@ -108,6 +108,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION script.trgfn_guard_utility_tipo_ruolo_by_cols()
+IS 'Trigger guard generico utility->tipo_ruolo: legge utility/soggetto_ruolo da TG_ARGV e valida con fn_guard_utility_tipo_ruolo.';
 ```
 
 ---

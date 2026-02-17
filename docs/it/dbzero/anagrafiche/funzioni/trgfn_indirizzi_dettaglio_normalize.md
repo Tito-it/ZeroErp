@@ -51,6 +51,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_normalize()
+IS 'Normalizza via/civico/indirizzo_normalizzato su anagrafiche.indirizzi_dettaglio usando script.vw_indirizzo_completo.';
 ```
 
 ---

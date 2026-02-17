@@ -20,6 +20,9 @@ AS $procedure$
     );
   END;
 $procedure$
+
+COMMENT ON PROCEDURE maintenance.proc_apply_fk_index_policy_job()
+IS 'Job wrapper per chiamare apply_fk_index_policy con logging e lock.';
 ```
 
 ---

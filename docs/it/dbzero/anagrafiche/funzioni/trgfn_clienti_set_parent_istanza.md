@@ -97,6 +97,12 @@ BEGIN
     RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_clienti_set_parent_istanza()
+IS 'Calcola e imposta parent_istanza_id per anagrafiche.istanze_utilities
+      in base alla catena di clienti per lo stesso PDP,
+      escludendo clienti annullati (stato_cliente.codice_interno = ''AN'')
+      e clienti senza data_attivazione.';
 ```
 
 ---

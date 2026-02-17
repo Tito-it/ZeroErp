@@ -147,6 +147,9 @@ BEGIN
   RETURN NULL;
 END;
 $function$
+
+COMMENT ON FUNCTION script.trgfn_config_sistema_codici_sync_gen_codice()
+IS 'Sincronizza trigger di generazione codici in base a config.sistema_codici (crea/aggiorna/distrugge per usa_sequenza).';
 ```
 
 ---

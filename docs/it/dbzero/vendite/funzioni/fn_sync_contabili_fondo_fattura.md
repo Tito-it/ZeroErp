@@ -40,8 +40,15 @@ BEGIN
 
   IF p_fattura_figlia_id IS NULL OR p_fattura_figlia_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_sync_contabili_fondo_fattura', 'E_GENERICO',
-      jsonb_build_object('detail','p_fattura_figlia_id obbligatorio'),
+      'vendite', 'fn_sync_contabili_fondo_fattura', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', p_fattura_figlia_id,
+        'context', jsonb_build_object('detail','p_fattura_figlia_id obbligatorio')
+      ),
       NULL::uuid,
       'p_fattura_figlia_id non valido'
     );
@@ -58,8 +65,15 @@ BEGIN
 
   IF v_centro_fondo_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_sync_contabili_fondo_fattura', 'E_GENERICO',
-      jsonb_build_object('detail','Centro riscossione fondo fattura non configurato'),
+      'vendite', 'fn_sync_contabili_fondo_fattura', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', v_lotto_id,
+        'fattura_id', p_fattura_figlia_id,
+        'context', jsonb_build_object('detail','Centro riscossione fondo fattura non configurato')
+      ),
       NULL::uuid,
       'Centro riscossione is_fondo_fattura mancante'
     );
@@ -84,8 +98,15 @@ BEGIN
 
   IF v_stato_riga_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_sync_contabili_fondo_fattura', 'E_GENERICO',
-      jsonb_build_object('detail','Stato riga contabile non configurato'),
+      'vendite', 'fn_sync_contabili_fondo_fattura', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', v_lotto_id,
+        'fattura_id', p_fattura_figlia_id,
+        'context', jsonb_build_object('detail','Stato riga contabile non configurato')
+      ),
       NULL::uuid,
       'Stato riga contabile mancante'
     );
@@ -259,6 +280,9 @@ BEGIN
   SELECT v_inserted, v_updated, v_annullati;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_sync_contabili_fondo_fattura(p_fattura_figlia_id bigint)
+IS 'Sincronizza le righe contabili dei fondi fattura assegnati alla fattura figlia e annulla source a saldo effettivo zero.';
 ```
 
 ---

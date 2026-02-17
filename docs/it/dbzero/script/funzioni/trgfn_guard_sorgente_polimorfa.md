@@ -152,6 +152,9 @@ BEGIN
   RETURN NEW;
 END
 $function$
+
+COMMENT ON FUNCTION script.trgfn_guard_sorgente_polimorfa()
+IS 'Trigger polimorfo: valida che la sorgente (id/uid) esista nella tabella target indicata in config.sorgenti; in errore chiama script.fn_log_and_raise_error.';
 ```
 
 ---

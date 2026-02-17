@@ -30,6 +30,9 @@ BEGIN
   END LOOP;
 END;
 $procedure$
+
+COMMENT ON PROCEDURE dbops.apply_fk_index_policy()
+IS 'Applica le policy di indicizzazione definite in dbops.fk_index_policy: crea o rimuove gli indici sulle foreign key secondo il flag consentito.';
 ```
 
 ---

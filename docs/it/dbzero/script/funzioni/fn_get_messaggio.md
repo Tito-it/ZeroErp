@@ -49,6 +49,11 @@ AS $function$
     END IF;
   END;
   $function$
+
+COMMENT ON FUNCTION script.fn_get_messaggio(p_codice text, p_valore text, p_lingua text)
+IS 'Restituisce il messaggio formattato per codice, valore e lingua.
+          Vengono sostituiti tutti i placeholder. Se il messaggio non è definito,
+          restituisce un messaggio di errore predefinito.';
 ```
 
 ---

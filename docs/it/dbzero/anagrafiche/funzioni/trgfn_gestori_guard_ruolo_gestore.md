@@ -29,6 +29,11 @@ BEGIN
 END;
 
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_gestori_guard_ruolo_gestore()
+IS 'Trigger che, prima di inserire/aggiornare in anagrafiche.gestori,
+chiama fn_guard_soggetto_ruolo per validare il legame
+soggetto→ruolo (cd_int_ruolo = ''GE'').';
 ```
 
 ---

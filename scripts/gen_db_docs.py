@@ -58,6 +58,13 @@ def include_manual(schema, kind, name):
         return f"{{% include-markdown \"{rel}\" %}}\n"
     return ""
 
+
+def sql_literal(value):
+    """Escape SQL string literal for generated COMMENT statements."""
+    if value is None:
+        return "NULL"
+    return "'" + str(value).replace("'", "''") + "'"
+
 # Genera Markdown tabella con colonne, vincoli, indici, trigger
 def gen_table_md(schema, table, cur):
     if DOCS_MINIMAL:
@@ -151,7 +158,8 @@ def gen_function_md(schema, func, cur):
         SELECT p.proname,
                p.prokind,  -- 'f' function, 'p' procedure
                pg_get_function_identity_arguments(p.oid) AS args,
-               pg_get_functiondef(p.oid) AS defn
+               pg_get_functiondef(p.oid) AS defn,
+               obj_description(p.oid, 'pg_proc') AS obj_comment
         FROM pg_proc p
         JOIN pg_namespace n ON p.pronamespace = n.oid
         WHERE n.nspname = %s AND p.proname = %s
@@ -172,8 +180,15 @@ def gen_function_md(schema, func, cur):
         "\n**Definizione completa:**\n",
         "```sql",
         (row.get("defn") or "").strip(),
-        "```",
     ]
+    obj_comment = row.get("obj_comment")
+    if obj_comment:
+        lines += [
+            "",
+            f"COMMENT ON {kind_verb} {schema}.{row['proname']}({row['args']})",
+            f"IS {sql_literal(obj_comment)};"
+        ]
+    lines += ["```"]
     return "\n".join(lines)
 
 def gen_function_md_V1(schema, func, cur):

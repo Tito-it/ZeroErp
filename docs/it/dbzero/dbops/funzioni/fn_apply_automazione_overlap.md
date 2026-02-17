@@ -210,6 +210,9 @@ BEGIN
   END LOOP;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_apply_automazione_overlap(p_exec_mode text, p_dry_run boolean)
+IS 'Applica i vincoli EXCLUDE GiST in base a dbops.automazione_overlap.';
 ```
 
 ---

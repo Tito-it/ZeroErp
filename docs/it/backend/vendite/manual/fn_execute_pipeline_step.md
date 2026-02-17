@@ -27,6 +27,8 @@ La logica applicativa ora vive in:
 - Lettura configurazione task JSON da `vendite.fatturazione_pipeline` filtrando:
   `stato_doc_fiscale_id + tipo_lotto + utility_id + tipo_doc_fiscale_id` con fallback su `NULL`.
 - Ogni task viene loggato prima dell'esecuzione.
+- I task per-fattura usano un helper riusabile con gestione errori per singolo documento e routing log `scope=FATTURA`.
+- Gli errori di orchestrazione/task non attribuibili a singola fattura usano lo stesso logger con `scope=LOTTO`.
 - `dry_run` e task `noop`/`log_only` non eseguono side effect.
 - Per `select_attivita`, funzione ammessa solo se in whitelist (`vendite.fn_select_attivita_fatturabili`).
 - Per `generate_fatture_righe`, funzione ammessa solo se in whitelist (`vendite.fn_generate_fatture_righe`).

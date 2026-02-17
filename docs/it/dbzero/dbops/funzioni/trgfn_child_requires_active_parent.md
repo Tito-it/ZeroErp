@@ -183,6 +183,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.trgfn_child_requires_active_parent()
+IS 'Trigger function (ATTIVO/REQUIRE): impedisce INSERT/UPDATE sul figlio se il padre non e'' attivo. Se il figlio ha la colonna attivo, il controllo vale solo per figlio attivo.';
 ```
 
 ---

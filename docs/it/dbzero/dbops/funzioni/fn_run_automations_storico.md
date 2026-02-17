@@ -160,6 +160,9 @@ LOOP
   END LOOP;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_run_automations_storico(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+IS 'Crea i trigger di storico quando esiste storico.<tabella>_storico.';
 ```
 
 ---

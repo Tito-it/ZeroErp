@@ -33,6 +33,11 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo()
+IS 'Funzione trigger che garantisce la presenza del legame
+    tra catasto_unita_immobiliari e indirizzi_dettaglio nella tabella ponte
+    catasto_unita_immobiliari_indirizzi quando istanze_utilities ha entrambi i riferimenti.';
 ```
 
 ---

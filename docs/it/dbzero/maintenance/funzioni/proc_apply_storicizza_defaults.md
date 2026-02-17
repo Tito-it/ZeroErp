@@ -33,6 +33,9 @@ AS $procedure$
     END LOOP;
   END;
 $procedure$
+
+COMMENT ON PROCEDURE maintenance.proc_apply_storicizza_defaults()
+IS 'Applica DEFAULT true alla colonna storicizza sulle tabelle elencate in config.storico_set_storicizza.';
 ```
 
 ---

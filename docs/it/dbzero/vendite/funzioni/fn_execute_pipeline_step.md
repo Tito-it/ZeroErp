@@ -183,6 +183,9 @@ BEGIN
   END LOOP;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_execute_pipeline_step(p_lotto_id bigint, p_stato_doc_fiscale_id bigint, p_rollback boolean, p_dry_run boolean)
+IS 'Esegue i task di uno step pipeline leggendo processi/rollback.';
 ```
 
 ---

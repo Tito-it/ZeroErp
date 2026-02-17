@@ -39,6 +39,9 @@ AS $function$
   AND s.stato_id = p_stato_id
   WHERE i.codice = p_codice_iva;
 $function$
+
+COMMENT ON FUNCTION script.fn_get_iva_override(p_codice_iva text, p_stato_id integer)
+IS 'Restituisce i dati base e override per un codice IVA in un determinato Stato.';
 ```
 
 ---

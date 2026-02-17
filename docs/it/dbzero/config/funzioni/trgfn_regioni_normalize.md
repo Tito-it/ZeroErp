@@ -36,6 +36,12 @@ AS $function$
    RETURN NEW;
  END;
  $function$
+
+COMMENT ON FUNCTION config.trgfn_regioni_normalize()
+IS '
+ ''Function che pulisce i campi di regioni in config.regioni e imposta i valori di default
+      per le colonne che non hanno un valore specificato. (esempio: stato_id)'';
+    ';
 ```
 
 ---

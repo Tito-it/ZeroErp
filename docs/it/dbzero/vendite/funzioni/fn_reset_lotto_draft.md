@@ -41,8 +41,15 @@ BEGIN
 
   IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
-      jsonb_build_object('detail','p_lotto_id obbligatorio'),
+      'vendite', 'fn_reset_lotto_draft', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','p_lotto_id obbligatorio')
+      ),
       NULL::uuid,
       'p_lotto_id non puo'' essere NULL o <= 0'
     );
@@ -57,8 +64,15 @@ BEGIN
 
   IF v_tipo_lotto IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
-      jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id),
+      'vendite', 'fn_reset_lotto_draft', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id)
+      ),
       NULL::uuid,
        concat('Lotto non trovato: ', p_lotto_id)
     );
@@ -66,8 +80,15 @@ BEGIN
 
   IF v_tipo_lotto <> 'MASSIVO' THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
-      jsonb_build_object('detail','tipo lotto non ammesso', 'tipo_lotto', v_tipo_lotto),
+      'vendite', 'fn_reset_lotto_draft', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','tipo lotto non ammesso', 'tipo_lotto', v_tipo_lotto)
+      ),
       NULL::uuid,
       concat('Rollback consentito solo per lotti MASSIVO, tipo lotto: ', v_tipo_lotto)
     );
@@ -76,14 +97,21 @@ BEGIN
   SELECT s.id
     INTO v_draft_id
     FROM config.stati_doc_fiscale s
-   WHERE upper(btrim(s.codice)) = 'DRAFT'
+   WHERE s.codice_interno = 'DRAFT'
      AND s.attivo IS TRUE
    LIMIT 1;
 
   IF v_draft_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
-      jsonb_build_object('detail','stato DRAFT non configurato'),
+      'vendite', 'fn_reset_lotto_draft', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','stato DRAFT non configurato')
+      ),
       NULL::uuid,
       'Stato DRAFT non trovato in config.stati_doc_fiscale'
     );
@@ -92,14 +120,21 @@ BEGIN
   SELECT s.id
     INTO v_annullata_id
     FROM config.stati_doc_fiscale s
-   WHERE upper(btrim(s.codice)) = 'ANNULLATA'
+   WHERE s.codice_interno = 'ANNULLATA'
      AND s.attivo IS TRUE
    LIMIT 1;
 
   IF v_annullata_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
-      jsonb_build_object('detail','stato ANNULLATA non configurato'),
+      'vendite', 'fn_reset_lotto_draft', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','stato ANNULLATA non configurato')
+      ),
       NULL::uuid,
       'Stato ANNULLATA non trovato in config.stati_doc_fiscale'
     );
@@ -107,10 +142,17 @@ BEGIN
 
   IF v_stato_doc_fiscale_id IS DISTINCT FROM v_draft_id THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
+      'vendite', 'fn_reset_lotto_draft', 'E_GENERICO',
       jsonb_build_object(
-        'detail','lotto non in DRAFT',
-        'stato_doc_fiscale_id', v_stato_doc_fiscale_id
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object(
+          'detail','lotto non in DRAFT',
+          'stato_doc_fiscale_id', v_stato_doc_fiscale_id
+        )
       ),
       NULL::uuid,
       concat('Rollback consentito solo se il lotto e'' in DRAFT, stato attuale: '
@@ -128,8 +170,15 @@ BEGIN
 
   IF v_bad_fatture > 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_reset_lotto_draft', 'E_GENERICO',
-      jsonb_build_object('detail','fatture non DRAFT', 'count', v_bad_fatture),
+      'vendite', 'fn_reset_lotto_draft', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','fatture non DRAFT', 'count', v_bad_fatture)
+      ),
       NULL::uuid,
       concat('Rollback non consentito: esistono fatture non DRAFT, count: ', v_bad_fatture)
     );
@@ -162,6 +211,9 @@ BEGIN
   SELECT v_updated_lotti, v_updated_attivita, v_deleted_fatture, v_deleted_righe;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_reset_lotto_draft(p_lotto_id bigint)
+IS 'Esegue il rollback tecnico di un lotto MASSIVO in DRAFT eliminando fatture generate e ripristinando le attivita.';
 ```
 
 ---

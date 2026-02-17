@@ -225,6 +225,20 @@ BEGIN
   END LOOP;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_run_automations_cleanup(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+IS '
+Orchestratore cleanup_at con regole in dbops.automation_rules_tbl.
+
+Regole supportate:
+- CLEANUP_AT: calcola cleanup_at con TTL fisso.
+- CLEANUP_PURGE: elimina record con cleanup_at scaduto (batch).
+
+Parametri:
+- p_exec_mode: modalità esecuzione (AUTO/CI/SCHEDULED).
+- p_schemas: scope schemi (NULL -> resolve da automation_scope).
+- p_dry_run: se true, nessuna modifica e logging DRYRUN.
+';
 ```
 
 ---

@@ -423,6 +423,9 @@ BEGIN
   END LOOP; -- rrule
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_run_automations_attivo(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+IS 'Automazione ATTIVO (BLOCK + REQUIRE): crea trigger BLOCK sul padre e REQUIRE sul figlio quando il padre ha colonna attivo. Nessuna cascata.';
 ```
 
 ---

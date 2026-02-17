@@ -67,6 +67,9 @@ BEGIN
   RETURN v_valuta_id;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_get_valuta_id(p_billing_account_id bigint, p_utility_id integer)
+IS 'Risoluzione valuta_id: BA -> utility -> default gestore.';
 ```
 
 ---

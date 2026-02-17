@@ -28,23 +28,32 @@ BEGIN
   --   - lotto giornaliero: a INVIATA -> chiude stato_operativo
   -- =========================================================
 
-  IF p_lotto_id IS NULL THEN
+  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_sync_lotto_fatture_stato', 'E_GENERICO',
-      jsonb_build_object('detail','lotto_id obbligatorio'),
+      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','lotto_id obbligatorio')),
       NULL::uuid, 'lotto_id obbligatorio'
+    );
+  END IF;
+
+  IF p_target_stato_doc_fiscale_id IS NOT NULL AND p_target_stato_doc_fiscale_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_sync_lotto_fatture_stato', 'E_GENERICO',
+      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','target stato_doc_fiscale non valido', 'stato_doc_fiscale_id', p_target_stato_doc_fiscale_id)),
+      NULL::uuid, 'stato_doc_fiscale target non valido'
     );
   END IF;
 
   SELECT tipo_lotto, stato_doc_fiscale_id
     INTO v_tipo_lotto, v_stato_lotto
     FROM vendite.fatturazione_lotti
-   WHERE id = p_lotto_id;
+   WHERE id = p_lotto_id
+   FOR UPDATE;
 
   IF v_stato_lotto IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_sync_lotto_fatture_stato', 'E_GENERICO',
-      jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id),
+      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id)),
       NULL::uuid, concat('lotto non trovato: ', p_lotto_id)
     );
   END IF;
@@ -54,7 +63,7 @@ BEGIN
   IF v_target IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_sync_lotto_fatture_stato', 'E_GENERICO',
-      jsonb_build_object('detail','stato_doc_fiscale target obbligatorio'),
+      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','stato_doc_fiscale target obbligatorio')),
       NULL::uuid, 
       concat('stato_doc_fiscale target obbligatorio per lotto: ', p_lotto_id)
     );
@@ -66,6 +75,7 @@ BEGIN
          user_update = current_user
     FROM vendite.fatturazione_lotti_fatture lf
    WHERE lf.lotto_id = p_lotto_id
+     AND COALESCE(lf.esclusa, false) IS FALSE
      AND lf.fattura_id = f.id
      AND f.stato_doc_fiscale_id IS DISTINCT FROM v_target;
 
@@ -73,7 +83,7 @@ BEGIN
     SELECT id
       INTO v_inviata_id
       FROM config.stati_doc_fiscale
-     WHERE codice = 'INVIATA'
+     WHERE codice_interno = 'INVIATA'
        AND attivo IS TRUE
      ORDER BY ordine
      LIMIT 1;
@@ -88,6 +98,9 @@ BEGIN
   END IF;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_sync_lotto_fatture_stato(p_lotto_id bigint, p_target_stato_doc_fiscale_id bigint)
+IS 'Allinea stato fatture collegate al lotto (opzionale target).';
 ```
 
 ---

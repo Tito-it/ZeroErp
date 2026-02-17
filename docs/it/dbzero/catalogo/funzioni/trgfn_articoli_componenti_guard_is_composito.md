@@ -48,6 +48,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_is_composito()
+IS 'Blocca articoli non compositi come prodotto in distinta base.';
 ```
 
 ---

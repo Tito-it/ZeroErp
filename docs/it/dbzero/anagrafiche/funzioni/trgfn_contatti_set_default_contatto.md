@@ -68,6 +68,10 @@ AS $function$
     RETURN NEW;
   END;
   $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_contatti_set_default_contatto()
+IS 'Trigger che imposta il primo contatto di un soggetto come default nel contesto corretto (soggetto|ruolo|utility), 
+ aggiorna default_contatto_id su soggetti e ripulisce solo quelli dello stesso contesto.';
 ```
 
 ---

@@ -30,6 +30,9 @@ AS $procedure$
     END LOOP;
   END;
 $procedure$
+
+COMMENT ON PROCEDURE maintenance.proc_sync_storico_set_storicizza()
+IS 'Sincronizza config.storico_set_storicizza rilevando tabelle con colonna storicizza avente DEFAULT true.';
 ```
 
 ---

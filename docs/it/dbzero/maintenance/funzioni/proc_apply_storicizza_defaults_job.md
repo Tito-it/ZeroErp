@@ -21,6 +21,9 @@ AS $procedure$
      END;
      
    $procedure$
+
+COMMENT ON PROCEDURE maintenance.proc_apply_storicizza_defaults_job()
+IS 'Job wrapper per chiamare proc_apply_storicizza_defaults con logging e lock.';
 ```
 
 ---

@@ -152,6 +152,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.trgfn_prevent_deactivate_if_children()
+IS 'Trigger function (ATTIVO/BLOCK): impedisce la disattivazione (attivo TRUE->FALSE) del padre se esistono figli collegati. Se la tabella figlia ha una colonna attivo, il blocco avviene solo se esistono figli attivi (attivo IS DISTINCT FROM FALSE).';
 ```
 
 ---
