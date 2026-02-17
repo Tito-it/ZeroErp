@@ -32,6 +32,9 @@ AS $function$
     RETURN NEW;
   END;
   $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()
+IS 'Dispatcher per la validazione della partita IVA e del codice fiscale per i soggetti in base al paese.';
 ```
 
 ---

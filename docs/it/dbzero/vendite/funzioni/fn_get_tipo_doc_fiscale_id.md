@@ -53,6 +53,9 @@ BEGIN
   RETURN v_tipo_doc_id;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_get_tipo_doc_fiscale_id(p_sorgente_tipo_id bigint)
+IS 'Risoluzione tipo_doc_fiscale_id dalla sorgente (no fallback).';
 ```
 
 ---

@@ -50,6 +50,10 @@ BEGIN
     RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_pdp_set_default_stato()
+IS 'Imposta automaticamente lo stato tecnico DISPONIBILE su anagrafiche.pdp
+    se non specificato durante  inserimento.';
 ```
 
 ---

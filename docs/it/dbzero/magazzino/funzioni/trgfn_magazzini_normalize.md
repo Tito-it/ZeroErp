@@ -17,6 +17,9 @@ BEGIN
   END IF;
   RETURN NEW;
 END$function$
+
+COMMENT ON FUNCTION magazzino.trgfn_magazzini_normalize()
+IS 'Normalizza i dati magazzino.';
 ```
 
 ---

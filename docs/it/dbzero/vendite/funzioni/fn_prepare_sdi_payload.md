@@ -37,8 +37,15 @@ BEGIN
 
   IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_prepare_sdi_payload', 'E_GENERICO',
-      jsonb_build_object('detail','p_lotto_id obbligatorio'),
+      'vendite', 'fn_prepare_sdi_payload', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','p_lotto_id obbligatorio')
+      ),
       NULL::uuid,
       'p_lotto_id obbligatorio e > 0'
     );
@@ -46,8 +53,15 @@ BEGIN
 
   IF p_stato_sdi_codice_interno IS NULL OR btrim(p_stato_sdi_codice_interno) = '' THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_prepare_sdi_payload', 'E_GENERICO',
-      jsonb_build_object('detail','p_stato_sdi_codice_interno obbligatorio'),
+      'vendite', 'fn_prepare_sdi_payload', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','p_stato_sdi_codice_interno obbligatorio')
+      ),
       NULL::uuid,
       'p_stato_sdi_codice_interno obbligatorio'
     );
@@ -62,8 +76,15 @@ BEGIN
 
   IF NOT COALESCE(v_exists_lotto, false) THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_prepare_sdi_payload', 'E_GENERICO',
-      jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id),
+      'vendite', 'fn_prepare_sdi_payload', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id)
+      ),
       NULL::uuid,
       concat('lotto non trovato: ', p_lotto_id::text)
     );
@@ -79,8 +100,15 @@ BEGIN
 
   IF v_stato_sdi_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_prepare_sdi_payload', 'E_GENERICO',
-      jsonb_build_object('detail','stato_sdi non trovato', 'codice_interno', p_stato_sdi_codice_interno),
+      'vendite', 'fn_prepare_sdi_payload', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','stato_sdi non trovato', 'codice_interno', p_stato_sdi_codice_interno)
+      ),
       NULL::uuid,
       concat('stato_sdi non trovato: ', p_stato_sdi_codice_interno)
     );
@@ -225,6 +253,9 @@ BEGIN
   ORDER BY f.id;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_prepare_sdi_payload(p_lotto_id bigint, p_stato_sdi_codice_interno character varying, p_force_new_tentativo boolean)
+IS 'Prepara i tentativi SDI delle fatture del lotto, con riuso tentativi aperti o forzatura nuovo tentativo.';
 ```
 
 ---

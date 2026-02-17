@@ -64,6 +64,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION script.trgfn_lock_columns()
+IS 'Verifica che le colonne specificate non vengano modificate: in caso contrario logga e solleva errore.';
 ```
 
 ---

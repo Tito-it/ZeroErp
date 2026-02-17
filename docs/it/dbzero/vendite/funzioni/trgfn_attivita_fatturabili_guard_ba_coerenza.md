@@ -56,6 +56,9 @@ AS $function$
      END IF;
      RETURN NEW;
  END$function$
+
+COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()
+IS 'Se billing_account_id è valorizzato, verifica che l’istanza_utility sia la stessa dell’account.';
 ```
 
 ---

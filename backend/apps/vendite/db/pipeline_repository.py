@@ -347,7 +347,7 @@ class VenditePipelineRepository:
     def log_pipeline_fase(
         self,
         lotto_id: int,
-        stato_doc_fiscale_id: int,
+        stato_doc_fiscale_id: int | None,
         fase: str,
         status: str,
         messaggio: str | None,
@@ -366,6 +366,47 @@ class VenditePipelineRepository:
                     fase,
                     status,
                     messaggio,
+                    self._to_jsonb_param(meta),
+                ],
+            )
+
+    def log_fattura(
+        self,
+        *,
+        fattura_id: int,
+        status: str,
+        messaggio: str,
+        critical: bool,
+        meta: LottoPipelineMeta | None = None,
+    ) -> None:
+        # Inserisce un log funzionale puntuale su singola fattura.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO vendite.fatture_log (
+                    fattura_id,
+                    data_ora,
+                    messaggio,
+                    status,
+                    disabilitato,
+                    critical,
+                    meta
+                )
+                VALUES (
+                    %s,
+                    now(),
+                    %s,
+                    %s,
+                    false,
+                    %s,
+                    COALESCE(%s::jsonb, '{}'::jsonb)
+                )
+                """,
+                [
+                    fattura_id,
+                    messaggio,
+                    status,
+                    critical,
                     self._to_jsonb_param(meta),
                 ],
             )

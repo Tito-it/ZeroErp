@@ -31,10 +31,17 @@ BEGIN
   --   - dest_billing_account_id = BA reale
   -- =========================================================
 
-  IF p_lotto_id IS NULL THEN
+  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_generate_fatture_righe', 'E_GENERICO',
-      jsonb_build_object('detail','lotto_id obbligatorio'),
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','lotto_id obbligatorio', 'lotto_id', p_lotto_id)
+      ),
       NULL::uuid, 'lotto_id obbligatorio'
     );
   END IF;
@@ -112,6 +119,9 @@ BEGIN
   RETURN v_count;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_generate_fatture_righe(p_lotto_id bigint, p_dry_run boolean)
+IS 'Genera righe fattura da attivita lockate sul lotto e aggiorna il collegamento attivita_fatturabili -> fatture_righe.';
 ```
 
 ---

@@ -21,6 +21,9 @@ AS $procedure$
   END;
   
 $procedure$
+
+COMMENT ON PROCEDURE maintenance.proc_sync_storico_set_storicizza_job()
+IS 'Job wrapper per chiamare proc_sync_storico_set_storicizza con logging e lock.';
 ```
 
 ---

@@ -40,6 +40,9 @@ BEGIN
   END LOOP;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_populate_fk_index_policy()
+IS 'Popola automaticamente dbops.fk_index_policy per tutte le FK senza indice, con consentito=false.';
 ```
 
 ---

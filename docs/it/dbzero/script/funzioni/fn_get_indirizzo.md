@@ -141,6 +141,9 @@ BEGIN
     RETURN;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice character varying)
+IS 'Policy indirizzi: usa indirizzi RUOLO come master (con fallback tipo su matrice ruolo) e, se assenti, fallback su indirizzi SOGGETTO.';
 ```
 
 ---

@@ -148,6 +148,9 @@ BEGIN
   RETURN NEW;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte()
+IS 'Blocca inserimenti/aggiornamenti se la fonte_quantita non è tra TIMESHEET, MANUALE, FISSA o se la competenza è incoerente.';
 ```
 
 ---

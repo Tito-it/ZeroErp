@@ -21,6 +21,9 @@ AS $procedure$
     );
   END;
 $procedure$
+
+COMMENT ON PROCEDURE maintenance.proc_automations_lock_columns_job()
+IS 'Job wrapper per chiamare fn_run_automations_lock_columns e cleanup trigger LOCK_COLUMNS obsoleti.';
 ```
 
 ---

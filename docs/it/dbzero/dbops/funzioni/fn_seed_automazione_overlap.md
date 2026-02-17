@@ -217,6 +217,9 @@ BEGIN
   END LOOP;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_seed_automazione_overlap(p_schemas text[])
+IS 'Popola dbops.automazione_overlap rilevando tabelle con valido_dal/valido_al o valid_from/valid_to.';
 ```
 
 ---

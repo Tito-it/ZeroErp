@@ -88,6 +88,17 @@ AS $function$
         RETURN;
     END;
     $function$
+
+COMMENT ON FUNCTION script.fn_validate_cf_piva_it(p_tipo_det_id bigint, p_partita_iva text, p_piva_gruppo text, p_codice_fiscale text)
+IS 'Valida Partita IVA principale, Partita IVA di gruppo e Codice Fiscale per soggetti italiani.
+
+La logica utilizza la configurazione del tipo soggetto di dettaglio (config.tipi_soggetto_dettaglio):
+- se formato_piva = NON_APPLICABILE non viene eseguita alcuna validazione sulla P.IVA;
+- se formato_cf  = NON_APPLICABILE non viene eseguita alcuna validazione sul Codice Fiscale.
+
+In caso di valore non valido richiama script.fn_log_and_raise_error con i codici:
+- PIVA_NON_VALIDA per P.IVA principale o di gruppo non valida,
+- CF_NON_VALIDO per Codice Fiscale non valido.';
 ```
 
 ---

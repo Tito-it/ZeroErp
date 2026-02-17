@@ -78,6 +78,9 @@ AS $function$
    RETURN NEW;
  END
  $function$
+
+COMMENT ON FUNCTION vendite.trgfn_fatture_righe_guard_normalize()
+IS 'setta dest_billing_account_id = BA della testata fattura.';
 ```
 
 ---

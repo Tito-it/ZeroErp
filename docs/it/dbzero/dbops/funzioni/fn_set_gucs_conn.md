@@ -18,6 +18,9 @@ BEGIN
     PERFORM set_config('app.group_ids', array_to_string(p_group_ids, ','), false);
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_set_gucs_conn(p_user_id integer, p_session_key text, p_group_ids integer[])
+IS 'Imposta le GUC app.* per audit, RLS e override parametri (user_id, session_key, group_ids).';
 ```
 
 ---

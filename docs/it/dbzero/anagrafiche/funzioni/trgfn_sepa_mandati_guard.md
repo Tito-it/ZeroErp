@@ -58,6 +58,9 @@ BEGIN
   RETURN NEW;
 END
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_sepa_mandati_guard()
+IS 'Guard trigger per pagamenti.sepa_mandati: validazione stato/dati e normalizzazione campi testuali.';
 ```
 
 ---

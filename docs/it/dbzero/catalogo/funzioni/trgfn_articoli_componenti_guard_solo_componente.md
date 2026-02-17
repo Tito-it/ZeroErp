@@ -48,6 +48,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_solo_componente()
+IS 'Blocca articoli marcati is_solo_componente come prodotto in distinta base.';
 ```
 
 ---

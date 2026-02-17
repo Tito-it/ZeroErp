@@ -88,6 +88,9 @@ BEGIN
   END IF;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_get_pipeline_task_implementation(p_dominio_id bigint, p_task_code text, p_implementation_key text)
+IS 'Risoluzione implementazione task con fallback su default.';
 ```
 
 ---

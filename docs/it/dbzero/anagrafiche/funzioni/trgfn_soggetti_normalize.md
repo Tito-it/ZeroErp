@@ -28,6 +28,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_normalize()
+IS 'Normalize: imposta stato_id default; generazione codice demandata al sistema_codici.';
 ```
 
 ---

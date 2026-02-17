@@ -31,6 +31,9 @@ BEGIN
   RETURN v_anno;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_get_anno_registro(p_data date)
+IS 'Calcola anno di registro per reset ANNUALE (anno solare).';
 ```
 
 ---

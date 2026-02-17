@@ -56,6 +56,9 @@ BEGIN
   ORDER BY rs.ordine, rs.codice_step;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_list_attivita_pipeline_steps(p_utility_id integer, p_sorgente_tipo_id bigint)
+IS 'Lista step pipeline attivita_fatturabili risolti con fallback utility/sorgente.';
 ```
 
 ---

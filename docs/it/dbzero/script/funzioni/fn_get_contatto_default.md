@@ -64,6 +64,12 @@ FROM only_default
 WHERE rn = 1;
 
 $function$
+
+COMMENT ON FUNCTION script.fn_get_contatto_default(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_utility_id integer, p_tipo_contatto_id integer, p_unita_organizzativa_id integer)
+IS 'Restituisce il contatto marcato come DEFAULT per un soggetto
+  (e opzionalmente per ruolo, utility, tipo_contatto, unita_organizzativa). 
+  Riutilizza fn_get_contatti per costruire i candidati. 
+  Filtra is_default = TRUE. Ritorna 0 o 1 record.';
 ```
 
 ---

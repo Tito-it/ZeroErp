@@ -37,7 +37,14 @@ BEGIN
       'vendite',
       'fn_assign_numero_fattura',
       'E_GENERICO',
-      jsonb_build_object('detail','p_fattura_id obbligatorio', 'fattura_id', p_fattura_id),
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', p_fattura_id,
+        'context', jsonb_build_object('detail','p_fattura_id obbligatorio', 'fattura_id', p_fattura_id)
+      ),
       NULL::uuid,
       concat('p_fattura_id obbligatorio: ', COALESCE(p_fattura_id::text, 'NULL'))
     );
@@ -61,7 +68,14 @@ BEGIN
       'vendite',
       'fn_assign_numero_fattura',
       'E_GENERICO',
-      jsonb_build_object('detail','fattura non trovata', 'fattura_id', p_fattura_id),
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', p_fattura_id,
+        'context', jsonb_build_object('detail','fattura non trovata', 'fattura_id', p_fattura_id)
+      ),
       NULL::uuid,
       concat('fattura non trovata: ', p_fattura_id)
     );
@@ -85,6 +99,9 @@ BEGIN
   RETURN QUERY SELECT v_registro_id, v_anno, v_mese, NULLIF(v_serie, '')::varchar, v_numero;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_assign_numero_fattura(p_fattura_id bigint)
+IS 'Assegna anno/serie/numero alla fattura usando il registro e il progressivo con lock del contatore.';
 ```
 
 ---

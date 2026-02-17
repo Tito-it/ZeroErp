@@ -94,6 +94,19 @@ BEGIN
   RETURN v_count;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_apply_cleanup_at(p_schema text, p_table text, p_cleanup_column text, p_base_ts_column text, p_ttl_days integer, p_apply_on_update boolean, p_dry_run boolean)
+IS '
+Helper per calcolare cleanup_at con TTL fisso.
+
+Parametri:
+- p_schema, p_table: tabella target.
+- p_cleanup_column: colonna di cleanup (default cleanup_at).
+- p_base_ts_column: colonna timestamp di base (es. data_insert).
+- p_ttl_days: giorni di retention.
+- p_apply_on_update: se true ricalcola anche su righe già valorizzate.
+- p_dry_run: se true non aggiorna e ritorna il numero righe potenziali.
+';
 ```
 
 ---

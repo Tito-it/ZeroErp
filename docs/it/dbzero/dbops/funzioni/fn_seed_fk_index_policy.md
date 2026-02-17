@@ -37,6 +37,9 @@ AS $function$
       ON CONFLICT (schema_name, table_name, constraint_name) DO NOTHING;
     END;
     $function$
+
+COMMENT ON FUNCTION dbops.fn_seed_fk_index_policy()
+IS 'Registro policy indici per foreign key: seed automatico da view';
 ```
 
 ---

@@ -189,6 +189,10 @@ Rendere parametrico il dispatch task senza esecuzione dinamica libera.
 * [x] Runner Django: policy rerun su lotto `MASSIVO` in errore (resume dallo step corrente + rollback step opzionale via `meta.auto_step_rollback=true`, con skip automatico dei rollback distruttivi)
 * [x] Resume `DEFINITIVA` per fattura (senza reset globale lotto)
 * [x] Seed transizioni `config.stati_doc_fiscale_transizioni` coerente con avanzamento step lotto
+* [x] Task `prepare_sdi_payload_lotto` attivo (preparazione payload/ tentativi SDI da lotto)
+* [ ] Builder file invio SDI (XML/metadata) agganciato al task successivo
+* [ ] Persistenza `nome_file`/esito generazione su `vendite.fatture_sdi`
+* [ ] Invio canale SDI + registrazione eventi in `vendite.fatture_sdi_eventi`
 
 Vincolo operativo:
 * Le transizioni in `config.stati_doc_fiscale_transizioni` devono essere seedate in modo coerente con gli step pipeline lotto (`DRAFT -> EMESSA`, ecc.), altrimenti il trigger stato lotto blocca l'avanzamento.

@@ -29,6 +29,11 @@ BEGIN
 END;
 
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_clienti_guard_ruolo_cliente()
+IS 'Trigger che, prima di inserire/aggiornare in anagrafiche.clienti,
+chiama fn_guard_soggetto_ruolo per validare il legame
+soggetto→ruolo (cd_int_ruolo = ''CL'').';
 ```
 
 ---

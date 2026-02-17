@@ -66,6 +66,9 @@ BEGIN
   USING _target_tipo, _target_id, _target_riga_id, _include_doc, _include_righe, _only_visible;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_get_note(p_note_table regclass, _target_tipo text, _target_id bigint, _target_riga_id bigint, _include_doc boolean, _include_righe boolean, _only_visible boolean)
+IS 'Funzione generica: legge note normalizzate da una tabella *.note (passata come regclass); stile/lingua da domini.';
 ```
 
 ---

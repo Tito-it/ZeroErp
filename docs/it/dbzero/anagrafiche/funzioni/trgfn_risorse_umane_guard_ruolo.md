@@ -50,6 +50,9 @@ BEGIN
     RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_guard_ruolo()
+IS 'Verifica che soggetto_ruolo_id sia di tipo RIS_UMANA.';
 ```
 
 ---

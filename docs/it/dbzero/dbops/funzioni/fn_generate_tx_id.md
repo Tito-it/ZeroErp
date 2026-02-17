@@ -31,6 +31,10 @@ AS $function$
       RETURN v_tx;
   END;
   $function$
+
+COMMENT ON FUNCTION dbops.fn_generate_tx_id(p_generating_function text, p_session_info jsonb)
+IS 'Genera un nuovo tx_id UUID, lo inserisce in dbops.transaction_ids 
+          con generating_function e session_info, e lo restituisce';
 ```
 
 ---

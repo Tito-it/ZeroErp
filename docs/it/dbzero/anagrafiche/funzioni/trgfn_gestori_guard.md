@@ -103,6 +103,9 @@ BEGIN
     RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_gestori_guard()
+IS 'Guard di dominio per anagrafiche.gestori.';
 ```
 
 ---

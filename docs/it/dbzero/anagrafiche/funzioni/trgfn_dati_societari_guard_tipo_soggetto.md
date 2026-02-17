@@ -87,6 +87,15 @@ END IF;
 RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()
+IS '
+Function che controlla, in fase di INSERT/UPDATE su anagrafiche.dati_societari, che:
+- il soggetto collegato esista in anagrafiche.soggetti;
+- per il tipo_soggetto_dettaglio associato sia configurata una policy dati_societari_policy
+diversa da ''NONE'' (enum config.dati_societari_policy_enum).
+In caso di violazione utilizza script.fn_log_and_raise_error con codici errore specifici.
+';
 ```
 
 ---

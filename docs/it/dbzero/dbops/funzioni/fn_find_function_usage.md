@@ -47,6 +47,10 @@ AS $function$
   JOIN pg_proc tgt ON tgt.oid = et.evtfoid
   WHERE tgt.proname = p_function_name
   $function$
+
+COMMENT ON FUNCTION dbops.fn_find_function_usage(p_function_name text)
+IS 'trova tutte le foreign key che fanno riferimento
+      ad una tabella specificata in input.';
 ```
 
 ---

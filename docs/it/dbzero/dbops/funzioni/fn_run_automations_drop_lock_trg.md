@@ -176,6 +176,9 @@ BEGIN
   END LOOP;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_run_automations_drop_lock_trg(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+IS 'Rimuove trigger LOCK_COLUMNS quando non ci sono colonne da bloccare.';
 ```
 
 ---

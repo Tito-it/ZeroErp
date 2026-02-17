@@ -83,6 +83,9 @@ BEGIN
   LIMIT 1;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_resolve_attivita_pipeline_step(p_codice_step text, p_utility_id integer, p_sorgente_tipo_id bigint, p_rollback boolean)
+IS 'Risoluzione step pipeline attivita_fatturabili con fallback utility/sorgente e precedenza deterministica.';
 ```
 
 ---

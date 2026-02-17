@@ -16,6 +16,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.types import LottoPipelineMeta, PipelineStepLogMeta
+from apps.vendite.services.pipeline_error_logger import PipelineErrorLogger
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 
 # Orchestratore applicativo della pipeline lotto vendite (equivalente SQL).
@@ -40,9 +41,11 @@ class LottoPipelineRunner:
         self,
         repository: VenditePipelineRepository | None = None,
         step_executor: PipelineStepExecutor | None = None,
+        error_logger: PipelineErrorLogger | None = None,
     ) -> None:
         self.repository = repository or VenditePipelineRepository()
         self.step_executor = step_executor or PipelineStepExecutor(self.repository)
+        self.error_logger = error_logger or PipelineErrorLogger(self.repository)
 
     def _mark_lotto_error(
         self,
@@ -54,14 +57,18 @@ class LottoPipelineRunner:
     ) -> None:
         # Mantiene stato lotto coerente e traccia errore con codice uniforme.
         with transaction.atomic():
-            self.repository.set_lotto_job_stato(lotto_id, "ERRORE", "Errore pipeline")
-            self.repository.log_lotto_esito_fatture(lotto_id)
-            ErrorManager.log_error_only(
+            self.error_logger.log_error(
+                scope="LOTTO",
+                severity="C",
                 code=code,
-                context={"lotto_id": lotto_id, "tipo_lotto": tipo_lotto, "detail": detail},
-                area="backend",
+                message=f"Errore pipeline: {code}",
+                detail=detail,
+                lotto_id=lotto_id,
+                context={"tipo_lotto": tipo_lotto},
                 function_name="vendite.pr_run_lotto_pipeline",
             )
+            self.repository.set_lotto_job_stato(lotto_id, "ERRORE", "Errore pipeline")
+            self.repository.log_lotto_esito_fatture(lotto_id)
 
     def _mark_lotto_error_safely(
         self,

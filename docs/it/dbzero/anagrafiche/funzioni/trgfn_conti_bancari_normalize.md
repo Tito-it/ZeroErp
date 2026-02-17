@@ -28,6 +28,12 @@ BEGIN
   RETURN NEW;
 END
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_conti_bancari_normalize()
+IS 'Trigger function BEFORE INSERT/UPDATE su anagrafiche.conti_bancari:
+ - Normalizza IBAN/BIC (uppercase, no spazi)
+ - Deriva paese da IBAN se mancante
+ - Aggiorna audit (data_update, user_insert/user_update).';
 ```
 
 ---

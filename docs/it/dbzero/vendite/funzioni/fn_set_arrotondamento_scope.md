@@ -115,6 +115,9 @@ BEGIN
   RETURN v_saldo;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_set_arrotondamento_scope(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id bigint, p_saldo numeric)
+IS 'Imposta (upsert) il saldo tecnico arrotondamenti per scope.';
 ```
 
 ---

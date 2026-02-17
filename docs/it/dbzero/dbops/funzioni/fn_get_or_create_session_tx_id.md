@@ -91,6 +91,9 @@ BEGIN
     RETURN v_tx_id;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_get_or_create_session_tx_id()
+IS 'Funzione helper che restituisce un tx_id univoco per sessione: riusa la GUC dbops.tx_id se presente o ne crea uno nuovo (via dblink verso dbops.fn_generate_tx_id, con fallback locale uuidv7()) e lo memorizza nella GUC di sessione.';
 ```
 
 ---

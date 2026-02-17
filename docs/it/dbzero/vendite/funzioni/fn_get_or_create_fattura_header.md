@@ -34,10 +34,21 @@ BEGIN
   --   - link lotto <-> fattura in fatturazione_lotti_fatture
   -- =========================================================
 
-  IF p_lotto_id IS NULL OR p_attivita_id IS NULL THEN
+  IF p_lotto_id IS NULL OR p_lotto_id <= 0 OR p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_get_or_create_fattura_header', 'E_GENERICO',
-      jsonb_build_object('detail','lotto_id e attivita_id obbligatori'),
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object(
+          'detail','lotto_id e attivita_id obbligatori',
+          'lotto_id', p_lotto_id,
+          'attivita_id', p_attivita_id
+        )
+      ),
       NULL::uuid, 'Parametri obbligatori mancanti'
     );
   END IF;
@@ -55,7 +66,14 @@ BEGIN
      OR v_emittente_id IS NULL OR v_registro_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_get_or_create_fattura_header', 'E_GENERICO',
-      jsonb_build_object('detail','chiave documento incompleta', 'attivita_id', p_attivita_id),
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','chiave documento incompleta', 'attivita_id', p_attivita_id)
+      ),
       NULL::uuid,
       concat('Chiave documento incompleta', ' attivita_id ', p_attivita_id::text)
     );
@@ -72,7 +90,14 @@ BEGIN
   IF v_stato_doc_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_get_or_create_fattura_header', 'E_GENERICO',
-      jsonb_build_object('detail','stato DRAFT non trovato'),
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','stato DRAFT non trovato')
+      ),
       NULL::uuid, 'Stato DRAFT non trovato'
     );
   END IF;
@@ -139,6 +164,9 @@ BEGIN
   RETURN v_fattura_id;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_get_or_create_fattura_header(p_lotto_id bigint, p_attivita_id bigint)
+IS 'Recupera o crea la testata fattura DRAFT per il lotto in base alla chiave documento derivata dall''attivita.';
 ```
 
 ---

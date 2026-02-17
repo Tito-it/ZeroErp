@@ -92,6 +92,9 @@ BEGIN
   RETURN risultato;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_generate_codice(tipo text)
+IS 'Genera un codice basato su config.sistema_codici. Se usa_sequenza = false restituisce NULL. Richiede sequenza pre-provisionata <schema>.<tabella>_<colonna>_seq.';
 ```
 
 ---

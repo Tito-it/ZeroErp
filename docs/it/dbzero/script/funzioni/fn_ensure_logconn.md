@@ -38,6 +38,10 @@ BEGIN
   END;
 END; 
 $function$
+
+COMMENT ON FUNCTION script.fn_ensure_logconn()
+IS 'Verifica che la connessione dblink logconn sia attiva. 
+      Se non lo è, la crea usando la GUC dblink.log_connection.';
 ```
 
 ---

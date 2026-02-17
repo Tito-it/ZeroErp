@@ -9,7 +9,7 @@
 -- 3) Inserimento fattura e riepilogo IVA
 -- 4) Ricalcolo totali con arrotondamento (decimali=0)
 -- 5) Aggiornamento minimo su soglia
--- 6) Ricalcolo senza arrotondamento (decimali=NULL)
+-- 6) Ricalcolo con arrotondamento a 2 decimali
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -23,13 +23,27 @@ CREATE TEMP TABLE tmp_costanti_rt AS
 SELECT 'pgtap_ricalcola_totali_arrotondamento'::text AS test_scope;
 
 CREATE TEMP TABLE tmp_refs_rt AS
+WITH ba AS (
+  SELECT b.id, b.utility_id
+  FROM anagrafiche.billing_account b
+  ORDER BY b.data_insert DESC NULLS LAST
+  LIMIT 1
+)
 SELECT
   (SELECT id FROM vendite.registri_fatturazione WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS registro_id,
-  (SELECT id FROM anagrafiche.billing_account ORDER BY id LIMIT 1) AS billing_account_id,
-  (SELECT utility_id FROM anagrafiche.billing_account ORDER BY id LIMIT 1) AS utility_id,
+  (SELECT id FROM ba) AS billing_account_id,
+  (SELECT utility_id FROM ba) AS utility_id,
   (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id,
-  (SELECT emittente_soggetto_ruolo_id FROM vendite.fatture WHERE emittente_soggetto_ruolo_id IS NOT NULL ORDER BY id LIMIT 1) AS emittente_soggetto_ruolo_id;
+  (
+    SELECT m.emittente_soggetto_ruolo_id
+    FROM anagrafiche.emittenti_fiscali_billing_account m
+    WHERE m.billing_account_id = (SELECT id FROM ba)
+       OR m.is_default IS TRUE
+    ORDER BY CASE WHEN m.billing_account_id = (SELECT id FROM ba) THEN 0 ELSE 1 END,
+             m.id
+    LIMIT 1
+  ) AS emittente_soggetto_ruolo_id;
 
 SELECT ok(
   (SELECT registro_id IS NOT NULL
@@ -127,15 +141,15 @@ SELECT ok(
 );
 
 -- ============================================================
--- 4) Ricalcolo senza arrotondamento (decimali=NULL)
+-- 4) Ricalcolo con arrotondamento a 2 decimali
 -- ============================================================
 UPDATE anagrafiche.emittenti_fiscali_utilities
-SET arrotondamento_importi_dec = NULL
+SET arrotondamento_importi_dec = 2
 WHERE id = (SELECT id FROM tmp_conf_rt);
 
 SELECT ok(
   (SELECT 1 FROM vendite.fn_ricalcola_totali_fattura((SELECT id FROM tmp_fattura_rt)) LIMIT 1) IS NOT NULL,
-  'Ricalcolo totali senza arrotondamento'
+  'Ricalcolo totali con arrotondamento a 2 decimali'
 );
 
 -- ============================================================

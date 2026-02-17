@@ -99,6 +99,9 @@ AS $function$
       RETURN NEW;
     END;
     $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_normalize()
+IS 'Guard/normalize: valida parent e date; normalizza codice se presente (no generazione automatica).';
 ```
 
 ---

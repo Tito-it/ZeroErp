@@ -19,6 +19,32 @@ AS $function$
         AND NOT t.tgisinternal
     );
   $function$
+
+COMMENT ON FUNCTION dbops.fn_trigger_exists_by_name(p_rel regclass, p_trigger_name text)
+IS '
+  Verifica l’esistenza di un trigger **non interno** (tgisinternal = false) su una
+  relazione specifica, identificandolo per **nome esatto**.
+
+  • **Ritorno**: boolean — TRUE se esiste almeno un trigger non-internal con nome
+    `p_trigger_name` sulla relazione `p_rel`, altrimenti FALSE.
+
+  • **Parametri**
+    - `p_rel regclass`: relazione di destinazione (tabella/vista) su cui cercare.
+    - `p_trigger_name text`: nome del trigger da verificare (match esatto su `pg_trigger.tgname`).
+
+  • **Note implementative**
+    - Interroga `pg_trigger` filtrando `tgrelid = p_rel` e `tgname = p_trigger_name`.
+    - Esclude i trigger interni (`NOT tgisinternal`).
+    - È una funzione **idempotente** e a **basso costo** (utilizza `EXISTS`).
+
+  • **Casi d’uso tipici**
+    - Controlli di esistenza prima di creare/eliminare trigger in processi di automazione.
+    - Strategie di “existence check” con criterio **BY_NAME**.
+
+  • **Limitazioni**
+    - Il match è sensibile al nome completo del trigger; differenze di naming policy
+      (es. template diversi) richiedono l’uso di strategie alternative (es. BY_FUNCTION).
+  ';
 ```
 
 ---

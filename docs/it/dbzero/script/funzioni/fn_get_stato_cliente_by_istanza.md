@@ -28,6 +28,9 @@ SELECT COALESCE(
 );
 END
 $function$
+
+COMMENT ON FUNCTION script.fn_get_stato_cliente_by_istanza(p_istanza_id bigint)
+IS ' Restituisce lo stato di un cliente in base alla istanza. ';
 ```
 
 ---

@@ -18,6 +18,11 @@
 - [x] Reset tecnico modellato in pipeline (`rollback` step `EMESSA`) solo per `MASSIVO`.
 - [x] Step `EMESSA` massivo configurato con task minimi/fondi + ricalcolo IVA/totali.
 - [x] Step `INVIATA` massivo configurato con preparazione payload SDI su lotto.
+- [x] Processo Python per reperire payload SDI da lotto (`fn_prepare_sdi_payload_lotto`).
+- [ ] Generazione file invio SDI (builder XML/metadata) da payload lotto.
+- [ ] Persistenza esito generazione file su `vendite.fatture_sdi` (`nome_file` + meta output).
+- [ ] Registrazione eventi file su `vendite.fatture_sdi_eventi` (es. `FILE_GENERATO`).
+- [ ] Processo di invio canale SDI e aggiornamento `data_invio`/esiti ricezione.
 - [x] Refactor fondi fattura su contabili/righe (`fn_sync_contabili_fondo_fattura`) con deprecazione wrapper legacy.
 - [x] Refactor saldi: `fn_get_saldo_fattura` come residuo documento.
 - [x] Introduzione saldo contabile postabile (`fn_get_saldo_fattura_contabili`) per evitare doppie inclusioni.
@@ -42,6 +47,21 @@
 - [x] `DEFINITIVA` in modalita resume (no reset globale lotto).
 - [x] Error envelope + idempotency API centralizzati e allineati al flusso.
 - [x] Test unit runner aggiornati e verdi (`apps.vendite.tests.services.test_pipeline_runner`).
+
+### Stato SDI (dettaglio operativo)
+
+Gia` implementato:
+
+* `vendite.fn_prepare_sdi_payload(...)` (DB): prepara/riusa tentativi SDI per fatture del lotto.
+* task pipeline `prepare_sdi_payload_lotto` (Django): invoca funzione DB e reperisce dataset strutturato.
+* facade applicativa `fn_prepare_sdi_payload_lotto` (Django): riuso anche fuori pipeline.
+
+Da implementare (step successivi):
+
+* builder file SDI (XML/metadata) a partire dal payload.
+* persistenza nome/percorso file su `vendite.fatture_sdi`.
+* evento applicativo su `vendite.fatture_sdi_eventi` (`FILE_GENERATO` e successivi).
+* step invio canale SDI con gestione esiti (accettazione/scarto/consegna).
 
 ## ✅ Go-live checklist tecnica (stato)
 
@@ -1072,3 +1092,79 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 ### 19) Promemoria refactor
 
 * Rinominare `vendite.fatturazione_lotti_attivita` in `vendite.attivita_fatturabili_lotti`.
+
+---
+
+### 20) error_log refactor
+
+Obiettivo: classificare le funzioni perimetro `LOTTO` vs `FATTURA` vs `ATTIVITA_FATTURABILI` per applicare in modo coerente il routing errori applicativi (`scope`, `severity`, `code`, `lotto_id`, `fattura_id`, `context`) su `dbops.error_log` e log dominio.
+
+**Perimetro LOTTO**
+
+* ✅X`vendite.fn_create_fatturazione_lotto`
+* ✅X `vendite.fn_get_or_create_lotto`
+* ✅X `vendite.fn_set_fatturazione_lotto_stato`
+* ✅X `vendite.fn_sync_lotto_fatture_stato`
+* ✅X `vendite.fn_log_pipeline_fase`
+* ✅X `vendite.fn_log_lotto_esito_fatture`
+* ✅X `vendite.fn_list_fatturazione_pipeline_steps`
+* ✅X `vendite.fn_resolve_fatturazione_pipeline_step`
+* ✅X `vendite.fn_prepare_sdi_payload`
+* ✅X `vendite.fn_close_giornaliero_lotto`
+* ✅X `vendite.fn_reset_lotto_draft`
+* ✅X `vendite.fn_reset_lotto_fattura_draft`
+* ✅ Trigger: `vendite.trgfn_fatturazione_lotti_guard_stato`, `vendite.trgfn_fatturazione_lotti_gen_codice`
+
+**Perimetro FATTURA**
+
+* ✅ X`vendite.fn_build_fattura_key`
+* ✅ X`vendite.fn_get_or_create_fattura_header`
+* ✅ X`vendite.fn_group_attivita_fatturabili`
+* ✅ X`vendite.fn_generate_fatture_righe`
+* ✅ X`vendite.fn_assign_numero_fattura`
+* ✅ X`vendite.fn_numera_fattura_opz_emessa`
+* ✅ X`vendite.fn_ricalcola_riepilogo_iva_fattura`
+* ✅ X`vendite.fn_ricalcola_totali_fattura`
+* ✅ X`vendite.fn_ricalcola_fattura`
+* ✅ X`vendite.fn_ricalcola_riepiloghi_iva_lotto`
+* ✅ X`vendite.fn_get_totale_fondi_fattura`
+* ✅ X`vendite.fn_genera_fondi_fattura_source`
+* ✅ X`vendite.fn_applica_fondi_fattura`
+* ✅ X`vendite.fn_reset_fondi_fattura`
+* ✅ X`vendite.fn_sync_contabili_fondo_fattura`
+* ✅ X`vendite.fn_sync_pagamento_fondo_fattura` (wrapper, da tenere solo come compatibilità)
+* ✅ X`vendite.fn_sync_fattura_critical`
+* ✅ X`vendite.fn_resolve_termini_pagamento`
+* ✅ Trigger: `vendite.trgfn_fatture_*`, `vendite.trgfn_fatture_righe_guard_normalize`
+
+**Perimetro ATTIVITA_FATTURABILI (pre-fattura)**
+
+* ✅ `vendite.fn_select_attivita_fatturabili`
+* ✅ `vendite.fn_get_registro_id`
+* ✅ `vendite.fn_get_tipo_doc_fiscale_id`
+* ✅ `vendite.fn_get_valuta_id`
+* ✅ `vendite.fn_get_vendite_note`
+* ✅ `vendite.fn_list_attivita_pipeline_steps`
+* ✅ `vendite.fn_resolve_attivita_pipeline_step`
+* ✅ Trigger: `vendite.trgfn_attivita_fatturabili_*`, `vendite.trgfn_attivita_norm_competenza_mese`
+
+**Legacy orchestration SQL (deprecata lato runtime)**
+
+* ✅ `vendite.pr_run_lotto_pipeline`
+* ✅ `vendite.fn_execute_pipeline_step`
+* Nota: runtime corrente orchestrato in Django/Python; mantenere SQL solo come compatibilità tecnica/documentale finché non rimosso.
+
+**Owner runtime per blocco**
+
+| Blocco                   | Owner runtime principale         | Note operative                                                                                             |
+| ------------------------ | -------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| LOTTO                    | Django orchestration + SQL guard | Python gestisce sequencing/retry/logica step; DB applica vincoli e guardrail di stato/integrità.           |
+| FATTURA                  | Ibrido                           | Python orchestration per processo; SQL per calcoli atomici, consistenza dati e operazioni batch/sincronia. |
+| ATTIVITA_FATTURABILI     | Ibrido                           | SQL forte su selezione/lock/normalize; Python usa le funzioni DB dentro flussi pipeline/applicativi.       |
+| Legacy orchestration SQL | Deprecato                        | Da non usare come entrypoint runtime; mantenuto solo per compatibilità tecnica temporanea.                 |
+
+Legenda owner:
+
+* `SQL guard`: enforcement dati/stati/integrità direttamente nel DB.
+* `Django orchestration`: controllo del flusso di processo (pipeline/task/error handling).
+* `Ibrido`: orchestration in Python con task calcolati/validati da funzioni SQL.

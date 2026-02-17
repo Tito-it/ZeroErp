@@ -53,6 +53,9 @@ BEGIN
   RETURN v_aliquota;
 END;
 $function$
+
+COMMENT ON FUNCTION config.fn_get_aliquota_iva(p_iva_id integer, p_stato_id integer)
+IS 'Restituisce aliquota IVA applicando override per stato (config.iva_stati).';
 ```
 
 ---

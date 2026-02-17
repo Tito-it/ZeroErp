@@ -77,6 +77,11 @@ AS $function$
     END IF;
   END;
   $function$
+
+COMMENT ON FUNCTION script.fn_get_stradario(p_comune_id integer, p_indirizzo text)
+IS 'Restituisce le informazioni dello stradario filtrate per comune e/o indirizzo.
+     Se p_comune_id è specificato, restituisce le vie di quel comune;
+     altrimenti restituisce tutte le vie che contengono l''indirizzo indicato.';
 ```
 
 ---

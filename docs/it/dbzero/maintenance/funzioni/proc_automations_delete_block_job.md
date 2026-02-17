@@ -20,6 +20,9 @@ AS $procedure$
     );
   END;
 $procedure$
+
+COMMENT ON PROCEDURE maintenance.proc_automations_delete_block_job()
+IS 'Job wrapper per chiamare fn_run_automations_delete_block con logging e lock.';
 ```
 
 ---

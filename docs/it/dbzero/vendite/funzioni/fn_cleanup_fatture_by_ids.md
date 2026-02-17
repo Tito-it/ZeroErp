@@ -95,6 +95,9 @@ BEGIN
   SELECT v_deleted_fatture, v_deleted_righe, v_updated_attivita;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_cleanup_fatture_by_ids(p_fatture_ids bigint[], p_lock_batch_id uuid)
+IS 'Cleanup centralizzato fatture/righe, ripristino attivita_fatturabili e reset fondi fattura applicati.';
 ```
 
 ---

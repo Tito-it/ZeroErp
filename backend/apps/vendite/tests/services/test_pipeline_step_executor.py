@@ -9,6 +9,9 @@ Indice test eseguiti:
 7) PipelineStepExecutorUnitTests.test_execute_step_runs_numera_fatture_task
 8) PipelineStepExecutorUnitTests.test_execute_step_runs_close_lotto_task
 9) PipelineStepExecutorUnitTests.test_execute_step_runs_reset_lotto_draft_task
+10) PipelineStepExecutorUnitTests.test_execute_step_numera_logs_fattura_error_on_single_failure
+11) PipelineStepExecutorUnitTests.test_execute_step_logs_lotto_error_on_not_allowed_function
+12) PipelineStepExecutorUnitTests.test_execute_step_logs_lotto_error_on_missing_handler
 """
 
 from unittest.mock import MagicMock
@@ -43,15 +46,17 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
         }
         fatture_righe_service = MagicMock()
+        error_logger = MagicMock()
         executor = PipelineStepExecutor(
             repository=repo,
             fatture_righe_service=fatture_righe_service,
+            error_logger=error_logger,
         )
-        return executor, repo, fatture_righe_service
+        return executor, repo, fatture_righe_service, error_logger
 
     def test_execute_step_runs_generate_fatture_righe_task(self):
         processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
-        executor, repo, fatture_righe_service = self._build_executor(processi)
+        executor, repo, fatture_righe_service, _ = self._build_executor(processi)
         executor.execute_step(
             lotto_id=1,
             stato_doc_fiscale_id=2,
@@ -74,7 +79,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
     def test_execute_step_runs_genera_fondi_source_lotto_task(self):
         processi = [{"task": "genera_fondi_source_lotto", "fase": "Genera fondi", "params": {}}]
-        executor, repo, _ = self._build_executor(processi)
+        executor, repo, _, _ = self._build_executor(processi)
         repo.get_task_handler_code.return_value = "genera_fondi_source_lotto_default"
 
         executor.execute_step(
@@ -92,7 +97,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
     def test_execute_step_runs_applica_fondi_lotto_task(self):
         processi = [{"task": "applica_fondi_lotto", "fase": "Applica fondi", "params": {}}]
-        executor, repo, _ = self._build_executor(processi)
+        executor, repo, _, _ = self._build_executor(processi)
         repo.get_task_handler_code.return_value = "applica_fondi_lotto_default"
 
         executor.execute_step(
@@ -110,7 +115,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
     def test_execute_step_runs_ricalcola_iva_lotto_task(self):
         processi = [{"task": "ricalcola_iva_lotto", "fase": "Ricalcolo IVA", "params": {"batch_size": 500}}]
-        executor, repo, _ = self._build_executor(processi)
+        executor, repo, _, _ = self._build_executor(processi)
         repo.get_task_handler_code.return_value = "ricalcola_iva_lotto_default"
 
         executor.execute_step(
@@ -137,7 +142,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
                 },
             }
         ]
-        executor, repo, _ = self._build_executor(processi)
+        executor, repo, _, _ = self._build_executor(processi)
         repo.get_task_handler_code.return_value = "prepare_sdi_payload_lotto_default"
 
         executor.execute_step(
@@ -162,7 +167,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
                 "params": {"fn": "vendite.fn_non_permessa"},
             }
         ]
-        executor, repo, fatture_righe_service = self._build_executor(processi)
+        executor, repo, fatture_righe_service, error_logger = self._build_executor(processi)
         with self.assertRaises(ServiceError) as exc:
             executor.execute_step(
                 lotto_id=1,
@@ -174,10 +179,14 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         self.assertEqual(exc.exception.code, "E_TASK_NOT_ALLOWED")
         self.assertEqual(repo.get_task_handler_code.call_count, 1)
         fatture_righe_service.generate_fatture_righe.assert_not_called()
+        error_logger.log_error.assert_called_once()
+        kwargs = error_logger.log_error.call_args.kwargs
+        self.assertEqual(kwargs["scope"], "LOTTO")
+        self.assertEqual(kwargs["lotto_id"], 1)
 
     def test_execute_step_runs_numera_fatture_task(self):
         processi = [{"task": "numera_fatture", "fase": "Numerazione", "params": {}}]
-        executor, repo, _ = self._build_executor(processi)
+        executor, repo, _, _ = self._build_executor(processi)
         repo.get_task_handler_code.return_value = "numera_fatture_default"
 
         executor.execute_step(
@@ -198,7 +207,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
     def test_execute_step_runs_close_lotto_task(self):
         processi = [{"task": "close_lotto", "fase": "Chiusura lotto", "params": {}}]
-        executor, repo, _ = self._build_executor(processi)
+        executor, repo, _, _ = self._build_executor(processi)
         repo.get_task_handler_code.return_value = "close_lotto_default"
 
         executor.execute_step(
@@ -213,7 +222,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
     def test_execute_step_runs_reset_lotto_draft_task(self):
         processi = [{"task": "reset_lotto_draft", "fase": "Reset lotto", "params": {}}]
-        executor, repo, _ = self._build_executor(processi)
+        executor, repo, _, _ = self._build_executor(processi)
         repo.get_task_handler_code.return_value = "reset_lotto_draft_default"
 
         executor.execute_step(
@@ -225,3 +234,69 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         )
 
         repo.reset_lotto_draft.assert_called_once_with(12)
+
+    def test_execute_step_numera_logs_fattura_error_on_single_failure(self):
+        processi = [{"task": "numera_fatture", "fase": "Numerazione", "params": {}}]
+        executor, repo, _, error_logger = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "numera_fatture_default"
+        repo.list_fatture_by_lotto.return_value = [101, 102]
+        repo.numera_fattura_opz_emessa.side_effect = [None, RuntimeError("boom-numera")]
+
+        with self.assertRaises(ServiceError) as exc:
+            executor.execute_step(
+                lotto_id=9,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        self.assertEqual(exc.exception.code, "E_TASK_FATTURA")
+        error_logger.log_error.assert_called_once()
+        kwargs = error_logger.log_error.call_args.kwargs
+        self.assertEqual(kwargs["scope"], "FATTURA")
+        self.assertEqual(kwargs["fattura_id"], 102)
+        self.assertEqual(kwargs["lotto_id"], 9)
+
+    def test_execute_step_logs_lotto_error_on_not_allowed_function(self):
+        processi = [
+            {
+                "task": "select_attivita",
+                "fase": "Caricamento",
+                "params": {"fn": "vendite.fn_non_permessa"},
+            }
+        ]
+        executor, _, _, error_logger = self._build_executor(processi)
+        with self.assertRaises(ServiceError) as exc:
+            executor.execute_step(
+                lotto_id=21,
+                stato_doc_fiscale_id=1,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+        self.assertEqual(exc.exception.code, "E_TASK_NOT_ALLOWED")
+        error_logger.log_error.assert_called_once()
+        kwargs = error_logger.log_error.call_args.kwargs
+        self.assertEqual(kwargs["scope"], "LOTTO")
+        self.assertEqual(kwargs["lotto_id"], 21)
+
+    def test_execute_step_logs_lotto_error_on_missing_handler(self):
+        processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
+        executor, repo, _, error_logger = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "handler_non_esistente"
+
+        with self.assertRaises(ServiceError) as exc:
+            executor.execute_step(
+                lotto_id=22,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        self.assertEqual(exc.exception.code, "E_TASK_IMPLEMENTATION_NOT_FOUND")
+        error_logger.log_error.assert_called_once()
+        kwargs = error_logger.log_error.call_args.kwargs
+        self.assertEqual(kwargs["scope"], "LOTTO")
+        self.assertEqual(kwargs["lotto_id"], 22)

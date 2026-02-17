@@ -23,6 +23,22 @@ BEGIN
   --   e' in vendite.fn_sync_contabili_fondo_fattura().
   -- =========================================================
 
+  IF p_fattura_figlia_id IS NULL OR p_fattura_figlia_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_sync_pagamento_fondo_fattura', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', p_fattura_figlia_id,
+        'context', jsonb_build_object('detail','p_fattura_figlia_id obbligatorio')
+      ),
+      NULL::uuid,
+      'p_fattura_figlia_id non valido'
+    );
+  END IF;
+
   SELECT s.inserted_righe, s.updated_righe, s.annullati_source
     INTO v_inserted, v_updated, v_annullati
     FROM vendite.fn_sync_contabili_fondo_fattura(
@@ -33,6 +49,9 @@ BEGIN
   SELECT v_inserted, v_updated, v_annullati;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_sync_pagamento_fondo_fattura(p_fattura_figlia_id bigint)
+IS 'Wrapper deprecato: delega a fn_sync_contabili_fondo_fattura per retrocompatibilita.';
 ```
 
 ---

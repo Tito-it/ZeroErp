@@ -14,6 +14,9 @@ AS $function$
    -- 1) Forma base: 4 argomenti
   SELECT script.fn_log_error_only($1,$2,$3,$4,NULL::uuid,VARIADIC ARRAY[]::text[] )
 $function$
+
+COMMENT ON FUNCTION script.fn_log(p_area text, p_function_name text, p_error_code text, p_context jsonb)
+IS 'Façade esplicito: area, funzione, codice, contesto. Delega a fn_log_error_only (tx_id = NULL).';
 ```
 
 ---

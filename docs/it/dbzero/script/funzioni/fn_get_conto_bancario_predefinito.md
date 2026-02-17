@@ -47,6 +47,9 @@ BEGIN
     RETURN NULL;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_get_conto_bancario_predefinito(p_soggetto_ruolo_id bigint, p_uso character varying)
+IS 'Restituisce il conto bancario predefinito per (soggetto_ruolo_id, uso) usando la vista anagrafiche.vw_conti_bancari_per_ruolo. Priorità: uso richiesto, poi fallback a uso=GENERICO. Restituisce al massimo una riga (o NULL).';
 ```
 
 ---

@@ -44,6 +44,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_pdp_a10_guard()
+IS 'Blocca modifiche a pdp e indirizzo_dettaglio_id (immutabili dopo prima valorizzazione).';
 ```
 
 ---

@@ -44,6 +44,9 @@ AS $function$
     AND r.soggetto_ruolo_id = p_soggetto_ruolo_id
   ORDER BY r.tipo_indirizzo_codice, r.indirizzo_id;
 $function$
+
+COMMENT ON FUNCTION script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id bigint)
+IS 'Restituisce indirizzi del layer RUOLO (master) da vw_indirizzi_resolved_base; non applica fallback su soggetto.';
 ```
 
 ---

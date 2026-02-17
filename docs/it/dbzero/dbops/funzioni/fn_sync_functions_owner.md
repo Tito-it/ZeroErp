@@ -113,6 +113,10 @@ BEGIN
     END LOOP;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_sync_functions_owner()
+IS 'Sincronizza l''owner delle funzioni "sensibili" 
+      in base alla tabella dbops.sec_functions_owner.';
 ```
 
 ---
