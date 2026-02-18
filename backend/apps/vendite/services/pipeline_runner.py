@@ -164,6 +164,7 @@ class LottoPipelineRunner:
         *,
         lotto_id: int,
         step: Any,
+        effective_tipo_lotto: str,
         dry_run: bool,
     ) -> None:
         # Traccia avanzamento step coerente con il flusso SQL originale.
@@ -343,6 +344,7 @@ class LottoPipelineRunner:
                     self._execute_pipeline_step(
                         lotto_id=lotto_id,
                         step=step,
+                        effective_tipo_lotto=effective_tipo_lotto,
                         dry_run=params.dry_run,
                     )
                     executed_stato_doc_fiscale_id = step.stato_doc_fiscale_id
