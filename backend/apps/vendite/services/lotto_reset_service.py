@@ -14,9 +14,11 @@ from apps.vendite.types import ResetLottoDraftResult, ResetLottoFatturaDraftResu
 
 
 class LottoResetService:
+    # Scopo: Inizializza la istanza.
     def __init__(self, repository: VenditePipelineRepository | None = None) -> None:
         self.repository = repository or VenditePipelineRepository()
 
+    # Scopo: Gestisce `reset_lotto_draft` nel flusso applicativo del modulo.
     def reset_lotto_draft(self, lotto_id: int) -> ResetLottoDraftResult:
         ErrorManager.require(
             lotto_id is not None and lotto_id > 0,
@@ -31,6 +33,7 @@ class LottoResetService:
         assert lotto_id > 0
         return self.repository.reset_lotto_draft(lotto_id)
 
+    # Scopo: Gestisce `reset_lotto_fattura_draft` nel flusso applicativo del modulo.
     def reset_lotto_fattura_draft(
         self,
         lotto_id: int,

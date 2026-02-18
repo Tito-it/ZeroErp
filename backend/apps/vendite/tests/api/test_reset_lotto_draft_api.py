@@ -12,9 +12,11 @@ from django.test import Client, SimpleTestCase
 
 
 class VenditeResetLottoDraftApiTests(SimpleTestCase):
+    # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         self.client = Client()
 
+    # Scopo: Verifica il caso `test_reset_lotto_draft_ok`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.fn_reset_lotto_draft")
     def test_reset_lotto_draft_ok(self, mocked_service, _mock_auth):
@@ -34,6 +36,7 @@ class VenditeResetLottoDraftApiTests(SimpleTestCase):
         self.assertEqual(response.json()["data"]["updated_lotti"], 1)
         mocked_service.assert_called_once_with(lotto_id=123)
 
+    # Scopo: Verifica il caso `test_reset_lotto_draft_requires_idempotency_key`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_reset_lotto_draft_requires_idempotency_key(self, _mock_auth):
         response = self.client.post(
@@ -45,6 +48,7 @@ class VenditeResetLottoDraftApiTests(SimpleTestCase):
         body = response.json()["error"]
         self.assertEqual(body["code"], "E_IDEMPOTENCY_KEY_REQUIRED")
 
+    # Scopo: Verifica il caso `test_reset_lotto_draft_v1_requires_jwt`.
     def test_reset_lotto_draft_v1_requires_jwt(self):
         response = self.client.post(
             "/api/v1/vendite/lotti/123/reset-draft/",

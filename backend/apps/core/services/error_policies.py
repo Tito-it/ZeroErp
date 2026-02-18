@@ -91,6 +91,7 @@ class ErrorPolicyRegistry:
         ),
     }
 
+    # Scopo: Gestisce `resolve` nel flusso applicativo del modulo.
     @classmethod
     def resolve(cls, code: str) -> ErrorPolicy:
         return cls._POLICIES.get(code, cls._POLICIES["E_GENERICO"])

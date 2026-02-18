@@ -22,6 +22,7 @@ from apps.vendite.types import (
 
 # Facade servizi: mantiene firme SQL-like e delega alle classi OOP.
 
+# Scopo: Facade applicativa: avvia il runner pipeline lotto e restituisce lotto_id eseguito.
 def pr_run_lotto_pipeline(
     *,
     lotto_id: int | None = None,
@@ -51,6 +52,7 @@ def pr_run_lotto_pipeline(
     return runner.run_pipeline(params)
 
 
+# Scopo: Facade applicativa: esegue un singolo step pipeline sul lotto richiesto.
 def fn_execute_pipeline_step(
     *,
     lotto_id: int,
@@ -71,6 +73,7 @@ def fn_execute_pipeline_step(
     )
 
 
+# Scopo: Facade applicativa: prepara payload SDI per lotto e restituisce dataset strutturato.
 def fn_prepare_sdi_payload_lotto(
     *,
     lotto_id: int,
@@ -86,24 +89,28 @@ def fn_prepare_sdi_payload_lotto(
     )
 
 
+# Scopo: Facade applicativa: calcola la chiave di grouping per una attivita fatturabile.
 def fn_group_attivita_fatturabili(*, attivita_id: int) -> GroupAttivitaKey:
     """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_group_attivita_fatturabili."""
     service = FattureRigheService()
     return service.group_attivita_fatturabili(attivita_id)
 
 
+# Scopo: Facade applicativa: genera le righe fattura del lotto e restituisce il riepilogo elaborazione.
 def fn_generate_fatture_righe(*, lotto_id: int, dry_run: bool = False) -> int:
     """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_generate_fatture_righe."""
     service = FattureRigheService()
     return service.generate_fatture_righe(lotto_id, dry_run=dry_run)
 
 
+# Scopo: Facade applicativa: esegue reset tecnico completo del lotto in stato DRAFT.
 def fn_reset_lotto_draft(*, lotto_id: int) -> ResetLottoDraftResult:
     """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_reset_lotto_draft."""
     service = LottoResetService()
     return service.reset_lotto_draft(lotto_id)
 
 
+# Scopo: Facade applicativa: esegue reset tecnico della singola fattura DRAFT nel lotto.
 def fn_reset_lotto_fattura_draft(
     *,
     lotto_id: int,

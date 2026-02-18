@@ -7,8 +7,10 @@ from apps.core.api.request_parsers import parse_iso_date
 # Template riusabile per future API dominio (POST JSON + error envelope standard).
 
 
+# Scopo: Gestisce `example_domain_endpoint` nel flusso applicativo del modulo.
 @require_POST
 def example_domain_endpoint(request: HttpRequest) -> JsonResponse:
+    # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
     def _handler(payload: dict[str, object]) -> dict[str, object]:
         # Esempio campi tipici da payload.
         competenza_mese = parse_iso_date(payload.get("competenza_mese"))

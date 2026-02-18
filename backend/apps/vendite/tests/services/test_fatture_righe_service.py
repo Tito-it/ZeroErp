@@ -20,10 +20,12 @@ from apps.vendite.services.fatture_righe_service import FattureRigheService
 
 class FattureRigheServiceUnitTests(SimpleTestCase):
     class _RepoMock:
+        # Scopo: Inizializza la istanza.
         def __init__(self):
             self.insert_calls = 0
             self.mark_calls = 0
 
+        # Scopo: Recupera `group_attivita_input` dal contesto applicativo o dal database.
         def get_group_attivita_input(self, attivita_id):
             return GroupAttivitaInput(
                 attivita_id=attivita_id,
@@ -43,6 +45,7 @@ class FattureRigheServiceUnitTests(SimpleTestCase):
                 metodo_arrotondamento_quantita="HALF_UP",
             )
 
+        # Scopo: Restituisce elenco `attivita_da_fatturare` in base ai filtri disponibili.
         def list_attivita_da_fatturare(self, lotto_id):
             return [
                 AttivitaDaFatturare(
@@ -58,19 +61,24 @@ class FattureRigheServiceUnitTests(SimpleTestCase):
                 )
             ]
 
+        # Scopo: Recupera `or_create_fattura_header` dal contesto applicativo o dal database.
         def get_or_create_fattura_header(self, lotto_id, attivita_id):
             return 500
 
+        # Scopo: Recupera `next_fattura_riga_nr` dal contesto applicativo o dal database.
         def get_next_fattura_riga_nr(self, fattura_id):
             return 7
 
+        # Scopo: Gestisce `insert_fattura_riga` nel flusso applicativo del modulo.
         def insert_fattura_riga(self, **kwargs):
             self.insert_calls += 1
             return 900
 
+        # Scopo: Gestisce `mark_attivita_fatturata` nel flusso applicativo del modulo.
         def mark_attivita_fatturata(self, attivita_id, fattura_riga_id):
             self.mark_calls += 1
 
+    # Scopo: Verifica il caso `test_group_attivita_returns_group_key`.
     def test_group_attivita_returns_group_key(self):
         service = FattureRigheService(repository=self._RepoMock())
         result = service.group_attivita_fatturabili(11)
@@ -79,12 +87,14 @@ class FattureRigheServiceUnitTests(SimpleTestCase):
         self.assertEqual(result["competenza_dal"], "2026-01-01")
         self.assertEqual(result["competenza_al"], "2026-01-31")
 
+    # Scopo: Verifica il caso `test_group_attivita_requires_id`.
     def test_group_attivita_requires_id(self):
         service = FattureRigheService(repository=self._RepoMock())
         with self.assertRaises(ServiceError) as exc:
             service.group_attivita_fatturabili(None)  # type: ignore[arg-type]
         self.assertEqual(exc.exception.code, "E_GROUP_ATTIVITA_VALIDATION")
 
+    # Scopo: Verifica il caso `test_generate_fatture_righe_dry_run_counts_only`.
     def test_generate_fatture_righe_dry_run_counts_only(self):
         repo = self._RepoMock()
         service = FattureRigheService(repository=repo)
@@ -97,6 +107,7 @@ class FattureRigheServiceUnitTests(SimpleTestCase):
         self.assertEqual(repo.insert_calls, 0)
         self.assertEqual(repo.mark_calls, 0)
 
+    # Scopo: Verifica il caso `test_generate_fatture_righe_writes_rows`.
     def test_generate_fatture_righe_writes_rows(self):
         repo = self._RepoMock()
         service = FattureRigheService(repository=repo)

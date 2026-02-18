@@ -24,9 +24,11 @@ ErrorSeverity = Literal["I", "W", "C"]
 class PipelineErrorLogger:
     """Logger unificato per errori funzionali pipeline vendite."""
 
+    # Scopo: Inizializza la istanza.
     def __init__(self, repository: VenditePipelineRepository | None = None) -> None:
         self.repository = repository or VenditePipelineRepository()
 
+    # Scopo: Gestisce `log_error` nel flusso applicativo del modulo.
     def log_error(
         self,
         *,

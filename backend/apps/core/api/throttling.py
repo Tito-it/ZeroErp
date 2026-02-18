@@ -14,6 +14,7 @@ from rest_framework.throttling import SimpleRateThrottle
 class SearchBurstRateThrottle(SimpleRateThrottle):
     scope = "search_burst"
 
+    # Scopo: Recupera `cache_key` dal contesto applicativo o dal database.
     def get_cache_key(self, request, view):
         if not getattr(view, "is_search_endpoint", False):
             return None

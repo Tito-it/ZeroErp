@@ -30,6 +30,7 @@ class ApiError:
     retryable: bool = False
     ui_action: str | None = None
 
+    # Scopo: Converte ServiceError in struttura dict serializzabile per envelope API.
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         return {k: v for k, v in data.items() if v is not None}
@@ -38,6 +39,7 @@ class ApiError:
 class ErrorTranslator:
     """Traduce eccezioni applicative/DB in un envelope errore coerente per le API."""
 
+    # Scopo: Traduce una eccezione in envelope API pubblico applicando policy e sanitizzazione dettagli.
     @staticmethod
     def to_api_error(exc: Exception) -> ApiError:
         # Errori applicativi standard: passa codice/messaggio senza perdere metadati.
@@ -65,10 +67,12 @@ class ErrorTranslator:
             retryable=False,
         ))
 
+    # Scopo: Risolve lo status HTTP finale da codice errore e policy applicate.
     @staticmethod
     def get_http_status(api_error: ApiError) -> int:
         return ErrorPolicyRegistry.resolve(api_error.code).http_status
 
+    # Scopo: Applica policy error code -> status/retry/hint al payload errore.
     @staticmethod
     def _apply_policy(api_error: ApiError) -> ApiError:
         policy = ErrorPolicyRegistry.resolve(api_error.code)
@@ -94,6 +98,7 @@ class ErrorTranslator:
             ui_action=policy.ui_action,
         )
 
+    # Scopo: Sanitizza i dettagli tecnici non esponibili in risposta pubblica.
     @staticmethod
     def _sanitize_public_detail(api_error: ApiError) -> str | None:
         # Per errori tecnici non esporre stack SQL/PLpgSQL al client, anche in debug:
@@ -106,10 +111,12 @@ class ErrorTranslator:
 
         return api_error.detail
 
+    # Scopo: Determina se il codice errore appartiene alla categoria tecnica/non funzionale.
     @staticmethod
     def _is_technical_code(code: str) -> bool:
         return code in {"E_PIPELINE", "E_DATABASE", "E_GENERICO"}
 
+    # Scopo: Converte eccezioni DB in ServiceError coerente con il contratto errori core.
     @staticmethod
     def _from_database_error(exc: DatabaseError) -> ApiError:
         cause = getattr(exc, "__cause__", None)

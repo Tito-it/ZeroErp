@@ -8,6 +8,7 @@ from apps.core.services.error_translator import ApiError
 # Policy centralizzate retry/idempotenza per endpoint API.
 
 
+# Scopo: Recupera `idempotency_key` dal contesto applicativo o dal database.
 def get_idempotency_key(request: HttpRequest) -> str | None:
     key = request.headers.get("Idempotency-Key") or request.headers.get("X-Idempotency-Key")
     if key is None:
@@ -20,6 +21,7 @@ def get_idempotency_key(request: HttpRequest) -> str | None:
     return normalized
 
 
+# Scopo: Applica `retry_headers` al contesto corrente.
 def apply_retry_headers(response: JsonResponse, api_error: ApiError) -> JsonResponse:
     if not api_error.retryable:
         return response
