@@ -14,6 +14,9 @@ Indice test eseguiti:
 5) VenditePipelineRepositoryUnitTests.test_run_prepare_sdi_payload_lotto_task_returns_empty_list
 6) VenditePipelineRepositoryUnitTests.test_log_fattura_inserts_with_explicit_critical
 7) VenditePipelineRepositoryUnitTests.test_log_fatture_lotto_sets_critical_from_status
+8) VenditePipelineRepositoryUnitTests.test_is_lotto_in_errore_returns_true_when_stato_is_errore
+9) VenditePipelineRepositoryUnitTests.test_is_lotto_in_errore_returns_false_when_lotto_not_found
+10) VenditePipelineRepositoryUnitTests.test_get_lotto_segnalazioni_summary_maps_counts
 """
 
 from unittest.mock import MagicMock
@@ -171,3 +174,54 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         self.assertEqual(execute_params[1], "C")
         self.assertTrue(execute_params[2])
         self.assertEqual(execute_params[4], 55)
+
+    # Scopo: Verifica il caso `test_is_lotto_in_errore_returns_true_when_stato_is_errore`.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_is_lotto_in_errore_returns_true_when_stato_is_errore(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = (True,)
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        result = repo.is_lotto_in_errore(10)
+
+        self.assertTrue(result)
+
+    # Scopo: Verifica il caso `test_is_lotto_in_errore_returns_false_when_lotto_not_found`.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_is_lotto_in_errore_returns_false_when_lotto_not_found(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = None
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        result = repo.is_lotto_in_errore(999999)
+
+        self.assertFalse(result)
+
+    # Scopo: Verifica il caso `test_get_lotto_segnalazioni_summary_maps_counts`.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_get_lotto_segnalazioni_summary_maps_counts(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = (1, 2, 3, 4, 5)
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        result = repo.get_lotto_segnalazioni_summary(10)
+
+        self.assertEqual(
+            result,
+            {
+                "fatture_critical_count": 1,
+                "fatture_warning_count": 2,
+                "lotto_critical_count": 3,
+                "lotto_warning_count": 4,
+                "lotto_info_count": 5,
+            },
+        )
+        execute_sql, execute_params = cursor.execute.call_args.args
+        self.assertIn("fn_get_lotto_segnalazioni_summary", execute_sql)
+        self.assertEqual(execute_params, [10])

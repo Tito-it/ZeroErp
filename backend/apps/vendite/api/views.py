@@ -6,9 +6,12 @@ from rest_framework.request import Request
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from apps.core.api.error_responses import exception_to_error_response
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
+from apps.core.api.success_responses import success_response
 from apps.vendite.services.pipeline_service import (
+    fn_get_lotto_segnalazioni_summary,
     fn_reset_lotto_draft,
     fn_reset_lotto_fattura_draft,
     pr_run_lotto_pipeline,
@@ -81,6 +84,43 @@ class ApiRunLottoPipeline(APIView):
 
 class ApiRunLottoPipelineV1(ApiRunLottoPipeline):
     # Versione canonica protetta: richiede JWT su /api/v1/*
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+
+class ApiLottoSegnalazioniSummary(APIView):
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="VenditeLottoSegnalazioniSummaryResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeLottoSegnalazioniSummaryData",
+                        fields={
+                            "lotto_id": serializers.IntegerField(),
+                            "critical_count": serializers.IntegerField(),
+                            "warning_count": serializers.IntegerField(),
+                            "attention_count": serializers.IntegerField(),
+                            "is_error": serializers.BooleanField(),
+                            "blocks_next_step": serializers.BooleanField(),
+                            "summary": serializers.DictField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET il riepilogo segnalazioni del lotto per uso operativo/UI.
+    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+        try:
+            data = fn_get_lotto_segnalazioni_summary(lotto_id=lotto_id)
+            return success_response(data)
+        except Exception as exc:
+            return exception_to_error_response(exc)
+
+
+class ApiLottoSegnalazioniSummaryV1(ApiLottoSegnalazioniSummary):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
