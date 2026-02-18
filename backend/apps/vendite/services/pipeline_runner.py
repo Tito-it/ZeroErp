@@ -199,6 +199,33 @@ class LottoPipelineRunner:
             dry_run=dry_run,
         )
         self.repository.log_lotto_esito_fatture(lotto_id)
+        self._process_close_lotto_by_flag(
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=step.stato_doc_fiscale_id,
+            dry_run=dry_run,
+        )
+
+    # Scopo: Processo separato di chiusura lotto guidato da flag config.stati_doc_fiscale.chiude_lotto.
+    def _process_close_lotto_by_flag(
+        self,
+        *,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        dry_run: bool,
+    ) -> None:
+        if dry_run:
+            return
+        if not self.repository.is_stato_doc_chiude_lotto(stato_doc_fiscale_id):
+            return
+        self.repository.close_lotto_operativo(lotto_id)
+        self.repository.log_pipeline_fase(
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+            fase="Chiusura lotto operativa",
+            status="I",
+            messaggio="Chiusura lotto eseguita da flag chiude_lotto",
+            meta={"process": "close_lotto_by_flag"},
+        )
 
     # Scopo: Orchestra l'intero flusso pipeline lotto: risoluzione lotto, step execution, resume/rollback e gestione errori finali.
     def run_pipeline(self, params: LottoPipelineParams) -> int:

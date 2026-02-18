@@ -284,6 +284,23 @@ class VenditePipelineRepository:
             return None
         return int(row[0])
 
+    # Scopo: Verifica se lo stato documento corrente richiede la chiusura operativa del lotto.
+    def is_stato_doc_chiude_lotto(self, stato_doc_fiscale_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COALESCE(chiude_lotto, false)
+                FROM config.stati_doc_fiscale
+                WHERE id = %s
+                  AND attivo IS TRUE
+                """,
+                [stato_doc_fiscale_id],
+            )
+            row = cursor.fetchone()
+        if not row:
+            return False
+        return bool(row[0])
+
     # Scopo: Aggiorna `lotto_job_stato` con i valori richiesti dal flusso corrente.
     def set_lotto_job_stato(self, lotto_id: int, stato: str, messaggio: str) -> None:
         with connection.cursor() as cursor:

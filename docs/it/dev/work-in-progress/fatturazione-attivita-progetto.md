@@ -225,7 +225,60 @@ le chiusure sopra restano valide salvo refactor strutturali successivi.
 * [x] `fatturazione-attivita-progetto.md` aggiornato con avanzamento su fondi/contabili/saldi
 * [x] Guida `fatturazione.md` integrata con sezione minimi/fondi fattura
 * [x] Guida `pagamenti.md` introdotta con dashboard (WIP) e vincoli architetturali
-* [ ] Consolidare checklist test finali (pgtap + Django) in sezione unica di chiusura
+* [x] Consolidare checklist test finali (pgtap + Django) in sezione unica di chiusura
+
+### ✅ Checklist finale unificata (DB + Django + API)
+
+#### 1) Test DB / pgtap (SQL)
+
+* [x] Eseguiti test pgtap SQL principali del dominio fatturazione/pagamenti.
+* [x] Nessun errore bloccante su migrazioni/funzioni SQL coinvolte nel flusso.
+
+Comando base:
+
+```bash
+scripts/testpgtap.sh db/pgtap/<schema>/<test-file>.sql
+```
+
+#### 2) Test Django services
+
+* [x] Eseguire suite servizi pipeline:
+  * [x] `apps.vendite.tests.services.test_pipeline_runner`
+  * [x] `apps.vendite.tests.services.test_pipeline_step_executor`
+* [x] Eseguire suite servizi reset/lotto/fattura.
+
+Comando base:
+
+```bash
+./manage-test.sh apps.vendite.tests.services -v 2
+```
+
+#### 3) Test API
+
+* [x] Eseguire test API pipeline/reset:
+  * [x] `apps.vendite.tests.api.test_pipeline_api`
+  * [x] `apps.vendite.tests.api.test_reset_lotto_draft_api`
+  * [x] `apps.vendite.tests.api.test_reset_lotto_fattura_draft_api`
+* [x] Verificare idempotency + envelope errori.
+
+Comando base:
+
+```bash
+./manage-test.sh apps.vendite.tests.api -v 2
+```
+
+#### 4) Smoke end-to-end (manuale)
+
+* [ ] Avvio pipeline lotto (`MASSIVO`/`GIORNALIERO`) da API.
+* [ ] Verifica avanzamento step/fase nei log lotto.
+* [ ] Verifica routing errori su `error_log` + log dominio (`fatture_log`/`fatturazione_lotti_log`).
+
+#### 5) Criteri di chiusura
+
+* [ ] Tutti i test DB + Django + API verdi.
+* [ ] Nessun errore tecnico non sanitizzato in response pubblica.
+* [ ] Tracciabilita` completa request/log (request_id, scope, severity, code).
+* [ ] Chiusura checklist con data e commit SHA.
 
 ## 📌 Promemoria saldi (da formalizzare)
 

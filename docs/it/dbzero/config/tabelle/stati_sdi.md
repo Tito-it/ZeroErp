@@ -31,6 +31,8 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_stati_sdi_a10_fatturazione_lotti_fatture_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti_fatture', 'stato_sdi_id', 'id')` |
+| trg_stati_sdi_a10_fatture_sdi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_sdi', 'stato_sdi_id', 'id')` |
+| trg_stati_sdi_a10_fatture_sdi_eventi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_sdi_eventi', 'stato_sdi_id', 'id')` |
 
 ---
 {% include-markdown "signature-core.md" %}
