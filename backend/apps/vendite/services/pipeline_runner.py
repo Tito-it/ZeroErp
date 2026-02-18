@@ -235,6 +235,7 @@ class LottoPipelineRunner:
             with transaction.atomic():
                 # Mantiene il comportamento SQL: lotto_id=0 equivale a creare/risolvere un lotto.
                 normalized_lotto_id = None if params.lotto_id in (0, None) else params.lotto_id
+                is_existing_lotto_request = normalized_lotto_id is not None
                 lotto_id = self.repository.get_or_create_lotto(
                     lotto_id=normalized_lotto_id,
                     competenza_mese=params.competenza_mese,
@@ -251,7 +252,7 @@ class LottoPipelineRunner:
                 effective_tipo_lotto = lotto_tipo_db or effective_tipo_lotto
                 lotto_stato_corrente = self.repository.get_lotto_job_stato(lotto_id)
                 lotto_stato_doc_corrente = self.repository.get_lotto_stato_doc_fiscale_id(lotto_id)
-                if lotto_stato_corrente == "IN_ESECUZIONE":
+                if is_existing_lotto_request and lotto_stato_corrente == "IN_ESECUZIONE":
                     ErrorManager.raise_error(
                         code="E_PIPELINE_LOTTO_IN_ESECUZIONE",
                         message="Lotto gia` in esecuzione.",
