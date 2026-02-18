@@ -12,6 +12,7 @@ Indice test eseguiti:
 10) PipelineStepExecutorUnitTests.test_execute_step_numera_logs_fattura_error_on_single_failure
 11) PipelineStepExecutorUnitTests.test_execute_step_logs_lotto_error_on_not_allowed_function
 12) PipelineStepExecutorUnitTests.test_execute_step_logs_lotto_error_on_missing_handler
+13) PipelineStepExecutorUnitTests.test_execute_step_skips_close_lotto_task_when_flag_is_false
 """
 
 from unittest.mock import MagicMock
@@ -35,6 +36,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.log_pipeline_fase.return_value = None
         repo.list_fatture_by_lotto.return_value = [101, 102]
         repo.get_task_handler_code.return_value = "generate_fatture_righe_default"
+        repo.is_stato_doc_chiude_lotto.return_value = True
         repo.ALLOWED_TASK_FUNCTIONS = {
             "select_attivita": "vendite.fn_select_attivita_fatturabili",
             "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
@@ -228,6 +230,23 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         )
 
         repo.close_lotto_operativo.assert_called_once_with(5)
+
+    # Scopo: Verifica il caso `test_execute_step_skips_close_lotto_task_when_flag_is_false`.
+    def test_execute_step_skips_close_lotto_task_when_flag_is_false(self):
+        processi = [{"task": "close_lotto", "fase": "Chiusura lotto", "params": {}}]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "close_lotto_default"
+        repo.is_stato_doc_chiude_lotto.return_value = False
+
+        executor.execute_step(
+            lotto_id=5,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.close_lotto_operativo.assert_not_called()
 
     # Scopo: Verifica il caso `test_execute_step_runs_reset_lotto_draft_task`.
     def test_execute_step_runs_reset_lotto_draft_task(self):

@@ -8,7 +8,9 @@
 
 from datetime import date
 
+from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.pipeline_repository import SdiPayloadRow, VenditePipelineRepository
+from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 from apps.vendite.services.fatture_righe_service import FattureRigheService
@@ -119,3 +121,27 @@ def fn_reset_lotto_fattura_draft(
     """Entrypoint servizio Python per reset singola fattura del lotto."""
     service = LottoResetService()
     return service.reset_lotto_fattura_draft(lotto_id, fattura_id)
+
+
+# Scopo: Restituisce riepilogo segnalazioni del lotto con regola di blocco step successivo.
+def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, object]:
+    ErrorManager.require(
+        bool(lotto_id and lotto_id > 0),
+        code="E_PIPELINE_VALIDATION",
+        message="Parametri pipeline non validi.",
+        detail="lotto_id obbligatorio e > 0",
+        context={"lotto_id": lotto_id},
+        function_name="vendite.pipeline_service.fn_get_lotto_segnalazioni_summary",
+        log_to_db=True,
+    )
+    service = LottoSegnalazioniService()
+    status = service.evaluate_lotto_status(lotto_id)
+    return {
+        "lotto_id": lotto_id,
+        "critical_count": status.critical_count,
+        "warning_count": status.warning_count,
+        "attention_count": status.attention_count,
+        "is_error": status.is_error,
+        "blocks_next_step": status.blocks_next_step,
+        "summary": status.summary,
+    }

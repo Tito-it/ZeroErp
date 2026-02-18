@@ -16,7 +16,12 @@ from django.db import connection
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.value_normalizer import as_bool, empty_to_none
-from apps.vendite.types import LottoPipelineMeta, ResetLottoDraftResult, ResetLottoFatturaDraftResult
+from apps.vendite.types import (
+    LottoPipelineMeta,
+    LottoSegnalazioniSummary,
+    ResetLottoDraftResult,
+    ResetLottoFatturaDraftResult,
+)
 
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
 
@@ -167,6 +172,54 @@ class VenditePipelineRepository:
         if not row:
             return None
         return row[0]
+
+    # Scopo: Determina in modo univoco se il lotto e` in errore basandosi su stato_lotto persistito.
+    def is_lotto_in_errore(self, lotto_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT (stato_lotto = 'ERRORE')
+                FROM vendite.fatturazione_lotti
+                WHERE id = %s
+                """,
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+        if not row:
+            return False
+        return bool(row[0])
+
+    # Scopo: Restituisce il riepilogo segnalazioni attive del lotto per severita` e sorgente (fatture/lotto).
+    def get_lotto_segnalazioni_summary(self, lotto_id: int) -> LottoSegnalazioniSummary:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    fatture_critical_count,
+                    fatture_warning_count,
+                    lotto_critical_count,
+                    lotto_warning_count,
+                    lotto_info_count
+                FROM vendite.fn_get_lotto_segnalazioni_summary(%s)
+                """,
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+        if not row:
+            return {
+                "fatture_critical_count": 0,
+                "fatture_warning_count": 0,
+                "lotto_critical_count": 0,
+                "lotto_warning_count": 0,
+                "lotto_info_count": 0,
+            }
+        return {
+            "fatture_critical_count": int(row[0]),
+            "fatture_warning_count": int(row[1]),
+            "lotto_critical_count": int(row[2]),
+            "lotto_warning_count": int(row[3]),
+            "lotto_info_count": int(row[4]),
+        }
 
     # Scopo: Recupera `lotto_stato_doc_fiscale_id` dal contesto applicativo o dal database.
     def get_lotto_stato_doc_fiscale_id(self, lotto_id: int) -> int | None:
@@ -367,6 +420,20 @@ class VenditePipelineRepository:
                 """
                 UPDATE vendite.fatturazione_lotti
                 SET stato_operativo = 'CHIUSO',
+                    data_update = now(),
+                    user_update = current_user
+                WHERE id = %s
+                """,
+                [lotto_id],
+            )
+
+    # Scopo: Riapre lo stato operativo del lotto lasciando invariato lo stato documento.
+    def open_lotto_operativo(self, lotto_id: int) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.fatturazione_lotti
+                SET stato_operativo = 'APERTO',
                     data_update = now(),
                     user_update = current_user
                 WHERE id = %s

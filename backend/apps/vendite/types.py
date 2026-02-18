@@ -37,3 +37,11 @@ class ResetLottoFatturaDraftResult(TypedDict):
     updated_attivita: int
     deleted_fatture: int
     deleted_righe: int
+
+
+class LottoSegnalazioniSummary(TypedDict):
+    fatture_critical_count: int
+    fatture_warning_count: int
+    lotto_critical_count: int
+    lotto_warning_count: int
+    lotto_info_count: int

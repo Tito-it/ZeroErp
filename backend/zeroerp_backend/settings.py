@@ -51,14 +51,6 @@ ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "localhost,127.0
 API_EXCEPTION_MIDDLEWARE_ENABLED = env("DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED", "1") == "1"
 API_RETRY_AFTER_SECONDS = int(env("DJANGO_API_RETRY_AFTER_SECONDS", "3"))
 API_EXPOSE_TECHNICAL_DETAILS = env("DJANGO_API_EXPOSE_TECHNICAL_DETAILS", "0") == "1"
-API_LEGACY_ROUTES_ENABLED = env("DJANGO_API_LEGACY_ROUTES_ENABLED", "0") == "1"
-API_LEGACY_DEPRECATION_HEADERS_ENABLED = (
-    env("DJANGO_API_LEGACY_DEPRECATION_HEADERS_ENABLED", "1") == "1"
-)
-API_LEGACY_SUNSET_HEADER = env(
-    "DJANGO_API_LEGACY_SUNSET_HEADER",
-    "Tue, 30 Jun 2026 23:59:59 GMT",
-)
 API_SEARCH_THROTTLE_RATE = env("DJANGO_API_SEARCH_THROTTLE_RATE", "30/min")
 API_STRONG_IDEMPOTENCY_ENABLED = env("DJANGO_API_STRONG_IDEMPOTENCY_ENABLED", "0") == "1"
 
@@ -141,7 +133,6 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'apps.core.middleware.api_legacy_deprecation_middleware.ApiLegacyDeprecationMiddleware',
     'apps.core.middleware.request_context_middleware.RequestContextMiddleware',
     'apps.core.middleware.api_exception_middleware.ApiExceptionMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

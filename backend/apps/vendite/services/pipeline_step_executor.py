@@ -530,13 +530,18 @@ class PipelineStepExecutor:
         dry_run: bool,
     ) -> None:
         # Chiusura operativa lotto: stato_operativo=CHIUSO.
+        def _action() -> None:
+            if not self.repository.is_stato_doc_chiude_lotto(stato_doc_fiscale_id):
+                return
+            self.repository.close_lotto_operativo(lotto_id)
+
         self._run_validated_task(
             task=task,
             fn_name=fn_name,
             lotto_id=lotto_id,
             stato_doc_fiscale_id=stato_doc_fiscale_id,
             dry_run=dry_run,
-            action=lambda: self.repository.close_lotto_operativo(lotto_id),
+            action=_action,
         )
 
     # Scopo: Gestisce il reset tecnico completo del lotto in stato DRAFT

@@ -15,6 +15,7 @@ from django.db import transaction
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
+from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
 from apps.vendite.types import LottoPipelineMeta, PipelineStepLogMeta
 from apps.vendite.services.pipeline_error_logger import PipelineErrorLogger
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
@@ -43,10 +44,14 @@ class LottoPipelineRunner:
         repository: VenditePipelineRepository | None = None,
         step_executor: PipelineStepExecutor | None = None,
         error_logger: PipelineErrorLogger | None = None,
+        lotto_segnalazioni_service: LottoSegnalazioniService | None = None,
     ) -> None:
         self.repository = repository or VenditePipelineRepository()
         self.step_executor = step_executor or PipelineStepExecutor(self.repository)
         self.error_logger = error_logger or PipelineErrorLogger(self.repository)
+        self.lotto_segnalazioni_service = (
+            lotto_segnalazioni_service or LottoSegnalazioniService(self.repository)
+        )
 
     # Scopo: Registra errore di lotto su log dominio e forza stato lotto a ERRORE in transazione atomica.
     def _mark_lotto_error(
@@ -252,6 +257,8 @@ class LottoPipelineRunner:
                 effective_tipo_lotto = lotto_tipo_db or effective_tipo_lotto
                 lotto_stato_corrente = self.repository.get_lotto_job_stato(lotto_id)
                 lotto_stato_doc_corrente = self.repository.get_lotto_stato_doc_fiscale_id(lotto_id)
+                # Evita falsi positivi sui lotti appena creati (lotto_id=0), che possono
+                # risultare transitoriamente in esecuzione nello stesso scope transazionale.
                 if is_existing_lotto_request and lotto_stato_corrente == "IN_ESECUZIONE":
                     ErrorManager.raise_error(
                         code="E_PIPELINE_LOTTO_IN_ESECUZIONE",
@@ -264,9 +271,11 @@ class LottoPipelineRunner:
                         function_name="vendite.pr_run_lotto_pipeline",
                         log_to_db=True,
                     )
+                # Regola dominio: "lotto in errore" e` deciso dallo stato_lotto persistito,
+                # non dalla sola severita` dei log di esito fatture (C/W/I).
                 is_massivo_error_rerun = (
                     effective_tipo_lotto == "MASSIVO"
-                    and lotto_stato_corrente == "ERRORE"
+                    and self.repository.is_lotto_in_errore(lotto_id)
                 )
                 draft_id = self.repository.get_stato_doc_fiscale_id("DRAFT")
                 emessa_id = self.repository.get_stato_doc_fiscale_id("EMESSA")
@@ -276,8 +285,6 @@ class LottoPipelineRunner:
                 meta: dict[str, Any] = params.meta or {}
                 auto_step_rollback_enabled = bool(meta.get("auto_step_rollback"))
                 inviata_id = self.repository.get_stato_doc_fiscale_id("INVIATA")
-
-                self.repository.set_lotto_job_stato(lotto_id, "IN_ESECUZIONE", "Avvio pipeline")
 
                 lotto_context = self.repository.get_lotto_context(lotto_id)
                 ErrorManager.require(
@@ -301,7 +308,31 @@ class LottoPipelineRunner:
                     is_massivo_error_rerun=is_massivo_error_rerun,
                     lotto_stato_doc_corrente=lotto_stato_doc_corrente,
                 )
+                # Modalita` operativa: un run esegue un solo step pipeline (il prossimo disponibile).
+                steps = steps[:1]
+                # Blocco avanzamento: con almeno una criticita` attiva il lotto richiede correzioni.
+                lotto_signal_status = self.lotto_segnalazioni_service.evaluate_lotto_status(lotto_id)
+                if lotto_signal_status.blocks_next_step:
+                    ErrorManager.raise_error(
+                        code="E_PIPELINE_LOTTO_CRITICAL",
+                        message="Lotto bloccato per segnalazioni critiche attive.",
+                        detail=(
+                            "Correggere le segnalazioni critical prima di proseguire: "
+                            f"lotto_id={lotto_id}, critical_count={lotto_signal_status.critical_count}"
+                        ),
+                        context={
+                            "lotto_id": lotto_id,
+                            "critical_count": lotto_signal_status.critical_count,
+                            "warning_count": lotto_signal_status.warning_count,
+                            "attention_count": lotto_signal_status.attention_count,
+                            "summary": lotto_signal_status.summary,
+                        },
+                        function_name="vendite.pr_run_lotto_pipeline",
+                        log_to_db=True,
+                    )
+                self.repository.set_lotto_job_stato(lotto_id, "IN_ESECUZIONE", "Avvio pipeline")
 
+                executed_stato_doc_fiscale_id: int | None = None
                 for step in steps:
                     if self._should_execute_auto_step_rollback(
                         step=step,
@@ -326,8 +357,17 @@ class LottoPipelineRunner:
                         dry_run=params.dry_run,
                         inviata_id=inviata_id,
                     )
+                    executed_stato_doc_fiscale_id = step.stato_doc_fiscale_id
 
                 self.repository.set_lotto_job_stato(lotto_id, "COMPLETATO", "Pipeline completata")
+                if (
+                    not params.dry_run
+                    and executed_stato_doc_fiscale_id is not None
+                    and not self.repository.is_stato_doc_chiude_lotto(executed_stato_doc_fiscale_id)
+                ):
+                    # Alcune transizioni DB impostano CHIUSO su COMPLETATO: forziamo APERTO
+                    # quando lo stato documento non prevede chiusura lotto.
+                    self.repository.open_lotto_operativo(lotto_id)
                 return lotto_id
         except ServiceError as exc:
             if lotto_id is not None:
