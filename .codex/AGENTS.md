@@ -19,6 +19,8 @@
 - Accesso webserver configurato: test migrazione solo su richiesta
 - Per i file Python **generati** aggiungere sempre l’header standard in `templates/python-header.txt`.
 - Per ogni nuovo file Python (non generato da Django) aggiungere l’header standard di `templates/python-header.txt` e un breve commento iniziale sullo scopo.
+- Nei file Python aggiungere un commento sintetico (`# Scopo: ...`) prima di ogni funzione/metodo (`def`/`async def`), in italiano.
+- Per funzioni/metodi che orchestrano processi complessi (pipeline, transazioni, dispatch task, integrazioni esterne), rendere il commento `Scopo` iniziale piu` dettagliato: obiettivo, perimetro e risultato atteso.
 - Nei file Python aggiungere commenti sintetici nei blocchi non banali (orchestrazione, transazioni, mapping task/SQL), scritti in italiano.
 - Dopo un `ErrorManager.require(... is not None ...)` aggiungere sempre l’`assert` corrispondente per aiutare il type checker.
 - Dopo `row = cursor.fetchone()` aggiungere guard (`if not row`) oppure `assert row is not None` prima di usare `row[...]`.

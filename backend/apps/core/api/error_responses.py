@@ -7,6 +7,7 @@ from apps.core.services.error_translator import ErrorTranslator
 # Helper condivisi API: envelope errori uniforme per tutti i domini.
 
 
+# Scopo: Gestisce `invalid_json_response` nel flusso applicativo del modulo.
 def invalid_json_response() -> JsonResponse:
     payload = {"error": "invalid_json"}
     meta = _build_meta()
@@ -15,6 +16,7 @@ def invalid_json_response() -> JsonResponse:
     return JsonResponse(payload, status=400)
 
 
+# Scopo: Gestisce `invalid_payload_response` nel flusso applicativo del modulo.
 def invalid_payload_response() -> JsonResponse:
     payload = {"error": "invalid_payload"}
     meta = _build_meta()
@@ -23,6 +25,7 @@ def invalid_payload_response() -> JsonResponse:
     return JsonResponse(payload, status=400)
 
 
+# Scopo: Gestisce `exception_to_error_response` nel flusso applicativo del modulo.
 def exception_to_error_response(exc: Exception) -> JsonResponse:
     api_error = ErrorTranslator.to_api_error(exc)
     status_code = ErrorTranslator.get_http_status(api_error)
@@ -34,6 +37,7 @@ def exception_to_error_response(exc: Exception) -> JsonResponse:
     return apply_retry_headers(response, api_error)
 
 
+# Scopo: Gestisce `_build_meta` nel flusso applicativo del modulo.
 def _build_meta() -> dict[str, str]:
     meta: dict[str, str] = {}
     request_id = get_request_id()

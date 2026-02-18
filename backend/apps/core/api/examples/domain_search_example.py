@@ -20,6 +20,7 @@ from apps.core.api.success_responses import success_response
 class ExampleSearchEndpoint(APIView):
     is_search_endpoint = True
 
+    # Scopo: Gestisce la richiesta HTTP GET del relativo endpoint API.
     def get(self, request: Request) -> Response:
         term = request.query_params.get("term")
         require_min_search_length(term, min_length=3, field_name="term")

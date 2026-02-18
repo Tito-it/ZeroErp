@@ -24,6 +24,7 @@ from apps.core.services.request_context import get_idempotency_key
 logger = logging.getLogger(__name__)
 
 
+# Scopo: Gestisce endpoint POST JSON con parsing, validazione, idempotency opzionale e envelope uniforme.
 def handle_post_json(
     request: HttpRequest | Request,
     *,
@@ -129,5 +130,6 @@ def handle_post_json(
         return exception_to_error_response(exc)
 
 
+# Scopo: Estrae il payload JSON da request e gestisce fallback parser/errore strutturato.
 def _extract_json_payload(response: JsonResponse) -> dict[str, Any]:
     return json.loads(response.content.decode("utf-8"))

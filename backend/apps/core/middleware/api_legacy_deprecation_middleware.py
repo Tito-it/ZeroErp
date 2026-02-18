@@ -10,6 +10,7 @@ from django.utils.deprecation import MiddlewareMixin
 class ApiLegacyDeprecationMiddleware(MiddlewareMixin):
     LEGACY_PREFIXES = ("/api/core/", "/api/vendite/")
 
+    # Scopo: Gestisce `process_response` nel flusso applicativo del modulo.
     def process_response(self, request: HttpRequest, response: HttpResponse) -> HttpResponse:
         if not getattr(settings, "API_LEGACY_DEPRECATION_HEADERS_ENABLED", True):
             return response
@@ -26,5 +27,6 @@ class ApiLegacyDeprecationMiddleware(MiddlewareMixin):
         )
         return response
 
+    # Scopo: Gestisce `_is_legacy_path` nel flusso applicativo del modulo.
     def _is_legacy_path(self, path: str) -> bool:
         return any(path.startswith(prefix) for prefix in self.LEGACY_PREFIXES)

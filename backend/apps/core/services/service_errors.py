@@ -14,6 +14,7 @@ from typing import Any
 class ServiceError(Exception):
     """Errore applicativo standard con metadati utili per API/UI."""
 
+    # Scopo: Inizializza la istanza.
     def __init__(
         self,
         *,

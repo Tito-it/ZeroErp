@@ -20,6 +20,7 @@ from apps.vendite.services.lotto_reset_service import LottoResetService
 
 
 class LottoResetFatturaServiceUnitTests(SimpleTestCase):
+    # Scopo: Verifica il caso `test_reset_lotto_fattura_draft_requires_ids`.
     def test_reset_lotto_fattura_draft_requires_ids(self):
         repo = MagicMock()
         service = LottoResetService(repository=repo)
@@ -30,6 +31,7 @@ class LottoResetFatturaServiceUnitTests(SimpleTestCase):
         self.assertEqual(exc.exception.code, "E_RESET_LOTTO_FATTURA_VALIDATION")
         repo.reset_lotto_fattura_draft.assert_not_called()
 
+    # Scopo: Verifica il caso `test_reset_lotto_fattura_draft_ok`.
     def test_reset_lotto_fattura_draft_ok(self):
         repo = MagicMock()
         repo.reset_lotto_fattura_draft.return_value = {

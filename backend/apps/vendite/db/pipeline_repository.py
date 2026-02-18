@@ -101,6 +101,7 @@ class VenditePipelineRepository:
         "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
     }
 
+    # Scopo: Gestisce `_to_jsonb_param` nel flusso applicativo del modulo.
     @staticmethod
     def _to_jsonb_param(value: LottoPipelineMeta | None) -> str | None:
         if value is None:
@@ -108,6 +109,7 @@ class VenditePipelineRepository:
         # Serializza esplicitamente per evitare errori adapter psycopg su dict/list.
         return json.dumps(value)
 
+    # Scopo: Risolve o crea il lotto di fatturazione delegando al DB la logica di consistenza dominio.
     def get_or_create_lotto(
         self,
         lotto_id: int | None,
@@ -142,6 +144,7 @@ class VenditePipelineRepository:
             assert row is not None
         return int(row[0])
 
+    # Scopo: Recupera `lotto_tipo` dal contesto applicativo o dal database.
     def get_lotto_tipo(self, lotto_id: int) -> str | None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -153,6 +156,7 @@ class VenditePipelineRepository:
             return None
         return row[0]
 
+    # Scopo: Recupera `lotto_job_stato` dal contesto applicativo o dal database.
     def get_lotto_job_stato(self, lotto_id: int) -> str | None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -164,6 +168,7 @@ class VenditePipelineRepository:
             return None
         return row[0]
 
+    # Scopo: Recupera `lotto_stato_doc_fiscale_id` dal contesto applicativo o dal database.
     def get_lotto_stato_doc_fiscale_id(self, lotto_id: int) -> int | None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -179,6 +184,7 @@ class VenditePipelineRepository:
             return None
         return int(row[0])
 
+    # Scopo: Risolve l'identificativo dominio task attivo a partire dal codice richiesto.
     def get_dominio_id(self, codice: str | None = None) -> int:
         dominio_code = codice or self.DOMINIO_CODE
         ErrorManager.require(
@@ -214,6 +220,7 @@ class VenditePipelineRepository:
             )
         return int(row[0])
 
+    # Scopo: Risolve dal registry DB l'handler effettivo per task e implementation_key richiesti.
     def get_task_handler_code(
         self,
         *,
@@ -258,6 +265,7 @@ class VenditePipelineRepository:
             )
         return str(row[0])
 
+    # Scopo: Recupera `stato_doc_fiscale_id` dal contesto applicativo o dal database.
     def get_stato_doc_fiscale_id(self, codice: str) -> int | None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -276,6 +284,7 @@ class VenditePipelineRepository:
             return None
         return int(row[0])
 
+    # Scopo: Aggiorna `lotto_job_stato` con i valori richiesti dal flusso corrente.
     def set_lotto_job_stato(self, lotto_id: int, stato: str, messaggio: str) -> None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -283,6 +292,7 @@ class VenditePipelineRepository:
                 [lotto_id, stato, messaggio],
             )
 
+    # Scopo: Recupera gli step pipeline applicabili con fallback per tipo lotto, utility e tipo documento.
     def list_pipeline_steps(
         self,
         tipo_lotto: str,
@@ -308,6 +318,7 @@ class VenditePipelineRepository:
             for row in rows
         ]
 
+    # Scopo: Gestisce `update_lotto_stato_doc` nel flusso applicativo del modulo.
     def update_lotto_stato_doc(self, lotto_id: int, stato_doc_fiscale_id: int) -> None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -321,6 +332,7 @@ class VenditePipelineRepository:
                 [stato_doc_fiscale_id, lotto_id],
             )
 
+    # Scopo: Gestisce `close_giornaliero_lotto` nel flusso applicativo del modulo.
     def close_giornaliero_lotto(self, lotto_id: int, inviata_id: int) -> None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -330,6 +342,7 @@ class VenditePipelineRepository:
                 [lotto_id, inviata_id],
             )
 
+    # Scopo: Chiude il lotto a livello operativo senza forzare transizioni stato documento.
     def close_lotto_operativo(self, lotto_id: int) -> None:
         # Chiusura operativa lotto senza vincolare lo stato documentale.
         with connection.cursor() as cursor:
@@ -344,6 +357,7 @@ class VenditePipelineRepository:
                 [lotto_id],
             )
 
+    # Scopo: Scrive il log di fase lotto su tabella/funzione dominio con metadati strutturati.
     def log_pipeline_fase(
         self,
         lotto_id: int,
@@ -370,6 +384,7 @@ class VenditePipelineRepository:
                 ],
             )
 
+    # Scopo: Scrive un log puntuale su singola fattura in `vendite.fatture_log`.
     def log_fattura(
         self,
         *,
@@ -380,37 +395,16 @@ class VenditePipelineRepository:
         meta: LottoPipelineMeta | None = None,
     ) -> None:
         # Inserisce un log funzionale puntuale su singola fattura.
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO vendite.fatture_log (
-                    fattura_id,
-                    data_ora,
-                    messaggio,
-                    status,
-                    disabilitato,
-                    critical,
-                    meta
-                )
-                VALUES (
-                    %s,
-                    now(),
-                    %s,
-                    %s,
-                    false,
-                    %s,
-                    COALESCE(%s::jsonb, '{}'::jsonb)
-                )
-                """,
-                [
-                    fattura_id,
-                    messaggio,
-                    status,
-                    critical,
-                    self._to_jsonb_param(meta),
-                ],
-            )
+        self._insert_fatture_log(
+            fattura_id_select_sql="SELECT %s::bigint AS fattura_id",
+            fattura_id_select_params=[fattura_id],
+            status=status,
+            messaggio=messaggio,
+            critical=critical,
+            meta=meta,
+        )
 
+    # Scopo: Gestisce `log_lotto_esito_fatture` nel flusso applicativo del modulo.
     def log_lotto_esito_fatture(self, lotto_id: int) -> None:
         # Deriva severita` lotto da fatture_log (C > W > I) e scrive su fatturazione_lotti_log.
         with connection.cursor() as cursor:
@@ -419,6 +413,7 @@ class VenditePipelineRepository:
                 [lotto_id],
             )
 
+    # Scopo: Scrive un log massivo su tutte le fatture collegate al lotto.
     def log_fatture_lotto(
         self,
         *,
@@ -428,9 +423,34 @@ class VenditePipelineRepository:
         meta: LottoPipelineMeta | None = None,
     ) -> None:
         # Logga un messaggio tecnico su tutte le fatture collegate al lotto.
+        self._insert_fatture_log(
+            fattura_id_select_sql="""
+                SELECT lf.fattura_id
+                FROM vendite.fatturazione_lotti_fatture lf
+                WHERE lf.lotto_id = %s
+            """,
+            fattura_id_select_params=[lotto_id],
+            status=status,
+            messaggio=messaggio,
+            critical=(status == "C"),
+            meta=meta,
+        )
+
+    # Scopo: Inserisce righe su `vendite.fatture_log` usando una SELECT sorgente dei fattura_id.
+    def _insert_fatture_log(
+        self,
+        *,
+        fattura_id_select_sql: str,
+        fattura_id_select_params: list[Any],
+        status: str,
+        messaggio: str,
+        critical: bool,
+        meta: LottoPipelineMeta | None,
+    ) -> None:
+        # Helper unico INSERT fatture_log; la SELECT fattura_id proviene solo da SQL interno.
         with connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 INSERT INTO vendite.fatture_log (
                     fattura_id,
                     data_ora,
@@ -441,25 +461,27 @@ class VenditePipelineRepository:
                     meta
                 )
                 SELECT
-                    lf.fattura_id,
+                    src.fattura_id,
                     now(),
                     %s,
                     %s,
                     false,
-                    (%s = 'C'),
-                    COALESCE(%s::jsonb, '{}'::jsonb)
-                FROM vendite.fatturazione_lotti_fatture lf
-                WHERE lf.lotto_id = %s
+                    %s,
+                    COALESCE(%s::jsonb, '{{}}'::jsonb)
+                FROM (
+                    {fattura_id_select_sql}
+                ) AS src
                 """,
                 [
                     messaggio,
                     status,
-                    status,
+                    critical,
                     self._to_jsonb_param(meta),
-                    lotto_id,
+                    *fattura_id_select_params,
                 ],
             )
 
+    # Scopo: Recupera `lotto_context` dal contesto applicativo o dal database.
     def get_lotto_context(self, lotto_id: int) -> LottoContext | None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -485,6 +507,7 @@ class VenditePipelineRepository:
             lock_batch_id=row[4],
         )
 
+    # Scopo: Recupera i task JSON dello step (processi o rollback) e normalizza il payload in lista Python.
     def get_step_processes(
         self,
         stato_doc_fiscale_id: int,
@@ -533,6 +556,7 @@ class VenditePipelineRepository:
             return []
         return []
 
+    # Scopo: Gestisce `has_step_processes` nel flusso applicativo del modulo.
     def has_step_processes(
         self,
         *,
@@ -552,6 +576,7 @@ class VenditePipelineRepository:
             )
         )
 
+    # Scopo: Invoca la funzione SQL di selezione attivita fatturabili normalizzando i parametri runtime.
     def run_select_attivita_task(
         self,
         context: LottoContext,
@@ -595,6 +620,7 @@ class VenditePipelineRepository:
                 ],
             )
 
+    # Scopo: Recupera `group_attivita_input` dal contesto applicativo o dal database.
     def get_group_attivita_input(self, attivita_id: int) -> GroupAttivitaInput | None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -645,6 +671,7 @@ class VenditePipelineRepository:
             metodo_arrotondamento_quantita=row[14],
         )
 
+    # Scopo: Restituisce elenco `attivita_da_fatturare` in base ai filtri disponibili.
     def list_attivita_da_fatturare(self, lotto_id: int) -> list[AttivitaDaFatturare]:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -689,6 +716,7 @@ class VenditePipelineRepository:
             for row in rows
         ]
 
+    # Scopo: Restituisce elenco `fatture_by_lotto` in base ai filtri disponibili.
     def list_fatture_by_lotto(self, lotto_id: int) -> list[int]:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -705,6 +733,7 @@ class VenditePipelineRepository:
             rows = cursor.fetchall()
         return [int(row[0]) for row in rows]
 
+    # Scopo: Recupera `tipo_fondo_fattura_id` dal contesto applicativo o dal database.
     def get_tipo_fondo_fattura_id(self, codice_interno: str = "F_F_ADD_ACC") -> int:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -730,6 +759,7 @@ class VenditePipelineRepository:
             )
         return int(row[0])
 
+    # Scopo: Restituisce lo scope minimo per fattura del lotto validando i campi obbligatori per task EMESSA.
     def list_fatture_scope_by_lotto(self, lotto_id: int) -> list[dict[str, int]]:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -795,6 +825,7 @@ class VenditePipelineRepository:
             )
         return scopes
 
+    # Scopo: Gestisce generazione fondi source per ogni scope fattura del lotto
     def run_genera_fondi_source_lotto_task(
         self,
         *,
@@ -820,6 +851,7 @@ class VenditePipelineRepository:
                     ],
                 )
 
+    # Scopo: Gestisce applicazione fondi per ogni scope fattura del lotto
     def run_applica_fondi_lotto_task(
         self,
         *,
@@ -846,6 +878,7 @@ class VenditePipelineRepository:
                     ],
                 )
 
+    # Scopo: Avvia il ricalcolo IVA del lotto con aggiornamento riepiloghi/totali via funzione SQL.
     def run_ricalcola_iva_lotto_task(
         self,
         *,
@@ -860,6 +893,7 @@ class VenditePipelineRepository:
                 [lotto_id, batch_size],
             )
 
+    # Scopo: Prepara e restituisce il dataset SDI del lotto mappato in oggetti tipizzati.
     def run_prepare_sdi_payload_lotto_task(
         self,
         *,
@@ -894,6 +928,7 @@ class VenditePipelineRepository:
             for row in rows
         ]
 
+    # Scopo: Gestisce `numera_fattura_opz_emessa` nel flusso applicativo del modulo.
     def numera_fattura_opz_emessa(self, fattura_id: int) -> None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -901,6 +936,7 @@ class VenditePipelineRepository:
                 [fattura_id],
             )
 
+    # Scopo: Gestisce `sync_lotto_fatture_stato` nel flusso applicativo del modulo.
     def sync_lotto_fatture_stato(
         self,
         *,
@@ -913,6 +949,7 @@ class VenditePipelineRepository:
                 [lotto_id, stato_doc_fiscale_id],
             )
 
+    # Scopo: Recupera `or_create_fattura_header` dal contesto applicativo o dal database.
     def get_or_create_fattura_header(self, lotto_id: int, attivita_id: int) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -923,6 +960,7 @@ class VenditePipelineRepository:
             assert row is not None
         return int(row[0])
 
+    # Scopo: Gestisce `build_fattura_key` nel flusso applicativo del modulo.
     def build_fattura_key(self, attivita_id: int) -> dict[str, object]:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -933,6 +971,7 @@ class VenditePipelineRepository:
             assert row is not None
         return row[0]
 
+    # Scopo: Gestisce `reset_lotto_draft` nel flusso applicativo del modulo.
     def reset_lotto_draft(self, lotto_id: int) -> ResetLottoDraftResult:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -949,6 +988,7 @@ class VenditePipelineRepository:
             "deleted_righe": int(row[3]),
         }
 
+    # Scopo: Gestisce `reset_lotto_fattura_draft` nel flusso applicativo del modulo.
     def reset_lotto_fattura_draft(
         self,
         lotto_id: int,
@@ -968,6 +1008,7 @@ class VenditePipelineRepository:
             "deleted_righe": int(row[2]),
         }
 
+    # Scopo: Recupera `next_fattura_riga_nr` dal contesto applicativo o dal database.
     def get_next_fattura_riga_nr(self, fattura_id: int) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -982,6 +1023,7 @@ class VenditePipelineRepository:
             assert row is not None
         return int(row[0])
 
+    # Scopo: Gestisce `insert_fattura_riga` nel flusso applicativo del modulo.
     def insert_fattura_riga(
         self,
         *,
@@ -1040,6 +1082,7 @@ class VenditePipelineRepository:
             assert row is not None
         return int(row[0])
 
+    # Scopo: Gestisce `mark_attivita_fatturata` nel flusso applicativo del modulo.
     def mark_attivita_fatturata(self, attivita_id: int, fattura_riga_id: int) -> None:
         with connection.cursor() as cursor:
             cursor.execute(

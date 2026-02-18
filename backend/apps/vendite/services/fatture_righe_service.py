@@ -19,9 +19,11 @@ from apps.vendite.types import GroupAttivitaKey
 
 
 class FattureRigheService:
+    # Scopo: Inizializza la istanza.
     def __init__(self, repository: VenditePipelineRepository | None = None) -> None:
         self.repository = repository or VenditePipelineRepository()
 
+    # Scopo: Gestisce `group_attivita_fatturabili` nel flusso applicativo del modulo.
     def group_attivita_fatturabili(self, attivita_id: int) -> GroupAttivitaKey:
         ErrorManager.require(
             attivita_id is not None,
@@ -80,6 +82,7 @@ class FattureRigheService:
             "metodo_arrotondamento_quantita": row.metodo_arrotondamento_quantita,
         }
 
+    # Scopo: Gestisce `generate_fatture_righe` nel flusso applicativo del modulo.
     def generate_fatture_righe(self, lotto_id: int, *, dry_run: bool = False) -> int:
         ErrorManager.require(
             lotto_id is not None,
@@ -124,12 +127,14 @@ class FattureRigheService:
         return count
 
 
+# Scopo: Gestisce `_to_float` nel flusso applicativo del modulo.
 def _to_float(value: Decimal | None) -> float | None:
     if value is None:
         return None
     return float(value)
 
 
+# Scopo: Gestisce `_to_iso` nel flusso applicativo del modulo.
 def _to_iso(value: date | None) -> str | None:
     if value is None:
         return None

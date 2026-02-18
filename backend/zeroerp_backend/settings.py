@@ -15,6 +15,7 @@ from datetime import timedelta
 import os
 from django.core.exceptions import ImproperlyConfigured
 
+# Scopo: Gestisce `env` nel flusso applicativo del modulo.
 def env(name, default=None, required=False):
     v = os.environ.get(name, default)
     if required and (v is None or v == ""):

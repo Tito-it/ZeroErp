@@ -13,12 +13,14 @@ from apps.vendite.services.lotto_reset_service import LottoResetService
 
 
 class LottoResetServiceUnitTests(SimpleTestCase):
+    # Scopo: Verifica il caso `test_reset_lotto_requires_valid_id`.
     def test_reset_lotto_requires_valid_id(self):
         service = LottoResetService(repository=MagicMock())
         with self.assertRaises(ServiceError) as exc:
             service.reset_lotto_draft(0)
         self.assertEqual(exc.exception.code, "E_RESET_LOTTO_VALIDATION")
 
+    # Scopo: Verifica il caso `test_reset_lotto_calls_repository`.
     def test_reset_lotto_calls_repository(self):
         repo = MagicMock()
         repo.reset_lotto_draft.return_value = {
