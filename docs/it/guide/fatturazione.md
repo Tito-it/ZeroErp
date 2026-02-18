@@ -54,8 +54,12 @@ introduciamo due concetti:
 
 Regola chiave:
 * Il **lotto giornaliero** può restare **APERTO** anche se le fatture sono **EMESSE**.
-* Si chiude **solo** quando il lotto passa a **INVIATA**.
+* Si chiude quando lo stato step ha `config.stati_doc_fiscale.chiude_lotto = true` (regola parametrica).
 * Le fatture giornaliere **non sono retrocedibili** (no ritorno a BOZZA).
+
+Regola finale attiva:
+* la chiusura operativa lotto e` eseguita solo a fine step tramite controllo `chiude_lotto`;
+* non esistono chiusure hardcoded per stato specifico e non esistono task pipeline dedicati alla chiusura.
 
 Questo consente di **accorpare più fatture** nello stesso lotto giornaliero,
 senza perdere la governance documentale.

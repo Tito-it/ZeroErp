@@ -164,9 +164,7 @@ class LottoPipelineRunner:
         *,
         lotto_id: int,
         step: Any,
-        effective_tipo_lotto: str,
         dry_run: bool,
-        inviata_id: int | None,
     ) -> None:
         # Traccia avanzamento step coerente con il flusso SQL originale.
         self.repository.set_lotto_job_stato(
@@ -175,13 +173,6 @@ class LottoPipelineRunner:
             f"Esecuzione step: {step.descrizione or step.stato_doc_fiscale_id}",
         )
         self.repository.update_lotto_stato_doc(lotto_id, step.stato_doc_fiscale_id)
-        if (
-            effective_tipo_lotto == "GIORNALIERO"
-            and inviata_id is not None
-            and step.stato_doc_fiscale_id == inviata_id
-        ):
-            # Il lotto giornaliero viene chiuso operativamente allo stato INVIATA.
-            self.repository.close_giornaliero_lotto(lotto_id, inviata_id)
 
         step_meta: PipelineStepLogMeta = {
             "ordine": step.ordine,
@@ -284,7 +275,6 @@ class LottoPipelineRunner:
                 }
                 meta: dict[str, Any] = params.meta or {}
                 auto_step_rollback_enabled = bool(meta.get("auto_step_rollback"))
-                inviata_id = self.repository.get_stato_doc_fiscale_id("INVIATA")
 
                 lotto_context = self.repository.get_lotto_context(lotto_id)
                 ErrorManager.require(
@@ -353,9 +343,7 @@ class LottoPipelineRunner:
                     self._execute_pipeline_step(
                         lotto_id=lotto_id,
                         step=step,
-                        effective_tipo_lotto=effective_tipo_lotto,
                         dry_run=params.dry_run,
-                        inviata_id=inviata_id,
                     )
                     executed_stato_doc_fiscale_id = step.stato_doc_fiscale_id
 
