@@ -9,6 +9,7 @@ Indice test eseguiti:
 7) LottoPipelineRunnerUnitTests.test_runner_massivo_error_rerun_executes_step_rollback_when_enabled
 8) LottoPipelineRunnerUnitTests.test_runner_massivo_error_rerun_skips_destructive_reset_lotto_rollback
 9) LottoPipelineRunnerUnitTests.test_runner_blocks_when_lotto_in_esecuzione
+10) LottoPipelineRunnerUnitTests.test_runner_closes_lotto_when_stato_has_chiude_lotto_flag
 """
 
 from contextlib import nullcontext
@@ -72,6 +73,15 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
 
         # Scopo: Gestisce `close_giornaliero_lotto` nel flusso applicativo del modulo.
         def close_giornaliero_lotto(self, lotto_id, inviata_id):
+            return None
+
+        # Scopo: Recupera `stato_doc_chiude_lotto` dal contesto applicativo o dal database.
+        def is_stato_doc_chiude_lotto(self, stato_doc_fiscale_id):
+            return False
+
+        # Scopo: Gestisce `close_lotto_operativo` nel flusso applicativo del modulo.
+        def close_lotto_operativo(self, lotto_id):
+            self.close_lotto_operativo_called = lotto_id
             return None
 
         # Scopo: Gestisce `log_pipeline_fase` nel flusso applicativo del modulo.
@@ -329,3 +339,18 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 runner.run_pipeline(LottoPipelineParams(dry_run=True))
         self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_IN_ESECUZIONE")
         self.assertFalse(step_executor.called)
+
+    # Scopo: Verifica il caso `test_runner_closes_lotto_when_stato_has_chiude_lotto_flag`.
+    def test_runner_closes_lotto_when_stato_has_chiude_lotto_flag(self):
+        class _CloseByFlagRepo(self._RepoMock):
+            # Scopo: Recupera `stato_doc_chiude_lotto` dal contesto applicativo o dal database.
+            def is_stato_doc_chiude_lotto(self, stato_doc_fiscale_id):
+                return stato_doc_fiscale_id == 8
+
+        repo = _CloseByFlagRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            result = runner.run_pipeline(LottoPipelineParams(dry_run=False))
+        self.assertEqual(result, 10)
+        self.assertEqual(getattr(repo, "close_lotto_operativo_called", None), 10)

@@ -36,5 +36,14 @@
 | pk_fatture_sdi | `CREATE UNIQUE INDEX pk_fatture_sdi ON vendite.fatture_sdi USING btree (id)` |
 | uq_fatture_sdi_fattura_tentativo | `CREATE UNIQUE INDEX uq_fatture_sdi_fattura_tentativo ON vendite.fatture_sdi USING btree (fattura_id, tentativo_num)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_fatture_sdi_a10_stati_sdi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_sdi', 'attivo', 'stato_sdi_id')` |
+| trg_fatture_sdi_a10_stati_sdi_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_sdi', 'attivo', 'stato_sdi_id')` |
+| trg_fatture_sdi_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_fatture_sdi_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatture_sdi_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}
