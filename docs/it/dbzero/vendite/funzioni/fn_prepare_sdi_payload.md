@@ -16,24 +16,11 @@ DECLARE
   v_stato_sdi_id config.stati_sdi.id%TYPE;
   v_exists_lotto boolean := false;
 BEGIN
-  -- =========================================================
   -- Scopo:
-  --   Preparare il dataset SDI per un lotto.
-  --   Se assente, crea il tentativo su vendite.fatture_sdi.
-  --
-  -- Regole:
-  --   - lotto obbligatorio e valido
-  --   - stato SDI risolto da codice_interno (default DA_INVIARE)
-  --   - idempotenza: riusa tentativo aperto (data_invio IS NULL)
-
-  -- Parametri:
-  -- p_force_new_tentativo:
-  -- `false` (default): comportamento consigliato. Se il tentativo aperto esiste, la funzione lo riusa.  
-  --   Utile per rilanciare un processo interrotto senza creare duplicati.
-  -- `true`: forza sempre un nuovo tentativo (`tentativo_num` incrementale), anche se ne esiste uno aperto.  
-  --    Da usare solo quando si vuole esplicitamente una nuova estrazione (retry controllato / nuova revisione payload).
-
-  -- =========================================================
+  --   Prepara il dataset SDI per un lotto e apre/riusa i tentativi su fatture_sdi.
+  -- Nota fix:
+  --   Qualifica esplicita su RETURNING (alias fs.*) per evitare ambiguita'
+  --   con variabili/output column PL/pgSQL (fattura_id).
 
   IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
@@ -159,7 +146,7 @@ BEGIN
     GROUP BY t.fattura_id
   ),
   ins AS (
-    INSERT INTO vendite.fatture_sdi (
+    INSERT INTO vendite.fatture_sdi AS fs (
       fattura_id,
       tentativo_num,
       stato_sdi_id,
@@ -191,7 +178,7 @@ BEGIN
       now(),
       current_user
     FROM next_try n
-    RETURNING id, fattura_id, tentativo_num
+    RETURNING fs.id, fs.fattura_id, fs.tentativo_num
   )
   INSERT INTO tmp_sdi_prepared (fattura_sdi_id, fattura_id, tentativo_num)
   SELECT i.id, i.fattura_id, i.tentativo_num

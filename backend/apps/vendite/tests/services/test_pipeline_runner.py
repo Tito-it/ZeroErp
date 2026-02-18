@@ -10,6 +10,7 @@ Indice test eseguiti:
 8) LottoPipelineRunnerUnitTests.test_runner_massivo_error_rerun_skips_destructive_reset_lotto_rollback
 9) LottoPipelineRunnerUnitTests.test_runner_blocks_when_lotto_in_esecuzione
 10) LottoPipelineRunnerUnitTests.test_runner_closes_lotto_when_stato_has_chiude_lotto_flag
+11) LottoPipelineRunnerUnitTests.test_runner_does_not_block_new_lotto_when_initial_state_is_in_esecuzione
 """
 
 from contextlib import nullcontext
@@ -354,3 +355,18 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             result = runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(result, 10)
         self.assertEqual(getattr(repo, "close_lotto_operativo_called", None), 10)
+
+    # Scopo: Verifica il caso `test_runner_does_not_block_new_lotto_when_initial_state_is_in_esecuzione`.
+    def test_runner_does_not_block_new_lotto_when_initial_state_is_in_esecuzione(self):
+        class _NewLottoInEsecuzioneRepo(self._RepoMock):
+            # Scopo: Recupera `lotto_job_stato` dal contesto applicativo o dal database.
+            def get_lotto_job_stato(self, lotto_id):
+                return "IN_ESECUZIONE"
+
+        repo = _NewLottoInEsecuzioneRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            result = runner.run_pipeline(LottoPipelineParams(lotto_id=0, dry_run=True))
+        self.assertEqual(result, 10)
+        self.assertTrue(step_executor.called)
