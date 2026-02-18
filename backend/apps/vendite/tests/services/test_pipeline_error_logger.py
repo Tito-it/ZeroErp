@@ -21,6 +21,7 @@ from apps.vendite.services.pipeline_error_logger import PipelineErrorLogger
 
 
 class PipelineErrorLoggerUnitTests(SimpleTestCase):
+    # Scopo: Verifica il caso `test_log_error_lotto_writes_pipeline_log_and_technical_log`.
     @patch("apps.vendite.services.pipeline_error_logger.ErrorManager.log_error_only")
     def test_log_error_lotto_writes_pipeline_log_and_technical_log(self, mocked_log_error_only):
         repo = MagicMock()
@@ -41,6 +42,7 @@ class PipelineErrorLoggerUnitTests(SimpleTestCase):
         repo.log_pipeline_fase.assert_called_once()
         repo.log_fattura.assert_not_called()
 
+    # Scopo: Verifica il caso `test_log_error_fattura_writes_fattura_log_and_technical_log`.
     @patch("apps.vendite.services.pipeline_error_logger.ErrorManager.log_error_only")
     def test_log_error_fattura_writes_fattura_log_and_technical_log(self, mocked_log_error_only):
         repo = MagicMock()
@@ -61,6 +63,7 @@ class PipelineErrorLoggerUnitTests(SimpleTestCase):
         repo.log_fattura.assert_called_once()
         repo.log_pipeline_fase.assert_not_called()
 
+    # Scopo: Verifica il caso `test_log_error_lotto_without_lotto_id_keeps_only_technical_log`.
     @patch("apps.vendite.services.pipeline_error_logger.ErrorManager.log_error_only")
     def test_log_error_lotto_without_lotto_id_keeps_only_technical_log(self, mocked_log_error_only):
         repo = MagicMock()

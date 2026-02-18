@@ -12,6 +12,7 @@ from apps.core.services.request_context import clear_request_context, set_reques
 
 
 class RequestContextMiddleware(MiddlewareMixin):
+    # Scopo: Gestisce `process_request` nel flusso applicativo del modulo.
     def process_request(self, request: HttpRequest) -> None:
         request_id = request.headers.get("X-Request-ID") or str(uuid4())
         idempotency_key = get_idempotency_key(request)
@@ -19,6 +20,7 @@ class RequestContextMiddleware(MiddlewareMixin):
         request.idempotency_key = idempotency_key
         set_request_context(request_id=request_id, idempotency_key=idempotency_key)
 
+    # Scopo: Gestisce `process_response` nel flusso applicativo del modulo.
     def process_response(self, request: HttpRequest, response: HttpResponse) -> HttpResponse:
         request_id = getattr(request, "request_id", None)
         if request_id:
@@ -29,6 +31,7 @@ class RequestContextMiddleware(MiddlewareMixin):
         clear_request_context()
         return response
 
+    # Scopo: Gestisce `process_exception` nel flusso applicativo del modulo.
     def process_exception(self, request: HttpRequest, exception: Exception) -> None:
         clear_request_context()
         return None

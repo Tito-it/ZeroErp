@@ -8,6 +8,7 @@ from apps.core.api.request_parsers import parse_iso_date
 # Validator centralizzati payload API (riusabili cross-domain).
 
 
+# Scopo: Valida e converte il campo opzionale `int` mantenendo `None` se assente.
 def optional_int(payload: dict[str, Any], key: str, *, zero_as_none: bool = False) -> int | None:
     value = payload.get(key)
     if value is None:
@@ -23,6 +24,7 @@ def optional_int(payload: dict[str, Any], key: str, *, zero_as_none: bool = Fals
     raise ValueError(f"{key}_invalid")
 
 
+# Scopo: Valida e converte il campo opzionale `bool` mantenendo `None` se assente.
 def optional_bool(payload: dict[str, Any], key: str, default: bool = False) -> bool:
     value = payload.get(key)
     if value is None:
@@ -38,6 +40,7 @@ def optional_bool(payload: dict[str, Any], key: str, default: bool = False) -> b
     raise ValueError(f"{key}_invalid")
 
 
+# Scopo: Valida e converte il campo opzionale `iso_date` mantenendo `None` se assente.
 def optional_iso_date(payload: dict[str, Any], key: str):
     value = payload.get(key)
     if value is None:
@@ -47,6 +50,7 @@ def optional_iso_date(payload: dict[str, Any], key: str):
     return parse_iso_date(value)
 
 
+# Scopo: Valida e converte il campo opzionale `uuid` mantenendo `None` se assente.
 def optional_uuid(payload: dict[str, Any], key: str) -> str | None:
     value = payload.get(key)
     if value is None:

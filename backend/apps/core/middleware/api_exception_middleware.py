@@ -10,6 +10,7 @@ from apps.core.api.error_responses import exception_to_error_response
 
 
 class ApiExceptionMiddleware(MiddlewareMixin):
+    # Scopo: Gestisce `process_exception` nel flusso applicativo del modulo.
     def process_exception(self, request: HttpRequest, exc: Exception) -> HttpResponse | None:
         if not getattr(settings, "API_EXCEPTION_MIDDLEWARE_ENABLED", True):
             return None
@@ -17,6 +18,7 @@ class ApiExceptionMiddleware(MiddlewareMixin):
             return None
         return exception_to_error_response(exc)
 
+    # Scopo: Gestisce `_should_handle` nel flusso applicativo del modulo.
     @staticmethod
     def _should_handle(request: HttpRequest, exc: Exception) -> bool:
         if not request.path.startswith("/api/"):

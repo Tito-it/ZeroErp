@@ -24,6 +24,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 
+# Scopo: Gestisce `health_view` nel flusso applicativo del modulo.
 def health_view(_request):
     """Health endpoint minimale per smoke check container."""
     return JsonResponse({"status": "ok"})

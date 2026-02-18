@@ -25,6 +25,7 @@ class IdempotencyDecision:
 class IdempotencyStore:
     """Store idempotenza forte: claim key, replay risposta, finalize esito."""
 
+    # Scopo: Gestisce claim idempotency-key e restituisce replay/in-progress in base allo stato esistente.
     @staticmethod
     def claim_or_replay(*, idempotency_key: str, request_id: str | None) -> IdempotencyDecision:
         with connection.cursor() as cursor:
@@ -88,6 +89,7 @@ class IdempotencyStore:
 
         return IdempotencyDecision(should_execute=False, in_progress=True)
 
+    # Scopo: Marca la richiesta idempotente come completata persistendo la response serializzata.
     @staticmethod
     def mark_completed(
         *,
@@ -112,6 +114,7 @@ class IdempotencyStore:
                 [request_id, str(tx_id), json.dumps(response_payload), idempotency_key],
             )
 
+    # Scopo: Marca la richiesta idempotente come fallita senza perdere tracciabilita dello stato.
     @staticmethod
     def mark_failed(*, idempotency_key: str, request_id: str | None) -> None:
         with connection.cursor() as cursor:
@@ -130,6 +133,7 @@ class IdempotencyStore:
                 [request_id, idempotency_key],
             )
 
+    # Scopo: Risolve il tx_id da contesto richiesta o da fallback per persistenza idempotency.
     @staticmethod
     def _resolve_tx_id(request_id: str | None) -> UUID:
         # Prova ad agganciarsi al tx_id DB; fallback su UUID applicativo.
@@ -152,6 +156,7 @@ class IdempotencyStore:
                 pass
         return uuid4()
 
+    # Scopo: Normalizza payload response in JSON serializzabile prima della persistenza idempotency.
     @staticmethod
     def _normalize_response_payload(raw_payload: Any) -> dict[str, Any] | None:
         if isinstance(raw_payload, dict):

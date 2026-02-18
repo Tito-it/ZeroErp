@@ -15,9 +15,11 @@ from django.test import Client, SimpleTestCase
 
 
 class CoreDiagnosticsApiTests(SimpleTestCase):
+    # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         self.client = Client()
 
+    # Scopo: Verifica il caso `test_error_envelope_default`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_error_envelope_default(self, _mock_auth):
         response = self.client.get("/api/v1/core/diagnostics/error-envelope/")
@@ -28,6 +30,7 @@ class CoreDiagnosticsApiTests(SimpleTestCase):
         self.assertIn("request_id", response.json()["meta"])
         self.assertTrue(response["X-Request-ID"])
 
+    # Scopo: Verifica il caso `test_error_envelope_retryable`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_error_envelope_retryable(self, _mock_auth):
         response = self.client.get("/api/v1/core/diagnostics/error-envelope/?kind=retryable")
@@ -38,6 +41,7 @@ class CoreDiagnosticsApiTests(SimpleTestCase):
         self.assertEqual(body["ui_action"], "show_retry_dialog")
         self.assertEqual(response["Retry-After"], "3")
 
+    # Scopo: Verifica il caso `test_error_envelope_not_found`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_error_envelope_not_found(self, _mock_auth):
         response = self.client.get("/api/v1/core/diagnostics/error-envelope/?kind=not_found")
@@ -46,22 +50,26 @@ class CoreDiagnosticsApiTests(SimpleTestCase):
         self.assertEqual(body["code"], "E_PIPELINE_LOTTO_NOT_FOUND")
         self.assertIn("Lotto non trovato", body["detail"])
 
+    # Scopo: Verifica il caso `test_error_envelope_v1_requires_auth_without_token`.
     def test_error_envelope_v1_requires_auth_without_token(self):
         response = self.client.get("/api/v1/core/diagnostics/error-envelope/")
         self.assertEqual(response.status_code, 401)
 
+    # Scopo: Verifica il caso `test_openapi_schema_endpoint`.
     def test_openapi_schema_endpoint(self):
         # Smoke test: lo schema OpenAPI deve essere esposto.
         response = self.client.get("/api/schema/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("application/vnd.oai.openapi", response["Content-Type"])
 
+    # Scopo: Verifica il caso `test_openapi_swagger_ui_endpoint`.
     def test_openapi_swagger_ui_endpoint(self):
         # Smoke test: la UI Swagger deve essere raggiungibile.
         response = self.client.get("/api/docs/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/html", response["Content-Type"])
 
+    # Scopo: Verifica il caso `test_legacy_core_path_not_found_when_disabled`.
     def test_legacy_core_path_not_found_when_disabled(self):
         response = self.client.get("/api/core/diagnostics/error-envelope/")
         self.assertEqual(response.status_code, 404)

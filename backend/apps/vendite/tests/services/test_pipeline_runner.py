@@ -22,12 +22,15 @@ from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipe
 
 class LottoPipelineRunnerUnitTests(SimpleTestCase):
     class _RepoMock:
+        # Scopo: Recupera `or_create_lotto` dal contesto applicativo o dal database.
         def get_or_create_lotto(self, **kwargs):
             return 10
 
+        # Scopo: Recupera `lotto_tipo` dal contesto applicativo o dal database.
         def get_lotto_tipo(self, lotto_id):
             return "MASSIVO"
 
+        # Scopo: Recupera `stato_doc_fiscale_id` dal contesto applicativo o dal database.
         def get_stato_doc_fiscale_id(self, codice):
             mapping = {
                 "DRAFT": 1,
@@ -36,17 +39,22 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             }
             return mapping.get(codice, 99)
 
+        # Scopo: Recupera `lotto_job_stato` dal contesto applicativo o dal database.
         def get_lotto_job_stato(self, lotto_id):
             return "DRAFT"
 
+        # Scopo: Recupera `lotto_stato_doc_fiscale_id` dal contesto applicativo o dal database.
         def get_lotto_stato_doc_fiscale_id(self, lotto_id):
             return 1
 
+        # Scopo: Aggiorna `lotto_job_stato` con i valori richiesti dal flusso corrente.
         def set_lotto_job_stato(self, lotto_id, stato, messaggio):
             self.last_stato = stato
 
+        # Scopo: Restituisce elenco `pipeline_steps` in base ai filtri disponibili.
         def list_pipeline_steps(self, tipo_lotto, utility_id=None, tipo_doc_fiscale_id=None):
             class _Step:
+                # Scopo: Inizializza la istanza.
                 def __init__(self, stato_doc_fiscale_id, descrizione, ordine):
                     self.stato_doc_fiscale_id = stato_doc_fiscale_id
                     self.descrizione = descrizione
@@ -58,21 +66,27 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 _Step(8, "Step DEFINITIVA", 3),
             ]
 
+        # Scopo: Gestisce `update_lotto_stato_doc` nel flusso applicativo del modulo.
         def update_lotto_stato_doc(self, lotto_id, stato_doc_fiscale_id):
             return None
 
+        # Scopo: Gestisce `close_giornaliero_lotto` nel flusso applicativo del modulo.
         def close_giornaliero_lotto(self, lotto_id, inviata_id):
             return None
 
+        # Scopo: Gestisce `log_pipeline_fase` nel flusso applicativo del modulo.
         def log_pipeline_fase(self, **kwargs):
             return None
 
+        # Scopo: Gestisce `log_lotto_esito_fatture` nel flusso applicativo del modulo.
         def log_lotto_esito_fatture(self, lotto_id):
             return None
 
+        # Scopo: Gestisce `log_fatture_lotto` nel flusso applicativo del modulo.
         def log_fatture_lotto(self, **kwargs):
             return None
 
+        # Scopo: Recupera `step_processes` dal contesto applicativo o dal database.
         def get_step_processes(
             self,
             stato_doc_fiscale_id,
@@ -86,6 +100,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 return [{"task": "reset_lotto_draft", "params": {}}]
             return []
 
+        # Scopo: Gestisce `has_step_processes` nel flusso applicativo del modulo.
         def has_step_processes(
             self,
             *,
@@ -97,6 +112,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         ):
             return rollback and stato_doc_fiscale_id == 2
 
+        # Scopo: Recupera `lotto_context` dal contesto applicativo o dal database.
         def get_lotto_context(self, lotto_id):
             class _Ctx:
                 competenza_mese = "2026-01-01"
@@ -108,21 +124,25 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             return _Ctx()
 
     class _StepExecutorMock:
+        # Scopo: Inizializza la istanza.
         def __init__(self):
             self.called = False
             self.last_kwargs = {}
             self.calls = []
 
+        # Scopo: Gestisce `execute_step` nel flusso applicativo del modulo.
         def execute_step(self, **kwargs):
             self.called = True
             self.last_kwargs = kwargs
             self.calls.append(kwargs)
 
     class _UnexpectedFailingStepExecutorMock:
+        # Scopo: Gestisce `execute_step` nel flusso applicativo del modulo.
         def execute_step(self, **kwargs):
             raise RuntimeError("boom")
 
     class _ServiceFailingStepExecutorMock:
+        # Scopo: Gestisce `execute_step` nel flusso applicativo del modulo.
         def execute_step(self, **kwargs):
             raise ServiceError(
                 code="E_TASK_NOT_IMPLEMENTED",
@@ -130,6 +150,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 detail="Task pipeline non implementato: test",
             )
 
+    # Scopo: Verifica il caso `test_runner_calls_step_executor`.
     def test_runner_calls_step_executor(self):
         repo = self._RepoMock()
         step_executor = self._StepExecutorMock()
@@ -140,6 +161,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertTrue(step_executor.called)
         self.assertEqual(step_executor.last_kwargs["tipo_lotto"], "MASSIVO")
 
+    # Scopo: Verifica il caso `test_runner_wraps_unexpected_error_with_service_error`.
     def test_runner_wraps_unexpected_error_with_service_error(self):
         repo = self._RepoMock()
         step_executor = self._UnexpectedFailingStepExecutorMock()
@@ -151,6 +173,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertIsInstance(exc.exception.__cause__, RuntimeError)
         self.assertEqual(repo.last_stato, "ERRORE")
 
+    # Scopo: Verifica il caso `test_runner_preserves_service_error_code`.
     def test_runner_preserves_service_error_code(self):
         repo = self._RepoMock()
         step_executor = self._ServiceFailingStepExecutorMock()
@@ -161,8 +184,10 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(exc.exception.code, "E_TASK_NOT_IMPLEMENTED")
         self.assertEqual(repo.last_stato, "ERRORE")
 
+    # Scopo: Verifica il caso `test_runner_does_not_mask_error_when_mark_fails`.
     def test_runner_does_not_mask_error_when_mark_fails(self):
         class _FailingMarkRepo(self._RepoMock):
+            # Scopo: Aggiorna `lotto_job_stato` con i valori richiesti dal flusso corrente.
             def set_lotto_job_stato(self, lotto_id, stato, messaggio):
                 if stato == "ERRORE":
                     raise RuntimeError("mark-failed")
@@ -176,8 +201,10 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(exc.exception.code, "E_TASK_NOT_IMPLEMENTED")
 
+    # Scopo: Verifica il caso `test_runner_completed_lotto_reexecutes_pipeline_steps`.
     def test_runner_completed_lotto_reexecutes_pipeline_steps(self):
         class _CompletedRepo(self._RepoMock):
+            # Scopo: Recupera `lotto_job_stato` dal contesto applicativo o dal database.
             def get_lotto_job_stato(self, lotto_id):
                 return "COMPLETATO"
 
@@ -192,11 +219,14 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(step_executor.calls[1]["stato_doc_fiscale_id"], 2)
         self.assertEqual(step_executor.calls[2]["stato_doc_fiscale_id"], 8)
 
+    # Scopo: Verifica il caso `test_runner_massivo_error_rerun_resumes_from_current_step`.
     def test_runner_massivo_error_rerun_resumes_from_current_step(self):
         class _ErroredRepo(self._RepoMock):
+            # Scopo: Recupera `lotto_job_stato` dal contesto applicativo o dal database.
             def get_lotto_job_stato(self, lotto_id):
                 return "ERRORE"
 
+            # Scopo: Recupera `lotto_stato_doc_fiscale_id` dal contesto applicativo o dal database.
             def get_lotto_stato_doc_fiscale_id(self, lotto_id):
                 return 8
 
@@ -210,14 +240,18 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(step_executor.calls[0]["stato_doc_fiscale_id"], 8)
         self.assertFalse(step_executor.calls[0]["rollback"])
 
+    # Scopo: Verifica il caso `test_runner_massivo_error_rerun_executes_step_rollback_when_enabled`.
     def test_runner_massivo_error_rerun_executes_step_rollback_when_enabled(self):
         class _ErroredRepo(self._RepoMock):
+            # Scopo: Recupera `lotto_job_stato` dal contesto applicativo o dal database.
             def get_lotto_job_stato(self, lotto_id):
                 return "ERRORE"
 
+            # Scopo: Recupera `lotto_stato_doc_fiscale_id` dal contesto applicativo o dal database.
             def get_lotto_stato_doc_fiscale_id(self, lotto_id):
                 return 2
 
+            # Scopo: Recupera `step_processes` dal contesto applicativo o dal database.
             def get_step_processes(
                 self,
                 stato_doc_fiscale_id,
@@ -251,11 +285,14 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(step_executor.calls[2]["stato_doc_fiscale_id"], 8)
         self.assertFalse(step_executor.calls[2]["rollback"])
 
+    # Scopo: Verifica il caso `test_runner_massivo_error_rerun_skips_destructive_reset_lotto_rollback`.
     def test_runner_massivo_error_rerun_skips_destructive_reset_lotto_rollback(self):
         class _ErroredRepo(self._RepoMock):
+            # Scopo: Recupera `lotto_job_stato` dal contesto applicativo o dal database.
             def get_lotto_job_stato(self, lotto_id):
                 return "ERRORE"
 
+            # Scopo: Recupera `lotto_stato_doc_fiscale_id` dal contesto applicativo o dal database.
             def get_lotto_stato_doc_fiscale_id(self, lotto_id):
                 return 2
 
@@ -277,8 +314,10 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(step_executor.calls[1]["stato_doc_fiscale_id"], 8)
         self.assertFalse(step_executor.calls[1]["rollback"])
 
+    # Scopo: Verifica il caso `test_runner_blocks_when_lotto_in_esecuzione`.
     def test_runner_blocks_when_lotto_in_esecuzione(self):
         class _RunningRepo(self._RepoMock):
+            # Scopo: Recupera `lotto_job_stato` dal contesto applicativo o dal database.
             def get_lotto_job_stato(self, lotto_id):
                 return "IN_ESECUZIONE"
 

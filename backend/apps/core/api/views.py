@@ -34,6 +34,7 @@ class ApiDiagnosticsErrorEnvelope(APIView):
             )
         },
     )
+    # Scopo: Gestisce la richiesta HTTP GET del relativo endpoint API.
     def get(self, request: Request) -> JsonResponse:
         kind = request.query_params.get("kind", "generic")
 

@@ -23,6 +23,7 @@ from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 
 
 class PipelineStepExecutorUnitTests(SimpleTestCase):
+    # Scopo: Gestisce `_build_executor` nel flusso applicativo del modulo.
     def _build_executor(self, processi):
         repo = MagicMock()
         repo.get_lotto_context.return_value = MagicMock(
@@ -54,6 +55,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         )
         return executor, repo, fatture_righe_service, error_logger
 
+    # Scopo: Verifica il caso `test_execute_step_runs_generate_fatture_righe_task`.
     def test_execute_step_runs_generate_fatture_righe_task(self):
         processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
         executor, repo, fatture_righe_service, _ = self._build_executor(processi)
@@ -77,6 +79,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         )
         fatture_righe_service.generate_fatture_righe.assert_called_once_with(1, dry_run=False)
 
+    # Scopo: Verifica il caso `test_execute_step_runs_genera_fondi_source_lotto_task`.
     def test_execute_step_runs_genera_fondi_source_lotto_task(self):
         processi = [{"task": "genera_fondi_source_lotto", "fase": "Genera fondi", "params": {}}]
         executor, repo, _, _ = self._build_executor(processi)
@@ -95,6 +98,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             tipo_fondo_codice_interno="F_F_ADD_ACC",
         )
 
+    # Scopo: Verifica il caso `test_execute_step_runs_applica_fondi_lotto_task`.
     def test_execute_step_runs_applica_fondi_lotto_task(self):
         processi = [{"task": "applica_fondi_lotto", "fase": "Applica fondi", "params": {}}]
         executor, repo, _, _ = self._build_executor(processi)
@@ -113,6 +117,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             tipo_fondo_codice_interno="F_F_ADD_ACC",
         )
 
+    # Scopo: Verifica il caso `test_execute_step_runs_ricalcola_iva_lotto_task`.
     def test_execute_step_runs_ricalcola_iva_lotto_task(self):
         processi = [{"task": "ricalcola_iva_lotto", "fase": "Ricalcolo IVA", "params": {"batch_size": 500}}]
         executor, repo, _, _ = self._build_executor(processi)
@@ -131,6 +136,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             batch_size=500,
         )
 
+    # Scopo: Verifica il caso `test_execute_step_runs_prepare_sdi_payload_lotto_task`.
     def test_execute_step_runs_prepare_sdi_payload_lotto_task(self):
         processi = [
             {
@@ -159,6 +165,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             force_new_tentativo=False,
         )
 
+    # Scopo: Verifica il caso `test_execute_step_rejects_generate_fatture_righe_fn_override`.
     def test_execute_step_rejects_generate_fatture_righe_fn_override(self):
         processi = [
             {
@@ -184,6 +191,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         self.assertEqual(kwargs["scope"], "LOTTO")
         self.assertEqual(kwargs["lotto_id"], 1)
 
+    # Scopo: Verifica il caso `test_execute_step_runs_numera_fatture_task`.
     def test_execute_step_runs_numera_fatture_task(self):
         processi = [{"task": "numera_fatture", "fase": "Numerazione", "params": {}}]
         executor, repo, _, _ = self._build_executor(processi)
@@ -205,6 +213,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             stato_doc_fiscale_id=2,
         )
 
+    # Scopo: Verifica il caso `test_execute_step_runs_close_lotto_task`.
     def test_execute_step_runs_close_lotto_task(self):
         processi = [{"task": "close_lotto", "fase": "Chiusura lotto", "params": {}}]
         executor, repo, _, _ = self._build_executor(processi)
@@ -220,6 +229,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
         repo.close_lotto_operativo.assert_called_once_with(5)
 
+    # Scopo: Verifica il caso `test_execute_step_runs_reset_lotto_draft_task`.
     def test_execute_step_runs_reset_lotto_draft_task(self):
         processi = [{"task": "reset_lotto_draft", "fase": "Reset lotto", "params": {}}]
         executor, repo, _, _ = self._build_executor(processi)
@@ -235,6 +245,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
         repo.reset_lotto_draft.assert_called_once_with(12)
 
+    # Scopo: Verifica il caso `test_execute_step_numera_logs_fattura_error_on_single_failure`.
     def test_execute_step_numera_logs_fattura_error_on_single_failure(self):
         processi = [{"task": "numera_fatture", "fase": "Numerazione", "params": {}}]
         executor, repo, _, error_logger = self._build_executor(processi)
@@ -258,6 +269,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         self.assertEqual(kwargs["fattura_id"], 102)
         self.assertEqual(kwargs["lotto_id"], 9)
 
+    # Scopo: Verifica il caso `test_execute_step_logs_lotto_error_on_not_allowed_function`.
     def test_execute_step_logs_lotto_error_on_not_allowed_function(self):
         processi = [
             {
@@ -281,6 +293,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         self.assertEqual(kwargs["scope"], "LOTTO")
         self.assertEqual(kwargs["lotto_id"], 21)
 
+    # Scopo: Verifica il caso `test_execute_step_logs_lotto_error_on_missing_handler`.
     def test_execute_step_logs_lotto_error_on_missing_handler(self):
         processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
         executor, repo, _, error_logger = self._build_executor(processi)

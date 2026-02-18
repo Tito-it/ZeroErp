@@ -58,7 +58,9 @@ class ApiRunLottoPipeline(APIView):
             )
         },
     )
+    # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
     def post(self, request: Request) -> JsonResponse:
+        # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             lotto_id = pr_run_lotto_pipeline(
                 lotto_id=optional_int(payload, "lotto_id", zero_as_none=True),
@@ -116,7 +118,9 @@ class ApiResetLottoDraft(APIView):
             )
         },
     )
+    # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
     def post(self, request: Request, lotto_id: int) -> JsonResponse:
+        # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
         def _handler(_payload: dict[str, object]) -> dict[str, object]:
             result = fn_reset_lotto_draft(lotto_id=lotto_id)
             return result
@@ -161,7 +165,9 @@ class ApiResetLottoFatturaDraft(APIView):
             )
         },
     )
+    # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
     def post(self, request: Request, lotto_id: int, fattura_id: int) -> JsonResponse:
+        # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
         def _handler(_payload: dict[str, object]) -> dict[str, object]:
             result = fn_reset_lotto_fattura_draft(lotto_id=lotto_id, fattura_id=fattura_id)
             return {"data": result}
