@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260218-02-create-fn-get-lotto-segnalazioni-summary-mctit.yaml
+
+  - changeSet:
+      id: 20260218-02-create-fn-get-lotto-segnalazioni-summary
+      author: mctit
+      comment: "Crea funzione riepilogo segnalazioni lotto (critical/warning/info) per riuso backend e UI"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_lotto_segnalazioni_summary(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+              RETURNS TABLE(
+                fatture_critical_count bigint,
+                fatture_warning_count bigint,
+                lotto_critical_count bigint,
+                lotto_warning_count bigint,
+                lotto_info_count bigint
+              )
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Restituisce il riepilogo segnalazioni attive del lotto
+                --   aggregando sorgenti fatture_log e fatturazione_lotti_log.
+                --
+                -- Regole:
+                --   - conta solo record attivi (disabilitato = false)
+                --   - severita` gestite: C, W, I
+                -- =========================================================
+
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_lotto_segnalazioni_summary', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', p_lotto_id,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','lotto_id obbligatorio')
+                    ),
+                    NULL::uuid,
+                    'lotto_id obbligatorio e > 0'
+                  );
+                END IF;
+
+                RETURN QUERY
+                WITH fatture_agg AS (
+                  SELECT
+                    COUNT(*) FILTER (WHERE fl.status = 'C') AS fatture_critical_count,
+                    COUNT(*) FILTER (WHERE fl.status = 'W') AS fatture_warning_count
+                  FROM vendite.fatturazione_lotti_fatture lf
+                  JOIN vendite.fatture_log fl
+                    ON fl.fattura_id = lf.fattura_id
+                  WHERE lf.lotto_id = p_lotto_id
+                    AND fl.disabilitato IS FALSE
+                ),
+                lotto_agg AS (
+                  SELECT
+                    COUNT(*) FILTER (WHERE ll.status = 'C') AS lotto_critical_count,
+                    COUNT(*) FILTER (WHERE ll.status = 'W') AS lotto_warning_count,
+                    COUNT(*) FILTER (WHERE ll.status = 'I') AS lotto_info_count
+                  FROM vendite.fatturazione_lotti_log ll
+                  WHERE ll.lotto_id = p_lotto_id
+                    AND ll.disabilitato IS FALSE
+                )
+                SELECT
+                  COALESCE(fa.fatture_critical_count, 0),
+                  COALESCE(fa.fatture_warning_count, 0),
+                  COALESCE(la.lotto_critical_count, 0),
+                  COALESCE(la.lotto_warning_count, 0),
+                  COALESCE(la.lotto_info_count, 0)
+                FROM fatture_agg fa
+                CROSS JOIN lotto_agg la;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_lotto_segnalazioni_summary(bigint)
+              IS 'Riepiloga segnalazioni lotto attive da fatture_log e fatturazione_lotti_log (C/W/I).';

@@ -148,7 +148,7 @@ Rendere parametrico il dispatch task senza esecuzione dinamica libera.
 * [x] Tabelle `dbops.domini_task`, `dbops.pipeline_task_registry`, `dbops.pipeline_task_registry_impl`
 * [x] Funzioni `dbops.fn_check_pipeline_task_registered` e `dbops.fn_get_pipeline_task_implementation`
 * [x] Seed CSV iniziali per dominio FATTURAZIONE e task base
-* [x] Task `close_lotto` registrato con handler `close_lotto_default`
+* [x] Chiusura lotto standardizzata via flag `config.stati_doc_fiscale.chiude_lotto` a fine step (runner)
 
 ---
 
@@ -185,7 +185,7 @@ Rendere parametrico il dispatch task senza esecuzione dinamica libera.
 ### Stato
 * [x] Seed `fatturazione_pipeline.csv` aggiornato con `implementation_key: default`
 * [x] Python usa `implementation_key` e registry DB per dispatch
-* [x] Pipeline massiva (EMESSA) include task `close_lotto`
+* [x] Chiusura operativa lotto gestita a fine step via `chiude_lotto` (nessun task dedicato richiesto in pipeline)
 * [x] Runner Django: policy rerun su lotto `MASSIVO` in errore (resume dallo step corrente + rollback step opzionale via `meta.auto_step_rollback=true`, con skip automatico dei rollback distruttivi)
 * [x] Resume `DEFINITIVA` per fattura (senza reset globale lotto)
 * [x] Seed transizioni `config.stati_doc_fiscale_transizioni` coerente con avanzamento step lotto
@@ -326,7 +326,7 @@ Non vanno fusi.
 * [x] Funzioni DB registry operative (`fn_check_pipeline_task_registered`, `fn_get_pipeline_task_implementation`)
 * [x] Seed pipeline fatturazione con `implementation_key: default`
 * [x] Dispatch Django su registry DB + `implementation_key`
-* [x] Task `close_lotto` integrato nella pipeline massiva
+* [x] Chiusura lotto centralizzata nel runner (`_process_close_lotto_by_flag`)
 * [ ] Registry runtime Python completo multi-dominio (mappa per dominio)
 * [ ] Pipeline dedicata `attivita_fatturabili` (log + runner/handler dominio)
 * [ ] Pacchetto test completo dominio attivita (pgtap + python)
@@ -456,40 +456,27 @@ Adottare opzione 1: una sola baseline `3.14` su tutti gli ambienti.
 
 ---
 
-## 10.2 Pipeline giornaliera: doppio canale di chiusura lotto
+## 10.2 Pipeline giornaliera: convergenza canale unico chiusura lotto
 
-### Problema
+### Esito adottato
 
-Nell'implementazione attuale convivono due meccanismi di chiusura:
+La chiusura operativa lotto avviene con un solo meccanismo:
 
-1. chiusura implicita in runner (`fn_close_giornaliero_lotto` quando step = `INVIATA`)
-2. task pipeline `close_lotto` che chiude operativamente con update diretto
-
-Se la configurazione pipeline non e` rigorosa, i due canali possono concorrere sullo stesso stato operativo/documentale.
+1. a fine step, il runner verifica `config.stati_doc_fiscale.chiude_lotto`
+2. se `true`, chiude il lotto operativamente
+3. se lo step fallisce, non avviene chiusura
 
 ### Rischio tecnico
 
 * transizioni duplicate o non deterministiche
-* log step meno leggibili (chiusura avvenuta fuori task esplicito)
+* log step meno leggibili (chiusura non centralizzata)
 * maggior rischio regressioni quando si estende a nuovi domini pipeline
 
-### Soluzioni possibili
+### Regole operative
 
-1. **Canale unico via task pipeline (consigliato)**
-   * il runner non chiude automaticamente allo step `INVIATA`
-   * la chiusura avviene solo tramite task esplicito (`close_lotto`) risolto da registry
-   * il task deve delegare a funzione DB canonica (no update diretto duplicato)
-
-2. **Canale unico via runner**
-   * mantenere chiusura automatica nel runner
-   * rimuovere `close_lotto` dagli step giornalieri
-   * vietare da validazione pre-run l'uso del task `close_lotto` per `GIORNALIERO`
-
-3. **Hardening ibrido transitorio**
-   * mantenere assetto attuale ma con guard espliciti:
-     * validazione pre-run: errore se in pipeline `GIORNALIERO` coesistono auto-close e task `close_lotto`
-     * idempotenza forte lato DB: seconda chiusura no-op con log warning
-   * pianificare convergenza a canale unico
+* Niente chiusure implicite per stato specifico (`INVIATA`) hardcoded nel runner.
+* Niente task pipeline dedicati `close_lotto`.
+* Parametrizzazione solo su stato configurato (`chiude_lotto=true`).
 
 ### Decisione proposta
 
