@@ -36,6 +36,7 @@
 |------|--------|--------|--------|
 | trg_stati_doc_fiscale_a10_fatturazione_lotti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti', 'stato_doc_fiscale_id', 'id')` |
 | trg_stati_doc_fiscale_a10_fatturazione_lotti_log_block_d_726218 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti_log', 'stato_doc_fiscale_id', 'id')` |
+| trg_stati_doc_fiscale_a10_fatturazione_lotti_task_runs_b_92a5a7 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti_task_runs', 'stato_doc_fiscale_id', 'id')` |
 | trg_stati_doc_fiscale_a10_fatturazione_pipeline_block_de_2b314c | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_pipeline', 'stato_doc_fiscale_id', 'id')` |
 | trg_stati_doc_fiscale_a10_fatture_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture', 'stato_doc_fiscale_id', 'id')` |
 | trg_stati_doc_fiscale_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |

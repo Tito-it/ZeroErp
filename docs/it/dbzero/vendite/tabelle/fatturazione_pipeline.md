@@ -40,6 +40,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_fatturazione_pipeline_a10_fatturazione_lotti_task_ru_5f19a9 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti_task_runs', 'pipeline_id', 'id')` |
+| trg_fatturazione_pipeline_a10_fatturazione_pipeline_task_16b97a | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_pipeline_task_policy', 'pipeline_id', 'id')` |
 | trg_fatturazione_pipeline_a10_stati_doc_fiscale_require__cbe8f7 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id')` |
 | trg_fatturazione_pipeline_a10_stati_doc_fiscale_require__cbe8f7 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id')` |
 | trg_fatturazione_pipeline_a10_tipi_doc_fiscale_require_a_50168f | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id')` |

@@ -31,5 +31,14 @@
 | pk_fatturazione_pipeline_task_policy | `CREATE UNIQUE INDEX pk_fatturazione_pipeline_task_policy ON vendite.fatturazione_pipeline_task_policy USING btree (id)` |
 | uq_fatt_pipeline_task_policy_pipeline_task | `CREATE UNIQUE INDEX uq_fatt_pipeline_task_policy_pipeline_task ON vendite.fatturazione_pipeline_task_policy USING btree (pipeline_id, task_code)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_fatturazione_pipeline_task_policy_a10_fatturazione_p_232660 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'fatturazione_pipeline', 'attivo', 'pipeline_id')` |
+| trg_fatturazione_pipeline_task_policy_a10_fatturazione_p_232660 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'fatturazione_pipeline', 'attivo', 'pipeline_id')` |
+| trg_fatturazione_pipeline_task_policy_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_fatturazione_pipeline_task_policy_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatturazione_pipeline_task_policy_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

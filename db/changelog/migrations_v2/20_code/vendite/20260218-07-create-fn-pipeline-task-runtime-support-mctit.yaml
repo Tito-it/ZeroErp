@@ -1007,3 +1007,267 @@ databaseChangeLog:
 
               COMMENT ON FUNCTION vendite.fn_list_lotto_task_runs(bigint, bigint, character varying)
               IS 'Wrapper bigint di fn_list_lotto_task_runs (cast interno a integer).';
+
+  - changeSet:
+      id: 20260218-07-12-create-fn-runtime-overload-stato-doc-bigint
+      author: mctit
+      comment: "Drop funzione con firma errata"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+
+              DROP FUNCTION IF EXISTS 
+              vendite.fn_start_lotto_task_run(bigint, bigint, integer, character varying, character varying, jsonb);
+
+  - changeSet:
+      id: 20260218-07-13-create-fn-runtime-overload-stato-doc-bigint
+      author: mctit
+      comment: "Correggo funzione con firma errata (stato_doc_fiscale_id come integer invece che config.stati_doc_fiscale.id)"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              -- Elimino funzione con firma errata 
+               --(stato_doc_fiscale_id come integer invece che config.stati_doc_fiscale.id)
+              DROP FUNCTION IF EXISTS 
+              vendite.fn_get_lotto_task_last_run(bigint, integer, character varying);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_get_lotto_task_last_run(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                p_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE,
+                p_task_code vendite.fatturazione_lotti_task_runs.task_code%TYPE
+              )
+              RETURNS TABLE(
+                id vendite.fatturazione_lotti_task_runs.id%TYPE,
+                lotto_id vendite.fatturazione_lotti_task_runs.lotto_id%TYPE,
+                pipeline_id vendite.fatturazione_lotti_task_runs.pipeline_id%TYPE,
+                stato_doc_fiscale_id vendite.fatturazione_lotti_task_runs.stato_doc_fiscale_id%TYPE,
+                task_code vendite.fatturazione_lotti_task_runs.task_code%TYPE,
+                fase vendite.fatturazione_lotti_task_runs.fase%TYPE,
+                tentativo vendite.fatturazione_lotti_task_runs.tentativo%TYPE,
+                task_stato vendite.fatturazione_lotti_task_runs.task_stato%TYPE,
+                started_at vendite.fatturazione_lotti_task_runs.started_at%TYPE,
+                ended_at vendite.fatturazione_lotti_task_runs.ended_at%TYPE,
+                error_code vendite.fatturazione_lotti_task_runs.error_code%TYPE,
+                error_message vendite.fatturazione_lotti_task_runs.error_message%TYPE,
+                meta vendite.fatturazione_lotti_task_runs.meta%TYPE
+              )
+              LANGUAGE plpgsql
+               COST 100
+              VOLATILE PARALLEL UNSAFE
+              ROWS 1000
+
+              AS $function$
+
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Restituisce l'ultimo run disponibile per task+step+lotto.
+                -- =========================================================
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_lotto_task_last_run', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO','severity','C','code','E_GENERICO',
+                      'lotto_id',p_lotto_id,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','lotto_id obbligatorio','lotto_id',p_lotto_id)
+                    ),
+                    NULL::uuid,
+                    'lotto_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_lotto_task_last_run', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO','severity','C','code','E_GENERICO',
+                      'lotto_id',p_lotto_id,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','task_code obbligatorio','task_code',p_task_code)
+                    ),
+                    NULL::uuid,
+                    'task_code obbligatorio'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  r.id, r.lotto_id, r.pipeline_id, r.stato_doc_fiscale_id,
+                  r.task_code, r.fase, r.tentativo, r.task_stato,
+                  r.started_at, r.ended_at, r.error_code, r.error_message, r.meta
+                FROM vendite.fatturazione_lotti_task_runs r
+                WHERE r.lotto_id = p_lotto_id
+                  AND r.task_code = p_task_code
+                  AND r.stato_doc_fiscale_id IS NOT DISTINCT FROM p_stato_doc_fiscale_id
+                ORDER BY r.tentativo DESC, r.id DESC
+                LIMIT 1;
+              END              
+
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_lotto_task_last_run(bigint, bigint, character varying)
+                  IS 'Restituisce l''ultimo run task per lotto/stato/task.';
+
+  - changeSet:
+      id: 20260218-07-14-create-fn-runtime-overload-stato-doc-bigint
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      author: mctit
+      comment: "Corregge firme bigint: fn_list_lotto_task_runs e fn_start_lotto_task_run"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Allinea le funzioni runtime task alla firma bigint
+              --   per stato_doc_fiscale_id (config.stati_doc_fiscale.id).
+              -- =========================================================
+
+              DROP FUNCTION IF EXISTS vendite.fn_list_lotto_task_runs(bigint, integer, character varying);
+              DROP FUNCTION IF EXISTS vendite.fn_start_lotto_task_run(bigint, bigint, integer, character varying, character varying, jsonb);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_list_lotto_task_runs(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                p_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE DEFAULT NULL::bigint,
+                p_task_code vendite.fatturazione_lotti_task_runs.task_code%TYPE DEFAULT NULL::character varying
+              )
+              RETURNS TABLE(
+                id vendite.fatturazione_lotti_task_runs.id%TYPE,
+                lotto_id vendite.fatturazione_lotti_task_runs.lotto_id%TYPE,
+                pipeline_id vendite.fatturazione_lotti_task_runs.pipeline_id%TYPE,
+                stato_doc_fiscale_id vendite.fatturazione_lotti_task_runs.stato_doc_fiscale_id%TYPE,
+                task_code vendite.fatturazione_lotti_task_runs.task_code%TYPE,
+                fase vendite.fatturazione_lotti_task_runs.fase%TYPE,
+                tentativo vendite.fatturazione_lotti_task_runs.tentativo%TYPE,
+                task_stato vendite.fatturazione_lotti_task_runs.task_stato%TYPE,
+                started_at vendite.fatturazione_lotti_task_runs.started_at%TYPE,
+                ended_at vendite.fatturazione_lotti_task_runs.ended_at%TYPE,
+                error_code vendite.fatturazione_lotti_task_runs.error_code%TYPE,
+                error_message vendite.fatturazione_lotti_task_runs.error_message%TYPE,
+                meta vendite.fatturazione_lotti_task_runs.meta%TYPE
+              )
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Elenca i task run del lotto (filtri opzionali).
+                -- =========================================================
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_lotto_task_runs', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO','severity','C','code','E_GENERICO',
+                      'lotto_id',p_lotto_id,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','lotto_id obbligatorio','lotto_id',p_lotto_id)
+                    ),
+                    NULL::uuid,
+                    'lotto_id obbligatorio'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  r.id, r.lotto_id, r.pipeline_id, r.stato_doc_fiscale_id,
+                  r.task_code, r.fase, r.tentativo, r.task_stato,
+                  r.started_at, r.ended_at, r.error_code, r.error_message, r.meta
+                FROM vendite.fatturazione_lotti_task_runs r
+                WHERE r.lotto_id = p_lotto_id
+                  AND (p_stato_doc_fiscale_id IS NULL OR r.stato_doc_fiscale_id = p_stato_doc_fiscale_id::integer)
+                  AND (p_task_code IS NULL OR r.task_code = p_task_code)
+                ORDER BY r.started_at ASC, r.id ASC;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_lotto_task_runs(bigint, bigint, character varying)
+              IS 'Elenca i task run associati al lotto, con filtri opzionali per stato/task.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_start_lotto_task_run(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                p_pipeline_id vendite.fatturazione_pipeline.id%TYPE,
+                p_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE,
+                p_task_code vendite.fatturazione_lotti_task_runs.task_code%TYPE,
+                p_fase vendite.fatturazione_lotti_task_runs.fase%TYPE DEFAULT NULL::character varying,
+                p_meta vendite.fatturazione_lotti_task_runs.meta%TYPE DEFAULT '{}'::jsonb
+              )
+              RETURNS TABLE(task_run_id vendite.fatturazione_lotti_task_runs.id%TYPE, tentativo vendite.fatturazione_lotti_task_runs.tentativo%TYPE)
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_tentativo vendite.fatturazione_lotti_task_runs.tentativo%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Inserisce un nuovo task run in stato IN_ESECUZIONE.
+                -- =========================================================
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_start_lotto_task_run', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO','severity','C','code','E_GENERICO',
+                      'lotto_id',p_lotto_id,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','lotto_id obbligatorio','lotto_id',p_lotto_id)
+                    ),
+                    NULL::uuid,
+                    'lotto_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_pipeline_id IS NULL OR p_pipeline_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_start_lotto_task_run', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO','severity','C','code','E_GENERICO',
+                      'lotto_id',p_lotto_id,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','pipeline_id obbligatorio','pipeline_id',p_pipeline_id)
+                    ),
+                    NULL::uuid,
+                    'pipeline_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_start_lotto_task_run', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO','severity','C','code','E_GENERICO',
+                      'lotto_id',p_lotto_id,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','task_code obbligatorio','task_code',p_task_code)
+                    ),
+                    NULL::uuid,
+                    'task_code obbligatorio'
+                  );
+                END IF;
+
+                SELECT COALESCE(MAX(r.tentativo), 0)::smallint + 1
+                  INTO v_tentativo
+                FROM vendite.fatturazione_lotti_task_runs r
+                WHERE r.lotto_id = p_lotto_id
+                  AND r.task_code = p_task_code
+                  AND r.stato_doc_fiscale_id IS NOT DISTINCT FROM p_stato_doc_fiscale_id::integer;
+
+                RETURN QUERY
+                INSERT INTO vendite.fatturazione_lotti_task_runs AS r (
+                  lotto_id, pipeline_id, stato_doc_fiscale_id, task_code, fase, tentativo,
+                  task_stato, started_at, ended_at, error_code, error_message, meta,
+                  attivo, data_insert, user_insert, data_update, user_update
+                )
+                VALUES (
+                  p_lotto_id, p_pipeline_id, p_stato_doc_fiscale_id::integer, p_task_code, p_fase, v_tentativo,
+                  'IN_ESECUZIONE', now(), NULL, NULL, NULL, COALESCE(p_meta, '{}'::jsonb),
+                  true, now(), current_user, now(), current_user
+                )
+                RETURNING r.id, r.tentativo;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_start_lotto_task_run(bigint, bigint, bigint, character varying, character varying, jsonb)
+              IS 'Apre un task run di lotto in stato IN_ESECUZIONE e incrementa il tentativo.';

@@ -41,5 +41,16 @@
 | pk_fatturazione_lotti_task_runs | `CREATE UNIQUE INDEX pk_fatturazione_lotti_task_runs ON vendite.fatturazione_lotti_task_runs USING btree (id)` |
 | uq_fatt_lotti_task_runs_lotto_step_task_try | `CREATE UNIQUE INDEX uq_fatt_lotti_task_runs_lotto_step_task_try ON vendite.fatturazione_lotti_task_runs USING btree (lotto_id, stato_doc_fiscale_id, task_code, tentativo)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_fatturazione_lotti_task_runs_a10_fatturazione_pipeli_7a7b94 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'fatturazione_pipeline', 'attivo', 'pipeline_id')` |
+| trg_fatturazione_lotti_task_runs_a10_fatturazione_pipeli_7a7b94 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'fatturazione_pipeline', 'attivo', 'pipeline_id')` |
+| trg_fatturazione_lotti_task_runs_a10_stati_doc_fiscale_r_564554 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id')` |
+| trg_fatturazione_lotti_task_runs_a10_stati_doc_fiscale_r_564554 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id')` |
+| trg_fatturazione_lotti_task_runs_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_fatturazione_lotti_task_runs_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatturazione_lotti_task_runs_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

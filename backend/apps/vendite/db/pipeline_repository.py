@@ -88,6 +88,23 @@ class SdiPayloadRow:
     totale_a_pagare: Decimal | None
 
 
+@dataclass(frozen=True)
+class TaskRunResult:
+    task_run_id: int
+    tentativo: int
+
+
+@dataclass(frozen=True)
+class TaskExecutionMode:
+    execution_mode: str  # RUN | SKIP | RESUME | RESET_REQUIRED
+    annullabile: bool
+    resume_mode: str
+    last_task_stato: str | None
+    last_tentativo: int | None
+    policy_meta: dict[str, Any]
+    run_meta: dict[str, Any]
+
+
 class VenditePipelineRepository:
     """Wrapper SQL a basso livello per l'orchestrazione pipeline vendite."""
 
@@ -387,6 +404,154 @@ class VenditePipelineRepository:
             )
             for row in rows
         ]
+
+    # Scopo: Recupera pipeline_id risolto per lo step indicato via fn_resolve_fatturazione_pipeline_step.
+    def get_pipeline_id_for_step(
+        self,
+        tipo_lotto: str,
+        stato_doc_fiscale_id: int,
+        utility_id: int | None,
+        tipo_doc_fiscale_id: int | None,
+    ) -> int | None:
+        # Riusa fn_resolve_fatturazione_pipeline_step: pipeline_id è la prima colonna restituita.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT pipeline_id
+                FROM vendite.fn_resolve_fatturazione_pipeline_step(
+                    p_tipo_lotto => %s,
+                    p_stato_doc_fiscale_id => %s,
+                    p_utility_id => %s,
+                    p_tipo_doc_fiscale_id => %s,
+                    p_rollback => false
+                )
+                """,
+                [tipo_lotto, stato_doc_fiscale_id, utility_id, tipo_doc_fiscale_id],
+            )
+            row = cursor.fetchone()
+        if not row or row[0] is None:
+            return None
+        return int(row[0])
+
+    # Scopo: Verifica se esiste una policy attiva per il task indicato nel pipeline dato.
+    def task_policy_exists(self, pipeline_id: int, task_code: str) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM vendite.fatturazione_pipeline_task_policy
+                    WHERE pipeline_id = %s
+                      AND task_code = %s
+                      AND attivo IS TRUE
+                )
+                """,
+                [pipeline_id, task_code],
+            )
+            row = cursor.fetchone()
+        if not row:
+            return False
+        return bool(row[0])
+
+    # Scopo: Risolve la modalità di esecuzione task (RUN/SKIP/RESUME/RESET_REQUIRED) delegando al DB.
+    def resolve_lotto_task_execution_mode(
+        self,
+        lotto_id: int,
+        pipeline_id: int,
+        stato_doc_fiscale_id: int,
+        task_code: str,
+    ) -> TaskExecutionMode:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT execution_mode, annullabile, resume_mode,
+                       last_task_stato, last_tentativo, policy_meta, run_meta
+                FROM vendite.fn_resolve_lotto_task_execution_mode(%s, %s, %s, %s)
+                """,
+                [lotto_id, pipeline_id, stato_doc_fiscale_id, task_code],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        policy_meta: Any = row[5]
+        run_meta: Any = row[6]
+        if isinstance(policy_meta, str):
+            try:
+                policy_meta = json.loads(policy_meta)
+            except json.JSONDecodeError:
+                policy_meta = {}
+        if isinstance(run_meta, str):
+            try:
+                run_meta = json.loads(run_meta)
+            except json.JSONDecodeError:
+                run_meta = {}
+        return TaskExecutionMode(
+            execution_mode=str(row[0]),
+            annullabile=bool(row[1]),
+            resume_mode=str(row[2]) if row[2] is not None else "",
+            last_task_stato=row[3],
+            last_tentativo=None if row[4] is None else int(row[4]),
+            policy_meta=policy_meta if isinstance(policy_meta, dict) else {},
+            run_meta=run_meta if isinstance(run_meta, dict) else {},
+        )
+
+    # Scopo: Apre un nuovo task run in stato IN_ESECUZIONE delegando al DB.
+    def start_lotto_task_run(
+        self,
+        *,
+        lotto_id: int,
+        pipeline_id: int,
+        stato_doc_fiscale_id: int,
+        task_code: str,
+        fase: str | None,
+        meta: LottoPipelineMeta | None,
+    ) -> TaskRunResult:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT task_run_id, tentativo
+                FROM vendite.fn_start_lotto_task_run(%s, %s, %s, %s, %s, %s::jsonb)
+                """,
+                [
+                    lotto_id,
+                    pipeline_id,
+                    stato_doc_fiscale_id,
+                    task_code,
+                    fase,
+                    self._to_jsonb_param(meta),
+                ],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return TaskRunResult(
+            task_run_id=int(row[0]),
+            tentativo=int(row[1]),
+        )
+
+    # Scopo: Chiude un task run con esito COMPLETATO delegando al DB.
+    def complete_lotto_task_run(
+        self,
+        task_run_id: int,
+        meta: LottoPipelineMeta | None = None,
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_complete_lotto_task_run(%s, %s::jsonb)",
+                [task_run_id, self._to_jsonb_param(meta)],
+            )
+
+    # Scopo: Chiude un task run con esito ERRORE delegando al DB.
+    def fail_lotto_task_run(
+        self,
+        task_run_id: int,
+        error_code: str,
+        error_message: str,
+        meta: LottoPipelineMeta | None = None,
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_fail_lotto_task_run(%s, %s, %s, %s::jsonb)",
+                [task_run_id, error_code, error_message, self._to_jsonb_param(meta)],
+            )
 
     # Scopo: Gestisce `update_lotto_stato_doc` nel flusso applicativo del modulo.
     def update_lotto_stato_doc(self, lotto_id: int, stato_doc_fiscale_id: int) -> None:

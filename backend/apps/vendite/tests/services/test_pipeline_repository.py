@@ -17,6 +17,15 @@ Indice test eseguiti:
 8) VenditePipelineRepositoryUnitTests.test_is_lotto_in_errore_returns_true_when_stato_is_errore
 9) VenditePipelineRepositoryUnitTests.test_is_lotto_in_errore_returns_false_when_lotto_not_found
 10) VenditePipelineRepositoryUnitTests.test_get_lotto_segnalazioni_summary_maps_counts
+11) VenditePipelineRepositoryUnitTests.test_get_pipeline_id_for_step_returns_id_when_found
+12) VenditePipelineRepositoryUnitTests.test_get_pipeline_id_for_step_returns_none_when_not_found
+13) VenditePipelineRepositoryUnitTests.test_task_policy_exists_returns_true_when_policy_active
+14) VenditePipelineRepositoryUnitTests.test_task_policy_exists_returns_false_when_no_policy
+15) VenditePipelineRepositoryUnitTests.test_resolve_lotto_task_execution_mode_maps_row
+16) VenditePipelineRepositoryUnitTests.test_resolve_lotto_task_execution_mode_decodes_meta_strings
+17) VenditePipelineRepositoryUnitTests.test_start_lotto_task_run_returns_task_run_result
+18) VenditePipelineRepositoryUnitTests.test_complete_lotto_task_run_calls_sql_function
+19) VenditePipelineRepositoryUnitTests.test_fail_lotto_task_run_calls_sql_function_with_error_params
 """
 
 from unittest.mock import MagicMock
@@ -25,7 +34,7 @@ from unittest import TestCase
 from datetime import date
 from decimal import Decimal
 
-from apps.vendite.db.pipeline_repository import VenditePipelineRepository
+from apps.vendite.db.pipeline_repository import TaskExecutionMode, TaskRunResult, VenditePipelineRepository
 
 
 class VenditePipelineRepositoryUnitTests(TestCase):
@@ -225,3 +234,165 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         execute_sql, execute_params = cursor.execute.call_args.args
         self.assertIn("fn_get_lotto_segnalazioni_summary", execute_sql)
         self.assertEqual(execute_params, [10])
+
+    # Scopo: Verifica il caso `test_get_pipeline_id_for_step_returns_id_when_found`.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_get_pipeline_id_for_step_returns_id_when_found(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = (42,)
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        result = repo.get_pipeline_id_for_step("MASSIVO", 2, None, None)
+
+        self.assertEqual(result, 42)
+        execute_sql, execute_params = cursor.execute.call_args.args
+        self.assertIn("fn_resolve_fatturazione_pipeline_step", execute_sql)
+        self.assertEqual(execute_params, ["MASSIVO", 2, None, None])
+
+    # Scopo: Verifica il caso `test_get_pipeline_id_for_step_returns_none_when_not_found`.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_get_pipeline_id_for_step_returns_none_when_not_found(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = None
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        result = repo.get_pipeline_id_for_step("MASSIVO", 2, None, None)
+
+        self.assertIsNone(result)
+
+    # Scopo: Verifica il caso `test_task_policy_exists_returns_true_when_policy_active`.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_task_policy_exists_returns_true_when_policy_active(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = (True,)
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        result = repo.task_policy_exists(100, "generate_fatture_righe")
+
+        self.assertTrue(result)
+        execute_sql, execute_params = cursor.execute.call_args.args
+        self.assertIn("fatturazione_pipeline_task_policy", execute_sql)
+        self.assertEqual(execute_params, [100, "generate_fatture_righe"])
+
+    # Scopo: Verifica il caso `test_task_policy_exists_returns_false_when_no_policy`.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_task_policy_exists_returns_false_when_no_policy(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = (False,)
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        result = repo.task_policy_exists(100, "task_senza_policy")
+
+        self.assertFalse(result)
+
+    # Scopo: Verifica il caso `test_resolve_lotto_task_execution_mode_maps_row`.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_resolve_lotto_task_execution_mode_maps_row(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = (
+            "RUN", True, "RESUME_TASK", None, None, {"max_tentativi": 3}, {},
+        )
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        result = repo.resolve_lotto_task_execution_mode(1, 100, 2, "generate_fatture_righe")
+
+        self.assertIsInstance(result, TaskExecutionMode)
+        self.assertEqual(result.execution_mode, "RUN")
+        self.assertTrue(result.annullabile)
+        self.assertEqual(result.resume_mode, "RESUME_TASK")
+        self.assertIsNone(result.last_task_stato)
+        self.assertIsNone(result.last_tentativo)
+        self.assertEqual(result.policy_meta, {"max_tentativi": 3})
+        self.assertEqual(result.run_meta, {})
+        execute_sql, execute_params = cursor.execute.call_args.args
+        self.assertIn("fn_resolve_lotto_task_execution_mode", execute_sql)
+        self.assertEqual(execute_params, [1, 100, 2, "generate_fatture_righe"])
+
+    # Scopo: Verifica che policy_meta e run_meta vengano decodificati correttamente da stringa JSON.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_resolve_lotto_task_execution_mode_decodes_meta_strings(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = (
+            "SKIP", False, "NO_RESUME", "COMPLETATO", 2,
+            '{"key": "val"}', '{"run": true}',
+        )
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        result = repo.resolve_lotto_task_execution_mode(5, 10, 3, "numera_fatture")
+
+        self.assertEqual(result.execution_mode, "SKIP")
+        self.assertEqual(result.last_task_stato, "COMPLETATO")
+        self.assertEqual(result.last_tentativo, 2)
+        self.assertEqual(result.policy_meta, {"key": "val"})
+        self.assertEqual(result.run_meta, {"run": True})
+
+    # Scopo: Verifica il caso `test_start_lotto_task_run_returns_task_run_result`.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_start_lotto_task_run_returns_task_run_result(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = (999, 1)
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        result = repo.start_lotto_task_run(
+            lotto_id=1,
+            pipeline_id=100,
+            stato_doc_fiscale_id=2,
+            task_code="generate_fatture_righe",
+            fase="Genera righe",
+            meta={"rollback": False},
+        )
+
+        self.assertIsInstance(result, TaskRunResult)
+        self.assertEqual(result.task_run_id, 999)
+        self.assertEqual(result.tentativo, 1)
+        execute_sql, execute_params = cursor.execute.call_args.args
+        self.assertIn("fn_start_lotto_task_run", execute_sql)
+        self.assertEqual(execute_params[0], 1)
+        self.assertEqual(execute_params[1], 100)
+        self.assertEqual(execute_params[3], "generate_fatture_righe")
+
+    # Scopo: Verifica il caso `test_complete_lotto_task_run_calls_sql_function`.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_complete_lotto_task_run_calls_sql_function(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        repo.complete_lotto_task_run(999)
+
+        cursor.execute.assert_called_once()
+        execute_sql, execute_params = cursor.execute.call_args.args
+        self.assertIn("fn_complete_lotto_task_run", execute_sql)
+        self.assertEqual(execute_params[0], 999)
+
+    # Scopo: Verifica il caso `test_fail_lotto_task_run_calls_sql_function_with_error_params`.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_fail_lotto_task_run_calls_sql_function_with_error_params(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        repo.fail_lotto_task_run(999, "E_TASK", "Errore task boom")
+
+        cursor.execute.assert_called_once()
+        execute_sql, execute_params = cursor.execute.call_args.args
+        self.assertIn("fn_fail_lotto_task_run", execute_sql)
+        self.assertEqual(execute_params[0], 999)
+        self.assertEqual(execute_params[1], "E_TASK")
+        self.assertEqual(execute_params[2], "Errore task boom")
