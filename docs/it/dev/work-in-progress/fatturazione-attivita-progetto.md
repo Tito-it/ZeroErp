@@ -75,9 +75,10 @@ come stato tecnico di esecuzione e `stato_operativo` come stato business del lot
 
 ### Criteri di completamento roadmap
 
-- [ ] policy task applicata in runtime su almeno i task DRAFT/EMESSA/DEFINITIVA.
-- [ ] tracing task consultabile da API/log dominio senza parsing del solo `error_log`.
+- [x] policy task applicata in runtime su almeno i task DRAFT/EMESSA/DEFINITIVA.
+- [x] tracing task consultabile da API/log dominio senza parsing del solo `error_log`.
 - [ ] test pgtap + test service Django verdi su flussi: ok, errore task, resume/reset.
+  - Django/API verdi; pgtap runtime da rieseguire in ambiente con `internal.env` disponibile.
 
 ### Stato SDI (dettaglio operativo)
 

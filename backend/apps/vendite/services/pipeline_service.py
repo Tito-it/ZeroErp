@@ -18,6 +18,7 @@ from apps.vendite.services.lotto_reset_service import LottoResetService
 from apps.vendite.types import (
     GroupAttivitaKey,
     LottoPipelineMeta,
+    LottoTaskRunRow,
     ResetLottoDraftResult,
     ResetLottoFatturaDraftResult,
 )
@@ -144,4 +145,33 @@ def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, object]:
         "is_error": status.is_error,
         "blocks_next_step": status.blocks_next_step,
         "summary": status.summary,
+    }
+
+
+# Scopo: Restituisce i task run runtime del lotto per consultazione operativa (API/UI).
+def fn_get_lotto_task_runs(*, lotto_id: int, limit: int = 100) -> dict[str, object]:
+    ErrorManager.require(
+        bool(lotto_id and lotto_id > 0),
+        code="E_PIPELINE_VALIDATION",
+        message="Parametri pipeline non validi.",
+        detail="lotto_id obbligatorio e > 0",
+        context={"lotto_id": lotto_id},
+        function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
+        log_to_db=True,
+    )
+    ErrorManager.require(
+        1 <= int(limit) <= 500,
+        code="E_PIPELINE_VALIDATION",
+        message="Parametri pipeline non validi.",
+        detail="limit deve essere compreso tra 1 e 500",
+        context={"lotto_id": lotto_id, "limit": limit},
+        function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
+        log_to_db=True,
+    )
+    repository = VenditePipelineRepository()
+    runs: list[LottoTaskRunRow] = repository.list_lotto_task_runs(lotto_id, limit=limit)
+    return {
+        "lotto_id": lotto_id,
+        "count": len(runs),
+        "task_runs": runs,
     }

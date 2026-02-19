@@ -19,6 +19,7 @@ from apps.core.services.value_normalizer import as_bool, empty_to_none
 from apps.vendite.types import (
     LottoPipelineMeta,
     LottoSegnalazioniSummary,
+    LottoTaskRunRow,
     ResetLottoDraftResult,
     ResetLottoFatturaDraftResult,
 )
@@ -238,6 +239,62 @@ class VenditePipelineRepository:
             "lotto_info_count": int(row[4]),
         }
 
+    # Scopo: Restituisce i task run runtime del lotto ordinati dal più recente per consultazione API/UI.
+    def list_lotto_task_runs(self, lotto_id: int, *, limit: int = 100) -> list[LottoTaskRunRow]:
+        safe_limit = max(1, min(int(limit), 500))
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    lotto_id,
+                    pipeline_id,
+                    stato_doc_fiscale_id,
+                    task_code,
+                    fase,
+                    tentativo,
+                    task_stato,
+                    started_at,
+                    ended_at,
+                    error_code,
+                    error_message,
+                    meta
+                FROM vendite.fatturazione_lotti_task_runs
+                WHERE lotto_id = %s
+                  AND attivo IS TRUE
+                ORDER BY started_at DESC, id DESC
+                LIMIT %s
+                """,
+                [lotto_id, safe_limit],
+            )
+            rows = cursor.fetchall()
+        result: list[LottoTaskRunRow] = []
+        for row in rows:
+            meta_raw = row[12]
+            if isinstance(meta_raw, str):
+                try:
+                    meta_raw = json.loads(meta_raw)
+                except json.JSONDecodeError:
+                    meta_raw = {}
+            result.append(
+                {
+                    "id": int(row[0]),
+                    "lotto_id": int(row[1]),
+                    "pipeline_id": None if row[2] is None else int(row[2]),
+                    "stato_doc_fiscale_id": None if row[3] is None else int(row[3]),
+                    "task_code": str(row[4]),
+                    "fase": row[5],
+                    "tentativo": int(row[6]),
+                    "task_stato": str(row[7]),
+                    "started_at": None if row[8] is None else row[8].isoformat(),
+                    "ended_at": None if row[9] is None else row[9].isoformat(),
+                    "error_code": row[10],
+                    "error_message": row[11],
+                    "meta": meta_raw if isinstance(meta_raw, dict) else {},
+                }
+            )
+        return result
+
     # Scopo: Recupera `lotto_stato_doc_fiscale_id` dal contesto applicativo o dal database.
     def get_lotto_stato_doc_fiscale_id(self, lotto_id: int) -> int | None:
         with connection.cursor() as cursor:
@@ -373,10 +430,96 @@ class VenditePipelineRepository:
 
     # Scopo: Aggiorna `lotto_job_stato` con i valori richiesti dal flusso corrente.
     def set_lotto_job_stato(self, lotto_id: int, stato: str, messaggio: str) -> None:
+        stato_input = (stato or "").strip().upper()
+        if stato_input not in {"IN_ESECUZIONE", "COMPLETATO", "ERRORE"}:
+            ErrorManager.raise_error(
+                code="E_PIPELINE_STATO_LOTTO",
+                message="stato_lotto non valido.",
+                detail=f"stato_lotto non valido: {stato}",
+                context={"lotto_id": lotto_id, "stato_lotto": stato},
+                function_name="vendite.pipeline_repository.set_lotto_job_stato",
+                log_to_db=True,
+            )
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT vendite.fn_set_fatturazione_lotto_stato(%s, %s, %s)",
-                [lotto_id, stato, messaggio],
+                """
+                SELECT stato_lotto
+                FROM vendite.fatturazione_lotti
+                WHERE id = %s
+                FOR UPDATE
+                """,
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+            if not row:
+                ErrorManager.raise_error(
+                    code="E_PIPELINE_LOTTO_NOT_FOUND",
+                    message="Lotto pipeline non trovato.",
+                    detail=f"Lotto non trovato: {lotto_id}",
+                    context={"lotto_id": lotto_id},
+                    function_name="vendite.pipeline_repository.set_lotto_job_stato",
+                    log_to_db=True,
+                )
+            stato_corrente = str(row[0]) if row[0] is not None else ""
+            if stato_corrente == stato_input:
+                return
+            if stato_corrente == "IN_ESECUZIONE" and stato_input not in {"COMPLETATO", "ERRORE"}:
+                ErrorManager.raise_error(
+                    code="E_PIPELINE_STATO_LOTTO",
+                    message="Transizione stato_lotto non ammessa.",
+                    detail=f"Transizione non ammessa: {stato_corrente} -> {stato_input}",
+                    context={
+                        "lotto_id": lotto_id,
+                        "stato_corrente": stato_corrente,
+                        "stato_target": stato_input,
+                    },
+                    function_name="vendite.pipeline_repository.set_lotto_job_stato",
+                    log_to_db=True,
+                )
+            if stato_corrente == "ERRORE" and stato_input != "IN_ESECUZIONE":
+                ErrorManager.raise_error(
+                    code="E_PIPELINE_STATO_LOTTO",
+                    message="Transizione stato_lotto non ammessa.",
+                    detail=f"Transizione non ammessa: {stato_corrente} -> {stato_input}",
+                    context={
+                        "lotto_id": lotto_id,
+                        "stato_corrente": stato_corrente,
+                        "stato_target": stato_input,
+                    },
+                    function_name="vendite.pipeline_repository.set_lotto_job_stato",
+                    log_to_db=True,
+                )
+            if stato_corrente == "COMPLETATO" and stato_input != "IN_ESECUZIONE":
+                ErrorManager.raise_error(
+                    code="E_PIPELINE_STATO_LOTTO",
+                    message="Transizione stato_lotto non ammessa.",
+                    detail=f"Transizione non ammessa: {stato_corrente} -> {stato_input}",
+                    context={
+                        "lotto_id": lotto_id,
+                        "stato_corrente": stato_corrente,
+                        "stato_target": stato_input,
+                    },
+                    function_name="vendite.pipeline_repository.set_lotto_job_stato",
+                    log_to_db=True,
+                )
+            cursor.execute(
+                """
+                UPDATE vendite.fatturazione_lotti
+                SET stato_lotto = %s,
+                    meta = CASE
+                              WHEN %s IS NULL THEN meta
+                              ELSE jsonb_set(
+                                COALESCE(meta, '{}'::jsonb),
+                                '{note_stato}',
+                                to_jsonb(%s::text),
+                                true
+                              )
+                           END,
+                    data_update = now(),
+                    user_update = current_user
+                WHERE id = %s
+                """,
+                [stato_input, messaggio, messaggio, lotto_id],
             )
 
     # Scopo: Recupera gli step pipeline applicabili con fallback per tipo lotto, utility e tipo documento.
@@ -585,20 +728,6 @@ class VenditePipelineRepository:
                 """
                 UPDATE vendite.fatturazione_lotti
                 SET stato_operativo = 'CHIUSO',
-                    data_update = now(),
-                    user_update = current_user
-                WHERE id = %s
-                """,
-                [lotto_id],
-            )
-
-    # Scopo: Riapre lo stato operativo del lotto lasciando invariato lo stato documento.
-    def open_lotto_operativo(self, lotto_id: int) -> None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE vendite.fatturazione_lotti
-                SET stato_operativo = 'APERTO',
                     data_update = now(),
                     user_update = current_user
                 WHERE id = %s

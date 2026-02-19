@@ -10,8 +10,9 @@ Indice test eseguiti:
 8) LottoPipelineRunnerUnitTests.test_runner_massivo_error_rerun_skips_destructive_reset_lotto_rollback
 9) LottoPipelineRunnerUnitTests.test_runner_blocks_when_lotto_in_esecuzione
 10) LottoPipelineRunnerUnitTests.test_runner_closes_lotto_when_stato_has_chiude_lotto_flag
-11) LottoPipelineRunnerUnitTests.test_runner_does_not_block_new_lotto_when_initial_state_is_in_esecuzione
-12) LottoPipelineRunnerUnitTests.test_runner_blocks_when_lotto_has_critical_signals
+11) LottoPipelineRunnerUnitTests.test_runner_does_not_close_lotto_when_stato_has_no_chiude_lotto_flag
+12) LottoPipelineRunnerUnitTests.test_runner_does_not_block_new_lotto_when_initial_state_is_in_esecuzione
+13) LottoPipelineRunnerUnitTests.test_runner_blocks_when_lotto_has_critical_signals
 """
 
 from contextlib import nullcontext
@@ -98,11 +99,6 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         # Scopo: Gestisce `close_lotto_operativo` nel flusso applicativo del modulo.
         def close_lotto_operativo(self, lotto_id):
             self.close_lotto_operativo_called = lotto_id
-            return None
-
-        # Scopo: Gestisce `open_lotto_operativo` nel flusso applicativo del modulo.
-        def open_lotto_operativo(self, lotto_id):
-            self.open_lotto_operativo_called = lotto_id
             return None
 
         # Scopo: Gestisce `log_pipeline_fase` nel flusso applicativo del modulo.
@@ -380,10 +376,9 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             result = runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(result, 10)
         self.assertEqual(getattr(repo, "close_lotto_operativo_called", None), 10)
-        self.assertIsNone(getattr(repo, "open_lotto_operativo_called", None))
 
-    # Scopo: Verifica il caso `test_runner_keeps_lotto_open_when_stato_has_no_chiude_lotto_flag`.
-    def test_runner_keeps_lotto_open_when_stato_has_no_chiude_lotto_flag(self):
+    # Scopo: Verifica il caso `test_runner_does_not_close_lotto_when_stato_has_no_chiude_lotto_flag`.
+    def test_runner_does_not_close_lotto_when_stato_has_no_chiude_lotto_flag(self):
         class _NoCloseByFlagRepo(self._RepoMock):
             # Scopo: Recupera `stato_doc_chiude_lotto` dal contesto applicativo o dal database.
             def is_stato_doc_chiude_lotto(self, stato_doc_fiscale_id):
@@ -407,7 +402,6 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             result = runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(result, 10)
         self.assertIsNone(getattr(repo, "close_lotto_operativo_called", None))
-        self.assertEqual(getattr(repo, "open_lotto_operativo_called", None), 10)
 
     # Scopo: Verifica il caso `test_runner_does_not_block_new_lotto_when_initial_state_is_in_esecuzione`.
     def test_runner_does_not_block_new_lotto_when_initial_state_is_in_esecuzione(self):

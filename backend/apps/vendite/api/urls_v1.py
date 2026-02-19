@@ -2,6 +2,7 @@ from django.urls import path
 
 from apps.vendite.api.views import (
     ApiLottoSegnalazioniSummaryV1,
+    ApiLottoTaskRunsV1,
     ApiResetLottoDraftV1,
     ApiResetLottoFatturaDraftV1,
     ApiRunLottoPipelineV1,
@@ -13,6 +14,11 @@ urlpatterns = [
         "lotti/<int:lotto_id>/segnalazioni/",
         ApiLottoSegnalazioniSummaryV1.as_view(),
         name="vendite-v1-lotto-segnalazioni-summary",
+    ),
+    path(
+        "lotti/<int:lotto_id>/task-runs/",
+        ApiLottoTaskRunsV1.as_view(),
+        name="vendite-v1-lotto-task-runs",
     ),
     path(
         "lotti/<int:lotto_id>/reset-draft/",
