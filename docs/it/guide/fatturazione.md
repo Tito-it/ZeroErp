@@ -61,6 +61,11 @@ Regola finale attiva:
 * la chiusura operativa lotto e` eseguita solo a fine step tramite controllo `chiude_lotto`;
 * non esistono chiusure hardcoded per stato specifico e non esistono task pipeline dedicati alla chiusura.
 
+Roadmap tecnica in corso (runtime task):
+* introduzione policy task su pipeline (`vendite.fatturazione_pipeline_task_policy`);
+* introduzione tracing task per lotto (`vendite.fatturazione_lotti_task_runs`);
+* uso nel runner Django per resume/reset deterministico per task.
+
 Questo consente di **accorpare più fatture** nello stesso lotto giornaliero,
 senza perdere la governance documentale.
 

@@ -48,6 +48,37 @@
 - [x] Error envelope + idempotency API centralizzati e allineati al flusso.
 - [x] Test unit runner aggiornati e verdi (`apps.vendite.tests.services.test_pipeline_runner`).
 
+## 🛣️ Roadmap runtime task/stato_lotto (nuova)
+
+Obiettivo: rendere esplicita la gestione runtime per task, mantenendo `stato_lotto`
+come stato tecnico di esecuzione e `stato_operativo` come stato business del lotto.
+
+### Decisioni confermate
+
+- [x] Chiusura lotto solo via flag `config.stati_doc_fiscale.chiude_lotto` a fine step.
+- [x] Nessuna chiusura hardcoded su stato specifico.
+- [x] In errore step/task: stop del flusso e blocco task successivi nello stesso run.
+- [x] Annulla/reset gestiti fuori dal flusso di avanzamento standard.
+
+### Sviluppi DB da introdurre
+
+- [ ] `vendite.fatturazione_pipeline_task_policy`
+  - policy task per pipeline (`annullabile`, strategia resume/reset, metadati operativi).
+- [ ] `vendite.fatturazione_lotti_task_runs`
+  - traccia runtime per task (start/end, esito, tentativo, errore, contesto step/lotto).
+
+### Sviluppi Django successivi
+
+- [ ] runner aggiornato per leggere policy task da DB prima dell'esecuzione.
+- [ ] gestione resume/reset per task in base alla policy (`annullabile`, `resume_mode`).
+- [ ] blocco rilancio task quando policy non consente retry automatico.
+
+### Criteri di completamento roadmap
+
+- [ ] policy task applicata in runtime su almeno i task DRAFT/EMESSA/DEFINITIVA.
+- [ ] tracing task consultabile da API/log dominio senza parsing del solo `error_log`.
+- [ ] test pgtap + test service Django verdi su flussi: ok, errore task, resume/reset.
+
 ### Stato SDI (dettaglio operativo)
 
 Gia` implementato:
