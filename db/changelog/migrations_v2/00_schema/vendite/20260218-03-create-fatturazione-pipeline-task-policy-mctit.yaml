@@ -1,0 +1,127 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260218-03-create-fatturazione-pipeline-task-policy-mctit.yaml
+
+  - changeSet:
+      id: 20260218-03-create-fatturazione-pipeline-task-policy
+      author: mctit
+      comment: "Crea tabella policy task per pipeline fatturazione"
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: fatturazione_pipeline_task_policy
+            remarks: "Policy runtime per task pipeline fatturazione"
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_fatturazione_pipeline_task_policy
+                    nullable: false
+              - column:
+                  name: pipeline_id
+                  type: bigint
+                  remarks: "FK a vendite.fatturazione_pipeline.id"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: task_code
+                  type: varchar(64)
+                  remarks: "Codice task pipeline su cui applicare la policy"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: annullabile
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Se true il task puo essere annullato/resettato"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: resume_mode
+                  type: varchar(16)
+                  defaultValue: "RESET_STEP"
+                  remarks: "Strategia resume/reset (RESET_STEP|RESUME_STEP|RESUME_TASK)"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Policy attiva"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estesi policy task"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Data inserimento"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Data aggiornamento"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente aggiornamento"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID"
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatturazione_pipeline_task_policy
+            baseColumnNames: pipeline_id
+            referencedTableSchemaName: vendite
+            referencedTableName: fatturazione_pipeline
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_fatt_pipeline_task_policy_pipeline
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: fatturazione_pipeline_task_policy
+            columnNames: pipeline_id, task_code
+            constraintName: uq_fatt_pipeline_task_policy_pipeline_task
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_pipeline_task_policy
+                ADD CONSTRAINT chk_fatt_pipeline_task_policy_resume_mode
+                CHECK (resume_mode IN ('RESET_STEP', 'RESUME_STEP', 'RESUME_TASK'));

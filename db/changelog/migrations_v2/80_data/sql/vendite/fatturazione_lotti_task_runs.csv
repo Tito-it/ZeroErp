@@ -1,0 +1,1 @@
+id,lotto_id,pipeline_id,stato_doc_fiscale_id,task_code,fase,tentativo,task_stato,started_at,ended_at,error_code,error_message,meta,attivo,data_insert,user_insert,data_update,user_update,tx_id

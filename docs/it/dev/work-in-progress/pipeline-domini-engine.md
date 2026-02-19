@@ -331,6 +331,9 @@ Non vanno fusi.
 * [ ] Pipeline dedicata `attivita_fatturabili` (log + runner/handler dominio)
 * [ ] Pacchetto test completo dominio attivita (pgtap + python)
 * [ ] Validazione pre-run unificata per tutti i domini pipeline
+* [ ] Governance runtime task/stato_lotto:
+  * introdurre policy task per pipeline (`vendite.fatturazione_pipeline_task_policy`)
+  * introdurre tracing runtime task per lotto (`vendite.fatturazione_lotti_task_runs`)
 
 ## 9) Test gravita (stato corrente)
 
@@ -420,43 +423,7 @@ Non vanno fusi.
 
 ## 10) Note critiche aperte (da chiudere)
 
-## 10.1 Baseline runtime Python non allineata (CI/dev vs Docker)
-
-### Problema
-
-Ad oggi la baseline runtime non e` unica:
-
-* linee guida e toolchain backend puntano a Python `3.14`
-* CI usa Python `3.14`
-* `Dockerfile` usa ancora base image Python `3.13`
-
-Questa divergenza puo` introdurre bug non riproducibili tra locale, CI e container runtime.
-
-### Rischio tecnico
-
-* differenze di risoluzione dipendenze e wheel
-* differenze di comportamento runtime (stdlib/interprete)
-* falsi verdi in CI o regressioni solo in produzione
-
-### Soluzioni possibili
-
-1. **Allineamento completo a 3.14 (consigliato)**
-   * aggiornare `Dockerfile` a base `python:3.14-slim`
-   * mantenere `backend/.python-version` e CI su 3.14
-   * verificare lock/compile requirements con 3.14
-
-2. **Rollback coordinato a 3.13**
-   * portare CI, `.python-version` e linee guida a 3.13
-   * rigenerare requirements su 3.13
-   * documentare motivazione e data target per ritorno a 3.14
-
-### Decisione proposta
-
-Adottare opzione 1: una sola baseline `3.14` su tutti gli ambienti.
-
----
-
-## 10.2 Pipeline giornaliera: convergenza canale unico chiusura lotto
+## 10.1 Pipeline giornaliera: convergenza canale unico chiusura lotto
 
 ### Esito adottato
 
