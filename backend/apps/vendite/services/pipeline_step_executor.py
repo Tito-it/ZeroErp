@@ -102,6 +102,13 @@ class PipelineStepExecutor:
             log_to_db=True,
         )
 
+        pipeline_id = self.repository.get_pipeline_id_for_step(
+            tipo_lotto,
+            stato_doc_fiscale_id,
+            utility_id=context.utility_id,
+            tipo_doc_fiscale_id=context.tipo_doc_fiscale_id,
+        )
+
         # Esegue in ordine i task definiti nel JSON processi/rollback.
         for process in processi:
             self._run_task(
@@ -111,6 +118,7 @@ class PipelineStepExecutor:
                 context=context,
                 rollback=rollback,
                 dry_run=dry_run,
+                pipeline_id=pipeline_id,
             )
 
     # Scopo: Gestisce il task di step con logging fase, risoluzione handler via registry e gestione errori applicativi
@@ -122,6 +130,7 @@ class PipelineStepExecutor:
         context: LottoContext,
         rollback: bool,
         dry_run: bool,
+        pipeline_id: int | None = None,
     ) -> None:
         task = str(process.get("task", "")).strip()
         fase = process.get("fase") or "Esecuzione step"
@@ -155,7 +164,86 @@ class PipelineStepExecutor:
             return
 
         task_handler = self.handler_registry.get(handler_code)
-        if task_handler is not None:
+        if task_handler is None:
+            self.error_logger.log_error(
+                scope="LOTTO",
+                severity="C",
+                code="E_TASK_IMPLEMENTATION_NOT_FOUND",
+                message="Implementazione task pipeline non trovata.",
+                detail=f"Implementazione task non trovata: {task} ({handler_code})",
+                lotto_id=lotto_id,
+                stato_doc_fiscale_id=stato_doc_fiscale_id,
+                context={
+                    "task": task,
+                    "fase": fase,
+                    "implementation_key": implementation_key,
+                    "handler_code": handler_code,
+                    "rollback": rollback,
+                },
+                function_name="vendite.pipeline_step_executor._run_task",
+            )
+            ErrorManager.raise_error(
+                code="E_TASK_IMPLEMENTATION_NOT_FOUND",
+                message="Implementazione task pipeline non trovata.",
+                detail=f"Implementazione task non trovata: {task} ({handler_code})",
+                context={
+                    "task": task,
+                    "fase": fase,
+                    "implementation_key": implementation_key,
+                    "handler_code": handler_code,
+                },
+                function_name="vendite.pipeline_step_executor._run_task",
+                log_to_db=True,
+            )
+
+        # Tracing: risolve modalità esecuzione task e apre run se policy attiva.
+        task_run_id: int | None = None
+        if pipeline_id is not None and self.repository.task_policy_exists(pipeline_id, task):
+            exec_mode = self.repository.resolve_lotto_task_execution_mode(
+                lotto_id, pipeline_id, stato_doc_fiscale_id, task
+            )
+            if exec_mode.execution_mode == "SKIP":
+                return
+            if exec_mode.execution_mode == "RESET_REQUIRED":
+                self.error_logger.log_error(
+                    scope="LOTTO",
+                    severity="C",
+                    code="E_TASK_RESET_REQUIRED",
+                    message="Task richiede reset prima dell'esecuzione.",
+                    detail=f"Reset richiesto per task {task}, lotto_id={lotto_id}",
+                    lotto_id=lotto_id,
+                    stato_doc_fiscale_id=stato_doc_fiscale_id,
+                    context={
+                        "task": task,
+                        "pipeline_id": pipeline_id,
+                        "last_task_stato": exec_mode.last_task_stato,
+                        "last_tentativo": exec_mode.last_tentativo,
+                    },
+                    function_name="vendite.pipeline_step_executor._run_task",
+                )
+                ErrorManager.raise_error(
+                    code="E_TASK_RESET_REQUIRED",
+                    message="Task richiede reset prima dell'esecuzione.",
+                    detail=f"Reset richiesto per task {task}, lotto_id={lotto_id}",
+                    context={
+                        "task": task,
+                        "pipeline_id": pipeline_id,
+                        "lotto_id": lotto_id,
+                    },
+                    function_name="vendite.pipeline_step_executor._run_task",
+                    log_to_db=True,
+                )
+            task_run_result = self.repository.start_lotto_task_run(
+                lotto_id=lotto_id,
+                pipeline_id=pipeline_id,
+                stato_doc_fiscale_id=stato_doc_fiscale_id,
+                task_code=task,
+                fase=fase,
+                meta={"rollback": rollback},
+            )
+            task_run_id = task_run_result.task_run_id
+
+        try:
             task_handler(
                 task=task,
                 fn_name=fn_name,
@@ -165,38 +253,25 @@ class PipelineStepExecutor:
                 params=params,
                 dry_run=dry_run,
             )
-            return
+        except Exception as exc:
+            self._fail_task_run_safely(task_run_id, exc)
+            raise
+        if task_run_id is not None:
+            self.repository.complete_lotto_task_run(task_run_id)
 
-        self.error_logger.log_error(
-            scope="LOTTO",
-            severity="C",
-            code="E_TASK_IMPLEMENTATION_NOT_FOUND",
-            message="Implementazione task pipeline non trovata.",
-            detail=f"Implementazione task non trovata: {task} ({handler_code})",
-            lotto_id=lotto_id,
-            stato_doc_fiscale_id=stato_doc_fiscale_id,
-            context={
-                "task": task,
-                "fase": fase,
-                "implementation_key": implementation_key,
-                "handler_code": handler_code,
-                "rollback": rollback,
-            },
-            function_name="vendite.pipeline_step_executor._run_task",
-        )
-        ErrorManager.raise_error(
-            code="E_TASK_IMPLEMENTATION_NOT_FOUND",
-            message="Implementazione task pipeline non trovata.",
-            detail=f"Implementazione task non trovata: {task} ({handler_code})",
-            context={
-                "task": task,
-                "fase": fase,
-                "implementation_key": implementation_key,
-                "handler_code": handler_code,
-            },
-            function_name="vendite.pipeline_step_executor._run_task",
-            log_to_db=True,
-        )
+    # Scopo: Tenta di marcare il task run in errore senza mascherare l'eccezione originale.
+    def _fail_task_run_safely(self, task_run_id: int | None, exc: BaseException) -> None:
+        if task_run_id is None:
+            return
+        try:
+            error_code = exc.code if isinstance(exc, ServiceError) else "E_TASK"
+            self.repository.fail_lotto_task_run(
+                task_run_id,
+                error_code,
+                str(exc),
+            )
+        except Exception:
+            pass  # Mai mascherare l'eccezione originale.
 
     # Scopo: Valida la funzione legacy `fn` del task contro whitelist consentita per evitare override non ammessi.
     def _validate_task_function_name(

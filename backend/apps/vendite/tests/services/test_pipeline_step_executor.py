@@ -13,6 +13,12 @@ Indice test eseguiti:
 11) PipelineStepExecutorUnitTests.test_execute_step_logs_lotto_error_on_not_allowed_function
 12) PipelineStepExecutorUnitTests.test_execute_step_logs_lotto_error_on_missing_handler
 13) PipelineStepExecutorUnitTests.test_execute_step_skips_close_lotto_task_when_flag_is_false
+14) PipelineStepExecutorUnitTests.test_execute_step_skips_task_when_execution_mode_is_skip
+15) PipelineStepExecutorUnitTests.test_execute_step_raises_when_execution_mode_is_reset_required
+16) PipelineStepExecutorUnitTests.test_execute_step_traces_task_run_on_success
+17) PipelineStepExecutorUnitTests.test_execute_step_traces_fail_on_handler_error
+18) PipelineStepExecutorUnitTests.test_execute_step_no_tracing_when_no_pipeline_id
+19) PipelineStepExecutorUnitTests.test_execute_step_no_tracing_when_no_policy
 """
 
 from unittest.mock import MagicMock
@@ -48,6 +54,20 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             "close_lotto": None,
             "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
         }
+        # Tracing: default nessuna policy → nessun tracing (test esistenti non cambiano).
+        repo.get_pipeline_id_for_step.return_value = 100
+        repo.task_policy_exists.return_value = False
+        exec_mode_mock = MagicMock()
+        exec_mode_mock.execution_mode = "RUN"
+        exec_mode_mock.last_task_stato = None
+        exec_mode_mock.last_tentativo = None
+        repo.resolve_lotto_task_execution_mode.return_value = exec_mode_mock
+        task_run_mock = MagicMock()
+        task_run_mock.task_run_id = 999
+        task_run_mock.tentativo = 1
+        repo.start_lotto_task_run.return_value = task_run_mock
+        repo.complete_lotto_task_run.return_value = None
+        repo.fail_lotto_task_run.return_value = None
         fatture_righe_service = MagicMock()
         error_logger = MagicMock()
         executor = PipelineStepExecutor(
@@ -332,3 +352,145 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         kwargs = error_logger.log_error.call_args.kwargs
         self.assertEqual(kwargs["scope"], "LOTTO")
         self.assertEqual(kwargs["lotto_id"], 22)
+
+    # Scopo: Verifica che il task venga saltato quando la modalità di esecuzione è SKIP.
+    def test_execute_step_skips_task_when_execution_mode_is_skip(self):
+        processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
+        executor, repo, fatture_righe_service, _ = self._build_executor(processi)
+        repo.task_policy_exists.return_value = True
+        skip_mode = MagicMock()
+        skip_mode.execution_mode = "SKIP"
+        repo.resolve_lotto_task_execution_mode.return_value = skip_mode
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.start_lotto_task_run.assert_not_called()
+        fatture_righe_service.generate_fatture_righe.assert_not_called()
+
+    # Scopo: Verifica che venga sollevato ServiceError quando la modalità è RESET_REQUIRED.
+    def test_execute_step_raises_when_execution_mode_is_reset_required(self):
+        processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
+        executor, repo, fatture_righe_service, error_logger = self._build_executor(processi)
+        repo.task_policy_exists.return_value = True
+        reset_mode = MagicMock()
+        reset_mode.execution_mode = "RESET_REQUIRED"
+        reset_mode.last_task_stato = "IN_ESECUZIONE"
+        reset_mode.last_tentativo = 1
+        repo.resolve_lotto_task_execution_mode.return_value = reset_mode
+
+        with self.assertRaises(ServiceError) as exc:
+            executor.execute_step(
+                lotto_id=1,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        self.assertEqual(exc.exception.code, "E_TASK_RESET_REQUIRED")
+        repo.start_lotto_task_run.assert_not_called()
+        fatture_righe_service.generate_fatture_righe.assert_not_called()
+        error_logger.log_error.assert_called_once()
+        kwargs = error_logger.log_error.call_args.kwargs
+        self.assertEqual(kwargs["scope"], "LOTTO")
+        self.assertEqual(kwargs["lotto_id"], 1)
+
+    # Scopo: Verifica che start e complete task run vengano chiamati su esecuzione riuscita.
+    def test_execute_step_traces_task_run_on_success(self):
+        processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.task_policy_exists.return_value = True
+        run_mode = MagicMock()
+        run_mode.execution_mode = "RUN"
+        repo.resolve_lotto_task_execution_mode.return_value = run_mode
+        task_run = MagicMock()
+        task_run.task_run_id = 888
+        repo.start_lotto_task_run.return_value = task_run
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.start_lotto_task_run.assert_called_once()
+        call_kwargs = repo.start_lotto_task_run.call_args.kwargs
+        self.assertEqual(call_kwargs["lotto_id"], 1)
+        self.assertEqual(call_kwargs["pipeline_id"], 100)
+        self.assertEqual(call_kwargs["task_code"], "generate_fatture_righe")
+        repo.complete_lotto_task_run.assert_called_once_with(888)
+        repo.fail_lotto_task_run.assert_not_called()
+
+    # Scopo: Verifica che fail task run venga chiamato e l'eccezione propagata quando l'handler fallisce.
+    def test_execute_step_traces_fail_on_handler_error(self):
+        processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
+        executor, repo, fatture_righe_service, _ = self._build_executor(processi)
+        repo.task_policy_exists.return_value = True
+        run_mode = MagicMock()
+        run_mode.execution_mode = "RUN"
+        repo.resolve_lotto_task_execution_mode.return_value = run_mode
+        task_run = MagicMock()
+        task_run.task_run_id = 777
+        repo.start_lotto_task_run.return_value = task_run
+        fatture_righe_service.generate_fatture_righe.side_effect = RuntimeError("boom-task")
+
+        with self.assertRaises(RuntimeError):
+            executor.execute_step(
+                lotto_id=1,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        repo.start_lotto_task_run.assert_called_once()
+        repo.fail_lotto_task_run.assert_called_once()
+        fail_args = repo.fail_lotto_task_run.call_args.args
+        self.assertEqual(fail_args[0], 777)
+        repo.complete_lotto_task_run.assert_not_called()
+
+    # Scopo: Verifica che il tracing venga saltato quando pipeline_id è None.
+    def test_execute_step_no_tracing_when_no_pipeline_id(self):
+        processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
+        executor, repo, fatture_righe_service, _ = self._build_executor(processi)
+        repo.get_pipeline_id_for_step.return_value = None
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.task_policy_exists.assert_not_called()
+        repo.start_lotto_task_run.assert_not_called()
+        repo.complete_lotto_task_run.assert_not_called()
+        fatture_righe_service.generate_fatture_righe.assert_called_once()
+
+    # Scopo: Verifica che il tracing venga saltato quando non esiste policy per il task.
+    def test_execute_step_no_tracing_when_no_policy(self):
+        processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
+        executor, repo, fatture_righe_service, _ = self._build_executor(processi)
+        repo.task_policy_exists.return_value = False
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.task_policy_exists.assert_called_once_with(100, "generate_fatture_righe")
+        repo.start_lotto_task_run.assert_not_called()
+        repo.complete_lotto_task_run.assert_not_called()
+        fatture_righe_service.generate_fatture_righe.assert_called_once()

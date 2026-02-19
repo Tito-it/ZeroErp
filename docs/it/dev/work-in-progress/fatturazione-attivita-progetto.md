@@ -62,16 +62,16 @@ come stato tecnico di esecuzione e `stato_operativo` come stato business del lot
 
 ### Sviluppi DB da introdurre
 
-- [ ] `vendite.fatturazione_pipeline_task_policy`
+- [x] `vendite.fatturazione_pipeline_task_policy`
   - policy task per pipeline (`annullabile`, strategia resume/reset, metadati operativi).
-- [ ] `vendite.fatturazione_lotti_task_runs`
+- [x] `vendite.fatturazione_lotti_task_runs`
   - traccia runtime per task (start/end, esito, tentativo, errore, contesto step/lotto).
 
 ### Sviluppi Django successivi
 
-- [ ] runner aggiornato per leggere policy task da DB prima dell'esecuzione.
-- [ ] gestione resume/reset per task in base alla policy (`annullabile`, `resume_mode`).
-- [ ] blocco rilancio task quando policy non consente retry automatico.
+- [x] runner aggiornato per leggere policy task da DB prima dell'esecuzione.
+- [x] gestione resume/reset per task in base alla policy (`annullabile`, `resume_mode`).
+- [x] blocco rilancio task quando policy non consente retry automatico.
 
 ### Criteri di completamento roadmap
 
