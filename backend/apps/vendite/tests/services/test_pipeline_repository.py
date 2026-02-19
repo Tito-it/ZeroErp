@@ -26,6 +26,10 @@ Indice test eseguiti:
 17) VenditePipelineRepositoryUnitTests.test_start_lotto_task_run_returns_task_run_result
 18) VenditePipelineRepositoryUnitTests.test_complete_lotto_task_run_calls_sql_function
 19) VenditePipelineRepositoryUnitTests.test_fail_lotto_task_run_calls_sql_function_with_error_params
+20) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_updates_only_stato_lotto
+21) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_rejects_invalid_target_state
+22) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_rejects_invalid_transition
+23) VenditePipelineRepositoryUnitTests.test_list_lotto_task_runs_maps_rows
 """
 
 from unittest.mock import MagicMock
@@ -34,6 +38,7 @@ from unittest import TestCase
 from datetime import date
 from decimal import Decimal
 
+from apps.core.services.service_errors import ServiceError
 from apps.vendite.db.pipeline_repository import TaskExecutionMode, TaskRunResult, VenditePipelineRepository
 
 
@@ -396,3 +401,106 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         self.assertEqual(execute_params[0], 999)
         self.assertEqual(execute_params[1], "E_TASK")
         self.assertEqual(execute_params[2], "Errore task boom")
+
+    # Scopo: Verifica che set_lotto_job_stato aggiorni solo stato_lotto e meta senza toccare stato_operativo.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_set_lotto_job_stato_updates_only_stato_lotto(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = ("IN_ESECUZIONE",)
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        repo.set_lotto_job_stato(10, "COMPLETATO", "Pipeline completata")
+
+        self.assertEqual(cursor.execute.call_count, 2)
+        first_sql, first_params = cursor.execute.call_args_list[0].args
+        second_sql, second_params = cursor.execute.call_args_list[1].args
+        self.assertIn("SELECT stato_lotto", first_sql)
+        self.assertEqual(first_params, [10])
+        self.assertIn("UPDATE vendite.fatturazione_lotti", second_sql)
+        self.assertIn("SET stato_lotto = %s", second_sql)
+        self.assertNotIn("stato_operativo", second_sql)
+        self.assertEqual(second_params, ["COMPLETATO", "Pipeline completata", "Pipeline completata", 10])
+
+    # Scopo: Verifica che set_lotto_job_stato rifiuti uno stato target non valido.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_set_lotto_job_stato_rejects_invalid_target_state(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        with self.assertRaises(ServiceError) as exc:
+            repo.set_lotto_job_stato(10, "DRAFT", "stato non ammesso")
+
+        self.assertEqual(exc.exception.code, "E_PIPELINE_STATO_LOTTO")
+        self.assertEqual(cursor.execute.call_count, 1)
+        execute_sql, _ = cursor.execute.call_args.args
+        self.assertIn("fn_log_error_only", execute_sql)
+
+    # Scopo: Verifica che set_lotto_job_stato applichi le transizioni ammesse dello stato tecnico lotto.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_set_lotto_job_stato_rejects_invalid_transition(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = ("ERRORE",)
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        with self.assertRaises(ServiceError) as exc:
+            repo.set_lotto_job_stato(10, "COMPLETATO", "transizione non valida")
+
+        self.assertEqual(exc.exception.code, "E_PIPELINE_STATO_LOTTO")
+        self.assertEqual(cursor.execute.call_count, 2)
+        first_sql, _ = cursor.execute.call_args_list[0].args
+        second_sql, _ = cursor.execute.call_args_list[1].args
+        self.assertIn("SELECT stato_lotto", first_sql)
+        self.assertIn("fn_log_error_only", second_sql)
+
+    # Scopo: Verifica che list_lotto_task_runs mappi correttamente righe runtime task da DB.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_list_lotto_task_runs_maps_rows(self, mocked_cursor_factory):
+        class _DT:
+            # Scopo: Simula data/ora DB serializzabile in isoformat per i test repository.
+            def __init__(self, value: str):
+                self._value = value
+
+            def isoformat(self):
+                return self._value
+
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchall.return_value = [
+            (
+                1001,
+                80,
+                4,
+                8,
+                "numera_fatture",
+                "Numerazione fatture",
+                1,
+                "COMPLETATO",
+                _DT("2026-02-19T10:00:00+01:00"),
+                _DT("2026-02-19T10:00:02+01:00"),
+                None,
+                None,
+                '{"rollback": false}',
+            )
+        ]
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        result = repo.list_lotto_task_runs(80, limit=50)
+
+        self.assertEqual(len(result), 1)
+        row = result[0]
+        self.assertEqual(row["id"], 1001)
+        self.assertEqual(row["lotto_id"], 80)
+        self.assertEqual(row["pipeline_id"], 4)
+        self.assertEqual(row["task_code"], "numera_fatture")
+        self.assertEqual(row["task_stato"], "COMPLETATO")
+        self.assertEqual(row["meta"], {"rollback": False})
+        execute_sql, execute_params = cursor.execute.call_args.args
+        self.assertIn("fatturazione_lotti_task_runs", execute_sql)
+        self.assertEqual(execute_params, [80, 50])

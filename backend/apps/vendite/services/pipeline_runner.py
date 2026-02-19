@@ -323,7 +323,6 @@ class LottoPipelineRunner:
                     )
                 self.repository.set_lotto_job_stato(lotto_id, "IN_ESECUZIONE", "Avvio pipeline")
 
-                executed_stato_doc_fiscale_id: int | None = None
                 for step in steps:
                     if self._should_execute_auto_step_rollback(
                         step=step,
@@ -347,17 +346,8 @@ class LottoPipelineRunner:
                         effective_tipo_lotto=effective_tipo_lotto,
                         dry_run=params.dry_run,
                     )
-                    executed_stato_doc_fiscale_id = step.stato_doc_fiscale_id
 
                 self.repository.set_lotto_job_stato(lotto_id, "COMPLETATO", "Pipeline completata")
-                if (
-                    not params.dry_run
-                    and executed_stato_doc_fiscale_id is not None
-                    and not self.repository.is_stato_doc_chiude_lotto(executed_stato_doc_fiscale_id)
-                ):
-                    # Alcune transizioni DB impostano CHIUSO su COMPLETATO: forziamo APERTO
-                    # quando lo stato documento non prevede chiusura lotto.
-                    self.repository.open_lotto_operativo(lotto_id)
                 return lotto_id
         except ServiceError as exc:
             if lotto_id is not None:

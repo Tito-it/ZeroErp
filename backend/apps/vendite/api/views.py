@@ -12,6 +12,7 @@ from apps.core.api.payload_validators import optional_bool, optional_int, option
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.pipeline_service import (
     fn_get_lotto_segnalazioni_summary,
+    fn_get_lotto_task_runs,
     fn_reset_lotto_draft,
     fn_reset_lotto_fattura_draft,
     pr_run_lotto_pipeline,
@@ -121,6 +122,50 @@ class ApiLottoSegnalazioniSummary(APIView):
 
 
 class ApiLottoSegnalazioniSummaryV1(ApiLottoSegnalazioniSummary):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+
+class ApiLottoTaskRuns(APIView):
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="limit",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Numero massimo task run restituiti (default 100, max 500).",
+            )
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeLottoTaskRunsResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeLottoTaskRunsData",
+                        fields={
+                            "lotto_id": serializers.IntegerField(),
+                            "count": serializers.IntegerField(),
+                            "task_runs": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET i task run runtime del lotto per monitoraggio operativo.
+    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+        try:
+            limit_value = request.query_params.get("limit", "100")
+            limit = int(limit_value)
+            data = fn_get_lotto_task_runs(lotto_id=lotto_id, limit=limit)
+            return success_response(data)
+        except Exception as exc:
+            return exception_to_error_response(exc)
+
+
+class ApiLottoTaskRunsV1(ApiLottoTaskRuns):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
