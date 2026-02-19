@@ -14,12 +14,11 @@ CREATE OR REPLACE FUNCTION vendite.fn_set_fatturazione_lotto_stato(p_lotto_id bi
 AS $function$
 DECLARE
   v_stato_corrente vendite.fatturazione_lotti.stato_lotto%TYPE;
-  v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
   v_stato_lotto_input vendite.fatturazione_lotti.stato_lotto%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Aggiorna lo stato job del lotto e allinea lo stato operativo.
+  --   Aggiorna solo lo stato job tecnico del lotto.
   --
   -- Regole:
   --   - IN_ESECUZIONE -> COMPLETATO | ERRORE
@@ -45,8 +44,8 @@ BEGIN
     );
   END IF;
 
-  SELECT stato_lotto, tipo_lotto
-    INTO v_stato_corrente, v_tipo_lotto
+  SELECT stato_lotto
+    INTO v_stato_corrente
     FROM vendite.fatturazione_lotti
    WHERE id = p_lotto_id
    FOR UPDATE;
@@ -55,7 +54,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
       jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id)),
-      NULL::uuid, 
+      NULL::uuid,
       concat('Lotto non trovato ', 'lotto_id: ', p_lotto_id::text)
     );
   END IF;
@@ -69,8 +68,8 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
       jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','transizione non ammessa', 'da', v_stato_corrente, 'a', v_stato_lotto_input)),
-      NULL::uuid, 
-      concat('Transizione non ammessa: stato in esecuzione' , ' da ', v_stato_corrente, ' a ', v_stato_lotto_input) 
+      NULL::uuid,
+      concat('Transizione non ammessa: stato in esecuzione' , ' da ', v_stato_corrente, ' a ', v_stato_lotto_input)
     );
   END IF;
 
@@ -78,7 +77,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
       jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','transizione non ammessa', 'da', v_stato_corrente, 'a', v_stato_lotto_input)),
-      NULL::uuid, 
+      NULL::uuid,
       concat('Transizione non ammessa: stato errore' , ' da ', v_stato_corrente, ' a ', v_stato_lotto_input)
     );
   END IF;
@@ -87,19 +86,13 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
       jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','transizione non ammessa', 'da', v_stato_corrente, 'a', v_stato_lotto_input)),
-      NULL::uuid, 
+      NULL::uuid,
       concat('Transizione non ammessa: stato completato' , ' da ', v_stato_corrente, ' a ', v_stato_lotto_input)
     );
   END IF;
 
   UPDATE vendite.fatturazione_lotti
      SET stato_lotto = v_stato_lotto_input,
-         stato_operativo = CASE
-                             WHEN v_stato_lotto_input = 'ERRORE' THEN 'ERRORE'
-                             WHEN v_stato_lotto_input = 'IN_ESECUZIONE' THEN 'APERTO'
-                             WHEN v_stato_lotto_input = 'COMPLETATO' AND v_tipo_lotto = 'MASSIVO' THEN 'CHIUSO'
-                             ELSE stato_operativo
-                           END,
          meta = CASE
                   WHEN p_note IS NULL THEN meta
                   ELSE jsonb_set(meta, '{note_stato}', to_jsonb(p_note), true)
@@ -111,7 +104,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_set_fatturazione_lotto_stato(p_lotto_id bigint, p_stato_lotto text, p_note text)
-IS 'Aggiorna stato_lotto e allinea stato_operativo.';
+IS 'Aggiorna lo stato tecnico del lotto senza alterare stato_operativo.';
 ```
 
 ---
