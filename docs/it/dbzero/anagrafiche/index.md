@@ -101,3 +101,4 @@
 - [vw_istanze_utilities_dettaglio](views/vw_istanze_utilities_dettaglio.md) — (latest review 15-02-26) La vista **`anagrafiche.vw_istanze_utilities_dettaglio`** aggrega le informazioni di un'istanza utility con:
 - [vw_pdp](views/vw_pdp.md)
 - [vw_risorse_umane_dettaglio](views/vw_risorse_umane_dettaglio.md) — (latest review 07-01-26) La vista **`anagrafiche.vw_risorse_umane_dettaglio`** fornisce una lettura unificata delle risorse umane con:
+- [vw_soggetti_ruoli_dettaglio](views/vw_soggetti_ruoli_dettaglio.md) — (latest review 20-02-26) La vista **`anagrafiche.vw_soggetti_ruoli_dettaglio`** fornisce una lettura generale dei ruoli soggetto, partendo da `soggetto_ruolo_id` e includendo:
