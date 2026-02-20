@@ -164,8 +164,7 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         _, execute_params = cursor.execute.call_args.args
         self.assertEqual(execute_params[0], "warning test")
         self.assertEqual(execute_params[1], "W")
-        self.assertTrue(execute_params[2])
-        self.assertEqual(execute_params[4], 123)
+        self.assertEqual(execute_params[3], 123)
 
     # Scopo: Verifica il caso `test_log_fatture_lotto_sets_critical_from_status`.
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")
@@ -186,8 +185,7 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         _, execute_params = cursor.execute.call_args.args
         self.assertEqual(execute_params[0], "critical lotto")
         self.assertEqual(execute_params[1], "C")
-        self.assertTrue(execute_params[2])
-        self.assertEqual(execute_params[4], 55)
+        self.assertEqual(execute_params[3], 55)
 
     # Scopo: Verifica il caso `test_is_lotto_in_errore_returns_true_when_stato_is_errore`.
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")

@@ -571,6 +571,8 @@ SELECT ok(
 -- ============================================================
 -- Cleanup
 -- ============================================================
+SELECT set_config('zeroerp.maintenance_allow_delete_logs', 'on', true);
+
 UPDATE vendite.fatture
 SET storicizza = false
 WHERE meta->>'test_scope' = (

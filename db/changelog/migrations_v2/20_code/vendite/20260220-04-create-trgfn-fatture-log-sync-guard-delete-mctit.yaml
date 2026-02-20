@@ -1,0 +1,309 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260220-04-create-trgfn-fatture-log-sync-guard-delete-mctit.yaml
+
+  - changeSet:
+      id: 20260220-04-01-create-trgfn-fatture-log-sync-guard-delete
+      author: mctit
+      comment: "Aggiunge guard DELETE su log e sync automatica critical/stato_esecuzione da fatture_log"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Guard DELETE log: consente cancellazione solo con GUC.
+              -- Compatibilita`: accetta sia la nuova GUC dedicata log sia
+              -- la GUC reset tecnico gia` in uso nei processi di maintenance.
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_logs_guard_delete()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_allow_logs text;
+                v_allow_reset text;
+                v_scope text;
+                v_lotto_id vendite.fatturazione_lotti_log.lotto_id%TYPE;
+                v_fattura_id vendite.fatture_log.fattura_id%TYPE;
+              BEGIN
+                v_allow_logs := current_setting('zeroerp.maintenance_allow_delete_logs', true);
+                v_allow_reset := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
+
+                IF COALESCE(lower(v_allow_logs), 'off') NOT IN ('on','true','1')
+                   AND COALESCE(lower(v_allow_reset), 'off') NOT IN ('on','true','1') THEN
+                  v_scope := CASE
+                    WHEN TG_TABLE_NAME = 'fatture_log' THEN 'FATTURA'
+                    ELSE 'LOTTO'
+                  END;
+
+                  IF TG_TABLE_NAME = 'fatture_log' THEN
+                    v_fattura_id := OLD.fattura_id;
+                    v_lotto_id := NULL;
+                  ELSE
+                    v_lotto_id := OLD.lotto_id;
+                    v_fattura_id := NULL;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    TG_NAME,
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'scope', v_scope,
+                      'severity', 'C',
+                      'code', 'E_GENERICO',
+                      'lotto_id', v_lotto_id,
+                      'fattura_id', v_fattura_id,
+                      'context', jsonb_build_object(
+                        'detail', 'DELETE su log non consentito senza GUC',
+                        'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                      )
+                    ),
+                    NULL::uuid,
+                    'DELETE su log non consentito senza GUC'
+                  );
+                END IF;
+
+                RETURN OLD;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_logs_guard_delete()
+              IS 'Blocca DELETE su fatture_log/fatturazione_lotti_log salvo GUC zeroerp.maintenance_allow_delete_logs=on (o GUC reset tecnico).';
+
+              DROP TRIGGER IF EXISTS trg_fatture_log_a10_guard_delete_dlt ON vendite.fatture_log;
+              CREATE TRIGGER trg_fatture_log_a10_guard_delete_dlt
+              BEFORE DELETE ON vendite.fatture_log
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_logs_guard_delete();
+
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_log_a10_guard_delete_dlt ON vendite.fatturazione_lotti_log;
+              CREATE TRIGGER trg_fatturazione_lotti_log_a10_guard_delete_dlt
+              BEFORE DELETE ON vendite.fatturazione_lotti_log
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_logs_guard_delete();
+
+  - changeSet:
+      id: 20260220-04-02-create-trgfn-fatture-log-sync-guard-delete
+      author: mctit
+      comment: "Aggiunge guard DELETE su log e sync automatica critical/stato_esecuzione da fatture_log"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+
+              -- =========================================================
+              -- Helper set-based: aggiorna fatture.critical e propaga
+              -- stato_esecuzione su ponte lotto-fattura.
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_sync_fatture_log_critical_lotto(
+                p_fattura_ids bigint[]
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =======================================================
+                -- Scopo:
+                --   Dato un set di fatture toccate da fatture_log:
+                --   1) ricalcola fatture.critical su log attivi C
+                --   2) aggiorna stato_esecuzione in lotti_fatture
+                --      solo su lotti aperti o in esecuzione.
+                -- =======================================================
+                IF p_fattura_ids IS NULL OR array_length(p_fattura_ids, 1) IS NULL THEN
+                  RETURN;
+                END IF;
+
+                WITH changed AS (
+                  SELECT DISTINCT x.fattura_id
+                  FROM unnest(p_fattura_ids) AS x(fattura_id)
+                  WHERE x.fattura_id IS NOT NULL
+                    AND x.fattura_id > 0
+                ),
+                calc AS (
+                  SELECT
+                    c.fattura_id,
+                    EXISTS (
+                      SELECT 1
+                      FROM vendite.fatture_log fl
+                      WHERE fl.fattura_id = c.fattura_id
+                        AND fl.disabilitato IS FALSE
+                        AND fl.status = 'C'
+                    ) AS has_critical
+                  FROM changed c
+                )
+                UPDATE vendite.fatture f
+                   SET critical = calc.has_critical,
+                       data_update = now(),
+                       user_update = current_user
+                  FROM calc
+                 WHERE f.id = calc.fattura_id
+                   AND f.critical IS DISTINCT FROM calc.has_critical;
+
+                WITH changed AS (
+                  SELECT DISTINCT x.fattura_id
+                  FROM unnest(p_fattura_ids) AS x(fattura_id)
+                  WHERE x.fattura_id IS NOT NULL
+                    AND x.fattura_id > 0
+                ),
+                calc AS (
+                  SELECT
+                    c.fattura_id,
+                    EXISTS (
+                      SELECT 1
+                      FROM vendite.fatture_log fl
+                      WHERE fl.fattura_id = c.fattura_id
+                        AND fl.disabilitato IS FALSE
+                        AND fl.status = 'C'
+                    ) AS has_critical
+                  FROM changed c
+                )
+                UPDATE vendite.fatturazione_lotti_fatture lf
+                   SET stato_esecuzione = CASE
+                         WHEN calc.has_critical THEN 'ERRORE'
+                         ELSE 'OK'
+                       END,
+                       data_update = now(),
+                       user_update = current_user
+                  FROM calc,
+                       vendite.fatturazione_lotti l
+                 WHERE lf.fattura_id = calc.fattura_id
+                   AND l.id = lf.lotto_id
+                   AND COALESCE(lf.esclusa, false) IS FALSE
+                   AND (
+                         l.stato_lotto = 'IN_ESECUZIONE'
+                         OR l.stato_operativo = 'APERTO'
+                       )
+                   AND lf.stato_esecuzione IS DISTINCT FROM CASE
+                         WHEN calc.has_critical THEN 'ERRORE'
+                         ELSE 'OK'
+                       END;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_sync_fatture_log_critical_lotto(bigint[])
+              IS 'Ricalcola fatture.critical da fatture_log attivi (C) e propaga stato_esecuzione su lotti_fatture per lotti APERTO/IN_ESECUZIONE.';
+
+  - changeSet:
+      id: 20260220-04-03-create-trgfn-fatture-log-sync-guard-delete
+      author: mctit
+      comment: "Aggiunge guard DELETE su log e sync automatica critical/stato_esecuzione da fatture_log"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              -- =========================================================
+              -- Trigger functions statement-level con transition tables.
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_log_sync_ai_stmt()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_ids bigint[];
+              BEGIN
+                SELECT array_agg(DISTINCT n.fattura_id)::bigint[]
+                  INTO v_ids
+                  FROM new_table n
+                 WHERE n.fattura_id IS NOT NULL;
+
+                PERFORM vendite.fn_sync_fatture_log_critical_lotto(v_ids);
+                RETURN NULL;
+              END
+              $function$;
+
+  - changeSet:
+      id: 20260220-04-05-create-trgfn-fatture-log-sync-guard-delete
+      author: mctit
+      comment: "Aggiunge guard DELETE su log e sync automatica critical/stato_esecuzione da fatture_log"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_log_sync_au_stmt()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_ids bigint[];
+              BEGIN
+                SELECT array_agg(DISTINCT x.fattura_id)::bigint[]
+                  INTO v_ids
+                  FROM (
+                    SELECT n.fattura_id FROM new_table n
+                    UNION
+                    SELECT o.fattura_id FROM old_table o
+                  ) x
+                 WHERE x.fattura_id IS NOT NULL;
+
+                PERFORM vendite.fn_sync_fatture_log_critical_lotto(v_ids);
+                RETURN NULL;
+              END
+              $function$;
+
+  - changeSet:
+      id: 20260220-04-06-create-trgfn-fatture-log-sync-guard-delete
+      author: mctit
+      comment: "Aggiunge guard DELETE su log e sync automatica critical/stato_esecuzione da fatture_log"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_log_sync_ad_stmt()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_ids bigint[];
+              BEGIN
+                SELECT array_agg(DISTINCT o.fattura_id)::bigint[]
+                  INTO v_ids
+                  FROM old_table o
+                 WHERE o.fattura_id IS NOT NULL;
+
+                PERFORM vendite.fn_sync_fatture_log_critical_lotto(v_ids);
+                RETURN NULL;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fatture_log_sync_ai_stmt()
+              IS 'AFTER INSERT statement su fatture_log: sincronizza critical/stato_esecuzione per fatture toccate.';
+              COMMENT ON FUNCTION vendite.trgfn_fatture_log_sync_au_stmt()
+              IS 'AFTER UPDATE statement su fatture_log: sincronizza critical/stato_esecuzione per fatture toccate.';
+              COMMENT ON FUNCTION vendite.trgfn_fatture_log_sync_ad_stmt()
+              IS 'AFTER DELETE statement su fatture_log: sincronizza critical/stato_esecuzione per fatture toccate.';
+
+              DROP TRIGGER IF EXISTS trg_fatture_log_z90_sync_critical_ai ON vendite.fatture_log;
+              CREATE TRIGGER trg_fatture_log_z90_sync_critical_ai
+              AFTER INSERT ON vendite.fatture_log
+              REFERENCING NEW TABLE AS new_table
+              FOR EACH STATEMENT
+              EXECUTE FUNCTION vendite.trgfn_fatture_log_sync_ai_stmt();
+
+              DROP TRIGGER IF EXISTS trg_fatture_log_z90_sync_critical_au ON vendite.fatture_log;
+              CREATE TRIGGER trg_fatture_log_z90_sync_critical_au
+              AFTER UPDATE ON vendite.fatture_log
+              REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
+              FOR EACH STATEMENT
+              EXECUTE FUNCTION vendite.trgfn_fatture_log_sync_au_stmt();
+
+              DROP TRIGGER IF EXISTS trg_fatture_log_z90_sync_critical_ad ON vendite.fatture_log;
+              CREATE TRIGGER trg_fatture_log_z90_sync_critical_ad
+              AFTER DELETE ON vendite.fatture_log
+              REFERENCING OLD TABLE AS old_table
+              FOR EACH STATEMENT
+              EXECUTE FUNCTION vendite.trgfn_fatture_log_sync_ad_stmt();
