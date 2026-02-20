@@ -1265,3 +1265,44 @@ Prima di riprendere implementazioni pipeline `attivita_fatturabili` verificare:
 * regole di transizione/errore per-fattura allineate al nuovo `stato_esecuzione`.
 * allineamento filtri pipeline (utility/tipo_doc/emittente) tra alimentazione e fatturazione.
 * evitare di reintrodurre logiche su `billing_account_id` come chiave di testata lotto.
+
+---
+
+### 22) Allineamento log fattura/lotto (chiuso)
+
+#### Chiarimento ruoli tabelle log
+
+* `vendite.fatture_log`: log **per-fattura** (`fattura_id` presente), sorgente ufficiale per warning/critical documento.
+* `vendite.fatturazione_lotti_log`: log **per-lotto/processo** (`lotto_id`, `fase`, `status`), senza riferimento diretto a singola fattura.
+
+Quindi gli errori documento non devono essere forzati su `fatturazione_lotti_log`: il dettaglio resta in `fatture_log`.
+
+#### Problema operativo rilevato
+
+Nel runtime attuale `fn_sync_lotto_fatture_stato` legge `vendite.fatture.critical`, ma la sincronizzazione di `critical` dipende da chiamate esplicite (`fn_sync_fattura_critical`) e non da un automatismo unico su ogni modifica log.
+
+#### Decisione tecnica proposta (DB-first)
+
+Introdurre trigger su `vendite.fatture_log` per sincronizzazione automatica:
+
+* evento: `AFTER INSERT OR UPDATE OR DELETE`;
+* logica: ricalcolo `vendite.fatture.critical` considerando solo log attivi
+  (`disabilitato = false` e `status = 'C'`);
+* propagazione su `vendite.fatturazione_lotti_fatture.stato_esecuzione`:
+  * `ERRORE` se `fatture.critical = true`
+  * `OK` se `fatture.critical = false` (salvo `esclusa = true`);
+* perimetro aggiornamento ponte lotto-fattura: solo lotti con
+  `stato_lotto = 'IN_ESECUZIONE'` **oppure** `stato_operativo = 'APERTO'`.
+
+#### Regole funzionali confermate
+
+* Azioni su `fatture_log` per lotti fuori perimetro (`stato_lotto != IN_ESECUZIONE` e `stato_operativo != APERTO`) non devono alterare `stato_esecuzione` nel ponte.
+* Un log `disabilitato = true` non contribuisce al `critical`: la fattura torna “corretta” se non restano critical attivi.
+* `DELETE` su `fatture_log` e `fatturazione_lotti_log` bloccato di default; ammesso solo con GUC dedicata
+  (`zeroerp.maintenance_allow_delete_logs=on`, compatibile con GUC reset tecnico).
+
+#### Esito implementazione
+
+* ✅ trigger `AFTER INSERT/UPDATE/DELETE` su `vendite.fatture_log` attivi per sync automatica (`vendite.fatture.critical` + ponte lotto-fattura).
+* ✅ guard `DELETE` su `vendite.fatture_log` e `vendite.fatturazione_lotti_log` con sblocco solo via GUC.
+* ✅ refactor servizi Django/test allineato al modello corretto (`status` su `fatture_log`, non colonna `critical`).

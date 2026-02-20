@@ -331,6 +331,8 @@ SELECT throws_ok(
 -- ============================================================
 -- Cleanup
 -- ============================================================
+SELECT set_config('zeroerp.maintenance_allow_delete_logs', 'on', true);
+
 DELETE FROM vendite.fatture_log
 WHERE fattura_id = (SELECT id FROM tmp_fattura_fu);
 

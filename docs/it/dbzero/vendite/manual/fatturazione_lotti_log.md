@@ -33,6 +33,11 @@ relativi ai processi del lotto di fatturazione.
 * Tabella dedicata al **lotto fatturazione**, distinta da `fatture_log`.
 * I record con `status = I` possono essere usati per mostrare l’avanzamento
   della pipeline (es. “caricamento lista”, “generazione righe”).
+* Non contiene il dettaglio documento (`fattura_id`): gli errori per-fattura
+  restano in `vendite.fatture_log`.
+* `DELETE` diretto bloccato: consentito solo con GUC
+  `zeroerp.maintenance_allow_delete_logs = on`
+  (compatibile con GUC tecnica `zeroerp.maintenance_reset_lotto_draft = on`).
 
 ---
 

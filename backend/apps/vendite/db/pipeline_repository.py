@@ -781,7 +781,6 @@ class VenditePipelineRepository:
             fattura_id_select_params=[fattura_id],
             status=status,
             messaggio=messaggio,
-            critical=critical,
             meta=meta,
         )
 
@@ -813,7 +812,6 @@ class VenditePipelineRepository:
             fattura_id_select_params=[lotto_id],
             status=status,
             messaggio=messaggio,
-            critical=(status == "C"),
             meta=meta,
         )
 
@@ -825,7 +823,6 @@ class VenditePipelineRepository:
         fattura_id_select_params: list[Any],
         status: str,
         messaggio: str,
-        critical: bool,
         meta: LottoPipelineMeta | None,
     ) -> None:
         # Helper unico INSERT fatture_log; la SELECT fattura_id proviene solo da SQL interno.
@@ -838,7 +835,6 @@ class VenditePipelineRepository:
                     messaggio,
                     status,
                     disabilitato,
-                    critical,
                     meta
                 )
                 SELECT
@@ -847,7 +843,6 @@ class VenditePipelineRepository:
                     %s,
                     %s,
                     false,
-                    %s,
                     COALESCE(%s::jsonb, '{{}}'::jsonb)
                 FROM (
                     {fattura_id_select_sql}
@@ -856,7 +851,6 @@ class VenditePipelineRepository:
                 [
                     messaggio,
                     status,
-                    critical,
                     self._to_jsonb_param(meta),
                     *fattura_id_select_params,
                 ],
