@@ -166,6 +166,7 @@ class VenditePipelineApiTests(SimpleTestCase):
                     "tipo_doc_fiscale_id": 0,
                     "utility_id": 0,
                     "billing_account_id": 0,
+                    "emittente_soggetto_ruolo_id": 0,
                     "dry_run": True,
                 }
             ),
@@ -179,6 +180,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         self.assertIsNone(kwargs["tipo_doc_fiscale_id"])
         self.assertIsNone(kwargs["utility_id"])
         self.assertIsNone(kwargs["billing_account_id"])
+        self.assertIsNone(kwargs["emittente_soggetto_ruolo_id"])
 
     # Scopo: Verifica il caso `test_run_lotto_pipeline_full_payload_new_lotto_massivo_ok`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -194,6 +196,7 @@ class VenditePipelineApiTests(SimpleTestCase):
                     "tipo_doc_fiscale_id": 1,
                     "utility_id": 2,
                     "billing_account_id": 0,
+                    "emittente_soggetto_ruolo_id": 0,
                     "lock_batch_id": None,
                     "meta": {
                         "additionalProp1": "string",
@@ -216,6 +219,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         self.assertEqual(kwargs["tipo_doc_fiscale_id"], 1)
         self.assertEqual(kwargs["utility_id"], 2)
         self.assertIsNone(kwargs["billing_account_id"])
+        self.assertIsNone(kwargs["emittente_soggetto_ruolo_id"])
         self.assertEqual(kwargs["tipo_lotto"], "MASSIVO")
         self.assertFalse(kwargs["dry_run"])
 

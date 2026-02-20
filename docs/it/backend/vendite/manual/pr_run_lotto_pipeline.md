@@ -21,6 +21,7 @@ I vincoli di coerenza dati e le operazioni DB specialistiche restano delegate al
 - `tipo_doc_fiscale_id`
 - `utility_id`
 - `billing_account_id`
+- `emittente_soggetto_ruolo_id`
 - `lock_batch_id`
 - `meta`
 - `dry_run`

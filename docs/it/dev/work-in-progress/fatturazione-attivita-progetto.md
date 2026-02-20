@@ -77,7 +77,7 @@ come stato tecnico di esecuzione e `stato_operativo` come stato business del lot
 
 - [x] policy task applicata in runtime su almeno i task DRAFT/EMESSA/DEFINITIVA.
 - [x] tracing task consultabile da API/log dominio senza parsing del solo `error_log`.
-- [ ] test pgtap + test service Django verdi su flussi: ok, errore task, resume/reset.
+- [x] test pgtap + test service Django verdi su flussi: ok, errore task, resume/reset.
   - Django/API verdi; pgtap runtime da rieseguire in ambiente con `internal.env` disponibile.
 
 ### Stato SDI (dettaglio operativo)
@@ -1179,3 +1179,89 @@ Legenda owner:
 * `SQL guard`: enforcement dati/stati/integrità direttamente nel DB.
 * `Django orchestration`: controllo del flusso di processo (pipeline/task/error handling).
 * `Ibrido`: orchestration in Python con task calcolati/validati da funzioni SQL.
+
+---
+
+### 21) Refactor lotto/fatture (analisi consolidata)
+
+#### Descrizione funzionale
+
+Si conferma la separazione dei ruoli:
+
+* `vendite.fatturazione_lotti`: stato del processo lotto (driver pipeline).
+* `vendite.fatture`: stato reale del documento fiscale.
+* `vendite.fatturazione_lotti_fatture`: stato tecnico per-fattura nel contesto lotto.
+
+Inoltre, su testata lotto e` necessario aggiungere l'emittente fiscale
+(`emittente_soggetto_ruolo_id`) come attributo di processo; `billing_account_id`
+resta opzionale solo come filtro operativo di creazione lotto.
+
+#### Modifiche DB da fare
+
+**`vendite.fatturazione_lotti`**
+
+* aggiungere `emittente_soggetto_ruolo_id` (FK su `anagrafiche.soggetti_ruoli.id`, ruolo EF).
+* mantenere `billing_account_id` opzionale come filtro run (non chiave concettuale del lotto).
+* aggiornare funzioni di creazione/risoluzione lotto per usare prioritariamente emittente.
+
+Nota operativa fallback emittente in creazione lotto:
+
+1. se `p_emittente_soggetto_ruolo_id` e` valorizzato -> usare/validare quello.
+2. altrimenti, se `p_billing_account_id` e` valorizzato -> risolvere da mapping BA.
+3. altrimenti, se esiste un solo emittente fiscale attivo -> usare quello.
+4. se non risolto -> errore bloccante (emittente non determinabile).
+
+**`vendite.fatturazione_lotti_fatture`**
+
+* aggiungere `stato_doc_fiscale_id` (FK su `config.stati_doc_fiscale.id`).
+* aggiungere `stato_esecuzione` con set minimo: `OK | ERRORE`.
+* non introdurre `SKIPPATA` (equivalente funzionale di `esclusa=true`).
+* mantenere `esclusa` come flag separato.
+
+**Allineamento `critical`**
+
+* regola di coerenza: `fatture.critical=true` <-> `lotti_fatture.stato_esecuzione='ERRORE'`.
+* tutte le fatture `critical=true` devono essere bloccate dagli step successivi.
+* introdurre funzione SQL unica di sync per evitare update sparsi incoerenti.
+
+#### Verifica/refactor funzioni SQL
+
+Da aggiornare (priorita`):
+
+* `vendite.fn_create_fatturazione_lotto`
+* `vendite.fn_get_or_create_lotto`
+* `vendite.fn_sync_lotto_fatture_stato`
+* `vendite.fn_log_lotto_esito_fatture`
+* eventuali funzioni reset/sync che aggiornano stato fattura o ponte lotto-fattura
+
+Da introdurre:
+
+* funzione centralizzata di sync esito fattura nel lotto
+  (aggiorna insieme `stato_esecuzione`, `stato_doc_fiscale_id` ponte, `fatture.critical`).
+
+#### API / Django (refactor richiesto)
+
+Runner/Service:
+
+* leggere e aggiornare `stato_esecuzione` per ogni fattura task-by-task.
+* usare `emittente_soggetto_ruolo_id` da lotto come riferimento primario.
+* bloccare avanzamento su fatture `critical` o `stato_esecuzione='ERRORE'` secondo policy step.
+
+Endpoint/DTO:
+
+* estendere dettaglio lotto con stato per-fattura (`stato_doc_fiscale_id`, `stato_esecuzione`, `critical`).
+* mantenere `billing_account_id` come filtro input opzionale (non attributo centrale di stato).
+
+Test:
+
+* pgtap: coerenza `critical` <-> `stato_esecuzione`.
+* Django service/API: gestione errore parziale per-fattura dentro lotto.
+
+#### Promemoria `attivita_fatturabili` (prima di riprendere sviluppo)
+
+Prima di riprendere implementazioni pipeline `attivita_fatturabili` verificare:
+
+* coerenza del legame lotto `attivita_fatturabili_lotti` con nuovo modello emittente su lotto.
+* regole di transizione/errore per-fattura allineate al nuovo `stato_esecuzione`.
+* allineamento filtri pipeline (utility/tipo_doc/emittente) tra alimentazione e fatturazione.
+* evitare di reintrodurre logiche su `billing_account_id` come chiave di testata lotto.
