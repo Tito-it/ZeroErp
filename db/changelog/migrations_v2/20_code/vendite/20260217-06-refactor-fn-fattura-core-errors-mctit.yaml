@@ -1,0 +1,544 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260217-06-refactor-fn-fattura-core-errors-mctit.yaml
+
+  - changeSet:
+      id: 20260217-06-01-update-fn-build-fattura-key
+      author: mctit
+      comment: "Refactor scope FATTURA, %TYPE e contratto errori"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_build_fattura_key(
+                p_attivita_id vendite.attivita_fatturabili.id%TYPE
+              )
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_ba_id anagrafiche.billing_account.id%TYPE;
+                v_ba_fattura_id anagrafiche.billing_account.id%TYPE;
+                v_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE;
+                v_valuta_id config.valute.id%TYPE;
+                v_utility_id config.utilities.id%TYPE;
+                v_emittente_id anagrafiche.soggetti_ruoli.id%TYPE;
+                v_reseller_id anagrafiche.soggetti_ruoli.id%TYPE;
+                v_registro_id vendite.registri_fatturazione.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Costruisce la chiave logica di aggregazione documento
+                --   a partire da una riga di attivita_fatturabili.
+                --
+                -- Regole:
+                --   - fattura emessa su BA padre (se presente) altrimenti BA stesso
+                --   - utility da billing_account
+                --   - emittente da mapping BA -> emittente fiscale
+                --   - reseller da mapping BA -> reseller (se presente)
+                --   - registro da tipo_doc_fiscale
+                -- =========================================================
+              
+                IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_build_fattura_key', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','attivita_id obbligatorio', 'attivita_id', p_attivita_id)
+                    ),
+                    NULL::uuid, 'attivita_id obbligatorio'
+                  );
+                END IF;
+              
+                SELECT a.billing_account_id,
+                       COALESCE(ba.parent_account_id, a.billing_account_id),
+                       a.tipo_doc_fiscale_id,
+                       a.valuta_id,
+                       ba.utility_id
+                  INTO v_ba_id,
+                       v_ba_fattura_id,
+                       v_tipo_doc_fiscale_id,
+                       v_valuta_id,
+                       v_utility_id
+                  FROM vendite.attivita_fatturabili a
+                  JOIN anagrafiche.billing_account ba
+                    ON ba.id = a.billing_account_id
+                 WHERE a.id = p_attivita_id;
+              
+                IF v_ba_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_build_fattura_key', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','attivita non trovata o BA mancante', 'attivita_id', p_attivita_id)
+                    ),
+                    NULL::uuid, 
+                    concat('Attivita non trovata o BA mancante, attivita_id: ', p_attivita_id)
+                  );
+                END IF;
+              
+                v_emittente_id := anagrafiche.fn_get_emittente_fiscale_id(v_ba_fattura_id);
+              
+                SELECT rb.reseller_soggetto_ruolo_id
+                  INTO v_reseller_id
+                  FROM anagrafiche.resellers_billing_account rb
+                 WHERE rb.billing_account_id = v_ba_fattura_id
+                   -- AND rb.attivo IS TRUE
+                 ORDER BY rb.id
+                 LIMIT 1;
+              
+                v_registro_id := vendite.fn_get_registro_id(v_tipo_doc_fiscale_id);
+              
+                RETURN jsonb_build_object(
+                  'billing_account_id', v_ba_fattura_id,
+                  'tipo_doc_fiscale_id', v_tipo_doc_fiscale_id,
+                  'valuta_id', v_valuta_id,
+                  'emittente_soggetto_ruolo_id', v_emittente_id,
+                  'reseller_soggetto_ruolo_id', v_reseller_id,
+                  'utility_id', v_utility_id,
+                  'registro_id', v_registro_id
+                );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_build_fattura_key(bigint)
+              IS 'Costruisce la chiave logica documento per aggregazione fattura a partire da una riga di attivita_fatturabili.';
+
+  - changeSet:
+      id: 20260217-06-02-update-fn-get-or-create-fattura-header
+      author: mctit
+      comment: "Refactor scope FATTURA, %TYPE e contratto errori"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_fattura_header(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                p_attivita_id vendite.attivita_fatturabili.id%TYPE
+              )
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_key jsonb;
+                v_fattura_id vendite.fatture.id%TYPE;
+                v_stato_doc_id config.stati_doc_fiscale.id%TYPE;
+                v_registro_id vendite.registri_fatturazione.id%TYPE;
+                v_ba_id anagrafiche.billing_account.id%TYPE;
+                v_tipo_doc_id config.tipi_doc_fiscale.id%TYPE;
+                v_valuta_id config.valute.id%TYPE;
+                v_emittente_id anagrafiche.soggetti_ruoli.id%TYPE;
+                v_reseller_id anagrafiche.soggetti_ruoli.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Recupera o crea una fattura in bozza per il lotto,
+                --   usando la chiave di aggregazione documento.
+                --
+                -- Regole:
+                --   - chiave documento da fn_build_fattura_key(attivita)
+                --   - stato iniziale: DRAFT
+                --   - link lotto <-> fattura in fatturazione_lotti_fatture
+                -- =========================================================
+              
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 OR p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_or_create_fattura_header', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', p_lotto_id,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail','lotto_id e attivita_id obbligatori',
+                        'lotto_id', p_lotto_id,
+                        'attivita_id', p_attivita_id
+                      )
+                    ),
+                    NULL::uuid, 'Parametri obbligatori mancanti'
+                  );
+                END IF;
+              
+                v_key := vendite.fn_build_fattura_key(p_attivita_id);
+              
+                v_ba_id := (v_key->>'billing_account_id')::bigint;
+                v_tipo_doc_id := (v_key->>'tipo_doc_fiscale_id')::bigint;
+                v_valuta_id := (v_key->>'valuta_id')::integer;
+                v_emittente_id := (v_key->>'emittente_soggetto_ruolo_id')::bigint;
+                v_reseller_id := NULLIF(v_key->>'reseller_soggetto_ruolo_id','')::bigint;
+                v_registro_id := (v_key->>'registro_id')::bigint;
+              
+                IF v_ba_id IS NULL OR v_tipo_doc_id IS NULL OR v_valuta_id IS NULL
+                   OR v_emittente_id IS NULL OR v_registro_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_or_create_fattura_header', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', p_lotto_id,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','chiave documento incompleta', 'attivita_id', p_attivita_id)
+                    ),
+                    NULL::uuid,
+                    concat('Chiave documento incompleta', ' attivita_id ', p_attivita_id::text)
+                  );
+                END IF;
+              
+                SELECT id
+                  INTO v_stato_doc_id
+                  FROM config.stati_doc_fiscale
+                 WHERE codice_interno = 'DRAFT'
+                   AND attivo IS TRUE
+                 ORDER BY id
+                 LIMIT 1;
+              
+                IF v_stato_doc_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_or_create_fattura_header', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', p_lotto_id,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','stato DRAFT non trovato')
+                    ),
+                    NULL::uuid, 'Stato DRAFT non trovato'
+                  );
+                END IF;
+              
+                -- Cerca fattura gia` presente nel lotto con stessa chiave documento
+                SELECT f.id
+                  INTO v_fattura_id
+                  FROM vendite.fatturazione_lotti_fatture lf
+                  JOIN vendite.fatture f
+                    ON f.id = lf.fattura_id
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND f.billing_account_id = v_ba_id
+                   AND f.tipo_doc_fiscale_id = v_tipo_doc_id
+                   AND f.valuta_id = v_valuta_id
+                   AND f.emittente_soggetto_ruolo_id = v_emittente_id
+                   AND COALESCE(f.reseller_soggetto_ruolo_id, 0) = COALESCE(v_reseller_id, 0)
+                   AND f.registro_id = v_registro_id
+                 ORDER BY f.id
+                 LIMIT 1;
+              
+                IF v_fattura_id IS NOT NULL THEN
+                  RETURN v_fattura_id;
+                END IF;
+              
+                INSERT INTO vendite.fatture (
+                  registro_id,
+                  data,
+                  tipo_doc_fiscale_id,
+                  stato_doc_fiscale_id,
+                  emittente_soggetto_ruolo_id,
+                  billing_account_id,
+                  reseller_soggetto_ruolo_id,
+                  valuta_id,
+                  tasso_cambio,
+                  meta
+                )
+                VALUES (
+                  v_registro_id,
+                  current_date,
+                  v_tipo_doc_id,
+                  v_stato_doc_id,
+                  v_emittente_id,
+                  v_ba_id,
+                  v_reseller_id,
+                  v_valuta_id,
+                  1,
+                  jsonb_build_object('lotto_id', p_lotto_id)
+                )
+                RETURNING id INTO v_fattura_id;
+              
+                INSERT INTO vendite.fatturazione_lotti_fatture (
+                  lotto_id,
+                  fattura_id,
+                  esclusa,
+                  meta
+                )
+                VALUES (
+                  p_lotto_id,
+                  v_fattura_id,
+                  false,
+                  jsonb_build_object('origine', 'bozza')
+                );
+              
+                RETURN v_fattura_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_or_create_fattura_header(bigint, bigint)
+              IS 'Recupera o crea la testata fattura DRAFT per il lotto in base alla chiave documento derivata dall''attivita.';
+
+  - changeSet:
+      id: 20260217-06-03-update-fn-group-attivita-fatturabili
+      author: mctit
+      comment: "Refactor scope FATTURA, %TYPE e contratto errori"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_group_attivita_fatturabili(
+                p_attivita_id vendite.attivita_fatturabili.id%TYPE
+              )
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_articolo_id catalogo.articoli.id%TYPE;
+                v_dest_ba_id anagrafiche.billing_account.id%TYPE;
+                v_uom_id catalogo.unita_misura.id%TYPE;
+                v_prezzo_unitario vendite.attivita_fatturabili.prezzo_unitario%TYPE;
+                v_iva_id config.iva.id%TYPE;
+                v_regole record;
+                v_comp_dal vendite.attivita_fatturabili.competenza_dal%TYPE;
+                v_comp_al vendite.attivita_fatturabili.competenza_al%TYPE;
+                v_data_attivita vendite.attivita_fatturabili.data_attivita%TYPE;
+                v_use_competenza boolean;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Costruisce la chiave di aggregazione riga fattura
+                --   a partire da una riga di attivita_fatturabili.
+                --
+                -- Regole:
+                --   - dest_billing_account = BA reale (mai parent)
+                --   - uom da attivita (fallback articolo)
+                --   - iva da articolo
+                --   - regole da vendite.articolo_regole_fatturazione (fallback default)
+                -- =========================================================
+              
+                IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_group_attivita_fatturabili', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','attivita_id obbligatorio', 'attivita_id', p_attivita_id)
+                    ),
+                    NULL::uuid, 'attivita_id obbligatorio'
+                  );
+                END IF;
+              
+                SELECT a.articolo_id,
+                       a.billing_account_id,
+                       COALESCE(a.uom_id, art.uom_id),
+                       a.prezzo_unitario,
+                       art.iva_id,
+                       a.competenza_dal,
+                       a.competenza_al,
+                       a.data_attivita
+                  INTO v_articolo_id,
+                       v_dest_ba_id,
+                       v_uom_id,
+                       v_prezzo_unitario,
+                       v_iva_id,
+                       v_comp_dal,
+                       v_comp_al,
+                       v_data_attivita
+                  FROM vendite.attivita_fatturabili a
+                  JOIN catalogo.articoli art
+                    ON art.id = a.articolo_id
+                 WHERE a.id = p_attivita_id;
+              
+                IF v_articolo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_group_attivita_fatturabili', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','attivita non trovata', 'attivita_id', p_attivita_id)
+                    ),
+                    NULL::uuid, 'Attivita non trovata'
+                  );
+                END IF;
+              
+                SELECT
+                  COALESCE(r.visibilita_componenti, 'solo_padre') AS visibilita_componenti,
+                  COALESCE(r.calcolo_qta_padre, 'fissa') AS calcolo_qta_padre,
+                  COALESCE(r.arrotondamento_importi_dec, 2) AS arrotondamento_importi_dec,
+                  COALESCE(r.arrotondamento_quantita_dec, 3) AS arrotondamento_quantita_dec,
+                  COALESCE(r.metodo_arrotondamento_importi, 'HALF_UP') AS metodo_arrotondamento_importi,
+                  COALESCE(r.metodo_arrotondamento_quantita, 'HALF_UP') AS metodo_arrotondamento_quantita
+                INTO v_regole
+                FROM vendite.articolo_regole_fatturazione r
+                WHERE r.articolo_id = v_articolo_id;
+              
+                v_use_competenza :=
+                  v_comp_dal IS NOT NULL
+                  AND v_comp_al IS NOT NULL
+                  AND (v_comp_dal <> v_comp_al OR v_comp_dal <> v_data_attivita);
+              
+                RETURN jsonb_build_object(
+                  'articolo_id', v_articolo_id,
+                  'dest_billing_account_id', v_dest_ba_id,
+                  'uom_id', v_uom_id,
+                  'prezzo_unitario', v_prezzo_unitario,
+                  'iva_id', v_iva_id,
+                  'competenza_dal', CASE WHEN v_use_competenza THEN v_comp_dal ELSE NULL END,
+                  'competenza_al', CASE WHEN v_use_competenza THEN v_comp_al ELSE NULL END,
+                  'visibilita_componenti', v_regole.visibilita_componenti,
+                  'calcolo_qta_padre', v_regole.calcolo_qta_padre,
+                  'arrotondamento_importi_dec', v_regole.arrotondamento_importi_dec,
+                  'arrotondamento_quantita_dec', v_regole.arrotondamento_quantita_dec,
+                  'metodo_arrotondamento_importi', v_regole.metodo_arrotondamento_importi,
+                  'metodo_arrotondamento_quantita', v_regole.metodo_arrotondamento_quantita
+                );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_group_attivita_fatturabili(bigint)
+              IS 'Costruisce la chiave di aggregazione riga fattura da attivita_fatturabili con fallback regole articolo.';
+
+  - changeSet:
+      id: 20260217-06-04-update-fn-generate-fatture-righe
+      author: mctit
+      comment: "Refactor scope FATTURA, %TYPE e contratto errori"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_generate_fatture_righe(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                p_dry_run boolean DEFAULT false
+              )
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_count integer := 0;
+                v_row record;
+                v_fattura_id vendite.fatture.id%TYPE;
+                v_group jsonb;
+                v_riga_nr integer;
+                v_fattura_riga_id vendite.fatture_righe.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Genera le righe fattura da attivita_fatturabili lockate
+                --   sul lotto e valorizza fattura_riga_id.
+                --
+                -- Regole:
+                --   - usa fn_get_or_create_fattura_header per l'header
+                --   - aggrega per chiave riga (fn_group_attivita_fatturabili)
+                --   - dest_billing_account_id = BA reale
+                -- =========================================================
+              
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_generate_fatture_righe', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', p_lotto_id,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','lotto_id obbligatorio', 'lotto_id', p_lotto_id)
+                    ),
+                    NULL::uuid, 'lotto_id obbligatorio'
+                  );
+                END IF;
+              
+                -- Itera sulle attivita lockate del lotto (non fatturate)
+                FOR v_row IN
+                  SELECT a.id, a.articolo_id, a.quantita, a.prezzo_unitario,
+                         a.uom_id, a.sorgente_tipo_id, a.sorgente_uid, a.sorgente_riga
+                    FROM vendite.attivita_fatturabili a
+                   WHERE a.lock_batch_id = (
+                           SELECT fl.lock_batch_id
+                             FROM vendite.fatturazione_lotti fl
+                            WHERE fl.id = p_lotto_id
+                         )
+                     AND a.fatturato IS FALSE
+                     AND COALESCE(a.lock_in_fatturazione, false) IS TRUE
+                   ORDER BY a.id
+                LOOP
+                  v_fattura_id := vendite.fn_get_or_create_fattura_header(p_lotto_id, v_row.id);
+                  v_group := vendite.fn_group_attivita_fatturabili(v_row.id);
+              
+                  IF p_dry_run THEN
+                    v_count := v_count + 1;
+                    CONTINUE;
+                  END IF;
+              
+                  SELECT COALESCE(max(r.riga_nr), 0) + 1
+                    INTO v_riga_nr
+                    FROM vendite.fatture_righe r
+                   WHERE r.fattura_id = v_fattura_id;
+              
+                  INSERT INTO vendite.fatture_righe (
+                    fattura_id,
+                    riga_nr,
+                    articolo_id,
+                    descrizione,
+                    uom_id,
+                    qta,
+                    prezzo_unitario,
+                    iva_id,
+                    dest_billing_account_id,
+                    sorgente_tipo_id,
+                    sorgente_uid,
+                    sorgente_riga,
+                    meta
+                  )
+                  VALUES (
+                    v_fattura_id,
+                    v_riga_nr,
+                    v_row.articolo_id,
+                    (SELECT descrizione FROM catalogo.articoli WHERE id = v_row.articolo_id),
+                    (v_group->>'uom_id')::bigint,
+                    v_row.quantita,
+                    v_row.prezzo_unitario,
+                    (v_group->>'iva_id')::integer,
+                    (v_group->>'dest_billing_account_id')::bigint,
+                    v_row.sorgente_tipo_id,
+                    v_row.sorgente_uid,
+                    v_row.sorgente_riga,
+                    jsonb_build_object('group_key', v_group)
+                  )
+                  RETURNING id
+                  INTO v_fattura_riga_id;
+              
+                  UPDATE vendite.attivita_fatturabili
+                     SET fattura_riga_id = v_fattura_riga_id,
+                         fatturato = true,
+                         data_update = now(),
+                         user_update = current_user
+                   WHERE id = v_row.id;
+              
+                  v_count := v_count + 1;
+                END LOOP;
+              
+                RETURN v_count;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_generate_fatture_righe(bigint, boolean)
+              IS 'Genera righe fattura da attivita lockate sul lotto e aggiorna il collegamento attivita_fatturabili -> fatture_righe.';

@@ -53,6 +53,11 @@ AS $function$
       RETURN check_digit = CAST(SUBSTRING(piva FROM 11 FOR 1) AS INT);
   END;
   $function$
+
+COMMENT ON FUNCTION script.fn_valida_partita_iva(piva text)
+IS 'Validazione formale partita IVA italiana. 
+  Restituisce TRUE se la partita IVA supera il controllo del carattere finale (check digit),
+   altrimenti FALSE.';
 ```
 
 ---

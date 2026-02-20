@@ -25,6 +25,7 @@ ai **lotti**, tramite flag di applicabilita`.
 * **Applicabilita`**:
   * `applica_fattura` → stato valido per `vendite.fatture`.
   * `applica_lotto` → stato valido per `vendite.fatturazione_lotti`.
+  * `chiude_lotto` → se `true`, al termine dello step pipeline il lotto viene chiuso operativamente (`stato_operativo=CHIUSO`) tramite processo dedicato.
 * **Governance**: `attivo`, `meta`.
 
 ---
@@ -33,6 +34,7 @@ ai **lotti**, tramite flag di applicabilita`.
 
 * Gli stati **possono essere condivisi** tra lotto e fattura, ma vanno marcati con i flag.
 * Le **transizioni ammesse** sono definite in `config.stati_doc_fiscale_transizioni`.
+* `chiude_lotto` deve avere cardinalita` **esattamente 1** (una sola riga `true`).
 
 ---
 

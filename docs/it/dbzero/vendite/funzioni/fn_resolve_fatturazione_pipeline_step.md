@@ -28,7 +28,21 @@ BEGIN
   IF p_tipo_lotto IS NULL OR btrim(p_tipo_lotto) = '' THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_GENERICO',
-      jsonb_build_object('detail', 'p_tipo_lotto obbligatorio'),
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object(
+          'detail', 'p_tipo_lotto obbligatorio',
+          'p_tipo_lotto', p_tipo_lotto,
+          'p_stato_doc_fiscale_id', p_stato_doc_fiscale_id,
+          'p_utility_id', p_utility_id,
+          'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id,
+          'p_rollback', p_rollback
+        )
+      ),
       NULL::uuid,
       'p_tipo_lotto obbligatorio'
     );
@@ -38,9 +52,69 @@ BEGIN
   IF p_stato_doc_fiscale_id IS NULL OR p_stato_doc_fiscale_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_GENERICO',
-      jsonb_build_object('detail', 'p_stato_doc_fiscale_id obbligatorio'),
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object(
+          'detail', 'p_stato_doc_fiscale_id obbligatorio',
+          'p_tipo_lotto', p_tipo_lotto,
+          'p_stato_doc_fiscale_id', p_stato_doc_fiscale_id,
+          'p_utility_id', p_utility_id,
+          'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id,
+          'p_rollback', p_rollback
+        )
+      ),
       NULL::uuid,
       'p_stato_doc_fiscale_id obbligatorio'
+    );
+  END IF;
+
+  IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object(
+          'detail', 'p_utility_id non valido',
+          'p_tipo_lotto', p_tipo_lotto,
+          'p_stato_doc_fiscale_id', p_stato_doc_fiscale_id,
+          'p_utility_id', p_utility_id,
+          'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id,
+          'p_rollback', p_rollback
+        )
+      ),
+      NULL::uuid,
+      'p_utility_id non valido'
+    );
+  END IF;
+
+  IF p_tipo_doc_fiscale_id IS NOT NULL AND p_tipo_doc_fiscale_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object(
+          'detail', 'p_tipo_doc_fiscale_id non valido',
+          'p_tipo_lotto', p_tipo_lotto,
+          'p_stato_doc_fiscale_id', p_stato_doc_fiscale_id,
+          'p_utility_id', p_utility_id,
+          'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id,
+          'p_rollback', p_rollback
+        )
+      ),
+      NULL::uuid,
+      'p_tipo_doc_fiscale_id non valido'
     );
   END IF;
 
@@ -78,6 +152,9 @@ BEGIN
   LIMIT 1;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_resolve_fatturazione_pipeline_step(p_tipo_lotto text, p_stato_doc_fiscale_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_rollback boolean)
+IS 'Risoluzione di uno step pipeline fatturazione con precedenza specifica e fallback globale.';
 ```
 
 ---

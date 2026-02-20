@@ -1,0 +1,515 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260217-04-refactor-fn-lotto-pipeline-support-errors-mctit.yaml
+
+  - changeSet:
+      id: 20260217-04-01-update-fn-log-pipeline-fase
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: "Refactor contratto errori applicativi scope LOTTO"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_log_pipeline_fase(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                p_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE,
+                p_fase vendite.fatturazione_lotti_log.fase%TYPE,
+                p_status vendite.fatturazione_lotti_log.status%TYPE DEFAULT 'I'::bpchar,
+                p_messaggio vendite.fatturazione_lotti_log.messaggio%TYPE DEFAULT NULL::text,
+                p_meta vendite.fatturazione_lotti_log.meta%TYPE DEFAULT '{}'::jsonb
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                v_stato_operativo vendite.fatturazione_lotti.stato_operativo%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Registra una fase di pipeline sul log del lotto.
+                --
+                -- Regole:
+                --   - status ammessi: I (info), W (warning), C (critical)
+                --   - lotto_id obbligatorio
+                -- =========================================================
+
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_log_pipeline_fase', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', p_lotto_id,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','lotto_id obbligatorio')
+                    ),
+                    NULL::uuid, 'lotto_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_status IS NULL OR p_status NOT IN ('I','W','C') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_log_pipeline_fase', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', p_lotto_id,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','status non valido', 'status', p_status)
+                    ),
+                    NULL::uuid, 
+                    concat('status non valido', ' status:', p_status)
+                  );
+                END IF;
+
+                SELECT l.tipo_lotto, l.stato_operativo
+                  INTO v_tipo_lotto, v_stato_operativo
+                  FROM vendite.fatturazione_lotti l
+                 WHERE l.id = p_lotto_id;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_log_pipeline_fase', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', p_lotto_id,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id)
+                    ),
+                    NULL::uuid, 
+                    concat('Lotto non trovato', ' lotto_id:', p_lotto_id)
+                  );
+                END IF;
+
+                INSERT INTO vendite.fatturazione_lotti_log (
+                  lotto_id,
+                  data_ora,
+                  messaggio,
+                  status,
+                  disabilitato,
+                  fase,
+                  stato_doc_fiscale_id,
+                  tipo_lotto,
+                  stato_operativo,
+                  meta,
+                  data_insert,
+                  user_insert,
+                  data_update,
+                  user_update
+                )
+                VALUES (
+                  p_lotto_id,
+                  now(),
+                  COALESCE(p_messaggio, p_fase, 'pipeline'),
+                  p_status,
+                  false,
+                  p_fase,
+                  p_stato_doc_fiscale_id,
+                  v_tipo_lotto,
+                  v_stato_operativo,
+                  COALESCE(p_meta, '{}'::jsonb),
+                  now(),
+                  current_user,
+                  now(),
+                  current_user
+                );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_log_pipeline_fase(bigint, bigint, text, character, text, jsonb)
+              IS 'Registra una fase della pipeline di fatturazione nel log lotto con metadati di stato operativo.';
+
+  - changeSet:
+      id: 20260217-04-02-update-fn-log-lotto-esito-fatture
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+
+      comment: "Refactor contratto errori applicativi scope LOTTO"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_log_lotto_esito_fatture(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_has_critical boolean;
+                v_has_warning boolean;
+                v_status character;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Registra un log di esito lotto dedotto dai log fatture.
+                --
+                -- Regole:
+                --   - C ha priorita` su W
+                --   - se nessun log attivo: status I
+                -- =========================================================
+
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_log_lotto_esito_fatture', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', p_lotto_id,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','lotto_id obbligatorio')
+                    ),
+                    NULL::uuid, 'lotto_id obbligatorio'
+                  );
+                END IF;
+
+                SELECT EXISTS (
+                  SELECT 1
+                  FROM vendite.fatturazione_lotti_fatture lf
+                  JOIN vendite.fatture_log fl
+                    ON fl.fattura_id = lf.fattura_id
+                  WHERE lf.lotto_id = p_lotto_id
+                    AND fl.disabilitato IS FALSE
+                    AND fl.status = 'C'
+                )
+                INTO v_has_critical;
+
+                SELECT EXISTS (
+                  SELECT 1
+                  FROM vendite.fatturazione_lotti_fatture lf
+                  JOIN vendite.fatture_log fl
+                    ON fl.fattura_id = lf.fattura_id
+                  WHERE lf.lotto_id = p_lotto_id
+                    AND fl.disabilitato IS FALSE
+                    AND fl.status = 'W'
+                )
+                INTO v_has_warning;
+
+                v_status := CASE
+                              WHEN v_has_critical THEN 'C'
+                              WHEN v_has_warning THEN 'W'
+                              ELSE 'I'
+                            END;
+
+                PERFORM vendite.fn_log_pipeline_fase(
+                  p_lotto_id,
+                  NULL,
+                  'Esito fatture lotto',
+                  v_status,
+                  NULL,
+                  jsonb_build_object('source','fatture_log')
+                );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_log_lotto_esito_fatture(bigint)
+              IS 'Calcola l''esito del lotto dai log fatture (C/W/I) e scrive un evento sintetico su fatturazione_lotti_log.';
+
+  - changeSet:
+      id: 20260217-04-03-update-fn-list-fatturazione-pipeline-steps
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+
+      comment: "Refactor contratto errori applicativi scope LOTTO"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_list_fatturazione_pipeline_steps(
+                p_tipo_lotto vendite.fatturazione_pipeline.tipo_lotto%TYPE,
+                p_utility_id config.utilities.id%TYPE DEFAULT NULL::integer,
+                p_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE DEFAULT NULL::bigint
+              )
+               RETURNS TABLE(
+                 stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE,
+                 descrizione vendite.fatturazione_pipeline.descrizione%TYPE,
+                 ordine config.stati_doc_fiscale.ordine%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Elenca gli step pipeline risolti (uno per stato lotto)
+                --   applicando la stessa precedenza di fallback.
+                -- =========================================================
+
+                IF p_tipo_lotto IS NULL OR btrim(p_tipo_lotto) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_fatturazione_pipeline_steps', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail', 'p_tipo_lotto obbligatorio',
+                        'p_tipo_lotto', p_tipo_lotto,
+                        'p_utility_id', p_utility_id,
+                        'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
+                      )
+                    ),
+                    NULL::uuid,
+                    'p_tipo_lotto obbligatorio'
+                  );
+                END IF;
+
+                IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_fatturazione_pipeline_steps', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail', 'p_utility_id non valido',
+                        'p_tipo_lotto', p_tipo_lotto,
+                        'p_utility_id', p_utility_id,
+                        'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
+                      )
+                    ),
+                    NULL::uuid,
+                    'p_utility_id non valido'
+                  );
+                END IF;
+
+                IF p_tipo_doc_fiscale_id IS NOT NULL AND p_tipo_doc_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_fatturazione_pipeline_steps', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail', 'p_tipo_doc_fiscale_id non valido',
+                        'p_tipo_lotto', p_tipo_lotto,
+                        'p_utility_id', p_utility_id,
+                        'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
+                      )
+                    ),
+                    NULL::uuid,
+                    'p_tipo_doc_fiscale_id non valido'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  sd.id AS stato_doc_fiscale_id,
+                  COALESCE(rs.descrizione, sd.descrizione) AS descrizione,
+                  sd.ordine
+                FROM config.stati_doc_fiscale sd
+                JOIN LATERAL vendite.fn_resolve_fatturazione_pipeline_step(
+                  p_tipo_lotto,
+                  sd.id,
+                  p_utility_id,
+                  p_tipo_doc_fiscale_id,
+                  false
+                ) rs ON TRUE
+                WHERE COALESCE(sd.applica_lotto, false) IS TRUE
+                ORDER BY sd.ordine;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_fatturazione_pipeline_steps(text, integer, bigint)
+              IS 'Elenca gli step pipeline fatturazione risolti per tipo_lotto con fallback utility/tipo_doc_fiscale.';
+
+  - changeSet:
+      id: 20260217-04-04-update-fn-resolve-fatturazione-pipeline-step
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+
+      comment: "Refactor contratto errori applicativi scope LOTTO"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_resolve_fatturazione_pipeline_step(
+                p_tipo_lotto vendite.fatturazione_pipeline.tipo_lotto%TYPE,
+                p_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE,
+                p_utility_id config.utilities.id%TYPE DEFAULT NULL::integer,
+                p_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE DEFAULT NULL::bigint,
+                p_rollback boolean DEFAULT false
+              )
+               RETURNS TABLE(
+                 pipeline_id vendite.fatturazione_pipeline.id%TYPE,
+                 stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE,
+                 descrizione vendite.fatturazione_pipeline.descrizione%TYPE,
+                 ordine config.stati_doc_fiscale.ordine%TYPE,
+                 processi vendite.fatturazione_pipeline.processi%TYPE,
+                 utility_id config.utilities.id%TYPE,
+                 tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE,
+                 livello_match text
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Risolve una configurazione pipeline per step applicando
+                --   fallback su utility/tipo_doc_fiscale.
+                --
+                -- Regole precedenza:
+                --   1) utility + tipo_doc_fiscale
+                --   2) utility
+                --   3) tipo_doc_fiscale
+                --   4) fallback globale (entrambi NULL)
+                -- =========================================================
+
+                IF p_tipo_lotto IS NULL OR btrim(p_tipo_lotto) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail', 'p_tipo_lotto obbligatorio',
+                        'p_tipo_lotto', p_tipo_lotto,
+                        'p_stato_doc_fiscale_id', p_stato_doc_fiscale_id,
+                        'p_utility_id', p_utility_id,
+                        'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id,
+                        'p_rollback', p_rollback
+                      )
+                    ),
+                    NULL::uuid,
+                    'p_tipo_lotto obbligatorio'
+                  );
+                END IF;
+
+
+                IF p_stato_doc_fiscale_id IS NULL OR p_stato_doc_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail', 'p_stato_doc_fiscale_id obbligatorio',
+                        'p_tipo_lotto', p_tipo_lotto,
+                        'p_stato_doc_fiscale_id', p_stato_doc_fiscale_id,
+                        'p_utility_id', p_utility_id,
+                        'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id,
+                        'p_rollback', p_rollback
+                      )
+                    ),
+                    NULL::uuid,
+                    'p_stato_doc_fiscale_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail', 'p_utility_id non valido',
+                        'p_tipo_lotto', p_tipo_lotto,
+                        'p_stato_doc_fiscale_id', p_stato_doc_fiscale_id,
+                        'p_utility_id', p_utility_id,
+                        'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id,
+                        'p_rollback', p_rollback
+                      )
+                    ),
+                    NULL::uuid,
+                    'p_utility_id non valido'
+                  );
+                END IF;
+
+                IF p_tipo_doc_fiscale_id IS NOT NULL AND p_tipo_doc_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','LOTTO',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail', 'p_tipo_doc_fiscale_id non valido',
+                        'p_tipo_lotto', p_tipo_lotto,
+                        'p_stato_doc_fiscale_id', p_stato_doc_fiscale_id,
+                        'p_utility_id', p_utility_id,
+                        'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id,
+                        'p_rollback', p_rollback
+                      )
+                    ),
+                    NULL::uuid,
+                    'p_tipo_doc_fiscale_id non valido'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  fp.id AS pipeline_id,
+                  fp.stato_doc_fiscale_id,
+                  fp.descrizione,
+                  sd.ordine,
+                  CASE WHEN p_rollback THEN fp.rollback ELSE fp.processi END AS processi,
+                  fp.utility_id,
+                  fp.tipo_doc_fiscale_id,
+                  CASE
+                    WHEN fp.utility_id IS NOT NULL AND fp.tipo_doc_fiscale_id IS NOT NULL THEN 'UTILITY_TIPO_DOC'
+                    WHEN fp.utility_id IS NOT NULL AND fp.tipo_doc_fiscale_id IS NULL THEN 'UTILITY'
+                    WHEN fp.utility_id IS NULL AND fp.tipo_doc_fiscale_id IS NOT NULL THEN 'TIPO_DOC'
+                    ELSE 'FALLBACK'
+                  END AS livello_match
+                FROM vendite.fatturazione_pipeline fp
+                JOIN config.stati_doc_fiscale sd
+                  ON sd.id = fp.stato_doc_fiscale_id
+                WHERE fp.attivo IS TRUE
+                  AND fp.tipo_lotto = p_tipo_lotto
+                  AND fp.stato_doc_fiscale_id = p_stato_doc_fiscale_id
+                  AND (fp.utility_id = p_utility_id OR fp.utility_id IS NULL)
+                  AND (fp.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id OR fp.tipo_doc_fiscale_id IS NULL)
+                ORDER BY
+                  CASE
+                    WHEN fp.utility_id IS NOT NULL AND fp.tipo_doc_fiscale_id IS NOT NULL THEN 4
+                    WHEN fp.utility_id IS NOT NULL AND fp.tipo_doc_fiscale_id IS NULL THEN 3
+                    WHEN fp.utility_id IS NULL AND fp.tipo_doc_fiscale_id IS NOT NULL THEN 2
+                    ELSE 1
+                  END DESC,
+                  fp.id ASC
+                LIMIT 1;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_resolve_fatturazione_pipeline_step(text, bigint, integer, bigint, boolean)
+              IS 'Risoluzione di uno step pipeline fatturazione con precedenza specifica e fallback globale.';

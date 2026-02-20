@@ -95,6 +95,9 @@ BEGIN
   END LOOP;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_seed_automazione_guard_utility_tipo_ruolo(p_schemas text[])
+IS 'Popola dbops.automazione_guard_utility_tipo_ruolo autodetectando tabelle con utility_id + colonna ruolo (FK diretta o naming *_soggetto_ruolo_id).';
 ```
 
 ---

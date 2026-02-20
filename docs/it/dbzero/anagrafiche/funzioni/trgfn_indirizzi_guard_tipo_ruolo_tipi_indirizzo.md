@@ -74,6 +74,12 @@ END IF;
 RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
+IS 'Trigger function per validare coerenza tra anagrafiche.indirizzi e config.tipi_ruolo_tipi_indirizzo.
+Verifica che il tipo_indirizzo sia ammesso per il tipo_ruolo del soggetto_ruolo associato.
+Se non esiste alcuna riga di matrice per il tipo_ruolo, tutti i tipi sono ammessi.
+Altrimenti, solo i tipi attivi e validi sono permessi.';
 ```
 
 ---

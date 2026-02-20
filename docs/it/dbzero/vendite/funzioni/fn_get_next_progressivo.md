@@ -98,6 +98,9 @@ BEGIN
   RETURN v_next;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_get_next_progressivo(p_registro_id bigint, p_data date, p_serie text)
+IS 'Restituisce il prossimo progressivo con lock su registri_fatturazione_progressivi.';
 ```
 
 ---

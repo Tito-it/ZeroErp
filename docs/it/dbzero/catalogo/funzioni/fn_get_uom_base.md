@@ -28,6 +28,9 @@ BEGIN
   RETURN v_uom_base_id;
 END;
 $function$
+
+COMMENT ON FUNCTION catalogo.fn_get_uom_base(p_articolo_id uuid)
+IS 'Ritorna la UoM BASE (uom_id) dell’articolo indicato. Se articolo non trovato o senza UoM, ritorna NULL.';
 ```
 
 ---

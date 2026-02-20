@@ -43,6 +43,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_base_normalize()
+IS 'Trigger function generica: normalizza indirizzi (ruolo/soggetto). Se indirizzo_dettaglio_id presente pulisce fallback/liberi; altrimenti imposta default su stato_id.';
 ```
 
 ---

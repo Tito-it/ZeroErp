@@ -16,6 +16,9 @@ AS $function$
                                    _target_tipo, _target_id, _target_riga_id,
                                    _include_doc, _include_righe, _only_visible);
 $function$
+
+COMMENT ON FUNCTION acquisti.fn_get_acquisti_note(_target_tipo text, _target_id bigint, _target_riga_id bigint, _include_doc boolean, _include_righe boolean, _only_visible boolean)
+IS 'Wrapper su script.fn_get_note per la tabella acquisti.note.';
 ```
 
 ---

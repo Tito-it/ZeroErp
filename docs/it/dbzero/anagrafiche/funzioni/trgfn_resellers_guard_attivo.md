@@ -49,6 +49,9 @@ BEGIN
   RETURN NEW;
 END
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_resellers_guard_attivo()
+IS 'Blocca la disattivazione se esistono mapping in resellers_billing_account.';
 ```
 
 ---

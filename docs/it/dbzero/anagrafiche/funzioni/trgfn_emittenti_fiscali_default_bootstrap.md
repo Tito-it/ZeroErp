@@ -37,6 +37,9 @@ BEGIN
   RETURN NEW;
 END
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()
+IS 'Crea automaticamente il default emittente fiscale al primo inserimento';
 ```
 
 ---

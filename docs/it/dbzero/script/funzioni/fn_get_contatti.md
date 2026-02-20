@@ -137,6 +137,12 @@ FROM ranked AS r
 WHERE r.rn = 1;
 
 $function$
+
+COMMENT ON FUNCTION script.fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_utility_id integer, p_tipo_contatto_id integer, p_unita_organizzativa_id integer)
+IS 'Restituisce per ogni tipo_contatto_id il contatto con priorità: 
+1) soggetto+ruolo+utility, 2) soggetto+ruolo, 3) soggetto+utility, 
+4) Soggetto (fallback). Filtra esattamente sui parametri passati. p_soggetto_id obbligatorio.
+Supporta il filtro opzionale per unita_organizzativa e preferisce is_default = TRUE a parità di contesto.';
 ```
 
 ---

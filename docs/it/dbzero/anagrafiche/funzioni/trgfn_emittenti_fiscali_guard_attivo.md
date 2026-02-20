@@ -44,6 +44,9 @@ BEGIN
   RETURN NEW;
 END
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_attivo()
+IS 'Blocca la disattivazione se esistono mapping in emittenti_fiscali_billing_account.';
 ```
 
 ---

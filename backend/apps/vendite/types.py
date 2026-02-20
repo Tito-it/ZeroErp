@@ -37,3 +37,27 @@ class ResetLottoFatturaDraftResult(TypedDict):
     updated_attivita: int
     deleted_fatture: int
     deleted_righe: int
+
+
+class LottoSegnalazioniSummary(TypedDict):
+    fatture_critical_count: int
+    fatture_warning_count: int
+    lotto_critical_count: int
+    lotto_warning_count: int
+    lotto_info_count: int
+
+
+class LottoTaskRunRow(TypedDict):
+    id: int
+    lotto_id: int
+    pipeline_id: int | None
+    stato_doc_fiscale_id: int | None
+    task_code: str
+    fase: str | None
+    tentativo: int
+    task_stato: str
+    started_at: str | None
+    ended_at: str | None
+    error_code: str | None
+    error_message: str | None
+    meta: dict[str, Any]

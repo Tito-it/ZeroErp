@@ -103,6 +103,9 @@ BEGIN
     RETURN v_new_catasto_id;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id bigint)
+IS 'Clona il catasto dalla parent_istanza sulla istanza corrente. Se parent o sorgente non disponibili ritorna NULL senza errore.';
 ```
 
 ---

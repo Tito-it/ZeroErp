@@ -16,7 +16,7 @@
 
 (latest review 23-01-2026)
 `vendite.fatturazione_lotti` rappresenta il **lotto di fatturazione**, ovvero il contenitore operativo
-che fissa i **parametri di calcolo** (competenza, utility, tipo documento, BA) e consente la gestione
+che fissa i **parametri di calcolo** (competenza, utility, tipo documento, BA, emittente fiscale) e consente la gestione
 coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, statistiche).
 
 ---
@@ -24,7 +24,7 @@ coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, 
 ### 🧱 Campi chiave (semantica)
 
 * **Identita` lotto**: `id`, `lock_batch_id` (uuid), `codice`.
-* **Parametri di calcolo**: `competenza_mese`, `utility_id`, `tipo_doc_fiscale_id`, `billing_account_id`, `area_geografica_id` (opz.).
+* **Parametri di calcolo**: `competenza_mese`, `utility_id`, `tipo_doc_fiscale_id`, `billing_account_id`, `emittente_soggetto_ruolo_id`, `area_geografica_id` (opz.).
 * **Tipo lotto**: `tipo_lotto` (MASSIVO | GIORNALIERO).
 * **Stati**:
   * `stato_lotto` (IN_ESECUZIONE | COMPLETATO | ERRORE)

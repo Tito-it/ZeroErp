@@ -1,0 +1,320 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260217-01-create-fatture-sdi-mctit.yaml
+
+  - changeSet:
+      id: 20260217-01-create-fatture-sdi
+      author: mctit
+      comment: "Tabelle SDI: testata tentativi invio"
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: fatture_sdi
+            remarks: "Testata tentativi SDI per fattura."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_fatture_sdi
+                    nullable: false
+
+              - column:
+                  name: fattura_id
+                  type: bigint
+                  remarks: "FK -> vendite.fatture.id."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tentativo_num
+                  type: smallint
+                  defaultValueNumeric: 1
+                  remarks: "Numero tentativo invio SDI per fattura."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: stato_sdi_id
+                  type: bigint
+                  remarks: "FK -> config.stati_sdi.id (stato corrente tentativo)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_invio
+                  type: timestamp with time zone
+                  remarks: "Timestamp invio verso SDI."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_ricezione
+                  type: timestamp with time zone
+                  remarks: "Timestamp ricezione esito/notifica SDI."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: identificativo_sdi
+                  type: character varying(64)
+                  remarks: "Identificativo assegnato da SDI."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: nome_file
+                  type: text
+                  remarks: "Nome file inviato a SDI."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: messaggio_errore
+                  type: text
+                  remarks: "Messaggio errore sintetico dell'ultimo esito."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: critical
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "TRUE se errore bloccante per avanzamento stato."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Payload tecnico estendibile (raw SDI, dettagli adapter)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento audit."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento audit."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp modifica audit."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente modifica audit."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID transazione."
+                  constraints:
+                    nullable: true
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: fatture_sdi
+            columnNames: fattura_id, tentativo_num
+            constraintName: uq_fatture_sdi_fattura_tentativo
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_sdi
+            baseColumnNames: fattura_id
+            constraintName: fk_fatture_sdi_fattura
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_sdi
+            baseColumnNames: stato_sdi_id
+            constraintName: fk_fatture_sdi_stato_sdi
+            referencedTableSchemaName: config
+            referencedTableName: stati_sdi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+  - changeSet:
+      id: 20260217-01-02-create-fatture-sdi
+      author: mctit
+      comment: "Tabelle SDI: storico eventi"
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: fatture_sdi_eventi
+            remarks: "Storico eventi SDI per tentativo invio."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_fatture_sdi_eventi
+                    nullable: false
+
+              - column:
+                  name: fattura_sdi_id
+                  type: bigint
+                  remarks: "FK -> vendite.fatture_sdi.id."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: stato_sdi_id
+                  type: bigint
+                  remarks: "FK opzionale -> config.stati_sdi.id."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_evento
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp evento SDI."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: codice_evento
+                  type: character varying(64)
+                  remarks: "Codice tecnico evento/notifica."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: messaggio
+                  type: text
+                  remarks: "Messaggio evento."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: origine
+                  type: character varying(32)
+                  defaultValue: "SDI"
+                  remarks: "Origine evento (es. SDI, SISTEMA)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Payload evento (raw ricevute/notifiche)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento audit."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento audit."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp modifica audit."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente modifica audit."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID transazione."
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_sdi_eventi
+            baseColumnNames: fattura_sdi_id
+            constraintName: fk_fatture_sdi_eventi_fattura_sdi
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture_sdi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_sdi_eventi
+            baseColumnNames: stato_sdi_id
+            constraintName: fk_fatture_sdi_eventi_stato_sdi
+            referencedTableSchemaName: config
+            referencedTableName: stati_sdi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_sdi
+                ADD CONSTRAINT chk_fatture_sdi_tentativo_num
+                CHECK (tentativo_num > 0);
+
+              ALTER TABLE vendite.fatture_sdi_eventi
+                ADD CONSTRAINT chk_fatture_sdi_eventi_origine
+                CHECK (origine IN ('SDI', 'SISTEMA'));
+
+              COMMENT ON TABLE vendite.fatture_sdi
+                IS 'Testata tentativi SDI per fattura con stato corrente e dati di invio/esito.';
+
+              COMMENT ON TABLE vendite.fatture_sdi_eventi
+                IS 'Storico eventi SDI per tentativo invio fattura.';

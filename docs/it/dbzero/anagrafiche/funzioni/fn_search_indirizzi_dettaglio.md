@@ -68,6 +68,12 @@ BEGIN
   RETURN;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.fn_search_indirizzi_dettaglio(p_stradario_id integer, p_civico integer, p_estensione_civico text, p_palazzina text, p_scala text, p_piano text, p_interno text, p_indirizzo_norm text, p_limit integer)
+IS 'Funzione di ricerca indirizzi di dettaglio:
+ - Se p_stradario_id è valorizzato → ricerca per stradario_id (+ eventuali dettagli civico e pattern).
+ - Se p_stradario_id è NULL       → ricerca fuzzy su indirizzo_normalizzato (pattern case-insensitive).
+ Ritorna righe da anagrafiche.vw_indirizzi_dettaglio, solo attive, limitate da p_limit.';
 ```
 
 ---

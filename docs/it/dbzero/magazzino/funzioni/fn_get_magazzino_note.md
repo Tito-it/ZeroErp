@@ -49,6 +49,9 @@ AS $function$
     n.seq,
     n.id;  -- id come tie-breaker
 $function$
+
+COMMENT ON FUNCTION magazzino.fn_get_magazzino_note(_target_tipo text, _target_id bigint, _target_riga_id bigint, _include_doc boolean, _include_righe boolean, _only_visible boolean)
+IS 'Estrae note per target_tipo/target_id (opz. riga), con filtri per DOCUMENTO/RIGA e visibilità.';
 ```
 
 ---

@@ -55,6 +55,9 @@ BEGIN
     AND m.attivo IS TRUE;
 END;
 $function$
+
+COMMENT ON FUNCTION pagamenti.fn_get_saldo_fattura(p_fattura_id bigint)
+IS 'Restituisce il residuo fattura (totale_a_pagare - movimenti attivi) e flag presenza movimenti.';
 ```
 
 ---

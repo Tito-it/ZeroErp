@@ -19,6 +19,9 @@ AS $function$
     AND r.soggetto_id = p_soggetto_id
   ORDER BY r.tipo_indirizzo_codice, r.indirizzo_id;
 $function$
+
+COMMENT ON FUNCTION script.fn_get_indirizzi_by_soggetto(p_soggetto_id uuid)
+IS 'Restituisce indirizzi del layer SOGGETTO (identitario) da vw_indirizzi_resolved_base.';
 ```
 
 ---

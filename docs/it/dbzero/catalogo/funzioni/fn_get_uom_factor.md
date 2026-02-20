@@ -93,6 +93,13 @@ BEGIN
   RETURN NULL;
 END;
 $function$
+
+COMMENT ON FUNCTION catalogo.fn_get_uom_factor(p_articolo_id uuid, p_uom_id bigint)
+IS 'Restituisce il fattore di conversione tra l''UoM base dell''articolo e l''UoM richiesta.
+   Cerca prima nella mappatura operativa attiva e valida temporalmente.
+   Se non trovata, cerca nella tabella di conversioni globali tra UoM (catalogo.unita_misura_conversioni).
+   Se non trovata, cerca la conversione inversa e restituisce il reciproco.
+   Restituisce NULL se non trovata.';
 ```
 
 ---

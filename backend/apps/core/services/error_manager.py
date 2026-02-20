@@ -19,6 +19,7 @@ from apps.core.services.service_errors import ServiceError
 class ErrorManager:
     """Utility centralizzata per evitare logica errori duplicata nei servizi."""
 
+    # Scopo: Costruisce e solleva un ServiceError uniforme, con logging DB opzionale.
     @staticmethod
     def raise_error(
         *,
@@ -53,6 +54,7 @@ class ErrorManager:
             raise service_error from cause
         raise service_error
 
+    # Scopo: Valida una condizione e in caso negativo genera ServiceError coerente con policy core.
     @staticmethod
     def require(
         condition: bool,
@@ -79,6 +81,7 @@ class ErrorManager:
             log_to_db=log_to_db,
         )
 
+    # Scopo: Registra un errore tecnico su DB in best-effort senza interrompere il flusso chiamante.
     @staticmethod
     def log_error_only(
         *,

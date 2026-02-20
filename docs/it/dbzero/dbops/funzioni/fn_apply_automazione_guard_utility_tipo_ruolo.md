@@ -69,6 +69,9 @@ BEGIN
   END LOOP;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_apply_automazione_guard_utility_tipo_ruolo(p_exec_mode text, p_dry_run boolean)
+IS 'Applica trigger guard utility->tipo_ruolo sulle tabelle configurate in dbops.automazione_guard_utility_tipo_ruolo.';
 ```
 
 ---

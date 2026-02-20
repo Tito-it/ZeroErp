@@ -53,6 +53,9 @@ BEGIN
   RETURN OLD;
 END
 $function$
+
+COMMENT ON FUNCTION script.trgfn_delete_block_by_guc()
+IS 'Blocca DELETE se la GUC non e'' abilitata; usa fn_log_and_raise_error.';
 ```
 
 ---

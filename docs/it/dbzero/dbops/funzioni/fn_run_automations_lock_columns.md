@@ -177,6 +177,9 @@ BEGIN
   END LOOP;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_run_automations_lock_columns(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+IS 'Crea i trigger di lock columns per codice_interno e colonne extra configurate.';
 ```
 
 ---

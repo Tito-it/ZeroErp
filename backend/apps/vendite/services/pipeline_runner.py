@@ -15,7 +15,9 @@ from django.db import transaction
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
+from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
 from apps.vendite.types import LottoPipelineMeta, PipelineStepLogMeta
+from apps.vendite.services.pipeline_error_logger import PipelineErrorLogger
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 
 # Orchestratore applicativo della pipeline lotto vendite (equivalente SQL).
@@ -27,6 +29,7 @@ class LottoPipelineParams:
     tipo_doc_fiscale_id: int | None = None
     utility_id: int | None = None
     billing_account_id: int | None = None
+    emittente_soggetto_ruolo_id: int | None = None
     lock_batch_id: str | None = None
     meta: LottoPipelineMeta | None = None
     dry_run: bool = False
@@ -36,14 +39,22 @@ class LottoPipelineParams:
 class LottoPipelineRunner:
     """Controparte Django della procedura SQL vendite.pr_run_lotto_pipeline."""
 
+    # Scopo: Inizializza la istanza.
     def __init__(
         self,
         repository: VenditePipelineRepository | None = None,
         step_executor: PipelineStepExecutor | None = None,
+        error_logger: PipelineErrorLogger | None = None,
+        lotto_segnalazioni_service: LottoSegnalazioniService | None = None,
     ) -> None:
         self.repository = repository or VenditePipelineRepository()
         self.step_executor = step_executor or PipelineStepExecutor(self.repository)
+        self.error_logger = error_logger or PipelineErrorLogger(self.repository)
+        self.lotto_segnalazioni_service = (
+            lotto_segnalazioni_service or LottoSegnalazioniService(self.repository)
+        )
 
+    # Scopo: Registra errore di lotto su log dominio e forza stato lotto a ERRORE in transazione atomica.
     def _mark_lotto_error(
         self,
         *,
@@ -54,14 +65,20 @@ class LottoPipelineRunner:
     ) -> None:
         # Mantiene stato lotto coerente e traccia errore con codice uniforme.
         with transaction.atomic():
-            self.repository.set_lotto_job_stato(lotto_id, "ERRORE", "Errore pipeline")
-            ErrorManager.log_error_only(
+            self.error_logger.log_error(
+                scope="LOTTO",
+                severity="C",
                 code=code,
-                context={"lotto_id": lotto_id, "tipo_lotto": tipo_lotto, "detail": detail},
-                area="backend",
+                message=f"Errore pipeline: {code}",
+                detail=detail,
+                lotto_id=lotto_id,
+                context={"tipo_lotto": tipo_lotto},
                 function_name="vendite.pr_run_lotto_pipeline",
             )
+            self.repository.set_lotto_job_stato(lotto_id, "ERRORE", "Errore pipeline")
+            self.repository.log_lotto_esito_fatture(lotto_id)
 
+    # Scopo: Prova a marcare il lotto in errore senza mascherare l'eccezione principale.
     def _mark_lotto_error_safely(
         self,
         *,
@@ -91,6 +108,124 @@ class LottoPipelineRunner:
                 function_name="vendite.pr_run_lotto_pipeline",
             )
 
+    # Scopo: Determina da quale step ripartire in caso di rerun MASSIVO su lotto in errore.
+    @staticmethod
+    def _resolve_steps_for_rerun(
+        *,
+        steps: list[Any],
+        is_massivo_error_rerun: bool,
+        lotto_stato_doc_corrente: int | None,
+    ) -> list[Any]:
+        if not (is_massivo_error_rerun and lotto_stato_doc_corrente is not None):
+            return steps
+        step_index_by_stato = {
+            step.stato_doc_fiscale_id: index for index, step in enumerate(steps)
+        }
+        current_index = step_index_by_stato.get(lotto_stato_doc_corrente)
+        if current_index is None:
+            return steps
+        # Resume su step corrente in errore; evita transizioni retroattive non ammesse.
+        return steps[current_index:]
+
+    # Scopo: Valuta se eseguire rollback automatico dello step in rerun, escludendo rollback distruttivi.
+    def _should_execute_auto_step_rollback(
+        self,
+        *,
+        step: Any,
+        effective_tipo_lotto: str,
+        lotto_context: Any,
+        is_massivo_error_rerun: bool,
+        auto_step_rollback_enabled: bool,
+        rerun_reset_step_ids: set[int],
+    ) -> bool:
+        if not (
+            is_massivo_error_rerun
+            and auto_step_rollback_enabled
+            and step.stato_doc_fiscale_id in rerun_reset_step_ids
+        ):
+            return False
+        rollback_processes = self.repository.get_step_processes(
+            step.stato_doc_fiscale_id,
+            tipo_lotto=effective_tipo_lotto,
+            utility_id=lotto_context.utility_id,
+            tipo_doc_fiscale_id=lotto_context.tipo_doc_fiscale_id,
+            rollback=True,
+        )
+        if not rollback_processes:
+            return False
+        # Evita rollback distruttivi in auto-run.
+        return all(
+            str(process.get("task", "")).strip() != "reset_lotto_draft"
+            for process in rollback_processes
+        )
+
+    # Scopo: Gestisce un singolo step pipeline aggiornando stato lotto, log di fase e sincronizzazione esito fatture
+    def _execute_pipeline_step(
+        self,
+        *,
+        lotto_id: int,
+        step: Any,
+        effective_tipo_lotto: str,
+        dry_run: bool,
+    ) -> None:
+        # Traccia avanzamento step coerente con il flusso SQL originale.
+        self.repository.set_lotto_job_stato(
+            lotto_id,
+            "IN_ESECUZIONE",
+            f"Esecuzione step: {step.descrizione or step.stato_doc_fiscale_id}",
+        )
+        self.repository.update_lotto_stato_doc(lotto_id, step.stato_doc_fiscale_id)
+
+        step_meta: PipelineStepLogMeta = {
+            "ordine": step.ordine,
+            "dry_run": dry_run,
+        }
+        self.repository.log_pipeline_fase(
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=step.stato_doc_fiscale_id,
+            fase=step.descrizione or "Esecuzione step",
+            status="I",
+            messaggio=None,
+            meta=step_meta,
+        )
+
+        self.step_executor.execute_step(
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=step.stato_doc_fiscale_id,
+            tipo_lotto=effective_tipo_lotto,
+            rollback=False,
+            dry_run=dry_run,
+        )
+        self.repository.log_lotto_esito_fatture(lotto_id)
+        self._process_close_lotto_by_flag(
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=step.stato_doc_fiscale_id,
+            dry_run=dry_run,
+        )
+
+    # Scopo: Processo separato di chiusura lotto guidato da flag config.stati_doc_fiscale.chiude_lotto.
+    def _process_close_lotto_by_flag(
+        self,
+        *,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        dry_run: bool,
+    ) -> None:
+        if dry_run:
+            return
+        if not self.repository.is_stato_doc_chiude_lotto(stato_doc_fiscale_id):
+            return
+        self.repository.close_lotto_operativo(lotto_id)
+        self.repository.log_pipeline_fase(
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+            fase="Chiusura lotto operativa",
+            status="I",
+            messaggio="Chiusura lotto eseguita da flag chiude_lotto",
+            meta={"process": "close_lotto_by_flag"},
+        )
+
+    # Scopo: Orchestra l'intero flusso pipeline lotto: risoluzione lotto, step execution, resume/rollback e gestione errori finali.
     def run_pipeline(self, params: LottoPipelineParams) -> int:
         lotto_id: int | None = None
         effective_tipo_lotto = params.tipo_lotto or "MASSIVO"
@@ -98,12 +233,14 @@ class LottoPipelineRunner:
             with transaction.atomic():
                 # Mantiene il comportamento SQL: lotto_id=0 equivale a creare/risolvere un lotto.
                 normalized_lotto_id = None if params.lotto_id in (0, None) else params.lotto_id
+                is_existing_lotto_request = normalized_lotto_id is not None
                 lotto_id = self.repository.get_or_create_lotto(
                     lotto_id=normalized_lotto_id,
                     competenza_mese=params.competenza_mese,
                     tipo_doc_fiscale_id=params.tipo_doc_fiscale_id,
                     utility_id=params.utility_id,
                     billing_account_id=params.billing_account_id,
+                    emittente_soggetto_ruolo_id=params.emittente_soggetto_ruolo_id,
                     lock_batch_id=params.lock_batch_id,
                     meta=params.meta,
                     tipo_lotto=params.tipo_lotto,
@@ -114,25 +251,25 @@ class LottoPipelineRunner:
                 effective_tipo_lotto = lotto_tipo_db or effective_tipo_lotto
                 lotto_stato_corrente = self.repository.get_lotto_job_stato(lotto_id)
                 lotto_stato_doc_corrente = self.repository.get_lotto_stato_doc_fiscale_id(lotto_id)
-                if normalized_lotto_id is None and lotto_stato_corrente == "COMPLETATO":
+                # Evita falsi positivi sui lotti appena creati (lotto_id=0), che possono
+                # risultare transitoriamente in esecuzione nello stesso scope transazionale.
+                if is_existing_lotto_request and lotto_stato_corrente == "IN_ESECUZIONE":
                     ErrorManager.raise_error(
-                        code="E_PIPELINE_LOTTO_COMPLETATO_REUSE",
-                        message="Lotto completato non riutilizzabile.",
-                        detail=(
-                            "Risolto lotto gia` completato durante creazione automatica: "
-                            f"lotto_id={lotto_id}. Usa lock_batch_id diverso o lotto esplicito."
-                        ),
+                        code="E_PIPELINE_LOTTO_IN_ESECUZIONE",
+                        message="Lotto gia` in esecuzione.",
+                        detail=f"Rilancio non consentito su lotto in esecuzione: {lotto_id}",
                         context={
                             "lotto_id": lotto_id,
                             "tipo_lotto": effective_tipo_lotto,
-                            "lock_batch_id": params.lock_batch_id,
                         },
                         function_name="vendite.pr_run_lotto_pipeline",
                         log_to_db=True,
                     )
+                # Regola dominio: "lotto in errore" e` deciso dallo stato_lotto persistito,
+                # non dalla sola severita` dei log di esito fatture (C/W/I).
                 is_massivo_error_rerun = (
                     effective_tipo_lotto == "MASSIVO"
-                    and lotto_stato_corrente == "ERRORE"
+                    and self.repository.is_lotto_in_errore(lotto_id)
                 )
                 draft_id = self.repository.get_stato_doc_fiscale_id("DRAFT")
                 emessa_id = self.repository.get_stato_doc_fiscale_id("EMESSA")
@@ -141,9 +278,6 @@ class LottoPipelineRunner:
                 }
                 meta: dict[str, Any] = params.meta or {}
                 auto_step_rollback_enabled = bool(meta.get("auto_step_rollback"))
-                inviata_id = self.repository.get_stato_doc_fiscale_id("INVIATA")
-
-                self.repository.set_lotto_job_stato(lotto_id, "IN_ESECUZIONE", "Avvio pipeline")
 
                 lotto_context = self.repository.get_lotto_context(lotto_id)
                 ErrorManager.require(
@@ -162,33 +296,43 @@ class LottoPipelineRunner:
                     utility_id=lotto_context.utility_id,
                     tipo_doc_fiscale_id=lotto_context.tipo_doc_fiscale_id,
                 )
-                if is_massivo_error_rerun and lotto_stato_doc_corrente is not None:
-                    step_index_by_stato = {
-                        step.stato_doc_fiscale_id: index for index, step in enumerate(steps)
-                    }
-                    current_index = step_index_by_stato.get(lotto_stato_doc_corrente)
-                    if current_index is not None:
-                        # Resume su step corrente in errore; evita transizioni retroattive non ammesse.
-                        steps = steps[current_index:]
+                steps = self._resolve_steps_for_rerun(
+                    steps=steps,
+                    is_massivo_error_rerun=is_massivo_error_rerun,
+                    lotto_stato_doc_corrente=lotto_stato_doc_corrente,
+                )
+                # Modalita` operativa: un run esegue un solo step pipeline (il prossimo disponibile).
+                steps = steps[:1]
+                # Blocco avanzamento: con almeno una criticita` attiva il lotto richiede correzioni.
+                lotto_signal_status = self.lotto_segnalazioni_service.evaluate_lotto_status(lotto_id)
+                if lotto_signal_status.blocks_next_step:
+                    ErrorManager.raise_error(
+                        code="E_PIPELINE_LOTTO_CRITICAL",
+                        message="Lotto bloccato per segnalazioni critiche attive.",
+                        detail=(
+                            "Correggere le segnalazioni critical prima di proseguire: "
+                            f"lotto_id={lotto_id}, critical_count={lotto_signal_status.critical_count}"
+                        ),
+                        context={
+                            "lotto_id": lotto_id,
+                            "critical_count": lotto_signal_status.critical_count,
+                            "warning_count": lotto_signal_status.warning_count,
+                            "attention_count": lotto_signal_status.attention_count,
+                            "summary": lotto_signal_status.summary,
+                        },
+                        function_name="vendite.pr_run_lotto_pipeline",
+                        log_to_db=True,
+                    )
+                self.repository.set_lotto_job_stato(lotto_id, "IN_ESECUZIONE", "Avvio pipeline")
 
                 for step in steps:
-                    rollback_processes = self.repository.get_step_processes(
-                        step.stato_doc_fiscale_id,
-                        tipo_lotto=effective_tipo_lotto,
-                        utility_id=lotto_context.utility_id,
-                        tipo_doc_fiscale_id=lotto_context.tipo_doc_fiscale_id,
-                        rollback=True,
-                    )
-                    rollback_auto_safe = all(
-                        str(process.get("task", "")).strip() != "reset_lotto_draft"
-                        for process in rollback_processes
-                    )
-                    if (
-                        is_massivo_error_rerun
-                        and auto_step_rollback_enabled
-                        and step.stato_doc_fiscale_id in rerun_reset_step_ids
-                        and rollback_processes
-                        and rollback_auto_safe
+                    if self._should_execute_auto_step_rollback(
+                        step=step,
+                        effective_tipo_lotto=effective_tipo_lotto,
+                        lotto_context=lotto_context,
+                        is_massivo_error_rerun=is_massivo_error_rerun,
+                        auto_step_rollback_enabled=auto_step_rollback_enabled,
+                        rerun_reset_step_ids=rerun_reset_step_ids,
                     ):
                         self.step_executor.execute_step(
                             lotto_id=lotto_id,
@@ -198,34 +342,10 @@ class LottoPipelineRunner:
                             dry_run=params.dry_run,
                         )
 
-                    # Traccia avanzamento step coerente con il flusso SQL originale.
-                    self.repository.update_lotto_stato_doc(lotto_id, step.stato_doc_fiscale_id)
-                    if (
-                        effective_tipo_lotto == "GIORNALIERO"
-                        and inviata_id is not None
-                        and step.stato_doc_fiscale_id == inviata_id
-                    ):
-                        # Il lotto giornaliero viene chiuso operativamente allo stato INVIATA.
-                        self.repository.close_giornaliero_lotto(lotto_id, inviata_id)
-
-                    step_meta: PipelineStepLogMeta = {
-                        "ordine": step.ordine,
-                        "dry_run": params.dry_run,
-                    }
-                    self.repository.log_pipeline_fase(
+                    self._execute_pipeline_step(
                         lotto_id=lotto_id,
-                        stato_doc_fiscale_id=step.stato_doc_fiscale_id,
-                        fase=step.descrizione or "Esecuzione step",
-                        status="I",
-                        messaggio=None,
-                        meta=step_meta,
-                    )
-
-                    self.step_executor.execute_step(
-                        lotto_id=lotto_id,
-                        stato_doc_fiscale_id=step.stato_doc_fiscale_id,
-                        tipo_lotto=effective_tipo_lotto,
-                        rollback=False,
+                        step=step,
+                        effective_tipo_lotto=effective_tipo_lotto,
                         dry_run=params.dry_run,
                     )
 

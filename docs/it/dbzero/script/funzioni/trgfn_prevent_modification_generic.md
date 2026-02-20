@@ -29,6 +29,9 @@ BEGIN
     );
 END;
 $function$
+
+COMMENT ON FUNCTION script.trgfn_prevent_modification_generic()
+IS 'Segnala errore su attività non consentite sulle tabelle';
 ```
 
 ---

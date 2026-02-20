@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_numera_fattura_opz_emessa`
 
 ```sql
-CREATE FUNCTION fn_numera_fattura_opz_emessa(p_fattura_id bigint, p_set_emessa boolean, p_codice_interno_emessa text)
+CREATE FUNCTION fn_numera_fattura_opz_emessa(p_fattura_id bigint, p_set_emessa boolean, p_codice_interno_emessa character varying)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_numera_fattura_opz_emessa(p_fattura_id bigint, p_set_emessa boolean DEFAULT true, p_codice_interno_emessa text DEFAULT 'EMESSA'::text)
+CREATE OR REPLACE FUNCTION vendite.fn_numera_fattura_opz_emessa(p_fattura_id bigint, p_set_emessa boolean DEFAULT true, p_codice_interno_emessa character varying DEFAULT 'EMESSA'::text)
  RETURNS TABLE(registro_id bigint, anno smallint, mese smallint, serie character varying, numero bigint)
  LANGUAGE plpgsql
 AS $function$
@@ -36,12 +36,37 @@ BEGIN
 
   IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database',
-      'vendite.fn_numera_fattura_opz_emessa',
+      'vendite',
+      'fn_numera_fattura_opz_emessa',
       'E_GENERICO',
-      jsonb_build_object('detail','p_fattura_id obbligatorio', 'fattura_id', p_fattura_id),
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', p_fattura_id,
+        'context', jsonb_build_object('detail','p_fattura_id obbligatorio', 'fattura_id', p_fattura_id)
+      ),
       NULL::uuid,
       concat('p_fattura_id obbligatorio: ', COALESCE(p_fattura_id::text, 'NULL'))
+    );
+  END IF;
+
+  IF p_set_emessa IS TRUE AND (p_codice_interno_emessa IS NULL OR btrim(p_codice_interno_emessa) = '') THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite',
+      'fn_numera_fattura_opz_emessa',
+      'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', p_fattura_id,
+        'context', jsonb_build_object('detail','p_codice_interno_emessa obbligatorio se p_set_emessa=true')
+      ),
+      NULL::uuid,
+      'p_codice_interno_emessa obbligatorio'
     );
   END IF;
 
@@ -67,10 +92,17 @@ BEGIN
 
   IF v_registro_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database',
-      'vendite.fn_numera_fattura_opz_emessa',
+      'vendite',
+      'fn_numera_fattura_opz_emessa',
       'E_FATTURA_NON_TROVATA',
-      jsonb_build_object('fattura_id', p_fattura_id),
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_FATTURA_NON_TROVATA',
+        'lotto_id', NULL,
+        'fattura_id', p_fattura_id,
+        'context', jsonb_build_object('fattura_id', p_fattura_id)
+      ),
       NULL::uuid,
       p_fattura_id::text
     );

@@ -2,8 +2,9 @@ id,task_registry_id,implementation_key,handler_code,is_default,attivo,meta,data_
 1,1,default,select_attivita_default,true,true,{},2026-02-08 00:00:00+01,titodb,,
 2,2,default,generate_fatture_righe_default,true,true,{},2026-02-08 00:00:00+01,titodb,,
 3,3,default,numera_fatture_default,true,true,{},2026-02-08 00:00:00+01,titodb,,
-4,4,default,close_lotto_default,true,true,{},2026-02-10 00:00:00+01,titodb,,
+4,4,default,close_lotto_default,true,false,{},2026-02-10 00:00:00+01,titodb,2026-02-18 13:20:00+01,titodb
 5,5,default,reset_lotto_draft_default,true,true,{},2026-02-16 12:30:00+01,titodb,,
 6,6,default,genera_fondi_source_lotto_default,true,true,{},2026-02-16 12:45:00+01,titodb,,
 7,7,default,applica_fondi_lotto_default,true,true,{},2026-02-16 12:45:00+01,titodb,,
 8,8,default,ricalcola_iva_lotto_default,true,true,{},2026-02-16 12:45:00+01,titodb,,
+9,9,default,prepare_sdi_payload_lotto_default,true,true,{},2026-02-16 19:00:00+01,titodb,,

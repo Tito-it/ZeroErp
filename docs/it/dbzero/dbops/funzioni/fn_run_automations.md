@@ -68,6 +68,12 @@ BEGIN
   END IF;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_run_automations(p_exec_mode text, p_schemas text[], p_dry_run boolean, p_parts text[])
+IS '
+    Orchestratore: calcola scope e chiama le parti richieste.
+    p_parts: ''TX_ID'',''AUDIT_UPDATE'',''STORICO'',''LOCK_COLUMNS'',''ATTIVO'',''CLEANUP'' (e ''TABLE_RULES'' per compatibilita'')
+  ';
 ```
 
 ---

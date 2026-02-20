@@ -121,6 +121,9 @@ BEGIN
   RETURN NEW;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.trgfn_fatture_guard_stato()
+IS 'Guard transizioni stato per vendite.fatture basato su config.stati_doc_fiscale_transizioni.';
 ```
 
 ---

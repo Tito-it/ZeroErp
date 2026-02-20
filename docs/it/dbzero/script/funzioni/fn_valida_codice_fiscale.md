@@ -75,6 +75,13 @@ AS $function$DECLARE
   END;
 
   $function$
+
+COMMENT ON FUNCTION script.fn_valida_codice_fiscale(cf text)
+IS 'Controlla la validità formale del Codice Fiscale calcolando il carattere di controllo finale.
+  Importante è in grado di validare codice fiscale omocodico (stessa data, luogo di nascita, sesso, nome e cognome)
+  Non verifica congruenza con data di nascita, sesso o luogo di nascita. 
+  Tali controlli vengono demandati al backend (Django/FastAPI) per maggiore flessibilità e
+  semplicità di manutenzione. Eventuali validazioni approfondite saranno gestite da servizi esterni.';
 ```
 
 ---

@@ -80,6 +80,17 @@ BEGIN
   RETURN v_total;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_purge_cleanup_expired(p_schema text, p_table text, p_cleanup_column text, p_batch_limit integer, p_dry_run boolean)
+IS '
+Helper per cancellare record scaduti in base a cleanup_at.
+
+Parametri:
+- p_schema, p_table: tabella target.
+- p_cleanup_column: colonna di cleanup (default cleanup_at).
+- p_batch_limit: limite batch di cancellazione (default 5000).
+- p_dry_run: se true non elimina e ritorna il numero eleggibile.
+';
 ```
 
 ---

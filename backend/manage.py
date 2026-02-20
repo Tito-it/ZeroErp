@@ -4,6 +4,7 @@ import os
 import sys
  
 
+# Scopo: Definisce il punto di ingresso eseguibile del modulo.
 def main():
     """Run administrative tasks."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'zeroerp_backend.settings')

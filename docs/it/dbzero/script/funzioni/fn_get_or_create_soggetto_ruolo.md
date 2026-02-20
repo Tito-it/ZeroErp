@@ -125,6 +125,11 @@ BEGIN
     END;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_get_or_create_soggetto_ruolo(p_soggetto_id uuid, p_cd_int_ruolo character varying)
+IS 'Restituisce l''id in anagrafiche.soggetti_ruoli per la coppia (soggetto_id, ruolo p_cd_int_ruolo).
+Se il legame esiste già, lo riutilizza; altrimenti lo crea (meta = {}::jsonb).
+Non deve essere chiamata dai trigger delle tabelle ruolo, ma da factory/wizard applicativi.';
 ```
 
 ---

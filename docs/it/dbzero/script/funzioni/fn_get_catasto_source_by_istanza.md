@@ -78,6 +78,11 @@ BEGIN
     RETURN v_catasto;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id bigint)
+IS 'Recupera il record catastale "sorgente" da clonare per una istanza_utilities.
+  La sorgente è determinata ESCLUSIVAMENTE da:
+  istanze_utilities.parent_istanza_id';
 ```
 
 ---

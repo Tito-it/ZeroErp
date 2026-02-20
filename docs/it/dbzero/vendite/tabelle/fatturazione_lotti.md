@@ -23,6 +23,7 @@
 | area_geografica_id | bigint | YES |  |
 | tipo_lotto | text | NO | 'MASSIVO'::text |
 | stato_operativo | text | NO | 'APERTO'::text |
+| emittente_soggetto_ruolo_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -32,6 +33,7 @@
 | CHECK | chk_fatturazione_lotti_tipo_lotto |  |
 | FOREIGN KEY | fk_fatturazione_lotti_area_geografica | area_geografica_id |
 | FOREIGN KEY | fk_fatturazione_lotti_ba | billing_account_id |
+| FOREIGN KEY | fk_fatturazione_lotti_emittente_sr | emittente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_fatturazione_lotti_stato_doc_fiscale | stato_doc_fiscale_id |
 | FOREIGN KEY | fk_fatturazione_lotti_tipo_doc_fiscale | tipo_doc_fiscale_id |
 | FOREIGN KEY | fk_fatturazione_lotti_utility | utility_id |

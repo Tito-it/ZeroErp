@@ -14,6 +14,13 @@ Indice test eseguiti:
 12) VenditePipelineApiTests.test_run_lotto_pipeline_returns_conflict_when_idempotency_in_progress
 13) VenditePipelineApiTests.test_run_lotto_pipeline_accepts_null_lotto_id
 14) VenditePipelineApiTests.test_run_lotto_pipeline_converts_zero_optional_ids_to_none
+15) VenditePipelineApiTests.test_run_lotto_pipeline_full_payload_new_lotto_massivo_ok
+16) VenditePipelineApiTests.test_get_lotto_segnalazioni_summary_ok
+17) VenditePipelineApiTests.test_get_lotto_segnalazioni_summary_v1_requires_jwt
+18) VenditePipelineApiTests.test_get_lotto_segnalazioni_summary_rejects_invalid_lotto_id
+19) VenditePipelineApiTests.test_get_lotto_task_runs_ok
+20) VenditePipelineApiTests.test_get_lotto_task_runs_v1_requires_jwt
+21) VenditePipelineApiTests.test_get_lotto_task_runs_rejects_invalid_lotto_id
 """
 
 import json
@@ -28,9 +35,11 @@ from apps.core.services.service_errors import ServiceError
 
 @override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class VenditePipelineApiTests(SimpleTestCase):
+    # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         self.client = Client()
 
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_ok`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
     def test_run_lotto_pipeline_ok(self, mocked_service, _mock_auth):
@@ -47,6 +56,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         self.assertTrue(response["X-Request-ID"])
         mocked_service.assert_called_once()
 
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_invalid_json`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_run_lotto_pipeline_invalid_json(self, _mock_auth):
         response = self.client.post(
@@ -58,6 +68,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "invalid_json")
 
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_pipeline_error`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
     def test_run_lotto_pipeline_pipeline_error(self, mocked_service, _mock_auth):
@@ -78,6 +89,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         self.assertIn("Lotto non trovato", body["detail"])
         self.assertEqual(body["ui_action"], "show_empty_state")
 
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_retryable_error`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
     def test_run_lotto_pipeline_retryable_error(self, mocked_service, _mock_auth):
@@ -98,6 +110,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         self.assertEqual(body["ui_action"], "show_retry_dialog")
         self.assertEqual(response["Retry-After"], "3")
 
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_echoes_idempotency_key`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
     def test_run_lotto_pipeline_echoes_idempotency_key(self, mocked_service, _mock_auth):
@@ -112,6 +125,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         self.assertEqual(response["X-Idempotency-Key"], "idem-abc-123")
         self.assertEqual(response.json()["meta"]["idempotency_key"], "idem-abc-123")
 
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_requires_idempotency_key`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_run_lotto_pipeline_requires_idempotency_key(self, _mock_auth):
         response = self.client.post(
@@ -123,6 +137,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         body = response.json()["error"]
         self.assertEqual(body["code"], "E_IDEMPOTENCY_KEY_REQUIRED")
 
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_accepts_null_lotto_id`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
     def test_run_lotto_pipeline_accepts_null_lotto_id(self, mocked_service, _mock_auth):
@@ -138,6 +153,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         mocked_service.assert_called_once()
         self.assertIsNone(mocked_service.call_args.kwargs["lotto_id"])
 
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_converts_zero_optional_ids_to_none`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
     def test_run_lotto_pipeline_converts_zero_optional_ids_to_none(self, mocked_service, _mock_auth):
@@ -150,6 +166,7 @@ class VenditePipelineApiTests(SimpleTestCase):
                     "tipo_doc_fiscale_id": 0,
                     "utility_id": 0,
                     "billing_account_id": 0,
+                    "emittente_soggetto_ruolo_id": 0,
                     "dry_run": True,
                 }
             ),
@@ -163,7 +180,50 @@ class VenditePipelineApiTests(SimpleTestCase):
         self.assertIsNone(kwargs["tipo_doc_fiscale_id"])
         self.assertIsNone(kwargs["utility_id"])
         self.assertIsNone(kwargs["billing_account_id"])
+        self.assertIsNone(kwargs["emittente_soggetto_ruolo_id"])
 
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_full_payload_new_lotto_massivo_ok`.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    def test_run_lotto_pipeline_full_payload_new_lotto_massivo_ok(self, mocked_service, _mock_auth):
+        mocked_service.return_value = 78
+        response = self.client.post(
+            "/api/v1/vendite/pipeline/run/",
+            data=json.dumps(
+                {
+                    "lotto_id": 0,
+                    "competenza_mese": "2026-02-18",
+                    "tipo_doc_fiscale_id": 1,
+                    "utility_id": 2,
+                    "billing_account_id": 0,
+                    "emittente_soggetto_ruolo_id": 0,
+                    "lock_batch_id": None,
+                    "meta": {
+                        "additionalProp1": "string",
+                        "additionalProp2": "string",
+                        "additionalProp3": "string",
+                    },
+                    "dry_run": False,
+                    "tipo_lotto": "MASSIVO",
+                }
+            ),
+            content_type="application/json",
+            headers={"Idempotency-Key": "lotto2-2026-02-18"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["lotto_id"], 78)
+        mocked_service.assert_called_once()
+        kwargs = mocked_service.call_args.kwargs
+        self.assertIsNone(kwargs["lotto_id"])
+        self.assertEqual(kwargs["competenza_mese"].isoformat(), "2026-02-18")
+        self.assertEqual(kwargs["tipo_doc_fiscale_id"], 1)
+        self.assertEqual(kwargs["utility_id"], 2)
+        self.assertIsNone(kwargs["billing_account_id"])
+        self.assertIsNone(kwargs["emittente_soggetto_ruolo_id"])
+        self.assertEqual(kwargs["tipo_lotto"], "MASSIVO")
+        self.assertFalse(kwargs["dry_run"])
+
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_v1_requires_jwt`.
     def test_run_lotto_pipeline_v1_requires_jwt(self):
         response = self.client.post(
             "/api/v1/vendite/pipeline/run/",
@@ -173,6 +233,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         )
         self.assertEqual(response.status_code, 401)
 
+    # Scopo: Verifica il caso `test_legacy_vendite_path_not_found_when_disabled`.
     def test_legacy_vendite_path_not_found_when_disabled(self):
         response = self.client.post(
             "/api/vendite/pipeline/run/",
@@ -182,6 +243,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_hides_technical_detail_for_generic_errors`.
     @override_settings(API_EXPOSE_TECHNICAL_DETAILS=False)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
@@ -201,6 +263,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         self.assertIn("request_id", body["detail"])
         self.assertNotIn("technical_message", body)
 
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_exposes_technical_message_in_debug_mode`.
     @override_settings(API_EXPOSE_TECHNICAL_DETAILS=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
@@ -218,6 +281,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         self.assertEqual(body["message"], "Errore non gestito.")
         self.assertEqual(body["technical_message"], "CONTEXT: SQL interno sensibile")
 
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_replays_completed_response_when_strong_idempotency_enabled`.
     @override_settings(API_STRONG_IDEMPOTENCY_ENABLED=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.core.api.endpoint_helpers.IdempotencyStore.claim_or_replay")
@@ -248,6 +312,7 @@ class VenditePipelineApiTests(SimpleTestCase):
         self.assertEqual(response.json()["data"]["lotto_id"], 555)
         mocked_service.assert_not_called()
 
+    # Scopo: Verifica il caso `test_run_lotto_pipeline_returns_conflict_when_idempotency_in_progress`.
     @override_settings(API_STRONG_IDEMPOTENCY_ENABLED=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.core.api.endpoint_helpers.IdempotencyStore.claim_or_replay")
@@ -274,3 +339,89 @@ class VenditePipelineApiTests(SimpleTestCase):
         body = response.json()["error"]
         self.assertEqual(body["code"], "E_IDEMPOTENCY_IN_PROGRESS")
         mocked_service.assert_not_called()
+
+    # Scopo: Verifica il caso `test_get_lotto_segnalazioni_summary_ok`.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.fn_get_lotto_segnalazioni_summary")
+    def test_get_lotto_segnalazioni_summary_ok(self, mocked_summary, _mock_auth):
+        mocked_summary.return_value = {
+            "lotto_id": 80,
+            "critical_count": 1,
+            "warning_count": 2,
+            "attention_count": 3,
+            "is_error": True,
+            "blocks_next_step": True,
+            "summary": {
+                "fatture_critical_count": 1,
+                "fatture_warning_count": 1,
+                "lotto_critical_count": 0,
+                "lotto_warning_count": 1,
+                "lotto_info_count": 3,
+            },
+        }
+        response = self.client.get("/api/v1/vendite/lotti/80/segnalazioni/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["lotto_id"], 80)
+        self.assertTrue(data["blocks_next_step"])
+        self.assertEqual(data["critical_count"], 1)
+        mocked_summary.assert_called_once_with(lotto_id=80)
+
+    # Scopo: Verifica il caso `test_get_lotto_segnalazioni_summary_v1_requires_jwt`.
+    def test_get_lotto_segnalazioni_summary_v1_requires_jwt(self):
+        response = self.client.get("/api/v1/vendite/lotti/80/segnalazioni/")
+        self.assertEqual(response.status_code, 401)
+
+    # Scopo: Verifica il caso `test_get_lotto_segnalazioni_summary_rejects_invalid_lotto_id`.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_get_lotto_segnalazioni_summary_rejects_invalid_lotto_id(self, _mock_auth):
+        response = self.client.get("/api/v1/vendite/lotti/0/segnalazioni/")
+        self.assertEqual(response.status_code, 400)
+        body = response.json()["error"]
+        self.assertEqual(body["code"], "E_PIPELINE_VALIDATION")
+
+    # Scopo: Verifica il caso `test_get_lotto_task_runs_ok`.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.fn_get_lotto_task_runs")
+    def test_get_lotto_task_runs_ok(self, mocked_task_runs, _mock_auth):
+        mocked_task_runs.return_value = {
+            "lotto_id": 80,
+            "count": 1,
+            "task_runs": [
+                {
+                    "id": 1001,
+                    "lotto_id": 80,
+                    "pipeline_id": 4,
+                    "stato_doc_fiscale_id": 8,
+                    "task_code": "numera_fatture",
+                    "fase": "Numerazione fatture",
+                    "tentativo": 1,
+                    "task_stato": "COMPLETATO",
+                    "started_at": "2026-02-19T10:00:00+01:00",
+                    "ended_at": "2026-02-19T10:00:02+01:00",
+                    "error_code": None,
+                    "error_message": None,
+                    "meta": {"rollback": False},
+                }
+            ],
+        }
+        response = self.client.get("/api/v1/vendite/lotti/80/task-runs/?limit=50")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["lotto_id"], 80)
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["task_runs"][0]["task_code"], "numera_fatture")
+        mocked_task_runs.assert_called_once_with(lotto_id=80, limit=50)
+
+    # Scopo: Verifica il caso `test_get_lotto_task_runs_v1_requires_jwt`.
+    def test_get_lotto_task_runs_v1_requires_jwt(self):
+        response = self.client.get("/api/v1/vendite/lotti/80/task-runs/")
+        self.assertEqual(response.status_code, 401)
+
+    # Scopo: Verifica il caso `test_get_lotto_task_runs_rejects_invalid_lotto_id`.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_get_lotto_task_runs_rejects_invalid_lotto_id(self, _mock_auth):
+        response = self.client.get("/api/v1/vendite/lotti/0/task-runs/")
+        self.assertEqual(response.status_code, 400)
+        body = response.json()["error"]
+        self.assertEqual(body["code"], "E_PIPELINE_VALIDATION")

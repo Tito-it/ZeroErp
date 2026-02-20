@@ -90,6 +90,16 @@ BEGIN
     RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_dati_societari_required()
+IS '
+Constraint trigger function (DEFERRABLE) su anagrafiche.soggetti che verifica,
+a fine transazione, che per i soggetti il cui tipo_soggetto_dettaglio ha
+dati_societari_policy = ''REQUIRED'' esista una riga in anagrafiche.dati_societari.
+
+In caso di violazione utilizza script.fn_log_and_raise_error con codice
+E_DATI_SOCIETARI_REQUIRED_MANCANTI.
+';
 ```
 
 ---

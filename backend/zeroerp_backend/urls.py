@@ -15,7 +15,6 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.conf import settings
 from django.http import JsonResponse
 from django.urls import include, path
 from django.views.generic import RedirectView
@@ -24,6 +23,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 
+# Scopo: Gestisce `health_view` nel flusso applicativo del modulo.
 def health_view(_request):
     """Health endpoint minimale per smoke check container."""
     return JsonResponse({"status": "ok"})
@@ -56,10 +56,3 @@ urlpatterns = [
     path("api/v1/vendite/", include("apps.vendite.api.urls_v1")),
     path("", RedirectView.as_view(url="/admin/", permanent=False)),
 ]
-
-if settings.API_LEGACY_ROUTES_ENABLED:
-    # Compatibilita` temporanea: route legacy senza version prefix.
-    urlpatterns += [
-        path("api/core/", include("apps.core.api.urls")),
-        path("api/vendite/", include("apps.vendite.api.urls")),
-    ]

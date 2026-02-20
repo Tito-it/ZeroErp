@@ -54,8 +54,17 @@ introduciamo due concetti:
 
 Regola chiave:
 * Il **lotto giornaliero** può restare **APERTO** anche se le fatture sono **EMESSE**.
-* Si chiude **solo** quando il lotto passa a **INVIATA**.
+* Si chiude quando lo stato step ha `config.stati_doc_fiscale.chiude_lotto = true` (regola parametrica).
 * Le fatture giornaliere **non sono retrocedibili** (no ritorno a BOZZA).
+
+Regola finale attiva:
+* la chiusura operativa lotto e` eseguita solo a fine step tramite controllo `chiude_lotto`;
+* non esistono chiusure hardcoded per stato specifico e non esistono task pipeline dedicati alla chiusura.
+
+Roadmap tecnica in corso (runtime task):
+* introduzione policy task su pipeline (`vendite.fatturazione_pipeline_task_policy`);
+* introduzione tracing task per lotto (`vendite.fatturazione_lotti_task_runs`);
+* uso nel runner Django per resume/reset deterministico per task.
 
 Questo consente di **accorpare più fatture** nello stesso lotto giornaliero,
 senza perdere la governance documentale.
@@ -200,6 +209,13 @@ Nello step `EMESSA` del lotto massivo sono previsti i task pre-fiscali:
 * generazione source minimi/fondi
 * applicazione fondi alle fatture del lotto
 * ricalcolo IVA lotto (con aggiornamento totali testata)
+
+### ⚙️ Step `INVIATA` (massivo)
+Nello step `INVIATA` del lotto massivo e` previsto il task di preparazione payload SDI:
+
+* apertura/riuso tentativi in `vendite.fatture_sdi`
+* registrazione eventi `PREPARED` in `vendite.fatture_sdi_eventi`
+* dataset pronto per generazione file di invio
 
 Prerequisito operativo:
 * Le transizioni in `config.stati_doc_fiscale_transizioni` devono essere configurate (es. `DRAFT -> EMESSA` con `solo_fattura=false`), altrimenti il trigger lotto blocca l'avanzamento step.

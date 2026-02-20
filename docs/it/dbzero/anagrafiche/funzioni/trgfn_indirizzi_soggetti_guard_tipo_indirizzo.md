@@ -79,6 +79,12 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()
+IS 'Trigger function per validare coerenza tra anagrafiche.indirizzi_soggetti e config.tipi_soggetto_dettaglio_tipi_indirizzo.
+Verifica che tipo_indirizzo sia ammesso per il tipo_soggetto_dettaglio del soggetto associato.
+Se non esiste alcuna riga di matrice per il tipo_soggetto_dettaglio → tutti i tipi sono ammessi.
+Altrimenti, solo i tipi attivi e validi sono permessi.';
 ```
 
 ---

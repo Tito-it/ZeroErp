@@ -25,10 +25,17 @@ BEGIN
   --   - lotto_id obbligatorio
   -- =========================================================
 
-  IF p_lotto_id IS NULL THEN
+  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_log_pipeline_fase', 'E_GENERICO',
-      jsonb_build_object('detail','lotto_id obbligatorio'),
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','lotto_id obbligatorio')
+      ),
       NULL::uuid, 'lotto_id obbligatorio'
     );
   END IF;
@@ -36,7 +43,14 @@ BEGIN
   IF p_status IS NULL OR p_status NOT IN ('I','W','C') THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_log_pipeline_fase', 'E_GENERICO',
-      jsonb_build_object('detail','status non valido', 'status', p_status),
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','status non valido', 'status', p_status)
+      ),
       NULL::uuid, 
       concat('status non valido', ' status:', p_status)
     );
@@ -50,7 +64,14 @@ BEGIN
   IF NOT FOUND THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_log_pipeline_fase', 'E_GENERICO',
-      jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id),
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id)
+      ),
       NULL::uuid, 
       concat('Lotto non trovato', ' lotto_id:', p_lotto_id)
     );
@@ -90,6 +111,9 @@ BEGIN
   );
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_log_pipeline_fase(p_lotto_id bigint, p_stato_doc_fiscale_id bigint, p_fase text, p_status character, p_messaggio text, p_meta jsonb)
+IS 'Registra una fase della pipeline di fatturazione nel log lotto con metadati di stato operativo.';
 ```
 
 ---

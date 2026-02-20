@@ -9,6 +9,7 @@ from apps.core.services.request_context import get_idempotency_key, get_request_
 # Helper condivisi API: envelope successo uniforme con metadati request.
 
 
+# Scopo: Gestisce `success_response` nel flusso applicativo del modulo.
 def success_response(data: dict[str, Any], *, status: int = 200) -> JsonResponse:
     meta: dict[str, Any] = {}
     request_id = get_request_id()

@@ -47,6 +47,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_guard_gestore()
+IS 'Consente il collegamento auth_user solo per risorse del gestore.';
 ```
 
 ---

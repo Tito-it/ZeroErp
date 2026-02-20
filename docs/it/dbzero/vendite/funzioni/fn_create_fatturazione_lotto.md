@@ -36,7 +36,7 @@ BEGIN
   IF p_competenza_mese IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
-      jsonb_build_object('detail','competenza_mese obbligatoria'),
+      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','competenza_mese obbligatoria')),
       NULL::uuid, 'competenza_mese obbligatoria'
     );
   END IF;
@@ -44,13 +44,28 @@ BEGIN
   IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
-      jsonb_build_object('detail','tipo_doc_fiscale_id obbligatorio'),
+      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','tipo_doc_fiscale_id obbligatorio')),
       NULL::uuid,
       'tipo_doc_fiscale_id obbligatorio'
     );
   END IF;
 
-  
+  IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','utility_id non valido', 'utility_id', p_utility_id)),
+      NULL::uuid, 'utility_id non valido'
+    );
+  END IF;
+
+  IF p_billing_account_id IS NOT NULL AND p_billing_account_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','billing_account_id non valido', 'billing_account_id', p_billing_account_id)),
+      NULL::uuid, 'billing_account_id non valido'
+    );
+  END IF;
+
   v_competenza := date_trunc('month', p_competenza_mese)::date;
 
   v_utility_id := p_utility_id;
@@ -63,10 +78,10 @@ BEGIN
     IF v_utility_id IS NULL THEN
       PERFORM script.fn_log_and_raise_error(
         'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
-        jsonb_build_object(
+        jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object(
           'detail','Utility non risolta da billing_account',
           'billing_account_id', p_billing_account_id
-        ),
+        )),
         NULL::uuid,
         concat('Utility non risolta da billing_account',
         ' billing_account_id: ', p_billing_account_id::text)
@@ -76,11 +91,11 @@ BEGIN
     IF p_utility_id IS NOT NULL AND p_utility_id <> v_utility_id THEN
       PERFORM script.fn_log_and_raise_error(
         'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
-        jsonb_build_object(
+        jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object(
           'detail','Utility non coerente con billing_account',
           'billing_account_id', p_billing_account_id,
           'utility_id', p_utility_id
-        ),
+        )),
         NULL::uuid,
         concat('Utility non coerente con billing_account',
           ' billing_account_id: ', p_billing_account_id::text,
@@ -92,7 +107,7 @@ BEGIN
   IF v_utility_id IS NULL OR v_utility_id <= 0 THEN 
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
-      jsonb_build_object('detail','utility_id obbligatoria'),
+      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','utility_id obbligatoria')),
       NULL::uuid, 'utility_id obbligatoria'
     );
   END IF;
@@ -108,10 +123,10 @@ BEGIN
   IF NOT v_map_exists THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
-      jsonb_build_object(
+      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object(
         'detail','Tipo documento fiscale non attivo o inesistente',
         'tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
-      ),
+      )),
       NULL::uuid,
       concat('Tipo documento fiscale non attivo o inesistente', ' tipo_doc_fiscale_id: ', p_tipo_doc_fiscale_id::text)
     );
@@ -127,10 +142,10 @@ BEGIN
   IF NOT v_map_exists THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
-      jsonb_build_object(
+      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object(
         'detail','Mapping tipo_doc_fiscale -> registro assente',
         'tipo_doc_fiscale_id', p_tipo_doc_fiscale_id
-      ),
+      )),
       NULL::uuid,
       concat('Mapping tipo_doc_fiscale -> registro assente', ' tipo_doc_fiscale_id: ', p_tipo_doc_fiscale_id::text)
     );
@@ -139,7 +154,7 @@ BEGIN
   SELECT id
     INTO v_stato_doc_id
     FROM config.stati_doc_fiscale
-  WHERE codice = 'DRAFT'
+  WHERE codice_interno = 'DRAFT'
     AND applica_lotto IS TRUE
     AND attivo IS TRUE
   ORDER BY ordine
@@ -148,7 +163,7 @@ BEGIN
   IF v_stato_doc_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
-      jsonb_build_object('detail','Stato DRAFT non disponibile per lotto'),
+      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','Stato DRAFT non disponibile per lotto')),
       NULL::uuid, 'Stato DRAFT non disponibile per lotto'
     );
   END IF;
@@ -179,6 +194,9 @@ BEGIN
   RETURN v_lotto_id;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_create_fatturazione_lotto(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_utility_id integer, p_billing_account_id bigint, p_lock_batch_id uuid, p_meta jsonb)
+IS 'Crea lotto di fatturazione validando coerenza competenza/utility/tipo_doc e stato DRAFT.';
 ```
 
 ---

@@ -59,6 +59,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION config.trgfn_stradario_generale_protect_update()
+IS 'Blocca UPDATE di descrizione, descrizione_breve, toponomastica_id se esistono righe in config.stradario, indicando la colonna modificata';
 ```
 
 ---

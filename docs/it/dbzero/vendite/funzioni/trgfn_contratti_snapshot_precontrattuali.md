@@ -71,6 +71,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.trgfn_contratti_snapshot_precontrattuali()
+IS 'Snapshot precontrattuali su INSERT di vendite.contratti (crea vendite.contratti_utilities se disponibile).';
 ```
 
 ---

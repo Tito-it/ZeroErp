@@ -140,6 +140,9 @@ BEGIN
     p_error_code;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_log_error_only(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
+IS 'Logga su dbops.error_log via connessione dblink separata (out-of-transaction), senza sollevare eccezioni.';
 ```
 
 ---

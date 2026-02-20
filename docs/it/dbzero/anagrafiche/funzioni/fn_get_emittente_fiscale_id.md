@@ -50,6 +50,9 @@ BEGIN
   RETURN v_emittente_id;
 END
 $function$
+
+COMMENT ON FUNCTION anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id bigint)
+IS 'Restituisce l''emittente fiscale per billing_account; fallback su default globale.';
 ```
 
 ---

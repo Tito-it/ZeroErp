@@ -26,10 +26,17 @@ BEGIN
   --   - se nessun log attivo: status I
   -- =========================================================
 
-  IF p_lotto_id IS NULL THEN
+  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_log_lotto_esito_fatture', 'E_GENERICO',
-      jsonb_build_object('detail','lotto_id obbligatorio'),
+      jsonb_build_object(
+        'scope','LOTTO',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','lotto_id obbligatorio')
+      ),
       NULL::uuid, 'lotto_id obbligatorio'
     );
   END IF;
@@ -72,6 +79,9 @@ BEGIN
   );
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_log_lotto_esito_fatture(p_lotto_id bigint)
+IS 'Calcola l''esito del lotto dai log fatture (C/W/I) e scrive un evento sintetico su fatturazione_lotti_log.';
 ```
 
 ---

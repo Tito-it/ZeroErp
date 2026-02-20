@@ -95,6 +95,10 @@ BEGIN
   RETURN v_id;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_get_record_id_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp without time zone)
+IS 'Restituisce l''ID TEXT di un record valido a p_as_of esclusivamente dallo storico; 
+  se non esiste snapshot valido, restituisce NULL.';
 ```
 
 ---

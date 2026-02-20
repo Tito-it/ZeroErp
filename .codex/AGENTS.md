@@ -1,26 +1,48 @@
 # AGENTS.md
 
-
 ## Quick Start per AI Agent
-- Progetto: ERP Django + PostgreSQL
-- Stack: Python 3.14, Django 6.01, Liquibase v2
+
+- Progetto: ERP Django + PostgreSQL, open-source GPL v3
+- Stack: Python 3.14, Django 6.01, Liquibase v2, pgTAP per test DB
 - Prima di implementare: leggi docs in `docs/it/` pertinenti
 - Struttura: backend in `backend/`, DB migrations in `db/changelog/migrations_v2/`
+- Filosofia: **DB-first** — la logica di business sta in PostgreSQL; Django orchestra e espone API; Vue (futuro) solo presentazione
 
 ## Scope
+
 - Repo: ZeroErp
-- Default language: it-IT
+- Default language: it-IT (docs, commenti Python e SQL)
 - Follow docs in `docs/it/linee-guida-sql.md`, `docs/it/linee-guida-trigger.md`, `docs/it/liquibase-setup-workflow.md`
 
+## Ambiente di sviluppo
+
+- **Due server separati**: un server DB (PostgreSQL) e un server backend (Django, accessibile via VSCode SSH)
+- Il branch centrale di integrazione è `Tito-dev`; i branch di lavoro sono `dev/db-tid` (DB) e `dev/backend-tid` (backend)
+- Le PR vanno da branch di lavoro → `Tito-dev` → poi a `main`
+- Non eseguire migrazioni DB senza conferma esplicita dell'utente (vedi Workflow Safety)
+
+## Versione Python
+
+- **Fonte unica di verità**: `.python-version` nella root del repo (es. `3.14.2`)
+- CI (`ci.yaml`, `ci-validate.yaml`) leggono da `.python-version` automaticamente
+- `Dockerfile` usa `ARG PYTHON_VERSION` passato dalla CI; default nell'ARG allineato alla major.minor
+- `backend/requirements.txt` è generato da pip-compile: editare `backend/requirements.in` e rieseguire:
+  `pip-compile backend/requirements.in --output-file backend/requirements.txt`
+- `requirements.txt` radice = strumenti dev (mkdocs, pre-commit…), gestito con `pip freeze` via `scripts/update-venv.sh`
+- Per aggiornare la versione Python: modificare solo `.python-version`, poi rigenerare `backend/requirements.txt`
+
 ## Backend (Django)
+
 - Codice backend in `backend/`
 - Versioni: Python 3.14, Django 6.01
 - Evitare API/metodi deprecati; seguire best practice Django
 - Accesso webserver configurato: test migrazione solo su richiesta
-- Per i file Python **generati** aggiungere sempre l’header standard in `templates/python-header.txt`.
-- Per ogni nuovo file Python (non generato da Django) aggiungere l’header standard di `templates/python-header.txt` e un breve commento iniziale sullo scopo.
+- Per i file Python **generati** aggiungere sempre l'header standard in `templates/python-header.txt`.
+- Per ogni nuovo file Python (non generato da Django) aggiungere l'header standard di `templates/python-header.txt` e un breve commento iniziale sullo scopo.
+- Nei file Python aggiungere un commento sintetico (`# Scopo: ...`) prima di ogni funzione/metodo (`def`/`async def`), in italiano.
+- Per funzioni/metodi che orchestrano processi complessi (pipeline, transazioni, dispatch task, integrazioni esterne), rendere il commento `Scopo` iniziale piu` dettagliato: obiettivo, perimetro e risultato atteso.
 - Nei file Python aggiungere commenti sintetici nei blocchi non banali (orchestrazione, transazioni, mapping task/SQL), scritti in italiano.
-- Dopo un `ErrorManager.require(... is not None ...)` aggiungere sempre l’`assert` corrispondente per aiutare il type checker.
+- Dopo un `ErrorManager.require(... is not None ...)` aggiungere sempre l'`assert` corrispondente per aiutare il type checker.
 - Dopo `row = cursor.fetchone()` aggiungere guard (`if not row`) oppure `assert row is not None` prima di usare `row[...]`.
 - Nei servizi/classi Python usare nomi metodo espliciti e orientati al dominio (es. `run_pipeline`), evitando nomi generici/ambigui come `run`.
 - Per error handling servizi/API usare helper centralizzato in `apps/core/services/error_manager.py`, evitando logica duplicata nei moduli dominio.
@@ -36,6 +58,7 @@
 - Per endpoint search impostare `is_search_endpoint = True` per attivare throttling DRF (`apps/core/api/throttling.py`).
 
 ## Liquibase v2 Workflow
+
 - New work only in `db/changelog/migrations_v2/`
 - File extension: `.yaml` only
 - File naming: `YYYYMMDD-NN-<tipo>-<descrizione>.yaml`
@@ -45,7 +68,8 @@
 - `80_data`, `85_pgagent`, `90_end` are included via `includeAll` in master
 
 ## Regole Documentazione
-- I contenuti concettuali principali sono nella documentazione dell’area tecnica (guide).
+
+- I contenuti concettuali principali sono nella documentazione dell'area tecnica (guide).
 - Prima di strutturare una soluzione, consultare le guide pertinenti (es. soggetti → guida soggetti e ruoli anagrafici).
 - Gli script aggiornati per tabelle/views/funzioni si trovano in `<schema>/tabelle`, `<schema>/views`, `<schema>/funzioni`.
 - Non modificare questi file auto-generati: servono solo come riferimento.
@@ -61,6 +85,7 @@
 - Template di riferimento: `docs/it/backend/_templates/manual-standard.md`
 
 ## SQL Conventions
+
 - Schemas/tables/columns naming per `linee-guida-sql.md`
 - Prefer UUID for master entities; SERIAL/IDENTITY for technical tables
 - Use `tx_id UUID` when required by transaction-id policy
@@ -75,6 +100,7 @@
 - Nelle funzioni SQL, per parametri numerici di tipo ID applicare guard di validazione esplicita: errore se `NULL` o `<= 0` (non normalizzare silenziosamente).
 
 ## Trigger Conventions
+
 - Trigger name: `trg_<schema_opzionale>_<tabella>_<fase>_<descrizione>_<eventi>`
 - Phases: `_a10_` for guard/block, `_z90_` for final/deferrable
 - Event suffixes: `_ins/_upd/_dlt` (combine if needed)
@@ -82,14 +108,17 @@
 - Errors via `script.fn_log_and_raise_error(...)`
 
 ## Guard vs Check Functions
+
 - `fn_check_*`: pure checks returning boolean, no raise
 - `fn_guard_*`: fail-fast, can raise/log
 
 ## Workflow Safety
+
 - Ask before running DB migrations locally
 - Avoid destructive commands without explicit approval
 
 ## Test (pgtap)
+
 - Test DB: pgtap
 - Percorso: `db/pgtap/`
 - Nei file di test, all'inizio inserire un indice dei test eseguiti nei commenti.

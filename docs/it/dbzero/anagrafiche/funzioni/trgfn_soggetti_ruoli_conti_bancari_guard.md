@@ -54,6 +54,10 @@ BEGIN
   RETURN NEW;
 END
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
+IS 'Guard-rail: impedisce uso di conti non attivi, 
+controlla coerenza date e cura audit base.';
 ```
 
 ---

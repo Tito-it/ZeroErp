@@ -74,6 +74,9 @@ BEGIN
     END IF;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_get_parameter_full(p_code text, p_tenant_id integer, p_django_user_id integer, p_group_ids integer[], p_session_key text, p_function_name text)
+IS 'Risoluzione parametro con precedenza: user → group → tenant → session → function → default. Usa config.parameter_overrides (django_user_id/django_group_id).';
 ```
 
 ---

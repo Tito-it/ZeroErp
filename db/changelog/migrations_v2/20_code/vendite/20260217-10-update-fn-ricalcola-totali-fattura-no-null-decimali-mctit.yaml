@@ -1,0 +1,218 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260217-10-update-fn-ricalcola-totali-fattura-no-null-decimali-mctit.yaml
+
+  - changeSet:
+      id: 20260217-10-update-fn-ricalcola-totali-fattura-no-null-decimali
+      author: mctit
+      comment: "Rimuove branch legacy su decimali NULL in fn_ricalcola_totali_fattura e introduce guard su configurazione emittente/utility"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_totali_fattura(
+                p_fattura_id vendite.fatture.id%TYPE
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_imponibile_tot vendite.fatture.imponibile_tot%TYPE;
+                v_imposta_tot vendite.fatture.imposta_tot%TYPE;
+                v_totale_doc vendite.fatture.totale_doc%TYPE;
+                v_totale_fondi vendite.fatture_fondi_fattura.importo%TYPE;
+                v_totale_a_pagare vendite.fatture.totale_a_pagare%TYPE;
+                v_raw_totale vendite.fatture.totale_a_pagare%TYPE;
+                v_round_totale vendite.fatture.totale_a_pagare%TYPE;
+                v_arro_attuale vendite.fatture.arrotondamento_attuale%TYPE;
+                v_arro_precedente vendite.fatture.arrotondamento_precedente%TYPE;
+                v_billing_account_id vendite.fatture.billing_account_id%TYPE;
+                v_tipo_doc_fiscale_id vendite.fatture.tipo_doc_fiscale_id%TYPE;
+                v_emittente_soggetto_ruolo_id vendite.fatture.emittente_soggetto_ruolo_id%TYPE;
+                v_valuta_id vendite.fatture.valuta_id%TYPE;
+                v_utility_id config.utilities.id%TYPE;
+                v_min_soglia_min anagrafiche.emittenti_fiscali_utilities.minimo_soglia_min%TYPE;
+                v_min_soglia_max anagrafiche.emittenti_fiscali_utilities.minimo_soglia_max%TYPE;
+                v_decimali anagrafiche.emittenti_fiscali_utilities.arrotondamento_importi_dec%TYPE;
+                v_metodo anagrafiche.emittenti_fiscali_utilities.metodo_arrotondamento_importi%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Ricalcolo totali testata a partire da riepiloghi IVA,
+                --   fondi fattura e regole emittente/utility.
+                --
+                -- Nota operativa:
+                --   - arrotondamento_importi_dec e' obbligatorio in
+                --     anagrafiche.emittenti_fiscali_utilities (0..2)
+                --   - assenza configurazione emittente/utility => errore
+                --
+                -- Effetti:
+                --   - aggiorna imponibile/imposta/totali/minimo in fattura
+                --   - sincronizza le righe contabili dei fondi fattura
+                -- =========================================================
+              
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_ricalcola_totali_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','fattura_id obbligatoria')
+                    ),
+                    NULL::uuid,
+                    'fattura_id non valido'
+                  );
+                END IF;
+              
+                SELECT f.billing_account_id,
+                       f.tipo_doc_fiscale_id,
+                       f.emittente_soggetto_ruolo_id,
+                       f.valuta_id
+                  INTO v_billing_account_id,
+                       v_tipo_doc_fiscale_id,
+                       v_emittente_soggetto_ruolo_id,
+                       v_valuta_id
+                  FROM vendite.fatture f
+                 WHERE f.id = p_fattura_id;
+              
+                SELECT COALESCE(
+                         (SELECT fl.utility_id
+                            FROM vendite.fatturazione_lotti_fatture lf
+                            JOIN vendite.fatturazione_lotti fl ON fl.id = lf.lotto_id
+                           WHERE lf.fattura_id = p_fattura_id
+                           ORDER BY lf.id DESC
+                           LIMIT 1),
+                         (SELECT ba.utility_id
+                            FROM anagrafiche.billing_account ba
+                           WHERE ba.id = v_billing_account_id)
+                       )
+                  INTO v_utility_id;
+              
+                -- Otteengo i totali da riepiloghi IVA.
+                SELECT
+                  COALESCE(SUM(r.imponibile), 0),
+                  COALESCE(SUM(r.imposta), 0)
+                  INTO v_imponibile_tot, v_imposta_tot
+                FROM vendite.fatture_riepiloghi_iva r
+                WHERE r.fattura_id = p_fattura_id;
+              
+                -- Ottengo il totale fondi associati alla fattura (se presenti).
+                v_totale_fondi := vendite.fn_get_totale_fondi_fattura(p_fattura_id);
+                v_totale_doc := COALESCE(v_imponibile_tot, 0) + COALESCE(v_imposta_tot, 0);
+              
+                -- Parametri di arrotondamento e soglie minime da regole emittente/utility.
+                SELECT
+                  e.minimo_soglia_min,
+                  e.minimo_soglia_max,
+                  e.arrotondamento_importi_dec,
+                  COALESCE(e.metodo_arrotondamento_importi, 'HALF_UP')
+                  INTO v_min_soglia_min, v_min_soglia_max, v_decimali, v_metodo
+                FROM anagrafiche.emittenti_fiscali_utilities e
+                WHERE e.emittente_soggetto_ruolo_id = v_emittente_soggetto_ruolo_id
+                  AND e.utility_id = v_utility_id
+                  AND e.attivo IS TRUE
+                LIMIT 1;
+              
+                -- Con schema attuale, arrotondamento_importi_dec e' NOT NULL.
+                -- Se qui e' NULL significa configurazione emittente/utility assente.
+                IF v_decimali IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_ricalcola_totali_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object(
+                        'detail','Configurazione emittente/utility non trovata',
+                        'emittente_soggetto_ruolo_id', v_emittente_soggetto_ruolo_id,
+                        'utility_id', v_utility_id
+                      )
+                    ),
+                    NULL::uuid,
+                    'Configurazione emittente/utility non trovata'
+                  );
+                END IF;
+              
+                -- Recupero arrotondamento precedente per ricalcolare arrotondamento attuale e totale a pagare.
+                v_arro_precedente := vendite.fn_get_arrotondamento_scope(
+                  v_billing_account_id,
+                  v_utility_id,
+                  v_tipo_doc_fiscale_id,
+                  v_emittente_soggetto_ruolo_id,
+                  v_valuta_id
+                );
+              
+                v_raw_totale := v_totale_doc + COALESCE(v_totale_fondi, 0) + COALESCE(v_arro_precedente, 0);
+                v_round_totale := 0;
+              
+                -- Applico arrotondamento secondo metodo specificato nelle regole emittente/utility.
+                -- L'arrotondamento viene applicato al totale a pagare (imponibile + imposta + fondi)
+                -- e non solo al totale documento.
+                IF v_metodo = 'UP' THEN
+                  v_round_totale := (CASE WHEN v_raw_totale >= 0
+                    THEN ceil(v_raw_totale * power(10::numeric, v_decimali))
+                    ELSE -ceil(abs(v_raw_totale) * power(10::numeric, v_decimali))
+                  END) / power(10::numeric, v_decimali);
+                ELSIF v_metodo = 'DOWN' THEN
+                  v_round_totale := (CASE WHEN v_raw_totale >= 0
+                    THEN floor(v_raw_totale * power(10::numeric, v_decimali))
+                    ELSE -floor(abs(v_raw_totale) * power(10::numeric, v_decimali))
+                  END) / power(10::numeric, v_decimali);
+                ELSIF v_metodo = 'HALF_DOWN' THEN
+                  v_round_totale := (CASE WHEN v_raw_totale >= 0
+                    THEN ceil((v_raw_totale * power(10::numeric, v_decimali)) - 0.5)
+                    ELSE -ceil((abs(v_raw_totale) * power(10::numeric, v_decimali)) - 0.5)
+                  END) / power(10::numeric, v_decimali);
+                ELSE
+                  v_round_totale := (CASE WHEN v_raw_totale >= 0
+                    THEN floor((v_raw_totale * power(10::numeric, v_decimali)) + 0.5)
+                    ELSE -floor((abs(v_raw_totale) * power(10::numeric, v_decimali)) + 0.5)
+                  END) / power(10::numeric, v_decimali);
+                END IF;
+              
+                v_arro_attuale := v_round_totale - v_raw_totale;
+                v_totale_a_pagare := v_raw_totale + v_arro_attuale;
+              
+                -- Salvo il valore dell'arrotondamento aggiornato nello scope.
+                PERFORM vendite.fn_set_arrotondamento_scope(
+                  v_billing_account_id,
+                  v_utility_id,
+                  v_tipo_doc_fiscale_id,
+                  v_emittente_soggetto_ruolo_id,
+                  v_valuta_id,
+                  COALESCE(v_arro_precedente, 0) + COALESCE(v_arro_attuale, 0)
+                );
+                
+                -- Calcolo totale a pagare e verifico soglie minime per flag "minimo".
+                UPDATE vendite.fatture f
+                   SET imponibile_tot = v_imponibile_tot,
+                       imposta_tot = v_imposta_tot,
+                       totale_doc = v_totale_doc,
+                       arrotondamento_precedente = v_arro_precedente,
+                       arrotondamento_attuale = v_arro_attuale,
+                       totale_a_pagare = v_totale_a_pagare,
+                       minimo = (
+                         (v_min_soglia_min IS NOT NULL AND v_totale_a_pagare >= v_min_soglia_min)
+                         AND (v_min_soglia_max IS NULL OR v_totale_a_pagare <= v_min_soglia_max)
+                       ),
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE f.id = p_fattura_id;
+              
+                -- Sync contabili/righe legate ai fondi assegnati alla fattura.
+                PERFORM vendite.fn_sync_contabili_fondo_fattura(p_fattura_id);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ricalcola_totali_fattura(bigint)
+              IS 'Ricalcola i totali fattura (imponibile/imposta/totale/minimo) con arrotondamento obbligatorio da configurazione emittente-utility e sincronizza le righe contabili dei fondi.';

@@ -45,6 +45,9 @@ BEGIN
     AND COALESCE(cs.is_final, false) IS FALSE;
 END;
 $function$
+
+COMMENT ON FUNCTION pagamenti.fn_get_saldo_fattura_contabili(p_fattura_id bigint)
+IS 'Restituisce il saldo contabile fattura da righe in stato postabile.';
 ```
 
 ---

@@ -49,6 +49,9 @@ BEGIN
   RETURN NULL;
 END
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()
+IS 'Impedisce assenza o duplicazione dell''emittente fiscale di default';
 ```
 
 ---

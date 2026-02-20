@@ -65,6 +65,9 @@ BEGIN
   RETURN TRUE;
 END;
 $function$
+
+COMMENT ON FUNCTION dbops.fn_check_pipeline_task_registered(p_dominio_id bigint, p_task_code text)
+IS 'Verifica che un task sia registrato e attivo nel registry per dominio.';
 ```
 
 ---

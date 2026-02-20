@@ -62,6 +62,10 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION config.trgfn_iva_guard_conti_iva()
+IS 'Controlla i vincoli sui conti IVA in fase di inserimento/aggiornamento.La funzione verifica che i conti IVA di acquisto e vendita siano rispettivamente
+     di tipo A (acquisti) e V (vendite).';
 ```
 
 ---

@@ -26,6 +26,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.trgfn_ddt_normalize()
+IS 'Normalize: imposta anno/data se numero presente e valori mancanti.';
 ```
 
 ---

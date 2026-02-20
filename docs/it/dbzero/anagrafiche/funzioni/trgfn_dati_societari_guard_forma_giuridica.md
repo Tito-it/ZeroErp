@@ -62,6 +62,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()
+IS 'Guard: verifica coerenza paese (stato_id) tra soggetto e forma giuridica. Emette E_FORMA_GIURIDICA_PAESE se incoerente.';
 ```
 
 ---

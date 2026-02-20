@@ -21,6 +21,9 @@ AS $function$
     RETURN NEW;
   END;
   $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_sync_geoloc()
+IS 'La funzione di trigger per sincronizzare la geolocalizzazione degli indirizzi da anagrafiche.indirizzi_dettaglio.';
 ```
 
 ---

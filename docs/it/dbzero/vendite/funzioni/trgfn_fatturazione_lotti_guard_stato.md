@@ -98,6 +98,9 @@ BEGIN
   RETURN NEW;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.trgfn_fatturazione_lotti_guard_stato()
+IS 'Guard transizioni stato per vendite.fatturazione_lotti basato su config.stati_doc_fiscale_transizioni; vincolo meta.tipo_lotto (se presente); bypass via GUC zeroerp.maintenance_reset_lotto_draft.';
 ```
 
 ---

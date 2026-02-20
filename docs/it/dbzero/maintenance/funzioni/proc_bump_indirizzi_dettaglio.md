@@ -20,6 +20,9 @@ BEGIN
   WHERE stradario_id = p_stradario_id;
 END;
 $procedure$
+
+COMMENT ON PROCEDURE maintenance.proc_bump_indirizzi_dettaglio(IN p_stradario_id integer)
+IS 'Procedura di riallineamento indirizzi_dettaglio per cambio stradario_id.';
 ```
 
 ---

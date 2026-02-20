@@ -1,0 +1,11 @@
+id,pipeline_id,task_code,annullabile,resume_mode,attivo,meta,data_insert,user_insert,data_update,user_update
+1,1,select_attivita,f,RESUME_TASK,t,"{""scope"":""DRAFT""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
+2,1,generate_fatture_righe,t,RESUME_STEP,t,"{""scope"":""DRAFT""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
+3,3,genera_fondi_source_lotto,t,RESUME_STEP,t,"{""scope"":""EMESSA""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
+4,3,applica_fondi_lotto,t,RESUME_STEP,t,"{""scope"":""EMESSA""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
+5,3,ricalcola_iva_lotto,t,RESUME_STEP,t,"{""scope"":""EMESSA""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
+6,3,reset_lotto_draft,t,RESET_STEP,t,"{""scope"":""EMESSA"",""rollback"":true}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
+7,4,numera_fatture,f,RESUME_STEP,t,"{""scope"":""DEFINITIVA""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
+8,5,prepare_sdi_payload_lotto,t,RESUME_TASK,t,"{""scope"":""INVIATA""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
+9,6,numera_fatture,f,RESUME_STEP,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
+10,7,prepare_sdi_payload_lotto,t,RESUME_TASK,t,"{""scope"":""INVIATA"",""tipo_lotto"":""GIORNALIERO""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb

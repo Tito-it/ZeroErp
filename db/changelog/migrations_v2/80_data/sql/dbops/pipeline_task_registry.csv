@@ -2,8 +2,9 @@ id,dominio_id,task_code,descrizione,attivo,meta,data_insert,user_insert,data_upd
 1,1,select_attivita,Selezione e lock attivita fatturabili,true,{},2026-02-08 00:00:00+01,titodb,,
 2,1,generate_fatture_righe,Generazione righe fattura,true,{},2026-02-08 00:00:00+01,titodb,,
 3,1,numera_fatture,Numerazione e stato fatture,true,{},2026-02-08 00:00:00+01,titodb,,
-4,1,close_lotto,Chiusura operativa lotto,true,{},2026-02-10 00:00:00+01,titodb,,
+4,1,close_lotto,Chiusura operativa lotto,false,{},2026-02-10 00:00:00+01,titodb,2026-02-18 13:20:00+01,titodb
 5,1,reset_lotto_draft,Reset tecnico lotto massivo in bozza,true,{},2026-02-16 12:30:00+01,titodb,,
 6,1,genera_fondi_source_lotto,Generazione/aggiornamento source fondi per lotto,true,{},2026-02-16 12:45:00+01,titodb,,
 7,1,applica_fondi_lotto,Applicazione fondi source alle fatture del lotto,true,{},2026-02-16 12:45:00+01,titodb,,
 8,1,ricalcola_iva_lotto,Ricalcolo IVA lotto con aggiornamento totali,true,{},2026-02-16 12:45:00+01,titodb,,
+9,1,prepare_sdi_payload_lotto,Preparazione payload SDI e apertura tentativi lotto,true,{},2026-02-16 19:00:00+01,titodb,,

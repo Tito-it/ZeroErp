@@ -26,6 +26,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()
+IS 'Guard/normalize: canale_fe e codice (no generazione automatica).';
 ```
 
 ---

@@ -36,10 +36,17 @@ BEGIN
   --   - regole da vendite.articolo_regole_fatturazione (fallback default)
   -- =========================================================
 
-  IF p_attivita_id IS NULL THEN
+  IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_group_attivita_fatturabili', 'E_GENERICO',
-      jsonb_build_object('detail','attivita_id obbligatorio'),
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','attivita_id obbligatorio', 'attivita_id', p_attivita_id)
+      ),
       NULL::uuid, 'attivita_id obbligatorio'
     );
   END IF;
@@ -68,7 +75,14 @@ BEGIN
   IF v_articolo_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_group_attivita_fatturabili', 'E_GENERICO',
-      jsonb_build_object('detail','attivita non trovata', 'attivita_id', p_attivita_id),
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail','attivita non trovata', 'attivita_id', p_attivita_id)
+      ),
       NULL::uuid, 'Attivita non trovata'
     );
   END IF;
@@ -106,6 +120,9 @@ BEGIN
   );
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_group_attivita_fatturabili(p_attivita_id bigint)
+IS 'Costruisce la chiave di aggregazione riga fattura da attivita_fatturabili con fallback regole articolo.';
 ```
 
 ---

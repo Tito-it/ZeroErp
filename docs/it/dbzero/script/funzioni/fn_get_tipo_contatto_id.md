@@ -47,6 +47,9 @@ BEGIN
     RETURN v_id;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_get_tipo_contatto_id(p_cod_int_tipo_contatto character varying)
+IS 'Recupera l''ID del tipo di contatto dal codice interno';
 ```
 
 ---

@@ -93,6 +93,9 @@ BEGIN
   END IF;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_guard_utility_tipo_ruolo(p_utility_id integer, p_tipo_ruolo_id integer, p_context text)
+IS 'Guard utility->tipo_ruolo: se matrice utility assente fail-open; se presente ammette solo ruoli configurati attivi/validi.';
 ```
 
 ---

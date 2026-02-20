@@ -35,8 +35,15 @@ BEGIN
 
   IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_reset_fondi_fattura', 'E_GENERICO',
-      jsonb_build_object('detail','p_fattura_id obbligatorio'),
+      'vendite', 'fn_reset_fondi_fattura', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', p_fattura_id,
+        'context', jsonb_build_object('detail','p_fattura_id obbligatorio')
+      ),
       NULL::uuid,
       'p_fattura_id non valido'
     );
@@ -51,8 +58,15 @@ BEGIN
 
   IF v_stato_contabile_chiusa_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'vendite.fn_reset_fondi_fattura', 'E_GENERICO',
-      jsonb_build_object('detail','Stato contabile CHIUSA non configurato'),
+      'vendite', 'fn_reset_fondi_fattura', 'E_GENERICO',
+      jsonb_build_object(
+        'scope','FATTURA',
+        'severity','C',
+        'code','E_GENERICO',
+        'lotto_id', NULL,
+        'fattura_id', p_fattura_id,
+        'context', jsonb_build_object('detail','Stato contabile CHIUSA non configurato')
+      ),
       NULL::uuid,
       'Stato contabile CHIUSA mancante'
     );
@@ -172,6 +186,9 @@ BEGIN
   SELECT COALESCE(v_updated_source, 0), COALESCE(v_deleted_fondi, 0);
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_reset_fondi_fattura(p_fattura_id bigint)
+IS 'Resetta i fondi applicati alla fattura, con blocco su contabili CHIUSA e warning in fatture_log quando non ripristinabile.';
 ```
 
 ---

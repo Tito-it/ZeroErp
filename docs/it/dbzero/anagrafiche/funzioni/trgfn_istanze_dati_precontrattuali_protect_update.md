@@ -35,6 +35,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update()
+IS 'Blocca UPDATE/DELETE su istanze_dati_precontrattuali se esistono snapshot in vendite.contratti_utilities.';
 ```
 
 ---

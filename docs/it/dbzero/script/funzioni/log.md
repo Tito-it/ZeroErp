@@ -14,6 +14,9 @@ AS $function$
     --  Completa con VARIADIC: 6 argomenti
   SELECT script.fn_log_error_only($1,$2,$3,$4,$5, VARIADIC $6)
 $function$
+
+COMMENT ON FUNCTION script.log(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
+IS 'Façade completo: supporta VARIADIC valori per format().';
 ```
 
 ---

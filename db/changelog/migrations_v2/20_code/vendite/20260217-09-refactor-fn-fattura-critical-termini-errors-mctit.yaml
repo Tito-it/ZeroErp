@@ -1,0 +1,250 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260217-09-refactor-fn-fattura-critical-termini-errors-mctit.yaml
+
+  - changeSet:
+      id: 20260217-09-01-refactor-fn-fattura-critical-termini-errors
+      author: mctit
+      comment: "Refactor fn_sync_fattura_critical e fn_resolve_termini_pagamento con payload errori, %TYPE e commenti"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_sync_fattura_critical(
+                p_fattura_id vendite.fatture.id%TYPE
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_has_critical boolean;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Aggiorna fatture.critical in base ai log attivi.
+                --
+                -- Regole:
+                --   - C (critical) ha priorita` su W (warning)
+                --   - disabilitato = true esclude il log
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_fattura_critical', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','fattura_id obbligatorio')
+                    ),
+                    NULL::uuid,
+                    'fattura_id non valido'
+                  );
+                END IF;
+
+                SELECT EXISTS (
+                  SELECT 1
+                  FROM vendite.fatture_log
+                  WHERE fattura_id = p_fattura_id
+                    AND disabilitato IS FALSE
+                    AND status = 'C'
+                )
+                INTO v_has_critical;
+
+                UPDATE vendite.fatture
+                   SET critical = COALESCE(v_has_critical, false),
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE id = p_fattura_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_sync_fattura_critical(bigint)
+              IS 'Allinea vendite.fatture.critical in base ai log attivi di gravita C.';
+
+  - changeSet:
+      id: 20260217-09-02-refactor-fn-fattura-critical-termini-errors
+      author: mctit
+      #runAlways: true
+      #validCheckSum:
+      #  - ANY
+      comment: "Refactor fn_sync_fattura_critical e fn_resolve_termini_pagamento con payload errori, %TYPE e commenti"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+
+              CREATE OR REPLACE FUNCTION vendite.fn_resolve_termini_pagamento(
+                p_fattura_id vendite.fatture.id%TYPE DEFAULT NULL::bigint,
+                p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL::bigint,
+                p_attivita_ids bigint[] DEFAULT NULL::bigint[]
+              )
+               RETURNS TABLE(termini_pagamento_id bigint, termini_distinti bigint[])
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_tp_fattura config.termini_pagamento.id%TYPE;
+                v_tp_cliente config.termini_pagamento.id%TYPE;
+                v_tp_default config.termini_pagamento.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Determina termini_pagamento_id per fattura o insieme attivita'.
+                --
+                -- Priorita':
+                --   1) termini gia' presenti in fattura
+                --   2) termini derivati da sorgente attivita' (ordine/preventivo/contratto)
+                --   3) termini cliente via billing account
+                --   4) default config.termini_pagamento (TP_1RATA)
+                -- =========================================================
+
+                -- 1) Se la fattura ha già il termine, usa quello
+                IF p_fattura_id IS NOT NULL THEN
+                  IF p_fattura_id <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_resolve_termini_pagamento', 'E_GENERICO',
+                      jsonb_build_object(
+                        'scope','FATTURA',
+                        'severity','C',
+                        'code','E_GENERICO',
+                        'lotto_id', NULL,
+                        'fattura_id', p_fattura_id,
+                        'context', jsonb_build_object('detail','fattura_id non valido')
+                      ),
+                      NULL::uuid,
+                      'fattura_id non valido'
+                    );
+                  END IF;
+
+                  SELECT f.termini_pagamento_id
+                    INTO v_tp_fattura
+                  FROM vendite.fatture f
+                  WHERE f.id = p_fattura_id;
+
+                  IF v_tp_fattura IS NOT NULL THEN
+                    RETURN QUERY SELECT v_tp_fattura, ARRAY[v_tp_fattura]::BIGINT[];
+                    RETURN;
+                  END IF;
+                END IF;
+
+                -- 2) Se passo attività, risalgo alla testata sorgente (no righe)
+                IF p_attivita_ids IS NOT NULL AND array_length(p_attivita_ids,1) > 0 THEN
+                  RETURN QUERY
+                  WITH sorg AS (
+                    SELECT a.id,
+                          s.codice_interno AS src_code,
+                          a.sorgente_uid
+                    FROM vendite.attivita_fatturabili a
+                    JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
+                    WHERE a.id = ANY(p_attivita_ids)
+                  ),
+                  terms AS (
+                    SELECT DISTINCT
+                      CASE
+                        WHEN src.src_code = 'ORDINE_VENDITA' THEN o.termini_pagamento_id
+                        WHEN src.src_code = 'PREVENTIVO'     THEN p.termini_pagamento_id
+                        WHEN src.src_code = 'CONTRATTO'      THEN c.termini_pagamento_id
+                        ELSE NULL
+                      END AS tp_id
+                    FROM sorg src
+                    LEFT JOIN vendite.ordini     o ON (src.src_code='ORDINE_VENDITA' AND src.sorgente_uid = o.uid)
+                    LEFT JOIN vendite.preventivi p ON (src.src_code='PREVENTIVO'     AND src.sorgente_uid = p.uid)
+                    LEFT JOIN vendite.contratti  c ON (src.src_code='CONTRATTO'      AND src.sorgente_uid = c.uid)
+                  ),
+                  agg AS (
+                    SELECT ARRAY_REMOVE(ARRAY_AGG(DISTINCT tp_id), NULL) AS termini
+                    FROM terms
+                  )
+                  SELECT
+                    CASE WHEN array_length(termini,1) = 1 THEN termini[1] ELSE NULL END AS termini_pagamento_id,
+                    COALESCE(termini, ARRAY[]::BIGINT[]) AS termini_distinti
+                  FROM agg;
+
+                  IF FOUND THEN
+                    -- Con un solo valore o con split richiesto, il chiamante gestisce.
+                    -- Con array vuoto, procede fallback cliente/default.
+                  END IF;
+                END IF;
+
+                -- 3) Fallback su cliente via BA
+                IF p_billing_account_id IS NOT NULL THEN
+                  IF p_billing_account_id <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_resolve_termini_pagamento', 'E_GENERICO',
+                      jsonb_build_object(
+                        'scope','FATTURA',
+                        'severity','C',
+                        'code','E_GENERICO',
+                        'lotto_id', NULL,
+                        'fattura_id', p_fattura_id,
+                        'context', jsonb_build_object('detail','billing_account_id non valido', 'billing_account_id', p_billing_account_id)
+                      ),
+                      NULL::uuid,
+                      'billing_account_id non valido'
+                    );
+                  END IF;
+
+                  SELECT c.termini_pagamento_id
+                    INTO v_tp_cliente
+                  FROM anagrafiche.clienti c
+                  JOIN anagrafiche.billing_account ba ON ba.cliente_id = c.id
+                  WHERE ba.id = p_billing_account_id;
+
+                  IF v_tp_cliente IS NOT NULL THEN
+                    RETURN QUERY SELECT v_tp_cliente, ARRAY[v_tp_cliente]::BIGINT[];
+                    RETURN;
+                  END IF;
+                END IF;
+
+                -- 4) Default 'TP_1RATA'
+                SELECT tp.id
+                  INTO v_tp_default
+                  FROM config.termini_pagamento tp
+                 WHERE tp.codice_interno = 'TP_1RATA'
+                   AND tp.attivo IS TRUE
+                 LIMIT 1;
+
+                IF v_tp_default IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_resolve_termini_pagamento', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','Termine di pagamento TP_1RATA non configurato')
+                    ),
+                    NULL::uuid,
+                    'Termine di pagamento TP_1RATA non configurato'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT v_tp_default, ARRAY[v_tp_default]::bigint[];
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_resolve_termini_pagamento(bigint, bigint, bigint[])
+              IS 'Risoluzione termini pagamento con fallback: fattura, sorgenti attivita, cliente BA e default TP_1RATA.';
+
+  - changeSet:
+      id: 20260217-09-03-refactor-fn-fattura-critical-termini-errors
+      author: mctit
+      comment: "Drop funzioni con parametri errati"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS 
+              vendite.fn_resolve_termini_pagamento(bigint, integer, bigint[]);

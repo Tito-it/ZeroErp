@@ -15,6 +15,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_vettori_normalize()
+IS 'Normalize: no-op; generazione codice demandata al sistema_codici.';
 ```
 
 ---

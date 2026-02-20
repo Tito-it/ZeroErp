@@ -70,6 +70,9 @@ BEGIN
   ORDER BY s.ordine NULLS LAST, s.id;
 END
 $function$
+
+COMMENT ON FUNCTION config.fn_get_stati_doc_fiscale(p_target text, p_from_id bigint)
+IS 'Restituisce stati validi per lotto/fattura e transizioni ammesse.';
 ```
 
 ---

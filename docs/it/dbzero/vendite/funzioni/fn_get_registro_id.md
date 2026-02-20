@@ -72,6 +72,9 @@ BEGIN
   RETURN v_registro_id;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_get_registro_id(p_tipo_doc_fiscale_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint)
+IS 'Risoluzione registro_id con combinazioni utility/emittente (fallback).';
 ```
 
 ---

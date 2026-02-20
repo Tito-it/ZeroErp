@@ -79,6 +79,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required()
+IS 'Constraint trigger DEFERRABLE: per soggetti verifica presenza indirizzi obbligatori da config.tipi_soggetto_dettaglio_tipi_indirizzo. Se matrice assente -> libero.';
 ```
 
 ---

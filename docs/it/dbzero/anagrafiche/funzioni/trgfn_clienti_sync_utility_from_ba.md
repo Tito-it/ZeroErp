@@ -126,6 +126,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba()
+IS 'Garantisce coerenza tra clienti.utility_id e billing_account.utility_id; applica policy config.utilities.richiede_pdp; valida coerenza utility con PDP quando presente.';
 ```
 
 ---

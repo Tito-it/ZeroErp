@@ -21,6 +21,15 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION script.trgfn_sync_stato_iso2()
+IS '
+  Sincronizza il campo stato_iso2 
+  basandosi sul valore di stato_id: prima di ogni INSERT o UPDATE,
+  recupera da config.stati il codice_iso2 corrispondente e lo assegna
+  a NEW.stato_iso2, garantendo che i due campi rimangano sempre
+  coerenti.
+';
 ```
 
 ---

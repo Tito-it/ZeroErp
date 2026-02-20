@@ -108,13 +108,15 @@ tecnici. Esempio (schema indicativo):
 * I singoli processi devono essere **idempotenti** o progettati per gestire retry.
 * I task eseguiti sono gestiti da `vendite.fn_execute_pipeline_step` tramite
   whitelist (es. `select_attivita`, `genera_fondi_source_lotto`,
-  `applica_fondi_lotto`, `ricalcola_iva_lotto`, `numera_fatture`,
+  `applica_fondi_lotto`, `ricalcola_iva_lotto`, `prepare_sdi_payload_lotto`, `numera_fatture`,
   `reset_lotto_draft`, `noop`, `log_only`).
 * Il reset tecnico in pipeline e` previsto solo per il flusso `MASSIVO`
   (sezione `rollback` dello step `EMESSA`).
 * Nel flusso `MASSIVO`, lo step `EMESSA` include il ciclo:
   source fondi -> applicazione fondi -> ricalcolo IVA/totali.
   La numerazione resta nello step `DEFINITIVA`.
+* Lo step `INVIATA` del massivo prepara il payload SDI di lotto e apre/riusa
+  i tentativi in `vendite.fatture_sdi`.
 * Risoluzione configurazione con fallback (per `tipo_lotto + stato_doc_fiscale_id`):
   * 1) match esatto `utility_id + tipo_doc_fiscale_id`
   * 2) match `utility_id` con `tipo_doc_fiscale_id = NULL`

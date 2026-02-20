@@ -105,6 +105,13 @@ BEGIN
     RETURN p_soggetto_ruolo_id;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_guard_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_cd_int_ruolo character varying)
+IS 'Verifica che il soggetto_ruolo_id sia coerente con il ruolo atteso (p_cd_int_ruolo)
+    e, se specificato, con il soggetto (p_soggetto_id).
+    In caso di incoerenza, utilizza script.fn_log_and_raise_error e solleva eccezione.
+    In caso di esito positivo, restituisce p_soggetto_ruolo_id.
+    Il parametro p_soggetto_id è opzionale: se NULL, non viene verificato.';
 ```
 
 ---

@@ -66,6 +66,14 @@ AS $function$
     RETURN s;
   END;
   $function$
+
+COMMENT ON FUNCTION dbops.fn_name_from_template(p_template text, p_schema text, p_table text, p_parent text, p_child text, p_fk text, p_op text)
+IS 'Questa funzione ha lo scopo di generare in modo dinamico un nome di oggetto (trigger, funzione, ecc.) 
+    a partire da un template parametrico, garantendo che:
+    1)I segnaposto nel template vengano sostituiti con i valori reali di schema, tabella, parent, child, 
+    chiave esterna o operazione.
+    2)   Il nome finale non superi il limite di PostgreSQL (63 caratteri): in caso di overflow
+     viene troncato e completato con un digest hash per assicurare l’univocità.';
 ```
 
 ---

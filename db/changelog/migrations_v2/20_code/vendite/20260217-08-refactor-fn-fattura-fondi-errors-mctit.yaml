@@ -1,0 +1,1005 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260217-08-refactor-fn-fattura-fondi-errors-mctit.yaml
+
+  - changeSet:
+      id: 20260217-08-refactor-fn-fattura-fondi-errors
+      author: mctit
+      comment: "Refactor funzioni fondi fattura: payload errori, %TYPE, commenti e allineamento standard"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_totale_fondi_fattura(
+                p_fattura_id vendite.fatture.id%TYPE
+              )
+               RETURNS numeric
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_totale vendite.fatture_fondi_fattura.importo%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Restituisce il totale fondi fattura attivi per la fattura.
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_totale_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','fattura_id obbligatoria')
+                    ),
+                    NULL::uuid,
+                    'fattura_id non valido'
+                  );
+                END IF;
+
+                SELECT COALESCE(SUM(ff.importo), 0)
+                  INTO v_totale
+                  FROM vendite.fatture_fondi_fattura ff
+                 WHERE ff.fattura_id = p_fattura_id
+                   AND ff.attivo IS TRUE;
+
+                RETURN v_totale;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_totale_fondi_fattura(bigint)
+              IS 'Restituisce il totale dei fondi fattura attivi associati alla fattura.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_genera_fondi_fattura_source(
+                p_billing_account_id anagrafiche.billing_account.id%TYPE,
+                p_utility_id config.utilities.id%TYPE,
+                p_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE,
+                p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                p_valuta_id config.valute.id%TYPE,
+                p_tipo_fondo_fattura_id vendite.tipi_fondi_fattura.id%TYPE
+              )
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_updated integer := 0;
+                v_inserted integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Sincronizza la source fondi sul saldo effettivo:
+                --     saldo_effettivo = saldo_fattura - saldo_contabile_postabile
+                -- =========================================================
+
+                IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_genera_fondi_fattura_source', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','billing_account_id obbligatorio', 'billing_account_id', p_billing_account_id)
+                    ),
+                    NULL::uuid,
+                    'billing_account_id non valido'
+                  );
+                END IF;
+
+                IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_genera_fondi_fattura_source', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','utility_id obbligatorio', 'utility_id', p_utility_id)
+                    ),
+                    NULL::uuid,
+                    'utility_id non valido'
+                  );
+                END IF;
+
+                IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_genera_fondi_fattura_source', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','tipo_doc_fiscale_id obbligatorio', 'tipo_doc_fiscale_id', p_tipo_doc_fiscale_id)
+                    ),
+                    NULL::uuid,
+                    'tipo_doc_fiscale_id non valido'
+                  );
+                END IF;
+
+                IF p_emittente_soggetto_ruolo_id IS NULL OR p_emittente_soggetto_ruolo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_genera_fondi_fattura_source', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','emittente_soggetto_ruolo_id obbligatorio', 'emittente_soggetto_ruolo_id', p_emittente_soggetto_ruolo_id)
+                    ),
+                    NULL::uuid,
+                    'emittente_soggetto_ruolo_id non valido'
+                  );
+                END IF;
+
+                IF p_valuta_id IS NULL OR p_valuta_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_genera_fondi_fattura_source', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','valuta_id obbligatorio', 'valuta_id', p_valuta_id)
+                    ),
+                    NULL::uuid,
+                    'valuta_id non valido'
+                  );
+                END IF;
+
+                IF p_tipo_fondo_fattura_id IS NULL OR p_tipo_fondo_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_genera_fondi_fattura_source', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail','tipo_fondo_fattura_id obbligatorio', 'tipo_fondo_fattura_id', p_tipo_fondo_fattura_id)
+                    ),
+                    NULL::uuid,
+                    'tipo_fondo_fattura_id non valido'
+                  );
+                END IF;
+
+                -- 1) Update source esistenti non assegnate:
+                --    importo = saldo_effettivo; stato in base a saldo_effettivo.
+                WITH base AS (
+                  SELECT
+                    f.id AS fattura_sorgente_id,
+                    (COALESCE(sf.saldo, 0) - COALESCE(sc.saldo_contabile, 0))::numeric AS importo_target
+                  FROM vendite.fatture f
+                  CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(f.id) sf
+                  CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura_contabili(f.id) sc
+                  WHERE f.minimo IS TRUE
+                    AND f.billing_account_id = p_billing_account_id
+                    AND f.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                    AND f.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                    AND f.valuta_id = p_valuta_id
+                ), upd AS (
+                  UPDATE vendite.fatture_fondi_fattura_source s
+                     SET importo = b.importo_target,
+                         stato = CASE
+                                   WHEN COALESCE(b.importo_target, 0) = 0 THEN 'ANNULLATO'
+                                   ELSE 'DISPONIBILE'
+                                 END,
+                         utility_id = p_utility_id,
+                         data_update = now(),
+                         user_update = current_user
+                    FROM base b
+                   WHERE s.fattura_sorgente_id = b.fattura_sorgente_id
+                     AND s.tipo_fondo_fattura_id = p_tipo_fondo_fattura_id
+                     AND s.fattura_figlia_id IS NULL
+                     AND (
+                       s.importo IS DISTINCT FROM b.importo_target
+                       OR s.stato IS DISTINCT FROM (
+                         CASE
+                           WHEN COALESCE(b.importo_target, 0) = 0 THEN 'ANNULLATO'
+                           ELSE 'DISPONIBILE'
+                         END
+                       )
+                       OR s.utility_id IS DISTINCT FROM p_utility_id
+                     )
+                  RETURNING s.id
+                )
+                SELECT COUNT(*)::integer INTO v_updated FROM upd;
+
+                -- 2) Insert nuove source DISPONIBILE se saldo_effettivo <> 0.
+                WITH base AS (
+                  SELECT
+                    f.id AS fattura_sorgente_id,
+                    (COALESCE(sf.saldo, 0) - COALESCE(sc.saldo_contabile, 0))::numeric AS importo_target
+                  FROM vendite.fatture f
+                  CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(f.id) sf
+                  CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura_contabili(f.id) sc
+                  WHERE f.minimo IS TRUE
+                    AND f.billing_account_id = p_billing_account_id
+                    AND f.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                    AND f.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                    AND f.valuta_id = p_valuta_id
+                    AND (COALESCE(sf.saldo, 0) - COALESCE(sc.saldo_contabile, 0)) <> 0
+                ), ins AS (
+                  INSERT INTO vendite.fatture_fondi_fattura_source (
+                    fattura_sorgente_id,
+                    tipo_fondo_fattura_id,
+                    importo,
+                    stato,
+                    fattura_figlia_id,
+                    data_assegnazione,
+                    user_assegnazione,
+                    billing_account_id,
+                    utility_id,
+                    tipo_doc_fiscale_id,
+                    emittente_soggetto_ruolo_id,
+                    valuta_id,
+                    meta,
+                    attivo,
+                    data_insert,
+                    user_insert,
+                    data_update,
+                    user_update
+                  )
+                  SELECT
+                    b.fattura_sorgente_id,
+                    p_tipo_fondo_fattura_id,
+                    b.importo_target,
+                    'DISPONIBILE',
+                    NULL,
+                    NULL,
+                    NULL,
+                    p_billing_account_id,
+                    p_utility_id,
+                    p_tipo_doc_fiscale_id,
+                    p_emittente_soggetto_ruolo_id,
+                    p_valuta_id,
+                    '{}'::jsonb,
+                    TRUE,
+                    now(),
+                    current_user,
+                    now(),
+                    current_user
+                  FROM base b
+                  WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM vendite.fatture_fondi_fattura_source s
+                    WHERE s.fattura_sorgente_id = b.fattura_sorgente_id
+                      AND s.tipo_fondo_fattura_id = p_tipo_fondo_fattura_id
+                  )
+                  RETURNING id
+                )
+                SELECT COUNT(*)::integer INTO v_inserted FROM ins;
+
+                RETURN COALESCE(v_updated, 0) + COALESCE(v_inserted, 0);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_genera_fondi_fattura_source(bigint, integer, bigint, bigint, integer, bigint)
+              IS 'Sincronizza la source dei fondi fattura sul saldo effettivo (saldo fattura meno saldo contabile postabile).';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_applica_fondi_fattura(
+                p_billing_account_id anagrafiche.billing_account.id%TYPE,
+                p_utility_id config.utilities.id%TYPE,
+                p_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE,
+                p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                p_valuta_id config.valute.id%TYPE,
+                p_fattura_figlia_id vendite.fatture.id%TYPE,
+                p_tipo_fondo_fattura_id vendite.tipi_fondi_fattura.id%TYPE DEFAULT NULL::bigint
+              )
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_inserted integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Applica i fondi fattura in stato DISPONIBILE ad una
+                --   fattura figlia, creando le righe in fatture_fondi_fattura
+                --   e aggiornando la source a stato ASSEGNATO.
+                -- =========================================================
+
+                IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_figlia_id,
+                      'context', jsonb_build_object('detail','billing_account_id obbligatorio', 'billing_account_id', p_billing_account_id)
+                    ),
+                    NULL::uuid,
+                    'billing_account_id non valido'
+                  );
+                END IF;
+
+                IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_figlia_id,
+                      'context', jsonb_build_object('detail','utility_id obbligatorio', 'utility_id', p_utility_id)
+                    ),
+                    NULL::uuid,
+                    'utility_id non valido'
+                  );
+                END IF;
+
+                IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_figlia_id,
+                      'context', jsonb_build_object('detail','tipo_doc_fiscale_id obbligatorio', 'tipo_doc_fiscale_id', p_tipo_doc_fiscale_id)
+                    ),
+                    NULL::uuid,
+                    'tipo_doc_fiscale_id non valido'
+                  );
+                END IF;
+
+                IF p_emittente_soggetto_ruolo_id IS NULL OR p_emittente_soggetto_ruolo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_figlia_id,
+                      'context', jsonb_build_object('detail','emittente_soggetto_ruolo_id obbligatorio', 'emittente_soggetto_ruolo_id', p_emittente_soggetto_ruolo_id)
+                    ),
+                    NULL::uuid,
+                    'emittente_soggetto_ruolo_id non valido'
+                  );
+                END IF;
+
+                IF p_valuta_id IS NULL OR p_valuta_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_figlia_id,
+                      'context', jsonb_build_object('detail','valuta_id obbligatorio', 'valuta_id', p_valuta_id)
+                    ),
+                    NULL::uuid,
+                    'valuta_id non valido'
+                  );
+                END IF;
+
+                IF p_fattura_figlia_id IS NULL OR p_fattura_figlia_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_figlia_id,
+                      'context', jsonb_build_object('detail','fattura_figlia_id obbligatorio', 'fattura_figlia_id', p_fattura_figlia_id)
+                    ),
+                    NULL::uuid,
+                    'fattura_figlia_id non valido'
+                  );
+                END IF;
+
+                IF p_tipo_fondo_fattura_id IS NOT NULL AND p_tipo_fondo_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_applica_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_figlia_id,
+                      'context', jsonb_build_object('detail','tipo_fondo_fattura_id non valido', 'tipo_fondo_fattura_id', p_tipo_fondo_fattura_id)
+                    ),
+                    NULL::uuid,
+                    'tipo_fondo_fattura_id non valido'
+                  );
+                END IF;
+
+                WITH src AS (
+                  SELECT s.*
+                  FROM vendite.fatture_fondi_fattura_source s
+                  WHERE s.stato = 'DISPONIBILE'
+                    AND s.fattura_figlia_id IS NULL
+                    AND s.billing_account_id = p_billing_account_id
+                    AND s.utility_id = p_utility_id
+                    AND s.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                    AND s.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                    AND s.valuta_id = p_valuta_id
+                    AND (p_tipo_fondo_fattura_id IS NULL OR s.tipo_fondo_fattura_id = p_tipo_fondo_fattura_id)
+                  FOR UPDATE SKIP LOCKED
+                ), upd AS (
+                  UPDATE vendite.fatture_fondi_fattura_source s
+                    SET fattura_figlia_id = p_fattura_figlia_id,
+                        data_assegnazione = now(),
+                        user_assegnazione = current_user,
+                        stato = 'ASSEGNATO',
+                        data_update = now(),
+                        user_update = current_user
+                    FROM src
+                  WHERE s.id = src.id
+                  RETURNING s.*
+                )
+                INSERT INTO vendite.fatture_fondi_fattura (
+                  fattura_id,
+                  tipo_fondo_fattura_id,
+                  importo,
+                  riferimento_fattura_id,
+                  meta,
+                  attivo,
+                  data_insert,
+                  user_insert,
+                  data_update,
+                  user_update
+                )
+                SELECT
+                  p_fattura_figlia_id,
+                  u.tipo_fondo_fattura_id,
+                  u.importo,
+                  u.fattura_sorgente_id,
+                  u.meta,
+                  TRUE,
+                  now(),
+                  current_user,
+                  now(),
+                  current_user
+                FROM upd u;
+
+                GET DIAGNOSTICS v_inserted = ROW_COUNT;
+
+                RETURN v_inserted;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_applica_fondi_fattura(bigint, integer, bigint, bigint, integer, bigint, bigint)
+              IS 'Applica i fondi DISPONIBILE alla fattura figlia, crea le righe fondi e marca la source come ASSEGNATO.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_reset_fondi_fattura(
+                p_fattura_id vendite.fatture.id%TYPE
+              )
+               RETURNS TABLE(updated_source integer, deleted_fondi integer)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_updated_source integer := 0;
+                v_deleted_fondi integer := 0;
+                v_stato_contabile_chiusa_id pagamenti.vendite_contabili_stati.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Reset dei fondi applicati alla fattura figlia.
+                --
+                -- Regole:
+                --   - tipo gestito: F_F_ADD_ACC
+                --   - se la riga contabile fondo appartiene a testata CHIUSA:
+                --       * non elimina nulla
+                --       * imposta source a ANNULLATO
+                --       * registra warning in fatture_log
+                --   - altrimenti:
+                --       * elimina riga contabile fondo
+                --       * ripristina source a DISPONIBILE
+                --       * elimina la riga in fatture_fondi_fattura
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_reset_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','p_fattura_id obbligatorio')
+                    ),
+                    NULL::uuid,
+                    'p_fattura_id non valido'
+                  );
+                END IF;
+
+                SELECT s.id
+                  INTO v_stato_contabile_chiusa_id
+                  FROM pagamenti.vendite_contabili_stati s
+                 WHERE s.codice_interno = 'CHIUSA'
+                   AND s.attivo IS TRUE
+                 LIMIT 1;
+
+                IF v_stato_contabile_chiusa_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_reset_fondi_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_id,
+                      'context', jsonb_build_object('detail','Stato contabile CHIUSA non configurato')
+                    ),
+                    NULL::uuid,
+                    'Stato contabile CHIUSA mancante'
+                  );
+                END IF;
+
+                WITH src AS (
+                  SELECT
+                    s.id AS source_id,
+                    s.fattura_sorgente_id,
+                    fs.numero AS fattura_sorgente_numero,
+                    fs.data AS fattura_sorgente_data
+                  FROM vendite.fatture_fondi_fattura_source s
+                  JOIN vendite.tipi_fondi_fattura t
+                    ON t.id = s.tipo_fondo_fattura_id
+                  JOIN vendite.fatture fs
+                    ON fs.id = s.fattura_sorgente_id
+                  WHERE s.fattura_figlia_id = p_fattura_id
+                    AND s.stato = 'ASSEGNATO'
+                    AND t.codice_interno = 'F_F_ADD_ACC'
+                  FOR UPDATE
+                ), bloccate AS (
+                  SELECT DISTINCT
+                    src.source_id,
+                    src.fattura_sorgente_id,
+                    src.fattura_sorgente_numero,
+                    src.fattura_sorgente_data
+                  FROM src
+                  JOIN pagamenti.vendite_contabili_righe cr
+                    ON cr.attivo IS TRUE
+                   AND COALESCE(cr.meta ->> 'origine', '') = 'FONDO_FATTURA'
+                   AND COALESCE(cr.meta ->> 'fondo_source_id', '') = src.source_id::text
+                  JOIN pagamenti.vendite_contabili c
+                    ON c.id = cr.contabile_id
+                  WHERE c.stato_id = v_stato_contabile_chiusa_id
+                ), warn AS (
+                  INSERT INTO vendite.fatture_log (
+                    fattura_id,
+                    data_ora,
+                    messaggio,
+                    status,
+                    disabilitato,
+                    meta,
+                    data_insert,
+                    user_insert,
+                    data_update,
+                    user_update
+                  )
+                  SELECT
+                    p_fattura_id,
+                    now(),
+                    format(
+                      'Minimo non ripristinabile: gia postato (fattura %s del %s)',
+                      COALESCE(b.fattura_sorgente_numero::text, 'N/D'),
+                      COALESCE(to_char(b.fattura_sorgente_data, 'YYYY-MM-DD'), 'N/D')
+                    ),
+                    'W',
+                    false,
+                    jsonb_build_object(
+                      'source_id', b.source_id,
+                      'fattura_sorgente_id', b.fattura_sorgente_id,
+                      'cause', 'CONTABILE_CHIUSA'
+                    ),
+                    now(),
+                    current_user,
+                    now(),
+                    current_user
+                  FROM bloccate b
+                  RETURNING id
+                ), ann AS (
+                  UPDATE vendite.fatture_fondi_fattura_source s
+                     SET stato = 'ANNULLATO',
+                         data_update = now(),
+                         user_update = current_user
+                    FROM bloccate b
+                   WHERE s.id = b.source_id
+                  RETURNING s.id
+                ), resettabili AS (
+                  SELECT s.*
+                  FROM src s
+                  WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM bloccate b
+                    WHERE b.source_id = s.source_id
+                  )
+                ), del_righe AS (
+                  DELETE FROM pagamenti.vendite_contabili_righe cr
+                  USING resettabili r, pagamenti.vendite_contabili c
+                  WHERE c.id = cr.contabile_id
+                    AND COALESCE(cr.meta ->> 'origine', '') = 'FONDO_FATTURA'
+                    AND COALESCE(cr.meta ->> 'fondo_source_id', '') = r.source_id::text
+                    AND c.stato_id IS DISTINCT FROM v_stato_contabile_chiusa_id
+                  RETURNING cr.id
+                ), upd AS (
+                  UPDATE vendite.fatture_fondi_fattura_source s
+                     SET fattura_figlia_id = NULL,
+                         data_assegnazione = NULL,
+                         user_assegnazione = NULL,
+                         stato = 'DISPONIBILE',
+                         data_update = now(),
+                         user_update = current_user
+                    FROM resettabili r
+                   WHERE s.id = r.source_id
+                  RETURNING s.id, s.fattura_sorgente_id
+                ), del_ff AS (
+                  DELETE FROM vendite.fatture_fondi_fattura ff
+                  USING upd u
+                  WHERE ff.fattura_id = p_fattura_id
+                    AND ff.riferimento_fattura_id = u.fattura_sorgente_id
+                  RETURNING ff.id
+                )
+                SELECT
+                  (SELECT COUNT(*)::integer FROM upd),
+                  (SELECT COUNT(*)::integer FROM del_ff)
+                INTO v_updated_source, v_deleted_fondi;
+
+                RETURN QUERY
+                SELECT COALESCE(v_updated_source, 0), COALESCE(v_deleted_fondi, 0);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_reset_fondi_fattura(bigint)
+              IS 'Resetta i fondi applicati alla fattura, con blocco su contabili CHIUSA e warning in fatture_log quando non ripristinabile.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_sync_contabili_fondo_fattura(
+                p_fattura_figlia_id vendite.fatture.id%TYPE
+              )
+               RETURNS TABLE(inserted_righe integer, updated_righe integer, annullati_source integer)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_centro_fondo_id pagamenti.centri_riscossione.id%TYPE;
+                v_stato_contabile_codice text := 'VALIDATA';
+                v_stato_riga_id pagamenti.vendite_contabili_righe_stati.id%TYPE;
+                v_inserted integer := 0;
+                v_updated integer := 0;
+                v_annullati integer := 0;
+                v_riga_id pagamenti.vendite_contabili_righe.id%TYPE;
+                v_contabile_id pagamenti.vendite_contabili.id%TYPE;
+                v_lotto_id vendite.fatturazione_lotti.id%TYPE;
+                v_data_valuta pagamenti.vendite_contabili_righe.data_valuta%TYPE;
+                v_saldo numeric;
+                v_has_movimenti boolean;
+                v_saldo_contabile_tot numeric;
+                v_has_righe_postabili boolean;
+                v_saldo_contabile_source numeric;
+                v_saldo_effettivo numeric;
+                r record;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Sincronizza i fondi assegnati su righe contabili:
+                --   - annulla la source se il saldo effettivo e' zero
+                --   - inserisce/aggiorna la riga contabile altrimenti.
+                -- =========================================================
+
+                IF p_fattura_figlia_id IS NULL OR p_fattura_figlia_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_contabili_fondo_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_figlia_id,
+                      'context', jsonb_build_object('detail','p_fattura_figlia_id obbligatorio')
+                    ),
+                    NULL::uuid,
+                    'p_fattura_figlia_id non valido'
+                  );
+                END IF;
+
+                -- 1) Centro riscossione per fondo fattura.
+                SELECT c.id
+                  INTO v_centro_fondo_id
+                  FROM pagamenti.centri_riscossione c
+                 WHERE c.attivo IS TRUE
+                   AND c.is_fondo_fattura IS TRUE
+                 ORDER BY c.id
+                 LIMIT 1;
+
+                IF v_centro_fondo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_contabili_fondo_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', v_lotto_id,
+                      'fattura_id', p_fattura_figlia_id,
+                      'context', jsonb_build_object('detail','Centro riscossione fondo fattura non configurato')
+                    ),
+                    NULL::uuid,
+                    'Centro riscossione is_fondo_fattura mancante'
+                  );
+                END IF;
+
+                -- 2) Stato riga contabile target.
+                SELECT s.id
+                  INTO v_stato_riga_id
+                  FROM pagamenti.vendite_contabili_righe_stati s
+                 WHERE s.attivo IS TRUE
+                   AND s.codice_interno = 'ABBINATA'
+                 LIMIT 1;
+
+                IF v_stato_riga_id IS NULL THEN
+                  SELECT s.id
+                    INTO v_stato_riga_id
+                    FROM pagamenti.vendite_contabili_righe_stati s
+                   WHERE s.attivo IS TRUE
+                   ORDER BY s.id
+                   LIMIT 1;
+                END IF;
+
+                IF v_stato_riga_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_contabili_fondo_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', v_lotto_id,
+                      'fattura_id', p_fattura_figlia_id,
+                      'context', jsonb_build_object('detail','Stato riga contabile non configurato')
+                    ),
+                    NULL::uuid,
+                    'Stato riga contabile mancante'
+                  );
+                END IF;
+
+                -- 3) Lotto associato alla fattura figlia (se presente).
+                SELECT lf.lotto_id
+                  INTO v_lotto_id
+                  FROM vendite.fatturazione_lotti_fatture lf
+                 WHERE lf.fattura_id = p_fattura_figlia_id
+                 ORDER BY lf.id DESC
+                 LIMIT 1;
+
+                FOR r IN
+                  SELECT
+                    s.id AS source_id,
+                    s.fattura_sorgente_id,
+                    s.importo,
+                    s.billing_account_id,
+                    fsrc.data AS data_fattura_sorgente
+                  FROM vendite.fatture_fondi_fattura_source s
+                  JOIN vendite.tipi_fondi_fattura t
+                    ON t.id = s.tipo_fondo_fattura_id
+                  JOIN vendite.fatture fsrc
+                    ON fsrc.id = s.fattura_sorgente_id
+                 WHERE s.fattura_figlia_id = p_fattura_figlia_id
+                   AND s.attivo IS TRUE
+                   AND s.stato = 'ASSEGNATO'
+                   AND t.codice_interno = 'F_F_ADD_ACC'
+                  ORDER BY s.id
+                LOOP
+                  -- 4) Saldo fattura (residuo) e saldo contabile postabile totale.
+                  SELECT sf.saldo, sf.has_movimenti
+                    INTO v_saldo, v_has_movimenti
+                    FROM pagamenti.fn_get_saldo_fattura(r.fattura_sorgente_id) sf;
+
+                  SELECT sc.saldo_contabile, sc.has_righe_postabili
+                    INTO v_saldo_contabile_tot, v_has_righe_postabili
+                    FROM pagamenti.fn_get_saldo_fattura_contabili(r.fattura_sorgente_id) sc;
+
+                  -- 5) Quota contabile del source corrente (per idempotenza):
+                  --    viene esclusa dal saldo contabile totale.
+                  SELECT COALESCE(SUM(cr.importo), 0)::numeric
+                    INTO v_saldo_contabile_source
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili_righe_stati st
+                      ON st.id = cr.stato_id
+                   WHERE cr.attivo IS TRUE
+                     AND st.is_postabile IS TRUE
+                     AND cr.fattura_id = r.fattura_sorgente_id
+                     AND COALESCE(cr.meta ->> 'origine', '') = 'FONDO_FATTURA'
+                     AND COALESCE(cr.meta ->> 'fondo_source_id', '') = r.source_id::text;
+
+                  v_saldo_effettivo := COALESCE(v_saldo, 0)
+                                     - (COALESCE(v_saldo_contabile_tot, 0) - COALESCE(v_saldo_contabile_source, 0));
+
+                  IF COALESCE(v_saldo_effettivo, 0) = 0 THEN
+                    UPDATE vendite.fatture_fondi_fattura_source s
+                       SET stato = 'ANNULLATO',
+                           data_update = now(),
+                           user_update = current_user
+                     WHERE s.id = r.source_id
+                       AND s.stato IS DISTINCT FROM 'ANNULLATO';
+
+                    IF FOUND THEN
+                      v_annullati := v_annullati + 1;
+                    END IF;
+
+                    CONTINUE;
+                  END IF;
+
+                  -- 6) Regola data_valuta.
+                  IF current_date > r.data_fattura_sorgente THEN
+                    v_data_valuta := current_date;
+                  ELSE
+                    v_data_valuta := r.data_fattura_sorgente;
+                  END IF;
+
+                  -- 7) Testata contabile target.
+                  v_contabile_id := pagamenti.fn_get_or_create_vendite_contabile(
+                    p_centro_riscossione_id => v_centro_fondo_id,
+                    p_data_contabile => r.data_fattura_sorgente,
+                    p_data_registrazione => r.data_fattura_sorgente,
+                    p_ente_incasso_id => NULL,
+                    p_lotto_id => v_lotto_id,
+                    p_codice_stato_interno => v_stato_contabile_codice,
+                    p_meta => jsonb_build_object(
+                      'origine', 'FONDO_FATTURA',
+                      'fattura_figlia_id', p_fattura_figlia_id
+                    )
+                  );
+
+                  -- 8) Lookup riga esistente per source (idempotenza).
+                  SELECT cr.id
+                    INTO v_riga_id
+                    FROM pagamenti.vendite_contabili_righe cr
+                   WHERE cr.attivo IS TRUE
+                     AND COALESCE(cr.meta ->> 'origine', '') = 'FONDO_FATTURA'
+                     AND COALESCE(cr.meta ->> 'fondo_source_id', '') = r.source_id::text
+                   ORDER BY cr.id DESC
+                   LIMIT 1;
+
+                  -- 9) Upsert riga contabile fondo.
+                  IF v_riga_id IS NULL THEN
+                    INSERT INTO pagamenti.vendite_contabili_righe (
+                      contabile_id,
+                      riferimento_ente,
+                      data_pagamento,
+                      data_valuta,
+                      data_operazione,
+                      importo,
+                      fattura_id,
+                      billing_account_id,
+                      stato_id,
+                      motivo_sospeso,
+                      meta,
+                      attivo,
+                      data_insert,
+                      user_insert,
+                      data_update,
+                      user_update
+                    ) VALUES (
+                      v_contabile_id,
+                      concat('FONDO_SRC_', r.source_id::text),
+                      r.data_fattura_sorgente,
+                      v_data_valuta,
+                      now(),
+                      r.importo,
+                      r.fattura_sorgente_id,
+                      r.billing_account_id,
+                      v_stato_riga_id,
+                      NULL,
+                      jsonb_build_object(
+                        'origine', 'FONDO_FATTURA',
+                        'fondo_source_id', r.source_id,
+                        'fattura_figlia_id', p_fattura_figlia_id
+                      ),
+                      TRUE,
+                      now(),
+                      current_user,
+                      now(),
+                      current_user
+                    );
+                    v_inserted := v_inserted + 1;
+                  ELSE
+                    UPDATE pagamenti.vendite_contabili_righe cr
+                       SET contabile_id = v_contabile_id,
+                           riferimento_ente = concat('FONDO_SRC_', r.source_id::text),
+                           data_pagamento = r.data_fattura_sorgente,
+                           data_valuta = v_data_valuta,
+                           data_operazione = r.data_fattura_sorgente,
+                           importo = r.importo,
+                           fattura_id = r.fattura_sorgente_id,
+                           billing_account_id = r.billing_account_id,
+                           stato_id = v_stato_riga_id,
+                           motivo_sospeso = NULL,
+                           meta = COALESCE(cr.meta, '{}'::jsonb)
+                                  || jsonb_build_object(
+                                    'origine', 'FONDO_FATTURA',
+                                    'fondo_source_id', r.source_id,
+                                    'fattura_figlia_id', p_fattura_figlia_id
+                                  ),
+                           data_update = now(),
+                           user_update = current_user
+                     WHERE cr.id = v_riga_id;
+                    v_updated := v_updated + 1;
+                  END IF;
+                END LOOP;
+
+                RETURN QUERY
+                SELECT v_inserted, v_updated, v_annullati;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_sync_contabili_fondo_fattura(bigint)
+              IS 'Sincronizza le righe contabili dei fondi fattura assegnati alla fattura figlia e annulla source a saldo effettivo zero.';
+
+              CREATE OR REPLACE FUNCTION vendite.fn_sync_pagamento_fondo_fattura(
+                p_fattura_figlia_id vendite.fatture.id%TYPE
+              )
+               RETURNS TABLE(inserted_movimenti integer, updated_movimenti integer, annullati_source integer)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_inserted integer := 0;
+                v_updated integer := 0;
+                v_annullati integer := 0;
+              BEGIN
+                -- =========================================================
+                -- DEPRECATA:
+                --   mantenuta per retrocompatibilita'. La logica reale ora
+                --   e' in vendite.fn_sync_contabili_fondo_fattura().
+                -- =========================================================
+
+                IF p_fattura_figlia_id IS NULL OR p_fattura_figlia_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_pagamento_fondo_fattura', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','FATTURA',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', p_fattura_figlia_id,
+                      'context', jsonb_build_object('detail','p_fattura_figlia_id obbligatorio')
+                    ),
+                    NULL::uuid,
+                    'p_fattura_figlia_id non valido'
+                  );
+                END IF;
+
+                SELECT s.inserted_righe, s.updated_righe, s.annullati_source
+                  INTO v_inserted, v_updated, v_annullati
+                  FROM vendite.fn_sync_contabili_fondo_fattura(
+                    p_fattura_figlia_id => p_fattura_figlia_id
+                  ) s;
+
+                RETURN QUERY
+                SELECT v_inserted, v_updated, v_annullati;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_sync_pagamento_fondo_fattura(bigint)
+              IS 'Wrapper deprecato: delega a fn_sync_contabili_fondo_fattura per retrocompatibilita.';
+
+  - changeSet:
+      id: 20260217-08-02-refactor-fn-fattura-fondi-errors
+      author: mctit
+      comment: "Drop funzioni errate"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              DROP FUNCTION 
+              IF EXISTS 
+              vendite.fn_applica_fondi_fattura(bigint, integer, bigint, bigint, bigint, bigint, bigint);
