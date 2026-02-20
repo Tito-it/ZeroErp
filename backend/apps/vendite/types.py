@@ -61,3 +61,22 @@ class LottoTaskRunRow(TypedDict):
     error_code: str | None
     error_message: str | None
     meta: dict[str, Any]
+
+
+class LottoListRow(TypedDict):
+    id: int
+    codice: str
+    competenza_mese: str
+    tipo_lotto: str
+    utility_id: int | None
+    utility_descrizione: str | None
+    stato_lotto: str
+    stato_operativo: str
+    stato_doc_fiscale_id: int | None
+    stato_doc_fiscale_descrizione: str | None
+    tipo_doc_fiscale_id: int
+    tipo_doc_fiscale_descrizione: str | None
+    area_geografica_id: int | None
+    area_geografica_descrizione: str | None
+    data_insert: str
+    user_insert: str

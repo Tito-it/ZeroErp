@@ -177,3 +177,4 @@ def fn_get_lotto_task_runs(*, lotto_id: int, limit: int = 100) -> dict[str, obje
         "count": len(runs),
         "task_runs": runs,
     }
+
