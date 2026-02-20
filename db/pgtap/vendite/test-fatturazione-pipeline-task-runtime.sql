@@ -62,6 +62,13 @@ SELECT
     LIMIT 1
   ) AS utility_id,
   (
+    SELECT ef.soggetto_ruolo_id
+    FROM anagrafiche.emittenti_fiscali ef
+    WHERE ef.attivo IS TRUE
+    ORDER BY ef.id
+    LIMIT 1
+  ) AS emittente_soggetto_ruolo_id,
+  (
     SELECT s.id
     FROM config.stati_doc_fiscale s
     WHERE s.codice_interno = 'DRAFT'
@@ -75,6 +82,7 @@ SELECT ok(
     SELECT pipeline_id IS NOT NULL
        AND tipo_doc_fiscale_id IS NOT NULL
        AND utility_id IS NOT NULL
+       AND emittente_soggetto_ruolo_id IS NOT NULL
        AND stato_doc_fiscale_id IS NOT NULL
     FROM tmp_refs_ptr
   ),
@@ -91,7 +99,8 @@ SELECT vendite.fn_create_fatturazione_lotto(
   p_utility_id => (SELECT utility_id FROM tmp_refs_ptr),
   p_billing_account_id => NULL,
   p_lock_batch_id => NULL,
-  p_meta => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_ptr))
+  p_meta => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_ptr)),
+  p_emittente_soggetto_ruolo_id => (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_ptr)
 ) AS lotto_id;
 
 SELECT ok(

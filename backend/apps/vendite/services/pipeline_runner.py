@@ -29,6 +29,7 @@ class LottoPipelineParams:
     tipo_doc_fiscale_id: int | None = None
     utility_id: int | None = None
     billing_account_id: int | None = None
+    emittente_soggetto_ruolo_id: int | None = None
     lock_batch_id: str | None = None
     meta: LottoPipelineMeta | None = None
     dry_run: bool = False
@@ -239,6 +240,7 @@ class LottoPipelineRunner:
                     tipo_doc_fiscale_id=params.tipo_doc_fiscale_id,
                     utility_id=params.utility_id,
                     billing_account_id=params.billing_account_id,
+                    emittente_soggetto_ruolo_id=params.emittente_soggetto_ruolo_id,
                     lock_batch_id=params.lock_batch_id,
                     meta=params.meta,
                     tipo_lotto=params.tipo_lotto,

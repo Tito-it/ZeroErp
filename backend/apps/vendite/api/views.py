@@ -40,6 +40,7 @@ class ApiRunLottoPipeline(APIView):
                 "tipo_doc_fiscale_id": serializers.IntegerField(required=False, allow_null=True),
                 "utility_id": serializers.IntegerField(required=False, allow_null=True),
                 "billing_account_id": serializers.IntegerField(required=False, allow_null=True),
+                "emittente_soggetto_ruolo_id": serializers.IntegerField(required=False, allow_null=True),
                 "lock_batch_id": serializers.UUIDField(required=False, allow_null=True),
                 "meta": serializers.DictField(required=False),
                 "dry_run": serializers.BooleanField(required=False),
@@ -72,6 +73,9 @@ class ApiRunLottoPipeline(APIView):
                 tipo_doc_fiscale_id=optional_int(payload, "tipo_doc_fiscale_id", zero_as_none=True),
                 utility_id=optional_int(payload, "utility_id", zero_as_none=True),
                 billing_account_id=optional_int(payload, "billing_account_id", zero_as_none=True),
+                emittente_soggetto_ruolo_id=optional_int(
+                    payload, "emittente_soggetto_ruolo_id", zero_as_none=True
+                ),
                 lock_batch_id=optional_uuid(payload, "lock_batch_id"),
                 meta=payload.get("meta"),
                 dry_run=optional_bool(payload, "dry_run", default=False),

@@ -140,6 +140,7 @@ class VenditePipelineRepository:
         tipo_doc_fiscale_id: int | None,
         utility_id: int | None,
         billing_account_id: int | None,
+        emittente_soggetto_ruolo_id: int | None,
         lock_batch_id: str | None,
         meta: LottoPipelineMeta | None,
         tipo_lotto: str | None,
@@ -149,7 +150,7 @@ class VenditePipelineRepository:
             cursor.execute(
                 """
                 SELECT vendite.fn_get_or_create_lotto(
-                    %s, %s, %s, %s, %s, %s::uuid, %s::jsonb, %s::text
+                    %s, %s, %s, %s, %s, %s::uuid, %s::jsonb, %s::text, %s
                 )
                 """,
                 [
@@ -161,6 +162,7 @@ class VenditePipelineRepository:
                     lock_batch_id,
                     self._to_jsonb_param(meta),
                     tipo_lotto,
+                    emittente_soggetto_ruolo_id,
                 ],
             )
             row = cursor.fetchone()

@@ -16,10 +16,14 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| stato_doc_fiscale_id | bigint | YES |  |
+| stato_esecuzione | character varying | NO | 'OK'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatturazione_lf_stato_esecuzione |  |
+| FOREIGN KEY | fk_fatturazione_lf_stato_doc_fiscale | stato_doc_fiscale_id |
 | FOREIGN KEY | fk_fatturazione_lotti_fatture_fattura | fattura_id |
 | FOREIGN KEY | fk_fatturazione_lotti_fatture_lotto | lotto_id |
 | FOREIGN KEY | fk_fatturazione_lotti_fatture_stato_sdi | stato_sdi_id |

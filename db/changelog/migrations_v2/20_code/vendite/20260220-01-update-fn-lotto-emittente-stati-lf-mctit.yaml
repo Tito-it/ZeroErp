@@ -1,0 +1,620 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260220-01-update-fn-lotto-emittente-stati-lf-mctit.yaml
+
+  - changeSet:
+      id: 20260220-01-01-update-fn-create-fatturazione-lotto-emittente
+      author: mctit
+      comment: "Aggiunge risoluzione emittente fiscale in creazione lotto"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_create_fatturazione_lotto(
+                p_competenza_mese vendite.fatturazione_lotti.competenza_mese%TYPE,
+                p_tipo_doc_fiscale_id vendite.fatturazione_lotti.tipo_doc_fiscale_id%TYPE,
+                p_utility_id vendite.fatturazione_lotti.utility_id%TYPE DEFAULT NULL::integer,
+                p_billing_account_id vendite.fatturazione_lotti.billing_account_id%TYPE DEFAULT NULL::bigint,
+                p_lock_batch_id vendite.fatturazione_lotti.lock_batch_id%TYPE DEFAULT NULL::uuid,
+                p_meta vendite.fatturazione_lotti.meta%TYPE DEFAULT NULL::jsonb,
+                p_emittente_soggetto_ruolo_id vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL::bigint
+              )
+              RETURNS vendite.fatturazione_lotti.id%TYPE
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_competenza vendite.fatturazione_lotti.competenza_mese%TYPE;
+                v_utility_id config.utilities.id%TYPE;
+                v_lock_batch_id vendite.fatturazione_lotti.lock_batch_id%TYPE;
+                v_lotto_id vendite.fatturazione_lotti.id%TYPE;
+                v_stato_doc_id config.stati_doc_fiscale.id%TYPE;
+                v_map_exists boolean;
+                v_emittente_id vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE;
+                v_single_emittente_count bigint;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Crea un lotto di fatturazione con parametri coerenti
+                --   (competenza, utility, tipo_doc_fiscale, BA, emittente)
+                --   e stato iniziale DRAFT.
+                --
+                -- Regole emittente:
+                --   1) se p_emittente_soggetto_ruolo_id presente -> usa/valida
+                --   2) altrimenti, se BA presente -> mapping/fallback via fn_get_emittente_fiscale_id
+                --   3) altrimenti, se esiste un unico emittente attivo -> usa quello
+                --   4) altrimenti -> errore bloccante
+                -- =========================================================
+
+                IF p_competenza_mese IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','competenza_mese obbligatoria')),
+                    NULL::uuid, 'competenza_mese obbligatoria'
+                  );
+                END IF;
+
+                IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','tipo_doc_fiscale_id obbligatorio')),
+                    NULL::uuid, 'tipo_doc_fiscale_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','utility_id non valido','utility_id',p_utility_id)),
+                    NULL::uuid, 'utility_id non valido'
+                  );
+                END IF;
+
+                IF p_billing_account_id IS NOT NULL AND p_billing_account_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','billing_account_id non valido','billing_account_id',p_billing_account_id)),
+                    NULL::uuid, 'billing_account_id non valido'
+                  );
+                END IF;
+
+                IF p_emittente_soggetto_ruolo_id IS NOT NULL AND p_emittente_soggetto_ruolo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','emittente_soggetto_ruolo_id non valido','emittente_soggetto_ruolo_id',p_emittente_soggetto_ruolo_id)),
+                    NULL::uuid, 'emittente_soggetto_ruolo_id non valido'
+                  );
+                END IF;
+
+                v_competenza := date_trunc('month', p_competenza_mese)::date;
+
+                v_utility_id := p_utility_id;
+                IF p_billing_account_id IS NOT NULL THEN
+                  SELECT ba.utility_id
+                    INTO v_utility_id
+                    FROM anagrafiche.billing_account ba
+                   WHERE ba.id = p_billing_account_id;
+
+                  IF v_utility_id IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+                      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','Utility non risolta da billing_account','billing_account_id',p_billing_account_id)),
+                      NULL::uuid, concat('Utility non risolta da billing_account billing_account_id: ', p_billing_account_id::text)
+                    );
+                  END IF;
+
+                  IF p_utility_id IS NOT NULL AND p_utility_id <> v_utility_id THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+                      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','Utility non coerente con billing_account','billing_account_id',p_billing_account_id,'utility_id',p_utility_id)),
+                      NULL::uuid, concat('Utility non coerente con billing_account billing_account_id: ', p_billing_account_id::text)
+                    );
+                  END IF;
+                END IF;
+
+                IF v_utility_id IS NULL OR v_utility_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','utility_id obbligatoria')),
+                    NULL::uuid, 'utility_id obbligatoria'
+                  );
+                END IF;
+
+                -- Rilevo emittente fiscale secondo fallback operativo.
+                v_emittente_id := p_emittente_soggetto_ruolo_id;
+
+                IF v_emittente_id IS NULL AND p_billing_account_id IS NOT NULL THEN
+                  v_emittente_id := anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id);
+                END IF;
+
+                IF v_emittente_id IS NULL THEN
+                  SELECT COUNT(*)::bigint
+                    INTO v_single_emittente_count
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.attivo IS TRUE;
+
+                  IF v_single_emittente_count = 1 THEN
+                    SELECT ef.soggetto_ruolo_id
+                      INTO v_emittente_id
+                      FROM anagrafiche.emittenti_fiscali ef
+                     WHERE ef.attivo IS TRUE
+                     LIMIT 1;
+                  END IF;
+                END IF;
+
+                IF v_emittente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','Emittente fiscale non determinabile','billing_account_id',p_billing_account_id)),
+                    NULL::uuid, 'Emittente fiscale non determinabile'
+                  );
+                END IF;
+
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.soggetto_ruolo_id = v_emittente_id
+                     AND ef.attivo IS TRUE
+                )
+                INTO v_map_exists;
+
+                IF NOT v_map_exists THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','Emittente fiscale non valido/non attivo','emittente_soggetto_ruolo_id',v_emittente_id)),
+                    NULL::uuid, 'Emittente fiscale non valido/non attivo'
+                  );
+                END IF;
+
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_doc_fiscale t
+                   WHERE t.id = p_tipo_doc_fiscale_id
+                     AND t.attivo IS TRUE
+                )
+                INTO v_map_exists;
+
+                IF NOT v_map_exists THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','Tipo documento fiscale non attivo o inesistente','tipo_doc_fiscale_id',p_tipo_doc_fiscale_id)),
+                    NULL::uuid, concat('Tipo documento fiscale non attivo o inesistente tipo_doc_fiscale_id: ', p_tipo_doc_fiscale_id::text)
+                  );
+                END IF;
+
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM vendite.tipi_doc_fiscale_registri m
+                   WHERE m.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                )
+                INTO v_map_exists;
+
+                IF NOT v_map_exists THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','Mapping tipo_doc_fiscale -> registro assente','tipo_doc_fiscale_id',p_tipo_doc_fiscale_id)),
+                    NULL::uuid, concat('Mapping tipo_doc_fiscale -> registro assente tipo_doc_fiscale_id: ', p_tipo_doc_fiscale_id::text)
+                  );
+                END IF;
+
+                SELECT id
+                  INTO v_stato_doc_id
+                  FROM config.stati_doc_fiscale
+                 WHERE codice_interno = 'DRAFT'
+                   AND applica_lotto IS TRUE
+                   AND attivo IS TRUE
+                 ORDER BY ordine
+                 LIMIT 1;
+
+                IF v_stato_doc_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_create_fatturazione_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','Stato DRAFT non disponibile per lotto')),
+                    NULL::uuid, 'Stato DRAFT non disponibile per lotto'
+                  );
+                END IF;
+
+                v_lock_batch_id := COALESCE(p_lock_batch_id, uuidv7());
+
+                INSERT INTO vendite.fatturazione_lotti (
+                  lock_batch_id,
+                  competenza_mese,
+                  utility_id,
+                  billing_account_id,
+                  emittente_soggetto_ruolo_id,
+                  tipo_doc_fiscale_id,
+                  stato_doc_fiscale_id,
+                  meta
+                )
+                VALUES (
+                  v_lock_batch_id,
+                  v_competenza,
+                  v_utility_id,
+                  p_billing_account_id,
+                  v_emittente_id,
+                  p_tipo_doc_fiscale_id,
+                  v_stato_doc_id,
+                  COALESCE(p_meta, '{}'::jsonb)
+                )
+                RETURNING id
+                  INTO v_lotto_id;
+
+                RETURN v_lotto_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_create_fatturazione_lotto(date, bigint, integer, bigint, uuid, jsonb, bigint)
+              IS 'Crea lotto di fatturazione validando coerenza competenza/utility/tipo_doc e risolvendo emittente fiscale.';
+
+  - changeSet:
+      id: 20260220-01-02-update-fn-get-or-create-lotto-emittente
+      author: mctit
+      comment: "Estende get_or_create_lotto con parametro emittente e coerenza testata"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_lotto(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE DEFAULT NULL::bigint,
+                p_competenza_mese vendite.fatturazione_lotti.competenza_mese%TYPE DEFAULT NULL::date,
+                p_tipo_doc_fiscale_id vendite.fatturazione_lotti.tipo_doc_fiscale_id%TYPE DEFAULT NULL::bigint,
+                p_utility_id vendite.fatturazione_lotti.utility_id%TYPE DEFAULT NULL::integer,
+                p_billing_account_id vendite.fatturazione_lotti.billing_account_id%TYPE DEFAULT NULL::bigint,
+                p_lock_batch_id vendite.fatturazione_lotti.lock_batch_id%TYPE DEFAULT NULL::uuid,
+                p_meta vendite.fatturazione_lotti.meta%TYPE DEFAULT NULL::jsonb,
+                p_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE DEFAULT 'MASSIVO'::text,
+                p_emittente_soggetto_ruolo_id vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL::bigint
+              )
+              RETURNS vendite.fatturazione_lotti.id%TYPE
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_lotto_id vendite.fatturazione_lotti.id%TYPE;
+                v_competenza vendite.fatturazione_lotti.competenza_mese%TYPE;
+                v_utility_id config.utilities.id%TYPE;
+                v_tipo_doc_id config.tipi_doc_fiscale.id%TYPE;
+                v_billing_account_id anagrafiche.billing_account.id%TYPE;
+                v_emittente_id vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE;
+                v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                v_stato_lotto vendite.fatturazione_lotti.stato_lotto%TYPE;
+                v_tipo_lotto_input vendite.fatturazione_lotti.tipo_lotto%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Recupera un lotto esistente o lo crea se assente.
+                --
+                -- Regole:
+                --   - tipo_lotto obbligatorio (MASSIVO | GIORNALIERO)
+                --   - lotto IN_ESECUZIONE non riutilizzabile
+                --   - coerenza anche su emittente_soggetto_ruolo_id
+                -- =========================================================
+
+                IF p_lotto_id = 0 THEN
+                  p_lotto_id := NULL;
+                END IF;
+
+                v_tipo_lotto_input := upper(btrim(COALESCE(p_tipo_lotto, '')));
+                IF v_tipo_lotto_input IS NULL OR v_tipo_lotto_input = '' OR v_tipo_lotto_input NOT IN ('MASSIVO','GIORNALIERO') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','tipo_lotto non valido','tipo_lotto',p_tipo_lotto)),
+                    NULL::uuid, 'tipo_lotto non valido'
+                  );
+                END IF;
+
+                IF p_lotto_id IS NOT NULL AND p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','lotto_id non valido','lotto_id',p_lotto_id)),
+                    NULL::uuid, 'lotto_id non valido'
+                  );
+                END IF;
+
+                IF p_tipo_doc_fiscale_id IS NOT NULL AND p_tipo_doc_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','tipo_doc_fiscale_id non valido','tipo_doc_fiscale_id',p_tipo_doc_fiscale_id)),
+                    NULL::uuid, 'tipo_doc_fiscale_id non valido'
+                  );
+                END IF;
+
+                IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','utility_id non valido','utility_id',p_utility_id)),
+                    NULL::uuid, 'utility_id non valido'
+                  );
+                END IF;
+
+                IF p_billing_account_id IS NOT NULL AND p_billing_account_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','billing_account_id non valido','billing_account_id',p_billing_account_id)),
+                    NULL::uuid, 'billing_account_id non valido'
+                  );
+                END IF;
+
+                IF p_emittente_soggetto_ruolo_id IS NOT NULL AND p_emittente_soggetto_ruolo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','emittente_soggetto_ruolo_id non valido','emittente_soggetto_ruolo_id',p_emittente_soggetto_ruolo_id)),
+                    NULL::uuid, 'emittente_soggetto_ruolo_id non valido'
+                  );
+                END IF;
+
+                IF p_lotto_id IS NOT NULL THEN
+                  SELECT competenza_mese, utility_id, tipo_doc_fiscale_id, billing_account_id,
+                         emittente_soggetto_ruolo_id, tipo_lotto, stato_lotto
+                    INTO v_competenza, v_utility_id, v_tipo_doc_id, v_billing_account_id,
+                         v_emittente_id, v_tipo_lotto, v_stato_lotto
+                    FROM vendite.fatturazione_lotti
+                   WHERE id = p_lotto_id;
+
+                  IF v_competenza IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','Lotto non trovato','lotto_id',p_lotto_id)),
+                      NULL::uuid, concat('Lotto non trovato lotto_id: ', p_lotto_id::text)
+                    );
+                  END IF;
+
+                  IF v_stato_lotto = 'COMPLETATO' THEN
+                    RETURN p_lotto_id;
+                  END IF;
+
+                  IF v_stato_lotto = 'IN_ESECUZIONE' THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',p_lotto_id,'fattura_id',NULL,'context',jsonb_build_object('detail','Lotto in esecuzione non riutilizzabile')),
+                      NULL::uuid, concat('Lotto in esecuzione non riutilizzabile lotto_id: ', p_lotto_id::text)
+                    );
+                  END IF;
+
+                  IF p_competenza_mese IS NOT NULL AND date_trunc('month', p_competenza_mese)::date <> v_competenza THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',p_lotto_id,'fattura_id',NULL,'context',jsonb_build_object('detail','Competenza non coerente')),
+                      NULL::uuid, concat('Competenza non coerente lotto_id: ', p_lotto_id::text)
+                    );
+                  END IF;
+
+                  IF p_utility_id IS NOT NULL AND p_utility_id <> v_utility_id THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',p_lotto_id,'fattura_id',NULL,'context',jsonb_build_object('detail','Utility non coerente')),
+                      NULL::uuid, concat('Utility non coerente lotto_id: ', p_lotto_id::text)
+                    );
+                  END IF;
+
+                  IF p_tipo_doc_fiscale_id IS NOT NULL AND p_tipo_doc_fiscale_id <> v_tipo_doc_id THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',p_lotto_id,'fattura_id',NULL,'context',jsonb_build_object('detail','Tipo documento non coerente')),
+                      NULL::uuid, concat('Tipo documento non coerente lotto_id: ', p_lotto_id::text)
+                    );
+                  END IF;
+
+                  IF p_billing_account_id IS NOT NULL AND p_billing_account_id <> v_billing_account_id THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',p_lotto_id,'fattura_id',NULL,'context',jsonb_build_object('detail','Billing account non coerente')),
+                      NULL::uuid, concat('Billing account non coerente lotto_id: ', p_lotto_id::text)
+                    );
+                  END IF;
+
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL AND p_emittente_soggetto_ruolo_id <> v_emittente_id THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',p_lotto_id,'fattura_id',NULL,'context',jsonb_build_object('detail','Emittente fiscale non coerente')),
+                      NULL::uuid, concat('Emittente fiscale non coerente lotto_id: ', p_lotto_id::text)
+                    );
+                  END IF;
+
+                  IF v_tipo_lotto IS NOT NULL AND v_tipo_lotto <> v_tipo_lotto_input THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                      jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',p_lotto_id,'fattura_id',NULL,'context',jsonb_build_object('detail','Tipo lotto non coerente')),
+                      NULL::uuid, concat('Tipo lotto non coerente lotto_id: ', p_lotto_id::text)
+                    );
+                  END IF;
+
+                  RETURN p_lotto_id;
+                END IF;
+
+                IF p_lock_batch_id IS NOT NULL THEN
+                  SELECT id, tipo_lotto, stato_lotto
+                    INTO v_lotto_id, v_tipo_lotto, v_stato_lotto
+                    FROM vendite.fatturazione_lotti
+                   WHERE lock_batch_id = p_lock_batch_id
+                   ORDER BY id DESC
+                   LIMIT 1;
+
+                  IF v_lotto_id IS NOT NULL THEN
+                    IF v_stato_lotto = 'COMPLETATO' THEN
+                      RETURN v_lotto_id;
+                    END IF;
+
+                    IF v_stato_lotto = 'IN_ESECUZIONE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                        'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                        jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',v_lotto_id,'fattura_id',NULL,'context',jsonb_build_object('detail','Lotto in esecuzione non riutilizzabile')),
+                        NULL::uuid, concat('Lotto in esecuzione non riutilizzabile lotto_id: ', v_lotto_id::text)
+                      );
+                    END IF;
+
+                    IF v_tipo_lotto IS NOT NULL AND v_tipo_lotto <> v_tipo_lotto_input THEN
+                      PERFORM script.fn_log_and_raise_error(
+                        'vendite', 'fn_get_or_create_lotto', 'E_GENERICO',
+                        jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',v_lotto_id,'fattura_id',NULL,'context',jsonb_build_object('detail','Tipo lotto non coerente')),
+                        NULL::uuid, concat('Tipo lotto non coerente lotto_id: ', v_lotto_id::text)
+                      );
+                    END IF;
+
+                    RETURN v_lotto_id;
+                  END IF;
+                END IF;
+
+                v_lotto_id := vendite.fn_create_fatturazione_lotto(
+                  p_competenza_mese => p_competenza_mese,
+                  p_tipo_doc_fiscale_id => p_tipo_doc_fiscale_id,
+                  p_utility_id => p_utility_id,
+                  p_billing_account_id => p_billing_account_id,
+                  p_lock_batch_id => p_lock_batch_id,
+                  p_meta => p_meta,
+                  p_emittente_soggetto_ruolo_id => p_emittente_soggetto_ruolo_id
+                );
+
+                UPDATE vendite.fatturazione_lotti
+                   SET tipo_lotto = v_tipo_lotto_input,
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE id = v_lotto_id;
+
+                RETURN v_lotto_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_or_create_lotto(bigint, date, bigint, integer, bigint, uuid, jsonb, text, bigint)
+              IS 'Recupera o crea lotto; valida coerenza (incl. emittente fiscale) e blocca riuso IN_ESECUZIONE.';
+
+  - changeSet:
+      id: 20260220-01-03-update-fn-sync-lotto-fatture-stato-esecuzione
+      author: mctit
+      comment: "Allinea stato fatture e stato_esecuzione su ponte lotto-fattura"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_sync_lotto_fatture_stato(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                p_target_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE DEFAULT NULL::bigint
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                v_stato_lotto config.stati_doc_fiscale.id%TYPE;
+                v_target config.stati_doc_fiscale.id%TYPE;
+                v_inviata_id config.stati_doc_fiscale.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Allinea stato documento delle fatture collegate al lotto
+                --   e mantiene coerente lo stato tecnico per-fattura nel ponte.
+                --
+                -- Regole:
+                --   - p_lotto_id obbligatorio
+                --   - se target NULL usa stato_doc_fiscale lotto
+                --   - fatture critical non avanzano di stato (stato_esecuzione=ERRORE)
+                -- =========================================================
+
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_lotto_fatture_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','lotto_id obbligatorio')),
+                    NULL::uuid, 'lotto_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_target_stato_doc_fiscale_id IS NOT NULL AND p_target_stato_doc_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_lotto_fatture_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','target stato_doc_fiscale non valido','stato_doc_fiscale_id',p_target_stato_doc_fiscale_id)),
+                    NULL::uuid, 'stato_doc_fiscale target non valido'
+                  );
+                END IF;
+
+                SELECT tipo_lotto, stato_doc_fiscale_id
+                  INTO v_tipo_lotto, v_stato_lotto
+                  FROM vendite.fatturazione_lotti
+                 WHERE id = p_lotto_id
+                 FOR UPDATE;
+
+                IF v_stato_lotto IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_lotto_fatture_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',p_lotto_id,'fattura_id',NULL,'context',jsonb_build_object('detail','lotto non trovato')),
+                    NULL::uuid, concat('lotto non trovato: ', p_lotto_id::text)
+                  );
+                END IF;
+
+                v_target := COALESCE(p_target_stato_doc_fiscale_id, v_stato_lotto);
+
+                IF v_target IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_lotto_fatture_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',p_lotto_id,'fattura_id',NULL,'context',jsonb_build_object('detail','stato_doc_fiscale target obbligatorio')),
+                    NULL::uuid, concat('stato_doc_fiscale target obbligatorio per lotto: ', p_lotto_id::text)
+                  );
+                END IF;
+
+                -- Aggiorno stato documento fattura solo per non-critical e non escluse.
+                UPDATE vendite.fatture f
+                   SET stato_doc_fiscale_id = v_target,
+                       data_update = now(),
+                       user_update = current_user
+                  FROM vendite.fatturazione_lotti_fatture lf
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND COALESCE(lf.esclusa, false) IS FALSE
+                   AND lf.fattura_id = f.id
+                   AND COALESCE(f.critical, false) IS FALSE
+                   AND f.stato_doc_fiscale_id IS DISTINCT FROM v_target;
+
+                -- Allineo ponte lotto-fatture:
+                -- - stato_doc_fiscale_id sempre valorizzato
+                -- - stato_esecuzione coerente con critical/esclusa
+                UPDATE vendite.fatturazione_lotti_fatture lf
+                   SET stato_doc_fiscale_id = f.stato_doc_fiscale_id,
+                       stato_esecuzione = CASE
+                         WHEN COALESCE(lf.esclusa, false) THEN lf.stato_esecuzione
+                         WHEN COALESCE(f.critical, false) THEN 'ERRORE'
+                         ELSE 'OK'
+                       END,
+                       data_update = now(),
+                       user_update = current_user
+                  FROM vendite.fatture f
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND lf.fattura_id = f.id;
+
+                IF v_tipo_lotto = 'GIORNALIERO' THEN
+                  SELECT id
+                    INTO v_inviata_id
+                    FROM config.stati_doc_fiscale
+                   WHERE codice_interno = 'INVIATA'
+                     AND attivo IS TRUE
+                   ORDER BY ordine
+                   LIMIT 1;
+
+                  IF v_inviata_id IS NOT NULL AND v_target = v_inviata_id THEN
+                    UPDATE vendite.fatturazione_lotti
+                       SET stato_operativo = 'CHIUSO',
+                           data_update = now(),
+                           user_update = current_user
+                     WHERE id = p_lotto_id;
+                  END IF;
+                END IF;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_sync_lotto_fatture_stato(bigint, bigint)
+              IS 'Allinea stato fatture collegate al lotto e sincronizza stato_esecuzione su ponte lotto-fatture.';
+
+  - changeSet:
+      id: 20260220-01-04-update-fn-sync-lotto-fatture-stato-esecuzione
+      author: mctit
+      comment: "drop precedente versione non più compatibile con estensione emittente_soggetto_ruolo_id"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              DROP FUNCTION IF EXISTS 
+              vendite.fn_get_or_create_lotto(bigint, date, bigint, integer, bigint, uuid, jsonb, text);
