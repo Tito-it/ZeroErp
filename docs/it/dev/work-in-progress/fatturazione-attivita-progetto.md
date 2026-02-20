@@ -1228,15 +1228,15 @@ Nota operativa fallback emittente in creazione lotto:
 
 Da aggiornare (priorita`):
 
-* `vendite.fn_create_fatturazione_lotto`
-* `vendite.fn_get_or_create_lotto`
-* `vendite.fn_sync_lotto_fatture_stato`
-* `vendite.fn_log_lotto_esito_fatture`
+* ✅`vendite.fn_create_fatturazione_lotto`
+* ✅`vendite.fn_get_or_create_lotto`
+* ✅`vendite.fn_sync_lotto_fatture_stato`
+* ✅`vendite.fn_log_lotto_esito_fatture`
 * eventuali funzioni reset/sync che aggiornano stato fattura o ponte lotto-fattura
 
 Da introdurre:
 
-* funzione centralizzata di sync esito fattura nel lotto
+* ✅funzione centralizzata di sync esito fattura nel lotto
   (aggiorna insieme `stato_esecuzione`, `stato_doc_fiscale_id` ponte, `fatture.critical`).
 
 #### API / Django (refactor richiesto)
@@ -1254,7 +1254,7 @@ Endpoint/DTO:
 
 Test:
 
-* pgtap: coerenza `critical` <-> `stato_esecuzione`.
+* ✅pgtap: coerenza `critical` <-> `stato_esecuzione`.
 * Django service/API: gestione errore parziale per-fattura dentro lotto.
 
 #### Promemoria `attivita_fatturabili` (prima di riprendere sviluppo)
