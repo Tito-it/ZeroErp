@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# View: anagrafiche.vw_soggetti_ruoli_dettaglio
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260220-11-create-vw-soggetti-ruoli-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260220-01-create-vw-soggetti-ruoli-dettaglio
+      author: mctit
+      comment: >
+        Crea la vista anagrafiche.vw_soggetti_ruoli_dettaglio
+        per esporre dati ruolo + dati soggetto con decodifiche principali.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW anagrafiche.vw_soggetti_ruoli_dettaglio AS
+              SELECT
+                -- Chiavi ruolo
+                sr.id                                   AS soggetto_ruolo_id,
+                sr.soggetto_id                          AS soggetto_ruolo_soggetto_id,
+                sr.tipo_ruolo_id                        AS soggetto_ruolo_tipo_ruolo_id,
+
+                -- Decodifica tipo ruolo
+                tr.codice                               AS tipo_ruolo_codice,
+                tr.codice_interno                       AS tipo_ruolo_codice_interno,
+                tr.descrizione                          AS tipo_ruolo_descrizione,
+
+                -- Dati soggetto
+                s.id                                    AS soggetto_id,
+                s.codice                                AS soggetto_codice,
+                s.ragione_sociale,
+                s.ragione_sociale_completa,
+                s.cognome,
+                s.nome,
+                s.id_fiscale_univoco_cf_piva,
+                s.partita_iva,
+                s.codice_fiscale,
+                s.data_nascita,
+                s.sesso,
+                s.stato_id,
+                s.comune_id,
+                s.titolo_cortesia_id,
+                s.default_contatto_id,
+                s.tipo_soggetto_dettaglio_id,
+                s.attivo                                AS soggetto_attivo,
+                s.storicizza                            AS soggetto_storicizza,
+                s.tx_id                                 AS soggetto_tx_id,
+                s.data_insert                           AS soggetto_data_insert,
+                s.user_insert                           AS soggetto_user_insert,
+                s.data_update                           AS soggetto_data_update,
+                s.user_update                           AS soggetto_user_update,
+
+                -- Decodifica titolo cortesia (se presente)
+                tc.descrizione                          AS titolo_cortesia_descrizione,
+                tc.descrizione_breve                    AS titolo_cortesia_descrizione_breve,
+
+                -- Audit ruolo
+                sr.meta                                 AS soggetto_ruolo_meta,
+                sr.tx_id                                AS soggetto_ruolo_tx_id,
+                sr.data_insert                          AS soggetto_ruolo_data_insert,
+                sr.user_insert                          AS soggetto_ruolo_user_insert,
+                sr.data_update                          AS soggetto_ruolo_data_update,
+                sr.user_update                          AS soggetto_ruolo_user_update
+              FROM anagrafiche.soggetti_ruoli sr
+              JOIN anagrafiche.soggetti s
+                ON s.id = sr.soggetto_id
+              JOIN config.tipi_ruoli tr
+                ON tr.id = sr.tipo_ruolo_id
+              LEFT JOIN config.titoli_cortesia tc
+                ON tc.id = s.titolo_cortesia_id;
+
+              COMMENT ON VIEW anagrafiche.vw_soggetti_ruoli_dettaglio
+              IS 'Vista generale ruolo+soggetto: espone riferimenti fiscali/anagrafici del soggetto a partire da soggetto_ruolo_id, con decodifica tipo ruolo e titolo cortesia.';
