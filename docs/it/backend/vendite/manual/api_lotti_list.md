@@ -49,6 +49,7 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
         "tipo_doc_fiscale_descrizione": "Fattura",
         "area_geografica_id": 2,
         "area_geografica_descrizione": "Nord",
+        "emittente_soggetto_ruolo_id": 7,
         "data_insert": "2026-02-18T10:00:00+01:00",
         "user_insert": "zeroerp"
       }
@@ -81,5 +82,5 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
 
 ## Note di migrazione
 
-- Query raw nel repository (`VenditePipelineRepository.list_lotti`); nessuna funzione SQL dedicata.
+- Query raw nel repository (`VenditeRepository.list_lotti`); nessuna funzione SQL dedicata.
 - Due query per request: `COUNT(*)` + dati con `LIMIT/OFFSET` (pattern offset pagination).

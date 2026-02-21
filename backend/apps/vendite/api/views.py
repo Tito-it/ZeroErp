@@ -17,7 +17,7 @@ from apps.vendite.services.pipeline_service import (
     fn_reset_lotto_fattura_draft,
     pr_run_lotto_pipeline,
 )
-from apps.vendite.services.vendite_service import fn_list_lotti
+from apps.vendite.services.vendite_service import fn_list_lotti, fn_list_lotto_fatture
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
 
@@ -343,5 +343,41 @@ class ApiLottiList(APIView):
 
 
 class ApiLottiListV1(ApiLottiList):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+
+class ApiLottoFattureList(APIView):
+    is_search_endpoint = True
+
+    # Scopo: Restituisce via GET l'elenco paginato delle fatture di un lotto con filtri e ordinamento.
+    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+        try:
+            raw_stato_esecuzione = request.query_params.get("stato_esecuzione")
+            stato_esecuzione = raw_stato_esecuzione.strip() or None if raw_stato_esecuzione is not None else None
+
+            raw_esclusa = request.query_params.get("esclusa")
+            esclusa = optional_bool({"esclusa": raw_esclusa}, "esclusa") if raw_esclusa is not None else None
+
+            sort_by = request.query_params.get("sort_by", "fattura_id").strip() or "fattura_id"
+            sort_dir = request.query_params.get("sort_dir", "asc").strip() or "asc"
+            page = int(request.query_params.get("page", "1"))
+            page_size = int(request.query_params.get("page_size", "50"))
+
+            data = fn_list_lotto_fatture(
+                lotto_id=lotto_id,
+                stato_esecuzione=stato_esecuzione,
+                esclusa=esclusa,
+                sort_by=sort_by,
+                sort_dir=sort_dir,
+                page=page,
+                page_size=page_size,
+            )
+            return success_response(data)
+        except Exception as exc:
+            return exception_to_error_response(exc)
+
+
+class ApiLottoFattureListV1(ApiLottoFattureList):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]

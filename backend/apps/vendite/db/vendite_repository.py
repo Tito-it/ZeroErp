@@ -13,7 +13,14 @@ from typing import Any
 
 from django.db import connection
 
-from apps.vendite.types import LottoListRow
+from apps.vendite.types import LottoFattureRow, LottoListRow
+
+# Whitelist colonne ordinamento per list_lotto_fatture; mai interpolate direttamente.
+_SORT_COLUMNS: dict[str, str] = {
+    "fattura_id": "fllf.fattura_id",
+    "nominativo": "srd.ragione_sociale_completa",
+    "totale_doc": "f.totale_doc",
+}
 
 
 class VenditeRepository:
@@ -96,6 +103,7 @@ class VenditeRepository:
                 tdf.descrizione    AS tipo_doc_fiscale_descrizione,
                 fl.area_geografica_id,
                 agf.descrizione    AS area_geografica_descrizione,
+                fl.emittente_soggetto_ruolo_id,
                 fl.data_insert,
                 fl.user_insert
             FROM vendite.fatturazione_lotti fl
@@ -132,8 +140,129 @@ class VenditeRepository:
                     "tipo_doc_fiscale_descrizione": row[11],
                     "area_geografica_id": None if row[12] is None else int(row[12]),
                     "area_geografica_descrizione": row[13],
-                    "data_insert": row[14].isoformat() if row[14] is not None else None,
-                    "user_insert": str(row[15]),
+                    "emittente_soggetto_ruolo_id": None if row[14] is None else int(row[14]),
+                    "data_insert": row[15].isoformat() if row[15] is not None else None,
+                    "user_insert": str(row[16]),
+                }
+            )
+        return result, total_count
+
+    # Scopo: Restituisce elenco fatture di un lotto con decodifiche e filtri opzionali.
+    # Obiettivo: lista paginata per lotto_id con JOIN anagrafiche, SDI, stato doc fiscale.
+    # Perimetro: sola lettura; nessun side-effect.
+    # Risultato: tuple (lista LottoFattureRow, conteggio totale).
+    def list_lotto_fatture(
+        self,
+        *,
+        lotto_id: int,
+        stato_esecuzione: str | None,
+        esclusa: bool | None,
+        sort_by: str,
+        sort_dir: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[LottoFattureRow], int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+
+        # Ordinamento: solo valori dalla whitelist entrano nella query.
+        sort_col = _SORT_COLUMNS.get(sort_by, "fllf.fattura_id")
+        safe_dir = "DESC" if sort_dir.lower() == "desc" else "ASC"
+        order_clause = f"{sort_col} {safe_dir}"
+        if sort_by != "fattura_id":
+            order_clause += ", fllf.fattura_id ASC"
+
+        # WHERE obbligatorio su lotto_id; filtri opzionali aggiunti dinamicamente.
+        conditions: list[str] = ["fllf.lotto_id = %s"]
+        params: list[Any] = [lotto_id]
+
+        if stato_esecuzione is not None:
+            conditions.append("fllf.stato_esecuzione = %s")
+            params.append(stato_esecuzione)
+        if esclusa is not None:
+            conditions.append("fllf.esclusa = %s")
+            params.append(esclusa)
+
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+        joins = """
+            INNER JOIN vendite.fatture f
+                ON f.id = fllf.fattura_id
+            INNER JOIN anagrafiche.billing_account ba
+                ON ba.id = f.billing_account_id
+            INNER JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
+                ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
+            LEFT JOIN config.stati_sdi ssdi
+                ON ssdi.id = fllf.stato_sdi_id
+            LEFT JOIN config.stati_doc_fiscale sdf
+                ON sdf.id = fllf.stato_doc_fiscale_id
+        """
+
+        count_sql = f"""
+            SELECT COUNT(*)
+            FROM vendite.fatturazione_lotti_fatture fllf
+            {joins}
+            {where_clause}
+        """
+
+        data_sql = f"""
+            SELECT
+                fllf.id,
+                fllf.lotto_id,
+                fllf.fattura_id,
+                fllf.stato_sdi_id,
+                ssdi.descrizione        AS stato_sdi_descrizione,
+                fllf.stato_doc_fiscale_id,
+                sdf.descrizione         AS stato_doc_fiscale_descrizione,
+                fllf.stato_esecuzione,
+                fllf.esclusa,
+                f.numero,
+                f.serie,
+                f.data,
+                f.billing_account_id,
+                f.totale_doc,
+                f.totale_a_pagare,
+                srd.soggetto_id,
+                srd.ragione_sociale_completa,
+                srd.id_fiscale_univoco_cf_piva
+            FROM vendite.fatturazione_lotti_fatture fllf
+            {joins}
+            {where_clause}
+            ORDER BY {order_clause}
+            LIMIT %s OFFSET %s
+        """
+
+        with connection.cursor() as cursor:
+            cursor.execute(count_sql, params)
+            row = cursor.fetchone()
+            assert row is not None
+            total_count = int(row[0])
+
+            cursor.execute(data_sql, params + [safe_limit, safe_offset])
+            rows = cursor.fetchall()
+
+        result: list[LottoFattureRow] = []
+        for row in rows:
+            result.append(
+                {
+                    "id": int(row[0]),
+                    "lotto_id": int(row[1]),
+                    "fattura_id": int(row[2]),
+                    "stato_sdi_id": None if row[3] is None else int(row[3]),
+                    "stato_sdi_descrizione": row[4],
+                    "stato_doc_fiscale_id": None if row[5] is None else int(row[5]),
+                    "stato_doc_fiscale_descrizione": row[6],
+                    "stato_esecuzione": str(row[7]),
+                    "esclusa": bool(row[8]),
+                    "numero": None if row[9] is None else int(row[9]),
+                    "serie": row[10],
+                    "data": row[11].isoformat() if row[11] is not None else None,
+                    "billing_account_id": int(row[12]),
+                    "totale_doc": str(row[13]) if row[13] is not None else None,
+                    "totale_a_pagare": str(row[14]) if row[14] is not None else None,
+                    "soggetto_id": int(row[15]),
+                    "ragione_sociale_completa": row[16],
+                    "id_fiscale_univoco_cf_piva": row[17],
                 }
             )
         return result, total_count

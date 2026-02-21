@@ -13,7 +13,52 @@ from datetime import date
 
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.vendite_repository import VenditeRepository
-from apps.vendite.types import LottoListRow
+from apps.vendite.types import LottoFattureRow, LottoListRow
+
+_SORT_BY_VALIDI: frozenset[str] = frozenset({"fattura_id", "nominativo", "totale_doc"})
+_SORT_DIR_VALIDI: frozenset[str] = frozenset({"asc", "desc"})
+
+
+# Scopo: Valida page/page_size con E_VENDITE_VALIDATION e restituisce l'offset calcolato.
+# Riutilizzabile da tutte le funzioni di lista dello schema vendite.
+def _validate_pagination(page: int, page_size: int, function_name: str) -> int:
+    ErrorManager.require(
+        page >= 1,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri paginazione non validi.",
+        detail="page deve essere >= 1",
+        context={"page": page},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    ErrorManager.require(
+        1 <= page_size <= 200,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri paginazione non validi.",
+        detail="page_size deve essere compreso tra 1 e 200",
+        context={"page_size": page_size},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return (page - 1) * page_size
+
+
+# Scopo: Costruisce l'envelope di risposta paginata standard.
+# Riutilizzabile da tutte le funzioni di lista dello schema vendite.
+def _build_list_response(
+    results: list,
+    total_count: int,
+    page: int,
+    page_size: int,
+) -> dict[str, object]:
+    total_pages = math.ceil(total_count / page_size) if page_size > 0 else 0
+    return {
+        "count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "results": results,
+    }
 
 
 # Scopo: Restituisce elenco lotti paginato con decodifica e filtri opzionali.
@@ -31,25 +76,7 @@ def fn_list_lotti(
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, object]:
-    ErrorManager.require(
-        page >= 1,
-        code="E_PIPELINE_VALIDATION",
-        message="Parametri paginazione non validi.",
-        detail="page deve essere >= 1",
-        context={"page": page},
-        function_name="vendite.vendite_service.fn_list_lotti",
-        log_to_db=True,
-    )
-    ErrorManager.require(
-        1 <= page_size <= 200,
-        code="E_PIPELINE_VALIDATION",
-        message="Parametri paginazione non validi.",
-        detail="page_size deve essere compreso tra 1 e 200",
-        context={"page_size": page_size},
-        function_name="vendite.vendite_service.fn_list_lotti",
-        log_to_db=True,
-    )
-    offset = (page - 1) * page_size
+    offset = _validate_pagination(page, page_size, "vendite.vendite_service.fn_list_lotti")
     repository = VenditeRepository()
     results: list[LottoListRow]
     results, total_count = repository.list_lotti(
@@ -62,11 +89,51 @@ def fn_list_lotti(
         limit=page_size,
         offset=offset,
     )
-    total_pages = math.ceil(total_count / page_size) if page_size > 0 else 0
-    return {
-        "count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "results": results,
-    }
+    return _build_list_response(results, total_count, page, page_size)
+
+
+# Scopo: Restituisce elenco fatture di un lotto con decodifiche, filtri e ordinamento opzionali.
+# Obiettivo: esporre lista paginata per lotto con validazione parametri.
+# Perimetro: sola lettura; delega query a VenditeRepository.
+# Risultato: dict con count, page, page_size, total_pages, results.
+def fn_list_lotto_fatture(
+    *,
+    lotto_id: int,
+    stato_esecuzione: str | None = None,
+    esclusa: bool | None = None,
+    sort_by: str = "fattura_id",
+    sort_dir: str = "asc",
+    page: int = 1,
+    page_size: int = 50,
+) -> dict[str, object]:
+    offset = _validate_pagination(page, page_size, "vendite.vendite_service.fn_list_lotto_fatture")
+    ErrorManager.require(
+        sort_by in _SORT_BY_VALIDI,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro sort_by non valido.",
+        detail="Valori ammessi: fattura_id, nominativo, totale_doc",
+        context={"sort_by": sort_by},
+        function_name="vendite.vendite_service.fn_list_lotto_fatture",
+        log_to_db=True,
+    )
+    ErrorManager.require(
+        sort_dir in _SORT_DIR_VALIDI,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro sort_dir non valido.",
+        detail="Valori ammessi: asc, desc",
+        context={"sort_dir": sort_dir},
+        function_name="vendite.vendite_service.fn_list_lotto_fatture",
+        log_to_db=True,
+    )
+    repository = VenditeRepository()
+    results: list[LottoFattureRow]
+    results, total_count = repository.list_lotto_fatture(
+        lotto_id=lotto_id,
+        stato_esecuzione=stato_esecuzione,
+        esclusa=esclusa,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        limit=page_size,
+        offset=offset,
+    )
+    return _build_list_response(results, total_count, page, page_size)

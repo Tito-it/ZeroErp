@@ -29,7 +29,7 @@ consentendo di:
 * **Snapshot stato documento**: `stato_doc_fiscale_id` (FK -> `config.stati_doc_fiscale`).
 * **Esito esecuzione per-fattura**: `stato_esecuzione` (`OK` | `ERRORE`).
 * **Esclusione**: `esclusa` (boolean).
-* **Stato SDI**: `stato_sdi_id` (FK futura).
+* **Stato SDI**: `stato_sdi_id` (FK -> `config.stati_sdi`).
 * **Governance**: `meta`, `storicizza`, `tx_id`, audit `data_*`/`user_*`.
 
 ---
