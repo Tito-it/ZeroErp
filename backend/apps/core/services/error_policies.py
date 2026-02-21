@@ -71,6 +71,12 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Task pipeline non implementato.",
         ),
+        "E_VENDITE_VALIDATION": ErrorPolicy(
+            code="E_VENDITE_VALIDATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri non validi.",
+        ),
         "E_DATABASE": ErrorPolicy(
             code="E_DATABASE",
             http_status=400,

@@ -42,6 +42,7 @@ _LOTTO_ROW = {
     "tipo_doc_fiscale_descrizione": "Fattura",
     "area_geografica_id": 2,
     "area_geografica_descrizione": "Nord",
+    "emittente_soggetto_ruolo_id": 7,
     "data_insert": "2026-02-18T10:00:00+01:00",
     "user_insert": "zeroerp",
 }
@@ -149,7 +150,7 @@ class VenditeLottiListApiTests(SimpleTestCase):
         response = self.client.get("/api/v1/vendite/lotti/?page_size=999")
         self.assertEqual(response.status_code, 400)
         body = response.json()["error"]
-        self.assertEqual(body["code"], "E_PIPELINE_VALIDATION")
+        self.assertEqual(body["code"], "E_VENDITE_VALIDATION")
 
     # Scopo: Verifica il caso `test_list_lotti_page_invalida`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -157,7 +158,7 @@ class VenditeLottiListApiTests(SimpleTestCase):
         response = self.client.get("/api/v1/vendite/lotti/?page=0")
         self.assertEqual(response.status_code, 400)
         body = response.json()["error"]
-        self.assertEqual(body["code"], "E_PIPELINE_VALIDATION")
+        self.assertEqual(body["code"], "E_VENDITE_VALIDATION")
 
     # Scopo: Verifica il caso `test_list_lotti_senza_filtri_lista_vuota_ok`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
