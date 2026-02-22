@@ -242,6 +242,22 @@ class VenditePipelineRepository:
             "lotto_info_count": int(row[4]),
         }
 
+    # Scopo: Conta le fatture del lotto con stato_esecuzione='ERRORE' nella tabella ponte.
+    # Usato come guard aggiuntiva di blocco step, in parallelo al check su segnalazioni critiche.
+    def count_fatture_stato_esecuzione_errore(self, lotto_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                  FROM vendite.fatturazione_lotti_fatture
+                 WHERE fatturazione_lotto_id = %s
+                   AND stato_esecuzione = 'ERRORE'
+                """,
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+        return int(row[0]) if row else 0
+
     # Scopo: Restituisce i task run runtime del lotto ordinati dal più recente per consultazione API/UI.
     def list_lotto_task_runs(self, lotto_id: int, *, limit: int = 100) -> list[LottoTaskRunRow]:
         safe_limit = max(1, min(int(limit), 500))
