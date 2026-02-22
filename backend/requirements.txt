@@ -30,7 +30,7 @@ djangorestframework-simplejwt==5.5.1
     # via -r ../requirements.in
 drf-spectacular==0.29.0
     # via -r ../requirements.in
-gunicorn==25.0.3
+gunicorn==25.1.0
     # via -r ../requirements.in
 inflection==0.5.1
     # via drf-spectacular
@@ -42,15 +42,15 @@ packaging==26.0
     # via
     #   -r ../requirements.in
     #   gunicorn
-psycopg==3.3.2
+psycopg==3.3.3
     # via -r ../requirements.in
-psycopg-binary==3.3.2
+psycopg-binary==3.3.3
     # via -r ../requirements.in
 pyjwt==2.11.0
     # via djangorestframework-simplejwt
 pyyaml==6.0.3
     # via drf-spectacular
-redis==7.1.1
+redis==7.2.0
     # via
     #   -r ../requirements.in
     #   django-redis

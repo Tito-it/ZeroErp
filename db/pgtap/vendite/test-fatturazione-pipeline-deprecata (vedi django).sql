@@ -124,6 +124,8 @@ SELECT ok(
 -- ============================================================
 -- Cleanup
 -- ============================================================
+SELECT set_config('zeroerp.maintenance_allow_delete_logs', 'on', true);
+
 UPDATE vendite.fatturazione_lotti
 SET storicizza = false
 WHERE id = (SELECT lotto_id FROM tmp_pipeline_ids);

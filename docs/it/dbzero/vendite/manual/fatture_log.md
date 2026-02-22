@@ -32,6 +32,13 @@ documenti di fattura. I log critici bloccano numerazione e invio finche` attivi.
 * Se esiste almeno un log **critical** attivo, `fatture.critical = true`.
 * `disabilitato = true` esclude il log dal calcolo del flag `critical`.
 * La disabilitazione di un log **critical** richiede conferma esplicita.
+* Trigger automatici su `INSERT/UPDATE/DELETE` sincronizzano:
+  * `vendite.fatture.critical`
+  * `vendite.fatturazione_lotti_fatture.stato_esecuzione` (`ERRORE`/`OK`)
+    solo per lotti `IN_ESECUZIONE` o `APERTO`.
+* `DELETE` diretto bloccato: consentito solo con GUC
+  `zeroerp.maintenance_allow_delete_logs = on`
+  (compatibile con GUC tecnica `zeroerp.maintenance_reset_lotto_draft = on`).
 
 ---
 

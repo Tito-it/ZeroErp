@@ -33,6 +33,7 @@ class LottoContext:
     utility_id: int | None
     billing_account_id: int | None
     lock_batch_id: str | None
+    emittente_soggetto_ruolo_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -780,7 +781,6 @@ class VenditePipelineRepository:
             fattura_id_select_params=[fattura_id],
             status=status,
             messaggio=messaggio,
-            critical=critical,
             meta=meta,
         )
 
@@ -812,7 +812,6 @@ class VenditePipelineRepository:
             fattura_id_select_params=[lotto_id],
             status=status,
             messaggio=messaggio,
-            critical=(status == "C"),
             meta=meta,
         )
 
@@ -824,7 +823,6 @@ class VenditePipelineRepository:
         fattura_id_select_params: list[Any],
         status: str,
         messaggio: str,
-        critical: bool,
         meta: LottoPipelineMeta | None,
     ) -> None:
         # Helper unico INSERT fatture_log; la SELECT fattura_id proviene solo da SQL interno.
@@ -837,7 +835,6 @@ class VenditePipelineRepository:
                     messaggio,
                     status,
                     disabilitato,
-                    critical,
                     meta
                 )
                 SELECT
@@ -846,7 +843,6 @@ class VenditePipelineRepository:
                     %s,
                     %s,
                     false,
-                    %s,
                     COALESCE(%s::jsonb, '{{}}'::jsonb)
                 FROM (
                     {fattura_id_select_sql}
@@ -855,7 +851,6 @@ class VenditePipelineRepository:
                 [
                     messaggio,
                     status,
-                    critical,
                     self._to_jsonb_param(meta),
                     *fattura_id_select_params,
                 ],
@@ -870,7 +865,8 @@ class VenditePipelineRepository:
                        tipo_doc_fiscale_id,
                        utility_id,
                        billing_account_id,
-                       lock_batch_id
+                       lock_batch_id,
+                       emittente_soggetto_ruolo_id
                 FROM vendite.fatturazione_lotti
                 WHERE id = %s
                 """,
@@ -885,6 +881,7 @@ class VenditePipelineRepository:
             utility_id=row[2],
             billing_account_id=row[3],
             lock_batch_id=row[4],
+            emittente_soggetto_ruolo_id=None if row[5] is None else int(row[5]),
         )
 
     # Scopo: Recupera i task JSON dello step (processi o rollback) e normalizza il payload in lista Python.
@@ -967,7 +964,8 @@ class VenditePipelineRepository:
         lock = as_bool(params.get("lock"), default=False)
         data_fatturazione = empty_to_none(params.get("data_fatturazione"))
         valuta_id = empty_to_none(params.get("valuta_id"))
-        emittente_id = empty_to_none(params.get("emittente_soggetto_ruolo_id"))
+        # Emittente: fonte primaria e` il lotto persistito (context); i params JSON non lo sovrascrivono.
+        emittente_id = context.emittente_soggetto_ruolo_id
         limit_value = empty_to_none(params.get("limit"))
 
         with connection.cursor() as cursor:

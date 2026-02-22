@@ -17,6 +17,7 @@ from apps.vendite.services.pipeline_service import (
     fn_reset_lotto_fattura_draft,
     pr_run_lotto_pipeline,
 )
+from apps.vendite.services.vendite_service import fn_list_lotti, fn_list_lotto_fatture
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
 
@@ -265,5 +266,118 @@ class ApiResetLottoFatturaDraft(APIView):
 
 
 class ApiResetLottoFatturaDraftV1(ApiResetLottoFatturaDraft):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+
+class ApiLottiList(APIView):
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="competenza_mese", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro mese di competenza (YYYY-MM-DD)."),
+            OpenApiParameter(name="utility_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per utility."),
+            OpenApiParameter(name="stato_lotto", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro stato lotto (es. DRAFT, COMPLETATO)."),
+            OpenApiParameter(name="area_geografica_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per area geografica fatturazione."),
+            OpenApiParameter(name="tipo_doc_fiscale_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per tipo documento fiscale."),
+            OpenApiParameter(name="emittente_soggetto_ruolo_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per emittente fiscale (soggetto_ruolo_id)."),
+            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
+            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description="Dimensione pagina (default 50, max 200)."),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeLottiListResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeLottiListData",
+                        fields={
+                            "count": serializers.IntegerField(),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "results": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET l'elenco paginato dei lotti fatturazione con filtri opzionali.
+    def get(self, request: Request) -> JsonResponse:
+        try:
+            raw_competenza = request.query_params.get("competenza_mese")
+            competenza_mese = optional_iso_date({"competenza_mese": raw_competenza}, "competenza_mese")
+
+            raw_utility = request.query_params.get("utility_id")
+            utility_id = optional_int({"utility_id": raw_utility}, "utility_id") if raw_utility is not None else None
+
+            stato_lotto_raw = request.query_params.get("stato_lotto")
+            stato_lotto = stato_lotto_raw.strip() or None if stato_lotto_raw is not None else None
+
+            raw_area = request.query_params.get("area_geografica_id")
+            area_geografica_id = optional_int({"area_geografica_id": raw_area}, "area_geografica_id") if raw_area is not None else None
+
+            raw_tipo_doc = request.query_params.get("tipo_doc_fiscale_id")
+            tipo_doc_fiscale_id = optional_int({"tipo_doc_fiscale_id": raw_tipo_doc}, "tipo_doc_fiscale_id") if raw_tipo_doc is not None else None
+
+            raw_emittente = request.query_params.get("emittente_soggetto_ruolo_id")
+            emittente_soggetto_ruolo_id = optional_int({"emittente_soggetto_ruolo_id": raw_emittente}, "emittente_soggetto_ruolo_id") if raw_emittente is not None else None
+
+            page = int(request.query_params.get("page", "1"))
+            page_size = int(request.query_params.get("page_size", "50"))
+
+            data = fn_list_lotti(
+                competenza_mese=competenza_mese,
+                utility_id=utility_id,
+                stato_lotto=stato_lotto,
+                area_geografica_id=area_geografica_id,
+                tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+                emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+                page=page,
+                page_size=page_size,
+            )
+            return success_response(data)
+        except Exception as exc:
+            return exception_to_error_response(exc)
+
+
+class ApiLottiListV1(ApiLottiList):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+
+class ApiLottoFattureList(APIView):
+    is_search_endpoint = True
+
+    # Scopo: Restituisce via GET l'elenco paginato delle fatture di un lotto con filtri e ordinamento.
+    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+        try:
+            raw_stato_esecuzione = request.query_params.get("stato_esecuzione")
+            stato_esecuzione = raw_stato_esecuzione.strip() or None if raw_stato_esecuzione is not None else None
+
+            raw_esclusa = request.query_params.get("esclusa")
+            esclusa = optional_bool({"esclusa": raw_esclusa}, "esclusa") if raw_esclusa is not None else None
+
+            sort_by = request.query_params.get("sort_by", "fattura_id").strip() or "fattura_id"
+            sort_dir = request.query_params.get("sort_dir", "asc").strip() or "asc"
+            page = int(request.query_params.get("page", "1"))
+            page_size = int(request.query_params.get("page_size", "50"))
+
+            data = fn_list_lotto_fatture(
+                lotto_id=lotto_id,
+                stato_esecuzione=stato_esecuzione,
+                esclusa=esclusa,
+                sort_by=sort_by,
+                sort_dir=sort_dir,
+                page=page,
+                page_size=page_size,
+            )
+            return success_response(data)
+        except Exception as exc:
+            return exception_to_error_response(exc)
+
+
+class ApiLottoFattureListV1(ApiLottoFattureList):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]

@@ -1,0 +1,152 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260222-10-create-attivita-fatturabili-pipeline-task-policy-mctit.yaml
+
+  - changeSet:
+      id: 20260222-10-create-attivita-fatturabili-pipeline-task-policy
+      author: mctit
+      comment: "Crea tabella policy task per pipeline attivita_fatturabili (branch/global)."
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: attivita_fatturabili_pipeline_task_policy
+            remarks: "Policy runtime task pipeline attivita_fatturabili con supporto branch e scope blocco."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_attivita_fatt_pipeline_task_policy
+                    nullable: false
+              - column:
+                  name: pipeline_id
+                  type: bigint
+                  remarks: "FK a vendite.attivita_fatturabili_pipeline.id"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: branch_code
+                  type: varchar(32)
+                  defaultValue: "DEFAULT"
+                  remarks: "Branch logico policy (es. DEFAULT, PREVENTIVI, ORDINI)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: task_code
+                  type: varchar(64)
+                  remarks: "Codice task pipeline su cui applicare la policy."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: annullabile
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Se true il task puo essere annullato/resettato."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: resume_mode
+                  type: varchar(16)
+                  defaultValue: "RESET_STEP"
+                  remarks: "Strategia resume/reset (RESET_STEP|RESUME_STEP|RESUME_TASK|RESUME_BRANCH)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: block_scope
+                  type: varchar(16)
+                  defaultValue: "BRANCH"
+                  remarks: "Scope di blocco in errore (BRANCH|GLOBAL)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: depends_on
+                  type: jsonb
+                  defaultValueComputed: "'[]'::jsonb"
+                  remarks: "Dipendenze opzionali task/step del branch."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Policy attiva."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estesi policy task."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Data inserimento."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Data aggiornamento."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente aggiornamento."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID."
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili_pipeline_task_policy
+            baseColumnNames: pipeline_id
+            referencedTableSchemaName: vendite
+            referencedTableName: attivita_fatturabili_pipeline
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_attivita_fatt_pipeline_task_policy_pipeline
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: attivita_fatturabili_pipeline_task_policy
+            columnNames: pipeline_id, branch_code, task_code
+            constraintName: uq_attivita_fatt_pipeline_task_policy_pipe_branch_task
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili_pipeline_task_policy
+                ADD CONSTRAINT chk_attivita_fatt_pipeline_task_policy_resume_mode
+                CHECK (resume_mode IN ('RESET_STEP', 'RESUME_STEP', 'RESUME_TASK', 'RESUME_BRANCH'));
+
+              ALTER TABLE vendite.attivita_fatturabili_pipeline_task_policy
+                ADD CONSTRAINT chk_attivita_fatt_pipeline_task_policy_block_scope
+                CHECK (block_scope IN ('BRANCH', 'GLOBAL'));

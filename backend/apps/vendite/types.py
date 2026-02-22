@@ -61,3 +61,44 @@ class LottoTaskRunRow(TypedDict):
     error_code: str | None
     error_message: str | None
     meta: dict[str, Any]
+
+
+class LottoFattureRow(TypedDict):
+    id: int
+    lotto_id: int
+    fattura_id: int
+    stato_sdi_id: int | None
+    stato_sdi_descrizione: str | None
+    stato_doc_fiscale_id: int | None
+    stato_doc_fiscale_descrizione: str | None
+    stato_esecuzione: str
+    esclusa: bool
+    numero: int | None
+    serie: str | None
+    data: str | None
+    billing_account_id: int
+    totale_doc: str | None
+    totale_a_pagare: str | None
+    soggetto_id: int
+    ragione_sociale_completa: str | None
+    id_fiscale_univoco_cf_piva: str | None
+
+
+class LottoListRow(TypedDict):
+    id: int
+    codice: str
+    competenza_mese: str
+    tipo_lotto: str
+    utility_id: int | None
+    utility_descrizione: str | None
+    stato_lotto: str
+    stato_operativo: str
+    stato_doc_fiscale_id: int | None
+    stato_doc_fiscale_descrizione: str | None
+    tipo_doc_fiscale_id: int
+    tipo_doc_fiscale_descrizione: str | None
+    area_geografica_id: int | None
+    area_geografica_descrizione: str | None
+    emittente_soggetto_ruolo_id: int | None
+    data_insert: str
+    user_insert: str

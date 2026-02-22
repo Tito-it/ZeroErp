@@ -147,6 +147,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 utility_id = 1
                 billing_account_id = None
                 lock_batch_id = None
+                emittente_soggetto_ruolo_id = None
 
             return _Ctx()
 

@@ -42,12 +42,14 @@
 | competenza_dal | date | NO |  |
 | competenza_al | date | NO |  |
 | area_geografica_id | bigint | YES |  |
+| stato_esecuzione | character varying | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_attivita_competenza_dal_al |  |
 | CHECK | chk_attivita_competenza_mese_primo |  |
+| CHECK | chk_attivita_fatt_stato_esecuzione |  |
 | FOREIGN KEY | fk_attivita_fatturabili_area_geografica | area_geografica_id |
 | FOREIGN KEY | fk_attivita_fatturabili_articoli | articolo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_attivita_consumi | attivita_consumi_id |
@@ -65,6 +67,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| idx_att_fatt_lotto_stato_exec | `CREATE INDEX idx_att_fatt_lotto_stato_exec ON vendite.attivita_fatturabili USING btree (lotto_attivita_id, stato_esecuzione)` |
 | ix_attivita_articolo_flags | `CREATE INDEX ix_attivita_articolo_flags ON vendite.attivita_fatturabili USING btree (articolo_id, approvato, fatturato)` |
 | ix_attivita_billing_competenza | `CREATE INDEX ix_attivita_billing_competenza ON vendite.attivita_fatturabili USING btree (billing_account_id, competenza_mese)` |
 | ix_attivita_fatturabili_fattura_riga_id | `CREATE INDEX ix_attivita_fatturabili_fattura_riga_id ON vendite.attivita_fatturabili USING btree (fattura_riga_id)` |

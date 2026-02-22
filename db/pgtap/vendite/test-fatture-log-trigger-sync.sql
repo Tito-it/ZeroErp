@@ -1,0 +1,366 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: trigger sync automatico da vendite.fatture_log
+-- ------------------------------------------------------------
+-- Indice test
+-- 1) Riferimenti minimi presenti
+-- 2) Lotto aperto creato
+-- 3) Fattura test creata e collegata al lotto
+-- 4) Inserimento log critical attivo -> fattura.critical = true
+-- 5) Inserimento log critical attivo -> stato_esecuzione = ERRORE
+-- 6) Disabilitazione log critical -> fattura.critical = false
+-- 7) Disabilitazione log critical -> stato_esecuzione = RUNNING
+-- 8) Lotto fuori perimetro + log critical -> stato_esecuzione non cambia
+-- ------------------------------------------------------------
+BEGIN;
+SELECT plan(8);
+CREATE TEMP TABLE tmp_costanti_flts AS
+SELECT (
+    'pgtap_flts_' || to_char(clock_timestamp(), 'YYMMDDHH24MISS')
+  )::text AS test_scope;
+CREATE TEMP TABLE tmp_refs_flts AS
+SELECT (
+    SELECT m.registro_id
+    FROM vendite.tipi_doc_fiscale_registri m
+      JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
+    WHERE t.attivo IS TRUE
+    ORDER BY m.id
+    LIMIT 1
+  ) AS registro_id,
+  (
+    SELECT m.tipo_doc_fiscale_id
+    FROM vendite.tipi_doc_fiscale_registri m
+      JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
+    WHERE t.attivo IS TRUE
+    ORDER BY m.id
+    LIMIT 1
+  ) AS tipo_doc_fiscale_id,
+  (
+    SELECT ba.id
+    FROM anagrafiche.billing_account ba
+    WHERE --ba.attivo IS TRUE  and
+      ba.utility_id IS NOT NULL
+      and anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id
+    LIMIT 1
+  ) AS billing_account_id,
+  (
+    SELECT ba.utility_id
+    FROM anagrafiche.billing_account ba
+    WHERE --ba.attivo IS TRUE and
+      ba.utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id
+    LIMIT 1
+  ) AS utility_id,
+  (
+    SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id)
+    FROM anagrafiche.billing_account ba
+    WHERE --ba.attivo IS TRUE and
+      ba.utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id
+    LIMIT 1
+  ) AS emittente_soggetto_ruolo_id,
+  (
+    SELECT v.id
+    FROM config.valute v --WHERE v.attivo IS TRUE
+    ORDER BY v.id
+    LIMIT 1
+  ) AS valuta_id,
+  (
+    SELECT s.id
+    FROM config.stati_doc_fiscale s
+    WHERE s.codice_interno = 'DRAFT'
+      AND s.attivo IS TRUE
+    ORDER BY s.id
+    LIMIT 1
+  ) AS stato_draft_id;
+SELECT ok(
+    (
+      SELECT registro_id IS NOT NULL
+        AND tipo_doc_fiscale_id IS NOT NULL
+        AND billing_account_id IS NOT NULL
+        AND utility_id IS NOT NULL
+        AND emittente_soggetto_ruolo_id IS NOT NULL
+        AND valuta_id IS NOT NULL
+        AND stato_draft_id IS NOT NULL
+      FROM tmp_refs_flts
+    ),
+    'Riferimenti minimi presenti'
+  );
+CREATE TEMP TABLE tmp_lotto_flts AS
+SELECT vendite.fn_create_fatturazione_lotto(
+    p_competenza_mese => date_trunc('month', current_date)::date,
+    p_tipo_doc_fiscale_id => (
+      SELECT tipo_doc_fiscale_id
+      FROM tmp_refs_flts
+    ),
+    p_utility_id => (
+      SELECT utility_id
+      FROM tmp_refs_flts
+    ),
+    p_billing_account_id => (
+      SELECT billing_account_id
+      FROM tmp_refs_flts
+    ),
+    p_lock_batch_id => NULL,
+    p_meta => jsonb_build_object(
+      'test_scope',
+      (
+        SELECT test_scope
+        FROM tmp_costanti_flts
+      )
+    ),
+    p_emittente_soggetto_ruolo_id => (
+      SELECT emittente_soggetto_ruolo_id
+      FROM tmp_refs_flts
+    )
+  ) AS lotto_id;
+SELECT ok(
+    (
+      SELECT lotto_id IS NOT NULL
+        AND lotto_id > 0
+      FROM tmp_lotto_flts
+    ),
+    'Lotto aperto creato'
+  );
+CREATE TEMP TABLE tmp_fattura_flts AS WITH ins AS (
+  INSERT INTO vendite.fatture (
+      registro_id,
+      data,
+      emittente_soggetto_ruolo_id,
+      billing_account_id,
+      tipo_doc_fiscale_id,
+      stato_doc_fiscale_id,
+      valuta_id,
+      totale_a_pagare,
+      critical,
+      meta
+    )
+  SELECT (
+      SELECT registro_id
+      FROM tmp_refs_flts
+    ),
+    current_date,
+    (
+      SELECT emittente_soggetto_ruolo_id
+      FROM tmp_refs_flts
+    ),
+    (
+      SELECT billing_account_id
+      FROM tmp_refs_flts
+    ),
+    (
+      SELECT tipo_doc_fiscale_id
+      FROM tmp_refs_flts
+    ),
+    (
+      SELECT stato_draft_id
+      FROM tmp_refs_flts
+    ),
+    (
+      SELECT valuta_id
+      FROM tmp_refs_flts
+    ),
+    25.00,
+    false,
+    jsonb_build_object(
+      'test_scope',
+      (
+        SELECT test_scope
+        FROM tmp_costanti_flts
+      )
+    )
+  RETURNING id
+)
+SELECT id
+FROM ins;
+INSERT INTO vendite.fatturazione_lotti_fatture (
+    lotto_id,
+    fattura_id,
+    stato_doc_fiscale_id,
+    stato_esecuzione,
+    meta
+  )
+SELECT (
+    SELECT lotto_id
+    FROM tmp_lotto_flts
+  ),
+  (
+    SELECT id
+    FROM tmp_fattura_flts
+  ),
+  (
+    SELECT stato_draft_id
+    FROM tmp_refs_flts
+  ),
+  'PENDING',
+  jsonb_build_object(
+    'test_scope',
+    (
+      SELECT test_scope
+      FROM tmp_costanti_flts
+    )
+  );
+SELECT ok(
+    (
+      SELECT EXISTS (
+          SELECT 1
+          FROM vendite.fatturazione_lotti_fatture lf
+          WHERE lf.lotto_id = (
+              SELECT lotto_id
+              FROM tmp_lotto_flts
+            )
+            AND lf.fattura_id = (
+              SELECT id
+              FROM tmp_fattura_flts
+            )
+        )
+    ),
+    'Fattura test creata e collegata al lotto'
+  );
+CREATE TEMP TABLE tmp_log_flts AS
+WITH ins AS (
+  INSERT INTO vendite.fatture_log (
+    fattura_id,
+    data_ora,
+    messaggio,
+    status,
+    disabilitato,
+    meta
+  )
+  SELECT (
+      SELECT id
+      FROM tmp_fattura_flts
+    ),
+    now(),
+    'Errore test trigger sync',
+    'C',
+    false,
+    jsonb_build_object(
+      'test_scope',
+      (
+        SELECT test_scope
+        FROM tmp_costanti_flts
+      ),
+      'case',
+      'critical_insert'
+    )
+  RETURNING id
+)
+SELECT id
+FROM ins;
+SELECT ok(
+    (
+      SELECT f.critical IS TRUE
+      FROM vendite.fatture f
+      WHERE f.id = (
+          SELECT id
+          FROM tmp_fattura_flts
+        )
+    ),
+    'Inserimento log critical attivo -> fattura.critical = true'
+  );
+SELECT ok(
+    (
+      SELECT lf.stato_esecuzione = 'ERRORE'
+      FROM vendite.fatturazione_lotti_fatture lf
+      WHERE lf.lotto_id = (
+          SELECT lotto_id
+          FROM tmp_lotto_flts
+        )
+        AND lf.fattura_id = (
+          SELECT id
+          FROM tmp_fattura_flts
+        )
+    ),
+    'Inserimento log critical attivo -> stato_esecuzione = ERRORE'
+  );
+UPDATE vendite.fatture_log
+SET disabilitato = true,
+  data_update = now(),
+  user_update = current_user
+WHERE id = (
+    SELECT id
+    FROM tmp_log_flts
+  );
+SELECT ok(
+    (
+      SELECT f.critical IS FALSE
+      FROM vendite.fatture f
+      WHERE f.id = (
+          SELECT id
+          FROM tmp_fattura_flts
+        )
+    ),
+    'Disabilitazione log critical -> fattura.critical = false'
+  );
+SELECT ok(
+    (
+      SELECT lf.stato_esecuzione = 'RUNNING'
+      FROM vendite.fatturazione_lotti_fatture lf
+      WHERE lf.lotto_id = (
+          SELECT lotto_id
+          FROM tmp_lotto_flts
+        )
+        AND lf.fattura_id = (
+          SELECT id
+          FROM tmp_fattura_flts
+        )
+    ),
+    'Disabilitazione log critical -> stato_esecuzione = RUNNING'
+  );
+UPDATE vendite.fatturazione_lotti
+SET stato_lotto = 'COMPLETATO',
+  stato_operativo = 'CHIUSO',
+  data_update = now(),
+  user_update = current_user
+WHERE id = (
+    SELECT lotto_id
+    FROM tmp_lotto_flts
+  );
+INSERT INTO vendite.fatture_log (
+    fattura_id,
+    data_ora,
+    messaggio,
+    status,
+    disabilitato,
+    meta
+  )
+SELECT (
+    SELECT id
+    FROM tmp_fattura_flts
+  ),
+  now(),
+  'Errore fuori perimetro lotto',
+  'C',
+  false,
+  jsonb_build_object(
+    'test_scope',
+    (
+      SELECT test_scope
+      FROM tmp_costanti_flts
+    ),
+    'case',
+    'out_of_scope'
+  );
+SELECT ok(
+    (
+      SELECT lf.stato_esecuzione = 'RUNNING'
+      FROM vendite.fatturazione_lotti_fatture lf
+      WHERE lf.lotto_id = (
+          SELECT lotto_id
+          FROM tmp_lotto_flts
+        )
+        AND lf.fattura_id = (
+          SELECT id
+          FROM tmp_fattura_flts
+        )
+    ),
+    'Lotto fuori perimetro + log critical -> stato_esecuzione non cambia'
+  );
+SELECT *
+FROM finish();
+ROLLBACK;

@@ -51,6 +51,24 @@
 - App per dominio (es. `vendite`, `anagrafiche`), non per dettaglio tecnico; se uno schema DB coincide con un dominio stabile, la cartella app puo` allinearsi allo schema
 - Orchestrazione in `apps/<dominio>/services/` (o `usecases/`); accesso DB/SQL in `apps/<dominio>/db/` o `repositories/`
 - API in `apps/<dominio>/api/` o `views.py` + `urls.py`; modelli ORM solo dove utili, altrimenti `managed = False`
+
+### Naming convention repository e service per app dominio
+
+Ogni app puo' contenere piu' repository e service. La regola di naming e' basata sul **perimetro semantico**:
+
+| Tipo | Nome file | Contenuto |
+| --- | --- | --- |
+| Generico schema | `<schema>_repository.py` | List, query, CRUD su entita' dello schema senza logica specifica (es. `vendite_repository.py`) |
+| Sottodominio specializzato | `<sottodominio>_repository.py` | Operazioni di un processo autonomo con logica propria (es. `pipeline_repository.py`) |
+| Generico schema | `<schema>_service.py` | Facade per operazioni generiche (es. `vendite_service.py`) |
+| Sottodominio specializzato | `<sottodominio>_service.py` | Facade per il sottodominio (es. `pipeline_service.py`) |
+
+**Regola pratica:**
+
+- Usare `<schema>` (es. `vendite`) per operazioni che non appartengono a nessun sottodominio specifico: elenchi, ricerche, lettura stato entita'.
+- Creare un file `<sottodominio>_*` **solo** quando il sottodominio ha logica orchestrata autonoma (runner, executor, tracing, saga): non per singoli metodi.
+- Non frammentare in file per ogni entita': tre metodi su `fatture` e due su `lotti` stanno in `vendite_repository.py`, non in file separati.
+- Esempio per `vendite`: `vendite_repository.py` (list lotti, list fatture, decodifiche), `pipeline_repository.py` (step, task run, job stato, pipeline config).
 - Per endpoint API usare il pattern core `handle_post_json(...)` (`apps/core/api/endpoint_helpers.py`) per parsing/error envelope uniforme.
 - Evitare `try/except Exception` generici nelle view API dominio: usare `ServiceError` nei service e lasciare fallback al middleware `apps/core/middleware/api_exception_middleware.py`.
 - Il middleware eccezioni API si applica solo a `/api/*` e resta disattivabile via `DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED`.

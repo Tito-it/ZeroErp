@@ -25,17 +25,15 @@ BEGIN
   --
   -- Regole:
   --   - usa GUC di manutenzione per bypass guard fatturato
-  --   - se p_fatture_ids vuoto -> nessuna modifica
+  --   - su ripristino: stato_esecuzione torna a NULL
   -- =========================================================
   IF p_fatture_ids IS NULL OR array_length(p_fatture_ids, 1) IS NULL THEN
     RETURN QUERY SELECT 0, 0, 0;
     RETURN;
   END IF;
 
-  -- Bypass guard attivita_fatturabili durante il cleanup tecnico.
   PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);
 
-  -- Ripristina fondi fattura applicati (se presenti).
   PERFORM vendite.fn_reset_fondi_fattura(f_id)
     FROM unnest(p_fatture_ids) AS f_id;
 
@@ -48,7 +46,6 @@ BEGIN
     v_righe_ids := ARRAY[]::bigint[];
   END IF;
 
-  -- Note collegate alle righe/testate fattura (tabella partizionata).
   DELETE FROM vendite.note
    WHERE target_tipo = 'FATTURA'
      AND target_riga_id = ANY(v_righe_ids);
@@ -57,34 +54,29 @@ BEGIN
    WHERE target_tipo = 'FATTURA'
      AND target_id = ANY(p_fatture_ids);
 
-  -- Riepiloghi IVA
   DELETE FROM vendite.fatture_riepiloghi_iva
    WHERE fattura_id = ANY(p_fatture_ids);
 
-  -- Righe fattura
   DELETE FROM vendite.fatture_righe
    WHERE fattura_id = ANY(p_fatture_ids);
   GET DIAGNOSTICS v_deleted_righe = ROW_COUNT;
 
-  -- Log fatture
   DELETE FROM vendite.fatture_log
    WHERE fattura_id = ANY(p_fatture_ids);
 
-  -- Link lotto-fatture
   DELETE FROM vendite.fatturazione_lotti_fatture
    WHERE fattura_id = ANY(p_fatture_ids);
 
-  -- Testate fattura
   DELETE FROM vendite.fatture
    WHERE id = ANY(p_fatture_ids);
   GET DIAGNOSTICS v_deleted_fatture = ROW_COUNT;
 
-  -- Ripristino attivita_fatturabili
   UPDATE vendite.attivita_fatturabili
      SET lock_in_fatturazione = false,
          lock_batch_id = NULL,
          fatturato = false,
          fattura_riga_id = NULL,
+         stato_esecuzione = NULL,
          data_update = now(),
          user_update = current_user
    WHERE (p_lock_batch_id IS NOT NULL AND lock_batch_id = p_lock_batch_id)
@@ -97,7 +89,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cleanup_fatture_by_ids(p_fatture_ids bigint[], p_lock_batch_id uuid)
-IS 'Cleanup centralizzato fatture/righe, ripristino attivita_fatturabili e reset fondi fattura applicati.';
+IS 'Cleanup centralizzato fatture/righe con ripristino attivita e reset stato_esecuzione=NULL.';
 ```
 
 ---

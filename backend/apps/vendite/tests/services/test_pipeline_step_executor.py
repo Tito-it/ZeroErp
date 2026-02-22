@@ -19,6 +19,7 @@ Indice test eseguiti:
 17) PipelineStepExecutorUnitTests.test_execute_step_traces_fail_on_handler_error
 18) PipelineStepExecutorUnitTests.test_execute_step_no_tracing_when_no_pipeline_id
 19) PipelineStepExecutorUnitTests.test_execute_step_no_tracing_when_no_policy
+20) PipelineStepExecutorUnitTests.test_execute_step_select_attivita_uses_emittente_from_context
 """
 
 from unittest.mock import MagicMock
@@ -37,6 +38,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             competenza_mese="2026-01-01",
             utility_id=None,
             tipo_doc_fiscale_id=None,
+            emittente_soggetto_ruolo_id=None,
         )
         repo.get_step_processes.return_value = processi
         repo.log_pipeline_fase.return_value = None
@@ -494,3 +496,33 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.start_lotto_task_run.assert_not_called()
         repo.complete_lotto_task_run.assert_not_called()
         fatture_righe_service.generate_fatture_righe.assert_called_once()
+
+    # Scopo: Verifica che select_attivita usi emittente_soggetto_ruolo_id dal context (lotto), non dai params.
+    def test_execute_step_select_attivita_uses_emittente_from_context(self):
+        processi = [
+            {
+                "task": "select_attivita",
+                "fase": "Selezione attivita",
+                "params": {"emittente_soggetto_ruolo_id": 99},
+            }
+        ]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "select_attivita_default"
+        repo.get_lotto_context.return_value = MagicMock(
+            competenza_mese="2026-01-01",
+            utility_id=None,
+            tipo_doc_fiscale_id=None,
+            emittente_soggetto_ruolo_id=42,
+        )
+
+        executor.execute_step(
+            lotto_id=7,
+            stato_doc_fiscale_id=1,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.run_select_attivita_task.assert_called_once()
+        call_kwargs = repo.run_select_attivita_task.call_args.kwargs
+        self.assertEqual(call_kwargs["context"].emittente_soggetto_ruolo_id, 42)
