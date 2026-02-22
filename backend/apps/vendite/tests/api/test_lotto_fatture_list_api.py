@@ -25,6 +25,7 @@ Indice test eseguiti:
 
 from unittest.mock import Mock, patch
 
+from django.core.cache import cache
 from django.test import Client, SimpleTestCase
 
 
@@ -63,6 +64,7 @@ _LOTTO_ID = 42
 class VenditeLottoFattureListApiTests(SimpleTestCase):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        cache.clear()
         self.client = Client()
         self.url = f"/api/v1/vendite/lotti/{_LOTTO_ID}/fatture/"
 
