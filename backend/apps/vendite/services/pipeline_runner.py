@@ -311,13 +311,16 @@ class LottoPipelineRunner:
                         message="Lotto bloccato per segnalazioni critiche attive.",
                         detail=(
                             "Correggere le segnalazioni critical prima di proseguire: "
-                            f"lotto_id={lotto_id}, critical_count={lotto_signal_status.critical_count}"
+                            f"lotto_id={lotto_id}"
+                            f", critical_count={lotto_signal_status.critical_count}"
+                            f", stato_esecuzione_errore_count={lotto_signal_status.fatture_stato_esecuzione_errore_count}"
                         ),
                         context={
                             "lotto_id": lotto_id,
                             "critical_count": lotto_signal_status.critical_count,
                             "warning_count": lotto_signal_status.warning_count,
                             "attention_count": lotto_signal_status.attention_count,
+                            "stato_esecuzione_errore_count": lotto_signal_status.fatture_stato_esecuzione_errore_count,
                             "summary": lotto_signal_status.summary,
                         },
                         function_name="vendite.pr_run_lotto_pipeline",
