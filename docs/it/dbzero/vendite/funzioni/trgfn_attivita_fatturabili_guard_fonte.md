@@ -21,13 +21,14 @@ BEGIN
   --
   -- Regole:
   --   - competenza_mese alternativo a competenza_dal/al
-  --   - se competenza_dal/al presenti, devono essere entrambi valorizzati
+  --   - se competenza_dal/al presenti, devono essere coerenti
+  --   - variadic su fn_log_and_raise_error sempre testuali
   -- =========================================================
 
   SELECT r.fonte_quantita
     INTO v_fonte
-  FROM vendite.regole_fatturazione_articolo r
-  WHERE r.prodotto_id = NEW.articolo_id;
+    FROM vendite.regole_fatturazione_articolo r
+   WHERE r.prodotto_id = NEW.articolo_id;
 
   IF v_fonte IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
@@ -39,7 +40,7 @@ BEGIN
         'articolo_id', NEW.articolo_id
       ),
       NULL::uuid,
-      NEW.articolo_id
+      NEW.articolo_id::text
     );
   END IF;
 
@@ -54,7 +55,8 @@ BEGIN
         'articolo_id', NEW.articolo_id
       ),
       NULL::uuid,
-      v_fonte, NEW.articolo_id
+      v_fonte,
+      NEW.articolo_id::text
     );
   END IF;
 
@@ -70,11 +72,11 @@ BEGIN
         'competenza_mese', NEW.competenza_mese
       ),
       NULL::uuid,
-      NEW.data_attivita, NEW.competenza_mese
+      NEW.data_attivita::text,
+      NEW.competenza_mese::text
     );
   END IF;
 
-  -- competenza_mese non compatibile con competenza_dal/al
   IF NEW.competenza_mese IS NOT NULL
     AND (NEW.competenza_dal IS NOT NULL OR NEW.competenza_al IS NOT NULL) THEN
     PERFORM script.fn_log_and_raise_error(
@@ -88,11 +90,12 @@ BEGIN
         'competenza_al', NEW.competenza_al
       ),
       NULL::uuid,
-      NEW.competenza_mese, NEW.competenza_dal, NEW.competenza_al
+      NEW.competenza_mese::text,
+      COALESCE(NEW.competenza_dal::text, 'NULL'),
+      COALESCE(NEW.competenza_al::text, 'NULL')
     );
   END IF;
 
-  -- se uno dei due e` valorizzato, devono esserlo entrambi
   IF (NEW.competenza_dal IS NULL) <> (NEW.competenza_al IS NULL) THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
@@ -104,11 +107,11 @@ BEGIN
         'competenza_al', NEW.competenza_al
       ),
       NULL::uuid,
-      NEW.competenza_dal, NEW.competenza_al
+      COALESCE(NEW.competenza_dal::text, 'NULL'),
+      COALESCE(NEW.competenza_al::text, 'NULL')
     );
   END IF;
 
-  -- coerenza intervallo
   IF NEW.competenza_dal IS NOT NULL
     AND NEW.competenza_al IS NOT NULL
     AND NEW.competenza_dal > NEW.competenza_al THEN
@@ -122,11 +125,11 @@ BEGIN
         'competenza_al', NEW.competenza_al
       ),
       NULL::uuid,
-      NEW.competenza_dal, NEW.competenza_al
+      NEW.competenza_dal::text,
+      NEW.competenza_al::text
     );
   END IF;
 
-  -- data_attivita deve rientrare nell'intervallo
   IF NEW.competenza_dal IS NOT NULL
     AND NEW.competenza_al IS NOT NULL
     AND (NEW.data_attivita < NEW.competenza_dal OR NEW.data_attivita > NEW.competenza_al) THEN
@@ -141,7 +144,9 @@ BEGIN
         'competenza_al', NEW.competenza_al
       ),
       NULL::uuid,
-      NEW.data_attivita, NEW.competenza_dal, NEW.competenza_al
+      NEW.data_attivita::text,
+      NEW.competenza_dal::text,
+      NEW.competenza_al::text
     );
   END IF;
 
@@ -150,7 +155,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_fonte()
-IS 'Blocca inserimenti/aggiornamenti se la fonte_quantita non è tra TIMESHEET, MANUALE, FISSA o se la competenza è incoerente.';
+IS 'Valida fonte_quantita e competenze su attivita_fatturabili; variadic error helper normalizzati a text.';
 ```
 
 ---

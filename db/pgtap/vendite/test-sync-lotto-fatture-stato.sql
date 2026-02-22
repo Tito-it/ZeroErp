@@ -9,7 +9,7 @@
 -- 3) Fatture test create
 -- 4) Link lotto-fatture creati
 -- 5) Sync eseguita senza errore
--- 6) Fattura non critical => stato_esecuzione OK
+-- 6) Fattura non critical => stato_esecuzione COMPLETED
 -- 7) Fattura critical => stato_esecuzione ERRORE
 -- 8) stato_doc_fiscale ponte allineato alla fattura (critical)
 -- 9) stato_doc_fiscale ponte allineato alla fattura (non critical)
@@ -239,7 +239,7 @@ SELECT (
   ),
   f.id,
   f.stato_doc_fiscale_id,
-  'OK',
+  'PENDING',
   jsonb_build_object(
     'test_scope',
     (
@@ -276,7 +276,7 @@ $$,
 );
 SELECT ok(
     (
-      SELECT lf.stato_esecuzione = 'OK'
+      SELECT lf.stato_esecuzione = 'COMPLETED'
       FROM vendite.fatturazione_lotti_fatture lf
         JOIN tmp_fatture_sls f ON f.id = lf.fattura_id
       WHERE lf.lotto_id = (
@@ -285,7 +285,7 @@ SELECT ok(
         )
         AND f.critical IS FALSE
       LIMIT 1
-    ), 'Fattura non critical => stato_esecuzione OK'
+    ), 'Fattura non critical => stato_esecuzione COMPLETED'
   );
 SELECT ok(
     (

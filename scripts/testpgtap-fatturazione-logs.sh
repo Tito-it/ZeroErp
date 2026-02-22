@@ -13,6 +13,10 @@ TESTS=(
   "db/pgtap/vendite/test-fn-get-or-create-lotto-emittente.sql"
   "db/pgtap/vendite/test-sync-lotto-fatture-stato.sql"
   "db/pgtap/vendite/test-fatture-log-trigger-sync.sql"
+  "db/pgtap/vendite/test-lotti-attivita-stato-esecuzione-v2.sql"
+  "db/pgtap/vendite/test-attivita-task-runs-runtime-v1.sql"
+  "db/pgtap/vendite/test-attivita-sorgenti-branch-policy-v1.sql"
+  "db/pgtap/vendite/test-attivita-go-live-seed-v1.sql"
   "db/pgtap/vendite/test-logs-guard-delete.sql"
 )
 

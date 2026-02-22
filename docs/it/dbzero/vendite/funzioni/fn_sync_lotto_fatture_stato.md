@@ -13,22 +13,21 @@ CREATE OR REPLACE FUNCTION vendite.fn_sync_lotto_fatture_stato(p_lotto_id bigint
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
-  v_stato_lotto config.stati_doc_fiscale.id%TYPE;
+  v_stato_lotto vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
   v_target config.stati_doc_fiscale.id%TYPE;
+  v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
   v_inviata_id config.stati_doc_fiscale.id%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Allinea stato documento delle fatture collegate al lotto
-  --   e mantiene coerente lo stato tecnico per-fattura nel ponte.
+  --   Allineare stato_doc_fiscale delle fatture del lotto
+  --   e sincronizzare stato_esecuzione sul ponte lotto-fattura.
   --
   -- Regole:
-  --   - p_lotto_id obbligatorio
-  --   - se target NULL usa stato_doc_fiscale lotto
-  --   - fatture critical non avanzano di stato (stato_esecuzione=ERRORE)
+  --   - le fatture critical non avanzano stato documento
+  --   - mapping stato_esecuzione delegato a helper condiviso
+  --   - su lotti GIORNALIERO in INVIATA: stato_operativo CHIUSO
   -- =========================================================
-
   IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_sync_lotto_fatture_stato', 'E_GENERICO',
@@ -69,7 +68,6 @@ BEGIN
     );
   END IF;
 
-  -- Aggiorno stato documento fattura solo per non-critical e non escluse.
   UPDATE vendite.fatture f
      SET stato_doc_fiscale_id = v_target,
          data_update = now(),
@@ -81,16 +79,16 @@ BEGIN
      AND COALESCE(f.critical, false) IS FALSE
      AND f.stato_doc_fiscale_id IS DISTINCT FROM v_target;
 
-  -- Allineo ponte lotto-fatture:
-  -- - stato_doc_fiscale_id sempre valorizzato
-  -- - stato_esecuzione coerente con critical/esclusa
   UPDATE vendite.fatturazione_lotti_fatture lf
      SET stato_doc_fiscale_id = f.stato_doc_fiscale_id,
-         stato_esecuzione = CASE
-           WHEN COALESCE(lf.esclusa, false) THEN lf.stato_esecuzione
-           WHEN COALESCE(f.critical, false) THEN 'ERRORE'
-           ELSE 'OK'
-         END,
+         stato_esecuzione = vendite.fn_resolve_stato_esecuzione(
+           p_stato_source => 'COMPLETATO',
+           p_current_stato_esecuzione => lf.stato_esecuzione,
+           p_has_critical => COALESCE(f.critical, false),
+           p_esclusa => COALESCE(lf.esclusa, false),
+           p_fatturato => false,
+           p_default_stato_esecuzione => 'COMPLETED'
+         ),
          data_update = now(),
          user_update = current_user
     FROM vendite.fatture f
@@ -118,7 +116,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_sync_lotto_fatture_stato(p_lotto_id bigint, p_target_stato_doc_fiscale_id bigint)
-IS 'Allinea stato fatture collegate al lotto e sincronizza stato_esecuzione su ponte lotto-fatture.';
+IS 'Allinea stato fatture collegate al lotto e sincronizza stato_esecuzione tramite helper condiviso.';
 ```
 
 ---

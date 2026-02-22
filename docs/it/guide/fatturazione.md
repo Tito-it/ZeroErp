@@ -5,6 +5,8 @@
 > 👀 **Vedi anche**
 >
 > * [`Documentazione attivita_fatturabili`](/dbzero/vendite/manual/attivita_fatturabili)  
+> * [`Pipeline attivita: policy task`](/dbzero/vendite/manual/attivita_fatturabili_pipeline_task_policy)  
+> * [`Pipeline attivita: task-runs`](/dbzero/vendite/manual/attivita_fatturabili_lotti_task_runs)  
 > * [`Documentazione fatture`](/dbzero/vendite/manual/fatture)  
 > * [`Documentazione fatture_righe`](/dbzero/vendite/manual/fatture_righe)  
 > * [`Documentazione note (partizionata)`](/dbzero/vendite/manual/note)  
@@ -68,6 +70,64 @@ Roadmap tecnica in corso (runtime task):
 
 Questo consente di **accorpare più fatture** nello stesso lotto giornaliero,
 senza perdere la governance documentale.
+
+### Pipeline `attivita_fatturabili` (modello a branch, implementazione)
+
+Dal 22-02-2026 il dominio `ATTIVITA_FATTURABILI` adotta una pipeline runtime
+dedicata con gestione **a branch indipendenti** (es. `PREVENTIVI`, `ORDINI`),
+coerente con il requisito "pipeline libera" non rigidamente sequenziale.
+
+Riferimenti principali:
+* `vendite.attivita_fatturabili_pipeline`
+* `vendite.attivita_fatturabili_pipeline_task_policy`
+* `vendite.attivita_fatturabili_lotti_task_runs`
+* `vendite.fn_get_attivita_pipeline_task_policy`
+* `vendite.fn_start_attivita_lotto_task_run`
+* `vendite.fn_complete_attivita_lotto_task_run`
+* `vendite.fn_fail_attivita_lotto_task_run`
+* `vendite.fn_cancel_attivita_lotto_task_run`
+* `vendite.fn_list_attivita_lotto_task_runs`
+* `vendite.fn_set_runtime_task_run_esito` (helper condiviso con dominio `LOTTO`)
+
+Regole runtime adottate:
+* policy per task su chiave `(pipeline_id, branch_code, task_code)`;
+* fallback policy `branch_code -> DEFAULT`;
+* `block_scope` configurabile:
+  * `BRANCH`: blocca solo il ramo corrente;
+  * `GLOBAL`: blocca l'intera run;
+* dipendenze opzionali in `depends_on` (jsonb);
+* resume mode esteso a `RESUME_BRANCH`.
+
+Semantica operativa:
+* **start task**: inserisce run in `IN_ESECUZIONE`, incrementa `tentativo` per `(lotto_attivita_id, pipeline_id, branch_code, task_code)`;
+* **complete/fail/cancel**: chiusura uniforme via helper `fn_set_runtime_task_run_esito`;
+* **list task-runs**: diagnostica per lotto con filtri `branch_code` e `task_code`.
+
+Esempio lettura policy con fallback branch:
+
+```sql
+SELECT *
+FROM vendite.fn_get_attivita_pipeline_task_policy(
+  p_pipeline_id => :pipeline_id,
+  p_task_code => :task_code,
+  p_branch_code => 'PREVENTIVI'
+);
+```
+
+Esempio apertura task-run:
+
+```sql
+SELECT *
+FROM vendite.fn_start_attivita_lotto_task_run(
+  p_lotto_attivita_id => :lotto_attivita_id,
+  p_pipeline_id => :pipeline_id,
+  p_task_code => :task_code,
+  p_branch_code => 'PREVENTIVI',
+  p_block_scope => 'BRANCH',
+  p_depends_on => '[]'::jsonb,
+  p_meta => '{}'::jsonb
+);
+```
 
 ---
 
@@ -341,6 +401,13 @@ Usare questa checklist prima di lanciare i primi run su un ambiente.
    * `MASSIVO` step `DRAFT/EMESSA` rieseguibili con reset tecnico step.
    * `DEFINITIVA` in resume per fattura (no reset globale).
    * `GIORNALIERO` senza reset lotto su emissione.
+6. Verificare pipeline attivita (branch):
+   * `vendite.attivita_fatturabili_pipeline` popolata per gli step attesi.
+   * `vendite.attivita_fatturabili_pipeline_task_policy` valorizzata almeno per `branch_code='DEFAULT'`.
+   * `block_scope` coerente con il comportamento desiderato (`BRANCH` vs `GLOBAL`).
+7. Verificare tracciamento runtime attivita:
+   * scrittura in `vendite.attivita_fatturabili_lotti_task_runs` disponibile.
+   * funzioni runtime attivita (`fn_start/complete/fail/cancel/list_attivita_lotto_task_runs`) installate.
 
 Query di controllo rapido:
 

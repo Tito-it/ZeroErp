@@ -1,0 +1,116 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_start_attivita_lotto_task_run.md" %}
+# ⚙️ Funzione `fn_start_attivita_lotto_task_run`
+
+```sql
+CREATE FUNCTION fn_start_attivita_lotto_task_run(p_lotto_attivita_id bigint, p_pipeline_id bigint, p_task_code character varying, p_branch_code character varying, p_sorgente_tipo_id bigint, p_fase character varying, p_block_scope character varying, p_depends_on jsonb, p_meta jsonb)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_start_attivita_lotto_task_run(p_lotto_attivita_id bigint, p_pipeline_id bigint, p_task_code character varying, p_branch_code character varying DEFAULT 'DEFAULT'::character varying, p_sorgente_tipo_id bigint DEFAULT NULL::bigint, p_fase character varying DEFAULT NULL::character varying, p_block_scope character varying DEFAULT 'BRANCH'::character varying, p_depends_on jsonb DEFAULT '[]'::jsonb, p_meta jsonb DEFAULT '{}'::jsonb)
+ RETURNS TABLE(task_run_id bigint, tentativo smallint)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_branch vendite.attivita_fatturabili_lotti_task_runs.branch_code%TYPE;
+  v_scope vendite.attivita_fatturabili_lotti_task_runs.block_scope%TYPE;
+  v_tentativo vendite.attivita_fatturabili_lotti_task_runs.tentativo%TYPE;
+BEGIN
+  -- =========================================================
+  -- Scopo:
+  --   Aprire un task-run runtime su lotto attivita con
+  --   tracking tentativo per branch/task.
+  --
+  -- Regole:
+  --   - lotto_attivita_id e task_code obbligatori
+  --   - block_scope ammesso: BRANCH|GLOBAL
+  --   - tentativo incrementale per (lotto,pipeline,branch,task)
+  --   - RETURNING qualificato per evitare ambiguita` PL/pgSQL
+  -- =========================================================
+  IF p_lotto_attivita_id IS NULL OR p_lotto_attivita_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_start_attivita_lotto_task_run', 'E_GENERICO',
+      jsonb_build_object('scope','ATTIVITA_FATTURABILI','severity','C','code','E_GENERICO','lotto_id',p_lotto_attivita_id,'fattura_id',NULL,'context',jsonb_build_object('detail','lotto_attivita_id obbligatorio')),
+      NULL::uuid,
+      'lotto_attivita_id obbligatorio'
+    );
+  END IF;
+
+  IF p_pipeline_id IS NOT NULL AND p_pipeline_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_start_attivita_lotto_task_run', 'E_GENERICO',
+      jsonb_build_object('scope','ATTIVITA_FATTURABILI','severity','C','code','E_GENERICO','lotto_id',p_lotto_attivita_id,'fattura_id',NULL,'context',jsonb_build_object('detail','pipeline_id non valido','pipeline_id',p_pipeline_id)),
+      NULL::uuid,
+      'pipeline_id non valido'
+    );
+  END IF;
+
+  IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_start_attivita_lotto_task_run', 'E_GENERICO',
+      jsonb_build_object('scope','ATTIVITA_FATTURABILI','severity','C','code','E_GENERICO','lotto_id',p_lotto_attivita_id,'fattura_id',NULL,'context',jsonb_build_object('detail','task_code obbligatorio')),
+      NULL::uuid,
+      'task_code obbligatorio'
+    );
+  END IF;
+
+  v_branch := COALESCE(NULLIF(btrim(p_branch_code), ''), 'DEFAULT');
+  v_scope := upper(COALESCE(NULLIF(btrim(p_block_scope), ''), 'BRANCH'));
+
+  IF v_scope NOT IN ('BRANCH', 'GLOBAL') THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_start_attivita_lotto_task_run', 'E_GENERICO',
+      jsonb_build_object('scope','ATTIVITA_FATTURABILI','severity','C','code','E_GENERICO','lotto_id',p_lotto_attivita_id,'fattura_id',NULL,'context',jsonb_build_object('detail','block_scope non valido','block_scope',p_block_scope)),
+      NULL::uuid,
+      'block_scope non valido'
+    );
+  END IF;
+
+  SELECT COALESCE(max(r.tentativo), 0)::smallint + 1
+    INTO v_tentativo
+  FROM vendite.attivita_fatturabili_lotti_task_runs r
+  WHERE r.lotto_attivita_id = p_lotto_attivita_id
+    AND COALESCE(r.pipeline_id, -1) = COALESCE(p_pipeline_id, -1)
+    AND r.branch_code = v_branch
+    AND r.task_code = p_task_code;
+
+  INSERT INTO vendite.attivita_fatturabili_lotti_task_runs AS tr (
+    lotto_attivita_id,
+    pipeline_id,
+    sorgente_tipo_id,
+    branch_code,
+    task_code,
+    fase,
+    tentativo,
+    task_stato,
+    block_scope,
+    depends_on,
+    started_at,
+    meta
+  ) VALUES (
+    p_lotto_attivita_id,
+    p_pipeline_id,
+    p_sorgente_tipo_id,
+    v_branch,
+    p_task_code,
+    p_fase,
+    v_tentativo,
+    'IN_ESECUZIONE',
+    v_scope,
+    COALESCE(p_depends_on, '[]'::jsonb),
+    now(),
+    COALESCE(p_meta, '{}'::jsonb)
+  )
+  RETURNING tr.id, tr.tentativo INTO task_run_id, tentativo;
+
+  RETURN NEXT;
+END
+$function$
+
+COMMENT ON FUNCTION vendite.fn_start_attivita_lotto_task_run(p_lotto_attivita_id bigint, p_pipeline_id bigint, p_task_code character varying, p_branch_code character varying, p_sorgente_tipo_id bigint, p_fase character varying, p_block_scope character varying, p_depends_on jsonb, p_meta jsonb)
+IS 'Apre un task-run runtime su lotto attivita, incrementa tentativo e marca stato IN_ESECUZIONE (fix RETURNING ambiguo).';
+```
+
+---
+{% include-markdown "signature-core.md" %}

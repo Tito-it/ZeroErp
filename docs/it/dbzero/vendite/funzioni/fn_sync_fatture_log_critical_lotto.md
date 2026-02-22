@@ -13,13 +13,17 @@ CREATE OR REPLACE FUNCTION vendite.fn_sync_fatture_log_critical_lotto(p_fattura_
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-  -- =======================================================
+  -- =========================================================
   -- Scopo:
-  --   Dato un set di fatture toccate da fatture_log:
-  --   1) ricalcola fatture.critical su log attivi C
-  --   2) aggiorna stato_esecuzione in lotti_fatture
-  --      solo su lotti aperti o in esecuzione.
-  -- =======================================================
+  --   Ricalcola flag critical sulle fatture toccate da log
+  --   e propaga stato_esecuzione sul ponte lotto-fattura.
+  --
+  -- Regole:
+  --   - mapping stato_esecuzione delegato a helper condiviso
+  --   - has_critical=true -> ERRORE
+  --   - lotto IN_ESECUZIONE -> RUNNING
+  --   - altri casi attivi -> COMPLETED
+  -- =========================================================
   IF p_fattura_ids IS NULL OR array_length(p_fattura_ids, 1) IS NULL THEN
     RETURN;
   END IF;
@@ -69,10 +73,14 @@ BEGIN
     FROM changed c
   )
   UPDATE vendite.fatturazione_lotti_fatture lf
-     SET stato_esecuzione = CASE
-           WHEN calc.has_critical THEN 'ERRORE'
-           ELSE 'OK'
-         END,
+     SET stato_esecuzione = vendite.fn_resolve_stato_esecuzione(
+           p_stato_source => l.stato_lotto,
+           p_current_stato_esecuzione => lf.stato_esecuzione,
+           p_has_critical => calc.has_critical,
+           p_esclusa => COALESCE(lf.esclusa, false),
+           p_fatturato => false,
+           p_default_stato_esecuzione => 'COMPLETED'
+         ),
          data_update = now(),
          user_update = current_user
     FROM calc,
@@ -84,15 +92,19 @@ BEGIN
            l.stato_lotto = 'IN_ESECUZIONE'
            OR l.stato_operativo = 'APERTO'
          )
-     AND lf.stato_esecuzione IS DISTINCT FROM CASE
-           WHEN calc.has_critical THEN 'ERRORE'
-           ELSE 'OK'
-         END;
+     AND lf.stato_esecuzione IS DISTINCT FROM vendite.fn_resolve_stato_esecuzione(
+           p_stato_source => l.stato_lotto,
+           p_current_stato_esecuzione => lf.stato_esecuzione,
+           p_has_critical => calc.has_critical,
+           p_esclusa => COALESCE(lf.esclusa, false),
+           p_fatturato => false,
+           p_default_stato_esecuzione => 'COMPLETED'
+         );
 END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_sync_fatture_log_critical_lotto(p_fattura_ids bigint[])
-IS 'Ricalcola fatture.critical da fatture_log attivi (C) e propaga stato_esecuzione su lotti_fatture per lotti APERTO/IN_ESECUZIONE.';
+IS 'Ricalcola fatture.critical e propaga stato_esecuzione su lotti_fatture tramite helper condiviso.';
 ```
 
 ---

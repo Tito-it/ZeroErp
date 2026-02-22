@@ -1,0 +1,221 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260222-11-create-attivita-fatturabili-lotti-task-runs-mctit.yaml
+
+  - changeSet:
+      id: 20260222-11-create-attivita-fatturabili-lotti-task-runs
+      author: mctit
+      comment: "Crea tracing runtime task per lotti attivita_fatturabili (branch indipendenti)."
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: attivita_fatturabili_lotti_task_runs
+            remarks: "Storico runtime task su lotto attivita_fatturabili con tracking branch/scope."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_attivita_fatt_lotti_task_runs
+                    nullable: false
+              - column:
+                  name: lotto_attivita_id
+                  type: bigint
+                  remarks: "FK a vendite.attivita_fatturabili_lotti.id"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: pipeline_id
+                  type: bigint
+                  remarks: "FK a vendite.attivita_fatturabili_pipeline.id"
+                  constraints:
+                    nullable: true
+              - column:
+                  name: sorgente_tipo_id
+                  type: bigint
+                  remarks: "FK a config.sorgenti.id (opzionale)."
+                  constraints:
+                    nullable: true
+              - column:
+                  name: branch_code
+                  type: varchar(32)
+                  defaultValue: "DEFAULT"
+                  remarks: "Branch logico runtime (es. PREVENTIVI, ORDINI)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: task_code
+                  type: varchar(64)
+                  remarks: "Task eseguito."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: fase
+                  type: varchar(255)
+                  remarks: "Descrizione fase task."
+                  constraints:
+                    nullable: true
+              - column:
+                  name: tentativo
+                  type: smallint
+                  defaultValueNumeric: 1
+                  remarks: "Numero tentativo esecuzione task."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: task_stato
+                  type: varchar(16)
+                  defaultValue: "IN_ESECUZIONE"
+                  remarks: "Stato task (IN_ESECUZIONE|COMPLETATO|ERRORE|ANNULLATO)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: block_scope
+                  type: varchar(16)
+                  defaultValue: "BRANCH"
+                  remarks: "Scope blocco applicato all'errore (BRANCH|GLOBAL)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: depends_on
+                  type: jsonb
+                  defaultValueComputed: "'[]'::jsonb"
+                  remarks: "Snapshot dipendenze task/step."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: started_at
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Data/ora avvio task."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ended_at
+                  type: timestamp with time zone
+                  remarks: "Data/ora fine task."
+                  constraints:
+                    nullable: true
+              - column:
+                  name: error_code
+                  type: varchar(64)
+                  remarks: "Codice errore applicativo."
+                  constraints:
+                    nullable: true
+              - column:
+                  name: error_message
+                  type: text
+                  remarks: "Messaggio errore tecnico/funzionale."
+                  constraints:
+                    nullable: true
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati runtime task."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Record attivo."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Data inserimento."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente inserimento."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Data aggiornamento."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente aggiornamento."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID."
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili_lotti_task_runs
+            baseColumnNames: lotto_attivita_id
+            referencedTableSchemaName: vendite
+            referencedTableName: attivita_fatturabili_lotti
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_attivita_fatt_lotti_task_runs_lotto
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili_lotti_task_runs
+            baseColumnNames: pipeline_id
+            referencedTableSchemaName: vendite
+            referencedTableName: attivita_fatturabili_pipeline
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_attivita_fatt_lotti_task_runs_pipeline
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili_lotti_task_runs
+            baseColumnNames: sorgente_tipo_id
+            referencedTableSchemaName: config
+            referencedTableName: sorgenti
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_attivita_fatt_lotti_task_runs_sorgente
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: attivita_fatturabili_lotti_task_runs
+            columnNames: lotto_attivita_id, pipeline_id, branch_code, task_code, tentativo
+            constraintName: uq_attivita_fatt_lotti_task_runs_lotto_pipe_branch_task_try
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili_lotti_task_runs
+                ADD CONSTRAINT chk_attivita_fatt_lotti_task_runs_task_stato
+                CHECK (task_stato IN ('IN_ESECUZIONE', 'COMPLETATO', 'ERRORE', 'ANNULLATO'));
+
+              ALTER TABLE vendite.attivita_fatturabili_lotti_task_runs
+                ADD CONSTRAINT chk_attivita_fatt_lotti_task_runs_block_scope
+                CHECK (block_scope IN ('BRANCH', 'GLOBAL'));
+
+              ALTER TABLE vendite.attivita_fatturabili_lotti_task_runs
+                ADD CONSTRAINT chk_attivita_fatt_lotti_task_runs_timestamps
+                CHECK (ended_at IS NULL OR ended_at >= started_at);

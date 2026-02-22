@@ -10,7 +10,7 @@
 -- 4) Inserimento log critical attivo -> fattura.critical = true
 -- 5) Inserimento log critical attivo -> stato_esecuzione = ERRORE
 -- 6) Disabilitazione log critical -> fattura.critical = false
--- 7) Disabilitazione log critical -> stato_esecuzione = OK
+-- 7) Disabilitazione log critical -> stato_esecuzione = RUNNING
 -- 8) Lotto fuori perimetro + log critical -> stato_esecuzione non cambia
 -- ------------------------------------------------------------
 BEGIN;
@@ -196,7 +196,7 @@ SELECT (
     SELECT stato_draft_id
     FROM tmp_refs_flts
   ),
-  'OK',
+  'PENDING',
   jsonb_build_object(
     'test_scope',
     (
@@ -299,7 +299,7 @@ SELECT ok(
   );
 SELECT ok(
     (
-      SELECT lf.stato_esecuzione = 'OK'
+      SELECT lf.stato_esecuzione = 'RUNNING'
       FROM vendite.fatturazione_lotti_fatture lf
       WHERE lf.lotto_id = (
           SELECT lotto_id
@@ -310,7 +310,7 @@ SELECT ok(
           FROM tmp_fattura_flts
         )
     ),
-    'Disabilitazione log critical -> stato_esecuzione = OK'
+    'Disabilitazione log critical -> stato_esecuzione = RUNNING'
   );
 UPDATE vendite.fatturazione_lotti
 SET stato_lotto = 'COMPLETATO',
@@ -348,7 +348,7 @@ SELECT (
   );
 SELECT ok(
     (
-      SELECT lf.stato_esecuzione = 'OK'
+      SELECT lf.stato_esecuzione = 'RUNNING'
       FROM vendite.fatturazione_lotti_fatture lf
       WHERE lf.lotto_id = (
           SELECT lotto_id

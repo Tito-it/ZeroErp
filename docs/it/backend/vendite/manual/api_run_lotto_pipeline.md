@@ -37,7 +37,7 @@ Endpoint applicativo che invoca il servizio Python `pr_run_lotto_pipeline`, equi
 - Converte `dry_run` in boolean.
 - Converte `0` in `null` sugli ID opzionali (`lotto_id`, `tipo_doc_fiscale_id`, `utility_id`, `billing_account_id`, `emittente_soggetto_ruolo_id`).
 - `lock_batch_id` è il correlatore del lotto: se passato è **RIUSO** lotto; per creare un lotto nuovo **ometterlo** o passare `null` (il DB lo genera). Riutilizzare un `lock_batch_id` di un lotto `COMPLETATO` produce errore.
-- **Risoluzione emittente fiscale** — delegata a `vendite.fn_get_or_create_lotto` nel DB con questa priorità:
+- **Risoluzione emittente fiscale** — delegata a `vendite.fn_get_or_create_lotto` nel DB (via helper condiviso `vendite.fn_resolve_lotto_utility_emittente`) con questa priorità:
   1. `emittente_soggetto_ruolo_id` esplicito nel payload → validato e usato direttamente.
   2. Dedotto dal mapping `billing_account_id` → emittente fiscale, se `billing_account_id` valorizzato.
   3. Unico emittente fiscale attivo nel sistema → usato come default.
@@ -50,6 +50,7 @@ Endpoint applicativo che invoca il servizio Python `pr_run_lotto_pipeline`, equi
 ## Dipendenze DB
 
 - `vendite.fn_get_or_create_lotto` (creazione/risoluzione lotto + emittente)
+- `vendite.fn_resolve_lotto_utility_emittente` (helper condiviso coerenza BA/utility/emittente)
 - `vendite.fatturazione_lotti.emittente_soggetto_ruolo_id` (attributo lotto persistito)
 - Dipendenze indirette via `services/pipeline_runner.py` e `db/pipeline_repository.py`
 
