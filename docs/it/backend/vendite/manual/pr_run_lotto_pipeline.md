@@ -50,7 +50,7 @@ I vincoli di coerenza dati e le operazioni DB specialistiche restano delegate al
 
 ### Risoluzione emittente fiscale
 
-L'emittente viene risolto **una sola volta** alla creazione/risoluzione del lotto, con questa priorità (implementata in `vendite.fn_get_or_create_lotto`):
+L'emittente viene risolto **una sola volta** alla creazione/risoluzione del lotto, con questa priorità (implementata in `vendite.fn_get_or_create_lotto` tramite helper `vendite.fn_resolve_lotto_utility_emittente`):
 
 1. `emittente_soggetto_ruolo_id` esplicito in input → validato e persistito.
 2. Dedotto dal mapping `billing_account_id` → emittente fiscale (tabella `anagrafiche.emittenti_fiscali_billing_account`).
@@ -69,6 +69,7 @@ Il valore viene persistito su `vendite.fatturazione_lotti.emittente_soggetto_ruo
 ## Dipendenze DB
 
 - `vendite.fn_get_or_create_lotto(...)` — creazione/risoluzione lotto + risoluzione emittente
+- `vendite.fn_resolve_lotto_utility_emittente(...)` — helper condiviso per coerenza `billing_account`/`utility`/`emittente`
 - `vendite.fatturazione_lotti.emittente_soggetto_ruolo_id` — attributo lotto persistito
 - `anagrafiche.emittenti_fiscali_billing_account` — mapping BA → emittente (usato in DB)
 - `vendite.fn_log_pipeline_fase(...)`

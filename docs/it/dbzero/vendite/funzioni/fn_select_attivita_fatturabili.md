@@ -26,7 +26,7 @@ BEGIN
   -- Regole:
   --   - tipo_doc_fiscale obbligatorio
   --   - competenza_mese obbligatoria (mese di fatturazione)
-  --   - lock opzionale con SKIP LOCKED
+  --   - con lock imposta stato_esecuzione='PENDING'
   -- =========================================================
 
   IF p_competenza_mese IS NULL THEN
@@ -104,6 +104,7 @@ BEGIN
       ' UPDATE vendite.attivita_fatturabili a' ||
       '    SET lock_in_fatturazione = true,' ||
       '        lock_batch_id = ' || quote_literal(p_lock_batch_id) || ',' ||
+      '        stato_esecuzione = ''PENDING'',' ||
       '        data_update = now(),' ||
       '        user_update = current_user' ||
       '   FROM candidati c' ||
@@ -132,7 +133,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid, p_lock boolean, p_data_fatturazione date, p_billing_account_id bigint, p_utility_id integer, p_valuta_id integer, p_emittente_soggetto_ruolo_id bigint, p_area_geografica_id bigint, p_limit integer)
-IS 'Select attivita_fatturabili con lock opzionale.';
+IS 'Select attivita_fatturabili con lock opzionale e stato_esecuzione=PENDING in lock.';
 ```
 
 ---

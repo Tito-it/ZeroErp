@@ -1,0 +1,380 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260222-03-update-fn-lotto-stato-esecuzione-v2-mctit.yaml
+
+  - changeSet:
+      id: 20260222-03-01-update-fn-set-fatturazione-lotto-stato-esecuzione-v2
+      author: mctit
+      comment: "Aggiorna stato_esecuzione lotti_fatture su cambio stato_lotto (RUNNING/COMPLETED/ERRORE)"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_set_fatturazione_lotto_stato(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                p_stato_lotto vendite.fatturazione_lotti.stato_lotto%TYPE,
+                p_note text DEFAULT NULL::text
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_stato_corrente vendite.fatturazione_lotti.stato_lotto%TYPE;
+                v_stato_lotto_input vendite.fatturazione_lotti.stato_lotto%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Aggiorna lo stato tecnico del lotto e mantiene
+                --   allineato stato_esecuzione su fatturazione_lotti_fatture.
+                --
+                -- Regole:
+                --   - IN_ESECUZIONE  -> RUNNING (se non critical)
+                --   - COMPLETATO     -> COMPLETED (se non critical)
+                --   - critical=true  -> ERRORE
+                --   - esclusa=true   -> non forzare override stato_esecuzione
+                -- =========================================================
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 OR p_stato_lotto IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','lotto_id e stato_lotto obbligatori')),
+                    NULL::uuid, 'Parametri obbligatori mancanti'
+                  );
+                END IF;
+
+                v_stato_lotto_input := upper(btrim(p_stato_lotto));
+
+                IF v_stato_lotto_input NOT IN ('IN_ESECUZIONE','COMPLETATO','ERRORE') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','stato_lotto non valido', 'stato_lotto', p_stato_lotto)),
+                    NULL::uuid, 'stato_lotto non valido'
+                  );
+                END IF;
+
+                SELECT stato_lotto
+                  INTO v_stato_corrente
+                  FROM vendite.fatturazione_lotti
+                 WHERE id = p_lotto_id
+                 FOR UPDATE;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','lotto non trovato', 'lotto_id', p_lotto_id)),
+                    NULL::uuid,
+                    concat('Lotto non trovato ', 'lotto_id: ', p_lotto_id::text)
+                  );
+                END IF;
+
+                IF v_stato_corrente = v_stato_lotto_input THEN
+                  RETURN;
+                END IF;
+
+                IF v_stato_corrente = 'IN_ESECUZIONE'
+                   AND v_stato_lotto_input NOT IN ('COMPLETATO','ERRORE') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','transizione non ammessa', 'da', v_stato_corrente, 'a', v_stato_lotto_input)),
+                    NULL::uuid,
+                    concat('Transizione non ammessa: stato in esecuzione' , ' da ', v_stato_corrente, ' a ', v_stato_lotto_input)
+                  );
+                END IF;
+
+                IF v_stato_corrente = 'ERRORE' AND v_stato_lotto_input <> 'IN_ESECUZIONE' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','transizione non ammessa', 'da', v_stato_corrente, 'a', v_stato_lotto_input)),
+                    NULL::uuid,
+                    concat('Transizione non ammessa: stato errore' , ' da ', v_stato_corrente, ' a ', v_stato_lotto_input)
+                  );
+                END IF;
+
+                IF v_stato_corrente = 'COMPLETATO' AND v_stato_lotto_input <> 'IN_ESECUZIONE' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','transizione non ammessa', 'da', v_stato_corrente, 'a', v_stato_lotto_input)),
+                    NULL::uuid,
+                    concat('Transizione non ammessa: stato completato' , ' da ', v_stato_corrente, ' a ', v_stato_lotto_input)
+                  );
+                END IF;
+
+                UPDATE vendite.fatturazione_lotti
+                   SET stato_lotto = v_stato_lotto_input,
+                       meta = CASE
+                                WHEN p_note IS NULL THEN meta
+                                ELSE jsonb_set(meta, '{note_stato}', to_jsonb(p_note), true)
+                              END,
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE id = p_lotto_id;
+
+                -- Mantiene visibile l'avanzamento per fattura nel lotto.
+                IF v_stato_lotto_input = 'IN_ESECUZIONE' THEN
+                  UPDATE vendite.fatturazione_lotti_fatture lf
+                     SET stato_esecuzione = CASE
+                           WHEN COALESCE(lf.esclusa, false) THEN lf.stato_esecuzione
+                           WHEN COALESCE(f.critical, false) THEN 'ERRORE'
+                           ELSE 'RUNNING'
+                         END,
+                         data_update = now(),
+                         user_update = current_user
+                    FROM vendite.fatture f
+                   WHERE lf.lotto_id = p_lotto_id
+                     AND lf.fattura_id = f.id
+                     AND lf.stato_esecuzione IS DISTINCT FROM CASE
+                           WHEN COALESCE(lf.esclusa, false) THEN lf.stato_esecuzione
+                           WHEN COALESCE(f.critical, false) THEN 'ERRORE'
+                           ELSE 'RUNNING'
+                         END;
+                ELSIF v_stato_lotto_input = 'COMPLETATO' THEN
+                  UPDATE vendite.fatturazione_lotti_fatture lf
+                     SET stato_esecuzione = CASE
+                           WHEN COALESCE(lf.esclusa, false) THEN lf.stato_esecuzione
+                           WHEN COALESCE(f.critical, false) THEN 'ERRORE'
+                           ELSE 'COMPLETED'
+                         END,
+                         data_update = now(),
+                         user_update = current_user
+                    FROM vendite.fatture f
+                   WHERE lf.lotto_id = p_lotto_id
+                     AND lf.fattura_id = f.id
+                     AND lf.stato_esecuzione IS DISTINCT FROM CASE
+                           WHEN COALESCE(lf.esclusa, false) THEN lf.stato_esecuzione
+                           WHEN COALESCE(f.critical, false) THEN 'ERRORE'
+                           ELSE 'COMPLETED'
+                         END;
+                END IF;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_set_fatturazione_lotto_stato(
+                vendite.fatturazione_lotti.id%TYPE,
+                vendite.fatturazione_lotti.stato_lotto%TYPE,
+                text
+              ) IS 'Aggiorna stato_lotto tecnico e sincronizza stato_esecuzione fatture (RUNNING/COMPLETED/ERRORE).';
+
+  - changeSet:
+      id: 20260222-03-02-update-fn-sync-lotto-fatture-stato-esecuzione-v2
+      author: mctit
+      comment: "Allinea stato_esecuzione su lotti_fatture con stato COMPLETED/ERRORE"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_sync_lotto_fatture_stato(
+                p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                p_target_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE DEFAULT NULL::bigint
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_stato_lotto vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+                v_target config.stati_doc_fiscale.id%TYPE;
+                v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                v_inviata_id config.stati_doc_fiscale.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Allineare stato_doc_fiscale delle fatture del lotto
+                --   e sincronizzare stato_esecuzione sul ponte lotto-fattura.
+                --
+                -- Regole:
+                --   - le fatture critical non avanzano stato documento
+                --   - sul ponte: critical -> ERRORE, altrimenti COMPLETED
+                --   - su lotti GIORNALIERO in INVIATA: stato_operativo CHIUSO
+                -- =========================================================
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_lotto_fatture_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','lotto_id obbligatorio')),
+                    NULL::uuid, 'lotto_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_target_stato_doc_fiscale_id IS NOT NULL AND p_target_stato_doc_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_lotto_fatture_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','target stato_doc_fiscale non valido','stato_doc_fiscale_id',p_target_stato_doc_fiscale_id)),
+                    NULL::uuid, 'stato_doc_fiscale target non valido'
+                  );
+                END IF;
+
+                SELECT tipo_lotto, stato_doc_fiscale_id
+                  INTO v_tipo_lotto, v_stato_lotto
+                  FROM vendite.fatturazione_lotti
+                 WHERE id = p_lotto_id
+                 FOR UPDATE;
+
+                IF v_stato_lotto IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_lotto_fatture_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',p_lotto_id,'fattura_id',NULL,'context',jsonb_build_object('detail','lotto non trovato')),
+                    NULL::uuid, concat('lotto non trovato: ', p_lotto_id::text)
+                  );
+                END IF;
+
+                v_target := COALESCE(p_target_stato_doc_fiscale_id, v_stato_lotto);
+
+                IF v_target IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_sync_lotto_fatture_stato', 'E_GENERICO',
+                    jsonb_build_object('scope','LOTTO','severity','C','code','E_GENERICO','lotto_id',p_lotto_id,'fattura_id',NULL,'context',jsonb_build_object('detail','stato_doc_fiscale target obbligatorio')),
+                    NULL::uuid, concat('stato_doc_fiscale target obbligatorio per lotto: ', p_lotto_id::text)
+                  );
+                END IF;
+
+                UPDATE vendite.fatture f
+                   SET stato_doc_fiscale_id = v_target,
+                       data_update = now(),
+                       user_update = current_user
+                  FROM vendite.fatturazione_lotti_fatture lf
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND COALESCE(lf.esclusa, false) IS FALSE
+                   AND lf.fattura_id = f.id
+                   AND COALESCE(f.critical, false) IS FALSE
+                   AND f.stato_doc_fiscale_id IS DISTINCT FROM v_target;
+
+                UPDATE vendite.fatturazione_lotti_fatture lf
+                   SET stato_doc_fiscale_id = f.stato_doc_fiscale_id,
+                       stato_esecuzione = CASE
+                         WHEN COALESCE(lf.esclusa, false) THEN lf.stato_esecuzione
+                         WHEN COALESCE(f.critical, false) THEN 'ERRORE'
+                         ELSE 'COMPLETED'
+                       END,
+                       data_update = now(),
+                       user_update = current_user
+                  FROM vendite.fatture f
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND lf.fattura_id = f.id;
+
+                IF v_tipo_lotto = 'GIORNALIERO' THEN
+                  SELECT id
+                    INTO v_inviata_id
+                    FROM config.stati_doc_fiscale
+                   WHERE codice_interno = 'INVIATA'
+                     AND attivo IS TRUE
+                   ORDER BY ordine
+                   LIMIT 1;
+
+                  IF v_inviata_id IS NOT NULL AND v_target = v_inviata_id THEN
+                    UPDATE vendite.fatturazione_lotti
+                       SET stato_operativo = 'CHIUSO',
+                           data_update = now(),
+                           user_update = current_user
+                     WHERE id = p_lotto_id;
+                  END IF;
+                END IF;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_sync_lotto_fatture_stato(bigint, bigint)
+              IS 'Allinea stato fatture collegate al lotto e sincronizza stato_esecuzione su ponte lotto-fatture (COMPLETED/ERRORE).';
+
+  - changeSet:
+      id: 20260222-03-03-update-fn-sync-fatture-log-critical-lotto-v2
+      author: mctit
+      comment: "Propaga stato_esecuzione con RUNNING/COMPLETED/ERRORE in base a critical e stato lotto"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_sync_fatture_log_critical_lotto(
+                p_fattura_ids bigint[]
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Ricalcola flag critical sulle fatture toccate da log
+                --   e propaga stato_esecuzione sul ponte lotto-fattura.
+                --
+                -- Regole:
+                --   - has_critical=true -> ERRORE
+                --   - lotto IN_ESECUZIONE -> RUNNING
+                --   - altri casi attivi -> COMPLETED
+                -- =========================================================
+                IF p_fattura_ids IS NULL OR array_length(p_fattura_ids, 1) IS NULL THEN
+                  RETURN;
+                END IF;
+
+                WITH changed AS (
+                  SELECT DISTINCT x.fattura_id
+                  FROM unnest(p_fattura_ids) AS x(fattura_id)
+                  WHERE x.fattura_id IS NOT NULL
+                    AND x.fattura_id > 0
+                ),
+                calc AS (
+                  SELECT
+                    c.fattura_id,
+                    EXISTS (
+                      SELECT 1
+                      FROM vendite.fatture_log fl
+                      WHERE fl.fattura_id = c.fattura_id
+                        AND fl.disabilitato IS FALSE
+                        AND fl.status = 'C'
+                    ) AS has_critical
+                  FROM changed c
+                )
+                UPDATE vendite.fatture f
+                   SET critical = calc.has_critical,
+                       data_update = now(),
+                       user_update = current_user
+                  FROM calc
+                 WHERE f.id = calc.fattura_id
+                   AND f.critical IS DISTINCT FROM calc.has_critical;
+
+                WITH changed AS (
+                  SELECT DISTINCT x.fattura_id
+                  FROM unnest(p_fattura_ids) AS x(fattura_id)
+                  WHERE x.fattura_id IS NOT NULL
+                    AND x.fattura_id > 0
+                ),
+                calc AS (
+                  SELECT
+                    c.fattura_id,
+                    EXISTS (
+                      SELECT 1
+                      FROM vendite.fatture_log fl
+                      WHERE fl.fattura_id = c.fattura_id
+                        AND fl.disabilitato IS FALSE
+                        AND fl.status = 'C'
+                    ) AS has_critical
+                  FROM changed c
+                )
+                UPDATE vendite.fatturazione_lotti_fatture lf
+                   SET stato_esecuzione = CASE
+                         WHEN calc.has_critical THEN 'ERRORE'
+                         WHEN l.stato_lotto = 'IN_ESECUZIONE' THEN 'RUNNING'
+                         ELSE 'COMPLETED'
+                       END,
+                       data_update = now(),
+                       user_update = current_user
+                  FROM calc,
+                       vendite.fatturazione_lotti l
+                 WHERE lf.fattura_id = calc.fattura_id
+                   AND l.id = lf.lotto_id
+                   AND COALESCE(lf.esclusa, false) IS FALSE
+                   AND (
+                         l.stato_lotto = 'IN_ESECUZIONE'
+                         OR l.stato_operativo = 'APERTO'
+                       )
+                   AND lf.stato_esecuzione IS DISTINCT FROM CASE
+                         WHEN calc.has_critical THEN 'ERRORE'
+                         WHEN l.stato_lotto = 'IN_ESECUZIONE' THEN 'RUNNING'
+                         ELSE 'COMPLETED'
+                       END;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_sync_fatture_log_critical_lotto(bigint[])
+              IS 'Ricalcola fatture.critical e propaga stato_esecuzione su lotti_fatture (RUNNING/COMPLETED/ERRORE).';

@@ -9,12 +9,13 @@
 > **Approfondimento funzioni:**
 >
 > • [vendite.fn_create_fatturazione_lotto](/dbzero/vendite/funzioni/fn_create_fatturazione_lotto)     
+> • [vendite.fn_resolve_lotto_utility_emittente](/dbzero/vendite/funzioni/fn_resolve_lotto_utility_emittente)
 >
 ---
 
 ### 🎯 Scopo Principale
 
-(latest review 27-01-2026)
+(latest review 22-02-2026)
 La funzione **`vendite.fn_get_or_create_lotto()`** recupera un lotto esistente
 (o lo crea se assente) garantendo la coerenza dei parametri di richiesta.
 
@@ -29,7 +30,7 @@ La funzione **`vendite.fn_get_or_create_lotto()`** recupera un lotto esistente
   * blocca il riuso solo se il lotto e` in `IN_ESECUZIONE` **e** `stato_operativo <> APERTO`.
 * Se `p_lock_batch_id` e` valorizzato e non esiste un lotto, ne crea uno nuovo.
 * Se non e` presente nessun riferimento, delega a `fn_create_fatturazione_lotto`.
-* La risoluzione emittente segue il fallback di `fn_create_fatturazione_lotto` (input esplicito, mapping BA, fallback su emittente unico attivo).
+* La risoluzione/validazione di `utility_id` + `emittente_soggetto_ruolo_id` e` centralizzata nell'helper condiviso `vendite.fn_resolve_lotto_utility_emittente(...)`, riusato anche dal dominio `attivita_fatturabili`.
 
 ---
 

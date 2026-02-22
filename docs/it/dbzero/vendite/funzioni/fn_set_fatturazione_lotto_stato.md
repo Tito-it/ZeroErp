@@ -18,14 +18,14 @@ DECLARE
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Aggiorna solo lo stato job tecnico del lotto.
+  --   Aggiorna lo stato tecnico del lotto e mantiene
+  --   allineato stato_esecuzione su fatturazione_lotti_fatture.
   --
   -- Regole:
-  --   - IN_ESECUZIONE -> COMPLETATO | ERRORE
-  --   - ERRORE -> IN_ESECUZIONE
-  --   - COMPLETATO -> IN_ESECUZIONE
+  --   - mapping stato_esecuzione delegato a helper condiviso
+  --   - critical=true  -> ERRORE
+  --   - esclusa=true   -> non forzare override stato_esecuzione
   -- =========================================================
-
   IF p_lotto_id IS NULL OR p_lotto_id <= 0 OR p_stato_lotto IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_set_fatturazione_lotto_stato', 'E_GENERICO',
@@ -100,11 +100,34 @@ BEGIN
          data_update = now(),
          user_update = current_user
    WHERE id = p_lotto_id;
+
+  UPDATE vendite.fatturazione_lotti_fatture lf
+     SET stato_esecuzione = vendite.fn_resolve_stato_esecuzione(
+           p_stato_source => v_stato_lotto_input,
+           p_current_stato_esecuzione => lf.stato_esecuzione,
+           p_has_critical => COALESCE(f.critical, false),
+           p_esclusa => COALESCE(lf.esclusa, false),
+           p_fatturato => false,
+           p_default_stato_esecuzione => 'PENDING'
+         ),
+         data_update = now(),
+         user_update = current_user
+    FROM vendite.fatture f
+   WHERE lf.lotto_id = p_lotto_id
+     AND lf.fattura_id = f.id
+     AND lf.stato_esecuzione IS DISTINCT FROM vendite.fn_resolve_stato_esecuzione(
+           p_stato_source => v_stato_lotto_input,
+           p_current_stato_esecuzione => lf.stato_esecuzione,
+           p_has_critical => COALESCE(f.critical, false),
+           p_esclusa => COALESCE(lf.esclusa, false),
+           p_fatturato => false,
+           p_default_stato_esecuzione => 'PENDING'
+         );
 END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_set_fatturazione_lotto_stato(p_lotto_id bigint, p_stato_lotto text, p_note text)
-IS 'Aggiorna lo stato tecnico del lotto senza alterare stato_operativo.';
+IS 'Aggiorna stato_lotto tecnico e sincronizza stato_esecuzione fatture tramite helper condiviso.';
 ```
 
 ---

@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260222-01-update-attivita-fatturabili-lotti-stati-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260222-01-update-attivita-fatturabili-lotti-stati-emittente
+      author: mctit
+      comment: "Allinea attivita_fatturabili(_lotti) a modello stato operativo/emittente/esecuzione"
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili_lotti
+            columns:
+              - column:
+                  name: stato_operativo
+                  type: text
+                  defaultValue: APERTO
+                  remarks: "Stato operativo lotto attivita: APERTO|CHIUSO|ERRORE."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: emittente_soggetto_ruolo_id
+                  type: bigint
+                  remarks: "Emittente fiscale del lotto (ruolo EF)."
+                  constraints:
+                    nullable: true
+
+        - addColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columns:
+              - column:
+                  name: stato_esecuzione
+                  type: varchar(16)
+                  defaultValue: PENDING
+                  remarks: "Stato esecuzione attivita nel lotto (PENDING|RUNNING|COMPLETED|ERRORE)."
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili_lotti
+            baseColumnNames: emittente_soggetto_ruolo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_attivita_fatt_lotti_emittente_sr
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili_lotti
+                ADD CONSTRAINT chk_attivita_fatt_lotti_stato_operativo
+                CHECK (stato_operativo IN ('APERTO','CHIUSO','ERRORE'));
+
+              ALTER TABLE vendite.attivita_fatturabili
+                ADD CONSTRAINT chk_attivita_fatt_stato_esecuzione
+                CHECK (stato_esecuzione IN ('PENDING','RUNNING','COMPLETED','ERRORE'));
+
+              CREATE INDEX IF NOT EXISTS idx_att_fatt_lotto_stato_exec
+                ON vendite.attivita_fatturabili (lotto_attivita_id, stato_esecuzione);
+
+              CREATE INDEX IF NOT EXISTS idx_att_fatt_lotti_stato_operativo
+                ON vendite.attivita_fatturabili_lotti (stato_operativo);
+
+  - changeSet:
+      id: 20260222-01-02-update-attivita-fatturabili-stato-esecuzione-nullable
+      author: mctit
+      comment: "Consente stato_esecuzione NULL su attivita_fatturabili fuori pipeline lotto"
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+                ALTER COLUMN stato_esecuzione DROP NOT NULL;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                ALTER COLUMN stato_esecuzione DROP DEFAULT;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                DROP CONSTRAINT IF EXISTS chk_attivita_fatt_stato_esecuzione;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                ADD CONSTRAINT chk_attivita_fatt_stato_esecuzione
+                CHECK (
+                  stato_esecuzione IS NULL
+                  OR stato_esecuzione IN ('PENDING','RUNNING','COMPLETED','ERRORE')
+                );
