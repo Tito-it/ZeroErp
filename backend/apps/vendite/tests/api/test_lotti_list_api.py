@@ -24,6 +24,7 @@ Indice test eseguiti:
 from datetime import date
 from unittest.mock import Mock, patch
 
+from django.core.cache import cache
 from django.test import Client, SimpleTestCase
 
 
@@ -59,6 +60,7 @@ _LIST_RESPONSE = {
 class VenditeLottiListApiTests(SimpleTestCase):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        cache.clear()
         self.client = Client()
 
     # Scopo: Verifica il caso `test_list_lotti_ok`.
