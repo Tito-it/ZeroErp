@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260223-03-create-fn-get-attivita-lotto-info-mctit.yaml
+
+  - changeSet:
+      id: 20260223-03-create-fn-get-attivita-lotto-info
+      author: mctit
+      comment: "Funzione lotto attivita: stato_lotto, stato_operativo e flag in_esecuzione in un'unica query."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_attivita_lotto_info(
+                p_lotto_id vendite.attivita_fatturabili_lotti.id%TYPE
+              )
+              RETURNS TABLE(
+                stato_lotto vendite.attivita_fatturabili_lotti.stato_lotto%TYPE,
+                stato_operativo vendite.attivita_fatturabili_lotti.stato_operativo%TYPE,
+                is_in_esecuzione boolean
+              )
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Restituire in un singolo round-trip lo stato runtime e
+                --   lo stato operativo del lotto attivita, includendo il flag
+                --   booleano di esecuzione.
+                --
+                -- Regole:
+                --   - p_lotto_id obbligatorio e > 0
+                --   - se il lotto non esiste: ritorna 0 righe
+                -- =========================================================
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_get_attivita_lotto_info', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope', 'ATTIVITA_FATTURABILI',
+                      'severity', 'C',
+                      'code', 'E_GENERICO',
+                      'lotto_id', p_lotto_id,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object('detail', 'lotto_id obbligatorio')
+                    ),
+                    NULL::uuid,
+                    'lotto_id obbligatorio e > 0'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  l.stato_lotto,
+                  l.stato_operativo,
+                  (l.stato_lotto = 'IN_ESECUZIONE') AS is_in_esecuzione
+                FROM vendite.attivita_fatturabili_lotti l
+                WHERE l.id = p_lotto_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_attivita_lotto_info(bigint)
+              IS 'Ritorna stato_lotto, stato_operativo e flag is_in_esecuzione per il lotto attivita.';
+

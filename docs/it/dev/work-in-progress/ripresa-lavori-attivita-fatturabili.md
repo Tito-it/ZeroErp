@@ -793,6 +793,31 @@ valutazione blocco lotto.
 - aggiornare `evaluate_lotto_status` di conseguenza (nessun cambio all'interfaccia
   pubblica di `LottoSignalStatus`).
 
+**Stato avanzamento (23-02-2026, DB): COMPLETATO**
+
+Implementato lato DB:
+
+1. Estesa funzione SQL:
+   - `vendite.fn_get_lotto_segnalazioni_summary(p_lotto_id bigint)`
+   - nuova colonna output in coda: `fatture_stato_esecuzione_errore_count`.
+2. Nuova aggregazione:
+   - `COUNT(*) FILTER (WHERE stato_esecuzione='ERRORE')` su
+     `vendite.fatturazione_lotti_fatture` per il lotto richiesto.
+3. Compatibilita`:
+   - nessuna funzione SQL dipendente da aggiornare (uso DB interno: assente);
+   - estensione non breaking lato SQL per consumer che selezionano esplicitamente colonne.
+4. Test DB:
+   - aggiunto pgTAP `db/pgtap/vendite/test-lotto-segnalazioni-summary-v2.sql`;
+   - aggiunto alla suite `scripts/testpgtap-fatturazione-logs.sh`.
+
+**Azione richiesta al team backend (integrazione)**
+
+1. Repository:
+   - includere la nuova colonna nel mapping `get_lotto_segnalazioni_summary`.
+2. Service:
+   - rimuovere query separata `count_fatture_stato_esecuzione_errore`;
+   - usare solo il summary funzione DB per il blocco lotto.
+
 ### §11.2 Spostare `_compute_branch_summary` nel DB
 
 **Contesto**: `fn_get_attivita_pipeline_status` in `attivita_pipeline_service.py`
@@ -821,6 +846,30 @@ GROUP BY branch_code, task_stato
 - eliminare `_compute_branch_summary` dal service;
 - riduce i dati trasmessi DB→Python per ogni richiesta status da N righe a M bucket.
 
+**Stato avanzamento (23-02-2026, DB): COMPLETATO**
+
+Implementato lato DB:
+
+1. Nuova funzione SQL:
+   - `vendite.fn_get_attivita_branch_summary(p_lotto_attivita_id bigint)`
+   - output: `branch_code`, `task_stato`, `cnt`.
+2. Validazione parametro:
+   - errore se `lotto_attivita_id` nullo o `<= 0`.
+3. Aggregazione:
+   - `GROUP BY branch_code, task_stato` su `vendite.attivita_fatturabili_lotti_task_runs`.
+4. Test DB:
+   - aggiunto pgTAP `db/pgtap/vendite/test-attivita-branch-summary-v1.sql`.
+   - aggiunto alla suite `scripts/testpgtap-fatturazione-logs.sh`.
+
+**Azione richiesta al team backend (integrazione)**
+
+1. Repository:
+   - introdurre metodo `get_attivita_branch_summary(lotto_id)` che legge la nuova funzione DB.
+2. Service status:
+   - sostituire la logica attuale (`list_attivita_task_runs(limit=500)` + `_compute_branch_summary`).
+3. Pulizia codice:
+   - rimuovere `_compute_branch_summary` dal service una volta agganciato il repository.
+
 ### §11.3 Sostituire query dirette su `attivita_fatturabili_lotti` con funzione DB
 
 **Contesto**: `AttivitaPipelineRepository` contiene tre metodi con SELECT separati
@@ -839,6 +888,29 @@ repository `get_lotto_attivita_info(lotto_id)`.
 
 **Impatto backend**: riduce i round-trip DB nel flusso runner (che chiama
 `is_lotto_attivita_in_esecuzione` all'avvio e poi eventualmente `get_lotto_attivita_stato`).
+
+**Stato avanzamento (23-02-2026, DB): COMPLETATO**
+
+Implementato lato DB:
+
+1. Nuova funzione SQL:
+   - `vendite.fn_get_attivita_lotto_info(p_lotto_id bigint)`
+   - output: `stato_lotto`, `stato_operativo`, `is_in_esecuzione`.
+2. Regole:
+   - validazione `lotto_id` obbligatorio e `> 0`;
+   - lotto inesistente -> 0 righe.
+3. Test DB:
+   - aggiunto pgTAP `db/pgtap/vendite/test-attivita-lotto-info-v1.sql`;
+   - aggiunto alla suite `scripts/testpgtap-fatturazione-logs.sh`.
+
+**Azione richiesta al team backend (integrazione)**
+
+1. Repository:
+   - introdurre `get_lotto_attivita_info(lotto_id)` su funzione DB.
+2. Refactor metodi:
+   - `get_lotto_attivita_stato`, `get_lotto_attivita_full_stato`,
+     `is_lotto_attivita_in_esecuzione` devono delegare al nuovo metodo unico
+     oppure essere deprecati/rimossi.
 
 ### §11.4 Helper interno `_decode_jsonb` nel repository attivita
 
@@ -872,6 +944,22 @@ def _decode_jsonb(value, default):
 **Impatto backend**: intervento puramente interno al repository (nessun cambio
 interfaccia pubblica). Riduce il rischio di evoluzione inconsistente tra i blocchi.
 
+**Stato avanzamento (23-02-2026, DB): NON APPLICABILE**
+
+1. Nessuna modifica schema/funzioni SQL necessaria.
+2. Nessun changeset DB previsto per questo punto.
+3. Nessun pgTAP DB richiesto (refactor solo applicativo Python).
+
+**Azione richiesta al team backend (integrazione)**
+
+1. Estrarre helper `_decode_jsonb(value, default)` nel repository attivita.
+2. Riutilizzare helper in:
+   - `list_sorgenti_abilitate`
+   - `get_attivita_step_processes`
+   - `get_attivita_task_policy`
+   - `list_attivita_task_runs`
+3. Mantenere invariata interfaccia pubblica repository/service.
+
 ### §11.5 Wrappare `list_sorgenti_abilitate` in funzione DB
 
 **Contesto**: `list_sorgenti_abilitate` esegue SELECT diretto su
@@ -886,3 +974,212 @@ per allineare il pattern con le altre funzioni DB del dominio
 
 - query inline sostituita con `SELECT * FROM vendite.fn_list_attivita_sorgenti_abilitate(%s)`;
 - logica di filtro modificabile solo lato DB senza deploy backend.
+
+**Stato avanzamento (23-02-2026, DB): COMPLETATO**
+
+Implementato lato DB:
+
+1. Nuova funzione SQL:
+   - `vendite.fn_list_attivita_sorgenti_abilitate(p_utility_id integer DEFAULT NULL)`
+   - output: `sorgente_tipo_id`, `branch_code`, `abilitata`, `acquisizione_mode`,
+     `block_scope`, `priorita`, `meta`.
+2. Regole:
+   - filtra solo policy `attivo=true` e `abilitata=true`;
+   - ordinamento `priorita, id`;
+   - parametro `utility_id` mantenuto per compatibilita` (oggi non filtrante).
+3. Test DB:
+   - aggiunto pgTAP `db/pgtap/vendite/test-attivita-list-sorgenti-abilitate-v1.sql`;
+   - aggiunto alla suite `scripts/testpgtap-fatturazione-logs.sh`.
+
+**Azione richiesta al team backend (integrazione)**
+
+1. Repository:
+   - sostituire query diretta in `list_sorgenti_abilitate` con chiamata a
+     `vendite.fn_list_attivita_sorgenti_abilitate(%s)`.
+2. Refactor:
+   - mantenere la firma del metodo invariata;
+   - lasciare al DB l'ordinamento/filtro sorgenti abilitate.
+
+## 12) Acquisizione reale da PREVENTIVI/ORDINI verso ATTIVITA_FATTURABILI
+
+### 12.1 Stato reale (oggi)
+
+La base pipeline e` pronta, ma il caricamento reale non e` ancora implementato end-to-end:
+
+1. Pipeline attivita:
+   - presenti step placeholder (`noop`) per `RACCOLTA_INPUT` e `NORMALIZZAZIONE`.
+2. Policy runtime e branch:
+   - presenti e testate (`PREVENTIVI`, `ORDINI`, `BRANCH/GLOBAL`).
+3. Registry task dominio attivita:
+   - presenti task `acquisisci_preventivi`, `acquisisci_ordini` (e altri), con handler default registrati.
+4. Mancante:
+   - logica SQL/servizio che legge davvero da testate/righe sorgente e fa upsert in `vendite.attivita_fatturabili`.
+
+Conclusione:
+- oggi non avviene ancora acquisizione reale; e` predisposta l'infrastruttura.
+
+### 12.2 Evidenze dati/tabelle da usare per acquisizione
+
+1. Stati testata preventivi:
+   - `DRAFT, EMESSO, ACCETTATO, RIFIUTATO, SCADUTO`.
+2. Stati testata ordini:
+   - `DRAFT, CONFERMATO, ALLOCATO, SPEDITO, CONSEGNATO, ANNULLATO, FATTURATO`.
+3. Campi utili righe sorgente:
+   - `preventivi_righe`: articolo, quantita`, prezzo, sconto, iva, attivo, uom/qta operativa.
+   - `ordini_righe`: articolo, qta, prezzo, sconto, iva, stato riga, uom/qta operativa.
+4. Destinazione:
+   - `attivita_fatturabili` ha campi sorgente (`sorgente_tipo_id`, `sorgente_uid`, `sorgente_riga`) e vincoli per idempotenza.
+
+### 12.3 Punto critico da chiudere prima dello sviluppo
+
+Disallineamento chiave sorgente:
+
+1. `config.sorgenti` per `PREVENTIVO` e `ORDINE_VENDITA` e` configurato con `key_selector='id'`.
+2. Trigger polimorfo (`script.trgfn_guard_sorgente_polimorfa`) in tal caso richiede `sorgente_riga`.
+3. Diverse funzioni business (es. risoluzione termini) usano invece join su `sorgente_uid`.
+
+Decisione da adottare (raccomandata):
+- in acquisizione valorizzare sempre entrambe le chiavi disponibili:
+  - `sorgente_riga` (id numerico testata/riga secondo mapping),
+  - `sorgente_uid` quando presente su sorgente,
+  cosi` si evita regressione su trigger e su funzioni che leggono `uid`.
+
+### 12.4 Implementazioni previste (DB)
+
+#### DB-A1) Funzioni di acquisizione sorgente (nuove)
+
+1. `vendite.fn_acquisisci_attivita_da_preventivi(...)`
+2. `vendite.fn_acquisisci_attivita_da_ordini(...)`
+
+Regole minime:
+1. filtro stati eleggibili:
+   - preventivi: includere almeno `ACCETTATO` (eventuale `EMESSO` da valutare per ambiente);
+   - ordini: includere `CONFERMATO|ALLOCATO|SPEDITO|CONSEGNATO`, escludere `ANNULLATO|FATTURATO`.
+2. filtro righe:
+   - qta > 0, articolo valorizzato, riga attiva se campo disponibile.
+3. esclusione gia` fatturati/non eleggibili:
+   - se tracciabile da sorgente, escludere;
+   - altrimenti gestire in fase validazione/deduplica.
+4. popolamento campi destinazione:
+   - articolo, quantita`, data/competenza, prezzo, valuta, BA/utility, tipo doc dove risolvibile.
+5. idempotenza:
+   - `INSERT ... ON CONFLICT` coerente con chiave sorgente e policy deduplica.
+6. osservabilita`:
+   - output con contatori `inserted/updated/skipped/error`.
+
+#### DB-A2) Funzione facade pipeline raccolta input (nuova o estensione)
+
+1. `vendite.fn_run_attivita_acquisizione_branch(...)`:
+   - dispatch per branch (`PREVENTIVI`, `ORDINI`, ...),
+   - invoca funzione sorgente corretta,
+   - ritorna metriche standard.
+
+#### DB-A3) Allineamento configurazione sorgenti (hardening)
+
+1. Verificare per ogni sorgente in scope:
+   - coerenza `key_selector` vs chiavi valorizzate in acquisizione.
+2. Se necessario:
+   - changeset di riallineamento (`id`/`uid`) oppure policy di doppia valorizzazione.
+
+#### DB-A4) Step pipeline reali (seed aggiornato)
+
+Sostituire i `noop` attuali nei processi pipeline con task reali:
+
+1. `RACCOLTA_INPUT`:
+   - `acquisisci_preventivi` (branch PREVENTIVI)
+   - `acquisisci_ordini` (branch ORDINI)
+2. `NORMALIZZAZIONE`:
+   - `normalizza_attivita`
+   - `valida_attivita`
+   - `deduplica_attivita`
+
+### 12.5 Implementazioni previste (Backend)
+
+#### BE-A1) Handler reali task acquisizione
+
+1. implementare handler:
+   - `acquisisci_preventivi_default`
+   - `acquisisci_ordini_default`
+2. ogni handler:
+   - chiama funzione SQL dedicata,
+   - traccia metriche e errori in `task_runs`,
+   - rispetta `block_scope`.
+
+#### BE-A2) Parametri run acquisizione
+
+Supportare input runtime:
+1. `window_from/window_to` (o riferimento competenza),
+2. filtri opzionali (utility, billing account, cliente),
+3. modalita`:
+   - `FULL` (iniziale controllato),
+   - `INCREMENTAL` (watermark su `data_update`/`id`).
+
+#### BE-A3) Resume incrementale
+
+1. mantenere watermark per branch/task (in `meta` task-run o tabella dedicata),
+2. su rerun branch riprendere solo delta, evitando full scan.
+
+### 12.6 Test previsti obbligatori
+
+#### pgTAP
+
+1. test funzioni `fn_acquisisci_attivita_da_preventivi` e `fn_acquisisci_attivita_da_ordini`:
+   - insert nuovi record,
+   - update idempotente,
+   - skip su stati non eleggibili.
+2. test coerenza chiavi sorgente:
+   - trigger polimorfo non in errore su record acquisiti.
+3. test pipeline step:
+   - `RACCOLTA_INPUT` non piu` `noop`.
+
+#### Backend
+
+1. unit test handler:
+   - mapping branch -> funzione SQL corretta.
+2. test integrazione run:
+   - PREVENTIVI e ORDINI nello stesso lotto con isolamento branch.
+3. test resume:
+   - secondo run incrementale non duplica attivita`.
+
+### 12.7 Definition of done (acquisizione reale)
+
+1. Run pipeline con branch `PREVENTIVI` e `ORDINI` produce record reali in `attivita_fatturabili`.
+2. Nessuna duplicazione su rerun (idempotenza verificata).
+3. `task_runs` espone contatori e errori per branch/task.
+4. Test pgTAP + backend verdi.
+5. Documentazione aggiornata su funzioni di acquisizione e policy eleggibilita`.
+
+### 12.8 Roadmap operativa (dopo chiusura punto 11)
+
+Prerequisito:
+- completare prima il punto 11 (refactor/minimizzazione duplicazioni runtime/repository).
+
+Fase 1 - Consolidamento regole sorgente:
+1. congelare regole eleggibilita` stati per `PREVENTIVO` e `ORDINE_VENDITA`;
+2. confermare policy chiavi sorgente (`sorgente_riga` + `sorgente_uid` valorizzate in acquisizione);
+3. validare policy `FULL` vs `INCREMENTAL`.
+
+Fase 2 - Implementazione DB acquisizione:
+1. sviluppare funzioni SQL di acquisizione da `preventivi` e `ordini`;
+2. aggiungere funzione/facade di dispatch per branch;
+3. aggiornare seed/processi pipeline sostituendo `noop` su `RACCOLTA_INPUT` e normalizzazione.
+
+Fase 3 - Implementazione backend task handler:
+1. implementare handler runtime `acquisisci_preventivi_default` e `acquisisci_ordini_default`;
+2. integrare metriche standard `inserted/updated/skipped/error` nei task-runs;
+3. attivare parametri runtime (finestra temporale e filtri base).
+
+Fase 4 - Incrementale e resume:
+1. introdurre watermark branch/task per run incrementali;
+2. garantire rerun idempotente senza full scan non necessario;
+3. verificare coerenza stati esecuzione su lotto/attivita`.
+
+Fase 5 - Test e validazione end-to-end:
+1. pgTAP su funzioni acquisizione e idempotenza;
+2. test backend su policy `BRANCH/GLOBAL` con acquisizione reale;
+3. smoke con scenario `PREVENTIVI + ORDINI` nello stesso lotto.
+
+Fase 6 - Chiusura documentale e handover:
+1. aggiornare manuali funzioni/tabelle coinvolte;
+2. aggiornare guida operativa pipeline attivita;
+3. consegnare al team backend checklist finale di go-live.
