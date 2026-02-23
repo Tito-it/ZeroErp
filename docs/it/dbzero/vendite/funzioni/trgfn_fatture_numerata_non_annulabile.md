@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_fatture_numerata_non_annulabile.md" %}
 # ⚙️ Funzione `trgfn_fatture_numerata_non_annulabile`
 
 ```sql

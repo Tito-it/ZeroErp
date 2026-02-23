@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_fatture_log_sync_ad_stmt.md" %}
 # ⚙️ Funzione `trgfn_fatture_log_sync_ad_stmt`
 
 ```sql

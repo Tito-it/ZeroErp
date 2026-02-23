@@ -1027,186 +1027,147 @@ Implementato lato DB:
 - `attivita_pipeline_repository.py`: `list_sorgenti_abilitate` usa `fn_list_attivita_sorgenti_abilitate`; mapping righe invariato.
 - Test: `test_list_sorgenti_abilitate_returns_list` aggiornato con assert SQL su `fn_list_attivita_sorgenti_abilitate`.
 
-## 12) Acquisizione reale da PREVENTIVI/ORDINI verso ATTIVITA_FATTURABILI
+## 12) Acquisizione reale da PREVENTIVI/ORDINI via COMMESSA (obbligatoria)
 
-### 12.1 Stato reale (oggi)
+### 12.1 Decisione architetturale vincolante
 
-La base pipeline e` pronta, ma il caricamento reale non e` ancora implementato end-to-end:
+Regola confermata:
 
-1. Pipeline attivita:
-   - presenti step placeholder (`noop`) per `RACCOLTA_INPUT` e `NORMALIZZAZIONE`.
-2. Policy runtime e branch:
-   - presenti e testate (`PREVENTIVI`, `ORDINI`, `BRANCH/GLOBAL`).
-3. Registry task dominio attivita:
-   - presenti task `acquisisci_preventivi`, `acquisisci_ordini` (e altri), con handler default registrati.
-4. Mancante:
-   - logica SQL/servizio che legge davvero da testate/righe sorgente e fa upsert in `vendite.attivita_fatturabili`.
+1. percorso diretto `preventivo/ordine -> attivita_fatturabili` vietato;
+2. tutte le attivita` fatturabili devono essere emesse da layer commessa;
+3. il layer commessa puo` essere:
+   - `REALE` (commessa operativa richiesta dal processo),
+   - `AUTO` (commessa tecnica/fittizia per casi senza gestione operativa commessa).
+
+Obiettivo:
+- un unico modello di controllo, deduplica e partializzazione prima della fatturazione.
+
+### 12.2 Stato reale (oggi)
+
+1. Pipeline attivita e policy branch/global sono pronte.
+2. Registry task e task-runs runtime sono pronti.
+3. Manca l'acquisizione reale da sorgenti commerciali verso commessa.
+4. Di conseguenza manca anche l'emissione finale commessa -> `attivita_fatturabili` su dati reali.
 
 Conclusione:
-- oggi non avviene ancora acquisizione reale; e` predisposta l'infrastruttura.
+- infrastruttura pronta, ma ingestione operativa ancora da completare con flusso commessa-centrico.
 
-### 12.2 Evidenze dati/tabelle da usare per acquisizione
+### 12.3 Modello dati operativo (senza lineage root)
 
-1. Stati testata preventivi:
-   - `DRAFT, EMESSO, ACCETTATO, RIFIUTATO, SCADUTO`.
-2. Stati testata ordini:
-   - `DRAFT, CONFERMATO, ALLOCATO, SPEDITO, CONSEGNATO, ANNULLATO, FATTURATO`.
-3. Campi utili righe sorgente:
-   - `preventivi_righe`: articolo, quantita`, prezzo, sconto, iva, attivo, uom/qta operativa.
-   - `ordini_righe`: articolo, qta, prezzo, sconto, iva, stato riga, uom/qta operativa.
-4. Destinazione:
-   - `attivita_fatturabili` ha campi sorgente (`sorgente_tipo_id`, `sorgente_uid`, `sorgente_riga`) e vincoli per idempotenza.
+In `attivita_fatturabili` restano fondamentali:
 
-### 12.3 Punto critico da chiudere prima dello sviluppo
+1. chiavi sorgente primarie:
+   - `sorgente_tipo_id`
+   - `sorgente_uid`
+   - `sorgente_riga` (coerente con `key_selector` e trigger polimorfo)
+2. collegamenti commessa:
+   - `commessa_id` (nullable in transizione, target: valorizzata sempre),
+   - `commessa_attivita_id` (nullable in transizione, target: valorizzata sempre).
 
-Disallineamento chiave sorgente:
-
-1. `config.sorgenti` per `PREVENTIVO` e `ORDINE_VENDITA` e` configurato con `key_selector='id'`.
-2. Trigger polimorfo (`script.trgfn_guard_sorgente_polimorfa`) in tal caso richiede `sorgente_riga`.
-3. Diverse funzioni business (es. risoluzione termini) usano invece join su `sorgente_uid`.
-
-Decisione da adottare (raccomandata):
-- in acquisizione valorizzare sempre entrambe le chiavi disponibili:
-  - `sorgente_riga` (id numerico testata/riga secondo mapping),
-  - `sorgente_uid` quando presente su sorgente,
-  cosi` si evita regressione su trigger e su funzioni che leggono `uid`.
+Nota:
+- non serve `lineage_root_source` dedicata; la root e` gia` ricostruibile da `sorgente_*` + relazione commessa.
 
 ### 12.4 Implementazioni previste (DB)
 
-#### DB-A1) Funzioni di acquisizione sorgente (nuove)
+#### DB-A1) Ingestione sorgenti verso commessa
 
-1. `vendite.fn_acquisisci_attivita_da_preventivi(...)`
-2. `vendite.fn_acquisisci_attivita_da_ordini(...)`
+Funzioni previste:
+
+1. risoluzione/creazione commessa (`REALE` o `AUTO`) per documento sorgente;
+2. upsert relazione documento -> commessa;
+3. upsert attivita` di commessa per righe/segmenti eleggibili.
 
 Regole minime:
-1. filtro stati eleggibili:
-   - preventivi: includere almeno `ACCETTATO` (eventuale `EMESSO` da valutare per ambiente);
-   - ordini: includere `CONFERMATO|ALLOCATO|SPEDITO|CONSEGNATO`, escludere `ANNULLATO|FATTURATO`.
-2. filtro righe:
-   - qta > 0, articolo valorizzato, riga attiva se campo disponibile.
-3. esclusione gia` fatturati/non eleggibili:
-   - se tracciabile da sorgente, escludere;
-   - altrimenti gestire in fase validazione/deduplica.
-4. popolamento campi destinazione:
-   - articolo, quantita`, data/competenza, prezzo, valuta, BA/utility, tipo doc dove risolvibile.
-5. idempotenza:
-   - `INSERT ... ON CONFLICT` coerente con chiave sorgente e policy deduplica.
-6. osservabilita`:
-   - output con contatori `inserted/updated/skipped/error`.
 
-#### DB-A2) Funzione facade pipeline raccolta input (nuova o estensione)
+1. stati eleggibili per `PREVENTIVO` e `ORDINE_VENDITA` definiti a policy;
+2. esclusione record annullati/non fatturabili;
+3. idempotenza su chiave sorgente + segmentazione commessa;
+4. coerenza chiavi `sorgente_riga`/`sorgente_uid` per compatibilita` trigger/funzioni.
 
-1. `vendite.fn_run_attivita_acquisizione_branch(...)`:
-   - dispatch per branch (`PREVENTIVI`, `ORDINI`, ...),
-   - invoca funzione sorgente corretta,
-   - ritorna metriche standard.
+#### DB-A2) Emissione commessa -> attivita_fatturabili
 
-#### DB-A3) Allineamento configurazione sorgenti (hardening)
+Funzione/facade prevista:
 
-1. Verificare per ogni sorgente in scope:
-   - coerenza `key_selector` vs chiavi valorizzate in acquisizione.
-2. Se necessario:
-   - changeset di riallineamento (`id`/`uid`) oppure policy di doppia valorizzazione.
+1. estrazione attivita` commessa eleggibili;
+2. upsert in `vendite.attivita_fatturabili` con link commessa;
+3. metriche standard `inserted/updated/skipped/error`.
 
-#### DB-A4) Step pipeline reali (seed aggiornato)
+#### DB-A3) Pipeline task reali
 
-Sostituire i `noop` attuali nei processi pipeline con task reali:
+Sostituire i placeholder `noop` con task concreti:
 
 1. `RACCOLTA_INPUT`:
-   - `acquisisci_preventivi` (branch PREVENTIVI)
-   - `acquisisci_ordini` (branch ORDINI)
-2. `NORMALIZZAZIONE`:
-   - `normalizza_attivita`
-   - `valida_attivita`
-   - `deduplica_attivita`
+   - ingestione da sorgenti commerciali verso commessa;
+2. `GENERAZIONE_OPERATIVA`:
+   - emissione da commessa verso `attivita_fatturabili`;
+3. `NORMALIZZAZIONE`:
+   - normalizza/valida/deduplica.
+
+#### DB-A4) Guardrail anti-bypass
+
+Aggiungere controlli espliciti per impedire inserimenti diretti non autorizzati:
+
+1. vincolo o trigger di coerenza sul path di creazione;
+2. logging tecnico se intercettato tentativo di bypass del layer commessa.
 
 ### 12.5 Implementazioni previste (Backend)
 
-#### BE-A1) Handler reali task acquisizione
+1. handler branch `PREVENTIVI` e `ORDINI` devono chiamare funzioni DB commessa-centriche;
+2. nessun handler deve scrivere direttamente `attivita_fatturabili` da documento sorgente;
+3. supporto run `FULL` e `INCREMENTAL` con watermark;
+4. tracciamento metriche e errori su `attivita_fatturabili_lotti_task_runs`.
 
-1. implementare handler:
-   - `acquisisci_preventivi_default`
-   - `acquisisci_ordini_default`
-2. ogni handler:
-   - chiama funzione SQL dedicata,
-   - traccia metriche e errori in `task_runs`,
-   - rispetta `block_scope`.
-
-#### BE-A2) Parametri run acquisizione
-
-Supportare input runtime:
-1. `window_from/window_to` (o riferimento competenza),
-2. filtri opzionali (utility, billing account, cliente),
-3. modalita`:
-   - `FULL` (iniziale controllato),
-   - `INCREMENTAL` (watermark su `data_update`/`id`).
-
-#### BE-A3) Resume incrementale
-
-1. mantenere watermark per branch/task (in `meta` task-run o tabella dedicata),
-2. su rerun branch riprendere solo delta, evitando full scan.
-
-### 12.6 Test previsti obbligatori
+### 12.6 Test obbligatori
 
 #### pgTAP
 
-1. test funzioni `fn_acquisisci_attivita_da_preventivi` e `fn_acquisisci_attivita_da_ordini`:
-   - insert nuovi record,
-   - update idempotente,
-   - skip su stati non eleggibili.
-2. test coerenza chiavi sorgente:
-   - trigger polimorfo non in errore su record acquisiti.
-3. test pipeline step:
-   - `RACCOLTA_INPUT` non piu` `noop`.
+1. ingestione `PREVENTIVO/ORDINE` crea/aggiorna commessa in modo idempotente;
+2. emissione commessa -> `attivita_fatturabili` idempotente;
+3. tentativo percorso diretto documento -> `attivita_fatturabili` bloccato;
+4. coerenza `sorgente_riga`/`sorgente_uid` e trigger polimorfo valida.
 
 #### Backend
 
-1. unit test handler:
-   - mapping branch -> funzione SQL corretta.
-2. test integrazione run:
-   - PREVENTIVI e ORDINI nello stesso lotto con isolamento branch.
-3. test resume:
-   - secondo run incrementale non duplica attivita`.
+1. mapping branch -> funzioni commessa-centriche corretto;
+2. run multi-branch con isolamento `BRANCH` e stop `GLOBAL` invariati;
+3. run incrementale non duplica record.
 
-### 12.7 Definition of done (acquisizione reale)
+### 12.7 Definition of done (acquisizione reale via commessa)
 
-1. Run pipeline con branch `PREVENTIVI` e `ORDINI` produce record reali in `attivita_fatturabili`.
-2. Nessuna duplicazione su rerun (idempotenza verificata).
-3. `task_runs` espone contatori e errori per branch/task.
-4. Test pgTAP + backend verdi.
-5. Documentazione aggiornata su funzioni di acquisizione e policy eleggibilita`.
+1. nessun percorso diretto `preventivo/ordine -> attivita_fatturabili` attivo;
+2. pipeline `PREVENTIVI` e `ORDINI` popola commessa e poi `attivita_fatturabili`;
+3. idempotenza verificata su rerun;
+4. test pgTAP + backend verdi;
+5. documentazione aggiornata su funzioni e policy commessa-centriche.
 
 ### 12.8 Roadmap operativa (dopo chiusura punto 11)
 
-Prerequisito:
-- completare prima il punto 11 (refactor/minimizzazione duplicazioni runtime/repository).
+Fase 1 - Regole sorgente:
 
-Fase 1 - Consolidamento regole sorgente:
-1. congelare regole eleggibilita` stati per `PREVENTIVO` e `ORDINE_VENDITA`;
-2. confermare policy chiavi sorgente (`sorgente_riga` + `sorgente_uid` valorizzate in acquisizione);
-3. validare policy `FULL` vs `INCREMENTAL`.
+1. fissare eleggibilita` stati `PREVENTIVO`/`ORDINE_VENDITA`;
+2. fissare policy commessa `REALE` vs `AUTO`;
+3. validare chiavi sorgente obbligatorie per idempotenza.
 
-Fase 2 - Implementazione DB acquisizione:
-1. sviluppare funzioni SQL di acquisizione da `preventivi` e `ordini`;
-2. aggiungere funzione/facade di dispatch per branch;
-3. aggiornare seed/processi pipeline sostituendo `noop` su `RACCOLTA_INPUT` e normalizzazione.
+Fase 2 - DB ingestione:
 
-Fase 3 - Implementazione backend task handler:
-1. implementare handler runtime `acquisisci_preventivi_default` e `acquisisci_ordini_default`;
-2. integrare metriche standard `inserted/updated/skipped/error` nei task-runs;
-3. attivare parametri runtime (finestra temporale e filtri base).
+1. implementare funzioni ingestione sorgente -> commessa;
+2. implementare funzione emissione commessa -> `attivita_fatturabili`;
+3. aggiornare processi pipeline eliminando i `noop`.
 
-Fase 4 - Incrementale e resume:
-1. introdurre watermark branch/task per run incrementali;
-2. garantire rerun idempotente senza full scan non necessario;
-3. verificare coerenza stati esecuzione su lotto/attivita`.
+Fase 3 - Backend handlers:
 
-Fase 5 - Test e validazione end-to-end:
-1. pgTAP su funzioni acquisizione e idempotenza;
-2. test backend su policy `BRANCH/GLOBAL` con acquisizione reale;
-3. smoke con scenario `PREVENTIVI + ORDINI` nello stesso lotto.
+1. collegare handler a funzioni DB nuove;
+2. integrare metriche standard nei task-runs;
+3. abilitare modalita` `FULL`/`INCREMENTAL`.
 
-Fase 6 - Chiusura documentale e handover:
-1. aggiornare manuali funzioni/tabelle coinvolte;
-2. aggiornare guida operativa pipeline attivita;
-3. consegnare al team backend checklist finale di go-live.
+Fase 4 - Hardening:
+
+1. aggiungere guardrail anti-bypass layer commessa;
+2. verificare consistency stati lotto/attivita;
+3. validare resume branch-level su scenari reali.
+
+Fase 5 - Validazione finale:
+
+1. chiudere suite pgTAP e backend;
+2. smoke multi-branch con sorgenti reali;
+3. handover finale al team backend su contratto stabile.
