@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_fatturazione_lotti_attivita_gen_codice.md" %}
 # ⚙️ Funzione `trgfn_fatturazione_lotti_attivita_gen_codice`
 
 ```sql
