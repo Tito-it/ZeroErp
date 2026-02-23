@@ -460,7 +460,7 @@ Uscita fase:
   - `backend/apps/vendite/types.py` esteso con `AttivitaTaskRunRow`.
   - 26 test unitari aggiunti (repository 12, executor 8, runner 6); suite verde (98 test ok).
 
-### 8.5 Fase BE-2 (API dominio attivita)
+### 8.5 Fase BE-2 (API dominio attivita) — ✓ COMPLETATA
 
 1. Endpoint run pipeline attivita.
 2. Endpoint status/segnalazioni.
@@ -472,8 +472,14 @@ Uscita fase:
 
 Uscita fase:
 - API consumabile da UI e pronta per debug operativo.
+- avanzamento 23-02-2026:
+  - `backend/apps/vendite/db/attivita_pipeline_repository.py` esteso con `get_lotto_attivita_full_stato`.
+  - `backend/apps/vendite/services/attivita_pipeline_service.py` creato (BE-2.1/2.2/2.3); facade `pr_run_attivita_pipeline`, `fn_get_attivita_pipeline_status`, `fn_get_attivita_task_runs`.
+  - `backend/apps/vendite/api/views.py` esteso con 6 view classes (3 base + 3 V1).
+  - `backend/apps/vendite/api/urls_v1.py` esteso con 3 path `attivita_fatturabili/pipeline/*`.
+  - 6 test unitari aggiunti (service); suite verde (104 test ok).
 
-### 8.6 Fase BE-3 (test backend/API)
+### 8.6 Fase BE-3 (test backend/API) — ✓ COMPLETATA
 
 1. Test service:
    - run ok
@@ -487,6 +493,12 @@ Uscita fase:
 
 Uscita fase:
 - suite backend verde e smoke senza blocchi inattesi.
+
+Avanzamento 23-02-2026 (BE-3):
+
+- Creati `backend/apps/vendite/tests/api/test_attivita_pipeline_api.py` (14 test HTTP contract).
+- Creato `backend/apps/vendite/tests/api/test_attivita_pipeline_smoke.py` (3 smoke multi-branch).
+- Suite verde: 174 test ok (tutti i test `apps.vendite.tests` incluse regressioni lotto).
 
 ### 8.7 Sequenza di avvio sviluppo (operativa)
 
@@ -780,3 +792,97 @@ valutazione blocco lotto.
   restituito dalla funzione DB;
 - aggiornare `evaluate_lotto_status` di conseguenza (nessun cambio all'interfaccia
   pubblica di `LottoSignalStatus`).
+
+### §11.2 Spostare `_compute_branch_summary` nel DB
+
+**Contesto**: `fn_get_attivita_pipeline_status` in `attivita_pipeline_service.py`
+recupera fino a 500 task run dal DB (`list_attivita_task_runs(limit=500)`)
+solo per aggregarli in Python via `_compute_branch_summary`:
+
+```python
+{"DEFAULT": {"COMPLETATO": 3}, "PREVENTIVI": {"COMPLETATO": 2, "ERRORE": 1}}
+```
+
+Il trasferimento di 500 righe complete per estrarre solo i contatori e` inefficiente.
+
+**Miglioramento**: creare `vendite.fn_get_attivita_branch_summary(lotto_id)`:
+
+```sql
+SELECT branch_code, task_stato, COUNT(*) AS cnt
+FROM vendite.attivita_fatturabili_lotti_task_runs
+WHERE lotto_attivita_id = lotto_id
+GROUP BY branch_code, task_stato
+```
+
+**Impatto backend**:
+
+- sostituire `repo.list_attivita_task_runs(limit=500)` + `_compute_branch_summary`
+  con `repo.get_attivita_branch_summary(lotto_id)`;
+- eliminare `_compute_branch_summary` dal service;
+- riduce i dati trasmessi DB→Python per ogni richiesta status da N righe a M bucket.
+
+### §11.3 Sostituire query dirette su `attivita_fatturabili_lotti` con funzione DB
+
+**Contesto**: `AttivitaPipelineRepository` contiene tre metodi con SELECT separati
+sulla stessa tabella `vendite.attivita_fatturabili_lotti`:
+
+- `get_lotto_attivita_stato` — solo `stato_lotto`
+- `get_lotto_attivita_full_stato` — `stato_lotto` + `stato_operativo`
+- `is_lotto_attivita_in_esecuzione` — `stato_lotto = 'IN_ESECUZIONE'`
+
+Ogni metodo apre un cursore separato per leggere lo stesso record.
+
+**Miglioramento**: creare `vendite.fn_get_attivita_lotto_info(lotto_id)`
+che restituisce `(stato_lotto, stato_operativo, is_in_esecuzione)` in un
+unico round-trip. I tre metodi Python diventerebbero delegati dello stesso metodo
+repository `get_lotto_attivita_info(lotto_id)`.
+
+**Impatto backend**: riduce i round-trip DB nel flusso runner (che chiama
+`is_lotto_attivita_in_esecuzione` all'avvio e poi eventualmente `get_lotto_attivita_stato`).
+
+### §11.4 Helper interno `_decode_jsonb` nel repository attivita
+
+**Contesto**: `AttivitaPipelineRepository` ripete il pattern di decodifica JSONB
+in quattro metodi (`list_sorgenti_abilitate`, `get_attivita_step_processes`,
+`get_attivita_task_policy`, `list_attivita_task_runs`):
+
+```python
+if isinstance(value, str):
+    try:
+        value = json.loads(value)
+    except json.JSONDecodeError:
+        value = default
+```
+
+**Miglioramento**: helper statico privato da estrarre nel repository:
+
+```python
+@staticmethod
+def _decode_jsonb(value, default):
+    if isinstance(value, (list, dict)):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            pass
+    return default
+```
+
+**Impatto backend**: intervento puramente interno al repository (nessun cambio
+interfaccia pubblica). Riduce il rischio di evoluzione inconsistente tra i blocchi.
+
+### §11.5 Wrappare `list_sorgenti_abilitate` in funzione DB
+
+**Contesto**: `list_sorgenti_abilitate` esegue SELECT diretto su
+`vendite.attivita_fatturabili_sorgenti_branch_policy`
+con filtro e ordinamento embedded nel codice Python.
+
+**Miglioramento**: creare `vendite.fn_list_attivita_sorgenti_abilitate(utility_id)`
+per allineare il pattern con le altre funzioni DB del dominio
+(`fn_list_attivita_pipeline_steps`, `fn_resolve_attivita_pipeline_step`).
+
+**Impatto backend**:
+
+- query inline sostituita con `SELECT * FROM vendite.fn_list_attivita_sorgenti_abilitate(%s)`;
+- logica di filtro modificabile solo lato DB senza deploy backend.
