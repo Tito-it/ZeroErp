@@ -45,6 +45,7 @@ class LottoSegnalazioniSummary(TypedDict):
     lotto_critical_count: int
     lotto_warning_count: int
     lotto_info_count: int
+    fatture_stato_esecuzione_errore_count: int
 
 
 class LottoTaskRunRow(TypedDict):

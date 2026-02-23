@@ -65,11 +65,8 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 "lotto_critical_count": 0,
                 "lotto_warning_count": 0,
                 "lotto_info_count": 0,
+                "fatture_stato_esecuzione_errore_count": 0,
             }
-
-        # Scopo: Conta le fatture del lotto con stato_esecuzione='ERRORE' nella tabella ponte.
-        def count_fatture_stato_esecuzione_errore(self, lotto_id):
-            return 0
 
         # Scopo: Aggiorna `lotto_job_stato` con i valori richiesti dal flusso corrente.
         def set_lotto_job_stato(self, lotto_id, stato, messaggio):
@@ -436,6 +433,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_critical_count": 0,
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _CriticalSignalsRepo()
@@ -451,9 +449,16 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
     # anche in assenza di segnalazioni critical nei log (guard unificata PRE-1).
     def test_runner_blocks_when_fatture_hanno_stato_esecuzione_errore(self):
         class _StatoEsecuzioneErroreRepo(self._RepoMock):
-            # Scopo: Conta le fatture con stato_esecuzione='ERRORE' nella tabella ponte.
-            def count_fatture_stato_esecuzione_errore(self, lotto_id):
-                return 2
+            # Scopo: Restituisce riepilogo con fatture in stato errore per test blocco.
+            def get_lotto_segnalazioni_summary(self, lotto_id):
+                return {
+                    "fatture_critical_count": 0,
+                    "fatture_warning_count": 0,
+                    "lotto_critical_count": 0,
+                    "lotto_warning_count": 0,
+                    "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 2,
+                }
 
         repo = _StatoEsecuzioneErroreRepo()
         step_executor = self._StepExecutorMock()
@@ -476,6 +481,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_critical_count": 0,
                     "lotto_warning_count": 1,
                     "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _OnlyWarningsRepo()

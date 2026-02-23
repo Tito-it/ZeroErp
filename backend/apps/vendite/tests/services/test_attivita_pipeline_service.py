@@ -21,32 +21,10 @@ from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.attivita_pipeline_service import (
-    _compute_branch_summary,
     fn_get_attivita_pipeline_status,
     fn_get_attivita_task_runs,
     pr_run_attivita_pipeline,
 )
-
-
-def _make_task_run(branch_code: str, task_stato: str) -> dict:
-    return {
-        "id": 1,
-        "lotto_attivita_id": 10,
-        "pipeline_id": None,
-        "sorgente_tipo_id": 1,
-        "branch_code": branch_code,
-        "task_code": "acquisisci_preventivi",
-        "fase": "Acquisizione",
-        "tentativo": 1,
-        "task_stato": task_stato,
-        "block_scope": "BRANCH",
-        "depends_on": [],
-        "started_at": None,
-        "ended_at": None,
-        "error_code": None,
-        "error_message": None,
-        "meta": {},
-    }
 
 
 class AttivitaPipelineServiceUnitTests(SimpleTestCase):
@@ -80,11 +58,10 @@ class AttivitaPipelineServiceUnitTests(SimpleTestCase):
             "stato_lotto": "COMPLETATO",
             "stato_operativo": "APERTO",
         }
-        mock_repo.list_attivita_task_runs.return_value = [
-            _make_task_run("DEFAULT", "COMPLETATO"),
-            _make_task_run("DEFAULT", "COMPLETATO"),
-            _make_task_run("PREVENTIVI", "ERRORE"),
-        ]
+        mock_repo.get_attivita_branch_summary.return_value = {
+            "DEFAULT": {"COMPLETATO": 2},
+            "PREVENTIVI": {"ERRORE": 1},
+        }
 
         with patch(
             "apps.vendite.services.attivita_pipeline_service.AttivitaPipelineRepository",
@@ -97,6 +74,7 @@ class AttivitaPipelineServiceUnitTests(SimpleTestCase):
         self.assertEqual(result["stato_operativo"], "APERTO")
         self.assertEqual(result["branch_summary"]["DEFAULT"]["COMPLETATO"], 2)
         self.assertEqual(result["branch_summary"]["PREVENTIVI"]["ERRORE"], 1)
+        mock_repo.get_attivita_branch_summary.assert_called_once_with(10)
 
     # Scopo: Verifica che fn_get_attivita_pipeline_status sollevi E_ATTIVITA_LOTTO_NOT_FOUND se lotto manca.
     def test_fn_get_attivita_pipeline_status_raises_when_lotto_not_found(self):
@@ -122,8 +100,8 @@ class AttivitaPipelineServiceUnitTests(SimpleTestCase):
     # Scopo: Verifica che fn_get_attivita_task_runs ritorni DTO con count e task_runs.
     def test_fn_get_attivita_task_runs_returns_dto(self):
         runs = [
-            _make_task_run("DEFAULT", "COMPLETATO"),
-            _make_task_run("DEFAULT", "COMPLETATO"),
+            {"branch_code": "DEFAULT", "task_stato": "COMPLETATO"},
+            {"branch_code": "DEFAULT", "task_stato": "COMPLETATO"},
         ]
         mock_repo = MagicMock()
         mock_repo.list_attivita_task_runs.return_value = runs
