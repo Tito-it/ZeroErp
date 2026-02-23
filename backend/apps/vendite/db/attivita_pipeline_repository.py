@@ -123,6 +123,22 @@ class AttivitaPipelineRepository:
             return None
         return row[0]
 
+    # Scopo: Recupera stato_lotto e stato_operativo in un'unica query per l'endpoint status.
+    def get_lotto_attivita_full_stato(self, lotto_id: int) -> dict | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT stato_lotto, stato_operativo
+                FROM vendite.attivita_fatturabili_lotti
+                WHERE id = %s
+                """,
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return {"stato_lotto": row[0], "stato_operativo": row[1]}
+
     # Scopo: Verifica se il lotto attivita e` in esecuzione basandosi su stato_lotto persistito.
     def is_lotto_attivita_in_esecuzione(self, lotto_id: int) -> bool:
         with connection.cursor() as cursor:
