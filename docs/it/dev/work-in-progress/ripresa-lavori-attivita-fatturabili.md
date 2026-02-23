@@ -818,6 +818,13 @@ Implementato lato DB:
    - rimuovere query separata `count_fatture_stato_esecuzione_errore`;
    - usare solo il summary funzione DB per il blocco lotto.
 
+**Integrazione backend (23-02-2026): COMPLETATA**
+
+- `types.py`: aggiunto `fatture_stato_esecuzione_errore_count` a `LottoSegnalazioniSummary`.
+- `pipeline_repository.py`: SELECT esteso a 6 colonne; rimosso metodo `count_fatture_stato_esecuzione_errore`.
+- `lotto_segnalazioni_service.py`: `evaluate_lotto_status` legge `summary["fatture_stato_esecuzione_errore_count"]`.
+- Test aggiornati: `test_pipeline_repository.py`, `test_lotto_segnalazioni_service.py`, `test_pipeline_runner.py`.
+
 ### §11.2 Spostare `_compute_branch_summary` nel DB
 
 **Contesto**: `fn_get_attivita_pipeline_status` in `attivita_pipeline_service.py`
@@ -870,6 +877,12 @@ Implementato lato DB:
 3. Pulizia codice:
    - rimuovere `_compute_branch_summary` dal service una volta agganciato il repository.
 
+**Integrazione backend (23-02-2026): COMPLETATA**
+
+- `attivita_pipeline_repository.py`: aggiunto `get_attivita_branch_summary` che chiama `fn_get_attivita_branch_summary`.
+- `attivita_pipeline_service.py`: `fn_get_attivita_pipeline_status` usa `repo.get_attivita_branch_summary`; rimossa `_compute_branch_summary`.
+- Test: aggiunto `test_get_attivita_branch_summary_returns_dict` in `test_attivita_pipeline_repository.py`; aggiornato `test_attivita_pipeline_service.py`.
+
 ### §11.3 Sostituire query dirette su `attivita_fatturabili_lotti` con funzione DB
 
 **Contesto**: `AttivitaPipelineRepository` contiene tre metodi con SELECT separati
@@ -911,6 +924,11 @@ Implementato lato DB:
    - `get_lotto_attivita_stato`, `get_lotto_attivita_full_stato`,
      `is_lotto_attivita_in_esecuzione` devono delegare al nuovo metodo unico
      oppure essere deprecati/rimossi.
+
+**Integrazione backend (23-02-2026): COMPLETATA**
+
+- `attivita_pipeline_repository.py`: aggiunto `get_lotto_attivita_info` che chiama `fn_get_attivita_lotto_info`; i tre metodi esistenti delegano a questo.
+- Test: aggiunto `test_get_lotto_attivita_info_returns_dict` con verifica SQL e delega metodi.
 
 ### §11.4 Helper interno `_decode_jsonb` nel repository attivita
 
@@ -960,6 +978,10 @@ interfaccia pubblica). Riduce il rischio di evoluzione inconsistente tra i blocc
    - `list_attivita_task_runs`
 3. Mantenere invariata interfaccia pubblica repository/service.
 
+**Integrazione backend (23-02-2026): COMPLETATA**
+
+- `attivita_pipeline_repository.py`: aggiunto `_decode_jsonb` statico; applicato in tutti e 4 i metodi elencati.
+
 ### §11.5 Wrappare `list_sorgenti_abilitate` in funzione DB
 
 **Contesto**: `list_sorgenti_abilitate` esegue SELECT diretto su
@@ -999,6 +1021,11 @@ Implementato lato DB:
 2. Refactor:
    - mantenere la firma del metodo invariata;
    - lasciare al DB l'ordinamento/filtro sorgenti abilitate.
+
+**Integrazione backend (23-02-2026): COMPLETATA**
+
+- `attivita_pipeline_repository.py`: `list_sorgenti_abilitate` usa `fn_list_attivita_sorgenti_abilitate`; mapping righe invariato.
+- Test: `test_list_sorgenti_abilitate_returns_list` aggiornato con assert SQL su `fn_list_attivita_sorgenti_abilitate`.
 
 ## 12) Acquisizione reale da PREVENTIVI/ORDINI verso ATTIVITA_FATTURABILI
 

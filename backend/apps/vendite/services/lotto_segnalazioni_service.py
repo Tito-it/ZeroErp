@@ -38,7 +38,7 @@ class LottoSegnalazioniService:
         warning_count = summary["fatture_warning_count"] + summary["lotto_warning_count"]
         # Nel dominio attuale il terzo livello e` "I" (info), usato come attention operativa.
         attention_count = summary["lotto_info_count"]
-        stato_esecuzione_errore_count = self.repository.count_fatture_stato_esecuzione_errore(lotto_id)
+        stato_esecuzione_errore_count = summary["fatture_stato_esecuzione_errore_count"]
         is_error = critical_count > 0 or stato_esecuzione_errore_count > 0
         return LottoSignalStatus(
             critical_count=critical_count,

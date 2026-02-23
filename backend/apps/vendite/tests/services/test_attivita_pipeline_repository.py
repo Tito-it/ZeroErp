@@ -19,6 +19,8 @@ Indice test eseguiti:
 10) AttivitaPipelineRepositoryUnitTests.test_complete_attivita_task_run_calls_fn
 11) AttivitaPipelineRepositoryUnitTests.test_fail_attivita_task_run_calls_fn_with_error_params
 12) AttivitaPipelineRepositoryUnitTests.test_list_sorgenti_abilitate_returns_list
+13) AttivitaPipelineRepositoryUnitTests.test_get_attivita_branch_summary_returns_dict
+14) AttivitaPipelineRepositoryUnitTests.test_get_lotto_attivita_info_returns_dict
 """
 
 import json
@@ -254,3 +256,43 @@ class AttivitaPipelineRepositoryUnitTests(TestCase):
         self.assertEqual(result[0].priorita, 1)
         self.assertEqual(result[1].sorgente_tipo_id, 2)
         self.assertEqual(result[1].branch_code, "PREVENTIVI")
+        execute_sql = cursor.execute.call_args[0][0]
+        self.assertIn("fn_list_attivita_sorgenti_abilitate", execute_sql)
+
+    # Scopo: Verifica il caso test_get_attivita_branch_summary_returns_dict.
+    @patch("apps.vendite.db.attivita_pipeline_repository.connection.cursor")
+    def test_get_attivita_branch_summary_returns_dict(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchall.return_value = [
+            ("DEFAULT", "COMPLETATO", 3),
+            ("PREVENTIVI", "ERRORE", 1),
+        ]
+        mocked_cursor_factory.return_value = cursor
+
+        repo = AttivitaPipelineRepository()
+        result = repo.get_attivita_branch_summary(lotto_id=10)
+
+        self.assertEqual(result, {"DEFAULT": {"COMPLETATO": 3}, "PREVENTIVI": {"ERRORE": 1}})
+        execute_sql = cursor.execute.call_args[0][0]
+        self.assertIn("fn_get_attivita_branch_summary", execute_sql)
+        self.assertEqual(cursor.execute.call_args[0][1], [10])
+
+    # Scopo: Verifica il caso test_get_lotto_attivita_info_returns_dict.
+    @patch("apps.vendite.db.attivita_pipeline_repository.connection.cursor")
+    def test_get_lotto_attivita_info_returns_dict(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = ("COMPLETATO", "APERTO", False)
+        mocked_cursor_factory.return_value = cursor
+
+        repo = AttivitaPipelineRepository()
+        info = repo.get_lotto_attivita_info(lotto_id=10)
+
+        self.assertEqual(info, {"stato_lotto": "COMPLETATO", "stato_operativo": "APERTO", "is_in_esecuzione": False})
+        execute_sql = cursor.execute.call_args[0][0]
+        self.assertIn("fn_get_attivita_lotto_info", execute_sql)
+        # I metodi delegati usano get_lotto_attivita_info
+        self.assertEqual(repo.get_lotto_attivita_stato(10), "COMPLETATO")
+        self.assertEqual(repo.get_lotto_attivita_full_stato(10), {"stato_lotto": "COMPLETATO", "stato_operativo": "APERTO"})
+        self.assertFalse(repo.is_lotto_attivita_in_esecuzione(10))

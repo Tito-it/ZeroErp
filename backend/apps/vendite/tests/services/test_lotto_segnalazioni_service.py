@@ -27,11 +27,8 @@ class LottoSegnalazioniServiceUnitTests(SimpleTestCase):
                 "lotto_critical_count": 0,
                 "lotto_warning_count": 0,
                 "lotto_info_count": 0,
+                "fatture_stato_esecuzione_errore_count": 0,
             }
-
-        # Scopo: Conta le fatture del lotto con stato_esecuzione='ERRORE' nella tabella ponte.
-        def count_fatture_stato_esecuzione_errore(self, lotto_id):
-            return 0
 
     # Scopo: Verifica il caso `test_evaluate_lotto_status_blocks_when_critical_exists`.
     def test_evaluate_lotto_status_blocks_when_critical_exists(self):
@@ -44,6 +41,7 @@ class LottoSegnalazioniServiceUnitTests(SimpleTestCase):
                     "lotto_critical_count": 0,
                     "lotto_warning_count": 3,
                     "lotto_info_count": 4,
+                    "fatture_stato_esecuzione_errore_count": 0,
                 }
 
         service = LottoSegnalazioniService(_CriticalRepo())
@@ -66,6 +64,7 @@ class LottoSegnalazioniServiceUnitTests(SimpleTestCase):
                     "lotto_critical_count": 0,
                     "lotto_warning_count": 1,
                     "lotto_info_count": 6,
+                    "fatture_stato_esecuzione_errore_count": 0,
                 }
 
         service = LottoSegnalazioniService(_NoCriticalRepo())
@@ -81,9 +80,16 @@ class LottoSegnalazioniServiceUnitTests(SimpleTestCase):
     # anche in assenza di segnalazioni critical nei log (guard unificata PRE-1).
     def test_evaluate_lotto_status_blocks_when_fatture_stato_esecuzione_errore(self):
         class _StatoEsecuzioneErroreRepo(self._RepoMock):
-            # Scopo: Conta le fatture con stato_esecuzione='ERRORE' nella tabella ponte.
-            def count_fatture_stato_esecuzione_errore(self, lotto_id):
-                return 2
+            # Scopo: Restituisce riepilogo con fatture in stato errore per test blocco.
+            def get_lotto_segnalazioni_summary(self, lotto_id):
+                return {
+                    "fatture_critical_count": 0,
+                    "fatture_warning_count": 0,
+                    "lotto_critical_count": 0,
+                    "lotto_warning_count": 0,
+                    "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 2,
+                }
 
         service = LottoSegnalazioniService(_StatoEsecuzioneErroreRepo())
         status = service.evaluate_lotto_status(10)

@@ -14,7 +14,7 @@ from apps.vendite.services.attivita_pipeline_runner import (
     AttivitaPipelineParams,
     AttivitaPipelineRunner,
 )
-from apps.vendite.types import AttivitaTaskRunRow
+from apps.vendite.types import AttivitaTaskRunRow  # usato in fn_get_attivita_task_runs
 
 # Facade sottile: firma simile alla SQL, comportamento delegato alle classi OOP.
 
@@ -71,8 +71,7 @@ def fn_get_attivita_pipeline_status(*, lotto_id: int) -> dict:
             function_name="vendite.attivita_pipeline_service.fn_get_attivita_pipeline_status",
             log_to_db=True,
         )
-    task_runs: list[AttivitaTaskRunRow] = repo.list_attivita_task_runs(lotto_id, limit=500)
-    branch_summary = _compute_branch_summary(task_runs)
+    branch_summary = repo.get_attivita_branch_summary(lotto_id)
     return {
         "lotto_id": lotto_id,
         "stato_lotto": lotto_stato["stato_lotto"],
@@ -118,13 +117,3 @@ def fn_get_attivita_task_runs(
     }
 
 
-# Scopo: Aggrega task run per branch_code e task_stato per il DTO status.
-def _compute_branch_summary(task_runs: list[AttivitaTaskRunRow]) -> dict:
-    summary: dict[str, dict[str, int]] = {}
-    for run in task_runs:
-        branch = run["branch_code"]
-        stato = run["task_stato"]
-        if branch not in summary:
-            summary[branch] = {}
-        summary[branch][stato] = summary[branch].get(stato, 0) + 1
-    return summary

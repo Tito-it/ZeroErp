@@ -75,6 +75,18 @@ class AttivitaPipelineRepository:
             return None
         return json.dumps(value)
 
+    # Scopo: Decodifica un valore JSONB che puo` arrivare come list/dict o come stringa serializzata.
+    @staticmethod
+    def _decode_jsonb(value: Any, default: Any) -> Any:
+        if isinstance(value, (list, dict)):
+            return value
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                pass
+        return default
+
     # --- Gruppo 1: Lotto management ---
 
     # Scopo: Risolve o crea il lotto attivita delegando al DB la logica di consistenza dominio.
@@ -111,49 +123,39 @@ class AttivitaPipelineRepository:
             assert row is not None
         return int(row[0])
 
+    # Scopo: Recupera in un unico round-trip stato_lotto, stato_operativo e flag is_in_esecuzione.
+    def get_lotto_attivita_info(self, lotto_id: int) -> dict | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT stato_lotto, stato_operativo, is_in_esecuzione "
+                "FROM vendite.fn_get_attivita_lotto_info(%s)",
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "stato_lotto": row[0],
+            "stato_operativo": row[1],
+            "is_in_esecuzione": bool(row[2]),
+        }
+
     # Scopo: Recupera stato_lotto dal DB per il lotto attivita.
     def get_lotto_attivita_stato(self, lotto_id: int) -> str | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT stato_lotto FROM vendite.attivita_fatturabili_lotti WHERE id = %s",
-                [lotto_id],
-            )
-            row = cursor.fetchone()
-        if not row:
-            return None
-        return row[0]
+        info = self.get_lotto_attivita_info(lotto_id)
+        return info["stato_lotto"] if info else None
 
-    # Scopo: Recupera stato_lotto e stato_operativo in un'unica query per l'endpoint status.
+    # Scopo: Recupera stato_lotto e stato_operativo per l'endpoint status.
     def get_lotto_attivita_full_stato(self, lotto_id: int) -> dict | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT stato_lotto, stato_operativo
-                FROM vendite.attivita_fatturabili_lotti
-                WHERE id = %s
-                """,
-                [lotto_id],
-            )
-            row = cursor.fetchone()
-        if not row:
+        info = self.get_lotto_attivita_info(lotto_id)
+        if not info:
             return None
-        return {"stato_lotto": row[0], "stato_operativo": row[1]}
+        return {"stato_lotto": info["stato_lotto"], "stato_operativo": info["stato_operativo"]}
 
-    # Scopo: Verifica se il lotto attivita e` in esecuzione basandosi su stato_lotto persistito.
+    # Scopo: Verifica se il lotto attivita e` in esecuzione.
     def is_lotto_attivita_in_esecuzione(self, lotto_id: int) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT (stato_lotto = 'IN_ESECUZIONE')
-                FROM vendite.attivita_fatturabili_lotti
-                WHERE id = %s
-                """,
-                [lotto_id],
-            )
-            row = cursor.fetchone()
-        if not row:
-            return False
-        return bool(row[0])
+        info = self.get_lotto_attivita_info(lotto_id)
+        return info["is_in_esecuzione"] if info else False
 
     # Scopo: Aggiorna stato_lotto delegando al DB la gestione della state machine.
     def set_lotto_attivita_stato(
@@ -245,19 +247,8 @@ class AttivitaPipelineRepository:
             row = cursor.fetchone()
         if not row:
             return []
-        value = row[0]
-        if isinstance(value, list):
-            return value
-        if isinstance(value, str):
-            # In alcuni ambienti il jsonb puo` arrivare serializzato come stringa.
-            try:
-                decoded = json.loads(value)
-            except json.JSONDecodeError:
-                return []
-            if isinstance(decoded, list):
-                return decoded
-            return []
-        return []
+        decoded = self._decode_jsonb(row[0], [])
+        return decoded if isinstance(decoded, list) else []
 
     # Scopo: Recupera pipeline_id risolto per lo step indicato via fn_resolve_attivita_pipeline_step.
     def get_attivita_pipeline_id_for_step(
@@ -282,31 +273,24 @@ class AttivitaPipelineRepository:
 
     # --- Gruppo 3: Sorgenti abilitate ---
 
-    # Scopo: Restituisce le sorgenti abilitate ordinate per priorita`.
+    # Scopo: Restituisce le sorgenti abilitate ordinate per priorita` via funzione DB.
     def list_sorgenti_abilitate(
         self,
-        utility_id: int | None = None,  # accettato per interface consistency, non usato in WHERE
+        utility_id: int | None = None,
     ) -> list[AttivitaSorgenteBranchPolicy]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT sorgente_tipo_id, branch_code, abilitata,
                        acquisizione_mode, block_scope, priorita, meta
-                FROM vendite.attivita_fatturabili_sorgenti_branch_policy
-                WHERE abilitata IS TRUE
-                  AND attivo IS TRUE
-                ORDER BY priorita, id
-                """
+                FROM vendite.fn_list_attivita_sorgenti_abilitate(%s)
+                """,
+                [utility_id],
             )
             rows = cursor.fetchall()
         result: list[AttivitaSorgenteBranchPolicy] = []
         for row in rows:
-            meta_raw: Any = row[6]
-            if isinstance(meta_raw, str):
-                try:
-                    meta_raw = json.loads(meta_raw)
-                except json.JSONDecodeError:
-                    meta_raw = {}
+            meta_raw: Any = self._decode_jsonb(row[6], {})
             result.append(
                 AttivitaSorgenteBranchPolicy(
                     sorgente_tipo_id=int(row[0]),
@@ -423,18 +407,8 @@ class AttivitaPipelineRepository:
             row = cursor.fetchone()
         if not row:
             return None
-        depends_on_raw: Any = row[3]
-        if isinstance(depends_on_raw, str):
-            try:
-                depends_on_raw = json.loads(depends_on_raw)
-            except json.JSONDecodeError:
-                depends_on_raw = []
-        meta_raw: Any = row[5]
-        if isinstance(meta_raw, str):
-            try:
-                meta_raw = json.loads(meta_raw)
-            except json.JSONDecodeError:
-                meta_raw = {}
+        depends_on_raw: Any = self._decode_jsonb(row[3], [])
+        meta_raw: Any = self._decode_jsonb(row[5], {})
         return AttivitaTaskPolicy(
             annullabile=bool(row[0]),
             resume_mode=str(row[1]),
@@ -551,18 +525,8 @@ class AttivitaPipelineRepository:
             rows = cursor.fetchall()
         result: list[AttivitaTaskRunRow] = []
         for row in rows:
-            depends_on_raw: Any = row[10]
-            if isinstance(depends_on_raw, str):
-                try:
-                    depends_on_raw = json.loads(depends_on_raw)
-                except json.JSONDecodeError:
-                    depends_on_raw = []
-            meta_raw: Any = row[15]
-            if isinstance(meta_raw, str):
-                try:
-                    meta_raw = json.loads(meta_raw)
-                except json.JSONDecodeError:
-                    meta_raw = {}
+            depends_on_raw: Any = self._decode_jsonb(row[10], [])
+            meta_raw: Any = self._decode_jsonb(row[15], {})
             result.append(
                 {
                     "id": int(row[0]),
@@ -584,3 +548,22 @@ class AttivitaPipelineRepository:
                 }
             )
         return result
+
+    # Scopo: Restituisce contatori task run aggregati per branch_code e task_stato via funzione DB.
+    def get_attivita_branch_summary(self, lotto_id: int) -> dict[str, dict[str, int]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT branch_code, task_stato, cnt "
+                "FROM vendite.fn_get_attivita_branch_summary(%s)",
+                [lotto_id],
+            )
+            rows = cursor.fetchall()
+        summary: dict[str, dict[str, int]] = {}
+        for row in rows:
+            branch = str(row[0])
+            stato = str(row[1])
+            cnt = int(row[2])
+            if branch not in summary:
+                summary[branch] = {}
+            summary[branch][stato] = cnt
+        return summary

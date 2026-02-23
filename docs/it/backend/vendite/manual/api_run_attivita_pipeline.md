@@ -55,7 +55,7 @@ View in `apps/vendite/api/views.py`:
 
 - `vendite.fn_get_or_create_lotto_attivita` — creazione/risoluzione lotto attivita
 - `vendite.fn_set_attivita_lotto_stato` — aggiornamento stato lotto (`IN_ESECUZIONE`/`COMPLETATO`/`ERRORE`)
-- `vendite.attivita_fatturabili_sorgenti_branch_policy` — sorgenti abilitate e policy branch
+- `vendite.fn_list_attivita_sorgenti_abilitate` — sorgenti abilitate e policy branch
 - `vendite.fn_list_attivita_pipeline_steps` — step pipeline da eseguire per branch
 - `vendite.fn_start_attivita_lotto_task_run` / `fn_complete_attivita_lotto_task_run` / `fn_fail_attivita_lotto_task_run` — tracing task run
 

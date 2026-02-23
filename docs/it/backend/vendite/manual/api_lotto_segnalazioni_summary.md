@@ -39,7 +39,8 @@ View in `apps/vendite/api/views.py`:
       "fatture_warning_count": 2,
       "lotto_critical_count": 0,
       "lotto_warning_count": 0,
-      "lotto_info_count": 1
+      "lotto_info_count": 1,
+      "fatture_stato_esecuzione_errore_count": 0
     }
   },
   "meta": { ... }
@@ -55,8 +56,9 @@ View in `apps/vendite/api/views.py`:
 - `critical_count` = somma `fatture_critical_count` + `lotto_critical_count`.
 - `warning_count` = somma `fatture_warning_count` + `lotto_warning_count`.
 - `attention_count` = `lotto_info_count` (livello "I" — info operativa).
-- `is_error = true` se `critical_count > 0`.
+- `is_error = true` se `critical_count > 0` oppure se `fatture_stato_esecuzione_errore_count > 0`.
 - `blocks_next_step = true` se `is_error = true` (nessun avanzamento pipeline ammesso).
+- `summary.fatture_stato_esecuzione_errore_count` — conteggio fatture del lotto con `stato_esecuzione = 'ERRORE'`; restituito direttamente da `fn_get_lotto_segnalazioni_summary` (6ª colonna).
 - Endpoint di sola lettura: nessun `Idempotency-Key` richiesto.
 - Endpoint v1 richiede JWT.
 

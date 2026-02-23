@@ -49,7 +49,7 @@ I vincoli di coerenza dati restano delegati al database.
 
 ### Sorgenti e branch
 
-- Le sorgenti abilitate vengono lette da `vendite.attivita_fatturabili_sorgenti_branch_policy` (`abilitata=true AND attivo=true`), ordinate per `priorita`.
+- Le sorgenti abilitate vengono lette tramite `vendite.fn_list_attivita_sorgenti_abilitate(utility_id)` — filtro e ordinamento delegati al DB.
 - Ogni sorgente corrisponde a un branch indipendente; il `branch_code` e` attributo della sorgente (es. `DEFAULT`, `PREVENTIVI`).
 - Se non ci sono sorgenti abilitate, la pipeline e` bloccata con `E_ATTIVITA_PIPELINE`.
 - `sorgente_tipo_id` nel payload filtra i branch: solo il branch corrispondente viene eseguito.
@@ -95,7 +95,7 @@ I vincoli di coerenza dati restano delegati al database.
 - `vendite.fn_get_or_create_lotto_attivita` — creazione/risoluzione lotto
 - `vendite.fn_set_attivita_lotto_stato` — aggiornamento `stato_lotto`
 - `vendite.fn_sync_attivita_stato_esecuzione` — sync `stato_esecuzione` su righe attivita
-- `vendite.attivita_fatturabili_sorgenti_branch_policy` — sorgenti abilitate (SELECT diretto)
+- `vendite.fn_list_attivita_sorgenti_abilitate` — sorgenti abilitate (funzione DB con filtro/ordinamento)
 - `vendite.fn_list_attivita_pipeline_steps` — step pipeline per branch
 - `vendite.fn_resolve_attivita_pipeline_step` — processi e `pipeline_id` per step
 - `vendite.fn_get_attivita_pipeline_task_policy` — policy task (block_scope, depends_on, resume_mode)
@@ -111,12 +111,12 @@ I vincoli di coerenza dati restano delegati al database.
 
 ## Differenze rispetto a `pr_run_lotto_pipeline`
 
-| Aspetto                  | Lotto                              | Attivita                                  |
-|--------------------------|------------------------------------|-------------------------------------------|
-| Step key                 | `stato_doc_fiscale_id` (int)       | `codice_step` (varchar)                   |
-| Task runs table          | `fatturazione_lotti_task_runs`     | `attivita_fatturabili_lotti_task_runs`    |
-| FK task runs             | `lotto_id`                         | `lotto_attivita_id`                       |
+| Aspetto                  | Lotto                                  | Attivita                                              |
+|--------------------------|----------------------------------------|-------------------------------------------------------|
+| Step key                 | `stato_doc_fiscale_id` (int)           | `codice_step` (varchar)                               |
+| Task runs table          | `fatturazione_lotti_task_runs`         | `attivita_fatturabili_lotti_task_runs`                |
+| FK task runs             | `lotto_id`                             | `lotto_attivita_id`                                   |
 | Execution mode           | `fn_resolve_lotto_task_execution_mode` | policy raw via `fn_get_attivita_pipeline_task_policy` |
-| Block scope persistito   | no                                 | si — `block_scope` su ogni task run       |
-| Orchestrazione           | step sequenziali su lotto singolo  | branch indipendenti (sorgente = branch)   |
-| Sorgente→branch resolver | hardcoded in Python                | DB (`attivita_fatturabili_sorgenti_branch_policy`) |
+| Block scope persistito   | no                                     | si — `block_scope` su ogni task run                   |
+| Orchestrazione           | step sequenziali su lotto singolo      | branch indipendenti (sorgente = branch)               |
+| Sorgente→branch resolver | hardcoded in Python                    | DB (`fn_list_attivita_sorgenti_abilitate`)            |

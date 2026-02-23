@@ -55,14 +55,14 @@ View in `apps/vendite/api/views.py`:
 - `stato_lotto` — stato tecnico della pipeline: `DRAFT` | `IN_ESECUZIONE` | `COMPLETATO` | `ERRORE`.
 - `stato_operativo` — stato business del lotto: `APERTO` | `CHIUSO` | `ANNULLATO`.
 - `branch_summary` — contatori task run aggregati per `branch_code` e `task_stato`.
-  - Derivato dai task run in `attivita_fatturabili_lotti_task_runs` (fino a 500 righe).
+  - Derivato da `vendite.fn_get_attivita_branch_summary` — aggregazione `GROUP BY` lato DB (nessun trasferimento righe).
   - Chiavi del sommario: valori di `task_stato` presenti (`IN_ESECUZIONE`, `COMPLETATO`, `ERRORE`).
 - Endpoint di sola lettura: nessun `Idempotency-Key` richiesto.
 - Endpoint v1 richiede JWT.
 
 ## Dipendenze DB
 
-- `vendite.attivita_fatturabili_lotti` — `stato_lotto` e `stato_operativo`
-- `vendite.fn_list_attivita_lotto_task_runs` — task run sorgente per `branch_summary`
+- `vendite.fn_get_attivita_lotto_info` — `stato_lotto`, `stato_operativo`, `is_in_esecuzione` in un unico round-trip
+- `vendite.fn_get_attivita_branch_summary` — aggregazione `branch_code`/`task_stato`/`cnt` per `branch_summary`
 - `apps.vendite.db.attivita_pipeline_repository.AttivitaPipelineRepository.get_lotto_attivita_full_stato`
-- `apps.vendite.db.attivita_pipeline_repository.AttivitaPipelineRepository.list_attivita_task_runs`
+- `apps.vendite.db.attivita_pipeline_repository.AttivitaPipelineRepository.get_attivita_branch_summary`
