@@ -209,16 +209,11 @@ Ogni riga commessa salva:
 | Campo | Significato |
 |---|---|
 | `quantita` | Quantità della prestazione |
-| `listino_id` | Riferimento alla versione listino al momento del push |
+| `listino_versione_id` | Riferimento alla versione listino al momento del push |
 | `data_competenza` | Periodo di riferimento |
 | `prezzo_snapshot` | Prezzo al momento del push (per audit) |
 | `prezzo_bloccato` | Se TRUE il prezzo non viene mai ricalcolato |
 | `prezzo_da_riallineare` | Flag tecnico: TRUE se il documento sorgente `LIBERO` cambia prezzo dopo il push |
-
-Nota naming:
-
-1. `listino_id` nel documento indica la versione listino applicata al push;
-2. in implementazione DB il campo raccomandato e` `listino_versione_id`.
 
 ### 7.2 Policy prezzo per tipo sorgente
 
@@ -235,7 +230,7 @@ Quando una versione listino viene aggiornata, il sistema individua le righe comm
 potenzialmente stantie:
 
 ```
-righe con listino_id = versione aggiornata
+righe con listino_versione_id = versione aggiornata
 AND data_competenza >= data_validita_nuova versione
 AND prezzo_bloccato = FALSE
 AND non ancora fatturate
@@ -353,10 +348,11 @@ commessa_id             FK → commesse
 tipo_attivita           TASK | ORE | MILESTONE | CONSUMO | TECNICA
 descrizione
 quantita
-listino_id              FK → listino versione
+listino_versione_id     FK → listini_versioni
 prezzo_snapshot         numeric — prezzo al momento del push
 prezzo_bloccato         boolean
 prezzo_da_riallineare   boolean — flag tecnico di riallineamento post-push
+pricing_mode            FIXED | FORMULA | SCAGLIONI
 data_competenza         date
 segment_key             varchar — chiave idempotenza (vedi §9.3)
 stato_approvazione      BOZZA | APPROVATA | RIFIUTATA
@@ -380,8 +376,12 @@ created_at
 ```
 commessa_id             FK → commesse   (NOT NULL dopo backfill)
 commessa_attivita_id    FK → commesse_attivita   (NOT NULL dopo backfill)
-prezzo_bloccato         boolean snapshot prezzo (usato nello step verifica prezzi)
 ```
+
+Nota ownership:
+
+1. `attivita_fatturabili.prezzo_bloccato` e` requisito del dominio pricing/listini;
+2. viene introdotto nella roadmap `gestione-listini.md` (DB-L3), non in DB-1 core commesse.
 
 I campi `sorgente_tipo_id / sorgente_uid / sorgente_riga` restano invariati
 e continuano a rappresentare la root source originale.
@@ -452,8 +452,13 @@ Note per `fn_emit_attivita_fatturabili_da_commessa`:
 - Legge sempre la ROOT da `commesse_sorgenti`.
 - Se ROOT mancante → errore bloccante.
 - Scrive `commessa_id` e `commessa_attivita_id` su ogni riga emessa.
+- Propaga `prezzo_bloccato` da `commesse_attivita` a `attivita_fatturabili`.
 - I campi `sorgente_*` in `attivita_fatturabili` prendono i valori dalla ROOT.
 - Idempotente su `segment_key`.
+
+Nota ownership funzioni pricing:
+
+1. `fn_resolve_prezzo_listino(...)` e `fn_resolve_commessa_prezzi(lotto_id)` sono governate dalla roadmap pricing in `gestione-listini.md`.
 
 ---
 

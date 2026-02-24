@@ -345,12 +345,14 @@ Motivazione:
 ### DB-L2 Resolver e funzione prezzo
 
 1. funzione `fn_resolve_prezzo_listino(...)`,
-2. precedenze ufficiali implementate e testate.
+2. funzione `fn_resolve_commessa_prezzi(lotto_id)` per analisi prezzi stantii nel perimetro lotto,
+3. precedenze ufficiali implementate e testate.
 
 ### DB-L3 Integrazione commessa
 
 1. campi snapshot pricing in `commesse_attivita`,
-2. aggancio resolver in push/pull commessa.
+2. aggancio resolver in push/pull commessa,
+3. introduzione `attivita_fatturabili.prezzo_bloccato` e propagazione nel pull da `commesse_attivita`.
 
 ### DB-L4 Rettifiche
 
