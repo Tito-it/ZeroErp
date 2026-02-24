@@ -213,6 +213,12 @@ Ogni riga commessa salva:
 | `data_competenza` | Periodo di riferimento |
 | `prezzo_snapshot` | Prezzo al momento del push (per audit) |
 | `prezzo_bloccato` | Se TRUE il prezzo non viene mai ricalcolato |
+| `prezzo_da_riallineare` | Flag tecnico: TRUE se il documento sorgente `LIBERO` cambia prezzo dopo il push |
+
+Nota naming:
+
+1. `listino_id` nel documento indica la versione listino applicata al push;
+2. in implementazione DB il campo raccomandato e` `listino_versione_id`.
 
 ### 7.2 Policy prezzo per tipo sorgente
 
@@ -252,6 +258,20 @@ dry_run pipeline fatturazione →
 **Per piccole realtà**: conferma manuale sempre.
 **Per utility su grandi volumi**: ricalcolo automatico con log audit.
 Configurabile per commessa/policy.
+
+### 7.4 Override prezzo documento e riallineamento
+
+Regole:
+
+1. se il documento applica override manuale:
+   - `prezzo_snapshot = prezzo_documento`,
+   - `prezzo_bloccato = TRUE`,
+   - `listino_versione_id` valorizzato alla versione risolta alla data (se disponibile) per audit comparativo.
+2. se il preventivo e` ancora `LIBERO` e il prezzo cambia dopo push:
+   - non si introduce nuovo stato business commessa,
+   - si imposta `commesse_attivita.prezzo_da_riallineare = TRUE`,
+   - riallineamento solo su conferma esplicita.
+3. se il documento non e` piu` `LIBERO` (es. convertito/confermato), la modifica prezzo non altera la commessa consolidata.
 
 ---
 
@@ -336,6 +356,7 @@ quantita
 listino_id              FK → listino versione
 prezzo_snapshot         numeric — prezzo al momento del push
 prezzo_bloccato         boolean
+prezzo_da_riallineare   boolean — flag tecnico di riallineamento post-push
 data_competenza         date
 segment_key             varchar — chiave idempotenza (vedi §9.3)
 stato_approvazione      BOZZA | APPROVATA | RIFIUTATA
@@ -359,6 +380,7 @@ created_at
 ```
 commessa_id             FK → commesse   (NOT NULL dopo backfill)
 commessa_attivita_id    FK → commesse_attivita   (NOT NULL dopo backfill)
+prezzo_bloccato         boolean snapshot prezzo (usato nello step verifica prezzi)
 ```
 
 I campi `sorgente_tipo_id / sorgente_uid / sorgente_riga` restano invariati
@@ -518,5 +540,21 @@ Gate di uscita DB (il backend parte solo dopo):
 - **Campi `sorgente_*` su `attivita_fatturabili`** — restano e rappresentano la root source.
 - **Logica `Idempotency-Key` sulle API** — invariata.
 - **Branch policy BRANCH/GLOBAL** — invariata.
+
+---
+
+## 16) Nota futura — Utilities su commessa AUTO (senza bypass)
+
+Decisione di indirizzo (da implementare in fase successiva, non ora):
+
+1. per fatturazioni extra ad alto volume (energia/gas/idrico) non si introduce bypass diretto a `attivita_fatturabili`;
+2. si usa il percorso standard tramite `commessa AUTO`, come per i preventivi con `fatturazione_immediata`;
+3. in `AUTO` il codice commessa business puo` essere nullo (se previsto dal modello DB), mantenendo comunque `commessa_id` e `commessa_attivita_id` valorizzati sulle righe emesse;
+4. i campi `sorgente_*` restano sempre valorizzati con la provenienza originaria.
+
+Scopo della nota:
+
+1. preservare il modello v2 come riferimento unico;
+2. evitare future deviazioni architetturali quando si aprira` il cantiere utilities.
 - **`fatturazione_immediata` come flag** — resta sul preventivo, cambia solo il significato
   (vedi §4.3).
