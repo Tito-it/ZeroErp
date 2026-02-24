@@ -61,8 +61,8 @@ ATTIVITÀ FATTURABILI
 3. **Nessun bypass** — nessuna scrittura diretta in `attivita_fatturabili` senza `commessa_id`.
 4. **Idempotenza by design** — stessa sorgente + stesso `segment_key` non produce doppioni.
 5. **Pull sempre rieseguibile** — il passaggio commessa → attività fatturabili è idempotente.
-6. **Prezzi gestiti a livello di fatturazione** — la commessa non blocca i prezzi, li segnala
-   se stantii; la verifica definitiva avviene alla pipeline di fatturazione.
+6. **Prezzi con ownership su commessa, validazione in fatturazione** — la commessa salva
+   `prezzo_snapshot`/`prezzo_bloccato`; la verifica finale avviene nello step prezzi della pipeline.
 7. **Estendibile senza refactor** — aggiungere una nuova sorgente = registrare un nuovo handler,
    non toccare il modello core.
 
@@ -83,7 +83,7 @@ Casi d'uso:
 Lifecycle:
 
 ```
-CREATA → PRONTA_FATTURAZIONE → CHIUSA
+BOZZA → PRONTA_FATTURAZIONE → CHIUSA
 ```
 
 - `CHIUSA` avviene automaticamente dopo emissione in `attivita_fatturabili` e conferma COMPLETED.
@@ -311,9 +311,8 @@ FK esatte) sono delegati al team.
 ```
 id                      PK
 tipo_commessa           REALE | AUTO
-stato                   BOZZA | CREATA | APERTA | IN_ESECUZIONE |
-                        PRONTA_FATTURAZIONE | CHIUSA
-stato_operativo         APERTO | CHIUSO | ANNULLATO
+stato_commessa          BOZZA | APERTA | IN_ESECUZIONE |
+                        PRONTA_FATTURAZIONE | CHIUSA | ANNULLATA
 policy_fatturazione     DA_DOCUMENTO | DA_CONSUNTIVO | MISTA
 fatturazione_immediata  boolean
 priorita_operativa      ALTA | NORMALE | BASSA
@@ -385,8 +384,9 @@ Nota ownership:
 1. `attivita_fatturabili.prezzo_bloccato` e` requisito del dominio pricing/listini;
 2. viene introdotto nella roadmap `gestione-listini.md` (DB-L3), non in DB-1 core commesse.
 
-I campi `sorgente_tipo_id / sorgente_uid / sorgente_riga` restano invariati
-e continuano a rappresentare la root source originale.
+I campi `sorgente_tipo_id / sorgente_uid / sorgente_riga` restano su AF come contratto
+idempotenza del pull e vengono valorizzati come `COMMESSA + segment_key`.
+La sorgente esterna originale resta su `commesse_attivita.sorgente_*`.
 
 **`vendite.preventivi`** (o tabella equivalente) — aggiungere:
 ```
@@ -417,13 +417,12 @@ esempio: 42_2026-02_SAL_1
 
 Unicità operativa primaria:
 ```sql
-UNIQUE (commessa_attivita_id, segment_key) WHERE attivo = TRUE
+UNIQUE (commessa_id, segment_key)
 ```
 
 Unicità di sicurezza su root source:
 ```sql
-UNIQUE (sorgente_tipo_id, COALESCE(sorgente_uid::text, sorgente_riga::text), segment_key)
-WHERE attivo = TRUE
+UNIQUE (sorgente_tipo_id, sorgente_uid, ruolo_link)
 ```
 
 Regola anti-doppio canale: impossibile avere due record attivi con stesso `segment_key`
@@ -548,7 +547,7 @@ Gate di uscita DB (il backend parte solo dopo):
 ## 15) Cosa NON cambia
 
 - **Pipeline di fatturazione** (lotti, documenti fiscali, SDI) — invariata.
-- **Campi `sorgente_*` su `attivita_fatturabili`** — restano e rappresentano la root source.
+- **Campi `sorgente_*` su `attivita_fatturabili`** — restano con semantica idempotenza pull (`COMMESSA + segment_key`).
 - **Logica `Idempotency-Key` sulle API** — invariata.
 - **Branch policy BRANCH/GLOBAL** — invariata.
 
@@ -561,7 +560,8 @@ Decisione di indirizzo (da implementare in fase successiva, non ora):
 1. per fatturazioni extra ad alto volume (energia/gas/idrico) non si introduce bypass diretto a `attivita_fatturabili`;
 2. si usa il percorso standard tramite `commessa AUTO`, come per i preventivi con `fatturazione_immediata`;
 3. in `AUTO` il codice commessa business puo` essere nullo (se previsto dal modello DB), mantenendo comunque `commessa_id` e `commessa_attivita_id` valorizzati sulle righe emesse;
-4. i campi `sorgente_*` restano sempre valorizzati con la provenienza originaria.
+4. i campi `sorgente_*` su AF restano valorizzati per idempotenza, con convenzione
+   `COMMESSA + segment_key`; la provenienza originaria vive su `commesse_attivita.sorgente_*`.
 
 Scopo della nota:
 
@@ -587,7 +587,7 @@ Definire in modo esplicito:
 id
 codice
 tipo_commessa                 REALE | AUTO
-stato_commessa                APERTA | IN_ESECUZIONE | COMPLETATA | CHIUSA | BLOCCATA
+stato_commessa                BOZZA | APERTA | IN_ESECUZIONE | PRONTA_FATTURAZIONE | CHIUSA | ANNULLATA
 billing_account_id
 utility_id
 emittente_soggetto_ruolo_id
@@ -615,6 +615,7 @@ id
 commessa_id
 segment_key
 articolo_id
+istanza_utility_id          FK → anagrafiche.istanze_utilities (sempre valorizzata)
 uom_id
 quantita
 competenza_dal
@@ -657,7 +658,7 @@ data_insert / user_insert
 | `prezzo_snapshot`/`prezzo_unitario` | `commesse_attivita` | snapshot copiato su `prezzo_unitario` |
 | `prezzo_bloccato` | `commesse_attivita` | snapshot operativo (gia` presente) |
 | `listino_versione_id` | `commesse_attivita` | non obbligatorio in AF v1, consigliato in v2 |
-| `sorgente_*` root | `commesse_sorgenti` | mantenuti in AF come origine primaria |
+| `sorgente_*` root | `commesse_attivita` + `commesse_sorgenti` | su AF valorizzati come `COMMESSA + segment_key` |
 
 Regola di governo:
 
@@ -700,7 +701,7 @@ Il modello v2 resta confermato:
 
 1. nessun bypass `sorgente -> attivita_fatturabili`,
 2. percorso unico `sorgente -> commessa -> attivita_fatturabili`,
-3. `sorgente_*` su AF mantenuti per tracciabilita` origine primaria.
+3. `sorgente_*` su AF mantenuti come contratto idempotenza (`COMMESSA + segment_key`).
 
 ---
 
@@ -708,74 +709,123 @@ Il modello v2 resta confermato:
 
 ### 18.1 Schema `commesse_*`
 
-- [ ] creare `vendite.commesse` con stati, tipo (`REALE/AUTO`), contesto BA/utility/emittente, audit
-- [ ] creare `vendite.commesse_sorgenti` con vincolo una sola root attiva per commessa
-- [ ] creare `vendite.commesse_attivita` con:
-  - [ ] `segment_key`
-  - [ ] `competenza_dal`, `competenza_al`, `competenza_mese`
-  - [ ] `posticipa_al`
-  - [ ] `tipo_doc_fiscale_id`, `valuta_id`
-  - [ ] `listino_versione_id`, `prezzo_snapshot numeric(22,10)`, `prezzo_bloccato`
-  - [ ] `pricing_mode`, `prezzo_da_riallineare`
-  - [ ] `sorgente_tipo_id` nullable, `sorgente_uid` nullable (per import da sistemi esterni)
-  - [ ] unique parziale `(sorgente_tipo_id, sorgente_uid) WHERE sorgente_tipo_id IS NOT NULL`
-- [ ] creare `vendite.commesse_attivita_log`
+- [x] creare `vendite.commesse` con stati, tipo (`REALE/AUTO`), contesto BA/utility/emittente, audit
+- [x] creare `vendite.commesse_sorgenti` con vincolo una sola root attiva per commessa
+- [x] creare `vendite.commesse_attivita` con:
+  - [x] `segment_key`
+  - [x] `istanza_utility_id` (NOT NULL, anche fittizia)
+  - [x] `competenza_dal`, `competenza_al`, `competenza_mese`
+  - [x] `posticipa_al`
+  - [x] `tipo_doc_fiscale_id`, `valuta_id`
+  - [x] `listino_versione_id`, `prezzo_snapshot numeric(22,10)`, `prezzo_bloccato`
+  - [x] `pricing_mode`, `prezzo_da_riallineare`
+  - [x] `sorgente_tipo_id` nullable, `sorgente_uid` nullable (per import da sistemi esterni)
+  - [x] unique parziale `(sorgente_tipo_id, sorgente_uid) WHERE sorgente_tipo_id IS NOT NULL`
+- [x] creare `vendite.commesse_attivita_log`
 
 ### 18.2 Estensioni `attivita_fatturabili`
 
-- [ ] aggiungere `commessa_id` (nullable transizione)
-- [ ] aggiungere `commessa_attivita_id` (nullable transizione)
+- [x] aggiungere `commessa_id` (finalizzato `NOT NULL`)
+- [x] aggiungere `commessa_attivita_id` (finalizzato `NOT NULL`)
 - [x] aggiungere `prezzo_bloccato` (completato: `20260224-04`)
 - [ ] valutare introduzione `segment_key` su AF (snapshot tecnico) se richiesta idempotenza runtime
 
 ### 18.3 Vincoli e indici
 
-- [ ] FK `attivita_fatturabili.commessa_id -> commesse.id`
-- [ ] FK `attivita_fatturabili.commessa_attivita_id -> commesse_attivita.id`
-- [ ] unique operativa su `commesse_attivita (commessa_id, segment_key)` (o equivalente approvato)
-- [ ] vincolo `competenza_mese` primo giorno mese su `commesse_attivita`
-- [ ] strategia per rimozione/sostituzione `uq_attivita_fatturabili_v_sorgente_fk`
-- [ ] unique parziale su `commesse_attivita (sorgente_tipo_id, sorgente_uid) WHERE sorgente_tipo_id IS NOT NULL`
+- [x] FK `attivita_fatturabili.commessa_id -> commesse.id`
+- [x] FK `attivita_fatturabili.commessa_attivita_id -> commesse_attivita.id`
+- [x] unique operativa su `commesse_attivita (commessa_id, segment_key)` (o equivalente approvato)
+- [x] vincolo `competenza_mese` primo giorno mese su `commesse_attivita`
+- [x] strategia per rimozione/sostituzione `uq_attivita_fatturabili_v_sorgente_fk`
+- [x] unique parziale su `commesse_attivita (sorgente_tipo_id, sorgente_uid) WHERE sorgente_tipo_id IS NOT NULL`
 
 ### 18.4 Funzioni DB (core commessa)
 
-- [ ] `fn_get_or_create_commessa(...)`
-- [ ] `fn_link_commessa_sorgente(...)`
-- [ ] `fn_upsert_commessa_attivita(...)`
-- [ ] `fn_emit_attivita_fatturabili_da_commessa(...)`
-  - [ ] propaga `commessa_id`, `commessa_attivita_id`
-  - [ ] propaga `prezzo_bloccato`
-  - [ ] copia `competenza_mese` da commessa (no ricalcolo in AF)
-  - [ ] copia `posticipa_al` e altri snapshot dominio
-- [ ] `fn_get_commessa_stato(commessa_id)`
+- [x] `fn_get_or_create_commessa(...)`
+- [x] `fn_link_commessa_sorgente(...)`
+- [x] `fn_upsert_commessa_attivita(...)`
+- [x] `fn_emit_attivita_fatturabili_da_commessa(...)`
+  - [x] propaga `commessa_id`, `commessa_attivita_id`
+  - [x] propaga `prezzo_bloccato`
+  - [x] copia `competenza_mese` da commessa (no ricalcolo in AF)
+  - [x] copia `posticipa_al` e altri snapshot dominio
+- [x] `fn_get_commessa_stato(commessa_id)`
 
 ### 18.5 Backfill e guardrail
 
-- [ ] backfill storico AF -> commesse AUTO (1:1 tecnico)
-- [ ] popolamento `commessa_id`, `commessa_attivita_id` su storico
-- [ ] attivazione guardrail anti-bypass su insert AF senza commessa
-- [ ] passaggio finale FK a `NOT NULL` dopo backfill validato
+- [x] backfill storico AF -> commesse AUTO (1:1 tecnico) *(N/A ambiente v0 senza dati storici)*
+- [x] popolamento `commessa_id`, `commessa_attivita_id` su storico *(N/A ambiente v0 senza dati storici)*
+- [x] implementazione guardrail anti-bypass su insert/update AF senza commessa (toggle via `config.parameters`)
+- [x] passaggio finale FK a `NOT NULL` dopo backfill validato
 
 ### 18.6 Test pgTAP minimi
 
-- [ ] DDL `commesse_*` (vincoli/FK/unique/check)
-- [ ] funzioni core create ed eseguibili
-- [ ] `fn_emit_attivita_fatturabili_da_commessa` idempotente
-- [ ] propagazione snapshot (`competenza_mese`, `posticipa_al`, `prezzo_bloccato`)
-- [ ] guardrail anti-bypass attivo
-- [ ] regressione su pipeline esistente non rotta
+- [x] DDL `commesse_*` (vincoli/FK/unique/check)
+- [x] funzioni core create ed eseguibili
+- [x] `fn_emit_attivita_fatturabili_da_commessa` idempotente
+- [x] propagazione snapshot (`competenza_mese`, `posticipa_al`, `prezzo_bloccato`)
+- [x] guardrail anti-bypass attivo (switch parametro a `true` in go-live transizione, changeset `20260224-41`)
+- [x] regressione su pipeline esistente non rotta (verifica con `test-attivita-guardrail-commessa-v1.sql`)
+  - Evidenza prevista: `db/pgtap/vendite/test-attivita-guardrail-commessa-v1.sql`
+    (caso guard ON + emit commessa operativo).
 
 ### 18.8 Orchestratore push commessa (vedi §23)
 
-- [ ] Creare `vendite.commesse_push_log` (schema §23.4)
-- [ ] Indice su `commesse_push_log.run_at`
-- [ ] Documentare uso di `pg_try_advisory_lock` come anti-concorrenza (nessuna tabella lock)
+- [x] Creare `vendite.commesse_push_log` (schema §23.4)
+- [x] Indice su `commesse_push_log.run_at`
+- [x] Documentare uso di `pg_try_advisory_lock` come anti-concorrenza (nessuna tabella lock)
 
 ### 18.9 Gate uscita DB-L3
 
-- [ ] test pgTAP DB-L3 verdi
-- [ ] WIP `gestione-listini.md` e `gestione-commesse-v2.md` allineati
-- [ ] checklist 13.3 (`gestione-listini.md`) portata a completamento coerente
+- [x] test pgTAP DB-L3 verdi
+- [x] WIP `gestione-listini.md` e `gestione-commesse-v2.md` allineati
+- [x] checklist 13.3 (`gestione-listini.md`) portata a completamento coerente
+
+### 18.10 Stato transizione pipeline (COMMESSA_ONLY)
+
+- [x] decisione architetturale: pipeline legacy `attivita-da-fatturare` deprecata
+- [x] applicare switch operativo `20260224-41-switch-attivita-to-commessa-only-mctit.yaml`
+- [x] validare switch con `db/pgtap/vendite/test-attivita-commessa-only-switch-v1.sql`
+
+### 18.11 Readiness backfill (analisi volumi pre-NOT-NULL)
+
+Obiettivo: misurare il perimetro reale del backfill prima di forzare
+`attivita_fatturabili.commessa_id/commessa_attivita_id` a `NOT NULL`.
+
+Query operative (solo analisi):
+
+```sql
+-- 1) Volume totale AF e quota senza link commessa
+SELECT
+  count(*) AS total_af,
+  count(*) FILTER (WHERE commessa_id IS NULL OR commessa_attivita_id IS NULL) AS af_missing_commessa_link
+FROM vendite.attivita_fatturabili;
+
+-- 2) Distribuzione missing per sorgente (diagnostica priorita backfill)
+SELECT
+  COALESCE(s.codice, 'N/D') AS sorgente_codice,
+  count(*) AS righe_missing
+FROM vendite.attivita_fatturabili af
+LEFT JOIN config.sorgenti s
+  ON s.id = af.sorgente_tipo_id
+WHERE af.commessa_id IS NULL
+   OR af.commessa_attivita_id IS NULL
+GROUP BY COALESCE(s.codice, 'N/D')
+ORDER BY righe_missing DESC, sorgente_codice;
+
+-- 3) Controllo coerenza link presenti (FK logica commessa_attivita -> commessa)
+SELECT
+  count(*) AS incoerenti
+FROM vendite.attivita_fatturabili af
+JOIN vendite.commesse_attivita ca
+  ON ca.id = af.commessa_attivita_id
+WHERE af.commessa_id IS NOT NULL
+  AND ca.commessa_id <> af.commessa_id;
+```
+
+Criterio go/no-go per fase `NOT NULL`:
+- `af_missing_commessa_link = 0`
+- `incoerenti = 0`
 
 ---
 
@@ -812,12 +862,17 @@ Presente in AF come FK a `anagrafiche.istanze_utilities` (il punto tecnico speci
 — contatore, POD, PDR). Su `commesse` esiste `utility_id` che è il tipo di
 utility/fornitore — NON la stessa cosa.
 
-Questo è il gap più rilevante: una commessa governa un BA + utility, ma le righe
-fatturabili possono riferirsi a POD/PDR specifici. Con il modello commessa-centrico
-serve stabilire dove vive `istanza_utility_id`:
+Decisione chiusa:
 
-- Su `commesse_attivita` (una riga per punto tecnico) → consigliato per utilities
-- Su `commesse` header (solo se una commessa = un solo punto tecnico)
+1. `istanza_utility_id` vive su `commesse_attivita`;
+2. nel dominio attuale e` **sempre valorizzata** (anche con istanza fittizia);
+3. `commesse` puo` mantenerla come snapshot/testata opzionale solo se utile per query aggregate.
+
+Motivazione:
+
+1. `anagrafiche.billing_account.istanza_utility_id` e` `NOT NULL`;
+2. `attivita_fatturabili.istanza_utility_id` e` `NOT NULL`;
+3. la presenza di istanza fittizia standardizza il modello anche fuori da gas/energia legate a PDP.
 
 ### Gap 3 — campi misura operativa
 
@@ -848,18 +903,17 @@ La funzione pull deve mappare:
 
 ### 19.3 Inconsistenza stati commessa tra §4 e §17.2
 
-§4.1 (AUTO lifecycle): `CREATA → PRONTA_FATTURAZIONE → CHIUSA`
+§4.1 (AUTO lifecycle): `BOZZA → PRONTA_FATTURAZIONE → CHIUSA`
 §4.2 (REALE lifecycle): `BOZZA → APERTA → IN_ESECUZIONE → PRONTA_FATTURAZIONE → CHIUSA`
 
-§17.2 schema `commesse.stato_commessa`: `APERTA | IN_ESECUZIONE | COMPLETATA | CHIUSA | BLOCCATA`
+Set canonico approvato per `commesse.stato_commessa`:
 
-Differenze:
+`BOZZA | APERTA | IN_ESECUZIONE | PRONTA_FATTURAZIONE | CHIUSA | ANNULLATA`
 
-- `CREATA` e `PRONTA_FATTURAZIONE` sono in §4 ma non in §17.2
-- `COMPLETATA` è in §17.2 ma non in §4 (usato `CHIUSA`)
-- `BLOCCATA` è in §17.2 ma non in §4
+Nota:
 
-Il team DB deve usare il set di stati di §4 come riferimento. §17.2 va allineato.
+- `COMPLETATA` e` sostituito da `CHIUSA`.
+- `BLOCCATA` non e` stato business; eventuale blocco e` gestito via eventi/log/meta.
 
 ---
 
@@ -916,17 +970,20 @@ factor_to_base              numeric — fattore conversione UoM operativa → ba
 area_geografica_id          FK → config.aree_geografiche (opzionale)
 ```
 
-Nota: `istanza_utility_id` e i campi misura sono opzionali per commesse
-non-utility. Nullable, valorizzati solo nei branch utility.
+Nota aggiornata:
+
+1. `istanza_utility_id` e` da considerare sempre valorizzata anche per casi non-PDP
+   tramite istanza fittizia;
+2. i campi misura operativa restano opzionali e si valorizzano nei branch utility.
 
 ---
 
 ### 19.7 Checklist integrativa (da aggiungere a §18)
 
-- [ ] Decidere ownership `istanza_utility_id`: su `commesse_attivita` o solo AF
+- [x] Ownership `istanza_utility_id`: su `commesse_attivita` (sempre valorizzata, anche con istanza fittizia)
 - [ ] Aggiungere `data_attivita` a `commesse_attivita` (o documentare esclusione)
 - [ ] Aggiungere campi misura operativa a `commesse_attivita` (o documentare esclusione)
-- [ ] Allineare stati `commesse.stato_commessa` con §4 (rimuovere `COMPLETATA`, aggiungere `CREATA`, `PRONTA_FATTURAZIONE`)
+- [x] Allineare stati `commesse.stato_commessa` con set canonico (`BOZZA|APERTA|IN_ESECUZIONE|PRONTA_FATTURAZIONE|CHIUSA|ANNULLATA`)
 - [ ] Aggiornare trigger `trg_attivita_fatturabili_normalize_ins_upd` per essere commessa-aware
 - [ ] Aggiornare trigger `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` per leggere BA da commessa
 - [ ] Documentare mapping esplicito `stato_approvazione → approvato` nel pull
@@ -1315,8 +1372,107 @@ Esempio `risultato` jsonb:
 
 ### 23.5 Checklist DB da aggiungere a §18
 
-- [ ] Creare `vendite.commesse_push_log` con schema §23.4
-- [ ] Indice su `run_at` per query audit (`WHERE run_at >= ...`)
-- [ ] `pg_try_advisory_lock` documentato come meccanismo anti-concorrenza (nessuna tabella)
-- [ ] Inserimento in `commesse_push_log` eseguito dalla funzione DB o dal layer Python
-      al termine di ogni `CommessaPushOrchestrator.run()`
+- [x] Creare `vendite.commesse_push_log` con schema §23.4
+- [x] Indice su `run_at` per query audit (`WHERE run_at >= ...`)
+- [x] `pg_try_advisory_lock` documentato come meccanismo anti-concorrenza (nessuna tabella)
+- [x] Inserimento in `commesse_push_log` eseguito via funzione DB `vendite.fn_log_commessa_push_run(...)`;
+      il layer Python la invoca al termine di ogni `CommessaPushOrchestrator.run()`
+
+---
+
+## 24) Uniformazione canali fatturabili per sorgente (contratti/preventivi/ordini/ddt)
+
+### 24.1 Decisione modello
+
+Per uniformita` cross-dominio, il controllo canali non usa `documento_tipo` hardcoded.
+Usa invece il pattern standard gia` adottato nel progetto:
+
+- `sorgente_tipo_id` (`config.sorgenti.id`)
+- `sorgente_uid` (`text`)
+
+Questa scelta e` allineata a:
+
+- `vendite.commesse_sorgenti` (`sorgente_uid text`)
+- `vendite.commesse_attivita` (`sorgente_uid text`)
+
+e consente di estendere la logica a nuove sorgenti senza alterazioni strutturali.
+
+### 24.2 Perche` `sorgente_uid text` (e non UUID obbligatorio)
+
+Motivazioni:
+
+1. Alcune sorgenti sono naturalmente non-UUID (chiavi esterne, codici tecnici, composite key serializzate).
+2. Evita conversioni forzate `text -> uuid` e collisioni applicative inutili.
+3. Mantiene coerenza con `commesse_*` dove l'identificazione sorgente e` gia` testuale.
+4. Riduce coupling tra domini diversi (vendite, utility, future integrazioni ticket/API).
+
+Nota:
+nelle tabelle che oggi hanno `uuid` (es. `attivita_fatturabili.sorgente_uid`) la mappatura
+deterministica resta possibile per compatibilita` runtime, ma il modello canonico
+di tracciamento sorgente resta `text`.
+
+### 24.3 Struttura tabella proposta
+
+Tabella tecnica unica (nome da confermare in DB design):
+`vendite.documenti_fatturazione_canali`
+
+Campi minimi:
+
+- `id bigserial`
+- `sorgente_tipo_id bigint not null`
+- `sorgente_uid text not null`
+- `canale_codice varchar(32) not null` (`COMMESSA|PREVENTIVO|ORDINE|DDT|DIRETTO`)
+- `stato_canale varchar(16) not null` (`APERTO|CONSUMATO|BLOCCATO`)
+- `target_sorgente_tipo_id bigint null` (es. sorgente target creata)
+- `target_sorgente_uid text null`
+- `motivo_blocco text null`
+- `meta jsonb not null default '{}'::jsonb`
+- audit standard (`data_insert`, `user_insert`, `data_update`, `user_update`)
+
+Vincoli minimi:
+
+- unique parziale: un solo `stato_canale='APERTO'` per (`sorgente_tipo_id`,`sorgente_uid`)
+- check su domini `canale_codice` / `stato_canale`
+- FK su `config.sorgenti` per `sorgente_tipo_id` e `target_sorgente_tipo_id`
+
+### 24.4 Regola funzionale uniforme
+
+Regola generale:
+
+- quando un documento viene instradato su un canale, quel canale viene `CONSUMATO`;
+- i canali alternativi diventano `BLOCCATO` (se policy esclusiva attiva).
+
+Applicazioni immediate:
+
+- `PREVENTIVO -> ORDINE`: canale preventivo bloccato per fatturazione diretta
+- `ORDINE -> DDT`: in base alla policy, blocco fatturazione diretta ordine oppure coesistenza controllata
+- `CONTRATTO`: routing esplicito (`DIRETTO_COMMESSA` / `VIA_PREVENTIVO` / `VIA_ORDINE`)
+
+Policy esclusivita` v0 (definitiva in sviluppo):
+
+- **PREVENTIVO (root)**:
+  - `PREVENTIVO` APERTO finche` non nasce `ORDINE_VENDITA` da quel preventivo;
+  - alla conversione: `PREVENTIVO -> CONSUMATO` con target ordine.
+- **ORDINE_VENDITA (root)**:
+  - `ORDINE_VENDITA` APERTO finche` non nasce `DDT_VENDITA` collegato;
+  - alla conversione: `ORDINE_VENDITA -> CONSUMATO` con target ddt.
+- **DDT_VENDITA (root)**:
+  - `DDT_VENDITA` APERTO come canale corrente;
+  - eventuali canali alternativi APERTI sulla stessa sorgente vengono auto-bloccati dalla funzione canali.
+- **CONTRATTO (root)**:
+  - apertura `DIRETTO` su inserimento contratto;
+  - eventuali altri canali APERTI sulla stessa sorgente vengono auto-bloccati dalla funzione canali.
+
+Implementazione DB di riferimento:
+- `vendite.fn_set_documento_canale_stato(...)`
+- `vendite.trgfn_documenti_sync_canali()`
+- pgTAP: `db/pgtap/vendite/test-documenti-fatturazione-canali-v1.sql`,
+  `db/pgtap/vendite/test-documenti-canali-sync-v1.sql`
+
+### 24.5 Checklist aggiuntiva (analisi)
+
+- [x] Definire la tabella canali sorgente-based (`sorgente_tipo_id` + `sorgente_uid text`)
+- [x] Definire policy esclusivita` per ciascuna sorgente primaria (contratto/preventivo/ordine/ddt)
+- [x] Introdurre funzione DB unica di transizione stato canale (set/open/consume/block)
+- [x] Copertura pgTAP tabella/funzione canali (`test-documenti-fatturazione-canali-v1.sql`)
+- [x] Allineare i trigger/flow di conversione (`preventivo->ordine`, `ordine->ddt`) al nuovo registro canali

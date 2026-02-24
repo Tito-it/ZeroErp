@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260224-42-finalize-attivita-fatturabili-commessa-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260224-42-finalize-attivita-fatturabili-commessa-not-null
+      author: mctit
+      comment: "Finalizza attivita_fatturabili post-backfill: link commessa NOT NULL e sostituzione indice legacy idempotenza."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Portare attivita_fatturabili allo stato finale post-backfill:
+              --   - commessa_id e commessa_attivita_id obbligatori
+              --   - rimozione idempotenza legacy su sorgente_*
+              --   - unicita` tecnica su commessa_attivita_id
+              --
+              -- Regole:
+              --   - fail-fast se esistono record legacy senza link commessa
+              --   - fail-fast se esistono duplicati commessa_attivita_id
+              -- =========================================================
+
+              DO $do$
+              DECLARE
+                v_missing bigint;
+                v_dup bigint;
+              BEGIN
+                SELECT count(*)
+                  INTO v_missing
+                FROM vendite.attivita_fatturabili af
+                WHERE af.commessa_id IS NULL
+                   OR af.commessa_attivita_id IS NULL;
+
+                IF v_missing > 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','finalize_attivita_fatturabili_commessa_not_null','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'context',jsonb_build_object(
+                        'detail','righe attivita_fatturabili senza link commessa',
+                        'rows_missing',v_missing
+                      )
+                    ),
+                    NULL::uuid,
+                    concat('righe attivita_fatturabili senza link commessa: ', v_missing::text)
+                  );
+                END IF;
+
+                SELECT count(*)
+                  INTO v_dup
+                FROM (
+                  SELECT af.commessa_attivita_id
+                  FROM vendite.attivita_fatturabili af
+                  GROUP BY af.commessa_attivita_id
+                  HAVING count(*) > 1
+                ) d;
+
+                IF v_dup > 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','finalize_attivita_fatturabili_commessa_not_null','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'context',jsonb_build_object(
+                        'detail','duplicati su commessa_attivita_id',
+                        'duplicate_keys',v_dup
+                      )
+                    ),
+                    NULL::uuid,
+                    concat('duplicati su commessa_attivita_id: ', v_dup::text)
+                  );
+                END IF;
+              END
+              $do$;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                ALTER COLUMN commessa_id SET NOT NULL;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                ALTER COLUMN commessa_attivita_id SET NOT NULL;
+
+              DROP INDEX IF EXISTS vendite.uq_attivita_fatturabili_v_sorgente_fk;
+
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_attivita_fatturabili_commessa_attivita
+                ON vendite.attivita_fatturabili (commessa_attivita_id);
+
+              COMMENT ON INDEX vendite.uq_attivita_fatturabili_commessa_attivita
+                IS 'Unicita` tecnica riga AF emessa da commessa_attivita (post-backfill).';

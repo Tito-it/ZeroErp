@@ -1,0 +1,165 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260224-38-create-trgfn-attivita-guard-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20260224-38-create-trgfn-attivita-guard-commessa
+      author: mctit
+      comment: "Guardrail anti-bypass su attivita_fatturabili: commessa obbligatoria (attivabile via flag)."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_guard_enabled boolean := false;
+                v_bypass_setting text;
+                v_bypass_enabled boolean := false;
+                v_commessa_from_attivita vendite.commesse_attivita.commessa_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Impedire bypass del layer commessa sulle scritture
+                --   di vendite.attivita_fatturabili.
+                --
+                -- Regole:
+                --   - attivabile/disattivabile via config.parameters
+                --     (code = attivita_fatturabili_require_commessa)
+                --   - bypass manutenzione via GUC
+                --     zeroerp.maintenance_allow_attivita_bypass=true
+                --   - quando attivo:
+                --       * commessa_id e commessa_attivita_id obbligatori
+                --       * devono essere valorizzati a coppia
+                --       * commessa_attivita_id deve appartenere alla commessa_id
+                -- =========================================================
+
+                BEGIN
+                  SELECT COALESCE(NULLIF(btrim(p.default_value), ''), 'false')::boolean
+                    INTO v_guard_enabled
+                    FROM config.parameters p
+                   WHERE p.code = 'attivita_fatturabili_require_commessa'
+                   LIMIT 1;
+                EXCEPTION
+                  WHEN OTHERS THEN
+                    v_guard_enabled := false;
+                END;
+
+                BEGIN
+                  v_bypass_setting := current_setting('zeroerp.maintenance_allow_attivita_bypass', true);
+                  IF v_bypass_setting IS NOT NULL AND btrim(v_bypass_setting) <> '' THEN
+                    v_bypass_enabled := v_bypass_setting::boolean;
+                  END IF;
+                EXCEPTION
+                  WHEN OTHERS THEN
+                    v_bypass_enabled := false;
+                END;
+
+                IF v_bypass_enabled OR NOT v_guard_enabled THEN
+                  RETURN NEW;
+                END IF;
+
+                IF (NEW.commessa_id IS NULL AND NEW.commessa_attivita_id IS NOT NULL)
+                   OR (NEW.commessa_id IS NOT NULL AND NEW.commessa_attivita_id IS NULL) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'trgfn_attivita_fatturabili_guard_commessa', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'context',jsonb_build_object(
+                        'detail','commessa_id e commessa_attivita_id devono essere valorizzati a coppia',
+                        'commessa_id',NEW.commessa_id,
+                        'commessa_attivita_id',NEW.commessa_attivita_id
+                      )
+                    ),
+                    NULL::uuid,
+                    'pair_commessa_non_valida'
+                  );
+                END IF;
+
+                IF NEW.commessa_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'trgfn_attivita_fatturabili_guard_commessa', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'context',jsonb_build_object(
+                        'detail','inserimento/aggiornamento attivita_fatturabili senza commessa non consentito',
+                        'attivita_id',NEW.id
+                      )
+                    ),
+                    NULL::uuid,
+                    'commessa_obbligatoria'
+                  );
+                END IF;
+
+                SELECT ca.commessa_id
+                  INTO v_commessa_from_attivita
+                  FROM vendite.commesse_attivita ca
+                 WHERE ca.id = NEW.commessa_attivita_id;
+
+                IF v_commessa_from_attivita IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'trgfn_attivita_fatturabili_guard_commessa', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'context',jsonb_build_object(
+                        'detail','commessa_attivita_id non trovata',
+                        'commessa_attivita_id',NEW.commessa_attivita_id
+                      )
+                    ),
+                    NULL::uuid,
+                    'commessa_attivita_non_trovata'
+                  );
+                END IF;
+
+                IF v_commessa_from_attivita <> NEW.commessa_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'trgfn_attivita_fatturabili_guard_commessa', 'E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE',
+                      'severity','C',
+                      'code','E_GENERICO',
+                      'context',jsonb_build_object(
+                        'detail','commessa_attivita_id non coerente con commessa_id',
+                        'commessa_id',NEW.commessa_id,
+                        'commessa_attivita_id',NEW.commessa_attivita_id,
+                        'commessa_attesa',v_commessa_from_attivita
+                      )
+                    ),
+                    NULL::uuid,
+                    concat('commessa_attivita_non_coerente_', NEW.commessa_attivita_id::text, 
+                    '_commessa_from_attivita_', v_commessa_from_attivita::text)
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $$;
+
+              COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()
+              IS 'Guardrail anti-bypass su attivita_fatturabili: richiede commessa_id+commessa_attivita_id coerenti quando il flag config.parameters e` attivo.';
+
+              DROP TRIGGER IF EXISTS trg_attivita_fatturabili_a10_guard_commessa_ins_upd
+                ON vendite.attivita_fatturabili;
+
+              CREATE TRIGGER trg_attivita_fatturabili_a10_guard_commessa_ins_upd
+              BEFORE INSERT OR UPDATE OF commessa_id, commessa_attivita_id
+              ON vendite.attivita_fatturabili
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa();
+
+              COMMENT ON TRIGGER trg_attivita_fatturabili_a10_guard_commessa_ins_upd
+              ON vendite.attivita_fatturabili
+              IS 'Guardrail commessa-aware su inserimenti/aggiornamenti link commessa.';

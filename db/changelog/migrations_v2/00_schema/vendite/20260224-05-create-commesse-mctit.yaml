@@ -1,0 +1,198 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260224-05-create-commesse-mctit.yaml
+
+  - changeSet:
+      id: 20260224-05-create-commesse
+      author: mctit
+      comment: "Crea testata vendite.commesse (tipo, stato, policy, contesto fiscale/operativo)."
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: commesse
+            remarks: "Testata commessa (REALE/AUTO) con stato lifecycle e policy fatturazione."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_commesse
+                    nullable: false
+              - column:
+                  name: codice
+                  type: varchar(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tipo_commessa
+                  type: varchar(16)
+                  defaultValue: "AUTO"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: stato_commessa
+                  type: varchar(32)
+                  defaultValue: "BOZZA"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: policy_fatturazione
+                  type: varchar(24)
+                  defaultValue: "DA_DOCUMENTO"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: fatturazione_immediata
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: priorita_operativa
+                  type: varchar(16)
+                  defaultValue: "NORMALE"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: billing_account_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: utility_id
+                  type: integer
+                  constraints:
+                    nullable: false
+              - column:
+                  name: emittente_soggetto_ruolo_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+              - column:
+                  name: competenza_dal
+                  type: date
+                  constraints:
+                    nullable: true
+              - column:
+                  name: competenza_al
+                  type: date
+                  constraints:
+                    nullable: true
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: commesse
+            columnNames: codice
+            constraintName: uq_commesse_codice
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse
+            baseColumnNames: billing_account_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_billing_account
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse
+            baseColumnNames: utility_id
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_utility
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse
+            baseColumnNames: emittente_soggetto_ruolo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_emittente
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- Enum applicativi e coerenza range competenza.
+              ALTER TABLE vendite.commesse
+                ADD CONSTRAINT chk_commesse_tipo
+                CHECK (tipo_commessa IN ('REALE', 'AUTO'));
+
+              ALTER TABLE vendite.commesse
+                ADD CONSTRAINT chk_commesse_stato
+                CHECK (stato_commessa IN ('BOZZA', 'APERTA', 'IN_ESECUZIONE', 'PRONTA_FATTURAZIONE', 'CHIUSA', 'ANNULLATA'));
+
+              ALTER TABLE vendite.commesse
+                ADD CONSTRAINT chk_commesse_policy
+                CHECK (policy_fatturazione IN ('DA_DOCUMENTO', 'DA_CONSUNTIVO', 'MISTA'));
+
+              ALTER TABLE vendite.commesse
+                ADD CONSTRAINT chk_commesse_priorita
+                CHECK (priorita_operativa IN ('ALTA', 'NORMALE', 'BASSA'));
+
+              ALTER TABLE vendite.commesse
+                ADD CONSTRAINT chk_commesse_competenza_range
+                CHECK (competenza_dal IS NULL OR competenza_al IS NULL OR competenza_dal <= competenza_al);
+
+              CREATE INDEX IF NOT EXISTS ix_commesse_stato
+                ON vendite.commesse (stato_commessa);
+
+              CREATE INDEX IF NOT EXISTS ix_commesse_ba_utility
+                ON vendite.commesse (billing_account_id, utility_id);

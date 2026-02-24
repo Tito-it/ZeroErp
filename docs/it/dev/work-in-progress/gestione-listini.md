@@ -446,12 +446,12 @@ Queste parti sono previste nella v2 pricing, non bloccano la partenza del modell
 
 ### 13.3 DB-L3 Integrazione commessa
 
-- [ ] estendere `commesse_attivita` con `pricing_mode`
-- [ ] estendere `commesse_attivita` con `prezzo_da_riallineare`
+- [x] estendere `commesse_attivita` con `pricing_mode`
+- [x] estendere `commesse_attivita` con `prezzo_da_riallineare`
 - [x] estendere `attivita_fatturabili` con `prezzo_bloccato`
-- [ ] aggiornare `fn_emit_attivita_fatturabili_da_commessa` per propagare `prezzo_bloccato`
-- [ ] gestire override documento (`prezzo_bloccato=TRUE`, `listino_versione_id` audit)
-- [ ] pgtap integrazione commessa verde
+- [x] aggiornare `fn_emit_attivita_fatturabili_da_commessa` per propagare `prezzo_bloccato`
+- [x] gestire override documento (`prezzo_bloccato=TRUE`, `listino_versione_id` audit)
+- [x] pgtap integrazione commessa verde
 
 ### 13.4 DB-L4 Rettifiche
 

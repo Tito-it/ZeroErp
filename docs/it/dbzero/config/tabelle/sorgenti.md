@@ -44,7 +44,10 @@
 | trg_sorgenti_a10_attivita_fatturabili_lotti_task_runs_bl_535fbe | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'attivita_fatturabili_lotti_task_runs', 'sorgente_tipo_id', 'id')` |
 | trg_sorgenti_a10_attivita_fatturabili_pipeline_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'attivita_fatturabili_pipeline', 'sorgente_tipo_id', 'id')` |
 | trg_sorgenti_a10_attivita_fatturabili_sorgenti_branch_po_602713 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'attivita_fatturabili_sorgenti_branch_policy', 'sorgente_tipo_id', 'id')` |
+| trg_sorgenti_a10_commesse_attivita_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'commesse_attivita', 'sorgente_tipo_id', 'id')` |
+| trg_sorgenti_a10_commesse_sorgenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'commesse_sorgenti', 'sorgente_tipo_id', 'id')` |
 | trg_sorgenti_a10_ddt_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt', 'sorgente_tipo_id', 'id')` |
+| trg_sorgenti_a10_documenti_fatturazione_canali_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'documenti_fatturazione_canali', 'sorgente_tipo_id', 'id')` |
 | trg_sorgenti_a10_eventi_assets_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'eventi_assets', 'sorgente_tipo_id', 'id')` |
 | trg_sorgenti_a10_fatture_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture', 'sorgente_tipo_id', 'id')` |
 | trg_sorgenti_a10_fatture_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_righe', 'sorgente_tipo_id', 'id')` |

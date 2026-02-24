@@ -1,5 +1,9 @@
 # Ripresa lavori - attivita_fatturabili (22-02-2026)
 
+> Nota stato (24-02-2026):
+> la pipeline legacy `attivita-da-fatturare` e` da considerare deprecata;
+> la modalita` target e` `COMMESSA_ONLY` (push/pull via `commesse_*`).
+
 ## 1) Obiettivo
 
 Riprendere il dominio `attivita_fatturabili` allineandolo al livello raggiunto dalla pipeline lotto, partendo prima dai refactor trasversali dei punti 20 e 21 del documento WIP.
@@ -1163,6 +1167,21 @@ Fase 3 - Backend handlers:
 Fase 4 - Hardening:
 
 1. aggiungere guardrail anti-bypass layer commessa;
+
+### 12.9 Aggiornamento stato (24-02-2026) - canali documento
+
+Completato allineamento DB del registro canali su conversioni documento:
+
+1. funzione `vendite.fn_set_documento_canale_stato` introdotta (upsert/transizioni `APERTO|CONSUMATO|BLOCCATO`);
+2. trigger function `vendite.trgfn_documenti_sync_canali` introdotta;
+3. trigger su `vendite.ordini`, `vendite.ddt`, `vendite.contratti` attivati;
+4. gestione conversioni coperta:
+   - `PREVENTIVO -> ORDINE_VENDITA`
+   - `ORDINE_VENDITA -> DDT_VENDITA`
+   - `CONTRATTO -> DIRETTO`
+5. pgTAP dedicati predisposti:
+   - `db/pgtap/vendite/test-documenti-fatturazione-canali-v1.sql`
+   - `db/pgtap/vendite/test-documenti-canali-sync-v1.sql`
 2. verificare consistency stati lotto/attivita;
 3. validare resume branch-level su scenari reali.
 

@@ -1,0 +1,40 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260224-37-backfill-attivita-preventivo-sorgente-uid-mctit.yaml
+
+  - changeSet:
+      id: 20260224-37-backfill-attivita-preventivo-sorgente-uid
+      author: mctit
+      comment: "Backfill sorgente_uid su attivita_fatturabili per record PREVENTIVO storici."
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Riallineare lo storico di vendite.attivita_fatturabili
+              --   dopo il passaggio PREVENTIVO.key_selector = 'uid'.
+              --
+              -- Regole:
+              --   - aggiorna solo righe con sorgente PREVENTIVO
+              --   - aggiorna solo dove sorgente_uid e' NULL
+              --   - usa mapping storico sorgente_riga -> preventivi.id
+              --   - idempotente
+              -- =========================================================
+              UPDATE vendite.attivita_fatturabili a
+              SET sorgente_uid = p.uid,
+                  data_update = now(),
+                  user_update = current_user
+              FROM config.sorgenti s,
+                   vendite.preventivi p
+              WHERE s.id = a.sorgente_tipo_id
+                AND s.codice = 'PREVENTIVO'
+                AND p.id = a.sorgente_riga
+                AND a.sorgente_uid IS NULL
+                AND a.sorgente_riga IS NOT NULL
+                AND a.sorgente_riga > 0;
