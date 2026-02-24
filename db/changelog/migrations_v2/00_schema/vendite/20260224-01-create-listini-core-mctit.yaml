@@ -1,0 +1,610 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260224-01-create-listini-core-mctit.yaml
+
+  # Nota: questo file contiene piu` changeSet correlati del blocco DB-L1.
+  # Naming allineato richiesta: 20260224-01-01, -02, -03, -04.
+  - changeSet:
+      id: 20260224-01-01-create-listini
+      author: mctit
+      comment: "Crea testata listini vendite con dominio v1 (UTILITY, COMMERCIO)."
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: listini
+            remarks: "Anagrafica listini di vendita."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_listini
+                    nullable: false
+              - column:
+                  name: codice
+                  type: varchar(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: dominio
+                  type: varchar(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: listini
+            columnNames: codice
+            constraintName: uq_listini_codice
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- Dominio listino v1: utility e commercio.
+              ALTER TABLE vendite.listini
+                ADD CONSTRAINT chk_listini_dominio
+                CHECK (dominio IN ('UTILITY', 'COMMERCIO'));
+
+  - changeSet:
+      id: 20260224-01-02-create-listini-versioni
+      author: mctit
+      comment: "Crea versioni listino con validita` temporale e priorita`."
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: listini_versioni
+            remarks: "Versioni temporali del listino."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_listini_versioni
+                    nullable: false
+              - column:
+                  name: listino_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: codice_versione
+                  type: varchar(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valido_dal
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valido_al
+                  type: date
+                  constraints:
+                    nullable: true
+              - column:
+                  name: priorita
+                  type: smallint
+                  defaultValueNumeric: 100
+                  constraints:
+                    nullable: false
+              - column:
+                  name: stato
+                  type: varchar(16)
+                  defaultValue: "BOZZA"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: listini_versioni
+            baseColumnNames: listino_id
+            referencedTableSchemaName: vendite
+            referencedTableName: listini
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_listini_versioni_listino
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: listini_versioni
+            columnNames: listino_id, codice_versione
+            constraintName: uq_listini_versioni_listino_codice
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- Stato versione e regole base di validita`.
+              ALTER TABLE vendite.listini_versioni
+                ADD CONSTRAINT chk_listini_versioni_stato
+                CHECK (stato IN ('BOZZA', 'ATTIVA', 'CHIUSA'));
+
+              ALTER TABLE vendite.listini_versioni
+                ADD CONSTRAINT chk_listini_versioni_priorita
+                CHECK (priorita > 0);
+
+              ALTER TABLE vendite.listini_versioni
+                ADD CONSTRAINT chk_listini_versioni_date
+                CHECK (valido_al IS NULL OR valido_al > valido_dal);
+
+              -- No overlap temporale per lo stesso listino su versioni attive.
+              CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+              ALTER TABLE vendite.listini_versioni
+                ADD CONSTRAINT ex_listini_versioni_no_overlap
+                EXCLUDE USING gist (
+                  listino_id WITH =,
+                  daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]') WITH &&
+                )
+                WHERE (attivo IS TRUE);
+
+              CREATE INDEX IF NOT EXISTS ix_listini_versioni_listino_valido_dal
+                ON vendite.listini_versioni (listino_id, valido_dal);
+
+  - changeSet:
+      id: 20260224-01-03-create-listini-righe
+      author: mctit
+      comment: "Crea righe listino contestualizzate (BA/utility/emittente opzionali)."
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: listini_righe
+            remarks: "Prezzi per combinazione dimensionale e versione listino."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_listini_righe
+                    nullable: false
+              - column:
+                  name: listino_versione_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: articolo_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: uom_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: billing_account_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+              - column:
+                  name: utility_id
+                  type: integer
+                  constraints:
+                    nullable: true
+              - column:
+                  name: emittente_soggetto_ruolo_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+              - column:
+                  name: prezzo
+                  type: numeric(22,10)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: listini_righe
+            baseColumnNames: listino_versione_id
+            referencedTableSchemaName: vendite
+            referencedTableName: listini_versioni
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_listini_righe_versione
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: listini_righe
+            baseColumnNames: articolo_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_listini_righe_articolo
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: listini_righe
+            baseColumnNames: uom_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_listini_righe_uom
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: listini_righe
+            baseColumnNames: billing_account_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_listini_righe_ba
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: listini_righe
+            baseColumnNames: utility_id
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_listini_righe_utility
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: listini_righe
+            baseColumnNames: emittente_soggetto_ruolo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_listini_righe_emittente
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- Prezzo sempre non negativo.
+              ALTER TABLE vendite.listini_righe
+                ADD CONSTRAINT chk_listini_righe_prezzo
+                CHECK (prezzo >= 0);
+
+              -- Unicita` riga attiva per stessa combinazione dimensionale.
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_listini_righe_key_attiva
+                ON vendite.listini_righe (
+                  listino_versione_id,
+                  articolo_id,
+                  uom_id,
+                  COALESCE(billing_account_id, -1),
+                  COALESCE(utility_id, -1),
+                  COALESCE(emittente_soggetto_ruolo_id, -1)
+                )
+                WHERE attivo IS TRUE;
+
+              CREATE INDEX IF NOT EXISTS ix_listini_righe_lookup
+                ON vendite.listini_righe (
+                  listino_versione_id,
+                  articolo_id,
+                  uom_id,
+                  billing_account_id,
+                  utility_id,
+                  emittente_soggetto_ruolo_id
+                )
+                WHERE attivo IS TRUE;
+
+  - changeSet:
+      id: 20260224-01-04-create-listini-associazioni
+      author: mctit
+      comment: "Crea associazioni listino-contesto con priorita` per tie-break resolver."
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: listini_associazioni
+            remarks: "Perimetro applicazione listini con priorita` di precedenza."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_listini_associazioni
+                    nullable: false
+              - column:
+                  name: listino_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: billing_account_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+              - column:
+                  name: utility_id
+                  type: integer
+                  constraints:
+                    nullable: true
+              - column:
+                  name: emittente_soggetto_ruolo_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+              - column:
+                  name: priorita
+                  type: smallint
+                  defaultValueNumeric: 100
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valido_dal
+                  type: date
+                  defaultValueComputed: "CURRENT_DATE"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valido_al
+                  type: date
+                  constraints:
+                    nullable: true
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: listini_associazioni
+            baseColumnNames: listino_id
+            referencedTableSchemaName: vendite
+            referencedTableName: listini
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_listini_associazioni_listino
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: listini_associazioni
+            baseColumnNames: billing_account_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_listini_associazioni_ba
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: listini_associazioni
+            baseColumnNames: utility_id
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_listini_associazioni_utility
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: listini_associazioni
+            baseColumnNames: emittente_soggetto_ruolo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_listini_associazioni_emittente
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- Priorita` positiva e finestra temporale valida.
+              ALTER TABLE vendite.listini_associazioni
+                ADD CONSTRAINT chk_listini_associazioni_priorita
+                CHECK (priorita > 0);
+
+              ALTER TABLE vendite.listini_associazioni
+                ADD CONSTRAINT chk_listini_associazioni_date
+                CHECK (valido_al IS NULL OR valido_al > valido_dal);
+
+              -- Evita duplicati attivi sulla stessa combinazione contesto-listino.
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_listini_associazioni_key_attiva
+                ON vendite.listini_associazioni (
+                  listino_id,
+                  COALESCE(billing_account_id, -1),
+                  COALESCE(utility_id, -1),
+                  COALESCE(emittente_soggetto_ruolo_id, -1),
+                  valido_dal
+                )
+                WHERE attivo IS TRUE;
+
+              CREATE INDEX IF NOT EXISTS ix_listini_associazioni_lookup
+                ON vendite.listini_associazioni (
+                  billing_account_id,
+                  utility_id,
+                  emittente_soggetto_ruolo_id,
+                  priorita
+                )
+                WHERE attivo IS TRUE;

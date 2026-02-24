@@ -1,0 +1,166 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_resolve_commessa_prezzi.md" %}
+# ⚙️ Funzione `fn_resolve_commessa_prezzi`
+
+```sql
+CREATE FUNCTION fn_resolve_commessa_prezzi(p_lotto_id bigint)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_resolve_commessa_prezzi(p_lotto_id bigint)
+ RETURNS TABLE(attivita_id bigint, prezzo_attuale numeric, prezzo_risolto numeric, delta_prezzo numeric, stale boolean, esito text, listino_versione_id bigint, listino_riga_id bigint, match_level smallint, dettaglio text)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_lotto vendite.attivita_fatturabili_lotti%ROWTYPE;
+  v_row RECORD;
+  v_res RECORD;
+  v_billing_account_id vendite.attivita_fatturabili.billing_account_id%TYPE;
+  v_utility_id vendite.attivita_fatturabili_lotti.utility_id%TYPE;
+  v_emittente_id vendite.attivita_fatturabili_lotti.emittente_soggetto_ruolo_id%TYPE;
+BEGIN
+  -- =========================================================
+  -- Scopo:
+  --   Analizzare le attivita` di un lotto e segnalare prezzi
+  --   stantii confrontando prezzo_unitario corrente con
+  --   il prezzo risolto da listino.
+  --
+  -- Regole:
+  --   - p_lotto_id obbligatorio e > 0
+  --   - perimetro: righe attivita_fatturabili del lotto
+  --   - la funzione non fallisce alla prima riga errata:
+  --     riporta esito per riga (ERRORE_RESOLVER, PREZZO_ASSENTE, ...)
+  -- =========================================================
+  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite',
+      'fn_resolve_commessa_prezzi',
+      'E_GENERICO',
+      jsonb_build_object(
+        'scope', 'LISTINI',
+        'severity', 'C',
+        'code', 'E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail', 'lotto_id obbligatorio', 'lotto_id', p_lotto_id)
+      ),
+      NULL::uuid,
+      'lotto_id obbligatorio'
+    );
+  END IF;
+
+  SELECT l.*
+  INTO v_lotto
+  FROM vendite.attivita_fatturabili_lotti l
+  WHERE l.id = p_lotto_id;
+
+  IF NOT FOUND THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite',
+      'fn_resolve_commessa_prezzi',
+      'E_GENERICO',
+      jsonb_build_object(
+        'scope', 'LISTINI',
+        'severity', 'C',
+        'code', 'E_GENERICO',
+        'lotto_id', p_lotto_id,
+        'fattura_id', NULL,
+        'context', jsonb_build_object('detail', 'lotto attivita non trovato', 'lotto_id', p_lotto_id)
+      ),
+      NULL::uuid,
+      concat('lotto attivita non trovato: ', p_lotto_id::text)
+    );
+  END IF;
+
+  FOR v_row IN
+    SELECT
+      a.id AS attivita_id,
+      a.articolo_id,
+      a.uom_id,
+      a.prezzo_unitario,
+      a.billing_account_id,
+      a.data_attivita,
+      a.competenza_mese
+    FROM vendite.attivita_fatturabili a
+    WHERE a.lotto_attivita_id = p_lotto_id
+    ORDER BY a.id
+  LOOP
+    attivita_id := v_row.attivita_id;
+    prezzo_attuale := v_row.prezzo_unitario;
+    prezzo_risolto := NULL;
+    delta_prezzo := NULL;
+    stale := NULL;
+    esito := NULL;
+    listino_versione_id := NULL;
+    listino_riga_id := NULL;
+    match_level := NULL;
+    dettaglio := NULL;
+
+    v_billing_account_id := COALESCE(v_row.billing_account_id, v_lotto.billing_account_id);
+    v_utility_id := COALESCE(v_lotto.utility_id, NULL);
+    v_emittente_id := COALESCE(
+      v_lotto.emittente_soggetto_ruolo_id,
+      CASE
+        WHEN v_billing_account_id IS NOT NULL THEN anagrafiche.fn_get_emittente_fiscale_id(v_billing_account_id)
+        ELSE NULL
+      END
+    );
+
+    IF v_row.uom_id IS NULL OR v_row.uom_id <= 0 THEN
+      esito := 'UOM_ASSENTE';
+      stale := FALSE;
+      dettaglio := 'uom_id assente o non valido';
+      RETURN NEXT;
+      CONTINUE;
+    END IF;
+
+    IF v_row.prezzo_unitario IS NULL THEN
+      esito := 'PREZZO_ASSENTE';
+      stale := FALSE;
+      dettaglio := 'prezzo_unitario non valorizzato su attivita';
+      RETURN NEXT;
+      CONTINUE;
+    END IF;
+
+    BEGIN
+      SELECT r.*
+      INTO v_res
+      FROM vendite.fn_resolve_prezzo_listino(
+        p_articolo_id => v_row.articolo_id,
+        p_uom_id => v_row.uom_id,
+        p_data_riferimento => COALESCE(v_row.data_attivita, v_row.competenza_mese, v_lotto.competenza_mese),
+        p_billing_account_id => v_billing_account_id,
+        p_utility_id => v_utility_id,
+        p_emittente_soggetto_ruolo_id => v_emittente_id
+      ) r;
+
+      prezzo_risolto := v_res.prezzo;
+      listino_versione_id := v_res.listino_versione_id;
+      listino_riga_id := v_res.listino_riga_id;
+      match_level := v_res.match_level;
+      delta_prezzo := (v_res.prezzo - v_row.prezzo_unitario)::numeric(22,10);
+      stale := (v_res.prezzo IS DISTINCT FROM v_row.prezzo_unitario);
+      esito := CASE WHEN stale THEN 'PRICE_STALE' ELSE 'OK' END;
+      dettaglio := CASE
+        WHEN stale THEN 'prezzo listino differente da prezzo_attivita'
+        ELSE 'prezzo coerente con resolver listino'
+      END;
+      RETURN NEXT;
+    EXCEPTION
+      WHEN OTHERS THEN
+        esito := 'ERRORE_RESOLVER';
+        stale := NULL;
+        dettaglio := SQLERRM;
+        RETURN NEXT;
+    END;
+  END LOOP;
+END
+$function$
+
+COMMENT ON FUNCTION vendite.fn_resolve_commessa_prezzi(p_lotto_id bigint)
+IS 'Analizza le attivita di un lotto e confronta prezzo_unitario con il prezzo risolto da listino, restituendo esito per riga.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

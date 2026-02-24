@@ -154,6 +154,20 @@ Regola operativa:
 2. unique su chiave completa dimensionale + versione,
 3. coerenza date (`valido_al > valido_dal` o null open-ended).
 
+### 5.4 Policy precisione prezzo (v1)
+
+Decisione operativa confermata:
+
+1. fino a `attivita_fatturabili` (inclusa) il prezzo usa precisione alta `numeric(22,10)`;
+2. in `fatture_righe` il prezzo di aggregazione/esposizione resta a `6` decimali;
+3. il resolver listino e le funzioni di push/pull non devono introdurre arrotondamenti anticipati.
+
+Motivazione:
+
+1. nel dominio utilities (gas/energia/idrico) sono frequenti importi unitari molto piccoli;
+2. mantenere `22,10` a monte evita perdita di informazione prima della fase fiscale;
+3. l'arrotondamento a `6` decimali rimane confinato al layer righe fattura.
+
 ---
 
 ## 6) Resolver prezzo (deterministico)
@@ -348,6 +362,11 @@ Motivazione:
 2. funzione `fn_resolve_commessa_prezzi(lotto_id)` per analisi prezzi stantii nel perimetro lotto,
 3. precedenze ufficiali implementate e testate.
 
+Nota implementativa corrente:
+
+1. finche` il layer `commesse_*` non e` introdotto (DB-L3), `fn_resolve_commessa_prezzi`
+   opera come equivalente operativo su `attivita_fatturabili` del lotto.
+
 ### DB-L3 Integrazione commessa
 
 1. campi snapshot pricing in `commesse_attivita`,
@@ -403,3 +422,47 @@ Nota:
 3. simulazioni tariffarie previsionali.
 
 Queste parti sono previste nella v2 pricing, non bloccano la partenza del modello.
+
+---
+
+## 13) Tracking avanzamento (checklist operativa)
+
+### 13.1 DB-L1 Schema base listini
+
+- [x] creare tabelle `listini`, `listini_versioni`, `listini_righe`, `listini_associazioni`
+- [x] introdurre campo `listini_associazioni.priorita`
+- [x] introdurre campo `listini.dominio` con valori v1 (`UTILITY`, `COMMERCIO`)
+- [x] vincoli date e no-overlap versioni
+- [x] pgtap DDL base verde
+
+### 13.2 DB-L2 Resolver pricing
+
+- [x] creare `fn_resolve_prezzo_listino(...)` con `p_data_riferimento` obbligatoria
+- [x] implementare precedenze utility + non-utility
+- [x] implementare tie-break multi-listino con `listini_associazioni.priorita`
+- [x] errore `AMBIGUOUS_PRICE_MATCH` su pareggio totale
+- [x] creare `fn_resolve_commessa_prezzi(lotto_id)`
+- [x] pgtap resolver verde
+
+### 13.3 DB-L3 Integrazione commessa
+
+- [ ] estendere `commesse_attivita` con `pricing_mode`
+- [ ] estendere `commesse_attivita` con `prezzo_da_riallineare`
+- [x] estendere `attivita_fatturabili` con `prezzo_bloccato`
+- [ ] aggiornare `fn_emit_attivita_fatturabili_da_commessa` per propagare `prezzo_bloccato`
+- [ ] gestire override documento (`prezzo_bloccato=TRUE`, `listino_versione_id` audit)
+- [ ] pgtap integrazione commessa verde
+
+### 13.4 DB-L4 Rettifiche
+
+- [ ] implementare motore delta rettifiche
+- [ ] canale manuale
+- [ ] canale automatico su modifica retroattiva listino
+- [ ] audit rettifiche
+- [ ] pgtap rettifiche verde
+
+### 13.5 Gate di chiusura DB
+
+- [ ] tutti i test pgtap listini/commessa verdi
+- [ ] ownership campi/funzioni allineata tra `gestione-listini.md` e `gestione-commesse-v2.md`
+- [ ] chiusura bloccanti §11
