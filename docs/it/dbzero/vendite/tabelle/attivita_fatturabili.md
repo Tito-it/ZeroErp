@@ -43,6 +43,7 @@
 | competenza_al | date | NO |  |
 | area_geografica_id | bigint | YES |  |
 | stato_esecuzione | character varying | YES |  |
+| prezzo_bloccato | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

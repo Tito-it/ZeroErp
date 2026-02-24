@@ -80,7 +80,8 @@ Tipico filtro di eleggibilità per il motore:
 * **Governance**:
   `tx_id`, `storicizza`, `user_*`, `data_*`.
 * **Economiche & tipo documento**:
-  `tipo_doc_fiscale_id`, `valuta_id`, `prezzo_unitario` (snapshot economico).
+  `tipo_doc_fiscale_id`, `valuta_id`, `prezzo_unitario` (snapshot economico),
+  `prezzo_bloccato` (freeze prezzo da override/policy).
   In fase di alimentazione il tipo documento segue l’ordine: sorgente → utility (fallback).
 * **Misure & dettaglio sorgente**:
   `sorgente_riga` (riferimento tecnico riga sorgente), `uom_id` (u.m. base), `qta_operativa` (quantita operativa), `uom_operativa_id` (u.m. operativa), `factor_to_base` (fattore conversione verso base).

@@ -437,7 +437,7 @@ Troppo restrittivo — impedisce la parzializzazione controllata della stessa so
 
 ## 10) Funzioni DB necessarie
 
-Da implementare in DB-3. Definizioni principali, dettagli tecnici al team DB.
+Funzioni dominio commessa (core DB-3) + riferimenti a funzioni pricing. Definizioni principali, dettagli tecnici al team DB.
 
 | Funzione | Scopo |
 |---|---|
@@ -445,7 +445,7 @@ Da implementare in DB-3. Definizioni principali, dettagli tecnici al team DB.
 | `fn_link_commessa_sorgente(...)` | Collega la sorgente ROOT alla commessa |
 | `fn_upsert_commessa_attivita(...)` | Inserisce/aggiorna riga operativa con idempotenza su `segment_key` |
 | `fn_emit_attivita_fatturabili_da_commessa(...)` | Pull commessa → `attivita_fatturabili` (step 0 pipeline) |
-| `fn_resolve_commessa_prezzi(lotto_id)` | Individua righe con listino stantio nel perimetro lotto |
+| `fn_resolve_commessa_prezzi(lotto_id)` | Individua righe con listino stantio nel perimetro lotto (ownership: roadmap pricing `gestione-listini.md`, step DB-L2) |
 | `fn_get_commessa_stato(commessa_id)` | Stato + info commessa in un round-trip |
 
 Note per `fn_emit_attivita_fatturabili_da_commessa`:
@@ -561,5 +561,201 @@ Scopo della nota:
 
 1. preservare il modello v2 come riferimento unico;
 2. evitare future deviazioni architetturali quando si aprira` il cantiere utilities.
-- **`fatturazione_immediata` come flag** — resta sul preventivo, cambia solo il significato
-  (vedi §4.3).
+
+---
+
+## 17) Analisi integrativa tabelle `commesse_*` e refactor `attivita_fatturabili`
+
+### 17.1 Obiettivo
+
+Definire in modo esplicito:
+
+1. struttura target delle tabelle `commesse_*`,
+2. ownership dei campi oggi presenti su `attivita_fatturabili`,
+3. percorso di refactor progressivo senza rotture runtime.
+
+### 17.2 Struttura target (v1 operativa)
+
+**`vendite.commesse`** (testata)
+```
+id
+codice
+tipo_commessa                 REALE | AUTO
+stato_commessa                APERTA | IN_ESECUZIONE | COMPLETATA | CHIUSA | BLOCCATA
+billing_account_id
+utility_id
+emittente_soggetto_ruolo_id
+competenza_dal
+competenza_al
+meta
+data_insert / user_insert / data_update / user_update / tx_id
+```
+
+**`vendite.commesse_sorgenti`** (root source commessa)
+```
+id
+commessa_id
+sorgente_tipo_id
+sorgente_uid
+sorgente_riga
+is_root                       boolean (una sola root attiva)
+meta
+data_insert / user_insert / data_update / user_update / tx_id
+```
+
+**`vendite.commesse_attivita`** (righe operative)
+```
+id
+commessa_id
+segment_key
+articolo_id
+uom_id
+quantita
+competenza_dal
+competenza_al
+competenza_mese               mese fatturazione (YYYY-MM-01)
+posticipa_al
+tipo_doc_fiscale_id
+valuta_id
+listino_versione_id
+prezzo_snapshot               numeric(22,10)
+prezzo_bloccato               boolean
+pricing_mode                  FIXED (v1), FORMULA/SCAGLIONI (v2)
+prezzo_da_riallineare         boolean
+stato_approvazione
+stato_emissione
+meta
+data_insert / user_insert / data_update / user_update / tx_id
+```
+
+**`vendite.commesse_attivita_log`** (audit eventi)
+```
+id
+commessa_attivita_id
+evento
+dettaglio jsonb
+data_insert / user_insert
+```
+
+### 17.3 Mapping campi: owner vs snapshot
+
+| Campo dominio | Owner target | Su `attivita_fatturabili` |
+|---|---|---|
+| `competenza_dal`, `competenza_al` | `commesse_attivita` | snapshot copiato |
+| `competenza_mese` (mese fatturazione) | `commesse_attivita` | snapshot copiato (obbligatorio) |
+| `posticipa_al` | `commesse_attivita` | snapshot copiato |
+| `tipo_doc_fiscale_id`, `valuta_id` | `commesse_attivita` | snapshot copiato |
+| `uom_id`, `quantita` | `commesse_attivita` | snapshot copiato |
+| `prezzo_snapshot`/`prezzo_unitario` | `commesse_attivita` | snapshot copiato su `prezzo_unitario` |
+| `prezzo_bloccato` | `commesse_attivita` | snapshot operativo (gia` presente) |
+| `listino_versione_id` | `commesse_attivita` | non obbligatorio in AF v1, consigliato in v2 |
+| `sorgente_*` root | `commesse_sorgenti` | mantenuti in AF come origine primaria |
+
+Regola di governo:
+
+1. calcolo e decisione business in `commesse_attivita`;
+2. `attivita_fatturabili` resta layer esecutivo per pipeline/fatturazione.
+
+### 17.4 Fatturazione immediata e competenza
+
+Per commesse `AUTO` (incluso caso "immediata/giornaliera"):
+
+1. `competenza_mese` resta sempre valorizzata (mese della data conferma/esecuzione);
+2. il lotto giornaliero governa il run operativo, non sostituisce la semantica della competenza;
+3. `posticipa_al` resta il gate di differimento anche su percorso AUTO.
+
+### 17.5 Refactor `attivita_fatturabili` (progressivo)
+
+Fase R1:
+
+1. aggiungere FK `commessa_id`, `commessa_attivita_id` (nullable in transizione),
+2. propagare sempre i campi snapshot da commessa in `fn_emit_attivita_fatturabili_da_commessa`.
+
+Fase R2:
+
+1. attivare guardrail anti-bypass (no insert diretto senza commessa),
+2. backfill completo storico e successivo `NOT NULL` su FK commessa.
+
+Fase R3:
+
+1. eliminare logica duplicata di calcolo prezzi/competenza su `attivita_fatturabili`,
+2. mantenere in AF solo snapshot e filtri runtime.
+
+Fase R4 (cleanup schema, opzionale):
+
+1. valutare deprecazione colonne ridondanti su AF solo dopo stabilizzazione,
+2. eventuali drop colonne in changeset dedicati e reversibili.
+
+### 17.6 Decisione operativa
+
+Il modello v2 resta confermato:
+
+1. nessun bypass `sorgente -> attivita_fatturabili`,
+2. percorso unico `sorgente -> commessa -> attivita_fatturabili`,
+3. `sorgente_*` su AF mantenuti per tracciabilita` origine primaria.
+
+---
+
+## 18) Checklist tecnica DB-L3 (esecutiva)
+
+### 18.1 Schema `commesse_*`
+
+- [ ] creare `vendite.commesse` con stati, tipo (`REALE/AUTO`), contesto BA/utility/emittente, audit
+- [ ] creare `vendite.commesse_sorgenti` con vincolo una sola root attiva per commessa
+- [ ] creare `vendite.commesse_attivita` con:
+  - [ ] `segment_key`
+  - [ ] `competenza_dal`, `competenza_al`, `competenza_mese`
+  - [ ] `posticipa_al`
+  - [ ] `tipo_doc_fiscale_id`, `valuta_id`
+  - [ ] `listino_versione_id`, `prezzo_snapshot numeric(22,10)`, `prezzo_bloccato`
+  - [ ] `pricing_mode`, `prezzo_da_riallineare`
+- [ ] creare `vendite.commesse_attivita_log`
+
+### 18.2 Estensioni `attivita_fatturabili`
+
+- [ ] aggiungere `commessa_id` (nullable transizione)
+- [ ] aggiungere `commessa_attivita_id` (nullable transizione)
+- [x] aggiungere `prezzo_bloccato` (completato: `20260224-04`)
+- [ ] valutare introduzione `segment_key` su AF (snapshot tecnico) se richiesta idempotenza runtime
+
+### 18.3 Vincoli e indici
+
+- [ ] FK `attivita_fatturabili.commessa_id -> commesse.id`
+- [ ] FK `attivita_fatturabili.commessa_attivita_id -> commesse_attivita.id`
+- [ ] unique operativa su `commesse_attivita (commessa_id, segment_key)` (o equivalente approvato)
+- [ ] vincolo `competenza_mese` primo giorno mese su `commesse_attivita`
+- [ ] strategia per rimozione/sostituzione `uq_attivita_fatturabili_v_sorgente_fk`
+
+### 18.4 Funzioni DB (core commessa)
+
+- [ ] `fn_get_or_create_commessa(...)`
+- [ ] `fn_link_commessa_sorgente(...)`
+- [ ] `fn_upsert_commessa_attivita(...)`
+- [ ] `fn_emit_attivita_fatturabili_da_commessa(...)`
+  - [ ] propaga `commessa_id`, `commessa_attivita_id`
+  - [ ] propaga `prezzo_bloccato`
+  - [ ] copia `competenza_mese` da commessa (no ricalcolo in AF)
+  - [ ] copia `posticipa_al` e altri snapshot dominio
+- [ ] `fn_get_commessa_stato(commessa_id)`
+
+### 18.5 Backfill e guardrail
+
+- [ ] backfill storico AF -> commesse AUTO (1:1 tecnico)
+- [ ] popolamento `commessa_id`, `commessa_attivita_id` su storico
+- [ ] attivazione guardrail anti-bypass su insert AF senza commessa
+- [ ] passaggio finale FK a `NOT NULL` dopo backfill validato
+
+### 18.6 Test pgTAP minimi
+
+- [ ] DDL `commesse_*` (vincoli/FK/unique/check)
+- [ ] funzioni core create ed eseguibili
+- [ ] `fn_emit_attivita_fatturabili_da_commessa` idempotente
+- [ ] propagazione snapshot (`competenza_mese`, `posticipa_al`, `prezzo_bloccato`)
+- [ ] guardrail anti-bypass attivo
+- [ ] regressione su pipeline esistente non rotta
+
+### 18.7 Gate uscita DB-L3
+
+- [ ] test pgTAP DB-L3 verdi
+- [ ] WIP `gestione-listini.md` e `gestione-commesse-v2.md` allineati
+- [ ] checklist 13.3 (`gestione-listini.md`) portata a completamento coerente
