@@ -122,3 +122,26 @@ class AttivitaTaskRunRow(TypedDict):
     error_code: str | None
     error_message: str | None
     meta: dict[str, Any]
+
+
+class CommessaEmitResult(TypedDict):
+    total_candidate: int
+    inserted_rows: int
+    updated_rows: int
+
+
+class CommessaStatoResult(TypedDict):
+    total_attivita: int
+    total_approvate: int
+    total_emesse: int
+
+
+class CommessaPushLogRow(TypedDict):
+    id: int
+    run_at: str
+    dry_run: bool
+    source_types: list[str] | None
+    risultato: dict[str, Any] | None
+    stato: str
+    durata_ms: int | None
+    user_run: str | None

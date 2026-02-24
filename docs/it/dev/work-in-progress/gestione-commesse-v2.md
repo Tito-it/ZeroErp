@@ -1476,3 +1476,249 @@ Implementazione DB di riferimento:
 - [x] Introdurre funzione DB unica di transizione stato canale (set/open/consume/block)
 - [x] Copertura pgTAP tabella/funzione canali (`test-documenti-fatturazione-canali-v1.sql`)
 - [x] Allineare i trigger/flow di conversione (`preventivo->ordine`, `ordine->ddt`) al nuovo registro canali
+
+---
+
+## 25) Piano implementazione backend — definitivo (24-02-2026)
+
+### 25.0 Premessa e stato baseline
+
+**DB completato dal team (non va rifatto):**
+
+- [x] DB-L0/L1/L2/L3/L4/L5 commesse — schema, funzioni, test pgTAP
+- [x] DB-L1/L2/L3 listini — schema, resolver, integrazione commessa
+- [x] §11 backend refactor — `_decode_jsonb`, `get_attivita_branch_summary`,
+      `get_lotto_attivita_info`, `fn_list_attivita_sorgenti_abilitate`
+
+**Stato pipeline attività (Python):**
+
+- [x] `AttivitaPipelineRunner` — esiste ma da deprecare
+- [x] `AttivitaPipelineStepExecutor` — esiste, 7 handler tutti `pass`, da eliminare
+- [x] `AttivitaPipelineRepository` — esiste, metodi lotto/task-run da tenere
+- [x] Nessun endpoint API esposto (nessun breaking change)
+
+**Ordine esecuzione fasi:**
+
+```text
+FASE 1 → FASE 2 → FASE 4 → FASE 4.5 → FASE 3 → FASE 5 → FASE 6 → FASE 7
+```
+
+La FASE 4 (deprecazione) precede FASE 3 (step 0) per non costruire su codice da eliminare.
+La FASE 4.5 (rettifiche) precede le API per non esporre un ciclo prezzi incompleto.
+
+---
+
+### 25.1 FASE 1 — Repository commesse
+
+**Obiettivo:** layer Python che wrappa le funzioni DB commesse.
+
+**File da creare:** `backend/apps/vendite/db/commesse_repository.py`
+
+- [x] Struttura classe `CommesseRepository` con `_to_jsonb_param` e `_decode_jsonb`
+- [x] `get_or_create_commessa(...)` — wrappa `fn_get_or_create_commessa`
+- [x] `link_sorgente(...)` — wrappa `fn_link_commessa_sorgente`
+- [x] `upsert_attivita(CommessaAttivitaInput)` — wrappa `fn_upsert_commessa_attivita`
+- [x] `get_commessa_stato(commessa_id)` — wrappa `fn_get_commessa_stato`
+- [x] `emit_attivita_fatturabili(commessa_id, lotto_attivita_id, only_approved, dry_run)` — wrappa `fn_emit_attivita_fatturabili_da_commessa`
+- [x] `log_push_run(...)` — wrappa `fn_log_commessa_push_run` → `vendite.commesse_push_log`
+- [x] `get_push_log(push_log_id)` — SELECT `vendite.commesse_push_log`
+- [x] TypedDict `CommessaEmitResult`, `CommessaStatoResult`, `CommessaPushLogRow` in `types.py`
+- [x] Dataclass `CommessaAttivitaInput` (28 campi, opzionali con default `None`)
+- [x] Test `test_commesse_repository.py` — 10 test verdi (mock DB, verifica SQL e mapping)
+
+---
+
+### 25.2 FASE 2 — Orchestratore push + handler sorgenti
+
+**Obiettivo:** `CommessaPushOrchestrator` stateless con handler per tipo sorgente.
+
+**File creati:**
+
+- `backend/apps/vendite/services/commesse_push_orchestrator.py`
+- `backend/apps/vendite/services/commesse_source_handlers.py`
+
+#### 25.2.1 Orchestratore
+
+- [x] Struttura `CommessaPushOrchestrator` con handler registry e DI repository
+- [x] `run(source_types=None, dry_run=False) → PushReport` — fan-out indipendente
+- [x] Isolamento errori per handler (`try/except`, continua sugli altri)
+- [x] Scrittura `commesse_push_log` al completamento (successo, parziale e dry_run)
+- [x] `PushReport` dataclass: `stato`, `risultato` per handler, `dry_run`, `durata_ms`, `push_log_id`
+- [ ] Supporto `pg_try_advisory_lock` anti-concorrenza (da definire in sviluppo)
+
+**Note implementazione:**
+
+- dry_run=True: il log viene comunque scritto con `dry_run=True` per audit
+- `_compute_stato`: COMPLETATO / PARZIALE / ERRORE (nessun handler = ERRORE)
+- `HandlerResult.as_dict()` serializza per JSONB risultato per handler
+
+#### 25.2.2 Handler sorgenti
+
+- [x] `BaseSourceHandler` — classe astratta con interfaccia `run(dry_run) → HandlerResult`
+- [x] `HandlerResult` — dataclass: `handler_name`, `created`, `updated`, `skipped`, `errors`
+- [x] `HandlerPreventivi` — stub, richiede DB: `fn_list_preventivi_da_pushare`
+  - [ ] Query selezione preventivi eleggibili — **richiede fn_list_preventivi_da_pushare (team DB)**
+  - [ ] Mapping preventivo → `CommessaAttivitaInput` — da implementare dopo fn DB
+  - [ ] Gestione `stato_commessa = CONVERTITO` (skippa senza errore)
+- [x] `HandlerOrdini` — stub, richiede DB: `fn_list_ordini_da_pushare`
+  - [ ] Query selezione ordini eleggibili — **richiede fn_list_ordini_da_pushare (team DB)**
+  - [ ] Mapping ordine → `CommessaAttivitaInput` — da implementare dopo fn DB
+- [x] `HandlerConsumi` — stub, richiede DB: `fn_list_consumi_da_pushare`
+  - [ ] Query selezione consumi eleggibili — **richiede fn_list_consumi_da_pushare (team DB)**
+  - [ ] Mapping consumo → `CommessaAttivitaInput` — da implementare dopo fn DB
+- [x] Test `test_commesse_push_orchestrator.py` — 9 test verdi (isolamento, dry_run, filtro, log, stato)
+
+---
+
+### 25.3 FASE 3 — Step 0 pull nella pipeline fatturazione
+
+**Obiettivo:** aggiungere handler `pull_attivita_da_commessa` come primo step
+della pipeline di fatturazione, che chiama `fn_emit_attivita_fatturabili_da_commessa`.
+
+**File da modificare:** `backend/apps/vendite/services/pipeline_step_executor.py`
+
+- [ ] Aggiungere al handler registry: `"pull_attivita_da_commessa": self._handle_pull_attivita_da_commessa`
+- [ ] Implementare `_handle_pull_attivita_da_commessa(...)`:
+  - [ ] Chiama `commesse_repo.emit_attivita_fatturabili(lotto_id, dry_run)`
+  - [ ] Legge anomalie dal result e le logga come segnalazioni (da definire in sviluppo)
+  - [ ] Propaga dry_run al DB
+- [ ] Aggiungere `CommesseRepository` come dipendenza iniettabile in `PipelineStepExecutor`
+- [ ] Configurazione DB: registrare step `PULL_COMMESSA` come step 0 della pipeline
+  fatturazione in `vendite.attivita_fatturabili_pipeline` — da concordare col team DB
+- [ ] Test: aggiornare `test_pipeline_step_executor.py` con test per nuovo handler
+
+---
+
+### 25.4 FASE 4 — Deprecazione pipeline attività
+
+**Obiettivo:** eliminare il codice mai implementato, ridurre il repository.
+
+#### 25.4.1 File da eliminare
+
+- [ ] `backend/apps/vendite/services/attivita_pipeline_step_executor.py`
+      (7 handler tutti `pass` — zero logica da preservare)
+- [ ] `backend/apps/vendite/services/attivita_pipeline_runner.py`
+      (sostituito da step 0 FASE 3)
+
+#### 25.4.2 `attivita_pipeline_repository.py` — metodi da rimuovere
+
+- [ ] Gruppo 2 — pipeline steps: `list_attivita_pipeline_steps`,
+      `get_attivita_step_processes`, `get_attivita_pipeline_id_for_step`
+- [ ] Gruppo 3 — sorgenti: `list_sorgenti_abilitate`
+- [ ] Gruppo 4 — task registry: `get_dominio_id`, `get_task_handler_code`
+- [ ] Gruppo 5 — task policy: `get_attivita_task_policy`, `task_policy_exists`
+
+#### 25.4.3 File da tenere invariati
+
+- [ ] `attivita_pipeline_repository.py` — gruppi 1 (lotto) e 6 (task runs) e helpers
+- [ ] `attivita_pipeline_error_logger.py` — riusato dallo step 0
+- [ ] `pipeline_repository.py` — pipeline fatturazione, invariato
+- [ ] `lotto_segnalazioni_service.py` — invariato
+
+#### 25.4.4 Test da aggiornare
+
+- [ ] `test_attivita_pipeline_repository.py` — rimuovere test per gruppi eliminati 2/3/4/5
+- [ ] Verificare nessun import orfano dopo eliminazione file
+
+---
+
+### 25.5 FASE 4.5 — Rettifiche listino (layer Python)
+
+**Obiettivo:** completare il ciclo prezzi — senza questo i flag `prezzo_da_riallineare = TRUE`
+si accumulano senza auto-correzione (gap funzionale identificato in §23).
+
+Le funzioni DB di L4 sono già presenti (team DB). Serve il layer Python.
+
+**File da creare:**
+
+- `backend/apps/vendite/db/commesse_rettifiche_repository.py`
+- `backend/apps/vendite/services/commesse_rettifiche_service.py`
+
+#### 25.5.1 Repository rettifiche
+
+- [ ] Struttura `CommesseRettificheRepository`
+- [ ] `apply_rettifica(commessa_attivita_id, delta_prezzo, motivo, tipo)` — wrappa `fn_apply_rettifica`
+- [ ] `list_righe_da_riallineare(...)` — legge righe con `prezzo_da_riallineare = TRUE`
+- [ ] Mapping output → dataclass (da definire in sviluppo)
+
+#### 25.5.2 Service rettifiche
+
+- [ ] Struttura `CommesseRettificheService`
+- [ ] Canale manuale: `applica_rettifica_manuale(commessa_attivita_id, delta, motivo)` con validazione
+- [ ] Canale automatico: `processa_righe_da_riallineare(lotto_id)` — consuma flag
+      `prezzo_da_riallineare`, calcola delta, applica rettifica
+  - [ ] Logica calcolo delta (da definire in sviluppo — dipende da struttura `fn_apply_rettifica`)
+  - [ ] Gestione caso delta = 0 (skip senza errore)
+  - [ ] Integrazione con `LottoSegnalazioniService` per segnalare rettifiche applicate
+- [ ] Test `test_commesse_rettifiche_service.py` — da definire in sviluppo
+
+---
+
+### 25.6 FASE 5 — API endpoints
+
+**Obiettivo:** esporre orchestratore push e commesse al frontend.
+
+**File da modificare/creare:** `backend/apps/vendite/api/views.py`, `urls.py`
+
+#### 25.6.1 Endpoint push orchestratore
+
+- [ ] `POST /api/v1/commesse/push/` — lancia `CommessaPushOrchestrator.run()`
+  - [ ] Parametri: `source_types[]`, `dry_run` — da definire in sviluppo
+  - [ ] Response: `PushReport` serializzato
+- [ ] `GET /api/v1/commesse/push/<log_id>/` — restituisce `commesse_push_log`
+  - [ ] Serializer `PushLogSerializer` — da definire in sviluppo
+
+#### 25.6.2 Endpoint commesse
+
+- [ ] `GET /api/v1/commesse/<id>/` — dettaglio commessa + stato
+  - [ ] Serializer da definire in sviluppo
+- [ ] `GET /api/v1/commesse/<id>/attivita/` — lista `commesse_attivita`
+  - [ ] Serializer da definire in sviluppo
+- [ ] Eventuali altri endpoint (da definire in sviluppo in base a esigenze frontend)
+
+#### 25.6.3 Endpoint da rimuovere (pipeline attività)
+
+- [ ] Rimuovere `POST /attivita-pipeline/run/`
+      (o marcare deprecated con flag configurabile per transizione)
+- [ ] Rimuovere `GET /attivita-pipeline/<id>/status/`
+- [ ] Valutare `GET /attivita-pipeline/<id>/task-runs/` — reindirizzare o mantenere
+
+---
+
+### 25.7 FASE 6 — Test suite
+
+**Obiettivo:** suite completa verde prima del go-live.
+
+- [ ] `test_commesse_repository.py` — FASE 1
+- [ ] `test_commesse_push_orchestrator.py` — FASE 2
+- [ ] `test_commesse_source_handlers.py` — FASE 2
+- [ ] `test_commesse_rettifiche_service.py` — FASE 4.5
+- [ ] `test_pipeline_step_executor.py` aggiornato — FASE 3
+- [ ] `test_attivita_pipeline_repository.py` aggiornato — FASE 4
+- [ ] Run suite completa: `./manage-test.sh apps.vendite.tests -v 2`
+  - [ ] Zero regressioni sulla pipeline fatturazione esistente
+  - [ ] Nuovi test verdi
+
+---
+
+### 25.8 FASE 7 — Cleanup finale
+
+- [ ] Aggiornare header `attivita_pipeline_repository.py` ridotto (rimuovere riferimenti a gruppi eliminati)
+- [ ] Verificare nessun import orfano nei file modificati
+- [ ] Marcare `ripresa-lavori-attivita-fatturabili.md` come superato (nota in testa al file)
+- [ ] Aggiornare §20.5 (timing deprecazione) con data completamento effettiva
+- [ ] Allineare `gestione-listini.md` §13 se FASE 4.5 ha prodotto variazioni al modello rettifiche
+
+---
+
+### 25.9 Gate di uscita — go-live backend
+
+- [ ] FASE 1 completata e test verdi
+- [ ] FASE 2 completata e test verdi
+- [ ] FASE 3 step 0 integrato e testato
+- [ ] FASE 4 deprecazione eseguita — zero riferimenti a file eliminati
+- [ ] FASE 4.5 rettifiche operative — ciclo prezzi chiuso
+- [ ] FASE 5 endpoint esposti e documentati
+- [ ] FASE 6 suite completa verde (zero regressioni)
+- [ ] FASE 7 cleanup completato
+- [ ] Revisione finale con team DB: nessuna funzione DB referenziata da codice eliminato
