@@ -1,6 +1,6 @@
 id,codice_interno,codice,categoria,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update,target_table,key_selector,tipo_doc_fiscale_id
 1,ATTIVITA,ATTIVITA,RIGA,Attività fatturabili,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.attivita_fatturabili,id,null
-2,PREVENTIVO,PREVENTIVO,DOCUMENTO,Preventivo (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.preventivi,id,null
+2,PREVENTIVO,PREVENTIVO,DOCUMENTO,Preventivo (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.preventivi,uid,null
 3,PREVENTIVO_RIGA,PREVENTIVO_RIGA,RIGA,Riga preventivo,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.preventivi_righe,id,null
 4,CONTRATTO,CONTRATTO,DOCUMENTO,Contratto (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.contratti,id,null
 5,CONTRATTO_RIGA,CONTRATTO_RIGA,RIGA,Riga contratto,t,{},2025-09-05 15:40:46.774113+02,postgres,2026-01-25 12:41:45.094255+01,titodb,vendite.contratti_righe,id,null

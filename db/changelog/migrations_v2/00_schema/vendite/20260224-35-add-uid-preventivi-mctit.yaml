@@ -1,0 +1,46 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260224-35-add-uid-preventivi-mctit.yaml
+
+  - changeSet:
+      id: 20260224-35-add-uid-preventivi
+      author: mctit
+      comment: "Allinea vendite.preventivi alle altre testate: uid UUIDv7, not null e univoco."
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Uniformare la testata vendite.preventivi alle altre
+              --   testate documento (ordini/ddt/contratti) introducendo
+              --   una chiave tecnica uid (UUIDv7) non nulla e univoca.
+              --
+              -- Regole:
+              --   - backfill uid su record esistenti
+              --   - enforce NOT NULL
+              --   - enforce unicita'
+              -- =========================================================
+              ALTER TABLE vendite.preventivi
+                ADD COLUMN IF NOT EXISTS uid uuid;
+
+              UPDATE vendite.preventivi
+              SET uid = uuidv7()
+              WHERE uid IS NULL;
+
+              ALTER TABLE vendite.preventivi
+                ALTER COLUMN uid SET DEFAULT uuidv7();
+
+              ALTER TABLE vendite.preventivi
+                ALTER COLUMN uid SET NOT NULL;
+
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_preventivi_uid
+                ON vendite.preventivi (uid);
+
+              COMMENT ON COLUMN vendite.preventivi.uid
+                IS 'Identificatore tecnico UUIDv7 della testata preventivo (idempotenza e riferimenti cross-domain).';

@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260224-41-switch-attivita-to-commessa-only-mctit.yaml
+
+  - changeSet:
+      id: 20260224-41-switch-attivita-to-commessa-only
+      author: mctit
+      comment: "Switch operativo: depreca pipeline legacy attivita_fatturabili e abilita modalita commessa-only."
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Attivare la nuova pipeline commessa-aware come unica
+              --   modalita` operativa per attivita_fatturabili.
+              --
+              -- Regole:
+              --   - guardrail commessa ON (parameter=true)
+              --   - policy legacy sorgenti attivita disabilitate
+              --   - step/task policy pipeline legacy disattivate
+              -- =========================================================
+
+              UPDATE config.parameters
+                 SET default_value = 'true',
+                     description = COALESCE(description, '') ||
+                       CASE
+                         WHEN position('COMMESSA_ONLY' in COALESCE(description, '')) > 0 THEN ''
+                         ELSE ' [COMMESSA_ONLY dal 2026-02-24]'
+                       END,
+                     data_update = now(),
+                     user_update = current_user
+               WHERE code = 'attivita_fatturabili_require_commessa';
+
+              UPDATE vendite.attivita_fatturabili_sorgenti_branch_policy p
+                 SET abilitata = false,
+                     meta = COALESCE(p.meta, '{}'::jsonb)
+                       || jsonb_build_object(
+                            'deprecated', true,
+                            'deprecated_at', now(),
+                            'deprecated_mode', 'COMMESSA_ONLY',
+                            'deprecated_note', 'Pipeline legacy attivita disabilitata in favore del push/pull via commessa'
+                          ),
+                     data_update = now(),
+                     user_update = current_user
+               WHERE p.attivo IS TRUE
+                 AND p.abilitata IS TRUE;
+
+              UPDATE vendite.attivita_fatturabili_pipeline_task_policy tp
+                 SET attivo = false,
+                     meta = COALESCE(tp.meta, '{}'::jsonb)
+                       || jsonb_build_object(
+                            'deprecated', true,
+                            'deprecated_at', now(),
+                            'deprecated_mode', 'COMMESSA_ONLY'
+                          ),
+                     data_update = now(),
+                     user_update = current_user
+               WHERE tp.attivo IS TRUE;
+
+              UPDATE vendite.attivita_fatturabili_pipeline p
+                 SET attivo = false,
+                     meta = COALESCE(p.meta, '{}'::jsonb)
+                       || jsonb_build_object(
+                            'deprecated', true,
+                            'deprecated_at', now(),
+                            'deprecated_mode', 'COMMESSA_ONLY'
+                          ),
+                     data_update = now(),
+                     user_update = current_user
+               WHERE p.attivo IS TRUE;

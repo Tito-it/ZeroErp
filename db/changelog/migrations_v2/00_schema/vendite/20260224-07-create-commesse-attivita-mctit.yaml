@@ -1,0 +1,371 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260224-07-create-commesse-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20260224-07-create-commesse-attivita
+      author: mctit
+      comment: "Crea righe operative commessa con snapshot pricing/competenza e idempotenza segment_key."
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: commesse_attivita
+            remarks: "Righe operative/fatturabili commessa."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_commesse_attivita
+                    nullable: false
+              - column:
+                  name: commessa_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: segment_key
+                  type: varchar(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: articolo_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: istanza_utility_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_attivita
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: uom_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: quantita
+                  type: numeric(18,6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: qta_operativa
+                  type: numeric(18,6)
+                  constraints:
+                    nullable: true
+              - column:
+                  name: uom_operativa_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+              - column:
+                  name: factor_to_base
+                  type: numeric(18,10)
+                  defaultValueNumeric: 1
+                  constraints:
+                    nullable: false
+              - column:
+                  name: competenza_mese
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: competenza_dal
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: competenza_al
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: posticipa_al
+                  type: date
+                  constraints:
+                    nullable: true
+              - column:
+                  name: tipo_doc_fiscale_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+              - column:
+                  name: valuta_id
+                  type: integer
+                  constraints:
+                    nullable: true
+              - column:
+                  name: area_geografica_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+              - column:
+                  name: listino_versione_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+              - column:
+                  name: prezzo_snapshot
+                  type: numeric(22,10)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: prezzo_bloccato
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: pricing_mode
+                  type: varchar(16)
+                  defaultValue: "FIXED"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: prezzo_da_riallineare
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: stato_approvazione
+                  type: varchar(16)
+                  defaultValue: "BOZZA"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: stato_emissione
+                  type: varchar(16)
+                  defaultValue: "NON_EMESSA"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sorgente_tipo_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+              - column:
+                  name: sorgente_uid
+                  type: text
+                  constraints:
+                    nullable: true
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: commessa_id
+            referencedTableSchemaName: vendite
+            referencedTableName: commesse
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_attivita_commessa
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: articolo_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_attivita_articolo
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: istanza_utility_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_attivita_istanza_utility
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: uom_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_attivita_uom
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: uom_operativa_id
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_attivita_uom_operativa
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: tipo_doc_fiscale_id
+            referencedTableSchemaName: config
+            referencedTableName: tipi_doc_fiscale
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_attivita_tipo_doc
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: valuta_id
+            referencedTableSchemaName: config
+            referencedTableName: valute
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_attivita_valuta
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: area_geografica_id
+            referencedTableSchemaName: vendite
+            referencedTableName: area_geografica_fatturazione
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_attivita_area_geo
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: listino_versione_id
+            referencedTableSchemaName: vendite
+            referencedTableName: listini_versioni
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_attivita_listino_versione
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: sorgente_tipo_id
+            referencedTableSchemaName: config
+            referencedTableName: sorgenti
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_attivita_sorgente_tipo
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: commesse_attivita
+            columnNames: commessa_id, segment_key
+            constraintName: uq_commesse_attivita_commessa_segment
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- Regole competenza, pricing e stati riga commessa.
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_comp_mese_primo
+                CHECK (extract(day from competenza_mese) = 1);
+
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_comp_range
+                CHECK (competenza_dal <= competenza_al);
+
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_posticipa
+                CHECK (posticipa_al IS NULL OR posticipa_al >= competenza_dal);
+
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_prezzo
+                CHECK (prezzo_snapshot >= 0);
+
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_factor_to_base
+                CHECK (factor_to_base > 0);
+
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_pricing_mode
+                CHECK (pricing_mode IN ('FIXED', 'FORMULA', 'SCAGLIONI'));
+
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_stato_approvazione
+                CHECK (stato_approvazione IN ('BOZZA', 'APPROVATA', 'RIFIUTATA'));
+
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_stato_emissione
+                CHECK (stato_emissione IN ('NON_EMESSA', 'EMESSA', 'ANNULLATA'));
+
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_sorgente_pair
+                CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_uid IS NULL) OR
+                  (sorgente_tipo_id IS NOT NULL AND sorgente_uid IS NOT NULL)
+                );
+
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_commesse_attivita_src_uid_partial
+                ON vendite.commesse_attivita (sorgente_tipo_id, sorgente_uid)
+                WHERE sorgente_tipo_id IS NOT NULL;
+
+              CREATE INDEX IF NOT EXISTS ix_commesse_attivita_commessa_stati
+                ON vendite.commesse_attivita (commessa_id, stato_approvazione, stato_emissione);

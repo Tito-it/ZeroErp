@@ -15,6 +15,9 @@
 - [catasto_unita_immobiliari](tabelle/catasto_unita_immobiliari.md)
 - [causali](tabelle/causali.md)
 - [clienti](tabelle/clienti.md)
+- [commesse](tabelle/commesse.md)
+- [commesse_attivita](tabelle/commesse_attivita.md)
+- [commesse_sorgenti](tabelle/commesse_sorgenti.md)
 - [comune_trasformazioni](tabelle/comune_trasformazioni.md)
 - [comuni](tabelle/comuni.md) — * **Audit Trail**: Conservare una traccia immutabile di ogni modifica e cancellazione applicata a `config.comuni`. * **Versioning dei record**: Permettere la ricostruzione dello stato storico di ogni comune in un dato momento. * **Query storiche**: Supportare interrogazioni basate su intervalli temporali grazie ai campi `valid_from` e `valid_to`. * **Classificazione operazioni**: Utilizzare `tipo_operazione_id` e `change_type` per distinguere INSERT iniziale, UPDATE e DELETE. ---
 - [conti_bancari](tabelle/conti_bancari.md)
@@ -22,6 +25,7 @@
 - [dati_societari](tabelle/dati_societari.md) — * **Versionamento completo**   Acquisire snapshot di ogni record di `anagrafiche.dati_societari` per garantire la tracciabilità delle evoluzioni nel tempo. * **Audit e compliance**   Conservare informazioni su chi (`user_insert`) e quando (`data_insert`) è stata eseguita l’operazione, nonché su quale transazione di business (`tx_id`). * **Intervalli di validità**   Definire periodi di efficacia di ciascuno snapshot con `valid_from` (inclusivo) e `valid_to` (esclusivo), facilitando interrogazioni temporali.
 - [ddt](tabelle/ddt.md)
 - [ddt_righe](tabelle/ddt_righe.md)
+- [documenti_fatturazione_canali](tabelle/documenti_fatturazione_canali.md)
 - [emittenti_fiscali](tabelle/emittenti_fiscali.md)
 - [eventi_assets](tabelle/eventi_assets.md)
 - [fatturazione_lotti](tabelle/fatturazione_lotti.md)

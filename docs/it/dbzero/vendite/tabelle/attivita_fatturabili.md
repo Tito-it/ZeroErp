@@ -44,6 +44,8 @@
 | area_geografica_id | bigint | YES |  |
 | stato_esecuzione | character varying | YES |  |
 | prezzo_bloccato | boolean | NO | false |
+| commessa_id | bigint | NO |  |
+| commessa_attivita_id | bigint | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -56,6 +58,8 @@
 | FOREIGN KEY | fk_attivita_fatturabili_attivita_consumi | attivita_consumi_id |
 | FOREIGN KEY | fk_attivita_fatturabili_attivita_lotto | lotto_attivita_id |
 | FOREIGN KEY | fk_attivita_fatturabili_billing_account | billing_account_id |
+| FOREIGN KEY | fk_attivita_fatturabili_commessa | commessa_id |
+| FOREIGN KEY | fk_attivita_fatturabili_commessa_attivita | commessa_attivita_id |
 | FOREIGN KEY | fk_attivita_fatturabili_istanze_utilities | istanza_utility_id |
 | FOREIGN KEY | fk_attivita_fatturabili_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_tipo_doc_fiscale | tipo_doc_fiscale_id |
@@ -71,13 +75,15 @@
 | idx_att_fatt_lotto_stato_exec | `CREATE INDEX idx_att_fatt_lotto_stato_exec ON vendite.attivita_fatturabili USING btree (lotto_attivita_id, stato_esecuzione)` |
 | ix_attivita_articolo_flags | `CREATE INDEX ix_attivita_articolo_flags ON vendite.attivita_fatturabili USING btree (articolo_id, approvato, fatturato)` |
 | ix_attivita_billing_competenza | `CREATE INDEX ix_attivita_billing_competenza ON vendite.attivita_fatturabili USING btree (billing_account_id, competenza_mese)` |
+| ix_attivita_fatturabili_commessa_attivita_id | `CREATE INDEX ix_attivita_fatturabili_commessa_attivita_id ON vendite.attivita_fatturabili USING btree (commessa_attivita_id)` |
+| ix_attivita_fatturabili_commessa_id | `CREATE INDEX ix_attivita_fatturabili_commessa_id ON vendite.attivita_fatturabili USING btree (commessa_id)` |
 | ix_attivita_fatturabili_fattura_riga_id | `CREATE INDEX ix_attivita_fatturabili_fattura_riga_id ON vendite.attivita_fatturabili USING btree (fattura_riga_id)` |
 | ix_attivita_fatturabili_lock | `CREATE INDEX ix_attivita_fatturabili_lock ON vendite.attivita_fatturabili USING btree (lock_in_fatturazione, lock_batch_id)` |
 | ix_attivita_fatturabili_posticipa_sospesa | `CREATE INDEX ix_attivita_fatturabili_posticipa_sospesa ON vendite.attivita_fatturabili USING btree (posticipa_al, sospesa)` |
 | ix_attivita_istanza_data | `CREATE INDEX ix_attivita_istanza_data ON vendite.attivita_fatturabili USING btree (istanza_utility_id, data_attivita)` |
 | pk_attivita_fatturabili | `CREATE UNIQUE INDEX pk_attivita_fatturabili ON vendite.attivita_fatturabili USING btree (id)` |
+| uq_attivita_fatturabili_commessa_attivita | `CREATE UNIQUE INDEX uq_attivita_fatturabili_commessa_attivita ON vendite.attivita_fatturabili USING btree (commessa_attivita_id)` |
 | uq_attivita_fatturabili_uid | `CREATE UNIQUE INDEX uq_attivita_fatturabili_uid ON vendite.attivita_fatturabili USING btree (uid)` |
-| uq_attivita_fatturabili_v_sorgente_fk | `CREATE UNIQUE INDEX uq_attivita_fatturabili_v_sorgente_fk ON vendite.attivita_fatturabili USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
@@ -88,14 +94,16 @@
 | trg_attivita_fatturabili_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id')` |
 | trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()` |
 | trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()` |
-| trg_attivita_fatturabili_a10_guard_fatturato_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()` |
+| trg_attivita_fatturabili_a10_guard_commessa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()` |
+| trg_attivita_fatturabili_a10_guard_commessa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()` |
 | trg_attivita_fatturabili_a10_guard_fatturato_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()` |
+| trg_attivita_fatturabili_a10_guard_fatturato_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()` |
 | trg_attivita_fatturabili_a10_guard_fonte_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa()` |
 | trg_attivita_fatturabili_a10_guard_fonte_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa()` |
-| trg_attivita_fatturabili_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
 | trg_attivita_fatturabili_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
-| trg_attivita_fatturabili_a10_tipi_doc_fiscale_require_at_ecad50 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id')` |
+| trg_attivita_fatturabili_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
 | trg_attivita_fatturabili_a10_tipi_doc_fiscale_require_at_ecad50 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id')` |
+| trg_attivita_fatturabili_a10_tipi_doc_fiscale_require_at_ecad50 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id')` |
 | trg_attivita_fatturabili_a10_unita_misura_require_attivo_a573b4 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id')` |
 | trg_attivita_fatturabili_a10_unita_misura_require_attivo_a573b4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id')` |
 | trg_attivita_fatturabili_a10_unita_misura_require_attivo_d45cbd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id')` |

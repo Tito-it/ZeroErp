@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_dlt_block_ordrig_ddtrig.md" %}
 # ⚙️ Funzione `trgfn_dlt_block_ordrig_ddtrig`
 
 ```sql

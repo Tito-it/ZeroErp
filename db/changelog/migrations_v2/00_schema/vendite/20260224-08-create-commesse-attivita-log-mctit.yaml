@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260224-08-create-commesse-attivita-log-mctit.yaml
+
+  - changeSet:
+      id: 20260224-08-create-commesse-attivita-log
+      author: mctit
+      comment: "Crea log eventi su righe commessa per audit tecnico-operativo."
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: commesse_attivita_log
+            remarks: "Audit eventi su commesse_attivita."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_commesse_attivita_log
+                    nullable: false
+              - column:
+                  name: commessa_attivita_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: evento
+                  type: varchar(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: dettaglio
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita_log
+            baseColumnNames: commessa_attivita_id
+            referencedTableSchemaName: vendite
+            referencedTableName: commesse_attivita
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_attivita_log_attivita
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_commesse_attivita_log_attivita
+                ON vendite.commesse_attivita_log (commessa_attivita_id);

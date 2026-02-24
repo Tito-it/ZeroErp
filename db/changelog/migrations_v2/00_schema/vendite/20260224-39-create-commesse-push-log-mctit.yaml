@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260224-39-create-commesse-push-log-mctit.yaml
+
+  - changeSet:
+      id: 20260224-39-create-commesse-push-log
+      author: mctit
+      comment: "Crea log append-only dei run push commesse (orchestratore sorgenti -> commesse_attivita)."
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: commesse_push_log
+            remarks: "Audit run orchestratore push commessa; una riga per esecuzione."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_commesse_push_log
+                    nullable: false
+              - column:
+                  name: run_at
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: dry_run
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: source_types
+                  type: text[]
+                  constraints:
+                    nullable: true
+              - column:
+                  name: risultato
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: stato
+                  type: varchar(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: durata_ms
+                  type: integer
+                  constraints:
+                    nullable: true
+              - column:
+                  name: user_run
+                  type: text
+                  constraints:
+                    nullable: true
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Vincoli semantici e indici per il log run push commesse.
+              --
+              -- Regole:
+              --   - stato ammesso: COMPLETATO | PARZIALE | ERRORE
+              --   - durata_ms, se valorizzata, deve essere >= 0
+              --   - indice run_at per audit/diagnostica scheduler
+              -- =========================================================
+              ALTER TABLE vendite.commesse_push_log
+                ADD CONSTRAINT chk_commesse_push_log_stato
+                CHECK (stato IN ('COMPLETATO', 'PARZIALE', 'ERRORE'));
+
+              ALTER TABLE vendite.commesse_push_log
+                ADD CONSTRAINT chk_commesse_push_log_durata_ms
+                CHECK (durata_ms IS NULL OR durata_ms >= 0);
+
+              CREATE INDEX IF NOT EXISTS ix_commesse_push_log_run_at
+                ON vendite.commesse_push_log (run_at);
+
+              COMMENT ON TABLE vendite.commesse_push_log
+                IS 'Log append-only dei run orchestratore push commesse; nessuno stato inter-run.';
+
+              COMMENT ON COLUMN vendite.commesse_push_log.source_types
+                IS 'Elenco handler/sorgenti richieste; NULL = run su tutte le sorgenti abilitate.';
+
+              COMMENT ON COLUMN vendite.commesse_push_log.risultato
+                IS 'Dettaglio per handler (created/updated/skipped/errors) serializzato in JSONB.';
+
+              COMMENT ON COLUMN vendite.commesse_push_log.stato
+                IS 'Esito aggregato run: COMPLETATO | PARZIALE | ERRORE.';

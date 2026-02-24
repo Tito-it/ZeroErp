@@ -1,0 +1,32 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260224-36-set-sorgente-preventivo-key-selector-uid-mctit.yaml
+
+  - changeSet:
+      id: 20260224-36-set-sorgente-preventivo-key-selector-uid
+      author: mctit
+      comment: "Allinea config.sorgenti PREVENTIVO a key_selector=uid."
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Uniformare la sorgente PREVENTIVO al modello UUID-based
+              --   delle testate documento vendite.
+              --
+              -- Regole:
+              --   - update mirato solo su codice PREVENTIVO
+              --   - idempotente
+              -- =========================================================
+              UPDATE config.sorgenti
+              SET key_selector = 'uid',
+                  data_update = now(),
+                  user_update = current_user
+              WHERE codice = 'PREVENTIVO'
+                AND key_selector IS DISTINCT FROM 'uid';

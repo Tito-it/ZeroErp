@@ -38,5 +38,14 @@
 | pk_listini_associazioni | `CREATE UNIQUE INDEX pk_listini_associazioni ON vendite.listini_associazioni USING btree (id)` |
 | uq_listini_associazioni_key_attiva | `CREATE UNIQUE INDEX uq_listini_associazioni_key_attiva ON vendite.listini_associazioni USING btree (listino_id, COALESCE(billing_account_id, ('-1'::integer)::bigint), COALESCE(utility_id, '-1'::integer), COALESCE(emittente_soggetto_ruolo_id, ('-1'::integer)::bigint), valido_dal) WHERE (attivo IS TRUE)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_listini_associazioni_a10_listini_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id')` |
+| trg_listini_associazioni_a10_listini_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id')` |
+| trg_listini_associazioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_listini_associazioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_listini_associazioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}
