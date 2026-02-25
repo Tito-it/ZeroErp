@@ -1523,8 +1523,12 @@ La FASE 4.5 (rettifiche) precede le API per non esporre un ciclo prezzi incomple
 - [x] `log_push_run(...)` — wrappa `fn_log_commessa_push_run` → `vendite.commesse_push_log`
 - [x] `get_push_log(push_log_id)` — SELECT `vendite.commesse_push_log`
 - [x] TypedDict `CommessaEmitResult`, `CommessaStatoResult`, `CommessaPushLogRow` in `types.py`
-- [x] Dataclass `CommessaAttivitaInput` (28 campi, opzionali con default `None`)
-- [x] Test `test_commesse_repository.py` — 10 test verdi (mock DB, verifica SQL e mapping)
+- [x] Dataclass `CommessaAttivitaInput` — ristrutturato: 6 obbligatori + 10 con default + 13 opzionali
+- [x] Dataclass `PushableRow` — 25 colonne condivise da tutte le fn_list_*_da_pushare
+- [x] `_SORGENTE_FN_MAP` — mapping codice sorgente → fn SQL (5 sorgenti)
+- [x] `fetch_pushable_rows(sorgente_codice)` — generico per tutte le 5 fn_list_*_da_pushare
+- [x] Default su `get_or_create_commessa`: tipo_commessa=AUTO, priorita_operativa=NORMALE, etc.
+- [x] Test `test_commesse_repository.py` — 15 test verdi (mock DB, verifica SQL, mapping, pushable rows)
 
 ---
 
@@ -1552,21 +1556,27 @@ La FASE 4.5 (rettifiche) precede le API per non esporre un ciclo prezzi incomple
 - `_compute_stato`: COMPLETATO / PARZIALE / ERRORE (nessun handler = ERRORE)
 - `HandlerResult.as_dict()` serializza per JSONB risultato per handler
 
-#### 25.2.2 Handler sorgenti
+#### 25.2.2 Handler sorgenti (allineamento DB refactor — 10 punti)
 
-- [x] `BaseSourceHandler` — classe astratta con interfaccia `run(dry_run) → HandlerResult`
+- [x] `BaseSourceHandler` — logica condivisa `_process_rows()` (zero duplicazione tra handler)
 - [x] `HandlerResult` — dataclass: `handler_name`, `created`, `updated`, `skipped`, `errors`
-- [x] `HandlerPreventivi` — stub, richiede DB: `fn_list_preventivi_da_pushare`
-  - [ ] Query selezione preventivi eleggibili — **richiede fn_list_preventivi_da_pushare (team DB)**
-  - [ ] Mapping preventivo → `CommessaAttivitaInput` — da implementare dopo fn DB
-  - [ ] Gestione `stato_commessa = CONVERTITO` (skippa senza errore)
-- [x] `HandlerOrdini` — stub, richiede DB: `fn_list_ordini_da_pushare`
-  - [ ] Query selezione ordini eleggibili — **richiede fn_list_ordini_da_pushare (team DB)**
-  - [ ] Mapping ordine → `CommessaAttivitaInput` — da implementare dopo fn DB
-- [x] `HandlerConsumi` — stub, richiede DB: `fn_list_consumi_da_pushare`
-  - [ ] Query selezione consumi eleggibili — **richiede fn_list_consumi_da_pushare (team DB)**
-  - [ ] Mapping consumo → `CommessaAttivitaInput` — da implementare dopo fn DB
-- [x] Test `test_commesse_push_orchestrator.py` — 9 test verdi (isolamento, dry_run, filtro, log, stato)
+- [x] `#1` ORDINE → ORDINE_VENDITA corretto in `HandlerOrdini.sorgente_codice`
+- [x] `#3` `uom_id: int | None = None` in `CommessaAttivitaInput`
+- [x] `#4` `tipo_doc_fiscale_id: int | None = None` + hook `_resolve_tipo_doc_fiscale_id()`
+- [x] `#5` `prezzo_da_riallineare: bool = False`
+- [x] `#6` `_extract_tipo_commessa()` / `_extract_policy_fatturazione()` da `meta` JSONB
+- [x] `#7` `priorita_operativa="NORMALE"` default in `get_or_create_commessa`
+- [x] `#8` `HandlerContratti` (CONTRATTO) e `HandlerDdt` (DDT_VENDITA) — nuovi
+- [x] `#9` `HandlerConsumi._expand_rows()` — fan-out 1→N con `ComponenteConsumabile`
+  - [ ] `_fetch_componenti()` — stub, richiede fn DB per lookup componenti utility
+- [x] `#10` `stato_approvazione="BOZZA"`, `stato_emissione="NON_EMESSA"` default
+- [x] `HandlerPreventivi` — implementato via `_process_rows()`, sorgente_codice=PREVENTIVO
+- [x] `HandlerOrdini` — implementato via `_process_rows()`, sorgente_codice=ORDINE_VENDITA
+- [x] `HandlerContratti` — implementato via `_process_rows()`, sorgente_codice=CONTRATTO
+- [x] `HandlerDdt` — implementato via `_process_rows()`, sorgente_codice=DDT_VENDITA
+- [x] `HandlerConsumi` — implementato con override `_expand_rows()`, sorgente_codice=ATTIVITA_CONSUMI
+- [x] Test `test_commesse_push_orchestrator.py` — 9 test verdi (invariati, zero regressioni)
+- [x] Test `test_commesse_source_handlers.py` — 12 test verdi (handler, _process_rows, defaults, fan-out)
 
 ---
 
