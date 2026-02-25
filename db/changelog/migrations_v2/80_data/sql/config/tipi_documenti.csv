@@ -1,4 +1,4 @@
 id,codice,descrizione,codice_interno,data_insert,user_insert,data_update,user_update
-1,PDF,Documento PDF,PDF,2025-04-02 22:59:55.15616+02,postgres,2026-01-16 15:59:26.969721+01,titodb
-2,XML,Flusso XML,XML,2025-04-02 22:59:55.15616+02,postgres,2026-01-16 15:59:26.969721+01,titodb
-3,IMG,Immagine Allegata,IMG,2025-04-02 22:59:55.15616+02,postgres,2026-01-16 15:59:26.969721+01,titodb
+1,PDF,Documento PDF,PDF,2025-04-02 22:59:55.15616+02,postgres,2026-01-16 16:05:27.018293+01,titodb
+2,XML,Flusso XML,XML,2025-04-02 22:59:55.15616+02,postgres,2026-01-16 16:05:27.018293+01,titodb
+3,IMG,Immagine Allegata,IMG,2025-04-02 22:59:55.15616+02,postgres,2026-01-16 16:05:27.018293+01,titodb

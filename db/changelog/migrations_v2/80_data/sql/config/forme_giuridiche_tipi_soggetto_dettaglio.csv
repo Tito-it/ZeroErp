@@ -1,15 +1,15 @@
 forma_giuridica_id,tipo_soggetto_dettaglio_id,attivo,valido_dal,valido_al,meta,user_insert,data_insert,user_update,data_update,tx_id
-10,5,t,,,"{""note"": ""Ente non commerciale: Associazione""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
-11,5,t,,,"{""note"": ""Ente non commerciale: Fondazione""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
-12,5,t,,,"{""note"": ""Ente non commerciale: Ente Pubblico""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
-13,5,t,,,"{""note"": ""Ente non commerciale: ONLUS""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
-1,2,t,,,"{""note"": ""Ditta Individuale ammessa per PF/DI""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
-2,4,t,,,"{""note"": ""Società di persone: SNC""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
-3,4,t,,,"{""note"": ""Società di persone: SAS""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
-4,3,t,,,"{""note"": ""Società di capitali: SRL""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
-5,3,t,,,"{""note"": ""Società di capitali: SRLS""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
-6,3,t,,,"{""note"": ""Società di capitali: SPA""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
-7,3,t,,,"{""note"": ""Società di capitali: SAPA""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
-8,3,t,,,"{""note"": ""Cooperativa (trattata come SC per configurazione iniziale)""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
-9,3,t,,,"{""note"": ""Consorzio (trattato come SC per configurazione iniziale)""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
-14,3,t,,,"{""note"": ""Impresa sociale (trattata come SC per configurazione iniziale)""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-11 11:01:50.261582+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+10,5,t,,,"{""note"": ""Ente non commerciale: Associazione""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+11,5,t,,,"{""note"": ""Ente non commerciale: Fondazione""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+12,5,t,,,"{""note"": ""Ente non commerciale: Ente Pubblico""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+13,5,t,,,"{""note"": ""Ente non commerciale: ONLUS""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+1,2,t,,,"{""note"": ""Ditta Individuale ammessa per PF/DI""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+2,4,t,,,"{""note"": ""Società di persone: SNC""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+3,4,t,,,"{""note"": ""Società di persone: SAS""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+4,3,t,,,"{""note"": ""Società di capitali: SRL""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+5,3,t,,,"{""note"": ""Società di capitali: SRLS""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+6,3,t,,,"{""note"": ""Società di capitali: SPA""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+7,3,t,,,"{""note"": ""Società di capitali: SAPA""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+8,3,t,,,"{""note"": ""Cooperativa (trattata come SC per configurazione iniziale)""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+9,3,t,,,"{""note"": ""Consorzio (trattato come SC per configurazione iniziale)""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1
+14,3,t,,,"{""note"": ""Impresa sociale (trattata come SC per configurazione iniziale)""}",titodb,2025-12-22 12:00:00+01,titodb,2026-01-16 17:38:32.524375+01,019bac81-3f96-7ce8-a086-7e0bd0a2fec1

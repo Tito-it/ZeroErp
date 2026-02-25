@@ -1,13 +1,8 @@
 id,sorgente_tipo_id,branch_code,abilitata,acquisizione_mode,block_scope,priorita,meta,attivo,data_insert,user_insert,data_update,user_update
 1,1,ATTIVITA_DIRETTE,t,PUSH,BRANCH,20,"{""scope"":""ATTIVITA_FATTURABILI"",""note"":""In scope fase corrente""}",t,2026-02-22 14:30:00+01,titodb,2026-02-22 14:30:00+01,titodb
 2,2,PREVENTIVI,t,PUSH,BRANCH,10,"{""scope"":""ATTIVITA_FATTURABILI"",""note"":""In scope fase corrente""}",t,2026-02-22 14:30:00+01,titodb,2026-02-22 14:30:00+01,titodb
-3,3,PREVENTIVI,f,PUSH,BRANCH,110,"{""scope"":""ATTIVITA_FATTURABILI"",""note"":""Posticipata sorgente riga""}",t,2026-02-22 14:30:00+01,titodb,2026-02-22 14:30:00+01,titodb
 4,4,CONTRATTI,t,PUSH,BRANCH,30,"{""scope"":""ATTIVITA_FATTURABILI"",""note"":""In scope fase corrente""}",t,2026-02-22 14:30:00+01,titodb,2026-02-22 14:30:00+01,titodb
-5,5,CONTRATTI,f,PUSH,BRANCH,120,"{""scope"":""ATTIVITA_FATTURABILI"",""note"":""Posticipata sorgente riga""}",t,2026-02-22 14:30:00+01,titodb,2026-02-22 14:30:00+01,titodb
 6,6,ORDINI,t,PUSH,BRANCH,40,"{""scope"":""ATTIVITA_FATTURABILI"",""note"":""In scope fase corrente""}",t,2026-02-22 14:30:00+01,titodb,2026-02-22 14:30:00+01,titodb
-7,7,ORDINI,f,PUSH,BRANCH,130,"{""scope"":""ATTIVITA_FATTURABILI"",""note"":""Posticipata sorgente riga""}",t,2026-02-22 14:30:00+01,titodb,2026-02-22 14:30:00+01,titodb
 8,8,DDT,f,PUSH,BRANCH,80,"{""scope"":""ATTIVITA_FATTURABILI"",""note"":""Posticipata: rischio overlap con ORDINE_VENDITA""}",t,2026-02-22 14:30:00+01,titodb,2026-02-22 14:30:00+01,titodb
-9,9,DDT,f,PUSH,BRANCH,140,"{""scope"":""ATTIVITA_FATTURABILI"",""note"":""Posticipata sorgente riga""}",t,2026-02-22 14:30:00+01,titodb,2026-02-22 14:30:00+01,titodb
 10,10,POST_FATTURA,f,PULL,GLOBAL,90,"{""scope"":""ATTIVITA_FATTURABILI"",""note"":""Posticipata: fattura e` output pipeline standard""}",t,2026-02-22 14:30:00+01,titodb,2026-02-22 14:30:00+01,titodb
-11,11,POST_FATTURA,f,PULL,GLOBAL,150,"{""scope"":""ATTIVITA_FATTURABILI"",""note"":""Posticipata sorgente riga""}",t,2026-02-22 14:30:00+01,titodb,2026-02-22 14:30:00+01,titodb
 12,12,CONSUMI,t,PUSH,BRANCH,15,"{""scope"":""ATTIVITA_FATTURABILI"",""note"":""In scope fase corrente""}",t,2026-02-22 14:30:00+01,titodb,2026-02-22 14:30:00+01,titodb

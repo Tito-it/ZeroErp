@@ -84,6 +84,7 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 - Always set `logicalFilePath`
 - `00_schema` and `20_code` are included via `migrations_v2/changelog-autogen.yaml` (autogen script)
 - `80_data`, `85_pgagent`, `90_end` are included via `includeAll` in master
+- **MAI modificare changelog già mergiati/pushati su GitHub** — si rompe la sequenza Liquibase dei checksum. Per aggiornare funzioni/trigger con `runOnChange: true`, creare SEMPRE un nuovo file con numerazione successiva (es. `20260225-37-update-...`). Ripristinare (`git checkout --`) i file originali se modificati per errore.
 
 ## Regole Documentazione
 

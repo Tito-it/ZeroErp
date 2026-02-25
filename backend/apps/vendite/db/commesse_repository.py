@@ -55,6 +55,7 @@ _PUSHABLE_SHARED_COLS = (
     "tipo_consumo",
     "valuta_id",
     "meta",
+    "tipo_doc_fiscale_id",
 )
 
 
@@ -131,6 +132,7 @@ class PushableRow:
     tipo_consumo: str
     valuta_id: int | None
     meta: dict[str, Any]
+    tipo_doc_fiscale_id: int | None
 
 
 def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
@@ -173,6 +175,7 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         tipo_consumo=str(_col("tipo_consumo")),
         valuta_id=_col("valuta_id"),
         meta=meta_raw,
+        tipo_doc_fiscale_id=_col("tipo_doc_fiscale_id"),
     )
 
 

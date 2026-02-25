@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260225-44-add-sorgenti-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260225-44-add-sorgenti-scope
+      author: mctit
+      comment: "Aggiunge colonna scope a config.sorgenti per classificare il ruolo funzionale di ogni sorgente."
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Aggiungere colonna scope a config.sorgenti per
+              --   classificare il ruolo funzionale di ogni sorgente.
+              --
+              -- Valori:
+              --   PUSH_COMMESSA   — documenti business che alimentano commesse
+              --   PIPELINE_MARKER — marcatori interni pipeline AF
+              --   ROW_VALIDATOR   — validazione polimorfa riga (legacy)
+              --   POST_INVOICE    — riconciliazione post-fattura
+              --   DIRECT_ENTRY    — inserimento diretto futuro
+              -- =========================================================
+
+              ALTER TABLE config.sorgenti ADD COLUMN scope VARCHAR(30);
+
+              UPDATE config.sorgenti SET scope = CASE id
+                WHEN  2 THEN 'PUSH_COMMESSA'     -- PREVENTIVO
+                WHEN  4 THEN 'PUSH_COMMESSA'     -- CONTRATTO
+                WHEN  6 THEN 'PUSH_COMMESSA'     -- ORDINE_VENDITA
+                WHEN  8 THEN 'PUSH_COMMESSA'     -- DDT_VENDITA
+                WHEN 12 THEN 'PUSH_COMMESSA'     -- ATTIVITA_CONSUMI
+                WHEN  1 THEN 'PIPELINE_MARKER'   -- ATTIVITA
+                WHEN 13 THEN 'PIPELINE_MARKER'   -- COMMESSA
+                WHEN  3 THEN 'ROW_VALIDATOR'     -- PREVENTIVO_RIGA
+                WHEN  5 THEN 'ROW_VALIDATOR'     -- CONTRATTO_RIGA
+                WHEN  7 THEN 'ROW_VALIDATOR'     -- ORDINE_VENDITA_RIGA
+                WHEN  9 THEN 'ROW_VALIDATOR'     -- DDT_VENDITA_RIGA
+                WHEN 11 THEN 'ROW_VALIDATOR'     -- FATTURA_RIGA
+                WHEN 10 THEN 'POST_INVOICE'      -- FATTURA
+              END;
+
+              ALTER TABLE config.sorgenti ALTER COLUMN scope SET NOT NULL;
+
+              ALTER TABLE config.sorgenti ADD CONSTRAINT chk_sorgenti_scope
+                CHECK (scope IN (
+                  'PUSH_COMMESSA',
+                  'PIPELINE_MARKER',
+                  'ROW_VALIDATOR',
+                  'POST_INVOICE',
+                  'DIRECT_ENTRY'
+                ));
+
+              COMMENT ON COLUMN config.sorgenti.scope
+                IS 'Classificazione funzionale: PUSH_COMMESSA, PIPELINE_MARKER, ROW_VALIDATOR, POST_INVOICE, DIRECT_ENTRY';

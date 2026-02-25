@@ -18,12 +18,14 @@
 | target_table | regclass | YES |  |
 | key_selector | text | NO | 'id'::text |
 | tipo_doc_fiscale_id | bigint | YES |  |
+| scope | character varying | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_sorgenti_codice_interno_non_vuoto |  |
 | CHECK | chk_sorgenti_key_selector_values |  |
+| CHECK | chk_sorgenti_scope |  |
 | FOREIGN KEY | fk_sorgenti_tipo_doc_fiscale | tipo_doc_fiscale_id |
 | PRIMARY KEY | sorgenti_pkey | id |
 | UNIQUE | uq_sorgenti_codice | codice |

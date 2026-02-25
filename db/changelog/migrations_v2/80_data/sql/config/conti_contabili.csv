@@ -1,4 +1,4 @@
 id,codice,descrizione,tipo_conto,data_insert,user_insert,data_update,user_update
-1,23506003,Iva vendita,V,2025-04-22 22:32:01.37491+02,postgres,2026-01-16 15:59:32.99533+01,titodb
-2,1,eliminare,A,2025-04-22 23:07:14.008371+02,postgres,2026-01-16 15:59:32.99533+01,titodb
-3,2,eliminare,V,2025-04-22 23:07:14.008371+02,postgres,2026-01-16 15:59:32.99533+01,titodb
+1,23506003,Iva vendita,V,2025-04-22 22:32:01.37491+02,postgres,2026-01-16 16:05:32.982705+01,titodb
+2,1,eliminare,A,2025-04-22 23:07:14.008371+02,postgres,2026-01-16 16:05:32.982705+01,titodb
+3,2,eliminare,V,2025-04-22 23:07:14.008371+02,postgres,2026-01-16 16:05:32.982705+01,titodb

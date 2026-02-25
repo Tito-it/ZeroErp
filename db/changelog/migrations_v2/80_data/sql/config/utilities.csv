@@ -1,6 +1,6 @@
-id,codice,descrizione,codice_interno,data_insert,user_insert,data_update,user_update
-3,ACQ,Acqua Potabile,IDRICO,2025-04-02 22:38:19.957861+02,postgres,2026-01-16 16:02:09.147975+01,titodb
-2,GAS,Gas Naturale,GAS,2025-04-02 22:38:19.957861+02,postgres,2026-01-16 16:02:09.147975+01,titodb
-4,TEL,Telefonia,FONIA,2025-04-02 22:38:19.957861+02,postgres,2026-01-16 16:02:09.147975+01,titodb
-5,BASE,Servizio Base,BASE,2025-04-02 22:38:19.957861+02,postgres,2026-01-16 16:02:09.147975+01,titodb
-1,ENE,Energia Elettrica,ENERGIA,2025-04-02 22:38:19.957861+02,postgres,2026-01-16 16:02:09.147975+01,titodb
+id,codice,descrizione,codice_interno,data_insert,user_insert,data_update,user_update,richiede_pdp
+3,ACQ,Acqua Potabile,IDRICO,2025-04-02 22:38:19.957861+02,postgres,2026-02-15 16:42:41.501937+01,titodb,t
+2,GAS,Gas Naturale,GAS,2025-04-02 22:38:19.957861+02,postgres,2026-02-15 16:42:41.501937+01,titodb,t
+4,TEL,Telefonia,FONIA,2025-04-02 22:38:19.957861+02,postgres,2026-02-15 16:42:41.501937+01,titodb,f
+5,BASE,Servizio Base,BASE,2025-04-02 22:38:19.957861+02,postgres,2026-02-15 16:42:41.501937+01,titodb,f
+1,ENE,Energia Elettrica,ENERGIA,2025-04-02 22:38:19.957861+02,postgres,2026-02-15 16:42:41.501937+01,titodb,t
