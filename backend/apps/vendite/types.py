@@ -45,6 +45,7 @@ class LottoSegnalazioniSummary(TypedDict):
     lotto_critical_count: int
     lotto_warning_count: int
     lotto_info_count: int
+    fatture_stato_esecuzione_errore_count: int
 
 
 class LottoTaskRunRow(TypedDict):
@@ -102,3 +103,45 @@ class LottoListRow(TypedDict):
     emittente_soggetto_ruolo_id: int | None
     data_insert: str
     user_insert: str
+
+
+class AttivitaTaskRunRow(TypedDict):
+    id: int
+    lotto_attivita_id: int
+    pipeline_id: int | None
+    sorgente_tipo_id: int | None
+    branch_code: str
+    task_code: str
+    fase: str | None
+    tentativo: int
+    task_stato: str
+    block_scope: str
+    depends_on: list[Any]
+    started_at: str | None
+    ended_at: str | None
+    error_code: str | None
+    error_message: str | None
+    meta: dict[str, Any]
+
+
+class CommessaEmitResult(TypedDict):
+    total_candidate: int
+    inserted_rows: int
+    updated_rows: int
+
+
+class CommessaStatoResult(TypedDict):
+    total_attivita: int
+    total_approvate: int
+    total_emesse: int
+
+
+class CommessaPushLogRow(TypedDict):
+    id: int
+    run_at: str
+    dry_run: bool
+    source_types: list[str] | None
+    risultato: dict[str, Any] | None
+    stato: str
+    durata_ms: int | None
+    user_run: str | None

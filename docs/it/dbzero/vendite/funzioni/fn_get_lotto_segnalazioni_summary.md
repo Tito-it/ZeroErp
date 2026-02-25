@@ -9,18 +9,21 @@ CREATE FUNCTION fn_get_lotto_segnalazioni_summary(p_lotto_id bigint)
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_lotto_segnalazioni_summary(p_lotto_id bigint)
- RETURNS TABLE(fatture_critical_count bigint, fatture_warning_count bigint, lotto_critical_count bigint, lotto_warning_count bigint, lotto_info_count bigint)
+ RETURNS TABLE(fatture_critical_count bigint, fatture_warning_count bigint, lotto_critical_count bigint, lotto_warning_count bigint, lotto_info_count bigint, fatture_stato_esecuzione_errore_count bigint)
  LANGUAGE plpgsql
 AS $function$
 BEGIN
   -- =========================================================
   -- Scopo:
   --   Restituisce il riepilogo segnalazioni attive del lotto
-  --   aggregando sorgenti fatture_log e fatturazione_lotti_log.
+  --   aggregando sorgenti fatture_log e fatturazione_lotti_log,
+  --   includendo anche il blocco tecnico da tabella ponte
+  --   (stato_esecuzione='ERRORE').
   --
   -- Regole:
-  --   - conta solo record attivi (disabilitato = false)
+  --   - conta solo log attivi (disabilitato = false)
   --   - severita` gestite: C, W, I
+  --   - colonna aggiuntiva: count ponte stato_esecuzione ERRORE
   -- =========================================================
 
   IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
@@ -58,20 +61,28 @@ BEGIN
     FROM vendite.fatturazione_lotti_log ll
     WHERE ll.lotto_id = p_lotto_id
       AND ll.disabilitato IS FALSE
+  ),
+  ponte_agg AS (
+    SELECT
+      COUNT(*) FILTER (WHERE lf.stato_esecuzione = 'ERRORE') AS fatture_stato_esecuzione_errore_count
+    FROM vendite.fatturazione_lotti_fatture lf
+    WHERE lf.lotto_id = p_lotto_id
   )
   SELECT
     COALESCE(fa.fatture_critical_count, 0),
     COALESCE(fa.fatture_warning_count, 0),
     COALESCE(la.lotto_critical_count, 0),
     COALESCE(la.lotto_warning_count, 0),
-    COALESCE(la.lotto_info_count, 0)
+    COALESCE(la.lotto_info_count, 0),
+    COALESCE(pa.fatture_stato_esecuzione_errore_count, 0)
   FROM fatture_agg fa
-  CROSS JOIN lotto_agg la;
+  CROSS JOIN lotto_agg la
+  CROSS JOIN ponte_agg pa;
 END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_lotto_segnalazioni_summary(p_lotto_id bigint)
-IS 'Riepiloga segnalazioni lotto attive da fatture_log e fatturazione_lotti_log (C/W/I).';
+IS 'Riepiloga segnalazioni lotto attive (log fatture/lotto) e conteggio ponte fatture con stato_esecuzione=ERRORE.';
 ```
 
 ---

@@ -1,0 +1,49 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260224-38-upsert-parameter-attivita-require-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20260224-38-upsert-parameter-attivita-require-commessa
+      author: mctit
+      comment: "Parametro toggle guardrail anti-bypass su attivita_fatturabili."
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Registrare il parametro di configurazione che abilita
+              --   il guardrail commessa-aware su vendite.attivita_fatturabili.
+              --
+              -- Regole:
+              --   - valore booleano in default_value (text)
+              --   - default iniziale false (fase transitoria)
+              --   - idempotente su code
+              -- =========================================================
+              -- Allinea la sequence PK in caso di ambienti con seed/manual insert.
+              SELECT setval(
+                pg_get_serial_sequence('config.parameters', 'id'),
+                COALESCE((SELECT max(id) FROM config.parameters), 0),
+                true
+              );
+
+              INSERT INTO config.parameters (
+                code,
+                default_value,
+                description
+              )
+              VALUES (
+                'attivita_fatturabili_require_commessa',
+                'false',
+                'Se true blocca insert/update su attivita_fatturabili senza link commessa coerente.'
+              )
+              ON CONFLICT (code)
+              DO UPDATE
+                 SET description = EXCLUDED.description,
+                     data_update = now(),
+                     user_update = current_user;

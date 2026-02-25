@@ -9,6 +9,7 @@
 Indice test eseguiti:
 1) LottoSegnalazioniServiceUnitTests.test_evaluate_lotto_status_blocks_when_critical_exists
 2) LottoSegnalazioniServiceUnitTests.test_evaluate_lotto_status_allows_when_only_warning_and_info
+3) LottoSegnalazioniServiceUnitTests.test_evaluate_lotto_status_blocks_when_fatture_stato_esecuzione_errore
 """
 
 from django.test import SimpleTestCase
@@ -26,6 +27,7 @@ class LottoSegnalazioniServiceUnitTests(SimpleTestCase):
                 "lotto_critical_count": 0,
                 "lotto_warning_count": 0,
                 "lotto_info_count": 0,
+                "fatture_stato_esecuzione_errore_count": 0,
             }
 
     # Scopo: Verifica il caso `test_evaluate_lotto_status_blocks_when_critical_exists`.
@@ -39,6 +41,7 @@ class LottoSegnalazioniServiceUnitTests(SimpleTestCase):
                     "lotto_critical_count": 0,
                     "lotto_warning_count": 3,
                     "lotto_info_count": 4,
+                    "fatture_stato_esecuzione_errore_count": 0,
                 }
 
         service = LottoSegnalazioniService(_CriticalRepo())
@@ -61,6 +64,7 @@ class LottoSegnalazioniServiceUnitTests(SimpleTestCase):
                     "lotto_critical_count": 0,
                     "lotto_warning_count": 1,
                     "lotto_info_count": 6,
+                    "fatture_stato_esecuzione_errore_count": 0,
                 }
 
         service = LottoSegnalazioniService(_NoCriticalRepo())
@@ -71,3 +75,26 @@ class LottoSegnalazioniServiceUnitTests(SimpleTestCase):
         self.assertEqual(status.attention_count, 6)
         self.assertFalse(status.is_error)
         self.assertFalse(status.blocks_next_step)
+
+    # Scopo: Verifica che la presenza di fatture con stato_esecuzione=ERRORE blocchi il lotto
+    # anche in assenza di segnalazioni critical nei log (guard unificata PRE-1).
+    def test_evaluate_lotto_status_blocks_when_fatture_stato_esecuzione_errore(self):
+        class _StatoEsecuzioneErroreRepo(self._RepoMock):
+            # Scopo: Restituisce riepilogo con fatture in stato errore per test blocco.
+            def get_lotto_segnalazioni_summary(self, lotto_id):
+                return {
+                    "fatture_critical_count": 0,
+                    "fatture_warning_count": 0,
+                    "lotto_critical_count": 0,
+                    "lotto_warning_count": 0,
+                    "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 2,
+                }
+
+        service = LottoSegnalazioniService(_StatoEsecuzioneErroreRepo())
+        status = service.evaluate_lotto_status(10)
+
+        self.assertEqual(status.critical_count, 0)
+        self.assertEqual(status.fatture_stato_esecuzione_errore_count, 2)
+        self.assertTrue(status.is_error)
+        self.assertTrue(status.blocks_next_step)

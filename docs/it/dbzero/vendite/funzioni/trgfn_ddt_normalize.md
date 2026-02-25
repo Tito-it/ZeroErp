@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_ddt_normalize.md" %}
 # ⚙️ Funzione `trgfn_ddt_normalize`
 
 ```sql

@@ -95,6 +95,24 @@ class ErrorPolicyRegistry:
             ui_action="show_retry_dialog",
             user_message="Conflitto transazionale, riprovare l'operazione.",
         ),
+        "E_ATTIVITA_PIPELINE": ErrorPolicy(
+            code="E_ATTIVITA_PIPELINE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Errore nella pipeline attivita fatturabili.",
+        ),
+        "E_ATTIVITA_VALIDATION": ErrorPolicy(
+            code="E_ATTIVITA_VALIDATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri pipeline attivita non validi.",
+        ),
+        "E_ATTIVITA_LOTTO_NOT_FOUND": ErrorPolicy(
+            code="E_ATTIVITA_LOTTO_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Lotto attivita non trovato.",
+        ),
         "E_GENERICO": ErrorPolicy(
             code="E_GENERICO",
             http_status=500,

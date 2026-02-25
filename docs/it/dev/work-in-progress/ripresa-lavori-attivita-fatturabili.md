@@ -1,5 +1,9 @@
 # Ripresa lavori - attivita_fatturabili (22-02-2026)
 
+> Nota stato (24-02-2026):
+> la pipeline legacy `attivita-da-fatturare` e` da considerare deprecata;
+> la modalita` target e` `COMMESSA_ONLY` (push/pull via `commesse_*`).
+
 ## 1) Obiettivo
 
 Riprendere il dominio `attivita_fatturabili` allineandolo al livello raggiunto dalla pipeline lotto, partendo prima dai refactor trasversali dei punti 20 e 21 del documento WIP.
@@ -41,7 +45,7 @@ Riferimento base:
 1. Policy runtime task dedicate:
    - `vendite.attivita_fatturabili_pipeline_task_policy`
 2. Tracing runtime task dedicato:
-   - `vendite.attivita_fatturabili_task_runs`
+   - `vendite.attivita_fatturabili_lotti_task_runs`
 3. Estensione opzionale pipeline non lineare:
    - `branch_code`
    - `block_scope` (`BRANCH|GLOBAL`)
@@ -157,6 +161,13 @@ Premessa funzionale confermata:
    - `block_scope = GLOBAL`.
 4. Resume/rerun per branch, non per intera pipeline.
 
+Nota implementativa — precedenza `block_scope`:
+`block_scope` compare in entrambe le tabelle: `attivita_fatturabili_pipeline_task_policy` (livello task)
+e `attivita_fatturabili_sorgenti_branch_policy` (livello sorgente/branch).
+Regola adottata: il valore nella **task policy ha precedenza** (piu` specifico);
+se la task policy non definisce un override esplicito, si usa il valore della sorgente branch policy.
+Questa logica va implementata nell'executor (BE-1.2) e non nel runner.
+
 ## 5.2 Estensioni schema (bozza)
 
 Su `vendite.attivita_fatturabili_pipeline`:
@@ -166,7 +177,7 @@ Su `vendite.attivita_fatturabili_pipeline`:
 
 Nuove tabelle speculari a lotto:
 - `vendite.attivita_fatturabili_pipeline_task_policy`
-- `vendite.attivita_fatturabili_task_runs`
+- `vendite.attivita_fatturabili_lotti_task_runs`
 
 ## 5.3 Runtime Django (bozza)
 
@@ -378,7 +389,7 @@ Introdotta matrice esplicita `sorgente -> branch/policy` per evitare mapping har
 
 Obiettivo operativo: completare il dominio `attivita_fatturabili` con logiche omogenee a `fatturazione_lotti`, riducendo refactor futuri e rischi di regressione.
 
-### 8.1 Fase DB-1 (schema allineamento, priorita immediata)
+### 8.1 Fase DB-1 (schema allineamento) — ✓ COMPLETATA
 
 1. Changelog: aggiungere colonne e vincoli
    - `vendite.attivita_fatturabili_lotti.stato_operativo` (`not null`, default `APERTO`)
@@ -395,7 +406,7 @@ Uscita fase:
 - migrazione applicabile in ambiente pulito e su snapshot reale.
 - nessun null residuo su nuove colonne obbligatorie.
 
-### 8.2 Fase DB-2 (funzioni dominio attivita)
+### 8.2 Fase DB-2 (funzioni dominio attivita) — ✓ COMPLETATA
 
 1. Adeguare `fn_get_or_create_lotto_attivita(...)`
    - supporto pieno `emittente_soggetto_ruolo_id`
@@ -416,7 +427,7 @@ Uscita fase:
   - `20260222-11` creata `vendite.attivita_fatturabili_lotti_task_runs` (tracing runtime task per branch).
   - `20260222-12` introdotte funzioni runtime task-runs/policy dedicate al dominio attivita.
 
-### 8.3 Fase DB-3 (test pgtap obbligatori)
+### 8.3 Fase DB-3 (test pgtap obbligatori) — ✓ COMPLETATA
 
 1. DDL checks: colonne/default/FK/check.
 2. Test funzioni:
@@ -429,7 +440,7 @@ Uscita fase:
 Uscita fase:
 - suite pgtap del dominio verde.
 
-### 8.4 Fase BE-1 (runtime services)
+### 8.4 Fase BE-1 (runtime services) — ✓ COMPLETATA
 
 1. Implementare/chiudere:
    - `AttivitaPipelineRunner`
@@ -445,8 +456,15 @@ Uscita fase:
 
 Uscita fase:
 - esecuzione pipeline su branch indipendenti con tracing task.
+- avanzamento 22-02-2026:
+  - `backend/apps/vendite/db/attivita_pipeline_repository.py` creato (BE-1.1).
+  - `backend/apps/vendite/services/attivita_pipeline_step_executor.py` creato (BE-1.2); 7 handler stub registrati.
+  - `backend/apps/vendite/services/attivita_pipeline_runner.py` creato (BE-1.3); branch-first con `_AttivitaBranchBlockError`/`_AttivitaGlobalBlockError`.
+  - `backend/apps/vendite/services/attivita_pipeline_error_logger.py` creato (BE-1.5).
+  - `backend/apps/vendite/types.py` esteso con `AttivitaTaskRunRow`.
+  - 26 test unitari aggiunti (repository 12, executor 8, runner 6); suite verde (98 test ok).
 
-### 8.5 Fase BE-2 (API dominio attivita)
+### 8.5 Fase BE-2 (API dominio attivita) — ✓ COMPLETATA
 
 1. Endpoint run pipeline attivita.
 2. Endpoint status/segnalazioni.
@@ -458,8 +476,14 @@ Uscita fase:
 
 Uscita fase:
 - API consumabile da UI e pronta per debug operativo.
+- avanzamento 23-02-2026:
+  - `backend/apps/vendite/db/attivita_pipeline_repository.py` esteso con `get_lotto_attivita_full_stato`.
+  - `backend/apps/vendite/services/attivita_pipeline_service.py` creato (BE-2.1/2.2/2.3); facade `pr_run_attivita_pipeline`, `fn_get_attivita_pipeline_status`, `fn_get_attivita_task_runs`.
+  - `backend/apps/vendite/api/views.py` esteso con 6 view classes (3 base + 3 V1).
+  - `backend/apps/vendite/api/urls_v1.py` esteso con 3 path `attivita_fatturabili/pipeline/*`.
+  - 6 test unitari aggiunti (service); suite verde (104 test ok).
 
-### 8.6 Fase BE-3 (test backend/API)
+### 8.6 Fase BE-3 (test backend/API) — ✓ COMPLETATA
 
 1. Test service:
    - run ok
@@ -473,6 +497,12 @@ Uscita fase:
 
 Uscita fase:
 - suite backend verde e smoke senza blocchi inattesi.
+
+Avanzamento 23-02-2026 (BE-3):
+
+- Creati `backend/apps/vendite/tests/api/test_attivita_pipeline_api.py` (14 test HTTP contract).
+- Creato `backend/apps/vendite/tests/api/test_attivita_pipeline_smoke.py` (3 smoke multi-branch).
+- Suite verde: 174 test ok (tutti i test `apps.vendite.tests` incluse regressioni lotto).
 
 ### 8.7 Sequenza di avvio sviluppo (operativa)
 
@@ -541,13 +571,16 @@ Acceptance BE-1:
 
 Esporre API minime per uso UI/ops:
 
-1. `POST /attivita-fatturabili/pipeline/run`
+1. `POST /api/v1/vendite/attivita_fatturabili/pipeline/run`
    - input: lotto o criteri creazione lotto + filtro sorgenti/branch opzionale;
    - output: id run/lotto + stato iniziale per branch.
-2. `GET /attivita-fatturabili/pipeline/{lottoId}/status`
+2. `GET /api/v1/vendite/attivita_fatturabili/pipeline/{lotto_id}/status`
    - output: `stato_lotto`, `stato_operativo`, riepilogo `stato_esecuzione` per branch.
-3. `GET /attivita-fatturabili/pipeline/{lottoId}/task-runs`
+3. `GET /api/v1/vendite/attivita_fatturabili/pipeline/{lotto_id}/task-runs`
    - output: lista task run ordinata per sequenza/tentativo con esito e dettagli errore.
+
+Nota convenzioni URL: snake_case e prefisso `/api/v1/vendite/` coerenti con gli endpoint esistenti
+(es. `/api/v1/vendite/lotti/{id}/fatture/`). Non usare kebab-case.
 
 Regole API:
 - nessun mapping hardcoded sorgente->branch lato Python: usare solo resolver DB;
@@ -596,6 +629,29 @@ Legenda:
 - tipo: `EPIC`, `STORY`, `TASK`, `TEST`
 - priorita`: `P0` blocca go-live, `P1` necessario, `P2` migliorativo
 
+### 10.0 Prerequisiti backend — ✓ COMPLETATI
+
+I deliverable Django dei punti 20 e 21 (§3.3 e §4.3) non sono coperti dai ticket BE-1/BE-2/BE-3
+e devono essere completati prima di aprire BE-1, pena regressioni sul runner lotto esistente.
+
+1. `PRE-1` (TASK, P0) ✓ - aggiornare guard runner lotto (§4.3)
+   - output:
+     - `pipeline_repository.py`: nuovo metodo `count_fatture_stato_esecuzione_errore(lotto_id)`.
+     - `lotto_segnalazioni_service.py`: `LottoSignalStatus` con campo `fatture_stato_esecuzione_errore_count`;
+       `evaluate_lotto_status` blocca se `critical_count > 0 OR stato_esecuzione_errore_count > 0`.
+     - `pipeline_runner.py`: detail e context arricchiti con `stato_esecuzione_errore_count`.
+   - done:
+     - test 14/15 in `test_pipeline_runner.py`: `stato_esecuzione=ERRORE` blocca; warning non blocca.
+     - test 3 in `test_lotto_segnalazioni_service.py`: guard su ponte verificata a livello service.
+
+2. `PRE-2` (TASK, P0) ✓ - codici errore dominio attivita (§3.3)
+   - output:
+     - `error_policies.py`: aggiunti `E_ATTIVITA_PIPELINE` (HTTP 400), `E_ATTIVITA_VALIDATION` (HTTP 400),
+       `E_ATTIVITA_LOTTO_NOT_FOUND` (HTTP 404).
+   - done:
+     - codici errore `E_ATTIVITA_*` disponibili nel registry; il runner attivita (BE-1) li usera`.
+   - nota: helper payload `build_pipeline_error_context` rimandato a BE-1.5 (contesto piu` ricco).
+
 ### 10.1 EPIC BE-ATT-PIPELINE
 
 1. `BE-ATT-PIPELINE` (EPIC, P0)
@@ -614,9 +670,16 @@ Legenda:
 2. `BE-1.2` (TASK, P0) - creare `AttivitaPipelineStepExecutor`
    - output:
      - dispatch task via registry dominio `ATTIVITA_FATTURABILI`;
-     - gestione esiti `SUCCESS|WARNING|ERROR`.
+     - gestione esiti `SUCCESS|WARNING|ERROR`;
+     - `handler_registry` Python (dict statico `handler_code -> callable`) per tutti i task
+       seedati in `dbops.pipeline_task_registry_impl` del dominio:
+       `acquisisci_preventivi_default`, `acquisisci_contratti_default`,
+       `acquisisci_ordini_default`, `acquisisci_attivita_consumi_default`,
+       `normalizza_attivita_default`, `valida_attivita_default`, `deduplica_attivita_default`.
    - done:
-     - supporto `block_scope=BRANCH|GLOBAL` rispettato.
+     - supporto `block_scope=BRANCH|GLOBAL` rispettato (task policy ha precedenza su sorgente policy);
+     - nessun import dinamico: mapping statico come in `PipelineStepExecutor` del dominio lotto;
+     - stub funzionanti per tutti e 7 gli handler (anche se non implementati nel dettaglio).
 
 3. `BE-1.3` (TASK, P0) - creare `AttivitaPipelineRunner`
    - output:
@@ -643,19 +706,19 @@ Legenda:
 
 1. `BE-2.1` (TASK, P0) - endpoint run
    - output:
-     - `POST /attivita-fatturabili/pipeline/run`.
+     - `POST /api/v1/vendite/attivita_fatturabili/pipeline/run`.
    - done:
      - supporto input con lotto esistente o creazione guidata.
 
 2. `BE-2.2` (TASK, P0) - endpoint status
    - output:
-     - `GET /attivita-fatturabili/pipeline/{lottoId}/status`.
+     - `GET /api/v1/vendite/attivita_fatturabili/pipeline/{lotto_id}/status`.
    - done:
      - include `stato_lotto`, `stato_operativo`, contatori `stato_esecuzione` per branch.
 
 3. `BE-2.3` (TASK, P0) - endpoint task-runs
    - output:
-     - `GET /attivita-fatturabili/pipeline/{lottoId}/task-runs`.
+     - `GET /api/v1/vendite/attivita_fatturabili/pipeline/{lotto_id}/task-runs`.
    - done:
      - ordinamento coerente (step, sequenza, tentativo, timestamp).
 
@@ -697,5 +760,433 @@ Legenda:
    - `BE-2.1`/`BE-2.2`/`BE-2.3` -> `BE-2.4`
    - `BE-3.1` -> `BE-3.2` -> `BE-3.3`
 2. Gate:
+   - non aprire `BE-1` senza `PRE-1` e `PRE-2` chiusi.
    - non aprire `BE-2` senza runner stabile (`BE-1.3` minimo).
    - non chiudere epic senza smoke `BE-3.3`.
+
+---
+
+## §11) Migliorie DB future (riduzione logica backend)
+
+Raccolta di interventi DB che semplificherebbero o eliminerebbero logica duplicata
+nel layer Python. Da pianificare dopo il completamento di BE-1/BE-2/BE-3.
+Non bloccano nessun ticket corrente.
+
+### §11.1 Unificare query blocco lotto in `fn_get_lotto_segnalazioni_summary`
+
+**Contesto**: `evaluate_lotto_status` in `lotto_segnalazioni_service.py` esegue
+attualmente due query DB separate per valutare se il lotto e` bloccato:
+
+1. `get_lotto_segnalazioni_summary()` — chiama `vendite.fn_get_lotto_segnalazioni_summary`
+   e restituisce i contatori segnalazioni per severita`.
+2. `count_fatture_stato_esecuzione_errore()` — query diretta su
+   `vendite.fatturazione_lotti_fatture` per contare le fatture con
+   `stato_esecuzione = 'ERRORE'`.
+
+**Miglioramento**: estendere `vendite.fn_get_lotto_segnalazioni_summary` per
+restituire anche la colonna `fatture_stato_esecuzione_errore_count`
+(COUNT su `fatturazione_lotti_fatture.stato_esecuzione = 'ERRORE'`).
+Questo eliminerebbe la seconda query e ridurrebbe i round-trip DB per ogni
+valutazione blocco lotto.
+
+**Impatto backend**:
+
+- rimuovere il metodo `count_fatture_stato_esecuzione_errore` dal repository;
+- leggere `fatture_stato_esecuzione_errore_count` direttamente dal summary
+  restituito dalla funzione DB;
+- aggiornare `evaluate_lotto_status` di conseguenza (nessun cambio all'interfaccia
+  pubblica di `LottoSignalStatus`).
+
+**Stato avanzamento (23-02-2026, DB): COMPLETATO**
+
+Implementato lato DB:
+
+1. Estesa funzione SQL:
+   - `vendite.fn_get_lotto_segnalazioni_summary(p_lotto_id bigint)`
+   - nuova colonna output in coda: `fatture_stato_esecuzione_errore_count`.
+2. Nuova aggregazione:
+   - `COUNT(*) FILTER (WHERE stato_esecuzione='ERRORE')` su
+     `vendite.fatturazione_lotti_fatture` per il lotto richiesto.
+3. Compatibilita`:
+   - nessuna funzione SQL dipendente da aggiornare (uso DB interno: assente);
+   - estensione non breaking lato SQL per consumer che selezionano esplicitamente colonne.
+4. Test DB:
+   - aggiunto pgTAP `db/pgtap/vendite/test-lotto-segnalazioni-summary-v2.sql`;
+   - aggiunto alla suite `scripts/testpgtap-fatturazione-logs.sh`.
+
+**Azione richiesta al team backend (integrazione)**
+
+1. Repository:
+   - includere la nuova colonna nel mapping `get_lotto_segnalazioni_summary`.
+2. Service:
+   - rimuovere query separata `count_fatture_stato_esecuzione_errore`;
+   - usare solo il summary funzione DB per il blocco lotto.
+
+**Integrazione backend (23-02-2026): COMPLETATA**
+
+- `types.py`: aggiunto `fatture_stato_esecuzione_errore_count` a `LottoSegnalazioniSummary`.
+- `pipeline_repository.py`: SELECT esteso a 6 colonne; rimosso metodo `count_fatture_stato_esecuzione_errore`.
+- `lotto_segnalazioni_service.py`: `evaluate_lotto_status` legge `summary["fatture_stato_esecuzione_errore_count"]`.
+- Test aggiornati: `test_pipeline_repository.py`, `test_lotto_segnalazioni_service.py`, `test_pipeline_runner.py`.
+
+### §11.2 Spostare `_compute_branch_summary` nel DB
+
+**Contesto**: `fn_get_attivita_pipeline_status` in `attivita_pipeline_service.py`
+recupera fino a 500 task run dal DB (`list_attivita_task_runs(limit=500)`)
+solo per aggregarli in Python via `_compute_branch_summary`:
+
+```python
+{"DEFAULT": {"COMPLETATO": 3}, "PREVENTIVI": {"COMPLETATO": 2, "ERRORE": 1}}
+```
+
+Il trasferimento di 500 righe complete per estrarre solo i contatori e` inefficiente.
+
+**Miglioramento**: creare `vendite.fn_get_attivita_branch_summary(lotto_id)`:
+
+```sql
+SELECT branch_code, task_stato, COUNT(*) AS cnt
+FROM vendite.attivita_fatturabili_lotti_task_runs
+WHERE lotto_attivita_id = lotto_id
+GROUP BY branch_code, task_stato
+```
+
+**Impatto backend**:
+
+- sostituire `repo.list_attivita_task_runs(limit=500)` + `_compute_branch_summary`
+  con `repo.get_attivita_branch_summary(lotto_id)`;
+- eliminare `_compute_branch_summary` dal service;
+- riduce i dati trasmessi DB→Python per ogni richiesta status da N righe a M bucket.
+
+**Stato avanzamento (23-02-2026, DB): COMPLETATO**
+
+Implementato lato DB:
+
+1. Nuova funzione SQL:
+   - `vendite.fn_get_attivita_branch_summary(p_lotto_attivita_id bigint)`
+   - output: `branch_code`, `task_stato`, `cnt`.
+2. Validazione parametro:
+   - errore se `lotto_attivita_id` nullo o `<= 0`.
+3. Aggregazione:
+   - `GROUP BY branch_code, task_stato` su `vendite.attivita_fatturabili_lotti_task_runs`.
+4. Test DB:
+   - aggiunto pgTAP `db/pgtap/vendite/test-attivita-branch-summary-v1.sql`.
+   - aggiunto alla suite `scripts/testpgtap-fatturazione-logs.sh`.
+
+**Azione richiesta al team backend (integrazione)**
+
+1. Repository:
+   - introdurre metodo `get_attivita_branch_summary(lotto_id)` che legge la nuova funzione DB.
+2. Service status:
+   - sostituire la logica attuale (`list_attivita_task_runs(limit=500)` + `_compute_branch_summary`).
+3. Pulizia codice:
+   - rimuovere `_compute_branch_summary` dal service una volta agganciato il repository.
+
+**Integrazione backend (23-02-2026): COMPLETATA**
+
+- `attivita_pipeline_repository.py`: aggiunto `get_attivita_branch_summary` che chiama `fn_get_attivita_branch_summary`.
+- `attivita_pipeline_service.py`: `fn_get_attivita_pipeline_status` usa `repo.get_attivita_branch_summary`; rimossa `_compute_branch_summary`.
+- Test: aggiunto `test_get_attivita_branch_summary_returns_dict` in `test_attivita_pipeline_repository.py`; aggiornato `test_attivita_pipeline_service.py`.
+
+### §11.3 Sostituire query dirette su `attivita_fatturabili_lotti` con funzione DB
+
+**Contesto**: `AttivitaPipelineRepository` contiene tre metodi con SELECT separati
+sulla stessa tabella `vendite.attivita_fatturabili_lotti`:
+
+- `get_lotto_attivita_stato` — solo `stato_lotto`
+- `get_lotto_attivita_full_stato` — `stato_lotto` + `stato_operativo`
+- `is_lotto_attivita_in_esecuzione` — `stato_lotto = 'IN_ESECUZIONE'`
+
+Ogni metodo apre un cursore separato per leggere lo stesso record.
+
+**Miglioramento**: creare `vendite.fn_get_attivita_lotto_info(lotto_id)`
+che restituisce `(stato_lotto, stato_operativo, is_in_esecuzione)` in un
+unico round-trip. I tre metodi Python diventerebbero delegati dello stesso metodo
+repository `get_lotto_attivita_info(lotto_id)`.
+
+**Impatto backend**: riduce i round-trip DB nel flusso runner (che chiama
+`is_lotto_attivita_in_esecuzione` all'avvio e poi eventualmente `get_lotto_attivita_stato`).
+
+**Stato avanzamento (23-02-2026, DB): COMPLETATO**
+
+Implementato lato DB:
+
+1. Nuova funzione SQL:
+   - `vendite.fn_get_attivita_lotto_info(p_lotto_id bigint)`
+   - output: `stato_lotto`, `stato_operativo`, `is_in_esecuzione`.
+2. Regole:
+   - validazione `lotto_id` obbligatorio e `> 0`;
+   - lotto inesistente -> 0 righe.
+3. Test DB:
+   - aggiunto pgTAP `db/pgtap/vendite/test-attivita-lotto-info-v1.sql`;
+   - aggiunto alla suite `scripts/testpgtap-fatturazione-logs.sh`.
+
+**Azione richiesta al team backend (integrazione)**
+
+1. Repository:
+   - introdurre `get_lotto_attivita_info(lotto_id)` su funzione DB.
+2. Refactor metodi:
+   - `get_lotto_attivita_stato`, `get_lotto_attivita_full_stato`,
+     `is_lotto_attivita_in_esecuzione` devono delegare al nuovo metodo unico
+     oppure essere deprecati/rimossi.
+
+**Integrazione backend (23-02-2026): COMPLETATA**
+
+- `attivita_pipeline_repository.py`: aggiunto `get_lotto_attivita_info` che chiama `fn_get_attivita_lotto_info`; i tre metodi esistenti delegano a questo.
+- Test: aggiunto `test_get_lotto_attivita_info_returns_dict` con verifica SQL e delega metodi.
+
+### §11.4 Helper interno `_decode_jsonb` nel repository attivita
+
+**Contesto**: `AttivitaPipelineRepository` ripete il pattern di decodifica JSONB
+in quattro metodi (`list_sorgenti_abilitate`, `get_attivita_step_processes`,
+`get_attivita_task_policy`, `list_attivita_task_runs`):
+
+```python
+if isinstance(value, str):
+    try:
+        value = json.loads(value)
+    except json.JSONDecodeError:
+        value = default
+```
+
+**Miglioramento**: helper statico privato da estrarre nel repository:
+
+```python
+@staticmethod
+def _decode_jsonb(value, default):
+    if isinstance(value, (list, dict)):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            pass
+    return default
+```
+
+**Impatto backend**: intervento puramente interno al repository (nessun cambio
+interfaccia pubblica). Riduce il rischio di evoluzione inconsistente tra i blocchi.
+
+**Stato avanzamento (23-02-2026, DB): NON APPLICABILE**
+
+1. Nessuna modifica schema/funzioni SQL necessaria.
+2. Nessun changeset DB previsto per questo punto.
+3. Nessun pgTAP DB richiesto (refactor solo applicativo Python).
+
+**Azione richiesta al team backend (integrazione)**
+
+1. Estrarre helper `_decode_jsonb(value, default)` nel repository attivita.
+2. Riutilizzare helper in:
+   - `list_sorgenti_abilitate`
+   - `get_attivita_step_processes`
+   - `get_attivita_task_policy`
+   - `list_attivita_task_runs`
+3. Mantenere invariata interfaccia pubblica repository/service.
+
+**Integrazione backend (23-02-2026): COMPLETATA**
+
+- `attivita_pipeline_repository.py`: aggiunto `_decode_jsonb` statico; applicato in tutti e 4 i metodi elencati.
+
+### §11.5 Wrappare `list_sorgenti_abilitate` in funzione DB
+
+**Contesto**: `list_sorgenti_abilitate` esegue SELECT diretto su
+`vendite.attivita_fatturabili_sorgenti_branch_policy`
+con filtro e ordinamento embedded nel codice Python.
+
+**Miglioramento**: creare `vendite.fn_list_attivita_sorgenti_abilitate(utility_id)`
+per allineare il pattern con le altre funzioni DB del dominio
+(`fn_list_attivita_pipeline_steps`, `fn_resolve_attivita_pipeline_step`).
+
+**Impatto backend**:
+
+- query inline sostituita con `SELECT * FROM vendite.fn_list_attivita_sorgenti_abilitate(%s)`;
+- logica di filtro modificabile solo lato DB senza deploy backend.
+
+**Stato avanzamento (23-02-2026, DB): COMPLETATO**
+
+Implementato lato DB:
+
+1. Nuova funzione SQL:
+   - `vendite.fn_list_attivita_sorgenti_abilitate(p_utility_id integer DEFAULT NULL)`
+   - output: `sorgente_tipo_id`, `branch_code`, `abilitata`, `acquisizione_mode`,
+     `block_scope`, `priorita`, `meta`.
+2. Regole:
+   - filtra solo policy `attivo=true` e `abilitata=true`;
+   - ordinamento `priorita, id`;
+   - parametro `utility_id` mantenuto per compatibilita` (oggi non filtrante).
+3. Test DB:
+   - aggiunto pgTAP `db/pgtap/vendite/test-attivita-list-sorgenti-abilitate-v1.sql`;
+   - aggiunto alla suite `scripts/testpgtap-fatturazione-logs.sh`.
+
+**Azione richiesta al team backend (integrazione)**
+
+1. Repository:
+   - sostituire query diretta in `list_sorgenti_abilitate` con chiamata a
+     `vendite.fn_list_attivita_sorgenti_abilitate(%s)`.
+2. Refactor:
+   - mantenere la firma del metodo invariata;
+   - lasciare al DB l'ordinamento/filtro sorgenti abilitate.
+
+**Integrazione backend (23-02-2026): COMPLETATA**
+
+- `attivita_pipeline_repository.py`: `list_sorgenti_abilitate` usa `fn_list_attivita_sorgenti_abilitate`; mapping righe invariato.
+- Test: `test_list_sorgenti_abilitate_returns_list` aggiornato con assert SQL su `fn_list_attivita_sorgenti_abilitate`.
+
+## 12) Acquisizione reale da PREVENTIVI/ORDINI via COMMESSA (obbligatoria)
+
+### 12.1 Decisione architetturale vincolante
+
+Regola confermata:
+
+1. percorso diretto `preventivo/ordine -> attivita_fatturabili` vietato;
+2. tutte le attivita` fatturabili devono essere emesse da layer commessa;
+3. il layer commessa puo` essere:
+   - `REALE` (commessa operativa richiesta dal processo),
+   - `AUTO` (commessa tecnica/fittizia per casi senza gestione operativa commessa).
+
+Obiettivo:
+- un unico modello di controllo, deduplica e partializzazione prima della fatturazione.
+
+### 12.2 Stato reale (oggi)
+
+1. Pipeline attivita e policy branch/global sono pronte.
+2. Registry task e task-runs runtime sono pronti.
+3. Manca l'acquisizione reale da sorgenti commerciali verso commessa.
+4. Di conseguenza manca anche l'emissione finale commessa -> `attivita_fatturabili` su dati reali.
+
+Conclusione:
+- infrastruttura pronta, ma ingestione operativa ancora da completare con flusso commessa-centrico.
+
+### 12.3 Modello dati operativo (senza lineage root)
+
+In `attivita_fatturabili` restano fondamentali:
+
+1. chiavi sorgente primarie:
+   - `sorgente_tipo_id`
+   - `sorgente_uid`
+   - `sorgente_riga` (coerente con `key_selector` e trigger polimorfo)
+2. collegamenti commessa:
+   - `commessa_id` (nullable in transizione, target: valorizzata sempre),
+   - `commessa_attivita_id` (nullable in transizione, target: valorizzata sempre).
+
+Nota:
+- non serve `lineage_root_source` dedicata; la root e` gia` ricostruibile da `sorgente_*` + relazione commessa.
+
+### 12.4 Implementazioni previste (DB)
+
+#### DB-A1) Ingestione sorgenti verso commessa
+
+Funzioni previste:
+
+1. risoluzione/creazione commessa (`REALE` o `AUTO`) per documento sorgente;
+2. upsert relazione documento -> commessa;
+3. upsert attivita` di commessa per righe/segmenti eleggibili.
+
+Regole minime:
+
+1. stati eleggibili per `PREVENTIVO` e `ORDINE_VENDITA` definiti a policy;
+2. esclusione record annullati/non fatturabili;
+3. idempotenza su chiave sorgente + segmentazione commessa;
+4. coerenza chiavi `sorgente_riga`/`sorgente_uid` per compatibilita` trigger/funzioni.
+
+#### DB-A2) Emissione commessa -> attivita_fatturabili
+
+Funzione/facade prevista:
+
+1. estrazione attivita` commessa eleggibili;
+2. upsert in `vendite.attivita_fatturabili` con link commessa;
+3. metriche standard `inserted/updated/skipped/error`.
+
+#### DB-A3) Pipeline task reali
+
+Sostituire i placeholder `noop` con task concreti:
+
+1. `RACCOLTA_INPUT`:
+   - ingestione da sorgenti commerciali verso commessa;
+2. `GENERAZIONE_OPERATIVA`:
+   - emissione da commessa verso `attivita_fatturabili`;
+3. `NORMALIZZAZIONE`:
+   - normalizza/valida/deduplica.
+
+#### DB-A4) Guardrail anti-bypass
+
+Aggiungere controlli espliciti per impedire inserimenti diretti non autorizzati:
+
+1. vincolo o trigger di coerenza sul path di creazione;
+2. logging tecnico se intercettato tentativo di bypass del layer commessa.
+
+### 12.5 Implementazioni previste (Backend)
+
+1. handler branch `PREVENTIVI` e `ORDINI` devono chiamare funzioni DB commessa-centriche;
+2. nessun handler deve scrivere direttamente `attivita_fatturabili` da documento sorgente;
+3. supporto run `FULL` e `INCREMENTAL` con watermark;
+4. tracciamento metriche e errori su `attivita_fatturabili_lotti_task_runs`.
+
+### 12.6 Test obbligatori
+
+#### pgTAP
+
+1. ingestione `PREVENTIVO/ORDINE` crea/aggiorna commessa in modo idempotente;
+2. emissione commessa -> `attivita_fatturabili` idempotente;
+3. tentativo percorso diretto documento -> `attivita_fatturabili` bloccato;
+4. coerenza `sorgente_riga`/`sorgente_uid` e trigger polimorfo valida.
+
+#### Backend
+
+1. mapping branch -> funzioni commessa-centriche corretto;
+2. run multi-branch con isolamento `BRANCH` e stop `GLOBAL` invariati;
+3. run incrementale non duplica record.
+
+### 12.7 Definition of done (acquisizione reale via commessa)
+
+1. nessun percorso diretto `preventivo/ordine -> attivita_fatturabili` attivo;
+2. pipeline `PREVENTIVI` e `ORDINI` popola commessa e poi `attivita_fatturabili`;
+3. idempotenza verificata su rerun;
+4. test pgTAP + backend verdi;
+5. documentazione aggiornata su funzioni e policy commessa-centriche.
+
+### 12.8 Roadmap operativa (dopo chiusura punto 11)
+
+Fase 1 - Regole sorgente:
+
+1. fissare eleggibilita` stati `PREVENTIVO`/`ORDINE_VENDITA`;
+2. fissare policy commessa `REALE` vs `AUTO`;
+3. validare chiavi sorgente obbligatorie per idempotenza.
+
+Fase 2 - DB ingestione:
+
+1. implementare funzioni ingestione sorgente -> commessa;
+2. implementare funzione emissione commessa -> `attivita_fatturabili`;
+3. aggiornare processi pipeline eliminando i `noop`.
+
+Fase 3 - Backend handlers:
+
+1. collegare handler a funzioni DB nuove;
+2. integrare metriche standard nei task-runs;
+3. abilitare modalita` `FULL`/`INCREMENTAL`.
+
+Fase 4 - Hardening:
+
+1. aggiungere guardrail anti-bypass layer commessa;
+
+### 12.9 Aggiornamento stato (24-02-2026) - canali documento
+
+Completato allineamento DB del registro canali su conversioni documento:
+
+1. funzione `vendite.fn_set_documento_canale_stato` introdotta (upsert/transizioni `APERTO|CONSUMATO|BLOCCATO`);
+2. trigger function `vendite.trgfn_documenti_sync_canali` introdotta;
+3. trigger su `vendite.ordini`, `vendite.ddt`, `vendite.contratti` attivati;
+4. gestione conversioni coperta:
+   - `PREVENTIVO -> ORDINE_VENDITA`
+   - `ORDINE_VENDITA -> DDT_VENDITA`
+   - `CONTRATTO -> DIRETTO`
+5. pgTAP dedicati predisposti:
+   - `db/pgtap/vendite/test-documenti-fatturazione-canali-v1.sql`
+   - `db/pgtap/vendite/test-documenti-canali-sync-v1.sql`
+2. verificare consistency stati lotto/attivita;
+3. validare resume branch-level su scenari reali.
+
+Fase 5 - Validazione finale:
+
+1. chiudere suite pgTAP e backend;
+2. smoke multi-branch con sorgenti reali;
+3. handover finale al team backend su contratto stabile.

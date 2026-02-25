@@ -1,0 +1,323 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: schema base commesse_* (changeset 20260224-05..09)
+-- ------------------------------------------------------------
+-- Indice test (1..16):
+-- 1) Tabella vendite.commesse presente
+-- 2) Tabella vendite.commesse_sorgenti presente
+-- 3) Tabella vendite.commesse_attivita presente
+-- 4) Tabella vendite.commesse_attivita_log presente
+-- 5) Check stato_commessa invalido su commesse
+-- 6) Check ruolo_link invalido su commesse_sorgenti
+-- 7) Vincolo una sola ROOT per commessa
+-- 8) Unicita` (commessa_id, segment_key) su commesse_attivita
+-- 9) Pair sorgente_tipo_id/sorgente_uid coerente su commesse_attivita
+-- 10) pricing_mode invalido bloccato su commesse_attivita
+-- 11) Colonna attivita_fatturabili.commessa_id presente
+-- 12) Colonna attivita_fatturabili.commessa_attivita_id presente
+-- 13) attivita_fatturabili.commessa_id NOT NULL
+-- 14) attivita_fatturabili.commessa_attivita_id NOT NULL
+-- 15) indice legacy uq_attivita_fatturabili_v_sorgente_fk rimosso
+-- 16) indice uq_attivita_fatturabili_commessa_attivita presente
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(16);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'vendite' AND table_name = 'commesse'
+  ),
+  'Tabella vendite.commesse presente'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'vendite' AND table_name = 'commesse_sorgenti'
+  ),
+  'Tabella vendite.commesse_sorgenti presente'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'vendite' AND table_name = 'commesse_attivita'
+  ),
+  'Tabella vendite.commesse_attivita presente'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'vendite' AND table_name = 'commesse_attivita_log'
+  ),
+  'Tabella vendite.commesse_attivita_log presente'
+);
+
+CREATE TEMP TABLE tmp_refs_cs AS
+SELECT
+  (
+    SELECT ba.id
+    FROM anagrafiche.billing_account ba
+    WHERE ba.istanza_utility_id IS NOT NULL
+    ORDER BY ba.id
+    LIMIT 1
+  ) AS billing_account_id,
+  (
+    SELECT ba.utility_id
+    FROM anagrafiche.billing_account ba
+    WHERE ba.istanza_utility_id IS NOT NULL
+    ORDER BY ba.id
+    LIMIT 1
+  ) AS utility_id,
+  (
+    SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id)
+    FROM anagrafiche.billing_account ba
+    WHERE ba.istanza_utility_id IS NOT NULL
+    ORDER BY ba.id
+    LIMIT 1
+  ) AS emittente_soggetto_ruolo_id,
+  (
+    SELECT ba.istanza_utility_id
+    FROM anagrafiche.billing_account ba
+    WHERE ba.istanza_utility_id IS NOT NULL
+    ORDER BY ba.id
+    LIMIT 1
+  ) AS istanza_utility_id,
+  (
+    SELECT a.id
+    FROM catalogo.articoli a
+    WHERE a.attivo IS TRUE
+    ORDER BY a.data_insert DESC NULLS LAST
+    LIMIT 1
+  ) AS articolo_id,
+  (
+    SELECT u.id
+    FROM catalogo.unita_misura u
+    WHERE u.attivo IS TRUE
+    ORDER BY u.id
+    LIMIT 1
+  ) AS uom_id,
+  (
+    SELECT t.id
+    FROM config.tipi_doc_fiscale t
+    WHERE t.attivo IS TRUE
+    ORDER BY t.id
+    LIMIT 1
+  ) AS tipo_doc_fiscale_id,
+  (
+    SELECT v.id
+    FROM config.valute v
+    ORDER BY v.id
+    LIMIT 1
+  ) AS valuta_id,
+  (
+    SELECT s.id
+    FROM config.sorgenti s
+    WHERE s.attivo IS TRUE
+    ORDER BY s.id
+    LIMIT 1
+  ) AS sorgente_tipo_id;
+
+CREATE TEMP TABLE tmp_codes_cs AS
+SELECT
+  ('CMS_' || substr(md5(clock_timestamp()::text), 1, 12))::varchar(64) AS codice1,
+  ('CMS_' || substr(md5((clock_timestamp() + interval '1 sec')::text), 1, 12))::varchar(64) AS codice2;
+
+SELECT throws_ok(
+  $$
+  INSERT INTO vendite.commesse (
+    codice, tipo_commessa, stato_commessa, policy_fatturazione, fatturazione_immediata, priorita_operativa,
+    billing_account_id, utility_id, emittente_soggetto_ruolo_id
+  )
+  SELECT
+    c.codice1, 'AUTO', 'INVALIDO', 'DA_DOCUMENTO', false, 'NORMALE',
+    r.billing_account_id, r.utility_id, r.emittente_soggetto_ruolo_id
+  FROM tmp_codes_cs c CROSS JOIN tmp_refs_cs r;
+  $$,
+  '23514',
+  NULL,
+  'Check stato_commessa invalido su commesse'
+);
+
+CREATE TEMP TABLE tmp_commessa_cs AS
+WITH ins AS (
+  INSERT INTO vendite.commesse (
+    codice, tipo_commessa, stato_commessa, policy_fatturazione, fatturazione_immediata, priorita_operativa,
+    billing_account_id, utility_id, emittente_soggetto_ruolo_id
+  )
+  SELECT
+    c.codice1, 'AUTO', 'BOZZA', 'DA_DOCUMENTO', false, 'NORMALE',
+    r.billing_account_id, r.utility_id, r.emittente_soggetto_ruolo_id
+  FROM tmp_codes_cs c CROSS JOIN tmp_refs_cs r
+  RETURNING id
+)
+SELECT id FROM ins;
+
+SELECT throws_ok(
+  $$
+  INSERT INTO vendite.commesse_sorgenti (
+    commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link
+  )
+  SELECT
+    (SELECT id FROM tmp_commessa_cs), (SELECT sorgente_tipo_id FROM tmp_refs_cs), 'SRC-A', 'SECONDARIA';
+  $$,
+  '23514',
+  NULL,
+  'Check ruolo_link invalido su commesse_sorgenti'
+);
+
+INSERT INTO vendite.commesse_sorgenti (
+  commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link
+)
+SELECT
+  (SELECT id FROM tmp_commessa_cs), (SELECT sorgente_tipo_id FROM tmp_refs_cs), 'SRC-ROOT-A', 'ROOT';
+
+SELECT throws_ok(
+  $$
+  INSERT INTO vendite.commesse_sorgenti (
+    commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link
+  )
+  SELECT
+    (SELECT id FROM tmp_commessa_cs), (SELECT sorgente_tipo_id FROM tmp_refs_cs), 'SRC-ROOT-B', 'ROOT';
+  $$,
+  '23505',
+  NULL,
+  'Vincolo una sola ROOT per commessa'
+);
+
+CREATE TEMP TABLE tmp_attivita_commessa_cs AS
+WITH ins AS (
+  INSERT INTO vendite.commesse_attivita (
+    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
+    competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
+    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione
+  )
+  SELECT
+    (SELECT id FROM tmp_commessa_cs), 'SEG-001', r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
+    date_trunc('month', current_date)::date, current_date, current_date, r.tipo_doc_fiscale_id, r.valuta_id,
+    1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA'
+  FROM tmp_refs_cs r
+  RETURNING id
+)
+SELECT id FROM ins;
+
+SELECT throws_ok(
+  $$
+  INSERT INTO vendite.commesse_attivita (
+    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
+    competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
+    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione
+  )
+  SELECT
+    (SELECT id FROM tmp_commessa_cs), 'SEG-001', r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
+    date_trunc('month', current_date)::date, current_date, current_date, r.tipo_doc_fiscale_id, r.valuta_id,
+    1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA'
+  FROM tmp_refs_cs r;
+  $$,
+  '23505',
+  NULL,
+  'Unicita` (commessa_id, segment_key) su commesse_attivita'
+);
+
+SELECT throws_ok(
+  $$
+  INSERT INTO vendite.commesse_attivita (
+    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
+    competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
+    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione,
+    sorgente_tipo_id, sorgente_uid
+  )
+  SELECT
+    (SELECT id FROM tmp_commessa_cs), 'SEG-PAIR-001', r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
+    date_trunc('month', current_date)::date, current_date, current_date, r.tipo_doc_fiscale_id, r.valuta_id,
+    1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA',
+    r.sorgente_tipo_id, NULL
+  FROM tmp_refs_cs r;
+  $$,
+  '23514',
+  NULL,
+  'Pair sorgente_tipo_id/sorgente_uid coerente su commesse_attivita'
+);
+
+SELECT throws_ok(
+  $$
+  INSERT INTO vendite.commesse_attivita (
+    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
+    competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
+    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione
+  )
+  SELECT
+    (SELECT id FROM tmp_commessa_cs), 'SEG-MODE-001', r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
+    date_trunc('month', current_date)::date, current_date, current_date, r.tipo_doc_fiscale_id, r.valuta_id,
+    1.2300000000, 'DYNAMIC', 'BOZZA', 'NON_EMESSA'
+  FROM tmp_refs_cs r;
+  $$,
+  '23514',
+  NULL,
+  'pricing_mode invalido bloccato su commesse_attivita'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1
+    FROM information_schema.columns c
+    WHERE c.table_schema = 'vendite'
+      AND c.table_name = 'attivita_fatturabili'
+      AND c.column_name = 'commessa_id'
+  ),
+  'Colonna attivita_fatturabili.commessa_id presente'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1
+    FROM information_schema.columns c
+    WHERE c.table_schema = 'vendite'
+      AND c.table_name = 'attivita_fatturabili'
+      AND c.column_name = 'commessa_attivita_id'
+  ),
+  'Colonna attivita_fatturabili.commessa_attivita_id presente'
+);
+
+
+
+SELECT ok(
+  EXISTS (
+    SELECT 1
+    FROM information_schema.columns c
+    WHERE c.table_schema = 'vendite'
+      AND c.table_name = 'attivita_fatturabili'
+      AND c.column_name = 'commessa_id'
+      AND c.is_nullable = 'NO'
+  ),
+  'attivita_fatturabili.commessa_id NOT NULL'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1
+    FROM information_schema.columns c
+    WHERE c.table_schema = 'vendite'
+      AND c.table_name = 'attivita_fatturabili'
+      AND c.column_name = 'commessa_attivita_id'
+      AND c.is_nullable = 'NO'
+  ),
+  'attivita_fatturabili.commessa_attivita_id NOT NULL'
+);
+
+SELECT ok(
+  to_regclass('vendite.uq_attivita_fatturabili_v_sorgente_fk') IS NULL,
+  'indice legacy uq_attivita_fatturabili_v_sorgente_fk rimosso'
+);
+
+SELECT ok(
+  to_regclass('vendite.uq_attivita_fatturabili_commessa_attivita') IS NOT NULL,
+  'indice uq_attivita_fatturabili_commessa_attivita presente'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

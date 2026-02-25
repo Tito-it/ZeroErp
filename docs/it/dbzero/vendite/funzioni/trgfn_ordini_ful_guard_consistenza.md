@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_ordini_ful_guard_consistenza.md" %}
 # ⚙️ Funzione `trgfn_ordini_ful_guard_consistenza`
 
 ```sql

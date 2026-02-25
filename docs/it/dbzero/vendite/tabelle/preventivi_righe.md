@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/preventivi_righe.md" %}
 # 📚 Tabella `preventivi_righe`
 
 ## 🗂️ Campi principali

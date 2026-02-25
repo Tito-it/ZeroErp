@@ -17,13 +17,14 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 18-02-2026)  
+(latest review 23-02-2026)  
 La funzione **`vendite.fn_get_lotto_segnalazioni_summary()`** restituisce
 un riepilogo aggregato delle segnalazioni attive (`C`/`W`/`I`) di un lotto,
 unificando:
 
 * log fattura (`vendite.fatture_log`) tramite legame lotto-fatture;
 * log lotto (`vendite.fatturazione_lotti_log`).
+* stato tecnico del ponte lotto-fatture (`vendite.fatturazione_lotti_fatture.stato_esecuzione`).
 
 ---
 
@@ -35,6 +36,8 @@ unificando:
   * `C` = critical
   * `W` = warning
   * `I` = info (solo su log lotto)
+* Ritorna anche il conteggio tecnico:
+  * `fatture_stato_esecuzione_errore_count` = numero fatture del lotto in stato esecuzione `ERRORE`.
 * Output sempre valorizzato con `0` quando non ci sono righe.
 
 ---
@@ -48,6 +51,7 @@ La funzione ritorna una sola riga con:
 * `lotto_critical_count`
 * `lotto_warning_count`
 * `lotto_info_count`
+* `fatture_stato_esecuzione_errore_count`
 
 ---
 

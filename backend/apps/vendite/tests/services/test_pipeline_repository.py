@@ -218,7 +218,7 @@ class VenditePipelineRepositoryUnitTests(TestCase):
     def test_get_lotto_segnalazioni_summary_maps_counts(self, mocked_cursor_factory):
         cursor = MagicMock()
         cursor.__enter__.return_value = cursor
-        cursor.fetchone.return_value = (1, 2, 3, 4, 5)
+        cursor.fetchone.return_value = (1, 2, 3, 4, 5, 7)
         mocked_cursor_factory.return_value = cursor
 
         repo = VenditePipelineRepository()
@@ -232,6 +232,7 @@ class VenditePipelineRepositoryUnitTests(TestCase):
                 "lotto_critical_count": 3,
                 "lotto_warning_count": 4,
                 "lotto_info_count": 5,
+                "fatture_stato_esecuzione_errore_count": 7,
             },
         )
         execute_sql, execute_params = cursor.execute.call_args.args

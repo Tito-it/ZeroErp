@@ -37,5 +37,14 @@
 | pk_attivita_fatt_sorgenti_branch_policy | `CREATE UNIQUE INDEX pk_attivita_fatt_sorgenti_branch_policy ON vendite.attivita_fatturabili_sorgenti_branch_policy USING btree (id)` |
 | uq_attivita_fatt_sorgenti_branch_policy_sorgente | `CREATE UNIQUE INDEX uq_attivita_fatt_sorgenti_branch_policy_sorgente ON vendite.attivita_fatturabili_sorgenti_branch_policy USING btree (sorgente_tipo_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_attivita_fatturabili_sorgenti_branch_policy_a10_sorg_9649f2 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
+| trg_attivita_fatturabili_sorgenti_branch_policy_a10_sorg_9649f2 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
+| trg_attivita_fatturabili_sorgenti_branch_policy_audit_da_f8fcc1 | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_attivita_fatturabili_sorgenti_branch_policy_gen_tx_i_b250d3 | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_attivita_fatturabili_sorgenti_branch_policy_gen_tx_i_b250d3 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

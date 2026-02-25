@@ -1,0 +1,206 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260224-11-create-fn-link-commessa-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20260224-11-create-fn-link-commessa-sorgente
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      comment: "Collega o valida la ROOT source di una commessa con idempotenza."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_link_commessa_sorgente(
+                p_commessa_id vendite.commesse_sorgenti.commessa_id%TYPE,
+                p_sorgente_tipo_id vendite.commesse_sorgenti.sorgente_tipo_id%TYPE,
+                p_sorgente_uid vendite.commesse_sorgenti.sorgente_uid%TYPE,
+                p_sorgente_riga vendite.commesse_sorgenti.sorgente_riga%TYPE DEFAULT NULL::bigint,
+                p_meta vendite.commesse_sorgenti.meta%TYPE DEFAULT '{}'::jsonb
+              )
+              RETURNS vendite.commesse_sorgenti.id%TYPE
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_link_id vendite.commesse_sorgenti.id%TYPE;
+                v_existing vendite.commesse_sorgenti%ROWTYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Associare la ROOT source a una commessa in modo
+                --   idempotente e con vincoli di coerenza.
+                --
+                -- Regole:
+                --   - una sola ROOT per commessa
+                --   - se ROOT gia` presente, deve essere identica
+                --   - p_sorgente_uid obbligatoria e non vuota
+                -- =========================================================
+                IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_link_commessa_sorgente','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE','severity','C','code','E_GENERICO',
+                      'lotto_id',NULL,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','commessa_id obbligatorio','commessa_id',p_commessa_id)
+                    ),
+                    NULL::uuid,
+                    'commessa_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_link_commessa_sorgente','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE','severity','C','code','E_GENERICO',
+                      'lotto_id',NULL,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','sorgente_tipo_id obbligatorio','sorgente_tipo_id',p_sorgente_tipo_id)
+                    ),
+                    NULL::uuid,
+                    'sorgente_tipo_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_sorgente_uid IS NULL OR btrim(p_sorgente_uid) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_link_commessa_sorgente','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE','severity','C','code','E_GENERICO',
+                      'lotto_id',NULL,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','sorgente_uid obbligatoria')
+                    ),
+                    NULL::uuid,
+                    'sorgente_uid obbligatoria'
+                  );
+                END IF;
+
+                IF p_sorgente_riga IS NOT NULL AND p_sorgente_riga < 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_link_commessa_sorgente','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE','severity','C','code','E_GENERICO',
+                      'lotto_id',NULL,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','sorgente_riga non valida','sorgente_riga',p_sorgente_riga)
+                    ),
+                    NULL::uuid,
+                    'sorgente_riga non valida'
+                  );
+                END IF;
+
+                IF NOT EXISTS (
+                  SELECT 1
+                  FROM vendite.commesse c
+                  WHERE c.id = p_commessa_id
+                ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_link_commessa_sorgente','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE','severity','C','code','E_GENERICO',
+                      'lotto_id',NULL,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','commessa non trovata','commessa_id',p_commessa_id)
+                    ),
+                    NULL::uuid,
+                    concat('commessa non trovata: ', p_commessa_id::text)
+                  );
+                END IF;
+
+                SELECT cs.*
+                INTO v_existing
+                FROM vendite.commesse_sorgenti cs
+                WHERE cs.commessa_id = p_commessa_id
+                  AND cs.ruolo_link = 'ROOT'
+                FOR UPDATE;
+
+                IF FOUND THEN
+                  IF v_existing.sorgente_tipo_id <> p_sorgente_tipo_id
+                     OR v_existing.sorgente_uid <> btrim(p_sorgente_uid)
+                     OR COALESCE(v_existing.sorgente_riga, -1) <> COALESCE(p_sorgente_riga, -1) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite','fn_link_commessa_sorgente','E_GENERICO',
+                      jsonb_build_object(
+                        'scope','COMMESSE','severity','C','code','E_GENERICO',
+                        'lotto_id',NULL,'fattura_id',NULL,
+                        'context',jsonb_build_object(
+                          'detail','ROOT gia presente con chiave diversa',
+                          'commessa_id',p_commessa_id,
+                          'current_sorgente_tipo_id',v_existing.sorgente_tipo_id,
+                          'current_sorgente_uid',v_existing.sorgente_uid,
+                          'current_sorgente_riga',v_existing.sorgente_riga,
+                          'new_sorgente_tipo_id',p_sorgente_tipo_id,
+                          'new_sorgente_uid',p_sorgente_uid,
+                          'new_sorgente_riga',p_sorgente_riga
+                        )
+                      ),
+                      NULL::uuid,
+                      concat('ROOT gia presente con chiave diversa: ', p_commessa_id::text ,
+                      ' current_sorgente_tipo_id ',v_existing.sorgente_tipo_id::text,
+                          ' current_sorgente_uid ',v_existing.sorgente_uid,
+                          ' current_sorgente_riga ',COALESCE(v_existing.sorgente_riga::text,'NULL'),
+                          ' new_sorgente_tipo_id ',p_sorgente_tipo_id::text,
+                          ' new_sorgente_uid ',p_sorgente_uid,
+                          ' new_sorgente_riga ',COALESCE(p_sorgente_riga::text,'NULL')
+                        )
+                    );
+                  END IF;
+
+                  UPDATE vendite.commesse_sorgenti cs
+                  SET meta = COALESCE(cs.meta, '{}'::jsonb) || COALESCE(p_meta, '{}'::jsonb)
+                  WHERE cs.id = v_existing.id
+                  RETURNING cs.id INTO v_link_id;
+
+                  RETURN v_link_id;
+                END IF;
+
+                BEGIN
+                  INSERT INTO vendite.commesse_sorgenti (
+                    commessa_id,
+                    sorgente_tipo_id,
+                    sorgente_uid,
+                    sorgente_riga,
+                    ruolo_link,
+                    meta
+                  )
+                  VALUES (
+                    p_commessa_id,
+                    p_sorgente_tipo_id,
+                    btrim(p_sorgente_uid),
+                    p_sorgente_riga,
+                    'ROOT',
+                    COALESCE(p_meta, '{}'::jsonb)
+                  )
+                  RETURNING id INTO v_link_id;
+                EXCEPTION
+                  WHEN unique_violation THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite','fn_link_commessa_sorgente','E_GENERICO',
+                      jsonb_build_object(
+                        'scope','COMMESSE','severity','C','code','E_GENERICO',
+                        'lotto_id',NULL,'fattura_id',NULL,
+                        'context',jsonb_build_object(
+                          'detail','violazione unicita root source',
+                          'commessa_id',p_commessa_id,
+                          'sorgente_tipo_id',p_sorgente_tipo_id,
+                          'sorgente_uid',p_sorgente_uid
+                        )
+                      ),
+                      NULL::uuid,
+                      concat('violazione unicita root source: ', p_commessa_id::text
+                          ,' sorgente_tipo_id ',p_sorgente_tipo_id::text,
+                          ' sorgente_uid ',p_sorgente_uid 
+                        )
+                    );
+                END;
+
+                RETURN v_link_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_link_commessa_sorgente(bigint, bigint, text, bigint, jsonb)
+              IS 'Collega la ROOT source a una commessa in modo idempotente; errore se la ROOT esistente non coincide.';

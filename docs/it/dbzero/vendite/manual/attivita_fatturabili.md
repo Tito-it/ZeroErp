@@ -67,6 +67,8 @@ Tipico filtro di eleggibilità per il motore:
 
 * **Identificazione & riferimenti**:
   `uid` (identificativo applicativo), `articolo_id` (servizio/voce), `istanza_utility_id` (punto tecnico), `billing_account_id` (opz. intestazione economica), `area_geografica_id` (opz. area di fatturazione).
+  Con modello commessa attivo:
+  `commessa_id` (testata), `commessa_attivita_id` (riga commessa).
 * **Dati attività**:
   `data_attivita`, `quantita`, `meta` (estensioni specifiche: matricole, rilevazioni, tariffa applicata, ecc.).
 * **Competenza & gating**:
@@ -74,13 +76,14 @@ Tipico filtro di eleggibilità per il motore:
 * **Stato di processo**:
   `approvato`, `fatturato`, `lock_in_fatturazione`, `lock_batch_id`, `fattura_riga_id` (consumo su documento).
 * **Batch alimentazione**:
-  `lotto_attivita_id` (lotto alimentazione), `attivita_consumi_id` (testata consumi).
+  `lotto_attivita_id` (lotto alimentazione legacy), `attivita_consumi_id` (testata consumi legacy), `commessa_id`/`commessa_attivita_id` (nuovo percorso standard).
 * **Idempotenza import**:
   `uid` (identita` applicativa) e `sorgente_tipo_id`, `sorgente_uid` (vincolo unico parziale per evitare duplicazioni dai sistemi esterni).
 * **Governance**:
   `tx_id`, `storicizza`, `user_*`, `data_*`.
 * **Economiche & tipo documento**:
-  `tipo_doc_fiscale_id`, `valuta_id`, `prezzo_unitario` (snapshot economico).
+  `tipo_doc_fiscale_id`, `valuta_id`, `prezzo_unitario` (snapshot economico),
+  `prezzo_bloccato` (freeze prezzo da override/policy).
   In fase di alimentazione il tipo documento segue l’ordine: sorgente → utility (fallback).
 * **Misure & dettaglio sorgente**:
   `sorgente_riga` (riferimento tecnico riga sorgente), `uom_id` (u.m. base), `qta_operativa` (quantita operativa), `uom_operativa_id` (u.m. operativa), `factor_to_base` (fattore conversione verso base).

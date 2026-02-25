@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_preventivi_normalize.md" %}
 # ⚙️ Funzione `trgfn_preventivi_normalize`
 
 ```sql

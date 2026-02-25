@@ -13,6 +13,8 @@ Indice test eseguiti:
 11) LottoPipelineRunnerUnitTests.test_runner_does_not_close_lotto_when_stato_has_no_chiude_lotto_flag
 12) LottoPipelineRunnerUnitTests.test_runner_does_not_block_new_lotto_when_initial_state_is_in_esecuzione
 13) LottoPipelineRunnerUnitTests.test_runner_blocks_when_lotto_has_critical_signals
+14) LottoPipelineRunnerUnitTests.test_runner_blocks_when_fatture_hanno_stato_esecuzione_errore
+15) LottoPipelineRunnerUnitTests.test_runner_non_blocca_se_solo_warning_senza_critical_e_senza_stato_errore
 """
 
 from contextlib import nullcontext
@@ -63,6 +65,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 "lotto_critical_count": 0,
                 "lotto_warning_count": 0,
                 "lotto_info_count": 0,
+                "fatture_stato_esecuzione_errore_count": 0,
             }
 
         # Scopo: Aggiorna `lotto_job_stato` con i valori richiesti dal flusso corrente.
@@ -430,6 +433,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_critical_count": 0,
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _CriticalSignalsRepo()
@@ -440,3 +444,50 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_CRITICAL")
         self.assertFalse(step_executor.called)
+
+    # Scopo: Verifica che il runner blocchi quando la tabella ponte ha fatture con stato_esecuzione=ERRORE,
+    # anche in assenza di segnalazioni critical nei log (guard unificata PRE-1).
+    def test_runner_blocks_when_fatture_hanno_stato_esecuzione_errore(self):
+        class _StatoEsecuzioneErroreRepo(self._RepoMock):
+            # Scopo: Restituisce riepilogo con fatture in stato errore per test blocco.
+            def get_lotto_segnalazioni_summary(self, lotto_id):
+                return {
+                    "fatture_critical_count": 0,
+                    "fatture_warning_count": 0,
+                    "lotto_critical_count": 0,
+                    "lotto_warning_count": 0,
+                    "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 2,
+                }
+
+        repo = _StatoEsecuzioneErroreRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            with self.assertRaises(ServiceError) as exc:
+                runner.run_pipeline(LottoPipelineParams(dry_run=False))
+        self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_CRITICAL")
+        self.assertFalse(step_executor.called)
+
+    # Scopo: Verifica che la sola presenza di warning (senza critical e senza stato_esecuzione=ERRORE)
+    # non blocchi il runner (partial failure non bloccante).
+    def test_runner_non_blocca_se_solo_warning_senza_critical_e_senza_stato_errore(self):
+        class _OnlyWarningsRepo(self._RepoMock):
+            # Scopo: Restituisce riepilogo segnalazioni lotto per severita`.
+            def get_lotto_segnalazioni_summary(self, lotto_id):
+                return {
+                    "fatture_critical_count": 0,
+                    "fatture_warning_count": 3,
+                    "lotto_critical_count": 0,
+                    "lotto_warning_count": 1,
+                    "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 0,
+                }
+
+        repo = _OnlyWarningsRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            result = runner.run_pipeline(LottoPipelineParams(dry_run=True))
+        self.assertEqual(result, 10)
+        self.assertTrue(step_executor.called)

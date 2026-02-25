@@ -38,7 +38,8 @@ Obiettivi principali:
 2. **Popolamento righe** – associazione articoli/servizi su `vendite.ordini_righe`.  
 3. **Conferma** – cambio stato → “confermato”, calcolo totali e fissazione prezzi.  
 4. **Evasione** – generazione automatica DDT o collegamento con logistica.  
-5. **Fatturazione** – import da `ordini` a `fatture_righe` in base alle quantità evase.
+5. **Alimentazione attività fatturabili** – acquisizione da `ordini` verso `vendite.attivita_fatturabili`.
+6. **Fatturazione** – generazione fatture a partire da `attivita_fatturabili` (pipeline lotto/fatture), non direttamente da `ordini`.
 
 ---
 

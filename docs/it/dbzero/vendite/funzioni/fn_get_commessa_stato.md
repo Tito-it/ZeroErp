@@ -1,0 +1,94 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_get_commessa_stato.md" %}
+# ⚙️ Funzione `fn_get_commessa_stato`
+
+```sql
+CREATE FUNCTION fn_get_commessa_stato(p_commessa_id bigint)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_get_commessa_stato(p_commessa_id bigint)
+ RETURNS TABLE(commessa_id bigint, stato_commessa character varying, policy_fatturazione character varying, fatturazione_immediata boolean, priorita_operativa character varying, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, total_attivita bigint, total_approvate bigint, total_non_approvate bigint, total_emesse bigint, total_non_emesse bigint, total_prezzo_da_riallineare bigint, last_update timestamp with time zone)
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  -- =========================================================
+  -- Scopo:
+  --   Fornire in un'unica chiamata stato testata commessa e
+  --   contatori principali delle righe commessa.
+  --
+  -- Regole:
+  --   - p_commessa_id obbligatorio e > 0
+  --   - errore esplicito se commessa non trovata
+  -- =========================================================
+  IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite','fn_get_commessa_stato','E_GENERICO',
+      jsonb_build_object(
+        'scope','COMMESSE','severity','C','code','E_GENERICO',
+        'lotto_id',NULL,'fattura_id',NULL,
+        'context',jsonb_build_object('detail','commessa_id obbligatorio','commessa_id',p_commessa_id)
+      ),
+      NULL::uuid,
+      'commessa_id obbligatorio'
+    );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM vendite.commesse c
+    WHERE c.id = p_commessa_id
+  ) THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite','fn_get_commessa_stato','E_GENERICO',
+      jsonb_build_object(
+        'scope','COMMESSE','severity','C','code','E_GENERICO',
+        'lotto_id',NULL,'fattura_id',NULL,
+        'context',jsonb_build_object('detail','commessa non trovata','commessa_id',p_commessa_id)
+      ),
+      NULL::uuid,
+      concat('commessa non trovata: ', p_commessa_id::text)
+    );
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    c.id AS commessa_id,
+    c.stato_commessa,
+    c.policy_fatturazione,
+    c.fatturazione_immediata,
+    c.priorita_operativa,
+    c.billing_account_id,
+    c.utility_id,
+    c.emittente_soggetto_ruolo_id,
+    COALESCE(count(ca.id), 0)::bigint AS total_attivita,
+    COALESCE(count(*) FILTER (WHERE ca.stato_approvazione = 'APPROVATA'), 0)::bigint AS total_approvate,
+    COALESCE(count(*) FILTER (WHERE ca.stato_approvazione <> 'APPROVATA'), 0)::bigint AS total_non_approvate,
+    COALESCE(count(*) FILTER (WHERE ca.stato_emissione = 'EMESSA'), 0)::bigint AS total_emesse,
+    COALESCE(count(*) FILTER (WHERE ca.stato_emissione <> 'EMESSA'), 0)::bigint AS total_non_emesse,
+    COALESCE(count(*) FILTER (WHERE ca.prezzo_da_riallineare IS TRUE), 0)::bigint AS total_prezzo_da_riallineare,
+    GREATEST(c.data_update, COALESCE(max(ca.data_update), c.data_update)) AS last_update
+  FROM vendite.commesse c
+  LEFT JOIN vendite.commesse_attivita ca
+    ON ca.commessa_id = c.id
+  WHERE c.id = p_commessa_id
+  GROUP BY
+    c.id,
+    c.stato_commessa,
+    c.policy_fatturazione,
+    c.fatturazione_immediata,
+    c.priorita_operativa,
+    c.billing_account_id,
+    c.utility_id,
+    c.emittente_soggetto_ruolo_id,
+    c.data_update;
+END
+$function$
+
+COMMENT ON FUNCTION vendite.fn_get_commessa_stato(p_commessa_id bigint)
+IS 'Restituisce stato testata commessa e contatori principali di commesse_attivita in un singolo round-trip.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

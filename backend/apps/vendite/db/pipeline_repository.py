@@ -211,6 +211,7 @@ class VenditePipelineRepository:
         return bool(row[0])
 
     # Scopo: Restituisce il riepilogo segnalazioni attive del lotto per severita` e sorgente (fatture/lotto).
+    # Include fatture_stato_esecuzione_errore_count dalla funzione DB (6° colonna).
     def get_lotto_segnalazioni_summary(self, lotto_id: int) -> LottoSegnalazioniSummary:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -220,7 +221,8 @@ class VenditePipelineRepository:
                     fatture_warning_count,
                     lotto_critical_count,
                     lotto_warning_count,
-                    lotto_info_count
+                    lotto_info_count,
+                    fatture_stato_esecuzione_errore_count
                 FROM vendite.fn_get_lotto_segnalazioni_summary(%s)
                 """,
                 [lotto_id],
@@ -233,6 +235,7 @@ class VenditePipelineRepository:
                 "lotto_critical_count": 0,
                 "lotto_warning_count": 0,
                 "lotto_info_count": 0,
+                "fatture_stato_esecuzione_errore_count": 0,
             }
         return {
             "fatture_critical_count": int(row[0]),
@@ -240,6 +243,7 @@ class VenditePipelineRepository:
             "lotto_critical_count": int(row[2]),
             "lotto_warning_count": int(row[3]),
             "lotto_info_count": int(row[4]),
+            "fatture_stato_esecuzione_errore_count": int(row[5]),
         }
 
     # Scopo: Restituisce i task run runtime del lotto ordinati dal più recente per consultazione API/UI.
