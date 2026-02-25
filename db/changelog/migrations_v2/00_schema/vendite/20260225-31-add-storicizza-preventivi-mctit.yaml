@@ -1,0 +1,33 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260225-31-add-storicizza-preventivi-mctit.yaml
+
+  - changeSet:
+      id: 20260225-31-add-storicizza-preventivi
+      author: mctit
+      comment: "Aggiunge storicizza a vendite.preventivi ."
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: preventivi
+                columnName: storicizza
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: preventivi
+            columns:
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValue: "false"
+                  remarks: "Indica se il preventivo è da  storicizzare."

@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260225-22-add-billing-fields-ddt-mctit.yaml
+
+  - changeSet:
+      id: 20260225-22-add-billing-fields-ddt
+      author: mctit
+      comment: "Aggiunge billing_account_id, utility_id, valuta_id a vendite.ddt per allineamento con le altre sorgenti pushabili a commessa."
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: ddt
+                columnName: billing_account_id
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ddt
+                ADD COLUMN billing_account_id bigint,
+                ADD COLUMN utility_id         integer,
+                ADD COLUMN valuta_id          integer;
+
+              ALTER TABLE vendite.ddt
+                ADD CONSTRAINT fk_ddt_v_billing_account
+                  FOREIGN KEY (billing_account_id)
+                  REFERENCES anagrafiche.billing_account(id);
+
+              ALTER TABLE vendite.ddt
+                ADD CONSTRAINT fk_ddt_v_utility
+                  FOREIGN KEY (utility_id)
+                  REFERENCES config.utilities(id);
+
+              ALTER TABLE vendite.ddt
+                ADD CONSTRAINT fk_ddt_v_valuta
+                  FOREIGN KEY (valuta_id)
+                  REFERENCES config.valute(id);
+
+              COMMENT ON COLUMN vendite.ddt.billing_account_id
+                IS 'Billing account per push a commessa. Obbligatorio per DDT pushabili. Per DDT da ordine puo` essere ereditato.';
+              COMMENT ON COLUMN vendite.ddt.utility_id
+                IS 'Utility associata. Per DDT da ordine puo` essere ereditata da billing_account.';
+              COMMENT ON COLUMN vendite.ddt.valuta_id
+                IS 'Valuta documento. Per DDT da ordine puo` essere ereditata.';

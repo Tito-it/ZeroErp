@@ -13,46 +13,53 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()
  LANGUAGE plpgsql
 AS $function$
   DECLARE
-    v_art_ordine uuid;
-    v_uom_ordine bigint;
-    v_art_ddt    uuid;
-    v_uom_ddt    bigint;
-    v_qta_ordine numeric;
-    v_qta_evasa  numeric;
-    v_residuo    numeric;
+    v_art_ordine  vendite.ordini_righe.articolo_id%TYPE;
+    v_uom_ordine  vendite.ordini_righe.uom_operativa_id%TYPE;
+    v_art_ddt     vendite.ddt_righe.articolo_id%TYPE;
+    v_uom_ddt     vendite.ddt_righe.uom_operativa_id%TYPE;
+    v_qta_ordine  vendite.ordini_righe.quantita%TYPE;
+    v_qta_evasa   vendite.ordini_righe_fulfillment.qta_evasa%TYPE;
+    v_residuo     numeric;
   BEGIN
-    -- 0) Guardia quantità > 0
+    -- =========================================================
+    -- Scopo:
+    --   Guardia di consistenza su INSERT/UPDATE di
+    --   ordini_righe_fulfillment: verifica articolo, UOM
+    --   operativa, quantita residua e over-fulfillment.
+    -- =========================================================
+
+    -- 0) Guardia quantita > 0
     IF NEW.qta_evasa IS NULL OR NEW.qta_evasa <= 0 THEN
       PERFORM script.fn_log_and_raise_error(
         'database','trgfn_ordini_ful_guard_consistenza','E_QTA_NON_POSITIVA',
-        jsonb_build_object('qta_evasa',NEW.qta_evasa),
+        jsonb_build_object('qta_evasa', NEW.qta_evasa),
         NULL::uuid,
         NEW.qta_evasa::text
       );
     END IF;
 
     -- 1) Lock concorrente per evitare over-fulfillment:
-    --    - blocco riga ordine
+    --    blocco riga ordine
     PERFORM 1
       FROM vendite.ordini_righe orr
     WHERE orr.id = NEW.ordine_riga_id
     FOR UPDATE;
 
-    --    - blocco gruppo fulfillment della stessa ordine_riga
-    --      (così serializziamo modifiche parallele sulle stesse righe)
+    --    blocco gruppo fulfillment della stessa ordine_riga
+    --    (serializza modifiche parallele sulle stesse righe)
     PERFORM 1
       FROM vendite.ordini_righe_fulfillment q
     WHERE q.ordine_riga_id = NEW.ordine_riga_id
     FOR UPDATE;
 
-    -- 2) Leggo riga ordine (con i valori coerenti appena lockati)
-    SELECT articolo_id, COALESCE(uom_id, 0), qta
+    -- 2) Leggo riga ordine (valori coerenti dopo lock)
+    SELECT articolo_id, COALESCE(uom_operativa_id, 0), quantita
       INTO v_art_ordine, v_uom_ordine, v_qta_ordine
       FROM vendite.ordini_righe
     WHERE id = NEW.ordine_riga_id;
 
     -- 3) Leggo riga ddt
-    SELECT articolo_id, COALESCE(uom_id, 0)
+    SELECT articolo_id, COALESCE(uom_operativa_id, 0)
       INTO v_art_ddt, v_uom_ddt
       FROM vendite.ddt_righe
     WHERE id = NEW.ddt_riga_id;
@@ -60,7 +67,8 @@ AS $function$
     IF v_art_ordine IS NULL OR v_art_ddt IS NULL THEN
       PERFORM script.fn_log_and_raise_error(
         'database','trgfn_ordini_ful_guard_consistenza','E_FULFILL_NOT_FOUND',
-        jsonb_build_object('ordine_riga_id',NEW.ordine_riga_id,'ddt_riga_id',NEW.ddt_riga_id),
+        jsonb_build_object('ordine_riga_id', NEW.ordine_riga_id,
+                          'ddt_riga_id', NEW.ddt_riga_id),
         NULL::uuid,
         'ordine_riga', NEW.ordine_riga_id::text,
         'ddt_riga', NEW.ddt_riga_id::text
@@ -71,27 +79,29 @@ AS $function$
     IF v_art_ordine <> v_art_ddt THEN
       PERFORM script.fn_log_and_raise_error(
         'database','trgfn_ordini_ful_guard_consistenza','E_ARTICOLO_MISMATCH',
-        jsonb_build_object('ordine_riga_id',NEW.ordine_riga_id,'ddt_riga_id',NEW.ddt_riga_id),
-      NULL::uuid,
+        jsonb_build_object('ordine_riga_id', NEW.ordine_riga_id,
+                          'ddt_riga_id', NEW.ddt_riga_id),
+        NULL::uuid,
         'ordine_riga', NEW.ordine_riga_id::text,
         'ddt_riga', NEW.ddt_riga_id::text
-      ) ;
-    END IF;
-
-    -- 5) Match UOM (solo se presenti su entrambe: 0 = "non impostata")
-    IF v_uom_ordine <> 0 AND v_uom_ddt <> 0 AND v_uom_ordine <> v_uom_ddt THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database','trgfn_ordini_ful_guard_consistenza','E_UOM_MISMATCH',
-        jsonb_build_object('ordine_riga_id',NEW.ordine_riga_id,'ddt_riga_id',NEW.ddt_riga_id,
-                          'uom_ordine',v_uom_ordine,'uom_ddt',v_uom_ddt),
-        NULL::uuid,
-        'ordine_riga', NEW.ordine_riga_id::text, v_uom_ordine,
-        'ddt_riga', NEW.ddt_riga_id::text ,v_uom_ddt
-      
       );
     END IF;
 
-    -- 6) residuo = qta ordine - sum(evasa esistente, esclusa la riga corrente in UPDATE)
+    -- 5) Match UOM operativa (solo se presenti su entrambe: 0 = non impostata)
+    IF v_uom_ordine <> 0 AND v_uom_ddt <> 0 AND v_uom_ordine <> v_uom_ddt THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database','trgfn_ordini_ful_guard_consistenza','E_UOM_MISMATCH',
+        jsonb_build_object('ordine_riga_id', NEW.ordine_riga_id,
+                          'ddt_riga_id', NEW.ddt_riga_id,
+                          'uom_ordine', v_uom_ordine,
+                          'uom_ddt', v_uom_ddt),
+        NULL::uuid,
+        'ordine_riga', NEW.ordine_riga_id::text, v_uom_ordine,
+        'ddt_riga', NEW.ddt_riga_id::text, v_uom_ddt
+      );
+    END IF;
+
+    -- 6) Residuo = quantita ordine - sum(evasa esistente, esclusa riga corrente in UPDATE)
     SELECT COALESCE(SUM(q.qta_evasa), 0)
       INTO v_qta_evasa
       FROM vendite.ordini_righe_fulfillment q
@@ -103,17 +113,17 @@ AS $function$
     IF NEW.qta_evasa > v_residuo THEN
       PERFORM script.fn_log_and_raise_error(
         'database','trgfn_ordini_ful_guard_consistenza','E_QTA_SUPERA_RESIDUO',
-        jsonb_build_object('ordine_riga_id',NEW.ordine_riga_id,
-                          'qta_ordine',v_qta_ordine,
-                          'evasa_pre',v_qta_evasa,
-                          'qta_nuova',NEW.qta_evasa,
-                          'residuo',v_residuo),
-         NULL::uuid,
-        'ordine_riga' , NEW.ordine_riga_id::text, 
-        'qta_ordine',v_qta_ordine::text,
-        'evasa_pre',v_qta_evasa::text,
-        'qta_nuova',NEW.qta_evasa::text,
-         'residuo',v_residuo::text
+        jsonb_build_object('ordine_riga_id', NEW.ordine_riga_id,
+                          'qta_ordine', v_qta_ordine,
+                          'evasa_pre', v_qta_evasa,
+                          'qta_nuova', NEW.qta_evasa,
+                          'residuo', v_residuo),
+        NULL::uuid,
+        'ordine_riga', NEW.ordine_riga_id::text,
+        'qta_ordine', v_qta_ordine::text,
+        'evasa_pre', v_qta_evasa::text,
+        'qta_nuova', NEW.qta_evasa::text,
+        'residuo', v_residuo::text
       );
     END IF;
 

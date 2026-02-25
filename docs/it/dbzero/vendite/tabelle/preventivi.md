@@ -28,6 +28,7 @@
 | data | date | NO | CURRENT_DATE |
 | termine_pagamento_id | bigint | YES |  |
 | uid | uuid | NO | uuidv7() |
+| storicizza | boolean | YES | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

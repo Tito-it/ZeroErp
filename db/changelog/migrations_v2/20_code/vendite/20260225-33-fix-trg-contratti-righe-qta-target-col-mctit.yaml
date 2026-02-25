@@ -1,0 +1,28 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260225-33-fix-trg-contratti-righe-qta-target-col-mctit.yaml
+
+  - changeSet:
+      id: 20260225-33-fix-trg-contratti-righe-qta-target-col
+      author: mctit
+      comment: "Ricrea trigger qta_from_operativa su contratti_righe con TG_ARGV[2]='quantita_fissa' (colonna target corretta)."
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_qta_from_operativa_ins_upd
+                ON vendite.contratti_righe;
+
+              CREATE TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.contratti_righe
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false', 'quantita_fissa');

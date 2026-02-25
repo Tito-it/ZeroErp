@@ -18,10 +18,12 @@
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
+| fatturazione_ordini | character varying | NO | 'CONFERMATO'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_billing_account_fatturazione_ordini |  |
 | CHECK | chk_billing_account_validita |  |
 | FOREIGN KEY | fk_billing_account_anagrafiche | parent_account_id |
 | FOREIGN KEY | fk_billing_account_istanze_utilities | istanza_utility_id |

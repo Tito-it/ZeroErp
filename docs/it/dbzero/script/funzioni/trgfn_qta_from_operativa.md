@@ -16,6 +16,7 @@ DECLARE
   -- Parametri
   v_fill_factor_to_base boolean := false;
   v_fill_uom_id_base    boolean := false;
+  v_target_col          text    := 'quantita';
 
   -- Mapping/policy
   v_factor_map   numeric;
@@ -40,6 +41,9 @@ DECLARE
   --       Se TRUE e NEW.factor_to_base è NULL, salva lo snapshot del fattore usato.
   --   [1] fill_uom_id_base    :: boolean  (default FALSE)
   --       Se TRUE, copia NEW.uom_operativa_id in NEW.uom_id (usare solo dove la colonna esiste).
+  --   [2] target_col         :: text     (default 'quantita')
+  --       Nome colonna target per la quantita` base calcolata.
+  --       Es. 'quantita_fissa' per contratti_righe.
   -- ------------------------------------------------------------
 
   --------------------------------------------------------------------
@@ -56,6 +60,9 @@ DECLARE
   END IF;
   IF TG_NARGS >= 2 THEN
     v_fill_uom_id_base := lower(coalesce(TG_ARGV[1],'')) IN ('1','t','true','y','yes');
+  END IF;
+  IF TG_NARGS >= 3 AND TG_ARGV[2] IS NOT NULL AND TG_ARGV[2] <> '' THEN
+    v_target_col := TG_ARGV[2];
   END IF;
 
   -- Errore solo se null
@@ -173,11 +180,14 @@ DECLARE
     END IF;
 
   --------------------------------------------------------------------
-  -- 4) Calcolo finale della base
+  -- 4) Calcolo finale della base (colonna target parametrica)
   --------------------------------------------------------------------
-  
-  NEW.qta := ROUND(NEW.qta_operativa * v_factor_used, 6);
-  
+  IF v_target_col = 'quantita_fissa' THEN
+    NEW.quantita_fissa := ROUND(NEW.qta_operativa * v_factor_used, 6);
+  ELSE
+    NEW.quantita := ROUND(NEW.qta_operativa * v_factor_used, 6);
+  END IF;
+
   RETURN NEW;
 END;
 $function$

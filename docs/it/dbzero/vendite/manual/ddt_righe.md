@@ -49,7 +49,7 @@ La tabella è concepita per:
 * **Vincoli logici:**
 
   * Ogni `ddt_id` ha un progressivo riga (`riga_nr`) univoco.
-  * Quantità (`qta`) deve essere strettamente maggiore di zero.
+  * Quantità (`quantita`) deve essere strettamente maggiore di zero.
   * Lotto/seriale presenti solo se richiesti dall’articolo.
 * **Meta estensibile (`jsonb`)**: supporta dati accessori (es. tag, note, riferimenti esterni) senza modificare lo schema.
 
@@ -76,7 +76,7 @@ Chiama script.trgfn_qta_from_operativa('true','false').
 
 Logica attesa (in base alla versione condivisa):
 
-Se uom_operativa_id e qta_operativa sono valorizzati ⇒ calcola qta in UoM base usando il conversion factor articolo/UoM (es. 1 scatola = 50 pezzi).
+Se uom_operativa_id e qta_operativa sono valorizzati ⇒ calcola quantita in UoM base usando il conversion factor articolo/UoM (es. 1 scatola = 50 pezzi).
 
 Se manca uno dei due ⇒ ricompone i dati operativi a partire dalla UoM base articolo e dalla qta (se presente).
 
@@ -93,8 +93,8 @@ Garantisce coerenza decimali (step, max_dec) rispetto alla policy UoM dell’art
 * **Unique Index**: `(ddt_id, riga_nr)` → progressivo univoco per testata.
 * **Check suggeriti:**
 
-  * `qta > 0` (quantità sempre positiva).
-  * `seriale IS NULL OR qta = 1` per articoli serializzati.
+  * `quantita > 0` (quantità sempre positiva).
+  * `seriale IS NULL OR quantita = 1` per articoli serializzati.
   * `lotto IS NOT NULL` per articoli che richiedono tracciabilità lotto.
 
 ---
@@ -118,7 +118,7 @@ Il trigger assicura coerenza con la UoM base e le policy articolo.
 
 Fatturazione da DDT
 
-Le righe DDT diventano sorgente per vendite.attivita_fatturabili; si trasferiscono articolo_id, descrizione, uom_id base e qta, oltre a eventuali metadati utili (lotto/seriale) per il corpo documento o per il trace log.
+Le righe DDT diventano sorgente per vendite.attivita_fatturabili; si trasferiscono articolo_id, descrizione, uom_id base e quantita, oltre a eventuali metadati utili (lotto/seriale) per il corpo documento o per il trace log.
 
 ---
 
@@ -133,7 +133,7 @@ WHERE ddt_id = :ddt_id
 ORDER BY riga_nr;
 
 -- Ricerca per lotto o seriale
-SELECT d.id AS ddt_id, dr.riga_nr, dr.articolo_id, dr.qta
+SELECT d.id AS ddt_id, dr.riga_nr, dr.articolo_id, dr.quantita
 FROM vendite.ddt d
 JOIN vendite.ddt_righe dr ON dr.ddt_id = d.id
 WHERE dr.lotto = :lotto OR dr.seriale = :seriale;
@@ -147,7 +147,7 @@ WHERE dr.lotto = :lotto OR dr.seriale = :seriale;
 Esempi di test pgTAP suggeriti:
 
 ```sql
-SELECT ok((SELECT count(*) FROM vendite.ddt_righe WHERE qta <= 0) = 0, 'qta > 0');
+SELECT ok((SELECT count(*) FROM vendite.ddt_righe WHERE quantita <= 0) = 0, 'quantita > 0');
 SELECT ok((SELECT count(*) FROM vendite.ddt_righe dr JOIN catalogo.articoli a ON a.id = dr.articolo_id WHERE a.richiede_lotto AND dr.lotto IS NULL) = 0, 'lotto obbligatorio');
 ```
 
@@ -155,7 +155,7 @@ SELECT ok((SELECT count(*) FROM vendite.ddt_righe dr JOIN catalogo.articoli a ON
 
 ### ⚠️ Osservazioni e possibili migliorie
 
-1. **Assenza di vincoli espliciti su `qta`** → aggiungere un **CHECK (qta > 0)** per garantire robustezza.
+1. **Assenza di vincoli espliciti su `quantita`** → aggiungere un **CHECK (quantita > 0)** per garantire robustezza.
 2. **Gestione lotto/seriale** → introdurre trigger di validazione collegati alle policy articolo (evita incoerenze tra catalogo e righe DDT).
 3. **Indicizzazione** → possibile aggiunta indice `(ddt_id)` per ottimizzare le join frequenti.
 4. **Performance JSONB** → valutare un indice GIN su `meta` per query semantiche.
