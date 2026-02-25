@@ -11,6 +11,10 @@
 
 ### 🎯 Scopo Principale
 
+**DEPRECATA DA COMMESSE** — pipeline attivita` legacy sostituita dal flusso commessa-only.
+Tutte le righe disabilitate (`attivo=false`) dal changeset `20260224-41`.
+Candidata a DROP dopo go-live. Rif: `gestione-commesse-v2.md` §25.4, §27.
+
 La tabella `vendite.attivita_fatturabili_pipeline_task_policy` definisce le regole
 runtime dei task della pipeline attività, con supporto a branch indipendenti.
 

@@ -2,6 +2,9 @@
 
 ### 🎯 Scopo Principale
 
+**DEPRECATA DA COMMESSE** — nessun chiamante attivo dopo il passaggio a commessa-only (24-02-2026).
+Candidata a DROP dopo go-live. Rif: `gestione-commesse-v2.md` §27.
+
 Restituisce la policy runtime sorgente -> branch per la pipeline
 `ATTIVITA_FATTURABILI`, con filtro opzionale sulle sole sorgenti abilitate.
 

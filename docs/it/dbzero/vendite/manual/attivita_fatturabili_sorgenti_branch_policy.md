@@ -11,6 +11,10 @@
 
 ### 🎯 Scopo Principale
 
+**DEPRECATA DA COMMESSE** — sostituita da `config.sorgenti.scope` + handler commessa-v2.
+Tutte le righe disabilitate (`abilitata=false`) dal changeset `20260224-41`.
+Candidata a DROP dopo go-live. Rif: `gestione-commesse-v2.md` §27.
+
 La tabella `vendite.attivita_fatturabili_sorgenti_branch_policy` centralizza la
 mappatura tra sorgente (`config.sorgenti`) e policy runtime del dominio
 `ATTIVITA_FATTURABILI`.
