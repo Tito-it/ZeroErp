@@ -35,15 +35,21 @@
 | user_update | text | YES | CURRENT_USER |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
+| billing_account_id | bigint | YES |  |
+| utility_id | integer | YES |  |
+| valuta_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_ddt_v_aspetto_bene | aspetto_bene_id |
+| FOREIGN KEY | fk_ddt_v_billing_account | billing_account_id |
 | FOREIGN KEY | fk_ddt_v_causale_trasporto | causale_trasporto_id |
 | FOREIGN KEY | fk_ddt_v_mod_add_trasporto | modalita_addebito_trasporto_id |
 | FOREIGN KEY | fk_ddt_v_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_ddt_v_stato_ddt | stato_doc_ddt_id |
+| FOREIGN KEY | fk_ddt_v_utility | utility_id |
+| FOREIGN KEY | fk_ddt_v_valuta | valuta_id |
 | FOREIGN KEY | fk_ddt_vendita_destinatario_ruolo | destinatario_soggetto_ruolo_id |
 | FOREIGN KEY | fk_ddt_vendita_mittente_ruolo | mittente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_ddt_vendita_vettore_ruolo | vettore_soggetto_ruolo_id |

@@ -9,7 +9,7 @@
 | riga_nr | integer | NO |  |
 | articolo_id | uuid | NO |  |
 | descrizione | character varying | NO |  |
-| qta | numeric | NO |  |
+| quantita | numeric | NO |  |
 | prezzo_unitario | numeric | NO |  |
 | sconto_perc | numeric | YES |  |
 | iva_id | integer | YES |  |
@@ -28,6 +28,7 @@
 | qta_operativa | numeric | YES |  |
 | uom_operativa_id | bigint | YES |  |
 | factor_to_base | numeric | NO | 1 |
+| attivo | boolean | NO | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

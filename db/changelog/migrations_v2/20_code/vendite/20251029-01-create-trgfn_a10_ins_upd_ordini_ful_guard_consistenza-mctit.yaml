@@ -97,7 +97,7 @@ databaseChangeLog:
                         NULL::uuid,
                         'ordine_riga', NEW.ordine_riga_id::text, v_uom_ordine,
                         'ddt_riga', NEW.ddt_riga_id::text ,v_uom_ddt
-                      
+
                       );
                     END IF;
 
@@ -119,7 +119,7 @@ databaseChangeLog:
                                           'qta_nuova',NEW.qta_evasa,
                                           'residuo',v_residuo),
                          NULL::uuid,
-                        'ordine_riga' , NEW.ordine_riga_id::text, 
+                        'ordine_riga' , NEW.ordine_riga_id::text,
                         'qta_ordine',v_qta_ordine::text,
                         'evasa_pre',v_qta_evasa::text,
                         'qta_nuova',NEW.qta_evasa::text,

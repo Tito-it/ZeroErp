@@ -111,8 +111,13 @@
 - [fn_list_attivita_lotto_task_runs](funzioni/fn_list_attivita_lotto_task_runs.md) — Elenca i task-run di un lotto attività, con filtri opzionali per branch e task.
 - [fn_list_attivita_pipeline_steps](funzioni/fn_list_attivita_pipeline_steps.md) — (latest review 16-02-2026)   Elencare gli step pipeline del dominio `attivita_fatturabili` con fallback automatico per `utility_id` e `sorgente_tipo_id`.
 - [fn_list_attivita_sorgenti_abilitate](funzioni/fn_list_attivita_sorgenti_abilitate.md) — Restituisce l'elenco delle sorgenti abilitate per la pipeline `ATTIVITA_FATTURABILI`, con ordinamento centralizzato lato DB.
+- [fn_list_consumi_da_pushare](funzioni/fn_list_consumi_da_pushare.md) — `vendite.fn_list_consumi_da_pushare(...)` seleziona i consumi utility pronti per il push verso `commesse_attivita`, restituendo un payload di base per l'handler di calcolo componenti.
+- [fn_list_contratti_da_pushare](funzioni/fn_list_contratti_da_pushare.md)
+- [fn_list_ddt_da_pushare](funzioni/fn_list_ddt_da_pushare.md)
 - [fn_list_fatturazione_pipeline_steps](funzioni/fn_list_fatturazione_pipeline_steps.md) — (latest review 08-02-2026)   La funzione restituisce la lista step pipeline risolti per `tipo_lotto`, `utility_id` e `tipo_doc_fiscale_id`, delegando la precedenza a `fn_resolve_fatturazione_pipeline_step`.
 - [fn_list_lotto_task_runs](funzioni/fn_list_lotto_task_runs.md) — Elenca i task run di un lotto, con filtri opzionali per step e task.
+- [fn_list_ordini_da_pushare](funzioni/fn_list_ordini_da_pushare.md)
+- [fn_list_preventivi_da_pushare](funzioni/fn_list_preventivi_da_pushare.md) — `vendite.fn_list_preventivi_da_pushare(...)` seleziona le righe preventivo pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
 - [fn_log_commessa_push_run](funzioni/fn_log_commessa_push_run.md) — `vendite.fn_log_commessa_push_run` registra in modo uniforme il risultato di un run dell'orchestratore push commesse scrivendo una riga in `commesse_push_log`.
 - [fn_log_lotto_esito_fatture](funzioni/fn_log_lotto_esito_fatture.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_log_lotto_esito_fatture()`** registra un log di esito lotto dedotto dai log fatture associate al lotto.
 - [fn_log_pipeline_fase](funzioni/fn_log_pipeline_fase.md) — (latest review 28-01-2026)   La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log del lotto per registrare l’avanzamento (fase) della pipeline.
