@@ -1,0 +1,189 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260225-39-update-fn-list-consumi-da-pushare-tipo-doc-mctit.yaml
+
+  - changeSet:
+      id: 20260225-39-update-fn-list-consumi-da-pushare-tipo-doc
+      author: mctit
+      #  runOnChange: true
+      #  validCheckSum:
+      #     - ANY
+      comment: "§26 B+D: aggiunge tipo_doc_fiscale_id all'output di fn_list_consumi_da_pushare."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              DROP FUNCTION IF EXISTS vendite.fn_list_consumi_da_pushare(date, bigint, integer);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_list_consumi_da_pushare(
+                p_competenza_mese    vendite.commesse_attivita.competenza_mese%TYPE DEFAULT NULL,
+                p_billing_account_id anagrafiche.billing_account.id%TYPE           DEFAULT NULL,
+                p_limit              integer                                        DEFAULT NULL
+              )
+              RETURNS TABLE(
+                -- Identificatori sorgente
+                consumo_id                   vendite.attivita_consumi.id%TYPE,
+                consumo_uid                  vendite.attivita_consumi.uid%TYPE,
+                -- Per fn_get_or_create_commessa
+                billing_account_id           anagrafiche.billing_account.id%TYPE,
+                utility_id                   anagrafiche.billing_account.utility_id%TYPE,
+                emittente_soggetto_ruolo_id  vendite.commesse.emittente_soggetto_ruolo_id%TYPE,
+                competenza_dal               vendite.commesse.competenza_dal%TYPE,
+                competenza_al                vendite.commesse.competenza_al%TYPE,
+                fatturazione_immediata       vendite.commesse.fatturazione_immediata%TYPE,
+                -- Per fn_link_commessa_sorgente
+                sorgente_tipo_id             config.sorgenti.id%TYPE,
+                sorgente_uid                 vendite.commesse_attivita.sorgente_uid%TYPE,
+                -- Per fn_upsert_commessa_attivita
+                segment_key                  vendite.commesse_attivita.segment_key%TYPE,
+                articolo_id                  vendite.commesse_attivita.articolo_id%TYPE,
+                istanza_utility_id           vendite.commesse_attivita.istanza_utility_id%TYPE,
+                data_attivita                vendite.commesse_attivita.data_attivita%TYPE,
+                uom_id                       vendite.commesse_attivita.uom_id%TYPE,
+                quantita                     vendite.commesse_attivita.quantita%TYPE,
+                qta_operativa                vendite.commesse_attivita.qta_operativa%TYPE,
+                uom_operativa_id             vendite.commesse_attivita.uom_operativa_id%TYPE,
+                factor_to_base               vendite.commesse_attivita.factor_to_base%TYPE,
+                competenza_mese              vendite.commesse_attivita.competenza_mese%TYPE,
+                prezzo_snapshot              vendite.commesse_attivita.prezzo_snapshot%TYPE,
+                prezzo_bloccato              vendite.commesse_attivita.prezzo_bloccato%TYPE,
+                pricing_mode                 vendite.commesse_attivita.pricing_mode%TYPE,
+                tipo_movimento               varchar,
+                tipo_consumo                 varchar,
+                valuta_id                    vendite.commesse_attivita.valuta_id%TYPE,
+                meta                         vendite.commesse_attivita.meta%TYPE,
+                -- tipo_doc_fiscale_id risolto da config.sorgenti (§26 B+D)
+                tipo_doc_fiscale_id              config.tipi_doc_fiscale.id%TYPE
+              )
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+                v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Restituire i consumi pronti per il push su commessa AUTO,
+                --   con tutti i campi necessari agli handler.
+                --
+                -- Regole:
+                --   - stato_calcolo = 'OK' (consumi con errori o warning esclusi)
+                --   - fattura_id IS NULL (non gia` fatturati sul percorso legacy)
+                --   - esclude consumi con segment_key gia` EMESSA in commessa
+                --   - prezzo_bloccato = FALSE (calcolato da listino al pull)
+                --   - utility_id e istanza_utility_id risolti da billing_account
+                --   - tipo_commessa target: AUTO, policy: DA_DOCUMENTO
+                --
+                -- NOTE:
+                --   - articolo_id non presente su attivita_consumi: restituito NULL;
+                --     l'handler deve risolverlo (es. da istanza_utility_id o config).
+                --   - valuta_id non presente su attivita_consumi: restituito NULL;
+                --     l'handler deve risolverlo (es. da config o billing_account).
+                --   - un consumo produce N componenti nell'handler;
+                --     il segment_key base e` 'CONS:<uid>', l'handler genera
+                --     'CONS:<uid>:COMP:<componente>' per ogni componente fatturabile.
+                --   - qta_operativa = consumo_totale, uom_operativa_id = uom_id.
+                --   - codice sorgente config.sorgenti: 'ATTIVITA_CONSUMI' (id=12).
+                -- =========================================================
+
+                -- Lookup sorgente ATTIVITA_CONSUMI attiva + tipo_doc_fiscale_id (§26 B+D).
+                SELECT s.id, s.tipo_doc_fiscale_id
+                  INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+                FROM config.sorgenti s
+                WHERE s.codice = 'ATTIVITA_CONSUMI' AND s.attivo IS TRUE
+                LIMIT 1;
+
+                IF v_sorgente_tipo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_list_consumi_da_pushare','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE','severity','C','code','E_GENERICO',
+                      'lotto_id',NULL,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','sorgente ATTIVITA_CONSUMI non configurata/attiva')
+                    ),
+                    NULL::uuid,
+                    'sorgente ATTIVITA_CONSUMI non configurata/attiva'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  ac.id                                                          AS consumo_id,
+                  ac.uid                                                         AS consumo_uid,
+                  ac.billing_account_id,
+                  ba.utility_id,
+                  anagrafiche.fn_get_emittente_fiscale_id(ac.billing_account_id) AS emittente_soggetto_ruolo_id,
+                  -- periodo_dal/al come finestra di competenza del consumo
+                  ac.periodo_dal                                                 AS competenza_dal,
+                  ac.periodo_al                                                  AS competenza_al,
+                  FALSE                                                          AS fatturazione_immediata,
+                  v_sorgente_tipo_id                                             AS sorgente_tipo_id,
+                  ac.uid::text                                                   AS sorgente_uid,
+                  -- segment_key base; l'handler espande in CONS:<uid>:COMP:<componente>
+                  ('CONS:' || ac.uid::text)::varchar                            AS segment_key,
+                  -- articolo_id non disponibile su attivita_consumi;
+                  -- l'handler deve risolvere (da istanza_utility_id o mapping config).
+                  NULL::uuid                                                     AS articolo_id,
+                  ba.istanza_utility_id,
+                  -- data_attivita: usa il primo giorno del periodo o la competenza_mese
+                  COALESCE(ac.periodo_dal, ac.competenza_mese)                  AS data_attivita,
+                  ac.uom_id,
+                  ac.consumo_totale                                              AS quantita,
+                  -- qta_operativa = consumo_totale (unica unita` di misura disponibile)
+                  ac.consumo_totale                                              AS qta_operativa,
+                  -- uom_operativa_id = uom_id (nessuna conversione a livello di sorgente)
+                  ac.uom_id                                                      AS uom_operativa_id,
+                  1::numeric                                                     AS factor_to_base,
+                  ac.competenza_mese,
+                  -- prezzo_snapshot = NULL: calcolato dal listino al momento del pull
+                  NULL::numeric                                                  AS prezzo_snapshot,
+                  -- prezzo_bloccato = FALSE: consumi sempre ricalcolabili da listino
+                  FALSE                                                          AS prezzo_bloccato,
+                  'FIXED'::varchar                                               AS pricing_mode,
+                  'NORMALE'::varchar                                             AS tipo_movimento,
+                  'CONSUMO'::varchar                                             AS tipo_consumo,
+                  -- valuta_id non disponibile su attivita_consumi; handler deve risolvere
+                  NULL::integer                                                  AS valuta_id,
+                  jsonb_build_object(
+                    'consumo_uid',         ac.uid,
+                    'stato_calcolo',       ac.stato_calcolo,
+                    'periodo_dal',         ac.periodo_dal,
+                    'periodo_al',          ac.periodo_al,
+                    'tipo_commessa',       'AUTO',
+                    'policy_fatturazione', 'DA_DOCUMENTO'
+                  )                                                              AS meta,
+                  v_tipo_doc_fiscale_id                                            AS tipo_doc_fiscale_id
+                FROM vendite.attivita_consumi ac
+                JOIN anagrafiche.billing_account ba
+                  ON ba.id = ac.billing_account_id
+                WHERE ac.stato_calcolo = 'OK'
+                  -- Non fatturati sul percorso legacy (se migrazione coesiste con commessa).
+                  AND ac.fattura_id IS NULL
+                  -- Filtri opzionali.
+                  AND (p_competenza_mese IS NULL OR ac.competenza_mese = p_competenza_mese)
+                  AND (p_billing_account_id IS NULL OR ac.billing_account_id = p_billing_account_id)
+                  -- Esclude consumi gia` emessi in commessa (ottimizzazione batch).
+                  -- Il pattern reale e` CONS:<uid>:COMP:<componente>, quindi LIKE sul prefisso.
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM vendite.commesse_attivita ca
+                    WHERE ca.segment_key LIKE 'CONS:' || ac.uid::text || ':%'
+                      AND ca.stato_emissione = 'EMESSA'
+                  )
+                ORDER BY ac.competenza_mese, ac.id
+                LIMIT p_limit;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_consumi_da_pushare(date, bigint, integer)
+              IS 'Lista consumi utility eligible al push su commessa AUTO (stato_calcolo OK, non fatturati). Restituisce tutti i campi per get_or_create_commessa + upsert_commessa_attivita. utility_id/istanza_utility_id da billing_account. articolo_id e valuta_id NULL: risolti dall''handler. Prezzo non bloccato (da listino).';

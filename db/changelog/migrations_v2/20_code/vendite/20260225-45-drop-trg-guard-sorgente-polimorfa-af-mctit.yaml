@@ -1,0 +1,34 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260225-45-drop-trg-guard-sorgente-polimorfa-af-mctit.yaml
+
+  - changeSet:
+      id: 20260225-45-drop-trg-guard-sorgente-polimorfa-af
+      author: mctit
+      comment: "Rimuove trigger polimorfo su attivita_fatturabili: ridondante con FK commessa_attivita_id nel flusso commessa-only."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Rimuovere il trigger di validazione polimorfa sorgente
+              --   da attivita_fatturabili.
+              --
+              -- Motivazione:
+              --   Nel flusso commessa-only, sorgente_tipo_id e` sempre
+              --   COMMESSA e la FK commessa_attivita_id copre gia` la
+              --   validazione. Il trigger polimorfo non serve piu`.
+              --
+              -- Nota:
+              --   La funzione script.trgfn_guard_sorgente_polimorfa()
+              --   non viene droppata — potrebbe servire su altre tabelle.
+              -- =========================================================
+
+              DROP TRIGGER IF EXISTS trg_attivita_fatturabili_a10_guard_fonte_ins_upd
+                ON vendite.attivita_fatturabili;

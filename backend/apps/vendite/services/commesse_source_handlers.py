@@ -150,10 +150,6 @@ class BaseSourceHandler(ABC):
             return row.meta.get("policy_fatturazione", "DA_DOCUMENTO")
         return "DA_DOCUMENTO"
 
-    def _resolve_tipo_doc_fiscale_id(self) -> int | None:
-        """#4: hook per config lookup. Stub: return None."""
-        return None
-
     def _build_attivita_input(
         self, commessa_id: int, row: PushableRow
     ) -> CommessaAttivitaInput:
@@ -166,7 +162,7 @@ class BaseSourceHandler(ABC):
             articolo_id=row.articolo_id,
             prezzo_snapshot=row.prezzo_snapshot,
             uom_id=row.uom_id,
-            tipo_doc_fiscale_id=self._resolve_tipo_doc_fiscale_id(),
+            tipo_doc_fiscale_id=row.tipo_doc_fiscale_id,
             valuta_id=row.valuta_id,
             prezzo_bloccato=row.prezzo_bloccato,
             pricing_mode=row.pricing_mode,

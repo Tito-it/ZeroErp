@@ -30,7 +30,8 @@ BEGIN
   --   - ROOT obbligatoria su commessa
   --   - sorgente AF sempre COMMESSA + hash(segment_key)
   --   - se riga AF esistente e gia fatturata -> errore
-  --   - dry_run: conta senza scrivere e senza acquisire lock
+  --   - sorgente_origine_tipo_id propagato da
+  --     commesse_attivita.sorgente_tipo_id (§26 B)
   -- =========================================================
   total_candidate := 0;
   inserted_rows := 0;
@@ -45,7 +46,8 @@ BEGIN
         'lotto_id',p_lotto_attivita_id,'fattura_id',NULL,
         'context',jsonb_build_object('detail','commessa_id obbligatorio','commessa_id',p_commessa_id)
       ),
-      NULL::uuid, 'commessa_id obbligatorio'
+      NULL::uuid,
+      'commessa_id obbligatorio'
     );
   END IF;
 
@@ -57,7 +59,8 @@ BEGIN
         'lotto_id',p_lotto_attivita_id,'fattura_id',NULL,
         'context',jsonb_build_object('detail','lotto_attivita_id non valido','lotto_attivita_id',p_lotto_attivita_id)
       ),
-      NULL::uuid, 'lotto_attivita_id non valido'
+      NULL::uuid,
+      'lotto_attivita_id non valido'
     );
   END IF;
 
@@ -74,7 +77,8 @@ BEGIN
         'lotto_id',p_lotto_attivita_id,'fattura_id',NULL,
         'context',jsonb_build_object('detail','commessa non trovata','commessa_id',p_commessa_id)
       ),
-      NULL::uuid, concat('commessa non trovata: ', p_commessa_id::text)
+      NULL::uuid,
+      concat('commessa non trovata: ', p_commessa_id::text)
     );
   END IF;
 
@@ -90,7 +94,8 @@ BEGIN
         'lotto_id',p_lotto_attivita_id,'fattura_id',NULL,
         'context',jsonb_build_object('detail','lotto attivita non trovato','lotto_attivita_id',p_lotto_attivita_id)
       ),
-      NULL::uuid, concat('lotto attivita non trovato: ', p_lotto_attivita_id::text)
+      NULL::uuid,
+      concat('lotto attivita non trovato: ', p_lotto_attivita_id::text)
     );
   END IF;
 
@@ -109,7 +114,8 @@ BEGIN
         'lotto_id',p_lotto_attivita_id,'fattura_id',NULL,
         'context',jsonb_build_object('detail','ROOT source mancante per commessa','commessa_id',p_commessa_id)
       ),
-      NULL::uuid, concat('ROOT source mancante per commessa: ', p_commessa_id::text)
+      NULL::uuid,
+      concat('ROOT source mancante per commessa: ', p_commessa_id::text)
     );
   END IF;
 
@@ -128,7 +134,8 @@ BEGIN
         'lotto_id',p_lotto_attivita_id,'fattura_id',NULL,
         'context',jsonb_build_object('detail','sorgente COMMESSA non configurata/attiva')
       ),
-      NULL::uuid, 'sorgente COMMESSA non configurata/attiva'
+      NULL::uuid,
+      concat('sorgente COMMESSA non configurata/attiva')
     );
   END IF;
 
@@ -154,7 +161,9 @@ BEGIN
       ca.prezzo_snapshot,
       ca.prezzo_bloccato,
       ca.stato_approvazione,
-      ca.meta
+      ca.meta,
+      -- §26 B: propaga sorgente business originale su AF
+      ca.sorgente_tipo_id AS ca_sorgente_tipo_id
     FROM vendite.commesse_attivita ca
     WHERE ca.commessa_id = p_commessa_id
       AND ca.stato_emissione = 'NON_EMESSA'
@@ -166,6 +175,8 @@ BEGIN
   LOOP
     total_candidate := total_candidate + 1;
 
+    -- Mappa deterministicamente segment_key -> UUID per rispettare
+    -- il contratto attuale di attivita_fatturabili.sorgente_uid (uuid).
     v_sorgente_uid_uuid :=
       (
         substr(md5(v_row.segment_key), 1, 8) || '-' ||
@@ -175,14 +186,14 @@ BEGIN
         substr(md5(v_row.segment_key), 21, 12)
       )::uuid;
 
-    IF p_dry_run THEN
-      -- Dry run: verifica esistenza senza acquisire row lock.
-      SELECT a.id
-      INTO v_existing_id
-      FROM vendite.attivita_fatturabili a
-      WHERE a.sorgente_tipo_id = v_commessa_source_id
-        AND a.sorgente_uid = v_sorgente_uid_uuid;
+    SELECT a.id, a.fatturato
+    INTO v_existing_id, v_existing_fatturato
+    FROM vendite.attivita_fatturabili a
+    WHERE a.sorgente_tipo_id = v_commessa_source_id
+      AND a.sorgente_uid = v_sorgente_uid_uuid
+    FOR UPDATE;
 
+    IF p_dry_run THEN
       IF v_existing_id IS NULL THEN
         inserted_rows := inserted_rows + 1;
       ELSE
@@ -190,14 +201,6 @@ BEGIN
       END IF;
       CONTINUE;
     END IF;
-
-    -- Modalita scrittura: acquisisce row lock per update idempotente.
-    SELECT a.id, a.fatturato
-    INTO v_existing_id, v_existing_fatturato
-    FROM vendite.attivita_fatturabili a
-    WHERE a.sorgente_tipo_id = v_commessa_source_id
-      AND a.sorgente_uid = v_sorgente_uid_uuid
-    FOR UPDATE;
 
     IF v_existing_id IS NULL THEN
       INSERT INTO vendite.attivita_fatturabili (
@@ -228,7 +231,8 @@ BEGIN
         stato_esecuzione,
         prezzo_bloccato,
         commessa_id,
-        commessa_attivita_id
+        commessa_attivita_id,
+        sorgente_origine_tipo_id
       )
       VALUES (
         v_row.articolo_id,
@@ -263,7 +267,8 @@ BEGIN
         'PENDING',
         v_row.prezzo_bloccato,
         p_commessa_id,
-        v_row.id
+        v_row.id,
+        v_row.ca_sorgente_tipo_id
       );
       inserted_rows := inserted_rows + 1;
     ELSE
@@ -286,35 +291,36 @@ BEGIN
       END IF;
 
       UPDATE vendite.attivita_fatturabili a
-      SET articolo_id          = v_row.articolo_id,
-          billing_account_id   = v_commessa.billing_account_id,
-          istanza_utility_id   = v_row.istanza_utility_id,
-          data_attivita        = v_row.data_attivita,
-          quantita             = v_row.quantita,
-          competenza_mese      = v_row.competenza_mese,
-          approvato            = (v_row.stato_approvazione = 'APPROVATA'),
-          meta                 = COALESCE(a.meta, '{}'::jsonb) || COALESCE(v_row.meta, '{}'::jsonb) || jsonb_build_object(
-                                   'scope','COMMESSE',
-                                   'commessa_id',p_commessa_id,
-                                   'commessa_attivita_id',v_row.id,
-                                   'segment_key',v_row.segment_key
-                                 ),
-          sorgente_riga        = v_row.id,
-          posticipa_al         = v_row.posticipa_al,
-          uom_id               = v_row.uom_id,
-          qta_operativa        = v_row.qta_operativa,
-          uom_operativa_id     = v_row.uom_operativa_id,
-          factor_to_base       = v_row.factor_to_base,
-          valuta_id            = v_row.valuta_id,
-          prezzo_unitario      = v_row.prezzo_snapshot,
-          lotto_attivita_id    = COALESCE(p_lotto_attivita_id, a.lotto_attivita_id),
-          tipo_doc_fiscale_id  = v_row.tipo_doc_fiscale_id,
-          competenza_dal       = v_row.competenza_dal,
-          competenza_al        = v_row.competenza_al,
-          area_geografica_id   = v_row.area_geografica_id,
-          prezzo_bloccato      = v_row.prezzo_bloccato,
-          commessa_id          = p_commessa_id,
-          commessa_attivita_id = v_row.id
+      SET articolo_id = v_row.articolo_id,
+          billing_account_id = v_commessa.billing_account_id,
+          istanza_utility_id = v_row.istanza_utility_id,
+          data_attivita = v_row.data_attivita,
+          quantita = v_row.quantita,
+          competenza_mese = v_row.competenza_mese,
+          approvato = (v_row.stato_approvazione = 'APPROVATA'),
+          meta = COALESCE(a.meta, '{}'::jsonb) || COALESCE(v_row.meta, '{}'::jsonb) || jsonb_build_object(
+            'scope','COMMESSE',
+            'commessa_id',p_commessa_id,
+            'commessa_attivita_id',v_row.id,
+            'segment_key',v_row.segment_key
+          ),
+          sorgente_riga = v_row.id,
+          posticipa_al = v_row.posticipa_al,
+          uom_id = v_row.uom_id,
+          qta_operativa = v_row.qta_operativa,
+          uom_operativa_id = v_row.uom_operativa_id,
+          factor_to_base = v_row.factor_to_base,
+          valuta_id = v_row.valuta_id,
+          prezzo_unitario = v_row.prezzo_snapshot,
+          lotto_attivita_id = COALESCE(p_lotto_attivita_id, a.lotto_attivita_id),
+          tipo_doc_fiscale_id = v_row.tipo_doc_fiscale_id,
+          competenza_dal = v_row.competenza_dal,
+          competenza_al = v_row.competenza_al,
+          area_geografica_id = v_row.area_geografica_id,
+          prezzo_bloccato = v_row.prezzo_bloccato,
+          commessa_id = p_commessa_id,
+          commessa_attivita_id = v_row.id,
+          sorgente_origine_tipo_id = v_row.ca_sorgente_tipo_id
       WHERE a.id = v_existing_id;
       updated_rows := updated_rows + 1;
     END IF;
@@ -329,7 +335,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_lotto_attivita_id bigint, p_only_approved boolean, p_dry_run boolean)
-IS 'Pull da commesse_attivita ad attivita_fatturabili con idempotenza COMMESSA+segment_key. In dry_run conta senza scrivere e senza acquisire row lock.';
+IS 'Esegue il pull da commesse_attivita ad attivita_fatturabili con sorgente COMMESSA+segment_key (hash UUID) e idempotenza. Propaga sorgente_origine_tipo_id dalla sorgente business originale (§26 B).';
 ```
 
 ---

@@ -1,0 +1,38 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260225-35-add-attivita-fatturabili-sorgente-origine-tipo-mctit.yaml
+
+  - changeSet:
+      id: 20260225-35-add-attivita-fatturabili-sorgente-origine-tipo
+      author: mctit
+      comment: "Aggiunge sorgente_origine_tipo_id su attivita_fatturabili per tracciare la sorgente business originale (§26 gestione-commesse-v2)."
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columns:
+              - column:
+                  name: sorgente_origine_tipo_id
+                  type: bigint
+                  remarks: "FK sorgente business originale (PREVENTIVO, ORDINE_VENDITA, etc.). Popolata da fn_emit leggendo commesse_attivita.sorgente_tipo_id."
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: sorgente_origine_tipo_id
+            referencedTableSchemaName: config
+            referencedTableName: sorgenti
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+            constraintName: fk_attivita_fatturabili_sorgente_origine_tipo

@@ -9,12 +9,13 @@ CREATE FUNCTION fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer)
- RETURNS TABLE(preventivo_id bigint, preventivo_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, tipo_consumo character varying, valuta_id integer, meta jsonb)
+ RETURNS TABLE(preventivo_id bigint, preventivo_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, tipo_consumo character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_sorgente_tipo_id   config.sorgenti.id%TYPE;
-  v_stato_accettato_id config.stati_doc_preventivi.id%TYPE;
+  v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+  v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+  v_stato_accettato_id  config.stati_doc_preventivi.id%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -34,8 +35,9 @@ BEGIN
   --     restituito NULL::bigint.
   -- =========================================================
 
-  -- Lookup sorgente PREVENTIVO attiva.
-  SELECT s.id INTO v_sorgente_tipo_id
+  -- Lookup sorgente PREVENTIVO attiva + tipo_doc_fiscale_id (§26 B+D).
+  SELECT s.id, s.tipo_doc_fiscale_id
+    INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
   FROM config.sorgenti s
   WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE
   LIMIT 1;
@@ -97,7 +99,8 @@ BEGIN
       'preventivo_rev',     p.rev,
       'tipo_commessa',      'REALE',
       'policy_fatturazione','DA_DOCUMENTO'
-    )                                                             AS meta
+    )                                                             AS meta,
+    v_tipo_doc_fiscale_id                                           AS tipo_doc_fiscale_id
   FROM vendite.preventivi p
   JOIN vendite.preventivi_righe pr
     ON pr.preventivo_id = p.id

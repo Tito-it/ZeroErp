@@ -9,11 +9,12 @@ CREATE FUNCTION fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_acco
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer)
- RETURNS TABLE(ordine_id bigint, ordine_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, tipo_consumo character varying, valuta_id integer, meta jsonb)
+ RETURNS TABLE(ordine_id bigint, ordine_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, tipo_consumo character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
   v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+  v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
   v_stato_confermato_id config.stati_doc_ordini.id%TYPE;
 BEGIN
   -- =========================================================
@@ -38,8 +39,9 @@ BEGIN
   --   - fatturazione_immediata = FALSE (ordini non hanno fatturazione diretta).
   -- =========================================================
 
-  -- Lookup sorgente ORDINE_VENDITA attiva.
-  SELECT s.id INTO v_sorgente_tipo_id
+  -- Lookup sorgente ORDINE_VENDITA attiva + tipo_doc_fiscale_id (§26 B+D).
+  SELECT s.id, s.tipo_doc_fiscale_id
+    INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
   FROM config.sorgenti s
   WHERE s.codice = 'ORDINE_VENDITA' AND s.attivo IS TRUE
   LIMIT 1;
@@ -102,7 +104,8 @@ BEGIN
       'ordine_serie',        o.serie,
       'tipo_commessa',       'AUTO',
       'policy_fatturazione', 'DA_DOCUMENTO'
-    )                                                              AS meta
+    )                                                              AS meta,
+    v_tipo_doc_fiscale_id                                            AS tipo_doc_fiscale_id
   FROM vendite.ordini o
   JOIN anagrafiche.billing_account ba
     ON ba.id = o.billing_account_id

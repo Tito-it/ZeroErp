@@ -24,7 +24,8 @@ BEGIN
   --   - se NULL -> mese di posticipa_al (se presente)
   --   - competenza_dal/al: se NULL, default su data_attivita
   --   - sorgente_riga default 0 se sorgente valorizzata
-  --   - tipo_doc_fiscale_id: da sorgente
+  --   - tipo_doc_fiscale_id: da sorgente_origine_tipo_id
+  --     (business originale), fallback su sorgente_tipo_id
   --   - valuta_id: BA -> utility -> gestore
   -- =========================================================
 
@@ -59,10 +60,19 @@ BEGIN
      WHERE ba.id = NEW.billing_account_id;
   END IF;
 
+  -- §26 B+D: risolve tipo_doc_fiscale_id dalla sorgente business
+  -- originale (non da COMMESSA). Fallback legacy per righe senza
+  -- sorgente_origine_tipo_id.
   IF NEW.tipo_doc_fiscale_id IS NULL THEN
-    NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
-      NEW.sorgente_tipo_id
-    );
+    IF NEW.sorgente_origine_tipo_id IS NOT NULL THEN
+      NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
+        NEW.sorgente_origine_tipo_id
+      );
+    ELSIF NEW.sorgente_tipo_id IS NOT NULL THEN
+      NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
+        NEW.sorgente_tipo_id
+      );
+    END IF;
   END IF;
 
   IF NEW.valuta_id IS NULL THEN
@@ -77,7 +87,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
-IS 'Normalizza competenze/sorgente; risolve tipo_doc_fiscale_id e valuta_id.';
+IS 'Normalizza competenze/sorgente; risolve tipo_doc_fiscale_id (da sorgente_origine_tipo_id con fallback su sorgente_tipo_id) e valuta_id.';
 ```
 
 ---

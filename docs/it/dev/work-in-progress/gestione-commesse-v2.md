@@ -375,8 +375,9 @@ created_at
 
 **`vendite.attivita_fatturabili`** — aggiungere:
 ```
-commessa_id             FK → commesse   (NOT NULL dopo backfill)
-commessa_attivita_id    FK → commesse_attivita   (NOT NULL dopo backfill)
+commessa_id                 FK → commesse   (NOT NULL dopo backfill)
+commessa_attivita_id        FK → commesse_attivita   (NOT NULL dopo backfill)
+sorgente_origine_tipo_id    FK → config.sorgenti   (nullable — sorgente business originale, vedi §26)
 ```
 
 Nota ownership:
@@ -386,7 +387,11 @@ Nota ownership:
 
 I campi `sorgente_tipo_id / sorgente_uid / sorgente_riga` restano su AF come contratto
 idempotenza del pull e vengono valorizzati come `COMMESSA + segment_key`.
-La sorgente esterna originale resta su `commesse_attivita.sorgente_*`.
+
+Il nuovo campo `sorgente_origine_tipo_id` preserva la sorgente business originale
+(PREVENTIVO, ORDINE_VENDITA, CONTRATTO, etc.) direttamente su AF, evitando il JOIN
+a `commesse_attivita` per risalire all'origine. Viene popolato da `fn_emit` leggendo
+`commesse_attivita.sorgente_tipo_id`. Vedi §26 per analisi completa.
 
 **`vendite.preventivi`** (o tabella equivalente) — aggiungere:
 ```
@@ -547,7 +552,9 @@ Gate di uscita DB (il backend parte solo dopo):
 ## 15) Cosa NON cambia
 
 - **Pipeline di fatturazione** (lotti, documenti fiscali, SDI) — invariata.
-- **Campi `sorgente_*` su `attivita_fatturabili`** — restano con semantica idempotenza pull (`COMMESSA + segment_key`).
+- **Campi `sorgente_tipo_id / sorgente_uid` su `attivita_fatturabili`** — restano con semantica
+  idempotenza pull (`COMMESSA + segment_key`). Il nuovo `sorgente_origine_tipo_id` (vedi §26)
+  si aggiunge come campo separato per tracciabilita`, senza alterare il contratto di idempotenza.
 - **Logica `Idempotency-Key` sulle API** — invariata.
 - **Branch policy BRANCH/GLOBAL** — invariata.
 
@@ -781,11 +788,18 @@ Il modello v2 resta confermato:
 - [x] WIP `gestione-listini.md` e `gestione-commesse-v2.md` allineati
 - [x] checklist 13.3 (`gestione-listini.md`) portata a completamento coerente
 
-### 18.10 Stato transizione pipeline (COMMESSA_ONLY)
+### 18.10 Stato transizione pipeline (COMMESSA_ONLY) — COMPLETATO
 
 - [x] decisione architetturale: pipeline legacy `attivita-da-fatturare` deprecata
-- [x] applicare switch operativo `20260224-41-switch-attivita-to-commessa-only-mctit.yaml`
-- [x] validare switch con `db/pgtap/vendite/test-attivita-commessa-only-switch-v1.sql`
+- [x] switch operativo applicato: `20260224-41-switch-attivita-to-commessa-only-mctit.yaml`
+- [x] validato con `db/pgtap/vendite/test-attivita-commessa-only-switch-v1.sql`
+- [x] `config.parameters[attivita_fatturabili_require_commessa] = true`
+- [x] tutte le `attivita_fatturabili_sorgenti_branch_policy` disabilitate (`deprecated=true`)
+- [x] tutte le `attivita_fatturabili_pipeline_task_policy` disattivate
+- [x] tutte le `attivita_fatturabili_pipeline` disattivate
+
+> **Stato: CHIUSO.** La pipeline legacy e` operativamente spenta. Il percorso unico
+> e` `sorgente -> commessa -> attivita_fatturabili` via `fn_emit`.
 
 ### 18.11 Readiness backfill (analisi volumi pre-NOT-NULL)
 
@@ -1042,24 +1056,21 @@ def pull_commessa_step(lotto_id: int, dry_run: bool = False) -> dict:
 
 L'orchestrazione è già nel runner della pipeline fatturazione esistente.
 
-### 20.5 Timing deprecazione
+### 20.5 Timing deprecazione — AGGIORNATO 25-02-2026
 
-**Ora — nessuna modifica**: la pipeline attività non causa danni, il DB commesse
-non esiste ancora. Congela lo sviluppo su questi file (nessun nuovo handler).
+**Stato attuale:**
 
-Dopo DB-L3 (schema commessa attivo):
+- [x] DB commesse completato (DB-L0 → DB-L5)
+- [x] Switch COMMESSA_ONLY applicato (changeset `20260224-41`, vedi §18.10)
+- [x] Pipeline legacy spenta operativamente (policy, task, branch disabilitate)
+- [ ] File Python non ancora eliminati (FASE 4 backend, vedi §25.4)
 
-- Marca i file come `# DEPRECATED — sostituiti da modello commessa`
-- Disabilita gli endpoint API attività pipeline (o flag `deprecated` nella doc)
+**Prossimi passi (FASE 4 backend):**
 
-Dopo DB-L5 (suite pgTAP verde):
-
-- Elimina `attivita_pipeline_runner.py`
-- Elimina `attivita_pipeline_step_executor.py`
-- Elimina `attivita_pipeline_error_logger.py`
-- Riduce `attivita_pipeline_repository.py` ai soli metodi ancora usati (lotto + task run)
-- Rimuove i 2 endpoint API pipeline attività (run + status)
-- Mantiene endpoint task-runs (riusato per il monitoring dello step 0)
+- Eliminare `attivita_pipeline_runner.py` e `attivita_pipeline_step_executor.py`
+- Ridurre `attivita_pipeline_repository.py` ai soli metodi lotto + task run
+- Rimuovere endpoint API pipeline attivita` (run + status)
+- Mantenere endpoint task-runs (riusato per monitoring step 0)
 
 ### 20.6 Endpoint API — impatto
 
@@ -1117,23 +1128,31 @@ La coppia sorgente si duplica su due livelli con semantiche distinte:
 | API terza parte → commessa | `API_XYZ` + uid esterno | `COMMESSA` + `segment_key` |
 | Consumo automatico → commessa AUTO | `CONSUMI` + uid consumo | `COMMESSA` + `segment_key` |
 
-### 21.4 Perché non propagare la sorgente originale su AF
+### 21.4 ~~Perche` non propagare la sorgente originale su AF~~ — SUPERATO (25-02-2026)
 
-Due ragioni:
-
-1. **`segment_key` è sufficiente** — identifica univocamente la riga in ogni contesto; la sorgente
-   originale è rintracciabile via join `AF → commesse_attivita → sorgente_*`.
-2. **Semplificazione vincoli** — il vincolo unique su AF (`sorgente_tipo_id, sorgente_uid`) rimane
-   omogeneo: punta sempre a `COMMESSA + segment_key`, non a sorgenti eterogenee.
-   Questo evita collisioni tra sorgenti di tipo diverso sullo stesso AF.
+> **Decisione originale (24-02-2026):** non propagare la sorgente originale su AF, perche`
+> `segment_key` e` sufficiente e il vincolo unique resterebbe omogeneo.
+>
+> **Revisione (25-02-2026):** questa decisione e` stata **superata** dall'analisi in §26.
+> Il passaggio attraverso COMMESSA crea un "buco" che impedisce la risoluzione corretta
+> di `tipo_doc_fiscale_id` e nasconde la sorgente business originale dietro un JOIN.
+>
+> La soluzione adottata (§26 — Opzione B+D) aggiunge `sorgente_origine_tipo_id` su AF
+> come campo denormalizzato. I campi `sorgente_tipo_id / sorgente_uid` restano invariati
+> per idempotenza (`COMMESSA + segment_key`). Il nuovo campo serve esclusivamente per
+> tracciabilita` e risoluzione `tipo_doc_fiscale_id`.
+>
+> Vedi §26 per analisi completa, motivazioni e piano implementativo.
 
 ### 21.5 Impatto su §9 e §18
 
 - **§9.1**: `commesse_attivita` aggiornato con `sorgente_tipo_id` e `sorgente_uid` nullable.
+- **§9.2**: `attivita_fatturabili` aggiornato con `sorgente_origine_tipo_id` (vedi §26).
 - **§17.2**: idem.
 - **§18.1 / §18.3**: checklist aggiornata con unique parziale sorgente su `commesse_attivita`.
 - **§15 "Cosa NON cambia"**: la semantica dei campi `sorgente_*` su AF resta — cambia solo il
-  valore (`COMMESSA + segment_key` invece di sorgente diretta).
+  valore (`COMMESSA + segment_key` invece di sorgente diretta). Il nuovo `sorgente_origine_tipo_id`
+  si aggiunge senza alterare il contratto di idempotenza.
 
 ---
 
@@ -1220,9 +1239,13 @@ quando `commessa_id IS NOT NULL`.
    billing puro.
 2. `commesse_attivita` è la nuova **sorgente di verità** per cosa e quanto fatturare.
 3. AF gestisce solo **quando** (competenza, gating) e **come** (documento, lock, stato).
-4. I campi `sorgente_*` su AF sono il contratto di idempotenza del pull:
-   sempre `COMMESSA + segment_key`, mai la sorgente originale esterna.
-5. La sorgente originale esterna vive su `commesse_attivita.sorgente_*` e si raggiunge via join.
+4. I campi `sorgente_tipo_id / sorgente_uid` su AF sono il contratto di idempotenza del pull:
+   sempre `COMMESSA + segment_key`. Il nuovo `sorgente_origine_tipo_id` (vedi §26) preserva
+   la sorgente business originale direttamente su AF per tracciabilita` e risoluzione
+   `tipo_doc_fiscale_id`, senza alterare il contratto di idempotenza.
+5. La sorgente originale e` ora accessibile in due modi:
+   - **denormalizzato**: `AF.sorgente_origine_tipo_id` (accesso diretto, zero JOIN)
+   - **normalizzato**: `AF.commessa_attivita_id -> commesse_attivita.sorgente_tipo_id` (via JOIN)
 
 ---
 
@@ -1732,3 +1755,259 @@ Le funzioni DB di L4 sono già presenti (team DB). Serve il layer Python.
 - [ ] FASE 6 suite completa verde (zero regressioni)
 - [ ] FASE 7 cleanup completato
 - [ ] Revisione finale con team DB: nessuna funzione DB referenziata da codice eliminato
+
+---
+
+## 26) Tracciabilita` sorgente originale e risoluzione `tipo_doc_fiscale_id` (25-02-2026)
+
+### 26.1 Problema identificato — il "buco COMMESSA"
+
+Nel modello v2, `fn_emit_attivita_fatturabili_da_commessa` scrive su AF con:
+
+```text
+sorgente_tipo_id = COMMESSA           (fisso, per idempotenza)
+sorgente_uid     = hash(segment_key)  (deterministico)
+```
+
+Questo e` semanticamente corretto: la sorgente *immediata* di AF e` la commessa.
+Ma la sorgente *business originale* (PREVENTIVO, ORDINE_VENDITA, CONTRATTO, DDT_VENDITA,
+ATTIVITA_CONSUMI) viene persa a livello AF.
+
+L'informazione esiste in `commesse_attivita.sorgente_tipo_id`, raggiungibile via
+`AF.commessa_attivita_id`, ma richiede un JOIN ogni volta.
+
+**Conseguenza critica su `tipo_doc_fiscale_id`:**
+
+Il trigger `trgfn_attivita_fatturabili_normalize` risolve `tipo_doc_fiscale_id` chiamando
+`fn_get_tipo_doc_fiscale_id(NEW.sorgente_tipo_id)`. Ma `NEW.sorgente_tipo_id` e` COMMESSA,
+non la sorgente originale. Quindi:
+
+| Scenario | Risultato |
+| --- | --- |
+| `config.sorgenti[COMMESSA].tipo_doc_fiscale_id` configurato | Funziona, ma tutti AF ricevono lo stesso tipo |
+| `config.sorgenti[COMMESSA].tipo_doc_fiscale_id` NULL | ERRORE per tutte le righe |
+| Sorgenti diverse richiedono tipi doc diversi | NON SUPPORTATO — tutto appiattito su COMMESSA |
+
+### 26.2 Opzioni valutate
+
+**Opzione A — Codice composto nella sorgente (es. `COMMESSA_PREVENTIVO`)**
+
+Creare sorgenti composte in `config.sorgenti` per ogni combinazione.
+
+- Contro: esplosione combinatoria (N sorgenti x M contesti)
+- Contro: rompe TUTTE le query/policy che filtrano su `sorgente_tipo_id = 'COMMESSA'`
+- Contro: la coppia `(sorgente_tipo_id, sorgente_uid)` perde l'idempotenza attuale
+- Contro: trigger `trgfn_prevent_deactivate_if_children` ingestibili
+
+**Scartata: troppo invasiva.**
+
+**Opzione B — Colonna `sorgente_origine_tipo_id` su AF**
+
+Aggiungere `sorgente_origine_tipo_id BIGINT FK -> config.sorgenti(id)` su
+`vendite.attivita_fatturabili`.
+
+- Pro: zero breaking change su `sorgente_tipo_id` (idempotenza invariata)
+- Pro: query dirette senza JOIN: `WHERE sorgente_origine_tipo_id = ?`
+- Pro: audit trail completo su AF
+- Pro: `fn_emit` ha gia` il dato: `commesse_attivita.sorgente_tipo_id`
+- Contro: due colonne "sorgente" — naming chiaro obbligatorio
+
+**Opzione C — Risalire via JOIN (nessun nuovo campo)**
+
+Usare la catena `AF.commessa_attivita_id -> commesse_attivita.sorgente_tipo_id`.
+
+- Pro: zero modifiche schema
+- Contro: JOIN obbligatorio ogni volta
+- Contro: trigger dovrebbe sub-SELECT su `commesse_attivita` per ogni riga
+- Contro: report/dashboard/analytics tutti forzati a joinare
+- Contro: fragilita` se la relazione non e` sempre valorizzata
+
+**Debole per un ERP di produzione.**
+
+**Opzione D — Risolvere solo `tipo_doc_fiscale_id` nelle `fn_list`**
+
+Aggiungere `tipo_doc_fiscale_id` come colonna di output nelle 5 `fn_list_*_da_pushare`,
+risolto da `config.sorgenti.tipo_doc_fiscale_id` per la sorgente originale (PREVENTIVO,
+ORDINE_VENDITA, etc.). Propagare via `commesse_attivita` fino ad AF.
+
+- Pro: risolve il problema specifico `tipo_doc_fiscale`
+- Pro: costo zero (stessa query, stessa join su `config.sorgenti`)
+- Contro: non risolve il problema strutturale della sorgente nascosta
+
+### 26.3 Decisione: Opzione B + D combinate
+
+Le due opzioni sono complementari e insieme risolvono sia il problema strutturale
+(tracciabilita`) sia quello specifico (`tipo_doc_fiscale_id`).
+
+**Opzione B — `sorgente_origine_tipo_id` su AF:**
+
+```text
+vendite.attivita_fatturabili:
+  sorgente_tipo_id            = COMMESSA        (sorgente immediata, chiave idempotenza)
+  sorgente_origine_tipo_id    = PREVENTIVO      (sorgente business originale — NUOVO)
+```
+
+**Opzione D — `tipo_doc_fiscale_id` nelle `fn_list`:**
+
+Le 5 `fn_list_*_da_pushare` gia` fanno JOIN su `config.sorgenti` per `sorgente_tipo_id`.
+Aggiungere `s.tipo_doc_fiscale_id` al SELECT ha costo zero.
+
+### 26.4 Flusso risultante
+
+```text
+fn_list_preventivi_da_pushare
+    -> sorgente_tipo_id = PREVENTIVO
+    -> tipo_doc_fiscale_id = config.sorgenti[PREVENTIVO].tipo_doc_fiscale_id
+    |
+    v
+fn_upsert_commessa_attivita
+    -> sorgente_tipo_id = PREVENTIVO (conservato)
+    -> tipo_doc_fiscale_id = FATTURA (propagato)
+    |
+    v
+fn_emit_attivita_fatturabili_da_commessa
+    -> sorgente_tipo_id = COMMESSA (idempotenza — invariato)
+    -> sorgente_origine_tipo_id = PREVENTIVO (da ca.sorgente_tipo_id — NUOVO)
+    -> tipo_doc_fiscale_id = FATTURA (da ca.tipo_doc_fiscale_id — gia` popolato)
+    |
+    v
+trgfn_attivita_fatturabili_normalize
+    -> tipo_doc_fiscale_id gia` valorizzato? -> SKIP
+    -> se NULL? -> risolve da sorgente_origine_tipo_id (safety net corretto)
+```
+
+**Nessun buco. Origine sempre tracciabile. Zero breaking change.**
+
+### 26.5 Impatto implementativo
+
+**DB — DDL:**
+
+- [ ] Aggiungere `sorgente_origine_tipo_id BIGINT` a `vendite.attivita_fatturabili` (nullable)
+- [ ] FK verso `config.sorgenti(id)`
+- [ ] Trigger `trgfn_child_requires_active_parent` su `sorgente_origine_tipo_id`
+
+**DB — `fn_emit_attivita_fatturabili_da_commessa`:**
+
+- [ ] Aggiungere `ca.sorgente_tipo_id` al SELECT nel loop
+- [ ] Scrivere `sorgente_origine_tipo_id = ca.sorgente_tipo_id` nell'INSERT e nell'UPDATE
+
+**DB — 5 `fn_list_*_da_pushare`:**
+
+- [ ] Aggiungere `s.tipo_doc_fiscale_id` al SELECT (join su `config.sorgenti` gia` presente)
+- [ ] Funzioni coinvolte:
+  - `fn_list_preventivi_da_pushare`
+  - `fn_list_ordini_da_pushare`
+  - `fn_list_contratti_da_pushare`
+  - `fn_list_ddt_da_pushare`
+  - `fn_list_consumi_da_pushare`
+
+**DB — `trgfn_attivita_fatturabili_normalize`:**
+
+- [ ] Quando `tipo_doc_fiscale_id IS NULL`, risolvere da `sorgente_origine_tipo_id`
+      (non piu` da `sorgente_tipo_id` che ora e` sempre COMMESSA)
+- [ ] Il trigger resta safety net, non risoluzione primaria
+
+**Backend — `CommesseRepository`:**
+
+- [ ] Aggiornare `PushableRow` con campo `tipo_doc_fiscale_id`
+- [ ] Propagare in `CommessaAttivitaInput`
+
+**Backend — handler sorgenti:**
+
+- [ ] Passare `tipo_doc_fiscale_id` da `PushableRow` a `upsert_attivita()`
+
+### 26.6 Motivazioni architetturali
+
+1. **DB-first coerente**: la risoluzione `tipo_doc_fiscale_id` resta nel DB
+   (`fn_list` + trigger safety net), nessuna logica in Python.
+2. **Tracciabilita` completa**: la sorgente business originale e` sempre accessibile
+   su AF senza JOIN, per query, report e audit.
+3. **Per-sorgente**: sorgenti diverse possono avere tipi doc fiscale diversi
+   (PREVENTIVO -> FATTURA, CONTRATTO -> FATTURA_PERIODICA).
+4. **Zero breaking change**: `sorgente_tipo_id / sorgente_uid` invariati,
+   idempotenza pull non toccata.
+5. **`config.sorgenti.tipo_doc_fiscale_id`**: resta il default configurabile per tipo
+   sorgente. Complementare, non sostituito.
+
+### 26.7 Checklist §26
+
+- [ ] DDL `sorgente_origine_tipo_id` su AF + FK + trigger active-parent
+- [ ] `fn_emit` aggiornata (SELECT + INSERT/UPDATE)
+- [ ] 5 `fn_list_*_da_pushare` aggiornate con `tipo_doc_fiscale_id`
+- [ ] `trgfn_attivita_fatturabili_normalize` aggiornato (safety net da `sorgente_origine_tipo_id`)
+- [ ] Backend `PushableRow` + `CommessaAttivitaInput` aggiornati
+- [ ] Handler sorgenti: propagazione `tipo_doc_fiscale_id`
+- [x] Test pgTAP: risoluzione `tipo_doc_fiscale_id` per-sorgente
+- [x] Test pgTAP: `sorgente_origine_tipo_id` propagato da `fn_emit`
+
+---
+
+## 27) Pulizia `config.sorgenti` — scope, trigger polimorfo, RIGA (25-02-2026)
+
+### 27.1 Modifiche DB completate
+
+1. **Colonna `scope` su `config.sorgenti`** (NOT NULL, CHECK constraint):
+   - `PUSH_COMMESSA` — PREVENTIVO, CONTRATTO, ORDINE_VENDITA, DDT_VENDITA, ATTIVITA_CONSUMI
+   - `PIPELINE_MARKER` — ATTIVITA, COMMESSA
+   - `ROW_VALIDATOR` — 5 sorgenti *_RIGA (archiviate)
+   - `POST_INVOICE` — FATTURA
+   - `DIRECT_ENTRY` — riservato per uso futuro
+
+2. **Trigger polimorfo rimosso** da `attivita_fatturabili`:
+   `trg_attivita_fatturabili_a10_guard_fonte_ins_upd` droppato.
+   Ridondante nel flusso commessa-only (`sorgente_tipo_id` = COMMESSA, FK `commessa_attivita_id`
+   copre la validazione). La funzione `script.trgfn_guard_sorgente_polimorfa()` resta disponibile.
+
+3. **5 sorgenti RIGA archiviate** (`attivo=false`, `meta.archived=true`):
+   PREVENTIVO_RIGA, CONTRATTO_RIGA, ORDINE_VENDITA_RIGA, DDT_VENDITA_RIGA, FATTURA_RIGA.
+   Branch policy corrispondente eliminata.
+
+### 27.2 Impatto backend — ottimizzazioni possibili
+
+**A) `PushableRow` + `tipo_doc_fiscale_id` (§26 — da fare):**
+
+Le 5 `fn_list_*_da_pushare` ora restituiscono `tipo_doc_fiscale_id`.
+Il backend deve allinearsi:
+
+- `_PUSHABLE_SHARED_COLS`: aggiungere `"tipo_doc_fiscale_id"`
+- `PushableRow`: aggiungere campo `tipo_doc_fiscale_id: int | None`
+- `_map_pushable_row()`: aggiungere mapping
+- `_build_attivita_input()`: usare `row.tipo_doc_fiscale_id` direttamente
+- Rimuovere lo stub `_resolve_tipo_doc_fiscale_id()` dal handler base
+  (la risoluzione avviene nel DB, il Python riceve il valore gia` calcolato)
+
+**B) Scoperta dinamica sorgenti via `scope` (opzionale, media priorita`):**
+
+Il campo `scope` consente al backend di scoprire le sorgenti pushable a runtime
+invece di mantenere mapping hardcoded:
+
+```python
+# Oggi: _SORGENTE_FN_MAP hardcoded in commesse_repository.py
+# Domani possibile:
+SELECT s.codice, s.id, s.tipo_doc_fiscale_id
+  FROM config.sorgenti s
+ WHERE s.scope = 'PUSH_COMMESSA' AND s.attivo = true;
+```
+
+Benefici:
+- Aggiungere una nuova sorgente = INSERT in `config.sorgenti` + registrare handler Python
+- `_SORGENTE_FN_MAP` validabile a startup contro `config.sorgenti`
+- Filtrare sorgenti per contesto senza conoscere i codici
+
+**C) Semplificazione validazione (gia` attiva):**
+
+- Trigger polimorfo rimosso: nessun impatto diretto sul backend (era trasparente),
+  ma riduce overhead INSERT/UPDATE su AF e semplifica debug.
+- RIGA archiviate: `attivo=false` le esclude automaticamente da qualsiasi query
+  che filtra su `sorgenti.attivo = true`. Nessuna logica di filtro da aggiungere.
+
+### 27.3 Checklist §27
+
+- [x] DDL `scope` su `config.sorgenti` + CHECK + NOT NULL
+- [x] Drop trigger `trg_attivita_fatturabili_a10_guard_fonte_ins_upd`
+- [x] Archiviazione 5 sorgenti RIGA + cleanup branch_policy
+- [x] CSV seed aggiornati (sorgenti.csv, branch_policy.csv, loadUpdateData)
+- [x] Test pgTAP: `test-sorgenti-scope-pulizia-v1.sql` (10 test)
+- [ ] Backend: `PushableRow` + `tipo_doc_fiscale_id` (vedi §27.2 A)
+- [ ] Backend: rimuovere stub `_resolve_tipo_doc_fiscale_id()`
+- [ ] Backend: valutare scoperta dinamica via `scope` (vedi §27.2 B)
