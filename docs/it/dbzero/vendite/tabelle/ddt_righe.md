@@ -9,7 +9,7 @@
 | riga_nr | integer | NO |  |
 | articolo_id | uuid | NO |  |
 | descrizione | character varying | NO |  |
-| qta | numeric | NO |  |
+| quantita | numeric | NO |  |
 | lotto | character varying | YES |  |
 | seriale | character varying | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -22,6 +22,8 @@
 | qta_operativa | numeric | YES |  |
 | uom_operativa_id | bigint | YES |  |
 | factor_to_base | numeric | NO | 1 |
+| attivo | boolean | NO | true |
+| prezzo_unitario | numeric | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -76,9 +76,15 @@ EMESSO → IN_TRANSITO → CONSEGNATO → (RESO opz.)
 
    * Al cambio stato del DDT a *CONSEGNATO*, le quantità consegnate possono aggiornare l’**avanzamento ordine** (via trigger di sync).
 
-3. **Fatturazione**
+3. **Push a commessa** (via `fn_list_ddt_da_pushare`)
 
-   * Il DDT può essere fatturato (fattura differita o accompagnatoria). Le tabelle e logiche di collegamento saranno documentate in un modulo dedicato.
+   * DDT da ordine: eredita billing_account e prezzo via fulfillment; scatta quando `fatturazione_trigger` dell'ordine corrisponde allo stato DDT.
+   * DDT autonomo: richiede `billing_account_id` proprio; scatta a SPEDITO/CONSEGNATO.
+   * Campi aggiunti: `billing_account_id`, `utility_id`, `valuta_id` (ereditati dall'ordine sorgente via `trgfn_ddt_normalize`), `ddt_righe.prezzo_unitario`.
+
+4. **Fatturazione**
+
+   * Il DDT puo` essere fatturato (fattura differita o accompagnatoria). Le tabelle e logiche di collegamento saranno documentate in un modulo dedicato.
 
 ---
 

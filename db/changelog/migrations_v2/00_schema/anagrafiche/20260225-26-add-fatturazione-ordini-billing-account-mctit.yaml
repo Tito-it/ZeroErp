@@ -1,0 +1,37 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260225-26-add-fatturazione-ordini-billing-account-mctit.yaml
+
+  - changeSet:
+      id: 20260225-26-add-fatturazione-ordini-billing-account
+      author: mctit
+      comment: "Aggiunge fatturazione_ordini a billing_account: default per il trigger di fatturazione ordini (CONFERMATO/SPEDITO/CONSEGNATO)."
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: billing_account
+                columnName: fatturazione_ordini
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.billing_account
+                ADD COLUMN fatturazione_ordini character varying NOT NULL
+                  DEFAULT 'CONFERMATO';
+
+              ALTER TABLE anagrafiche.billing_account
+                ADD CONSTRAINT chk_billing_account_fatturazione_ordini
+                  CHECK (fatturazione_ordini IN ('CONFERMATO', 'SPEDITO', 'CONSEGNATO'));
+
+              COMMENT ON COLUMN anagrafiche.billing_account.fatturazione_ordini
+                IS 'Default per fatturazione_trigger su ordini: CONFERMATO = fattura alla conferma ordine, SPEDITO = fattura alla spedizione DDT, CONSEGNATO = fattura alla consegna DDT.';

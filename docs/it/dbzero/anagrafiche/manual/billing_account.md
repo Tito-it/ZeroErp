@@ -111,9 +111,25 @@ Entrambe puntano a `config.utilities.id`; il naming e' uniforme anche nelle quer
 
 ---
 
-### 🧾 Note Finali
+### Policy fatturazione ordini
 
-Questa tabella è la base per la gestione avanzata dei codici di fatturazione, con meccanismi di storicizzazione e aggregazione utili in scenari di multi-utenza e subentri tipici del settore utilities.
+Il campo `fatturazione_ordini` (default `CONFERMATO`) definisce il default
+per `ordini.fatturazione_trigger` al momento dell'inserimento ordine:
+
+| Valore | Significato |
+| --- | --- |
+| `CONFERMATO` | Fatturazione alla conferma ordine (push ordine a commessa) |
+| `SPEDITO` | Fatturazione alla spedizione DDT (push DDT a commessa) |
+| `CONSEGNATO` | Fatturazione alla consegna DDT (push DDT a commessa) |
+
+Il valore e` ereditato automaticamente sugli ordini tramite
+`vendite.trgfn_ordini_normalize` e puo` essere sovrascritto per singolo ordine.
+
+---
+
+### Note Finali
+
+Questa tabella e` la base per la gestione avanzata dei codici di fatturazione, con meccanismi di storicizzazione e aggregazione utili in scenari di multi-utenza e subentri tipici del settore utilities.
 
 
 

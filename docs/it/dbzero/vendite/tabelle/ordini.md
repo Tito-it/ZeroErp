@@ -30,10 +30,12 @@
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
 | termine_pagamento_id | bigint | YES |  |
+| fatturazione_trigger | character varying | NO | 'CONFERMATO'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_ordini_fatturazione_trigger |  |
 | FOREIGN KEY | fk_ordini_termini_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_ordini_v_billing_account | billing_account_id |
 | FOREIGN KEY | fk_ordini_v_cliente_ruolo | soggetto_ruolo_id |

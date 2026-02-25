@@ -104,12 +104,28 @@ I campi di sintesi (`imponibile_tot`, `sconto_tot`, `iva_tot`, `totale_doc`) rap
 
 ---
 
-### ⚙️ Regole di gestione
+### Fatturazione: ordine vs DDT
 
-1. **Creazione** – ammessi solo stati iniziali (*bozza*).  
-2. **Aggiornamento numerazione** – possibile solo da trigger di sistema durante conferma ordine.  
-3. **Cancellazione** – vietata se ordine già confermato o collegato a DDT/fatture (vincolo logico).  
-4. **Cambio valuta** – ammesso solo finché non esistono righe evase.  
+Il campo `fatturazione_trigger` controlla **quando** scatta il push a commessa:
+
+| Valore | Comportamento |
+| --- | --- |
+| `CONFERMATO` (default) | Push a commessa alla conferma ordine (`fn_list_ordini_da_pushare`) |
+| `SPEDITO` | Ordine non pusha; il DDT pusha quando spedito (`fn_list_ddt_da_pushare`) |
+| `CONSEGNATO` | Ordine non pusha; il DDT pusha quando consegnato (`fn_list_ddt_da_pushare`) |
+
+Il valore e` ereditato da `billing_account.fatturazione_ordini` al momento
+dell'inserimento (via `trgfn_ordini_normalize`). Puo` essere sovrascritto
+manualmente per singolo ordine.
+
+---
+
+### Regole di gestione
+
+1. **Creazione** – ammessi solo stati iniziali (*bozza*).
+2. **Aggiornamento numerazione** – possibile solo da trigger di sistema durante conferma ordine.
+3. **Cancellazione** – vietata se ordine gia` confermato o collegato a DDT/fatture (vincolo logico).
+4. **Cambio valuta** – ammesso solo finche` non esistono righe evase.
 5. **Sorgente esterna** – se popolata, blocca rinumerazione automatica e update su `serie/numero`.  
 
 ---
