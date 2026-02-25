@@ -15,7 +15,11 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 16-02-2026)  
+**DEPRECATA DA COMMESSE** — pipeline attivita` legacy sostituita dal flusso commessa-only.
+Tutte le righe disabilitate (`attivo=false`) dal changeset `20260224-41`.
+Candidata a DROP dopo go-live. Rif: `gestione-commesse-v2.md` §25.4, §27.
+
+(latest review 16-02-2026)
 La tabella **`vendite.attivita_fatturabili_pipeline`** configura gli step della pipeline
 del dominio **attivita_fatturabili**, separata dalla pipeline fatturazione documenti.
 
