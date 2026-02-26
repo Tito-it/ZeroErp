@@ -482,12 +482,28 @@ class CommesseRepository:
         self,
         *,
         competenza_mese: date | None = None,
-        utility_id: int | None = None,
         billing_account_id: int | None = None,
+        utility_id: int | None = None,
         emittente_soggetto_ruolo_id: int | None = None,
+        limit: int = 1000,
     ) -> list[int]:
-        """Stub: fn DB fn_list_commesse_emittibili non ancora disponibile."""
-        return []
+        """Chiama vendite.fn_list_commesse_emittibili e restituisce i commessa_id."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT commessa_id
+                FROM vendite.fn_list_commesse_emittibili(
+                    p_competenza_mese => %s,
+                    p_billing_account_id => %s,
+                    p_utility_id => %s,
+                    p_emittente_soggetto_ruolo_id => %s,
+                    p_limit => %s
+                )
+                """,
+                [competenza_mese, billing_account_id, utility_id,
+                 emittente_soggetto_ruolo_id, limit],
+            )
+            return [row[0] for row in cursor.fetchall()]
 
     # --- Gruppo 4: Push log ---
 

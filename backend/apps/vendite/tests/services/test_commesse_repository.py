@@ -24,6 +24,8 @@ Indice test eseguiti:
 15) CommesseRepositoryUnitTests.test_get_or_create_commessa_uses_defaults
 16) CommesseRepositoryUnitTests.test_validate_sorgente_map_ok
 17) CommesseRepositoryUnitTests.test_validate_sorgente_map_missing_in_map
+18) CommesseRepositoryUnitTests.test_list_commesse_emittibili_returns_ids
+19) CommesseRepositoryUnitTests.test_list_commesse_emittibili_empty
 """
 
 from datetime import date, datetime, timezone
@@ -328,3 +330,32 @@ class CommesseRepositoryUnitTests(TestCase):
         warnings = CommesseRepository.validate_sorgente_map()
         self.assertEqual(len(warnings), 1)
         self.assertIn("NUOVA_SORGENTE", warnings[0])
+
+    # Scopo: Verifica che list_commesse_emittibili chiami la fn DB e restituisca list[int].
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_list_commesse_emittibili_returns_ids(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchall=[(10,), (20,), (30,)])
+        repo = CommesseRepository()
+        result = repo.list_commesse_emittibili(
+            competenza_mese=date(2026, 6, 1),
+            billing_account_id=1,
+            utility_id=2,
+            emittente_soggetto_ruolo_id=3,
+        )
+        self.assertEqual(result, [10, 20, 30])
+        sql = mock_cursor_factory.return_value.execute.call_args[0][0]
+        self.assertIn("fn_list_commesse_emittibili", sql)
+        params = mock_cursor_factory.return_value.execute.call_args[0][1]
+        self.assertEqual(params[0], date(2026, 6, 1))
+        self.assertEqual(params[1], 1)
+        self.assertEqual(params[2], 2)
+        self.assertEqual(params[3], 3)
+        self.assertEqual(params[4], 1000)  # default limit
+
+    # Scopo: Verifica che list_commesse_emittibili restituisca lista vuota se nessun risultato.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_list_commesse_emittibili_empty(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchall=[])
+        repo = CommesseRepository()
+        result = repo.list_commesse_emittibili()
+        self.assertEqual(result, [])
