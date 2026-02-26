@@ -1,0 +1,40 @@
+{% include-markdown "it/dbzero/vendite/manual/stati_commessa.md" %}
+# 📚 Tabella `stati_commessa`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO |  |
+| codice | character varying | NO |  |
+| descrizione | character varying | YES |  |
+| attivo | boolean | NO | true |
+| ordine | smallint | YES |  |
+| meta | jsonb | NO | '{}'::jsonb |
+| codice_interno | character varying | NO |  |
+| chiude_commessa | boolean | NO | false |
+| emittibile | boolean | NO | false |
+| modificabile | boolean | NO | true |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| PRIMARY KEY | pk_stati_commessa | id |
+| UNIQUE | uq_stati_commessa_codice | codice |
+| UNIQUE | uq_stati_commessa_codice_interno | codice_interno |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_stati_commessa_attivo | `CREATE INDEX ix_stati_commessa_attivo ON vendite.stati_commessa USING btree (attivo)` |
+| pk_stati_commessa | `CREATE UNIQUE INDEX pk_stati_commessa ON vendite.stati_commessa USING btree (id)` |
+| uq_stati_commessa_codice | `CREATE UNIQUE INDEX uq_stati_commessa_codice ON vendite.stati_commessa USING btree (codice)` |
+| uq_stati_commessa_codice_interno | `CREATE UNIQUE INDEX uq_stati_commessa_codice_interno ON vendite.stati_commessa USING btree (codice_interno)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_stati_commessa_a10_commesse_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'commesse', 'stato_commessa_id', 'id')` |
+| trg_stati_commessa_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+
+---
+{% include-markdown "signature-core.md" %}

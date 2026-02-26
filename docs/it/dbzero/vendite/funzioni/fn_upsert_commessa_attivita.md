@@ -15,7 +15,7 @@ AS $function$
 DECLARE
   v_attivita_id vendite.commesse_attivita.id%TYPE;
   v_existing_stato_emissione vendite.commesse_attivita.stato_emissione%TYPE;
-  v_commessa_stato vendite.commesse.stato_commessa%TYPE;
+  v_modificabile vendite.stati_commessa.modificabile%TYPE;
   v_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE;
   v_tipo_movimento varchar(32);
   v_tipo_consumo varchar(32);
@@ -30,6 +30,7 @@ BEGIN
   --   - quantita != 0 (negativi ammessi per utility/rettifiche)
   --   - prezzo_snapshot obbligatorio (negativi ammessi)
   --   - tipo_movimento/tipo_consumo tracciati in meta
+  --   - guard via stati_commessa.modificabile
   -- =========================================================
   IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
@@ -84,7 +85,8 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'vendite','fn_upsert_commessa_attivita','E_GENERICO',
       jsonb_build_object('scope','COMMESSE','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','tipo_movimento non valido','tipo_movimento',v_tipo_movimento)),
-      NULL::uuid, 'tipo_movimento non valido'
+      NULL::uuid, 
+      concat('tipo_movimento non valido: ', v_tipo_movimento)
     );
   END IF;
 
@@ -93,7 +95,7 @@ BEGIN
     PERFORM script.fn_log_and_raise_error(
       'vendite','fn_upsert_commessa_attivita','E_GENERICO',
       jsonb_build_object('scope','COMMESSE','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','tipo_consumo non valido','tipo_consumo',v_tipo_consumo)),
-      NULL::uuid, 'tipo_consumo non valido'
+      NULL::uuid, concat('tipo_consumo non valido: ', v_tipo_consumo)
     );
   END IF;
 
@@ -103,11 +105,15 @@ BEGIN
     'tipo_consumo', v_tipo_consumo
   );
 
-  SELECT c.stato_commessa INTO v_commessa_stato
+  -- Guard: commessa esistente e in stato modificabile
+  SELECT sc.modificabile
+  INTO v_modificabile
   FROM vendite.commesse c
+  JOIN vendite.stati_commessa sc
+    ON sc.id = c.stato_commessa_id
   WHERE c.id = p_commessa_id;
 
-  IF v_commessa_stato IS NULL THEN
+  IF NOT FOUND THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite','fn_upsert_commessa_attivita','E_GENERICO',
       jsonb_build_object('scope','COMMESSE','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','commessa non trovata','commessa_id',p_commessa_id)),
@@ -115,11 +121,11 @@ BEGIN
     );
   END IF;
 
-  IF v_commessa_stato IN ('CHIUSA', 'ANNULLATA') THEN
+  IF NOT v_modificabile THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite','fn_upsert_commessa_attivita','E_GENERICO',
-      jsonb_build_object('scope','COMMESSE','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','commessa non modificabile in stato finale','commessa_id',p_commessa_id,'stato_commessa',v_commessa_stato)),
-      NULL::uuid, concat('commessa non modificabile in stato finale: ', p_commessa_id::text, ' stato: ', v_commessa_stato)
+      jsonb_build_object('scope','COMMESSE','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','commessa non modificabile in stato corrente','commessa_id',p_commessa_id)),
+      NULL::uuid, concat('commessa non modificabile in stato corrente: ', p_commessa_id::text)
     );
   END IF;
 
@@ -187,7 +193,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_upsert_commessa_attivita(p_commessa_id bigint, p_segment_key character varying, p_articolo_id uuid, p_istanza_utility_id bigint, p_data_attivita date, p_uom_id bigint, p_quantita numeric, p_competenza_mese date, p_competenza_dal date, p_competenza_al date, p_prezzo_snapshot numeric, p_qta_operativa numeric, p_uom_operativa_id bigint, p_factor_to_base numeric, p_posticipa_al date, p_tipo_doc_fiscale_id bigint, p_valuta_id integer, p_area_geografica_id bigint, p_listino_versione_id bigint, p_prezzo_bloccato boolean, p_pricing_mode character varying, p_prezzo_da_riallineare boolean, p_stato_approvazione character varying, p_stato_emissione character varying, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_tipo_movimento character varying, p_tipo_consumo character varying, p_meta jsonb)
-IS 'Upsert idempotente su commesse_attivita: quantita diversa da 0, prezzo obbligatorio (anche negativo), tipo_movimento/tipo_consumo salvati in meta. Default tipo_consumo: CONGUAGLIO.';
+IS 'Upsert idempotente su commesse_attivita: quantita diversa da 0, prezzo obbligatorio (anche negativo), tipo_movimento/tipo_consumo salvati in meta. Guard via stati_commessa.modificabile. Default tipo_consumo: CONGUAGLIO.';
 ```
 
 ---

@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20260226-01-upsert-vendite-stati-commessa
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: stati_commessa
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/vendite/stati_commessa.csv
+            tableName: stati_commessa
+            schemaName: vendite
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: ordine, type: STRING }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: chiude_commessa, type: BOOLEAN }
+              - column: { name: emittibile, type: BOOLEAN }
+              - column: { name: modificabile, type: BOOLEAN }
+
+  - changeSet:
+      id: 20260226-90-upsert-vendite-stati-commessa
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20260226-01-upsert-vendite-stati-commessa

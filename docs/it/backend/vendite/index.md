@@ -21,4 +21,4 @@
 - [fn_prepare_sdi_payload_lotto](manual/fn_prepare_sdi_payload_lotto.md) — Reperire dal database il dataset SDI di un lotto, aprendo/riusando i tentativi di invio e restituendo le righe da usare per la generazione file.
 - [fn_reset_lotto_draft](manual/fn_reset_lotto_draft.md) — Eseguire il reset tecnico di un lotto MASSIVO in DRAFT invocando la funzione DB.
 - [fn_reset_lotto_fattura_draft](manual/fn_reset_lotto_fattura_draft.md) — Eseguire il reset tecnico di una singola fattura in un lotto MASSIVO DRAFT.
-- [test_attivita_pipeline](manual/test_attivita_pipeline.md) — Descrivere la struttura, i pattern e la copertura dei test per il dominio ATTIVITA_FATTURABILI della pipeline vendite (BE-3).
+- [test_attivita_pipeline](manual/test_attivita_pipeline.md) — Descrivere la struttura, i pattern e la copertura dei test per il dominio ATTIVITA_FATTURABILI della pipeline vendite.
