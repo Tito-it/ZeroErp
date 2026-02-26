@@ -7,23 +7,15 @@
 
 """
 Indice test eseguiti:
-1)  VenditeAttivitaPipelineApiTests.test_run_attivita_pipeline_ok
-2)  VenditeAttivitaPipelineApiTests.test_run_attivita_pipeline_invalid_json
-3)  VenditeAttivitaPipelineApiTests.test_run_attivita_pipeline_requires_idempotency_key
-4)  VenditeAttivitaPipelineApiTests.test_run_attivita_pipeline_v1_requires_jwt
-5)  VenditeAttivitaPipelineApiTests.test_run_attivita_pipeline_service_error
-6)  VenditeAttivitaPipelineApiTests.test_run_attivita_pipeline_converts_zero_ids_to_none
-7)  VenditeAttivitaPipelineApiTests.test_run_attivita_pipeline_passes_sorgente_tipo_id
-8)  VenditeAttivitaPipelineApiTests.test_get_attivita_pipeline_status_ok
-9)  VenditeAttivitaPipelineApiTests.test_get_attivita_pipeline_status_v1_requires_jwt
-10) VenditeAttivitaPipelineApiTests.test_get_attivita_pipeline_status_lotto_not_found
-11) VenditeAttivitaPipelineApiTests.test_get_attivita_pipeline_status_invalid_lotto_id
-12) VenditeAttivitaPipelineApiTests.test_get_attivita_task_runs_ok
-13) VenditeAttivitaPipelineApiTests.test_get_attivita_task_runs_v1_requires_jwt
-14) VenditeAttivitaPipelineApiTests.test_get_attivita_task_runs_with_branch_code_filter
+1) VenditeAttivitaPipelineApiTests.test_get_attivita_pipeline_status_ok
+2) VenditeAttivitaPipelineApiTests.test_get_attivita_pipeline_status_v1_requires_jwt
+3) VenditeAttivitaPipelineApiTests.test_get_attivita_pipeline_status_lotto_not_found
+4) VenditeAttivitaPipelineApiTests.test_get_attivita_pipeline_status_invalid_lotto_id
+5) VenditeAttivitaPipelineApiTests.test_get_attivita_task_runs_ok
+6) VenditeAttivitaPipelineApiTests.test_get_attivita_task_runs_v1_requires_jwt
+7) VenditeAttivitaPipelineApiTests.test_get_attivita_task_runs_with_branch_code_filter
 """
 
-import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase, override_settings
@@ -36,122 +28,6 @@ class VenditeAttivitaPipelineApiTests(SimpleTestCase):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         self.client = Client()
-
-    # ------------------------------------------------------------------ #
-    # POST /api/v1/vendite/attivita_fatturabili/pipeline/run/             #
-    # ------------------------------------------------------------------ #
-
-    # Scopo: Verifica il caso `test_run_attivita_pipeline_ok`.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.pr_run_attivita_pipeline")
-    def test_run_attivita_pipeline_ok(self, mocked_service, _mock_auth):
-        mocked_service.return_value = 10
-        response = self.client.post(
-            "/api/v1/vendite/attivita_fatturabili/pipeline/run/",
-            data=json.dumps({"dry_run": True}),
-            content_type="application/json",
-            headers={"Idempotency-Key": "attivita-ok-1"},
-        )
-        self.assertEqual(response.status_code, 200)
-        data = response.json()["data"]
-        self.assertEqual(data["lotto_id"], 10)
-        self.assertEqual(data["status"], "ok")
-        self.assertIn("request_id", response.json()["meta"])
-        mocked_service.assert_called_once()
-
-    # Scopo: Verifica il caso `test_run_attivita_pipeline_invalid_json`.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_run_attivita_pipeline_invalid_json(self, _mock_auth):
-        response = self.client.post(
-            "/api/v1/vendite/attivita_fatturabili/pipeline/run/",
-            data="{invalid",
-            content_type="application/json",
-            headers={"Idempotency-Key": "attivita-inv-json-1"},
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"], "invalid_json")
-
-    # Scopo: Verifica il caso `test_run_attivita_pipeline_requires_idempotency_key`.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_run_attivita_pipeline_requires_idempotency_key(self, _mock_auth):
-        response = self.client.post(
-            "/api/v1/vendite/attivita_fatturabili/pipeline/run/",
-            data=json.dumps({"dry_run": True}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 400)
-        body = response.json()["error"]
-        self.assertEqual(body["code"], "E_IDEMPOTENCY_KEY_REQUIRED")
-
-    # Scopo: Verifica il caso `test_run_attivita_pipeline_v1_requires_jwt`.
-    def test_run_attivita_pipeline_v1_requires_jwt(self):
-        response = self.client.post(
-            "/api/v1/vendite/attivita_fatturabili/pipeline/run/",
-            data=json.dumps({"dry_run": True}),
-            content_type="application/json",
-            headers={"Idempotency-Key": "attivita-no-jwt-1"},
-        )
-        self.assertEqual(response.status_code, 401)
-
-    # Scopo: Verifica il caso `test_run_attivita_pipeline_service_error`.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.pr_run_attivita_pipeline")
-    def test_run_attivita_pipeline_service_error(self, mocked_service, _mock_auth):
-        mocked_service.side_effect = ServiceError(
-            code="E_ATTIVITA_PIPELINE",
-            message="Lotto gia` in esecuzione.",
-            detail="Operazione bloccata",
-        )
-        response = self.client.post(
-            "/api/v1/vendite/attivita_fatturabili/pipeline/run/",
-            data=json.dumps({"lotto_id": 5}),
-            content_type="application/json",
-            headers={"Idempotency-Key": "attivita-err-1"},
-        )
-        self.assertEqual(response.status_code, 400)
-        body = response.json()["error"]
-        self.assertEqual(body["code"], "E_ATTIVITA_PIPELINE")
-
-    # Scopo: Verifica il caso `test_run_attivita_pipeline_converts_zero_ids_to_none`.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.pr_run_attivita_pipeline")
-    def test_run_attivita_pipeline_converts_zero_ids_to_none(self, mocked_service, _mock_auth):
-        mocked_service.return_value = 11
-        response = self.client.post(
-            "/api/v1/vendite/attivita_fatturabili/pipeline/run/",
-            data=json.dumps({
-                "lotto_id": 0,
-                "utility_id": 0,
-                "billing_account_id": 0,
-                "sorgente_tipo_id": 0,
-                "emittente_soggetto_ruolo_id": 0,
-                "dry_run": True,
-            }),
-            content_type="application/json",
-            headers={"Idempotency-Key": "attivita-zero-1"},
-        )
-        self.assertEqual(response.status_code, 200)
-        kwargs = mocked_service.call_args.kwargs
-        self.assertIsNone(kwargs["lotto_id"])
-        self.assertIsNone(kwargs["utility_id"])
-        self.assertIsNone(kwargs["billing_account_id"])
-        self.assertIsNone(kwargs["sorgente_tipo_id"])
-        self.assertIsNone(kwargs["emittente_soggetto_ruolo_id"])
-
-    # Scopo: Verifica il caso `test_run_attivita_pipeline_passes_sorgente_tipo_id`.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.pr_run_attivita_pipeline")
-    def test_run_attivita_pipeline_passes_sorgente_tipo_id(self, mocked_service, _mock_auth):
-        mocked_service.return_value = 20
-        response = self.client.post(
-            "/api/v1/vendite/attivita_fatturabili/pipeline/run/",
-            data=json.dumps({"sorgente_tipo_id": 3, "dry_run": True}),
-            content_type="application/json",
-            headers={"Idempotency-Key": "attivita-sorgente-1"},
-        )
-        self.assertEqual(response.status_code, 200)
-        kwargs = mocked_service.call_args.kwargs
-        self.assertEqual(kwargs["sorgente_tipo_id"], 3)
 
     # ------------------------------------------------------------------ #
     # GET /api/v1/vendite/attivita_fatturabili/pipeline/<id>/status/      #

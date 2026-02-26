@@ -123,6 +123,7 @@ class VenditePipelineRepository:
         "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
         "close_lotto": None,
         "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
+        "pull_attivita_da_commessa": "vendite.fn_emit_attivita_fatturabili_da_commessa",
     }
 
     # Scopo: Gestisce `_to_jsonb_param` nel flusso applicativo del modulo.

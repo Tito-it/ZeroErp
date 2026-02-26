@@ -7,12 +7,11 @@
 
 """
 Indice test eseguiti:
-1) AttivitaPipelineServiceUnitTests.test_pr_run_attivita_pipeline_calls_runner
-2) AttivitaPipelineServiceUnitTests.test_fn_get_attivita_pipeline_status_returns_dto
-3) AttivitaPipelineServiceUnitTests.test_fn_get_attivita_pipeline_status_raises_when_lotto_not_found
-4) AttivitaPipelineServiceUnitTests.test_fn_get_attivita_pipeline_status_raises_on_invalid_lotto_id
-5) AttivitaPipelineServiceUnitTests.test_fn_get_attivita_task_runs_returns_dto
-6) AttivitaPipelineServiceUnitTests.test_fn_get_attivita_task_runs_validates_limit
+1) AttivitaPipelineServiceUnitTests.test_fn_get_attivita_pipeline_status_returns_dto
+2) AttivitaPipelineServiceUnitTests.test_fn_get_attivita_pipeline_status_raises_when_lotto_not_found
+3) AttivitaPipelineServiceUnitTests.test_fn_get_attivita_pipeline_status_raises_on_invalid_lotto_id
+4) AttivitaPipelineServiceUnitTests.test_fn_get_attivita_task_runs_returns_dto
+5) AttivitaPipelineServiceUnitTests.test_fn_get_attivita_task_runs_validates_limit
 """
 
 from unittest.mock import MagicMock, patch
@@ -23,33 +22,10 @@ from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.attivita_pipeline_service import (
     fn_get_attivita_pipeline_status,
     fn_get_attivita_task_runs,
-    pr_run_attivita_pipeline,
 )
 
 
 class AttivitaPipelineServiceUnitTests(SimpleTestCase):
-
-    # Scopo: Verifica che pr_run_attivita_pipeline deleghi al runner e ritorni lotto_id.
-    def test_pr_run_attivita_pipeline_calls_runner(self):
-        mock_runner = MagicMock()
-        mock_runner.run_pipeline.return_value = 42
-
-        with patch(
-            "apps.vendite.services.attivita_pipeline_service.AttivitaPipelineRunner",
-            return_value=mock_runner,
-        ):
-            result = pr_run_attivita_pipeline(
-                lotto_id=None,
-                competenza_mese=None,
-                utility_id=5,
-                dry_run=True,
-            )
-
-        self.assertEqual(result, 42)
-        mock_runner.run_pipeline.assert_called_once()
-        call_params = mock_runner.run_pipeline.call_args[0][0]
-        self.assertEqual(call_params.utility_id, 5)
-        self.assertTrue(call_params.dry_run)
 
     # Scopo: Verifica che fn_get_attivita_pipeline_status ritorni DTO completo con branch_summary.
     def test_fn_get_attivita_pipeline_status_returns_dto(self):

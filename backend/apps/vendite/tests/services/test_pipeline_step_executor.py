@@ -20,6 +20,9 @@ Indice test eseguiti:
 18) PipelineStepExecutorUnitTests.test_execute_step_no_tracing_when_no_pipeline_id
 19) PipelineStepExecutorUnitTests.test_execute_step_no_tracing_when_no_policy
 20) PipelineStepExecutorUnitTests.test_execute_step_select_attivita_uses_emittente_from_context
+21) PipelineStepExecutorUnitTests.test_execute_step_runs_pull_attivita_da_commessa_task
+22) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_dry_run_skips_emit
+23) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_empty_list_no_emit
 """
 
 from unittest.mock import MagicMock
@@ -526,3 +529,76 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.run_select_attivita_task.assert_called_once()
         call_kwargs = repo.run_select_attivita_task.call_args.kwargs
         self.assertEqual(call_kwargs["context"].emittente_soggetto_ruolo_id, 42)
+
+    # --- Pull attivita da commessa (step 0) ---
+
+    # Scopo: Verifica il caso `test_execute_step_runs_pull_attivita_da_commessa_task`.
+    def test_execute_step_runs_pull_attivita_da_commessa_task(self):
+        processi = [{"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}}]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "pull_attivita_da_commessa_default"
+        repo.ALLOWED_TASK_FUNCTIONS["pull_attivita_da_commessa"] = (
+            "vendite.fn_emit_attivita_fatturabili_da_commessa"
+        )
+        commesse_repo = MagicMock()
+        commesse_repo.list_commesse_emittibili.return_value = [10, 20]
+        executor.commesse_repository = commesse_repo
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        commesse_repo.list_commesse_emittibili.assert_called_once()
+        self.assertEqual(commesse_repo.emit_attivita_fatturabili.call_count, 2)
+        call_args_list = commesse_repo.emit_attivita_fatturabili.call_args_list
+        self.assertEqual(call_args_list[0][0][0], 10)
+        self.assertEqual(call_args_list[1][0][0], 20)
+
+    # Scopo: Verifica il caso `test_pull_attivita_da_commessa_dry_run_skips_emit`.
+    def test_pull_attivita_da_commessa_dry_run_skips_emit(self):
+        processi = [{"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}}]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "pull_attivita_da_commessa_default"
+        repo.ALLOWED_TASK_FUNCTIONS["pull_attivita_da_commessa"] = (
+            "vendite.fn_emit_attivita_fatturabili_da_commessa"
+        )
+        commesse_repo = MagicMock()
+        commesse_repo.list_commesse_emittibili.return_value = [10, 20]
+        executor.commesse_repository = commesse_repo
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=True,
+        )
+
+        commesse_repo.emit_attivita_fatturabili.assert_not_called()
+
+    # Scopo: Verifica il caso `test_pull_attivita_da_commessa_empty_list_no_emit`.
+    def test_pull_attivita_da_commessa_empty_list_no_emit(self):
+        processi = [{"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}}]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "pull_attivita_da_commessa_default"
+        repo.ALLOWED_TASK_FUNCTIONS["pull_attivita_da_commessa"] = (
+            "vendite.fn_emit_attivita_fatturabili_da_commessa"
+        )
+        commesse_repo = MagicMock()
+        commesse_repo.list_commesse_emittibili.return_value = []
+        executor.commesse_repository = commesse_repo
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        commesse_repo.list_commesse_emittibili.assert_called_once()
+        commesse_repo.emit_attivita_fatturabili.assert_not_called()

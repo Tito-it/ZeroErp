@@ -22,6 +22,8 @@ Indice test eseguiti:
 13) CommesseRepositoryUnitTests.test_fetch_pushable_rows_unknown_sorgente_raises
 14) CommesseRepositoryUnitTests.test_fetch_pushable_rows_maps_shared_columns
 15) CommesseRepositoryUnitTests.test_get_or_create_commessa_uses_defaults
+16) CommesseRepositoryUnitTests.test_validate_sorgente_map_ok
+17) CommesseRepositoryUnitTests.test_validate_sorgente_map_missing_in_map
 """
 
 from datetime import date, datetime, timezone
@@ -47,7 +49,7 @@ def _mock_cursor(fetchone=None, fetchall=None, description=None):
     return cursor
 
 
-# Colonne restituite da fn_list_ordini_da_pushare (28 totali: 3 source + 25 shared).
+# Colonne restituite da fn_list_ordini_da_pushare (29 totali: 3 source + 26 shared).
 _ORDINI_COLS = [
     ("ordine_id",), ("ordine_uid",), ("riga_id",),
     ("billing_account_id",), ("utility_id",), ("emittente_soggetto_ruolo_id",),
@@ -58,14 +60,14 @@ _ORDINI_COLS = [
     ("uom_operativa_id",), ("factor_to_base",), ("competenza_mese",),
     ("prezzo_snapshot",), ("prezzo_bloccato",), ("pricing_mode",),
     ("tipo_movimento",), ("tipo_consumo",), ("valuta_id",),
-    ("meta",),
+    ("meta",), ("tipo_doc_fiscale_id",),
 ]
 
 # Tupla di test che simula una riga ordine.
 _ORDINI_ROW = (
     # 3 source-specific
     100, "uid-ordine-001", 200,
-    # 25 shared
+    # 26 shared
     1, 2, 3,
     date(2026, 6, 1), date(2026, 6, 30), False,
     6, "uid-ordine-001", "ORD:uid-ordine-001:R:200",
@@ -75,6 +77,7 @@ _ORDINI_ROW = (
     Decimal("22.50"), True, "FIXED",
     "NORMALE", "CONGUAGLIO", 1,
     {"tipo_commessa": "AUTO", "policy_fatturazione": "DA_DOCUMENTO"},
+    7,  # tipo_doc_fiscale_id
 )
 
 
@@ -300,4 +303,28 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(row.quantita, Decimal("10.0"))
         self.assertEqual(row.prezzo_snapshot, Decimal("22.50"))
         self.assertTrue(row.prezzo_bloccato)
+        self.assertEqual(row.tipo_doc_fiscale_id, 7)
         self.assertEqual(row.meta["tipo_commessa"], "AUTO")
+
+    # Scopo: Verifica validate_sorgente_map senza warning quando DB e map allineati.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_validate_sorgente_map_ok(self, mock_cursor_factory):
+        cur = _mock_cursor(fetchall=[
+            ("PREVENTIVO",), ("ORDINE_VENDITA",), ("ATTIVITA_CONSUMI",),
+            ("CONTRATTO",), ("DDT_VENDITA",),
+        ])
+        mock_cursor_factory.return_value = cur
+        warnings = CommesseRepository.validate_sorgente_map()
+        self.assertEqual(warnings, [])
+
+    # Scopo: Verifica warning quando DB ha sorgente non presente nella map.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_validate_sorgente_map_missing_in_map(self, mock_cursor_factory):
+        cur = _mock_cursor(fetchall=[
+            ("PREVENTIVO",), ("ORDINE_VENDITA",), ("ATTIVITA_CONSUMI",),
+            ("CONTRATTO",), ("DDT_VENDITA",), ("NUOVA_SORGENTE",),
+        ])
+        mock_cursor_factory.return_value = cur
+        warnings = CommesseRepository.validate_sorgente_map()
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("NUOVA_SORGENTE", warnings[0])

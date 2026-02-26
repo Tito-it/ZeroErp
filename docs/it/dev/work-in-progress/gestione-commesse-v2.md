@@ -1063,22 +1063,15 @@ L'orchestrazione è già nel runner della pipeline fatturazione esistente.
 - [x] DB commesse completato (DB-L0 → DB-L5)
 - [x] Switch COMMESSA_ONLY applicato (changeset `20260224-41`, vedi §18.10)
 - [x] Pipeline legacy spenta operativamente (policy, task, branch disabilitate)
-- [ ] File Python non ancora eliminati (FASE 4 backend, vedi §25.4)
-
-**Prossimi passi (FASE 4 backend):**
-
-- Eliminare `attivita_pipeline_runner.py` e `attivita_pipeline_step_executor.py`
-- Ridurre `attivita_pipeline_repository.py` ai soli metodi lotto + task run
-- Rimuovere endpoint API pipeline attivita` (run + status)
-- Mantenere endpoint task-runs (riusato per monitoring step 0)
+- [x] File Python eliminati (FASE 4 backend completata, vedi §25.4)
 
 ### 20.6 Endpoint API — impatto
 
 | Endpoint | Stato post-commessa |
 |---|---|
-| `POST /attivita_fatturabili/pipeline/run/` | Eliminato — il run è step 0 del lotto fatturazione |
-| `GET /attivita_fatturabili/pipeline/<id>/status/` | Eliminato — sostituito da status commessa |
-| `GET /attivita_fatturabili/pipeline/<id>/task-runs/` | Mantenuto o reindirizzato — il tracing task run resta utile |
+| `POST /attivita_fatturabili/pipeline/run/` | **Eliminato** — sostituito da CommessaPushOrchestrator (FASE 2) |
+| `GET /attivita_fatturabili/pipeline/<id>/status/` | **Mantenuto** — monitoraggio lotti esistenti |
+| `GET /attivita_fatturabili/pipeline/<id>/task-runs/` | **Mantenuto** — tracing task run per monitoring |
 
 ---
 
@@ -1608,17 +1601,43 @@ La FASE 4.5 (rettifiche) precede le API per non esporre un ciclo prezzi incomple
 **Obiettivo:** aggiungere handler `pull_attivita_da_commessa` come primo step
 della pipeline di fatturazione, che chiama `fn_emit_attivita_fatturabili_da_commessa`.
 
-**File da modificare:** `backend/apps/vendite/services/pipeline_step_executor.py`
+**Completata 25-02-2026.**
 
-- [ ] Aggiungere al handler registry: `"pull_attivita_da_commessa": self._handle_pull_attivita_da_commessa`
-- [ ] Implementare `_handle_pull_attivita_da_commessa(...)`:
-  - [ ] Chiama `commesse_repo.emit_attivita_fatturabili(lotto_id, dry_run)`
-  - [ ] Legge anomalie dal result e le logga come segnalazioni (da definire in sviluppo)
-  - [ ] Propaga dry_run al DB
-- [ ] Aggiungere `CommesseRepository` come dipendenza iniettabile in `PipelineStepExecutor`
-- [ ] Configurazione DB: registrare step `PULL_COMMESSA` come step 0 della pipeline
-  fatturazione in `vendite.attivita_fatturabili_pipeline` — da concordare col team DB
-- [ ] Test: aggiornare `test_pipeline_step_executor.py` con test per nuovo handler
+#### 25.3.1 Modifiche a `pipeline_step_executor.py`
+
+- [x] Aggiunto `CommesseRepository` come dipendenza iniettabile in `__init__`
+- [x] Aggiunto handler registry: `"pull_attivita_da_commessa_default": self._handle_pull_attivita_da_commessa_task`
+- [x] Implementato `_handle_pull_attivita_da_commessa_task(...)`:
+  - Valida fn_name via `_validate_task_function_name`
+  - Chiama `commesse_repository.list_commesse_emittibili()` per ottenere lista commesse
+  - Gate dry_run: se True ritorna senza emissione
+  - Per ogni commessa_id chiama `commesse_repository.emit_attivita_fatturabili()`
+
+#### 25.3.2 Modifiche a `commesse_repository.py`
+
+- [x] Aggiunto `list_commesse_emittibili()` — stub che ritorna `[]`
+  - Parametri: `competenza_mese`, `utility_id`, `billing_account_id`, `emittente_soggetto_ruolo_id`
+  - In attesa fn DB `vendite.fn_list_commesse_emittibili` dal team DB
+
+#### 25.3.3 Modifiche a `pipeline_repository.py`
+
+- [x] Aggiunto entry `ALLOWED_TASK_FUNCTIONS`:
+  `"pull_attivita_da_commessa": "vendite.fn_emit_attivita_fatturabili_da_commessa"`
+
+#### 25.3.4 Test aggiunti in `test_pipeline_step_executor.py`
+
+- [x] `test_execute_step_runs_pull_attivita_da_commessa_task` — happy path, 2 commesse
+- [x] `test_pull_attivita_da_commessa_dry_run_skips_emit` — dry_run salta emit
+- [x] `test_pull_attivita_da_commessa_empty_list_no_emit` — lista vuota, nessun emit
+
+#### 25.3.5 Configurazione DB (pendente — team DB)
+
+- [ ] Registrare step `PULL_COMMESSA` come step 0 in `vendite.pipeline_steps`
+  con `task_code = "pull_attivita_da_commessa"`
+- [ ] Creare `vendite.fn_list_commesse_emittibili(p_competenza_mese, p_utility_id, ...)`
+  che restituisce commesse_id con `stato_commessa = 'PRONTA_FATTURAZIONE'`
+
+**Suite test:** 183/183 green.
 
 ---
 
@@ -1626,32 +1645,41 @@ della pipeline di fatturazione, che chiama `fn_emit_attivita_fatturabili_da_comm
 
 **Obiettivo:** eliminare il codice mai implementato, ridurre il repository.
 
-#### 25.4.1 File da eliminare
+**Completata 25-02-2026.**
 
-- [ ] `backend/apps/vendite/services/attivita_pipeline_step_executor.py`
-      (7 handler tutti `pass` — zero logica da preservare)
-- [ ] `backend/apps/vendite/services/attivita_pipeline_runner.py`
-      (sostituito da step 0 FASE 3)
+#### 25.4.1 File eliminati
 
-#### 25.4.2 `attivita_pipeline_repository.py` — metodi da rimuovere
+- [x] `services/attivita_pipeline_step_executor.py` — 7 handler stub, 241 righe
+- [x] `services/attivita_pipeline_runner.py` — sostituito da CommessaPushOrchestrator, 203 righe
+- [x] `tests/services/test_attivita_pipeline_step_executor.py` — 8 test, 260 righe
+- [x] `tests/services/test_attivita_pipeline_runner.py` — 6 test, 195 righe
+- [x] `tests/api/test_attivita_pipeline_smoke.py` — 3 test, 145 righe
 
-- [ ] Gruppo 2 — pipeline steps: `list_attivita_pipeline_steps`,
-      `get_attivita_step_processes`, `get_attivita_pipeline_id_for_step`
-- [ ] Gruppo 3 — sorgenti: `list_sorgenti_abilitate`
-- [ ] Gruppo 4 — task registry: `get_dominio_id`, `get_task_handler_code`
-- [ ] Gruppo 5 — task policy: `get_attivita_task_policy`, `task_policy_exists`
+#### 25.4.2 File puliti (pulizia parziale)
 
-#### 25.4.3 File da tenere invariati
+- [x] `db/attivita_pipeline_repository.py` — rimossi gruppi 2/3/4/5 (8 metodi) + 3 dataclass orfane.
+      Mantenuti: gruppo 1 (lotto management, 8 metodi), gruppo 2 (task runs, 5 metodi), helpers.
+      Da 570 a 310 righe.
+- [x] `services/attivita_pipeline_service.py` — rimosso `pr_run_attivita_pipeline` + import runner.
+      Mantenuti: `fn_get_attivita_pipeline_status`, `fn_get_attivita_task_runs`.
+- [x] `api/views.py` — rimosso `ApiRunAttivitaPipeline` + `ApiRunAttivitaPipelineV1`.
+      Mantenuti: `ApiAttivitaPipelineStatus`, `ApiAttivitaTaskRuns` (+ V1).
+- [x] `api/urls_v1.py` — rimossa route `attivita_fatturabili/pipeline/run/`.
+      Mantenute: route status e task-runs.
 
-- [ ] `attivita_pipeline_repository.py` — gruppi 1 (lotto) e 6 (task runs) e helpers
-- [ ] `attivita_pipeline_error_logger.py` — riusato dallo step 0
-- [ ] `pipeline_repository.py` — pipeline fatturazione, invariato
-- [ ] `lotto_segnalazioni_service.py` — invariato
+#### 25.4.3 Test puliti
 
-#### 25.4.4 Test da aggiornare
+- [x] `test_attivita_pipeline_repository.py` — da 14 a 5 test (rimossi test gruppi 2/3/5)
+- [x] `test_attivita_pipeline_service.py` — da 6 a 5 test (rimosso test runner)
+- [x] `test_attivita_pipeline_api.py` — da 14 a 7 test (rimossi test POST run)
 
-- [ ] `test_attivita_pipeline_repository.py` — rimuovere test per gruppi eliminati 2/3/4/5
-- [ ] Verificare nessun import orfano dopo eliminazione file
+#### 25.4.4 File invariati (verificati)
+
+- [x] `attivita_pipeline_error_logger.py` — zero import deprecati
+- [x] `pipeline_repository.py` — pipeline fatturazione, indipendente
+- [x] `lotto_segnalazioni_service.py` — zero import deprecati
+
+**Suite test:** 180/180 green, zero import orfani.
 
 ---
 
@@ -2008,6 +2036,6 @@ Benefici:
 - [x] Archiviazione 5 sorgenti RIGA + cleanup branch_policy
 - [x] CSV seed aggiornati (sorgenti.csv, branch_policy.csv, loadUpdateData)
 - [x] Test pgTAP: `test-sorgenti-scope-pulizia-v1.sql` (10 test)
-- [ ] Backend: `PushableRow` + `tipo_doc_fiscale_id` (vedi §27.2 A)
-- [ ] Backend: rimuovere stub `_resolve_tipo_doc_fiscale_id()`
-- [ ] Backend: valutare scoperta dinamica via `scope` (vedi §27.2 B)
+- [x] Backend: `PushableRow` + `tipo_doc_fiscale_id` (§27.2 A) — campo aggiunto, mapping, test verdi
+- [x] Backend: rimosso stub `_resolve_tipo_doc_fiscale_id()` — il DB risolve direttamente
+- [x] Backend: `validate_sorgente_map()` — verifica _SORGENTE_FN_MAP vs config.sorgenti (scope=PUSH_COMMESSA) + 2 test

@@ -6,46 +6,9 @@
 # ------------------------------------------------------------
 
 
-from datetime import date
-
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.attivita_pipeline_repository import AttivitaPipelineRepository
-from apps.vendite.services.attivita_pipeline_runner import (
-    AttivitaPipelineParams,
-    AttivitaPipelineRunner,
-)
-from apps.vendite.types import AttivitaTaskRunRow  # usato in fn_get_attivita_task_runs
-
-# Facade sottile: firma simile alla SQL, comportamento delegato alle classi OOP.
-
-
-# Scopo: Facade applicativa: avvia il runner pipeline attivita e restituisce lotto_id eseguito.
-def pr_run_attivita_pipeline(
-    *,
-    lotto_id: int | None = None,
-    competenza_mese: date | None = None,
-    utility_id: int | None = None,
-    billing_account_id: int | None = None,
-    sorgente_tipo_id: int | None = None,
-    emittente_soggetto_ruolo_id: int | None = None,
-    lock_batch_id: str | None = None,
-    meta: dict | None = None,
-    dry_run: bool = False,
-) -> int:
-    """Entrypoint servizio Python: avvia pipeline attivita fatturabili."""
-    runner = AttivitaPipelineRunner()
-    params = AttivitaPipelineParams(
-        lotto_id=lotto_id,
-        competenza_mese=competenza_mese,
-        utility_id=utility_id,
-        billing_account_id=billing_account_id,
-        sorgente_tipo_id=sorgente_tipo_id,
-        emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
-        lock_batch_id=lock_batch_id,
-        meta=meta,
-        dry_run=dry_run,
-    )
-    return runner.run_pipeline(params)
+from apps.vendite.types import AttivitaTaskRunRow
 
 
 # Scopo: Restituisce stato lotto attivita con riepilogo task run aggregato per branch.

@@ -65,6 +65,7 @@ def _make_row(**overrides) -> PushableRow:
         "tipo_consumo": "CONGUAGLIO",
         "valuta_id": 1,
         "meta": {"tipo_commessa": "AUTO", "policy_fatturazione": "DA_DOCUMENTO"},
+        "tipo_doc_fiscale_id": 7,
     }
     defaults.update(overrides)
     return PushableRow(**defaults)
