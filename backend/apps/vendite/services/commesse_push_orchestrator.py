@@ -19,8 +19,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from django.db import connection
+
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.services.commesse_source_handlers import BaseSourceHandler, HandlerResult
+
+_LOCK_KEY = "commesse_push_orchestrator"
 
 
 @dataclass
@@ -61,6 +65,24 @@ class CommessaPushOrchestrator:
         self._handlers = handlers
 
     # --- Helpers ---
+
+    @staticmethod
+    def _try_acquire_lock() -> bool:
+        """Tenta di acquisire un advisory lock session-level. Ritorna False se già acquisito."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_try_advisory_lock(hashtext(%s))", [_LOCK_KEY]
+            )
+            row = cursor.fetchone()
+        return bool(row and row[0])
+
+    @staticmethod
+    def _release_lock() -> None:
+        """Rilascia l'advisory lock session-level."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_advisory_unlock(hashtext(%s))", [_LOCK_KEY]
+            )
 
     def _resolve_handlers(self, source_types: list[str] | None) -> list[BaseSourceHandler]:
         """Restituisce gli handler da eseguire.
@@ -104,7 +126,26 @@ class CommessaPushOrchestrator:
             user_run     — identificativo dell'utente/scheduler che ha lanciato il run
 
         Restituisce PushReport con stato, risultati per handler e push_log_id.
+        Se un altro run è già in corso restituisce PushReport con stato SKIPPED.
         """
+        if not self._try_acquire_lock():
+            return PushReport(dry_run=dry_run, stato="SKIPPED", durata_ms=0)
+
+        try:
+            return self._run_locked(
+                source_types=source_types, dry_run=dry_run, user_run=user_run,
+            )
+        finally:
+            self._release_lock()
+
+    def _run_locked(
+        self,
+        *,
+        source_types: list[str] | None,
+        dry_run: bool,
+        user_run: str | None,
+    ) -> PushReport:
+        """Logica di run effettiva, eseguita sotto advisory lock."""
         t0 = time.monotonic()
         results: list[HandlerResult] = []
 

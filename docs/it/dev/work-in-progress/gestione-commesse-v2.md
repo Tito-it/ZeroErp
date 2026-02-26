@@ -1564,12 +1564,15 @@ La FASE 4.5 (rettifiche) precede le API per non esporre un ciclo prezzi incomple
 - [x] Isolamento errori per handler (`try/except`, continua sugli altri)
 - [x] Scrittura `commesse_push_log` al completamento (successo, parziale e dry_run)
 - [x] `PushReport` dataclass: `stato`, `risultato` per handler, `dry_run`, `durata_ms`, `push_log_id`
-- [ ] Supporto `pg_try_advisory_lock` anti-concorrenza (da definire in sviluppo)
+- [x] Supporto `pg_try_advisory_lock` anti-concorrenza:
+  - `_try_acquire_lock()` / `_release_lock()` session-level su `hashtext('commesse_push_orchestrator')`
+  - Lock non acquisito → `PushReport(stato="SKIPPED", durata_ms=0)`, nessun handler, nessun log
+  - Lock rilasciato nel `finally` anche in caso di errore handler
 
 **Note implementazione:**
 
 - dry_run=True: il log viene comunque scritto con `dry_run=True` per audit
-- `_compute_stato`: COMPLETATO / PARZIALE / ERRORE (nessun handler = ERRORE)
+- `_compute_stato`: COMPLETATO / PARZIALE / ERRORE / SKIPPED
 - `HandlerResult.as_dict()` serializza per JSONB risultato per handler
 
 #### 25.2.2 Handler sorgenti (allineamento DB refactor — 10 punti)
@@ -1615,9 +1618,11 @@ della pipeline di fatturazione, che chiama `fn_emit_attivita_fatturabili_da_comm
 
 #### 25.3.2 Modifiche a `commesse_repository.py`
 
-- [x] Aggiunto `list_commesse_emittibili()` — stub che ritorna `[]`
-  - Parametri: `competenza_mese`, `utility_id`, `billing_account_id`, `emittente_soggetto_ruolo_id`
-  - In attesa fn DB `vendite.fn_list_commesse_emittibili` dal team DB
+- [x] Implementato `list_commesse_emittibili()` — chiama `vendite.fn_list_commesse_emittibili`
+  - Parametri: `competenza_mese`, `billing_account_id`, `utility_id`, `emittente_soggetto_ruolo_id`, `limit`
+  - Return: `list[int]` (estrae `commessa_id` dal resultset TABLE della fn DB)
+  - Allineato a fn DB con signature:
+    `(p_competenza_mese, p_billing_account_id, p_utility_id, p_emittente_soggetto_ruolo_id, p_limit)`
 
 #### 25.3.3 Modifiche a `pipeline_repository.py`
 
@@ -1630,14 +1635,22 @@ della pipeline di fatturazione, che chiama `fn_emit_attivita_fatturabili_da_comm
 - [x] `test_pull_attivita_da_commessa_dry_run_skips_emit` — dry_run salta emit
 - [x] `test_pull_attivita_da_commessa_empty_list_no_emit` — lista vuota, nessun emit
 
-#### 25.3.5 Configurazione DB (pendente — team DB)
+#### 25.3.5 Test aggiunti in `test_commesse_repository.py`
+
+- [x] `test_list_commesse_emittibili_returns_ids` — verifica call DB, parametri, return list[int]
+- [x] `test_list_commesse_emittibili_empty` — nessun risultato, ritorna []
+
+#### 25.3.6 Configurazione DB (pendente — team DB)
 
 - [ ] Registrare step `PULL_COMMESSA` come step 0 in `vendite.pipeline_steps`
   con `task_code = "pull_attivita_da_commessa"`
-- [ ] Creare `vendite.fn_list_commesse_emittibili(p_competenza_mese, p_utility_id, ...)`
-  che restituisce commesse_id con `stato_commessa = 'PRONTA_FATTURAZIONE'`
+- [x] Creata `vendite.fn_list_commesse_emittibili` — fn DB STABLE, read-only
+  - Filtra per `stati_commessa.emittibile = true` + `commesse_attivita.stato_emissione = 'NON_EMESSA'`
+  - Filtro competenza su `commesse_attivita.competenza_mese`
+  - Filtri opzionali: `billing_account_id`, `utility_id`, `emittente_soggetto_ruolo_id`
+  - `p_limit` default 1000, max 10000
 
-**Suite test:** 183/183 green.
+**Suite test:** 185/185 green.
 
 ---
 

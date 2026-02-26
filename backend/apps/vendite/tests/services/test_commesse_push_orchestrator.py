@@ -17,10 +17,12 @@ Indice test eseguiti:
 7) CommessePushOrchestratorTests.test_run_push_log_id_valorizzato
 8) CommessePushOrchestratorTests.test_run_isolamento_handler_continua_dopo_eccezione
 9) CommessePushOrchestratorTests.test_run_risultato_jsonb_include_tutti_handler
+10) CommessePushOrchestratorTests.test_run_skipped_quando_lock_non_acquisito
+11) CommessePushOrchestratorTests.test_run_rilascia_lock_dopo_esecuzione
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.services.commesse_push_orchestrator import CommessaPushOrchestrator, PushReport
@@ -173,3 +175,34 @@ class CommessePushOrchestratorTests(TestCase):
         self.assertEqual(risultato["HandlerB"]["skipped"], 5)
         call_kwargs = repo.log_push_run.call_args.kwargs
         self.assertIn("HandlerA", call_kwargs["risultato"])
+
+    # Scopo: lock non acquisito → PushReport SKIPPED, nessun handler eseguito, nessun log.
+    @patch.object(CommessaPushOrchestrator, "_try_acquire_lock", return_value=False)
+    def test_run_skipped_quando_lock_non_acquisito(self, _mock_lock):
+        repo = _mock_repo()
+        h = _mock_handler("HandlerA", _ok_result("HandlerA"))
+        orch = CommessaPushOrchestrator(repo, [h])
+
+        report = orch.run()
+
+        self.assertEqual(report.stato, "SKIPPED")
+        self.assertEqual(report.durata_ms, 0)
+        self.assertEqual(report.handlers, [])
+        self.assertIsNone(report.push_log_id)
+        h.run.assert_not_called()
+        repo.log_push_run.assert_not_called()
+
+    # Scopo: lock rilasciato dopo run (anche se handler fallisce).
+    @patch.object(CommessaPushOrchestrator, "_release_lock")
+    @patch.object(CommessaPushOrchestrator, "_try_acquire_lock", return_value=True)
+    def test_run_rilascia_lock_dopo_esecuzione(self, _mock_acquire, mock_release):
+        repo = _mock_repo()
+        h = MagicMock(spec=BaseSourceHandler)
+        h.name = "HandlerA"
+        h.run.side_effect = RuntimeError("crash")
+        orch = CommessaPushOrchestrator(repo, [h])
+
+        report = orch.run()
+
+        self.assertEqual(report.stato, "ERRORE")
+        mock_release.assert_called_once()
