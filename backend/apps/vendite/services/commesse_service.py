@@ -113,6 +113,9 @@ def fn_get_commessa_stato(*, commessa_id: int) -> dict:
 def fn_list_commessa_attivita(
     *,
     commessa_id: int,
+    stato_emissione: str | None = None,
+    stato_approvazione: str | None = None,
+    competenza_mese: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
@@ -135,6 +138,17 @@ def fn_list_commessa_attivita(
         function_name="vendite.commesse_service.fn_list_commessa_attivita",
         log_to_db=True,
     )
+    from apps.core.api.payload_validators import optional_iso_date as _parse_date
+
+    competenza_mese_date = _parse_date({"competenza_mese": competenza_mese}, "competenza_mese") if competenza_mese else None
+
     repo = CommesseRepository()
-    data = repo.list_commessa_attivita(commessa_id, limit=limit, offset=offset)
+    data = repo.list_commessa_attivita(
+        commessa_id,
+        stato_emissione=stato_emissione,
+        stato_approvazione=stato_approvazione,
+        competenza_mese=competenza_mese_date,
+        limit=limit,
+        offset=offset,
+    )
     return {"commessa_id": commessa_id, **data}

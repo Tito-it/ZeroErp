@@ -735,7 +735,7 @@ Il modello v2 resta confermato:
 - [x] aggiungere `commessa_id` (finalizzato `NOT NULL`)
 - [x] aggiungere `commessa_attivita_id` (finalizzato `NOT NULL`)
 - [x] aggiungere `prezzo_bloccato` (completato: `20260224-04`)
-- [ ] valutare introduzione `segment_key` su AF (snapshot tecnico) se richiesta idempotenza runtime
+- [x] ~~valutare introduzione `segment_key` su AF~~ — non necessario: `segment_key` resta su CA, `fn_emit` lo usa per generare `sorgente_uid` (hash MD5→UUID)
 
 ### 18.3 Vincoli e indici
 
@@ -995,12 +995,12 @@ Nota aggiornata:
 ### 19.7 Checklist integrativa (da aggiungere a §18)
 
 - [x] Ownership `istanza_utility_id`: su `commesse_attivita` (sempre valorizzata, anche con istanza fittizia)
-- [ ] Aggiungere `data_attivita` a `commesse_attivita` (o documentare esclusione)
-- [ ] Aggiungere campi misura operativa a `commesse_attivita` (o documentare esclusione)
+- [x] Aggiungere `data_attivita` a `commesse_attivita` — presente (`date NOT NULL`)
+- [x] Aggiungere campi misura operativa a `commesse_attivita` — presenti (`qta_operativa`, `uom_operativa_id`, `factor_to_base`)
 - [x] Allineare stati `commesse.stato_commessa` con set canonico (`BOZZA|APERTA|IN_ESECUZIONE|PRONTA_FATTURAZIONE|CHIUSA|ANNULLATA`)
-- [ ] Aggiornare trigger `trg_attivita_fatturabili_normalize_ins_upd` per essere commessa-aware
-- [ ] Aggiornare trigger `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` per leggere BA da commessa
-- [ ] Documentare mapping esplicito `stato_approvazione → approvato` nel pull
+- [ ] Aggiornare trigger `trg_attivita_fatturabili_normalize_ins_upd` per essere commessa-aware — passato a team DB (vedi `brief-db-trigger-commessa-aware.md`)
+- [ ] Aggiornare trigger `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` per leggere BA da commessa — passato a team DB (vedi `brief-db-trigger-commessa-aware.md`)
+- [x] Documentare mapping esplicito `stato_approvazione → approvato` nel pull — implementato in `fn_emit`: `approvato = (v_row.stato_approvazione = 'APPROVATA')`
 
 ---
 
@@ -1056,7 +1056,7 @@ def pull_commessa_step(lotto_id: int, dry_run: bool = False) -> dict:
 
 L'orchestrazione è già nel runner della pipeline fatturazione esistente.
 
-### 20.5 Timing deprecazione — AGGIORNATO 25-02-2026
+### 20.5 Timing deprecazione — COMPLETATO 26-02-2026
 
 **Stato attuale:**
 
@@ -1064,6 +1064,7 @@ L'orchestrazione è già nel runner della pipeline fatturazione esistente.
 - [x] Switch COMMESSA_ONLY applicato (changeset `20260224-41`, vedi §18.10)
 - [x] Pipeline legacy spenta operativamente (policy, task, branch disabilitate)
 - [x] File Python eliminati (FASE 4 backend completata, vedi §25.4)
+- [x] API commesse esposti (FASE 5 completata, vedi §25.6) — 210/210 test green
 
 ### 20.6 Endpoint API — impatto
 
@@ -1072,6 +1073,10 @@ L'orchestrazione è già nel runner della pipeline fatturazione esistente.
 | `POST /attivita_fatturabili/pipeline/run/` | **Eliminato** — sostituito da CommessaPushOrchestrator (FASE 2) |
 | `GET /attivita_fatturabili/pipeline/<id>/status/` | **Mantenuto** — monitoraggio lotti esistenti |
 | `GET /attivita_fatturabili/pipeline/<id>/task-runs/` | **Mantenuto** — tracing task run per monitoring |
+| `POST /vendite/commesse/push/run/` | **Nuovo** — push orchestratore commesse (FASE 5) |
+| `GET /vendite/commesse/push/<log_id>/` | **Nuovo** — dettaglio push log (FASE 5) |
+| `GET /vendite/commesse/<id>/stato/` | **Nuovo** — stato commessa + contatori (FASE 5) |
+| `GET /vendite/commesse/<id>/attivita/` | **Nuovo** — lista attivita commessa paginata (FASE 5) |
 
 ---
 
@@ -1756,8 +1761,8 @@ Le funzioni DB di L4 sono già presenti (team DB). Serve il layer Python.
 - [x] `GET /api/v1/vendite/commesse/<id>/stato/` — stato commessa + contatori
   - Response: `{commessa_id, total_attivita, total_approvate, total_emesse}`
 - [x] `GET /api/v1/vendite/commesse/<id>/attivita/` — lista `commesse_attivita` (paginata)
-  - Query params: `limit` (1-200, default 50), `offset` (default 0)
-  - **STUB** — in attesa fn DB `vendite.fn_list_commessa_attivita`
+  - Query params: `stato_emissione`, `stato_approvazione`, `competenza_mese`, `limit` (1-200, default 50), `offset` (default 0)
+  - Chiama `vendite.fn_list_commessa_attivita` — 20 colonne, JOIN sorgenti
 
 #### 25.6.3 Endpoint da rimuovere (pipeline attività) ✅
 
@@ -1777,33 +1782,34 @@ Le funzioni DB di L4 sono già presenti (team DB). Serve il layer Python.
 - [x] `test_pipeline_step_executor.py` aggiornato — FASE 3
 - [x] `test_attivita_pipeline_repository.py` aggiornato — FASE 4
 - [x] `test_commesse_service.py` — 8 test (FASE 5)
-- [x] `test_commesse_api.py` — 12 test (FASE 5)
-- [x] Run suite completa: **207/207 green**
+- [x] `test_commesse_api.py` — 13 test (FASE 5)
+- [x] `test_commesse_repository.py` — 21 test (FASE 5: +2 list_commessa_attivita)
+- [x] Run suite completa: **210/210 green**
   - [x] Zero regressioni sulla pipeline fatturazione esistente
   - [x] Nuovi test verdi
 
 ---
 
-### 25.8 FASE 7 — Cleanup finale
+### 25.8 FASE 7 — Cleanup finale ✅
 
-- [ ] Aggiornare header `attivita_pipeline_repository.py` ridotto (rimuovere riferimenti a gruppi eliminati)
-- [ ] Verificare nessun import orfano nei file modificati
-- [ ] Marcare `ripresa-lavori-attivita-fatturabili.md` come superato (nota in testa al file)
-- [ ] Aggiornare §20.5 (timing deprecazione) con data completamento effettiva
-- [ ] Allineare `gestione-listini.md` §13 se FASE 4.5 ha prodotto variazioni al modello rettifiche
+- [x] Header `attivita_pipeline_repository.py` — gia` pulito, nessun riferimento a gruppi eliminati
+- [x] Import orfani — zero trovati (verifica automatica su tutto il package vendite)
+- [x] `ripresa-lavori-attivita-fatturabili.md` — marcato come superato con nota in testa
+- [x] §20.5 timing deprecazione — aggiornato con data completamento 26-02-2026
+- [ ] Allineare `gestione-listini.md` §13 — skip, dipende da FASE 4.5 (rettifiche non ancora sviluppate)
 
 ---
 
 ### 25.9 Gate di uscita — go-live backend
 
-- [ ] FASE 1 completata e test verdi
-- [ ] FASE 2 completata e test verdi
-- [ ] FASE 3 step 0 integrato e testato
-- [ ] FASE 4 deprecazione eseguita — zero riferimenti a file eliminati
-- [ ] FASE 4.5 rettifiche operative — ciclo prezzi chiuso
-- [x] FASE 5 endpoint esposti e documentati (4 endpoint, 20 test, 207/207 green)
-- [ ] FASE 6 suite completa verde (zero regressioni)
-- [ ] FASE 7 cleanup completato
+- [x] FASE 1 completata e test verdi
+- [x] FASE 2 completata e test verdi
+- [x] FASE 3 step 0 integrato e testato
+- [x] FASE 4 deprecazione eseguita — zero riferimenti a file eliminati
+- [ ] FASE 4.5 rettifiche operative — ciclo prezzi chiuso (da definire)
+- [x] FASE 5 endpoint esposti e documentati (4 endpoint, 23 test, 210/210 green)
+- [x] FASE 6 suite completa verde — 210/210 (manca solo test rettifiche, dipende da 4.5)
+- [x] FASE 7 cleanup completato — zero import orfani, doc aggiornata
 - [ ] Revisione finale con team DB: nessuna funzione DB referenziata da codice eliminato
 
 ---
@@ -1932,19 +1938,19 @@ trgfn_attivita_fatturabili_normalize
 
 **DB — DDL:**
 
-- [ ] Aggiungere `sorgente_origine_tipo_id BIGINT` a `vendite.attivita_fatturabili` (nullable)
-- [ ] FK verso `config.sorgenti(id)`
-- [ ] Trigger `trgfn_child_requires_active_parent` su `sorgente_origine_tipo_id`
+- [x] Aggiungere `sorgente_origine_tipo_id BIGINT` a `vendite.attivita_fatturabili` (nullable)
+- [x] FK verso `config.sorgenti(id)`
+- [x] Trigger `trgfn_child_requires_active_parent` su `sorgente_origine_tipo_id`
 
 **DB — `fn_emit_attivita_fatturabili_da_commessa`:**
 
-- [ ] Aggiungere `ca.sorgente_tipo_id` al SELECT nel loop
-- [ ] Scrivere `sorgente_origine_tipo_id = ca.sorgente_tipo_id` nell'INSERT e nell'UPDATE
+- [x] Aggiungere `ca.sorgente_tipo_id` al SELECT nel loop
+- [x] Scrivere `sorgente_origine_tipo_id = ca.sorgente_tipo_id` nell'INSERT e nell'UPDATE
 
 **DB — 5 `fn_list_*_da_pushare`:**
 
-- [ ] Aggiungere `s.tipo_doc_fiscale_id` al SELECT (join su `config.sorgenti` gia` presente)
-- [ ] Funzioni coinvolte:
+- [x] Aggiungere `s.tipo_doc_fiscale_id` al SELECT (join su `config.sorgenti` gia` presente)
+- [x] Funzioni coinvolte:
   - `fn_list_preventivi_da_pushare`
   - `fn_list_ordini_da_pushare`
   - `fn_list_contratti_da_pushare`
@@ -1953,18 +1959,18 @@ trgfn_attivita_fatturabili_normalize
 
 **DB — `trgfn_attivita_fatturabili_normalize`:**
 
-- [ ] Quando `tipo_doc_fiscale_id IS NULL`, risolvere da `sorgente_origine_tipo_id`
+- [x] Quando `tipo_doc_fiscale_id IS NULL`, risolvere da `sorgente_origine_tipo_id`
       (non piu` da `sorgente_tipo_id` che ora e` sempre COMMESSA)
-- [ ] Il trigger resta safety net, non risoluzione primaria
+- [x] Il trigger resta safety net, non risoluzione primaria
 
 **Backend — `CommesseRepository`:**
 
-- [ ] Aggiornare `PushableRow` con campo `tipo_doc_fiscale_id`
-- [ ] Propagare in `CommessaAttivitaInput`
+- [x] Aggiornare `PushableRow` con campo `tipo_doc_fiscale_id`
+- [x] Propagare in `CommessaAttivitaInput`
 
 **Backend — handler sorgenti:**
 
-- [ ] Passare `tipo_doc_fiscale_id` da `PushableRow` a `upsert_attivita()`
+- [x] Passare `tipo_doc_fiscale_id` da `PushableRow` a `upsert_attivita()`
 
 ### 26.6 Motivazioni architetturali
 
@@ -1981,12 +1987,12 @@ trgfn_attivita_fatturabili_normalize
 
 ### 26.7 Checklist §26
 
-- [ ] DDL `sorgente_origine_tipo_id` su AF + FK + trigger active-parent
-- [ ] `fn_emit` aggiornata (SELECT + INSERT/UPDATE)
-- [ ] 5 `fn_list_*_da_pushare` aggiornate con `tipo_doc_fiscale_id`
-- [ ] `trgfn_attivita_fatturabili_normalize` aggiornato (safety net da `sorgente_origine_tipo_id`)
-- [ ] Backend `PushableRow` + `CommessaAttivitaInput` aggiornati
-- [ ] Handler sorgenti: propagazione `tipo_doc_fiscale_id`
+- [x] DDL `sorgente_origine_tipo_id` su AF + FK + trigger active-parent
+- [x] `fn_emit` aggiornata (SELECT + INSERT/UPDATE)
+- [x] 5 `fn_list_*_da_pushare` aggiornate con `tipo_doc_fiscale_id`
+- [x] `trgfn_attivita_fatturabili_normalize` aggiornato (safety net da `sorgente_origine_tipo_id`)
+- [x] Backend `PushableRow` + `CommessaAttivitaInput` aggiornati
+- [x] Handler sorgenti: propagazione `tipo_doc_fiscale_id`
 - [x] Test pgTAP: risoluzione `tipo_doc_fiscale_id` per-sorgente
 - [x] Test pgTAP: `sorgente_origine_tipo_id` propagato da `fn_emit`
 

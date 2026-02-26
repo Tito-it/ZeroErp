@@ -507,19 +507,66 @@ class CommesseRepository:
 
     # --- Gruppo 3b: Lista attività commessa (paginata) ---
 
+    # Colonne restituite da vendite.fn_list_commessa_attivita.
+    _ATTIVITA_COLS = (
+        "id", "commessa_id", "segment_key", "articolo_id",
+        "istanza_utility_id", "data_attivita", "uom_id", "quantita",
+        "competenza_mese", "competenza_dal", "competenza_al",
+        "prezzo_snapshot", "prezzo_bloccato", "prezzo_da_riallineare",
+        "stato_approvazione", "stato_emissione", "sorgente_tipo_id",
+        "sorgente_codice", "meta", "data_update",
+    )
+
     def list_commessa_attivita(
         self,
         commessa_id: int,
         *,
+        stato_emissione: str | None = None,
+        stato_approvazione: str | None = None,
+        competenza_mese: date | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> dict:
-        """Lista paginata attività di una commessa.
+        """Lista paginata attività di una commessa via vendite.fn_list_commessa_attivita.
 
-        STUB — in attesa di vendite.fn_list_commessa_attivita lato DB.
-        Restituisce {"count": 0, "rows": []} per non bloccare lo sviluppo API.
+        Restituisce {"count": <n_righe_restituite>, "rows": [dict, ...]}.
         """
-        return {"count": 0, "rows": []}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM vendite.fn_list_commessa_attivita(
+                    p_commessa_id => %s,
+                    p_stato_emissione => %s,
+                    p_stato_approvazione => %s,
+                    p_competenza_mese => %s,
+                    p_limit => %s,
+                    p_offset => %s
+                )
+                """,
+                [commessa_id, stato_emissione, stato_approvazione,
+                 competenza_mese, limit, offset],
+            )
+            col_names = [desc[0] for desc in cursor.description]
+            raw_rows = cursor.fetchall()
+
+        rows = []
+        for raw in raw_rows:
+            row_dict: dict[str, Any] = {}
+            for idx, col in enumerate(col_names):
+                val = raw[idx]
+                if col == "meta":
+                    val = self._decode_jsonb(val, {})
+                elif col == "data_update" and val is not None:
+                    val = val.isoformat()
+                elif col in ("data_attivita", "competenza_mese", "competenza_dal", "competenza_al") and val is not None:
+                    val = val.isoformat()
+                elif col == "articolo_id" and val is not None:
+                    val = str(val)
+                row_dict[col] = val
+            rows.append(row_dict)
+
+        return {"count": len(rows), "rows": rows}
 
     # --- Gruppo 4: Push log ---
 
