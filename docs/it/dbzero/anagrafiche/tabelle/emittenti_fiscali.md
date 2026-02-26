@@ -23,6 +23,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
+| valuta_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
