@@ -112,6 +112,7 @@
 - [fn_list_attivita_lotto_task_runs](funzioni/fn_list_attivita_lotto_task_runs.md) — Elenca i task-run di un lotto attività, con filtri opzionali per branch e task.
 - [fn_list_attivita_pipeline_steps](funzioni/fn_list_attivita_pipeline_steps.md) — (latest review 16-02-2026)   Elencare gli step pipeline del dominio `attivita_fatturabili` con fallback automatico per `utility_id` e `sorgente_tipo_id`.
 - [fn_list_attivita_sorgenti_abilitate](funzioni/fn_list_attivita_sorgenti_abilitate.md) — **DEPRECATA DA COMMESSE** — nessun chiamante attivo dopo il passaggio a commessa-only (24-02-2026). Candidata a DROP dopo go-live. Rif: `gestione-commesse-v2.md` §27.
+- [fn_list_commessa_attivita](funzioni/fn_list_commessa_attivita.md) — (latest review 26-02-2026)   Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri opzionali e paginazione, per uso backend in consultazione e pre-validazione dei flussi di emissione.
 - [fn_list_commesse_emittibili](funzioni/fn_list_commesse_emittibili.md) — (latest review 26-02-2026)   Elenca le commesse candidate all'emissione verso `attivita_fatturabili`, applicando i criteri minimi di prontezza operativa.
 - [fn_list_consumi_da_pushare](funzioni/fn_list_consumi_da_pushare.md) — `vendite.fn_list_consumi_da_pushare(...)` seleziona i consumi utility pronti per il push verso `commesse_attivita`, restituendo un payload di base per l'handler di calcolo componenti.
 - [fn_list_contratti_da_pushare](funzioni/fn_list_contratti_da_pushare.md)
