@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_list_commesse_emittibili`
 
 ```sql
-CREATE FUNCTION fn_list_commesse_emittibili(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_limit integer)
+CREATE FUNCTION fn_list_commesse_emittibili(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_limit integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_list_commesse_emittibili(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_limit integer DEFAULT 1000)
+CREATE OR REPLACE FUNCTION vendite.fn_list_commesse_emittibili(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT 1000)
  RETURNS TABLE(commessa_id bigint, codice character varying, stato_commessa_id bigint, stato_commessa character varying, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, total_non_emesse bigint)
  LANGUAGE plpgsql
  STABLE
@@ -28,7 +28,7 @@ BEGIN
   --   3. Competenza: se p_competenza_mese fornito, filtra righe
   --      commesse_attivita il cui competenza_mese coincide
   --      (coerente con pipeline AF che opera per mese)
-  --   4. Filtri opzionali per perimetro billing
+  --   4. Filtri opzionali per perimetro billing/emittente
   --
   -- Regole:
   --   - p_limit max 10000, default 1000
@@ -70,9 +70,10 @@ BEGIN
    AND ca.stato_emissione = 'NON_EMESSA'
    AND (v_competenza_mese IS NULL OR ca.competenza_mese = v_competenza_mese)
   WHERE true
-    -- Filtro perimetro billing
+    -- Filtro perimetro billing/emittente
     AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)
     AND (p_utility_id IS NULL OR c.utility_id = p_utility_id)
+    AND (p_emittente_soggetto_ruolo_id IS NULL OR c.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
   GROUP BY
     c.id,
     c.codice,
@@ -88,8 +89,8 @@ BEGIN
 END
 $function$
 
-COMMENT ON FUNCTION vendite.fn_list_commesse_emittibili(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_limit integer)
-IS 'Read-only: elenca commesse in stato emittibile con attivita` NON_EMESSA. Filtro competenza_mese su commesse_attivita (coerente con pipeline AF). Filtri opzionali per billing_account_id, utility_id. Usata dal backend per il batch di emissione.';
+COMMENT ON FUNCTION vendite.fn_list_commesse_emittibili(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_limit integer)
+IS 'Read-only: elenca commesse in stato emittibile con attivita` NON_EMESSA. Filtro competenza_mese su commesse_attivita (coerente con pipeline AF). Filtri opzionali per billing_account_id, utility_id, emittente_soggetto_ruolo_id. Usata dal backend per il batch di emissione.';
 ```
 
 ---

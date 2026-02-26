@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260226-08-update-fn-list-commesse-emittibili-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260226-08-update-fn-list-commesse-emittibili-emittente
+      author: mctit
+      runOnChange: true
+      comment: "Aggiunge filtro p_emittente_soggetto_ruolo_id a fn_list_commesse_emittibili. Richiede DROP per cambio signature."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Drop necessario: la signature cambia (nuovo parametro)
+              DROP FUNCTION IF EXISTS vendite.fn_list_commesse_emittibili(date, bigint, integer, integer);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_list_commesse_emittibili(
+                p_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE DEFAULT NULL::date,
+                p_billing_account_id vendite.commesse.billing_account_id%TYPE DEFAULT NULL::bigint,
+                p_utility_id vendite.commesse.utility_id%TYPE DEFAULT NULL::integer,
+                p_emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL::bigint,
+                p_limit integer DEFAULT 1000
+              )
+              RETURNS TABLE(
+                commessa_id vendite.commesse.id%TYPE,
+                codice vendite.commesse.codice%TYPE,
+                stato_commessa_id vendite.commesse.stato_commessa_id%TYPE,
+                stato_commessa vendite.stati_commessa.codice%TYPE,
+                billing_account_id vendite.commesse.billing_account_id%TYPE,
+                utility_id vendite.commesse.utility_id%TYPE,
+                emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE,
+                competenza_dal vendite.commesse.competenza_dal%TYPE,
+                competenza_al vendite.commesse.competenza_al%TYPE,
+                total_non_emesse bigint
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                v_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Elencare le commesse pronte per l'emissione verso AF.
+                --   Usata dal backend come discovery per il batch di
+                --   emissione (fn_emit_attivita_fatturabili_da_commessa).
+                --
+                -- Criteri:
+                --   1. Stato emittibile (stati_commessa.emittibile = true)
+                --   2. Esistono righe commesse_attivita NON_EMESSA
+                --   3. Competenza: se p_competenza_mese fornito, filtra righe
+                --      commesse_attivita il cui competenza_mese coincide
+                --      (coerente con pipeline AF che opera per mese)
+                --   4. Filtri opzionali per perimetro billing/emittente
+                --
+                -- Regole:
+                --   - p_limit max 10000, default 1000
+                --   - p_competenza_mese normalizzato al primo del mese
+                --   - funzione STABLE (read-only)
+                -- =========================================================
+                IF p_limit IS NULL OR p_limit <= 0 THEN
+                  p_limit := 1000;
+                END IF;
+                IF p_limit > 10000 THEN
+                  p_limit := 10000;
+                END IF;
+
+                -- Normalizza al primo del mese
+                v_competenza_mese := CASE
+                  WHEN p_competenza_mese IS NOT NULL
+                  THEN date_trunc('month', p_competenza_mese)::date
+                  ELSE NULL
+                END;
+
+                RETURN QUERY
+                SELECT
+                  c.id AS commessa_id,
+                  c.codice,
+                  c.stato_commessa_id,
+                  sc.codice AS stato_commessa,
+                  c.billing_account_id,
+                  c.utility_id,
+                  c.emittente_soggetto_ruolo_id,
+                  c.competenza_dal,
+                  c.competenza_al,
+                  count(ca.id)::bigint AS total_non_emesse
+                FROM vendite.commesse c
+                JOIN vendite.stati_commessa sc
+                  ON sc.id = c.stato_commessa_id
+                 AND sc.emittibile = true
+                INNER JOIN vendite.commesse_attivita ca
+                  ON ca.commessa_id = c.id
+                 AND ca.stato_emissione = 'NON_EMESSA'
+                 AND (v_competenza_mese IS NULL OR ca.competenza_mese = v_competenza_mese)
+                WHERE true
+                  -- Filtro perimetro billing/emittente
+                  AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)
+                  AND (p_utility_id IS NULL OR c.utility_id = p_utility_id)
+                  AND (p_emittente_soggetto_ruolo_id IS NULL OR c.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                GROUP BY
+                  c.id,
+                  c.codice,
+                  c.stato_commessa_id,
+                  sc.codice,
+                  c.billing_account_id,
+                  c.utility_id,
+                  c.emittente_soggetto_ruolo_id,
+                  c.competenza_dal,
+                  c.competenza_al
+                ORDER BY c.id
+                LIMIT p_limit;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_commesse_emittibili(date, bigint, integer, bigint, integer)
+              IS 'Read-only: elenca commesse in stato emittibile con attivita` NON_EMESSA. Filtro competenza_mese su commesse_attivita (coerente con pipeline AF). Filtri opzionali per billing_account_id, utility_id, emittente_soggetto_ruolo_id. Usata dal backend per il batch di emissione.';
