@@ -153,4 +153,124 @@ Il pattern `trgfn_storico_generic` non ha test pgTAP dedicati che verifichino:
 
 ---
 
+## Proposte automazione sviluppo DB
+
+> Strumenti e script per accelerare lo sviluppo e ridurre errori manuali.
+
+### Alta priorita` — risparmio quotidiano
+
+#### 1. Script scaffolding changelog YAML
+
+Generatore di boilerplate per nuovi changelog:
+
+```bash
+./scripts/new_changelog.sh --schema vendite --tipo create-fn --nome fn_mia_funzione
+```
+
+Genera file con naming corretto (`YYYYMMDD-NN-...`), SPDX header, `logicalFilePath`,
+struttura changeSet. Elimina errori di naming e copia/incolla.
+
+#### 2. Script scaffolding pgTAP
+
+Dato un nome tabella/funzione, genera lo scheletro test:
+
+```bash
+./scripts/new_test.sh --schema vendite --tabella commesse
+```
+
+Genera automaticamente: test tabella esiste, test FK presenti, test trigger presenti,
+test colonne audit, test constraint CHECK. Si aggiungono poi solo i test funzionali.
+
+#### 3. Generatore loadUpdateData YAML da CSV
+
+Legge il CSV header + ispeziona `information_schema.columns` e genera il YAML con
+tipi corretti:
+
+```bash
+./scripts/gen_load_data.sh --csv 80_data/sql/vendite/stati_commessa.csv
+```
+
+Evita il mapping manuale colonne/tipi che oggi e` fonte di errori.
+
+### Media priorita` — qualita` e sicurezza
+
+#### 4. Linter %TYPE
+
+Scansiona i YAML in `20_code/` e verifica che:
+
+- Parametri funzione usino `%TYPE` dove esiste colonna corrispondente
+- `RETURNS TABLE` usi `%TYPE` per colonne da tabella
+- `DECLARE` usi `%TYPE`
+- Segnala tipi espliciti come warning (non errore — calcolati come `bigint` per COUNT sono legittimi)
+
+#### 5. Funzione DB `dbops.fn_setup_standard_table`
+
+Applica l'intero pattern standard in un colpo:
+
+```sql
+SELECT dbops.fn_setup_standard_table(
+  'vendite', 'nuova_tabella',
+  p_audit => true,            -- trigger audit
+  p_storico => true,          -- tabella storico + trigger
+  p_tx_id => true,            -- trigger tx_id
+  p_fk_index_policy => true   -- applica policy indici FK
+);
+```
+
+Oggi servono 4-5 changeset separati per ogni nuova tabella. Ridurrebbe a 1 chiamata
+piu` i changeset specifici (CHECK, trigger custom).
+
+#### 6. Validatore pre-deploy
+
+Script che prima di `liquibase update` verifica:
+
+- CSV seed matchano le colonne della tabella (header vs `information_schema`)
+- Nessun changelog modificato dopo push (confronto hash con `origin/main`)
+- `processi` JSON in pipeline referenziano `task_code` validi
+- FK referenziano tabelle esistenti
+
+### Bassa priorita` — nice to have
+
+#### 7. Generatore diff signature funzioni
+
+Confronta la signature attuale (da `pg_proc`) con quella nel changelog nuovo e
+avvisa se serve DROP:
+
+```bash
+./scripts/check_fn_signature.sh vendite.fn_list_commesse_emittibili
+# Output: SIGNATURE CHANGED - DROP required (params: 4 -> 5)
+```
+
+#### 8. Report trigger per tabella
+
+Genera un report delle tabelle con piu` trigger, utile per il consolidamento:
+
+```bash
+./scripts/trigger_report.sh
+# vendite.clienti: 18 trigger (WARNING: >15)
+# vendite.commesse: 12 trigger
+# ...
+```
+
+#### 9. Template Liquibase per pattern ricorrenti
+
+Template YAML parametrizzati per i pattern piu` comuni:
+
+- `add-fk-with-guard.yaml.tpl` — FK + `trgfn_child_requires_active_parent` + `trgfn_prevent_deactivate`
+- `add-lookup-table.yaml.tpl` — tabella lookup + seed + lock `codice_interno`
+- `add-storico.yaml.tpl` — tabella storico + trigger storicizzazione
+
+### Ordine consigliato di implementazione
+
+| Prio | Script | Motivo |
+|------|--------|--------|
+| 1 | Scaffolding changelog YAML | Usato piu` volte al giorno, fonte di errori frequenti |
+| 2 | Generatore loadUpdateData | Mapping manuale colonne/tipi e` tedioso e error-prone |
+| 3 | Linter %TYPE | Previene inconsistenze viste in questa sessione |
+| 4 | `fn_setup_standard_table` | ROI alto a lungo termine, riduce changeset ripetitivi |
+| 5 | Validatore pre-deploy | Safety net prima di ogni deploy |
+| 6 | Scaffolding pgTAP | Accelera la copertura test (gap critico) |
+
+---
+
 *Documento generato da valutazione qualitativa DB — febbraio 2026*
