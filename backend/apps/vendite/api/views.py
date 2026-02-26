@@ -605,6 +605,9 @@ class ApiCommessaAttivita(APIView):
 
     @extend_schema(
         parameters=[
+            OpenApiParameter(name="stato_emissione", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro stato emissione (es. NON_EMESSA, EMESSA)."),
+            OpenApiParameter(name="stato_approvazione", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro stato approvazione (es. BOZZA, APPROVATA)."),
+            OpenApiParameter(name="competenza_mese", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro mese di competenza (YYYY-MM-DD)."),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False, description="Righe per pagina (default 50, max 200)."),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False, description="Offset paginazione (default 0)."),
         ],
@@ -628,10 +631,18 @@ class ApiCommessaAttivita(APIView):
     # Scopo: Restituisce via GET la lista paginata delle attivita di una commessa.
     def get(self, request: Request, commessa_id: int) -> JsonResponse:
         try:
+            stato_emissione = request.query_params.get("stato_emissione") or None
+            stato_approvazione = request.query_params.get("stato_approvazione") or None
+            competenza_mese = request.query_params.get("competenza_mese") or None
             limit = int(request.query_params.get("limit", "50"))
             offset = int(request.query_params.get("offset", "0"))
             data = fn_list_commessa_attivita(
-                commessa_id=commessa_id, limit=limit, offset=offset,
+                commessa_id=commessa_id,
+                stato_emissione=stato_emissione,
+                stato_approvazione=stato_approvazione,
+                competenza_mese=competenza_mese,
+                limit=limit,
+                offset=offset,
             )
             return success_response(data)
         except Exception as exc:

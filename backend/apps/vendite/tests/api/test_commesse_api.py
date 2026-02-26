@@ -19,6 +19,7 @@ Indice test eseguiti:
 10) VenditeCommesseApiTests.test_get_commessa_attivita_ok
 11) VenditeCommesseApiTests.test_get_commessa_attivita_v1_requires_jwt
 12) VenditeCommesseApiTests.test_get_commessa_attivita_invalid_limit
+13) VenditeCommesseApiTests.test_get_commessa_attivita_con_filtri
 """
 
 import json
@@ -195,12 +196,29 @@ class VenditeCommesseApiTests(SimpleTestCase):
         data = response.json()["data"]
         self.assertEqual(data["commessa_id"], 1)
         self.assertEqual(data["count"], 0)
-        mocked_list.assert_called_once_with(commessa_id=1, limit=20, offset=0)
+        mocked_list.assert_called_once_with(
+            commessa_id=1, stato_emissione=None, stato_approvazione=None,
+            competenza_mese=None, limit=20, offset=0,
+        )
 
     # Scopo: endpoint V1 richiede JWT.
     def test_get_commessa_attivita_v1_requires_jwt(self):
         response = self.client.get("/api/v1/vendite/commesse/1/attivita/")
         self.assertEqual(response.status_code, 401)
+
+    # Scopo: filtri opzionali propagati al service.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.fn_list_commessa_attivita")
+    def test_get_commessa_attivita_con_filtri(self, mocked_list, _mock_auth):
+        mocked_list.return_value = {"commessa_id": 1, "count": 0, "rows": []}
+        response = self.client.get(
+            "/api/v1/vendite/commesse/1/attivita/?stato_emissione=NON_EMESSA&stato_approvazione=APPROVATA&competenza_mese=2026-02-01"
+        )
+        self.assertEqual(response.status_code, 200)
+        mocked_list.assert_called_once_with(
+            commessa_id=1, stato_emissione="NON_EMESSA", stato_approvazione="APPROVATA",
+            competenza_mese="2026-02-01", limit=50, offset=0,
+        )
 
     # Scopo: limit fuori range → 400.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
