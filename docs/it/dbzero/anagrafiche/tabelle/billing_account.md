@@ -19,6 +19,7 @@
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
 | fatturazione_ordini | character varying | NO | 'CONFERMATO'::character varying |
+| valuta_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_get_valuta_id`
 
 ```sql
-CREATE FUNCTION fn_get_valuta_id(p_billing_account_id bigint, p_utility_id integer)
+CREATE FUNCTION fn_get_valuta_id(p_billing_account_id bigint, p_emittente_soggetto_ruolo_id bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_get_valuta_id(p_billing_account_id bigint, p_utility_id integer)
+CREATE OR REPLACE FUNCTION vendite.fn_get_valuta_id(p_billing_account_id bigint, p_emittente_soggetto_ruolo_id bigint)
  RETURNS integer
  LANGUAGE plpgsql
 AS $function$
@@ -17,10 +17,10 @@ DECLARE
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Risolve la valuta con priorita' su:
-  --   1) billing_account (se presente)
-  --   2) utility (fallback)
-  --   3) gestore (default di sistema)
+  --   Risolve la valuta con priorita` su:
+  --   1) billing_account (se presente e con valuta)
+  --   2) emittente fiscale (se presente e con valuta)
+  --   3) gestore (singleton, default di sistema, NOT NULL)
   -- =========================================================
 
   IF p_billing_account_id IS NOT NULL THEN
@@ -30,18 +30,17 @@ BEGIN
      WHERE ba.id = p_billing_account_id;
   END IF;
 
-  IF v_valuta_id IS NULL AND p_utility_id IS NOT NULL THEN
-    SELECT u.valuta_id
+  IF v_valuta_id IS NULL AND p_emittente_soggetto_ruolo_id IS NOT NULL THEN
+    SELECT ef.valuta_id
       INTO v_valuta_id
-      FROM config.utilities u
-     WHERE u.id = p_utility_id;
+      FROM anagrafiche.emittenti_fiscali ef
+     WHERE ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id;
   END IF;
 
   IF v_valuta_id IS NULL THEN
     SELECT g.valuta_id
       INTO v_valuta_id
       FROM anagrafiche.gestori g
-     WHERE g.attivo IS TRUE
      ORDER BY g.id
      LIMIT 1;
   END IF;
@@ -52,15 +51,14 @@ BEGIN
       'fn_get_valuta_id',
       'E_GENERICO',
       jsonb_build_object(
-        'detail','Valuta non risolta (BA/utility/gestore)',
+        'detail', 'Valuta non risolta (BA/emittente/gestore)',
         'billing_account_id', p_billing_account_id,
-        'utility_id', p_utility_id
+        'emittente_soggetto_ruolo_id', p_emittente_soggetto_ruolo_id
       ),
       NULL::uuid,
-      concat('Valuta non risolta (BA/utility/gestore)', 
-      ' billing_account_id ', p_billing_account_id::text,
-        ', utility_id ', p_utility_id::text
-       )
+      concat('Valuta non risolta (BA/emittente/gestore)',
+        ' billing_account_id=', p_billing_account_id::text,
+        ' emittente=', p_emittente_soggetto_ruolo_id::text)
     );
   END IF;
 
@@ -68,8 +66,8 @@ BEGIN
 END
 $function$
 
-COMMENT ON FUNCTION vendite.fn_get_valuta_id(p_billing_account_id bigint, p_utility_id integer)
-IS 'Risoluzione valuta_id: BA -> utility -> default gestore.';
+COMMENT ON FUNCTION vendite.fn_get_valuta_id(p_billing_account_id bigint, p_emittente_soggetto_ruolo_id bigint)
+IS 'Risoluzione valuta_id: BA -> emittente fiscale -> gestore (fallback).';
 ```
 
 ---

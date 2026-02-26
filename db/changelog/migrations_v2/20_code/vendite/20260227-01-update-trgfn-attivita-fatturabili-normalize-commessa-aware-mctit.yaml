@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260227-01-update-trgfn-attivita-fatturabili-normalize-commessa-aware-mctit.yaml
+
+  - changeSet:
+      id: 20260227-01-update-trgfn-attivita-fatturabili-normalize-commessa-aware
+      author: mctit
+      runOnChange: true
+      comment: "Rende trgfn_attivita_fatturabili_normalize commessa-aware: skip normalizzazione competenze quando commessa_attivita_id IS NOT NULL, preserva risoluzione tipo_doc_fiscale_id e valuta_id nullable."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_utility_id config.utilities.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Normalizza campi base e risolve tipo_doc_fiscale/valuta.
+                --
+                -- Regole:
+                --   - competenza_mese sempre valorizzata e al primo del mese
+                --   - se NULL -> mese di posticipa_al (se presente)
+                --   - competenza_dal/al: se NULL, default su data_attivita
+                --   - sorgente_riga default 0 se sorgente valorizzata
+                --   - tipo_doc_fiscale_id: da sorgente_origine_tipo_id
+                --     (business originale), fallback su sorgente_tipo_id
+                --   - valuta_id: BA -> utility -> gestore
+                --   - Commessa-aware: quando commessa_attivita_id IS NOT NULL
+                --     lo snapshot CA e` gia` completo per competenze,
+                --     si preserva risoluzione tipo_doc/valuta se NULL.
+                -- =========================================================
+
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                -- -------------------------------------------------------
+                -- Righe da commessa: lo snapshot competenze e` gia` completo.
+                -- Si preserva risoluzione tipo_doc_fiscale_id e valuta_id
+                -- perche` CA potrebbe non averli.
+                -- -------------------------------------------------------
+                IF NEW.commessa_attivita_id IS NOT NULL THEN
+                  -- sorgente_riga default
+                  IF NEW.sorgente_tipo_id IS NOT NULL AND NEW.sorgente_riga IS NULL THEN
+                    NEW.sorgente_riga := 0;
+                  END IF;
+
+                  -- tipo_doc_fiscale_id: CA potrebbe non averlo
+                  IF NEW.tipo_doc_fiscale_id IS NULL THEN
+                    IF NEW.sorgente_origine_tipo_id IS NOT NULL THEN
+                      NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
+                        NEW.sorgente_origine_tipo_id
+                      );
+                    ELSIF NEW.sorgente_tipo_id IS NOT NULL THEN
+                      NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
+                        NEW.sorgente_tipo_id
+                      );
+                    END IF;
+                  END IF;
+
+                  -- valuta_id: CA potrebbe non averla
+                  IF NEW.valuta_id IS NULL AND NEW.billing_account_id IS NOT NULL THEN
+                    SELECT ba.utility_id
+                      INTO v_utility_id
+                      FROM anagrafiche.billing_account ba
+                     WHERE ba.id = NEW.billing_account_id;
+                    NEW.valuta_id := vendite.fn_get_valuta_id(
+                      NEW.billing_account_id, v_utility_id
+                    );
+                  END IF;
+
+                  RETURN NEW;
+                END IF;
+
+                -- -------------------------------------------------------
+                -- Flusso standard (righe non da commessa)
+                -- -------------------------------------------------------
+                IF NEW.competenza_mese IS NULL AND NEW.posticipa_al IS NOT NULL THEN
+                  NEW.competenza_mese := date_trunc('month', NEW.posticipa_al)::date;
+                ELSIF NEW.competenza_mese IS NOT NULL THEN
+                  NEW.competenza_mese := date_trunc('month', NEW.competenza_mese)::date;
+                END IF;
+
+                IF NEW.competenza_dal IS NULL THEN
+                  NEW.competenza_dal := NEW.data_attivita;
+                END IF;
+
+                IF NEW.competenza_al IS NULL THEN
+                  NEW.competenza_al := NEW.competenza_dal;
+                END IF;
+
+                IF NEW.sorgente_tipo_id IS NOT NULL THEN
+                  IF NEW.sorgente_riga IS NULL THEN
+                    NEW.sorgente_riga := 0;
+                  END IF;
+                END IF;
+
+                IF NEW.billing_account_id IS NOT NULL THEN
+                  SELECT ba.utility_id
+                    INTO v_utility_id
+                    FROM anagrafiche.billing_account ba
+                   WHERE ba.id = NEW.billing_account_id;
+                END IF;
+
+                -- §26 B+D: risolve tipo_doc_fiscale_id dalla sorgente business
+                -- originale (non da COMMESSA). Fallback legacy per righe senza
+                -- sorgente_origine_tipo_id.
+                IF NEW.tipo_doc_fiscale_id IS NULL THEN
+                  IF NEW.sorgente_origine_tipo_id IS NOT NULL THEN
+                    NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
+                      NEW.sorgente_origine_tipo_id
+                    );
+                  ELSIF NEW.sorgente_tipo_id IS NOT NULL THEN
+                    NEW.tipo_doc_fiscale_id := vendite.fn_get_tipo_doc_fiscale_id(
+                      NEW.sorgente_tipo_id
+                    );
+                  END IF;
+                END IF;
+
+                IF NEW.valuta_id IS NULL THEN
+                  NEW.valuta_id := vendite.fn_get_valuta_id(
+                    NEW.billing_account_id,
+                    v_utility_id
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_normalize()
+              IS 'Normalizza competenze/sorgente; risolve tipo_doc_fiscale_id e valuta_id. Commessa-aware: skip normalizzazione competenze quando commessa_attivita_id IS NOT NULL, preserva risoluzione campi nullable.';
