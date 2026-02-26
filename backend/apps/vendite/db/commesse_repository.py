@@ -201,6 +201,34 @@ class CommesseRepository:
 
     # --- Gruppo 0: Fetch righe sorgente per push ---
 
+    @staticmethod
+    def validate_sorgente_map() -> list[str]:
+        """Verifica _SORGENTE_FN_MAP contro config.sorgenti (scope=PUSH_COMMESSA).
+
+        Restituisce lista di warning (vuota = tutto OK).
+        Utile come safety-net a startup o nei test di integrazione.
+        """
+        warnings: list[str] = []
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT codice FROM config.sorgenti"
+                " WHERE scope = 'PUSH_COMMESSA' AND attivo = true"
+            )
+            db_codici = {row[0] for row in cursor.fetchall()}
+
+        map_codici = set(_SORGENTE_FN_MAP.keys())
+        missing = db_codici - map_codici
+        extra = map_codici - db_codici
+        if missing:
+            warnings.append(
+                f"Sorgenti PUSH_COMMESSA nel DB ma non in _SORGENTE_FN_MAP: {sorted(missing)}"
+            )
+        if extra:
+            warnings.append(
+                f"Codici in _SORGENTE_FN_MAP ma non nel DB (scope PUSH_COMMESSA): {sorted(extra)}"
+            )
+        return warnings
+
     # Scopo: invoca la fn_list_<sorgente>_da_pushare parametrizzata e restituisce
     # le righe normalizzate come PushableRow. Unico punto di accesso per tutti gli handler.
     def fetch_pushable_rows(
@@ -448,6 +476,18 @@ class CommesseRepository:
             inserted_rows=int(row[1]),
             updated_rows=int(row[2]),
         )
+
+    # Scopo: Restituisce le commesse emittibili nel perimetro del contesto lotto.
+    def list_commesse_emittibili(
+        self,
+        *,
+        competenza_mese: date | None = None,
+        utility_id: int | None = None,
+        billing_account_id: int | None = None,
+        emittente_soggetto_ruolo_id: int | None = None,
+    ) -> list[int]:
+        """Stub: fn DB fn_list_commesse_emittibili non ancora disponibile."""
+        return []
 
     # --- Gruppo 4: Push log ---
 

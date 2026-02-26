@@ -13,7 +13,6 @@ from apps.core.api.success_responses import success_response
 from apps.vendite.services.attivita_pipeline_service import (
     fn_get_attivita_pipeline_status,
     fn_get_attivita_task_runs,
-    pr_run_attivita_pipeline,
 )
 from apps.vendite.services.pipeline_service import (
     fn_get_lotto_segnalazioni_summary,
@@ -384,75 +383,6 @@ class ApiLottoFattureList(APIView):
 
 
 class ApiLottoFattureListV1(ApiLottoFattureList):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
-
-
-class ApiRunAttivitaPipeline(APIView):
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="Idempotency-Key",
-                type=str,
-                location=OpenApiParameter.HEADER,
-                required=True,
-                description="Chiave idempotenza obbligatoria per endpoint write.",
-            )
-        ],
-        request=inline_serializer(
-            name="VenditeRunAttivitaPipelineRequest",
-            fields={
-                "lotto_id": serializers.IntegerField(required=False, allow_null=True),
-                "competenza_mese": serializers.DateField(required=False, allow_null=True),
-                "utility_id": serializers.IntegerField(required=False, allow_null=True),
-                "billing_account_id": serializers.IntegerField(required=False, allow_null=True),
-                "sorgente_tipo_id": serializers.IntegerField(required=False, allow_null=True),
-                "emittente_soggetto_ruolo_id": serializers.IntegerField(required=False, allow_null=True),
-                "lock_batch_id": serializers.UUIDField(required=False, allow_null=True),
-                "meta": serializers.DictField(required=False),
-                "dry_run": serializers.BooleanField(required=False),
-            },
-        ),
-        responses={
-            200: inline_serializer(
-                name="VenditeRunAttivitaPipelineResponse",
-                fields={
-                    "data": inline_serializer(
-                        name="VenditeRunAttivitaPipelineData",
-                        fields={
-                            "lotto_id": serializers.IntegerField(),
-                            "status": serializers.CharField(),
-                        },
-                    ),
-                    "meta": serializers.DictField(required=False),
-                },
-            )
-        },
-    )
-    # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
-    def post(self, request: Request) -> JsonResponse:
-        # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
-        def _handler(payload: dict) -> dict:
-            lotto_id = pr_run_attivita_pipeline(
-                lotto_id=optional_int(payload, "lotto_id", zero_as_none=True),
-                competenza_mese=optional_iso_date(payload, "competenza_mese"),
-                utility_id=optional_int(payload, "utility_id", zero_as_none=True),
-                billing_account_id=optional_int(payload, "billing_account_id", zero_as_none=True),
-                sorgente_tipo_id=optional_int(payload, "sorgente_tipo_id", zero_as_none=True),
-                emittente_soggetto_ruolo_id=optional_int(
-                    payload, "emittente_soggetto_ruolo_id", zero_as_none=True
-                ),
-                lock_batch_id=optional_uuid(payload, "lock_batch_id"),
-                meta=payload.get("meta"),
-                dry_run=optional_bool(payload, "dry_run", default=False),
-            )
-            return {"lotto_id": lotto_id, "status": "ok"}
-
-        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
-
-
-class ApiRunAttivitaPipelineV1(ApiRunAttivitaPipeline):
-    # Versione canonica protetta: richiede JWT su /api/v1/*
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 

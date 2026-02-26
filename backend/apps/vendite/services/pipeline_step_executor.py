@@ -11,6 +11,7 @@ from typing import Any
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.value_normalizer import as_bool
+from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import LottoContext, VenditePipelineRepository
 from apps.vendite.services.pipeline_error_logger import PipelineErrorLogger
 from apps.vendite.services.fatture_righe_service import FattureRigheService
@@ -26,10 +27,12 @@ class PipelineStepExecutor:
         repository: VenditePipelineRepository | None = None,
         fatture_righe_service: FattureRigheService | None = None,
         error_logger: PipelineErrorLogger | None = None,
+        commesse_repository: CommesseRepository | None = None,
     ) -> None:
         self.repository = repository or VenditePipelineRepository()
         self.fatture_righe_service = fatture_righe_service or FattureRigheService(self.repository)
         self.error_logger = error_logger or PipelineErrorLogger(self.repository)
+        self.commesse_repository = commesse_repository or CommesseRepository()
         self.handler_registry = {
             "select_attivita_default": self._handle_select_attivita_task,
             "generate_fatture_righe_default": self._handle_generate_fatture_righe_task,
@@ -40,6 +43,7 @@ class PipelineStepExecutor:
             "numera_fatture_default": self._handle_numera_fatture_task,
             "close_lotto_default": self._handle_close_lotto_task,
             "reset_lotto_draft_default": self._handle_reset_lotto_draft_task,
+            "pull_attivita_da_commessa_default": self._handle_pull_attivita_da_commessa_task,
         }
 
     # Scopo: Gestisce uno step pipeline validando input, risolvendo processi da configurazione DB e dispatch dei task
@@ -640,3 +644,35 @@ class PipelineStepExecutor:
             dry_run=dry_run,
             action=lambda: self.repository.reset_lotto_draft(lotto_id),
         )
+
+    # Scopo: Pull commesse → attivita fatturabili (step 0 pipeline fatturazione).
+    def _handle_pull_attivita_da_commessa_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> None:
+        self._validate_task_function_name(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+        )
+        commessa_ids = self.commesse_repository.list_commesse_emittibili(
+            competenza_mese=context.competenza_mese,
+            utility_id=context.utility_id,
+            billing_account_id=context.billing_account_id,
+            emittente_soggetto_ruolo_id=context.emittente_soggetto_ruolo_id,
+        )
+        if dry_run:
+            return
+        for commessa_id in commessa_ids:
+            self.commesse_repository.emit_attivita_fatturabili(
+                commessa_id,
+                dry_run=dry_run,
+            )

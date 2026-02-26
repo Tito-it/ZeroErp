@@ -9,7 +9,6 @@
 - [api_lotto_task_runs](manual/api_lotto_task_runs.md) — Esporre via HTTP i task run runtime di un lotto per monitoraggio operativo e diagnostica pipeline.
 - [api_reset_lotto_draft](manual/api_reset_lotto_draft.md) — Esporre via HTTP il reset tecnico di un lotto MASSIVO in DRAFT.
 - [api_reset_lotto_fattura_draft](manual/api_reset_lotto_fattura_draft.md) — Esporre via HTTP il reset tecnico di una singola fattura in un lotto MASSIVO in DRAFT.
-- [api_run_attivita_pipeline](manual/api_run_attivita_pipeline.md) — Esporre via HTTP l'avvio della pipeline attivita fatturabili.
 - [api_run_lotto_pipeline](manual/api_run_lotto_pipeline.md) — Esporre via HTTP l'avvio della pipeline lotto vendite.
 
 ## Funzioni
@@ -22,5 +21,4 @@
 - [fn_prepare_sdi_payload_lotto](manual/fn_prepare_sdi_payload_lotto.md) — Reperire dal database il dataset SDI di un lotto, aprendo/riusando i tentativi di invio e restituendo le righe da usare per la generazione file.
 - [fn_reset_lotto_draft](manual/fn_reset_lotto_draft.md) — Eseguire il reset tecnico di un lotto MASSIVO in DRAFT invocando la funzione DB.
 - [fn_reset_lotto_fattura_draft](manual/fn_reset_lotto_fattura_draft.md) — Eseguire il reset tecnico di una singola fattura in un lotto MASSIVO DRAFT.
-- [pr_run_attivita_pipeline](manual/pr_run_attivita_pipeline.md) — Orchestrare l'esecuzione della pipeline attivita fatturabili per un lotto, gestendo:
 - [test_attivita_pipeline](manual/test_attivita_pipeline.md) — Descrivere la struttura, i pattern e la copertura dei test per il dominio ATTIVITA_FATTURABILI della pipeline vendite (BE-3).

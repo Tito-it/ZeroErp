@@ -9,7 +9,6 @@ from apps.vendite.api.views import (
     ApiLottoTaskRunsV1,
     ApiResetLottoDraftV1,
     ApiResetLottoFatturaDraftV1,
-    ApiRunAttivitaPipelineV1,
     ApiRunLottoPipelineV1,
 )
 
@@ -40,11 +39,6 @@ urlpatterns = [
         "lotti/<int:lotto_id>/fatture/<int:fattura_id>/reset-draft/",
         ApiResetLottoFatturaDraftV1.as_view(),
         name="vendite-v1-reset-lotto-fattura-draft",
-    ),
-    path(
-        "attivita_fatturabili/pipeline/run/",
-        ApiRunAttivitaPipelineV1.as_view(),
-        name="vendite-v1-run-attivita-pipeline",
     ),
     path(
         "attivita_fatturabili/pipeline/<int:lotto_id>/status/",
