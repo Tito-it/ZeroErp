@@ -1,0 +1,7 @@
+id,codice,descrizione,attivo,ordine,meta,codice_interno,chiude_commessa,emittibile,modificabile
+1,BOZZA,Bozza,t,10,{},BOZZA,f,f,t
+2,APERTA,Aperta,t,20,{},APERTA,f,f,t
+3,IN_ESECUZIONE,In esecuzione,t,30,{},IN_ESECUZIONE,f,f,t
+4,PRONTA_FATTURAZIONE,Pronta per fatturazione,t,40,{},PRONTA_FATTURAZIONE,f,t,t
+5,CHIUSA,Chiusa,t,50,{},CHIUSA,t,f,f
+6,ANNULLATA,Annullata,t,60,{},ANNULLATA,t,f,f

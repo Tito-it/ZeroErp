@@ -1,0 +1,234 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260226-03-update-fn-get-or-create-commessa-stato-id-mctit.yaml
+
+  - changeSet:
+      id: 20260226-03-update-fn-get-or-create-commessa-stato-id
+      author: mctit
+      runOnChange: true
+      comment: "Adatta fn_get_or_create_commessa a stato_commessa_id (FK stati_commessa). Usa chiude_commessa=false per trovare commesse riusabili."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_commessa(
+                p_billing_account_id vendite.commesse.billing_account_id%TYPE,
+                p_utility_id vendite.commesse.utility_id%TYPE,
+                p_tipo_commessa vendite.commesse.tipo_commessa%TYPE DEFAULT 'AUTO'::varchar,
+                p_policy_fatturazione vendite.commesse.policy_fatturazione%TYPE DEFAULT 'DA_DOCUMENTO'::varchar,
+                p_fatturazione_immediata vendite.commesse.fatturazione_immediata%TYPE DEFAULT false,
+                p_priorita_operativa vendite.commesse.priorita_operativa%TYPE DEFAULT 'NORMALE'::varchar,
+                p_emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL::bigint,
+                p_competenza_dal vendite.commesse.competenza_dal%TYPE DEFAULT NULL::date,
+                p_competenza_al vendite.commesse.competenza_al%TYPE DEFAULT NULL::date,
+                p_meta vendite.commesse.meta%TYPE DEFAULT '{}'::jsonb,
+                p_force_new boolean DEFAULT false
+              )
+              RETURNS vendite.commesse.id%TYPE
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_commessa_id vendite.commesse.id%TYPE;
+                v_ba_utility anagrafiche.billing_account.utility_id%TYPE;
+                v_ba_found boolean := false;
+                v_emittente vendite.commesse.emittente_soggetto_ruolo_id%TYPE;
+                v_codice vendite.commesse.codice%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Recuperare una commessa aperta compatibile o crearne
+                --   una nuova con parametri coerenti.
+                --
+                -- Regole:
+                --   - p_billing_account_id e p_utility_id obbligatori (>0)
+                --   - utility del BA deve coincidere con p_utility_id
+                --   - emittente fallback da anagrafiche.fn_get_emittente_fiscale_id
+                --   - p_force_new=true forza sempre nuova creazione
+                --   - advisory lock su contesto dimensionale per prevenire
+                --     doppia creazione in chiamate concorrenti (solo NOT force_new)
+                --   - riuso: solo commesse in stato non terminale (chiude_commessa=false)
+                -- =========================================================
+                IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_get_or_create_commessa','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE','severity','C','code','E_GENERICO',
+                      'lotto_id',NULL,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','billing_account_id obbligatorio','billing_account_id',p_billing_account_id)
+                    ),
+                    NULL::uuid,
+                    'billing_account_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_get_or_create_commessa','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE','severity','C','code','E_GENERICO',
+                      'lotto_id',NULL,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','utility_id obbligatorio','utility_id',p_utility_id)
+                    ),
+                    NULL::uuid,
+                    'utility_id obbligatorio'
+                  );
+                END IF;
+
+                IF p_competenza_dal IS NOT NULL AND p_competenza_al IS NOT NULL AND p_competenza_dal > p_competenza_al THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_get_or_create_commessa','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE','severity','C','code','E_GENERICO',
+                      'lotto_id',NULL,'fattura_id',NULL,
+                      'context',jsonb_build_object(
+                        'detail','range competenza non coerente',
+                        'competenza_dal',p_competenza_dal,
+                        'competenza_al',p_competenza_al
+                      )
+                    ),
+                    NULL::uuid,
+                    'range competenza non coerente'
+                  );
+                END IF;
+
+                -- Distingue BA non trovato da BA senza utility_id.
+                SELECT ba.utility_id, true
+                INTO v_ba_utility, v_ba_found
+                FROM anagrafiche.billing_account ba
+                WHERE ba.id = p_billing_account_id;
+
+                IF NOT v_ba_found THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_get_or_create_commessa','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE','severity','C','code','E_GENERICO',
+                      'lotto_id',NULL,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','billing account non trovato','billing_account_id',p_billing_account_id)
+                    ),
+                    NULL::uuid,
+                    'billing account non trovato'
+                  );
+                END IF;
+
+                IF v_ba_utility IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_get_or_create_commessa','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE','severity','C','code','E_GENERICO',
+                      'lotto_id',NULL,'fattura_id',NULL,
+                      'context',jsonb_build_object('detail','billing account senza utility_id associata','billing_account_id',p_billing_account_id)
+                    ),
+                    NULL::uuid,
+                    concat('billing account senza utility_id associata ' , p_billing_account_id::text) 
+                  );
+                END IF;
+
+                IF v_ba_utility <> p_utility_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_get_or_create_commessa','E_GENERICO',
+                    jsonb_build_object(
+                      'scope','COMMESSE','severity','C','code','E_GENERICO',
+                      'lotto_id',NULL,'fattura_id',NULL,
+                      'context',jsonb_build_object(
+                        'detail','utility incoerente con billing account',
+                        'billing_account_id',p_billing_account_id,
+                        'ba_utility_id',v_ba_utility,
+                        'utility_id',p_utility_id
+                      )
+                    ),
+                    NULL::uuid,
+                    concat('utility incoerente con billing account ', p_billing_account_id::text, ' - ',
+                     v_ba_utility::text, ' vs ', p_utility_id::text)
+                  );
+                END IF;
+
+                -- Risolve emittente prima del lock: il key include il valore effettivo.
+                v_emittente := COALESCE(
+                  p_emittente_soggetto_ruolo_id,
+                  anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id)
+                );
+
+                IF NOT p_force_new THEN
+                  -- Advisory lock transazionale: serializza chiamate concorrenti
+                  -- con lo stesso contesto dimensionale per prevenire doppia INSERT.
+                  PERFORM pg_advisory_xact_lock(
+                    hashtext('fn_get_or_create_commessa'),
+                    hashtext(
+                      p_billing_account_id::text      || E'\x1F' ||
+                      p_utility_id::text              || E'\x1F' ||
+                      p_tipo_commessa                 || E'\x1F' ||
+                      p_policy_fatturazione           || E'\x1F' ||
+                      p_fatturazione_immediata::text  || E'\x1F' ||
+                      p_priorita_operativa            || E'\x1F' ||
+                      COALESCE(v_emittente::text, '') || E'\x1F' ||
+                      COALESCE(p_competenza_dal::text, '') || E'\x1F' ||
+                      COALESCE(p_competenza_al::text, '')
+                    )
+                  );
+
+                  -- Cerca commessa riusabile: stato non terminale (chiude_commessa=false)
+                  SELECT c.id
+                  INTO v_commessa_id
+                  FROM vendite.commesse c
+                  JOIN vendite.stati_commessa sc
+                    ON sc.id = c.stato_commessa_id
+                   AND sc.chiude_commessa = false
+                  WHERE c.billing_account_id = p_billing_account_id
+                    AND c.utility_id = p_utility_id
+                    AND c.tipo_commessa = p_tipo_commessa
+                    AND c.policy_fatturazione = p_policy_fatturazione
+                    AND c.fatturazione_immediata = p_fatturazione_immediata
+                    AND c.priorita_operativa = p_priorita_operativa
+                    AND COALESCE(c.emittente_soggetto_ruolo_id, -1) = COALESCE(v_emittente, -1)
+                    AND c.competenza_dal IS NOT DISTINCT FROM p_competenza_dal
+                    AND c.competenza_al IS NOT DISTINCT FROM p_competenza_al
+                  ORDER BY c.id DESC
+                  LIMIT 1;
+
+                  IF v_commessa_id IS NOT NULL THEN
+                    RETURN v_commessa_id;
+                  END IF;
+                END IF;
+
+                v_codice := 'CMM-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS') || '-' || substr(md5(random()::text), 1, 6);
+
+                -- stato_commessa_id usa DEFAULT (=1, BOZZA)
+                INSERT INTO vendite.commesse (
+                  codice,
+                  tipo_commessa,
+                  policy_fatturazione,
+                  fatturazione_immediata,
+                  priorita_operativa,
+                  billing_account_id,
+                  utility_id,
+                  emittente_soggetto_ruolo_id,
+                  competenza_dal,
+                  competenza_al,
+                  meta
+                )
+                VALUES (
+                  v_codice,
+                  p_tipo_commessa,
+                  p_policy_fatturazione,
+                  p_fatturazione_immediata,
+                  p_priorita_operativa,
+                  p_billing_account_id,
+                  p_utility_id,
+                  v_emittente,
+                  p_competenza_dal,
+                  p_competenza_al,
+                  COALESCE(p_meta, '{}'::jsonb)
+                )
+                RETURNING id INTO v_commessa_id;
+
+                RETURN v_commessa_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_or_create_commessa(bigint, integer, varchar, varchar, boolean, varchar, bigint, date, date, jsonb, boolean)
+              IS 'Recupera o crea una commessa coerente con BA/utility e fallback emittente fiscale. Riuso: solo commesse in stato non terminale (chiude_commessa=false). Advisory lock previene doppia creazione.';
