@@ -505,6 +505,22 @@ class CommesseRepository:
             )
             return [row[0] for row in cursor.fetchall()]
 
+    # --- Gruppo 3b: Lista attività commessa (paginata) ---
+
+    def list_commessa_attivita(
+        self,
+        commessa_id: int,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        """Lista paginata attività di una commessa.
+
+        STUB — in attesa di vendite.fn_list_commessa_attivita lato DB.
+        Restituisce {"count": 0, "rows": []} per non bloccare lo sviluppo API.
+        """
+        return {"count": 0, "rows": []}
+
     # --- Gruppo 4: Push log ---
 
     def log_push_run(

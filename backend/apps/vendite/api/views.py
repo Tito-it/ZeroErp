@@ -14,6 +14,12 @@ from apps.vendite.services.attivita_pipeline_service import (
     fn_get_attivita_pipeline_status,
     fn_get_attivita_task_runs,
 )
+from apps.vendite.services.commesse_service import (
+    fn_get_commessa_stato,
+    fn_get_commesse_push_log,
+    fn_list_commessa_attivita,
+    pr_run_commesse_push,
+)
 from apps.vendite.services.pipeline_service import (
     fn_get_lotto_segnalazioni_summary,
     fn_get_lotto_task_runs,
@@ -469,5 +475,169 @@ class ApiAttivitaTaskRuns(APIView):
 
 
 class ApiAttivitaTaskRunsV1(ApiAttivitaTaskRuns):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+
+# ================================================================== #
+# Commesse — push orchestrator + stato + attivita                     #
+# ================================================================== #
+
+
+class ApiRunCommessePush(APIView):
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeRunCommessePushRequest",
+            fields={
+                "source_types": serializers.ListField(child=serializers.CharField(), required=False),
+                "dry_run": serializers.BooleanField(required=False),
+                "user_run": serializers.CharField(required=False, allow_null=True),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeRunCommessePushResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeRunCommessePushData",
+                        fields={
+                            "stato": serializers.CharField(),
+                            "dry_run": serializers.BooleanField(),
+                            "push_log_id": serializers.IntegerField(allow_null=True),
+                            "durata_ms": serializers.IntegerField(allow_null=True),
+                            "handlers": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Gestisce la richiesta HTTP POST per lanciare il push commesse.
+    def post(self, request: Request) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            source_types = payload.get("source_types") or None
+            return pr_run_commesse_push(
+                source_types=source_types,
+                dry_run=optional_bool(payload, "dry_run", default=False),
+                user_run=payload.get("user_run"),
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiRunCommessePushV1(ApiRunCommessePush):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+
+class ApiCommessePushLog(APIView):
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="VenditeCommessePushLogResponse",
+                fields={
+                    "data": serializers.DictField(),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET il dettaglio di un push log commesse.
+    def get(self, request: Request, push_log_id: int) -> JsonResponse:
+        try:
+            data = fn_get_commesse_push_log(push_log_id=push_log_id)
+            return success_response(data)
+        except Exception as exc:
+            return exception_to_error_response(exc)
+
+
+class ApiCommessePushLogV1(ApiCommessePushLog):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+
+class ApiCommessaStato(APIView):
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="VenditeCommessaStatoResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeCommessaStatoData",
+                        fields={
+                            "commessa_id": serializers.IntegerField(),
+                            "total_attivita": serializers.IntegerField(),
+                            "total_approvate": serializers.IntegerField(),
+                            "total_emesse": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET stato e contatori di una commessa.
+    def get(self, request: Request, commessa_id: int) -> JsonResponse:
+        try:
+            data = fn_get_commessa_stato(commessa_id=commessa_id)
+            return success_response(data)
+        except Exception as exc:
+            return exception_to_error_response(exc)
+
+
+class ApiCommessaStatoV1(ApiCommessaStato):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+
+class ApiCommessaAttivita(APIView):
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False, description="Righe per pagina (default 50, max 200)."),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False, description="Offset paginazione (default 0)."),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeCommessaAttivitaResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeCommessaAttivitaData",
+                        fields={
+                            "commessa_id": serializers.IntegerField(),
+                            "count": serializers.IntegerField(),
+                            "rows": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET la lista paginata delle attivita di una commessa.
+    def get(self, request: Request, commessa_id: int) -> JsonResponse:
+        try:
+            limit = int(request.query_params.get("limit", "50"))
+            offset = int(request.query_params.get("offset", "0"))
+            data = fn_list_commessa_attivita(
+                commessa_id=commessa_id, limit=limit, offset=offset,
+            )
+            return success_response(data)
+        except Exception as exc:
+            return exception_to_error_response(exc)
+
+
+class ApiCommessaAttivitaV1(ApiCommessaAttivita):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
