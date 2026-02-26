@@ -1,7 +1,8 @@
 id,pipeline_id,branch_code,task_code,annullabile,resume_mode,block_scope,depends_on,attivo,meta,data_insert,user_insert,data_update,user_update
-1,1,DEFAULT,noop,t,RESUME_BRANCH,BRANCH,"[]",t,"{""scope"":""RACCOLTA_INPUT"",""branch"":""DEFAULT""}",2026-02-22 12:00:00+01,titodb,2026-02-22 12:00:00+01,titodb
-2,1,PREVENTIVI,noop,t,RESUME_BRANCH,BRANCH,"[]",t,"{""scope"":""RACCOLTA_INPUT"",""branch"":""PREVENTIVI""}",2026-02-22 12:00:00+01,titodb,2026-02-22 12:00:00+01,titodb
-3,1,ORDINI,noop,t,RESUME_BRANCH,BRANCH,"[]",t,"{""scope"":""RACCOLTA_INPUT"",""branch"":""ORDINI""}",2026-02-22 12:00:00+01,titodb,2026-02-22 12:00:00+01,titodb
+1,1,DEFAULT,noop,t,RESUME_BRANCH,BRANCH,"[""PULL_COMMESSA""]",t,"{""scope"":""RACCOLTA_INPUT"",""branch"":""DEFAULT""}",2026-02-22 12:00:00+01,titodb,2026-02-22 12:00:00+01,titodb
+2,1,PREVENTIVI,noop,t,RESUME_BRANCH,BRANCH,"[""PULL_COMMESSA""]",t,"{""scope"":""RACCOLTA_INPUT"",""branch"":""PREVENTIVI""}",2026-02-22 12:00:00+01,titodb,2026-02-22 12:00:00+01,titodb
+3,1,ORDINI,noop,t,RESUME_BRANCH,BRANCH,"[""PULL_COMMESSA""]",t,"{""scope"":""RACCOLTA_INPUT"",""branch"":""ORDINI""}",2026-02-22 12:00:00+01,titodb,2026-02-22 12:00:00+01,titodb
 4,2,DEFAULT,noop,t,RESUME_BRANCH,BRANCH,"[""RACCOLTA_INPUT""]",t,"{""scope"":""NORMALIZZAZIONE"",""branch"":""DEFAULT""}",2026-02-22 12:00:00+01,titodb,2026-02-22 12:00:00+01,titodb
 5,2,PREVENTIVI,noop,t,RESUME_BRANCH,BRANCH,"[""RACCOLTA_INPUT""]",t,"{""scope"":""NORMALIZZAZIONE"",""branch"":""PREVENTIVI""}",2026-02-22 12:00:00+01,titodb,2026-02-22 12:00:00+01,titodb
 6,2,ORDINI,noop,t,RESUME_BRANCH,BRANCH,"[""RACCOLTA_INPUT""]",t,"{""scope"":""NORMALIZZAZIONE"",""branch"":""ORDINI""}",2026-02-22 12:00:00+01,titodb,2026-02-22 12:00:00+01,titodb
+7,3,DEFAULT,pull_attivita_da_commessa,t,RESUME_BRANCH,BRANCH,"[]",t,"{""scope"":""PULL_COMMESSA"",""branch"":""DEFAULT""}",2026-02-26 12:00:00+01,titodb,2026-02-26 12:00:00+01,titodb
