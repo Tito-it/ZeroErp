@@ -113,6 +113,24 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Lotto attivita non trovato.",
         ),
+        "E_COMMESSA_VALIDATION": ErrorPolicy(
+            code="E_COMMESSA_VALIDATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri commessa non validi.",
+        ),
+        "E_COMMESSA_NOT_FOUND": ErrorPolicy(
+            code="E_COMMESSA_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Commessa non trovata.",
+        ),
+        "E_COMMESSA_PUSH_LOG_NOT_FOUND": ErrorPolicy(
+            code="E_COMMESSA_PUSH_LOG_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Push log commesse non trovato.",
+        ),
         "E_GENERICO": ErrorPolicy(
             code="E_GENERICO",
             http_status=500,

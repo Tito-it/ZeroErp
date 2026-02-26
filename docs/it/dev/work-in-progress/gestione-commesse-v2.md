@@ -1640,9 +1640,9 @@ della pipeline di fatturazione, che chiama `fn_emit_attivita_fatturabili_da_comm
 - [x] `test_list_commesse_emittibili_returns_ids` — verifica call DB, parametri, return list[int]
 - [x] `test_list_commesse_emittibili_empty` — nessun risultato, ritorna []
 
-#### 25.3.6 Configurazione DB (pendente — team DB)
+#### 25.3.6 Configurazione DB (completata — team DB)
 
-- [ ] Registrare step `PULL_COMMESSA` come step 0 in `vendite.pipeline_steps`
+- [x] Registrato step `PULL_COMMESSA` come step 0 in `vendite.pipeline_steps`
   con `task_code = "pull_attivita_da_commessa"`
 - [x] Creata `vendite.fn_list_commesse_emittibili` — fn DB STABLE, read-only
   - Filtra per `stati_commessa.emittibile = true` + `commesse_attivita.stato_emissione = 'NON_EMESSA'`
@@ -1728,34 +1728,41 @@ Le funzioni DB di L4 sono già presenti (team DB). Serve il layer Python.
 
 ---
 
-### 25.6 FASE 5 — API endpoints
+### 25.6 FASE 5 — API endpoints ✅
 
 **Obiettivo:** esporre orchestratore push e commesse al frontend.
 
-**File da modificare/creare:** `backend/apps/vendite/api/views.py`, `urls.py`
+**File creati/modificati:**
+
+- `backend/apps/vendite/services/commesse_service.py` (nuovo) — 4 funzioni service
+- `backend/apps/vendite/api/views.py` — 4 coppie view (base + V1 JWT)
+- `backend/apps/vendite/api/urls_v1.py` — 4 path aggiunti
+- `backend/apps/vendite/db/commesse_repository.py` — stub `list_commessa_attivita`
+- `backend/apps/core/services/error_policies.py` — 3 policy errore `E_COMMESSA_*`
+- `backend/apps/vendite/tests/services/test_commesse_service.py` (nuovo) — 8 test
+- `backend/apps/vendite/tests/api/test_commesse_api.py` (nuovo) — 12 test
 
 #### 25.6.1 Endpoint push orchestratore
 
-- [ ] `POST /api/v1/commesse/push/` — lancia `CommessaPushOrchestrator.run()`
-  - [ ] Parametri: `source_types[]`, `dry_run` — da definire in sviluppo
-  - [ ] Response: `PushReport` serializzato
-- [ ] `GET /api/v1/commesse/push/<log_id>/` — restituisce `commesse_push_log`
-  - [ ] Serializer `PushLogSerializer` — da definire in sviluppo
+- [x] `POST /api/v1/vendite/commesse/push/run/` — lancia `CommessaPushOrchestrator.run()`
+  - Parametri body: `source_types[]`, `dry_run`, `user_run`
+  - Response: `{stato, dry_run, push_log_id, durata_ms, handlers[]}`
+  - Header obbligatorio: `Idempotency-Key`
+  - Lock occupato → `stato: "SKIPPED"` (non errore, HTTP 200)
+- [x] `GET /api/v1/vendite/commesse/push/<log_id>/` — dettaglio `commesse_push_log`
 
 #### 25.6.2 Endpoint commesse
 
-- [ ] `GET /api/v1/commesse/<id>/` — dettaglio commessa + stato
-  - [ ] Serializer da definire in sviluppo
-- [ ] `GET /api/v1/commesse/<id>/attivita/` — lista `commesse_attivita`
-  - [ ] Serializer da definire in sviluppo
-- [ ] Eventuali altri endpoint (da definire in sviluppo in base a esigenze frontend)
+- [x] `GET /api/v1/vendite/commesse/<id>/stato/` — stato commessa + contatori
+  - Response: `{commessa_id, total_attivita, total_approvate, total_emesse}`
+- [x] `GET /api/v1/vendite/commesse/<id>/attivita/` — lista `commesse_attivita` (paginata)
+  - Query params: `limit` (1-200, default 50), `offset` (default 0)
+  - **STUB** — in attesa fn DB `vendite.fn_list_commessa_attivita`
 
-#### 25.6.3 Endpoint da rimuovere (pipeline attività)
+#### 25.6.3 Endpoint da rimuovere (pipeline attività) ✅
 
-- [ ] Rimuovere `POST /attivita-pipeline/run/`
-      (o marcare deprecated con flag configurabile per transizione)
-- [ ] Rimuovere `GET /attivita-pipeline/<id>/status/`
-- [ ] Valutare `GET /attivita-pipeline/<id>/task-runs/` — reindirizzare o mantenere
+- [x] Rimosso `POST /attivita-pipeline/run/` — completato in FASE 4
+- [x] Mantenuti `GET .../status/` e `GET .../task-runs/` — necessari per monitoraggio
 
 ---
 
@@ -1763,15 +1770,17 @@ Le funzioni DB di L4 sono già presenti (team DB). Serve il layer Python.
 
 **Obiettivo:** suite completa verde prima del go-live.
 
-- [ ] `test_commesse_repository.py` — FASE 1
-- [ ] `test_commesse_push_orchestrator.py` — FASE 2
-- [ ] `test_commesse_source_handlers.py` — FASE 2
-- [ ] `test_commesse_rettifiche_service.py` — FASE 4.5
-- [ ] `test_pipeline_step_executor.py` aggiornato — FASE 3
-- [ ] `test_attivita_pipeline_repository.py` aggiornato — FASE 4
-- [ ] Run suite completa: `./manage-test.sh apps.vendite.tests -v 2`
-  - [ ] Zero regressioni sulla pipeline fatturazione esistente
-  - [ ] Nuovi test verdi
+- [x] `test_commesse_repository.py` — 19 test (FASE 1)
+- [x] `test_commesse_push_orchestrator.py` — 11 test (FASE 2)
+- [x] `test_commesse_source_handlers.py` — 17 test (FASE 2)
+- [ ] `test_commesse_rettifiche_service.py` — FASE 4.5 (da definire)
+- [x] `test_pipeline_step_executor.py` aggiornato — FASE 3
+- [x] `test_attivita_pipeline_repository.py` aggiornato — FASE 4
+- [x] `test_commesse_service.py` — 8 test (FASE 5)
+- [x] `test_commesse_api.py` — 12 test (FASE 5)
+- [x] Run suite completa: **207/207 green**
+  - [x] Zero regressioni sulla pipeline fatturazione esistente
+  - [x] Nuovi test verdi
 
 ---
 
@@ -1792,7 +1801,7 @@ Le funzioni DB di L4 sono già presenti (team DB). Serve il layer Python.
 - [ ] FASE 3 step 0 integrato e testato
 - [ ] FASE 4 deprecazione eseguita — zero riferimenti a file eliminati
 - [ ] FASE 4.5 rettifiche operative — ciclo prezzi chiuso
-- [ ] FASE 5 endpoint esposti e documentati
+- [x] FASE 5 endpoint esposti e documentati (4 endpoint, 20 test, 207/207 green)
 - [ ] FASE 6 suite completa verde (zero regressioni)
 - [ ] FASE 7 cleanup completato
 - [ ] Revisione finale con team DB: nessuna funzione DB referenziata da codice eliminato

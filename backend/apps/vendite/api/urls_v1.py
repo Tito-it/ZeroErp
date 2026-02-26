@@ -3,12 +3,16 @@ from django.urls import path
 from apps.vendite.api.views import (
     ApiAttivitaPipelineStatusV1,
     ApiAttivitaTaskRunsV1,
+    ApiCommessaAttivitaV1,
+    ApiCommessePushLogV1,
+    ApiCommessaStatoV1,
     ApiLottiListV1,
     ApiLottoFattureListV1,
     ApiLottoSegnalazioniSummaryV1,
     ApiLottoTaskRunsV1,
     ApiResetLottoDraftV1,
     ApiResetLottoFatturaDraftV1,
+    ApiRunCommessePushV1,
     ApiRunLottoPipelineV1,
 )
 
@@ -49,5 +53,26 @@ urlpatterns = [
         "attivita_fatturabili/pipeline/<int:lotto_id>/task-runs/",
         ApiAttivitaTaskRunsV1.as_view(),
         name="vendite-v1-attivita-task-runs",
+    ),
+    # --- Commesse ---
+    path(
+        "commesse/push/run/",
+        ApiRunCommessePushV1.as_view(),
+        name="vendite-v1-run-commesse-push",
+    ),
+    path(
+        "commesse/push/<int:push_log_id>/",
+        ApiCommessePushLogV1.as_view(),
+        name="vendite-v1-commesse-push-log",
+    ),
+    path(
+        "commesse/<int:commessa_id>/stato/",
+        ApiCommessaStatoV1.as_view(),
+        name="vendite-v1-commessa-stato",
+    ),
+    path(
+        "commesse/<int:commessa_id>/attivita/",
+        ApiCommessaAttivitaV1.as_view(),
+        name="vendite-v1-commessa-attivita",
     ),
 ]
