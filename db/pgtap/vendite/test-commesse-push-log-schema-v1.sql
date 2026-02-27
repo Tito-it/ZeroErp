@@ -97,16 +97,14 @@ WITH ins AS (
     source_types,
     risultato,
     stato,
-    durata_ms,
-    user_run
+    durata_ms
   )
   VALUES (
     true,
     ARRAY['HandlerPreventivi', 'HandlerOrdini'],
     jsonb_build_object('HandlerPreventivi', jsonb_build_object('created', 2, 'errors', '[]'::jsonb)),
     'COMPLETATO',
-    1200,
-    'pgtap'
+    1200
   )
   RETURNING id
 )
