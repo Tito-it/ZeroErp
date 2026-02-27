@@ -10,6 +10,10 @@
 - [api_reset_lotto_draft](manual/api_reset_lotto_draft.md) — Esporre via HTTP il reset tecnico di un lotto MASSIVO in DRAFT.
 - [api_reset_lotto_fattura_draft](manual/api_reset_lotto_fattura_draft.md) — Esporre via HTTP il reset tecnico di una singola fattura in un lotto MASSIVO in DRAFT.
 - [api_run_lotto_pipeline](manual/api_run_lotto_pipeline.md) — Esporre via HTTP l'avvio della pipeline lotto vendite.
+- [api_run_commesse_push](manual/api_run_commesse_push.md) — Esporre via HTTP l'avvio dell'orchestratore push commesse da sorgenti esterne.
+- [api_commesse_push_log](manual/api_commesse_push_log.md) — Esporre via HTTP il dettaglio di un push log commesse.
+- [api_commessa_stato](manual/api_commessa_stato.md) — Esporre via HTTP stato e contatori aggregati di una commessa.
+- [api_commessa_attivita](manual/api_commessa_attivita.md) — Esporre via HTTP la lista paginata delle attivita di una commessa con filtri opzionali.
 
 ## Funzioni
 - [fn_execute_pipeline_step](funzioni/fn_execute_pipeline_step.md) — Eseguire un singolo step di pipeline, applicando i task definiti nello step corrente.

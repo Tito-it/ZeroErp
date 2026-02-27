@@ -998,8 +998,8 @@ Nota aggiornata:
 - [x] Aggiungere `data_attivita` a `commesse_attivita` — presente (`date NOT NULL`)
 - [x] Aggiungere campi misura operativa a `commesse_attivita` — presenti (`qta_operativa`, `uom_operativa_id`, `factor_to_base`)
 - [x] Allineare stati `commesse.stato_commessa` con set canonico (`BOZZA|APERTA|IN_ESECUZIONE|PRONTA_FATTURAZIONE|CHIUSA|ANNULLATA`)
-- [ ] Aggiornare trigger `trg_attivita_fatturabili_normalize_ins_upd` per essere commessa-aware — passato a team DB (vedi `brief-db-trigger-commessa-aware.md`)
-- [ ] Aggiornare trigger `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` per leggere BA da commessa — passato a team DB (vedi `brief-db-trigger-commessa-aware.md`)
+- [x] Aggiornare trigger `trg_attivita_fatturabili_normalize_ins_upd` per essere commessa-aware — completato: early return con skip competenze, preserva risoluzione `tipo_doc_fiscale_id`/`valuta_id` come safety net
+- [x] Aggiornare trigger `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` per leggere BA da commessa — completato: skip validazione quando `commessa_attivita_id IS NOT NULL`
 - [x] Documentare mapping esplicito `stato_approvazione → approvato` nel pull — implementato in `fn_emit`: `approvato = (v_row.stato_approvazione = 'APPROVATA')`
 
 ---

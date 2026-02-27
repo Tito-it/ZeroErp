@@ -50,7 +50,7 @@ pyjwt==2.11.0
     # via djangorestframework-simplejwt
 pyyaml==6.0.3
     # via drf-spectacular
-redis==7.2.0
+redis==7.2.1
     # via
     #   -r ../requirements.in
     #   django-redis
