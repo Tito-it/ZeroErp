@@ -9,7 +9,6 @@
 - [assets](tabelle/assets.md)
 - [attivita_consumi](tabelle/attivita_consumi.md)
 - [attivita_fatturabili](tabelle/attivita_fatturabili.md)
-- [attivita_fatturabili_lotti](tabelle/attivita_fatturabili_lotti.md)
 - [bank_branches](tabelle/bank_branches.md)
 - [billing_account](tabelle/billing_account.md)
 - [catasto_unita_immobiliari](tabelle/catasto_unita_immobiliari.md)

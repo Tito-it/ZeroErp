@@ -3939,6 +3939,9 @@ databaseChangeLog:
       file: migrations_v2/00_schema/vendite/20260227-10-drop-user-run-commesse-push-log-mctit.yaml
       relativeToChangelogFile: true
   - include:
+      file: migrations_v2/00_schema/vendite/20260227-11-drop-attivita-pipeline-deprecated-mctit.yaml
+      relativeToChangelogFile: true
+  - include:
       file: migrations_v2/20_code/vendite/20260227-11-update-fn-log-commessa-push-run-drop-user-run-mctit.yaml
       relativeToChangelogFile: true
   - include:

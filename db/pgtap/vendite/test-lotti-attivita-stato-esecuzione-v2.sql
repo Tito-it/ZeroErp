@@ -3,39 +3,26 @@
 -- pgTAP test per Zero ERP
 -- Test: allineamento lotti/attivita stato_esecuzione (changeset 20260222-01..07)
 -- ------------------------------------------------------------
--- Indice test (1..28):
+-- Indice test (1..15):
 -- 1) Riferimenti minimi presenti
--- 2) Colonna attivita_fatturabili_lotti.stato_operativo presente
--- 3) Colonna attivita_fatturabili_lotti.emittente_soggetto_ruolo_id presente
--- 4) Colonna attivita_fatturabili.stato_esecuzione presente
--- 5) attivita_fatturabili.stato_esecuzione nullable
--- 6) stato_esecuzione=OK non ammesso su attivita_fatturabili
--- 7) stato_esecuzione=OK non ammesso su fatturazione_lotti_fatture
--- 8) fn_set_fatturazione_lotto_stato IN_ESECUZIONE
--- 9) Non critical -> RUNNING
--- 10) Critical -> ERRORE
--- 11) fn_set_fatturazione_lotto_stato COMPLETATO
--- 12) Non critical -> COMPLETED
--- 13) Critical resta ERRORE
--- 14) fn_select_attivita_fatturabili lock eseguita
--- 15) Lock attivita -> PENDING
--- 16) fn_get_or_create_lotto_attivita crea lotto
--- 17) Lotto attivita utility coerente con BA
--- 18) Lotto attivita emittente valorizzato via fallback
--- 19) Lotto attivita stato_operativo APERTO
--- 20) fn_resolve_lotto_utility_emittente risolve utility
--- 21) fn_resolve_lotto_utility_emittente blocca utility incoerente
--- 22) fn_set_attivita_lotto_stato COMPLETATO
--- 23) Lotto attivita stato_operativo CHIUSO
--- 24) Sync su COMPLETATO -> attivita COMPLETED
--- 25) fn_set_attivita_lotto_stato IN_ESECUZIONE
--- 26) Sync su IN_ESECUZIONE: non fatturata RUNNING, fatturata COMPLETED
--- 27) fn_resolve_stato_esecuzione: IN_ESECUZIONE -> RUNNING
--- 28) fn_resolve_stato_esecuzione: esclusa=true mantiene stato corrente
+-- 2) Colonna attivita_fatturabili.stato_esecuzione presente
+-- 3) attivita_fatturabili.stato_esecuzione nullable
+-- 4) CHECK stato_esecuzione ammette COMPLETED e rifiuta OK
+-- 5) stato_esecuzione=OK non ammesso su fatturazione_lotti_fatture
+-- 6) fn_set_fatturazione_lotto_stato IN_ESECUZIONE
+-- 7) Non critical -> RUNNING
+-- 8) Critical -> ERRORE
+-- 9) fn_set_fatturazione_lotto_stato COMPLETATO
+-- 10) Non critical -> COMPLETED
+-- 11) Critical resta ERRORE
+-- 12) fn_resolve_lotto_utility_emittente risolve utility
+-- 13) fn_resolve_lotto_utility_emittente blocca utility incoerente
+-- 14) fn_resolve_stato_esecuzione: IN_ESECUZIONE -> RUNNING
+-- 15) fn_resolve_stato_esecuzione: esclusa=true mantiene stato corrente
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(28);
+SELECT plan(15);
 
 CREATE TEMP TABLE tmp_costanti_las AS
 SELECT
@@ -132,28 +119,6 @@ SELECT ok(
     SELECT 1
     FROM information_schema.columns c
     WHERE c.table_schema = 'vendite'
-      AND c.table_name = 'attivita_fatturabili_lotti'
-      AND c.column_name = 'stato_operativo'
-  ),
-  'Colonna attivita_fatturabili_lotti.stato_operativo presente'
-);
-
-SELECT ok(
-  EXISTS (
-    SELECT 1
-    FROM information_schema.columns c
-    WHERE c.table_schema = 'vendite'
-      AND c.table_name = 'attivita_fatturabili_lotti'
-      AND c.column_name = 'emittente_soggetto_ruolo_id'
-  ),
-  'Colonna attivita_fatturabili_lotti.emittente_soggetto_ruolo_id presente'
-);
-
-SELECT ok(
-  EXISTS (
-    SELECT 1
-    FROM information_schema.columns c
-    WHERE c.table_schema = 'vendite'
       AND c.table_name = 'attivita_fatturabili'
       AND c.column_name = 'stato_esecuzione'
   ),
@@ -172,36 +137,15 @@ SELECT ok(
   'attivita_fatturabili.stato_esecuzione ammessa a NULL fuori pipeline'
 );
 
-SELECT throws_ok(
-  $$
-  INSERT INTO vendite.attivita_fatturabili (
-    articolo_id,
-    istanza_utility_id,
-    billing_account_id,
-    data_attivita,
-    quantita,
-    competenza_mese,
-    tipo_doc_fiscale_id,
-    valuta_id,
-    stato_esecuzione,
-    meta
-  )
-  SELECT
-    r.articolo_id,
-    r.istanza_utility_id,
-    r.billing_account_id,
-    current_date,
-    1,
-    date_trunc('month', current_date)::date,
-    r.tipo_doc_fiscale_id,
-    r.valuta_id,
-    'OK',
-    jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_las), 'case', 'invalid_enum_attivita')
-  FROM tmp_refs_las r;
-  $$,
-  '23514',
-  NULL,
-  'stato_esecuzione=OK non ammesso su attivita_fatturabili'
+SELECT ok(
+  (
+    SELECT pg_get_constraintdef(c.oid) ~ '''COMPLETED'''
+       AND pg_get_constraintdef(c.oid) NOT LIKE '%''OK''%'
+    FROM pg_constraint c
+    WHERE c.conrelid = 'vendite.attivita_fatturabili'::regclass
+      AND c.conname = 'chk_attivita_fatt_stato_esecuzione'
+  ),
+  'CHECK stato_esecuzione ammette COMPLETED e rifiuta OK'
 );
 
 CREATE TEMP TABLE tmp_lotto_fat_las AS
@@ -369,116 +313,6 @@ SELECT ok(
   'Critical resta ERRORE con lotto COMPLETATO'
 );
 
-CREATE TEMP TABLE tmp_attivita_lock_las AS
-WITH ins AS (
-  INSERT INTO vendite.attivita_fatturabili (
-    articolo_id,
-    istanza_utility_id,
-    billing_account_id,
-    data_attivita,
-    quantita,
-    competenza_mese,
-    tipo_doc_fiscale_id,
-    valuta_id,
-    approvato,
-    stato_esecuzione,
-    meta
-  )
-  SELECT
-    r.articolo_id,
-    r.istanza_utility_id,
-    r.billing_account_id,
-    current_date,
-    2,
-    date_trunc('month', current_date)::date,
-    r.tipo_doc_fiscale_id,
-    r.valuta_id,
-    true,
-    NULL,
-    jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_las), 'case', 'lock_pending')
-  FROM tmp_refs_las r
-  RETURNING id
-)
-SELECT id FROM ins;
-
-SELECT lives_ok(
-  $$
-  SELECT count(*)
-  FROM vendite.fn_select_attivita_fatturabili(
-    p_competenza_mese => date_trunc('month', current_date)::date,
-    p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_las),
-    p_lock_batch_id => (SELECT lock_batch_id FROM tmp_costanti_las),
-    p_lock => true,
-    p_data_fatturazione => current_date,
-    p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_las),
-    p_utility_id => (SELECT utility_id FROM tmp_refs_las),
-    p_valuta_id => (SELECT valuta_id FROM tmp_refs_las),
-    p_emittente_soggetto_ruolo_id => NULL,
-    p_area_geografica_id => NULL,
-    p_limit => 10
-  );
-  $$,
-  'fn_select_attivita_fatturabili lock eseguita'
-);
-
-SELECT ok(
-  (
-    SELECT count(*) >= 1
-    FROM vendite.attivita_fatturabili a
-    WHERE a.lock_batch_id = (SELECT lock_batch_id FROM tmp_costanti_las)
-      AND a.lock_in_fatturazione IS TRUE
-      AND a.stato_esecuzione = 'PENDING'
-  ),
-  'Con lock attivita_fatturabili passa a PENDING'
-);
-
-CREATE TEMP TABLE tmp_lotto_att_las AS
-SELECT vendite.fn_get_or_create_lotto_attivita(
-  p_lotto_id => NULL,
-  p_competenza_mese => date_trunc('month', current_date)::date,
-  p_utility_id => NULL,
-  p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_las),
-  p_sorgente_tipo_id => NULL,
-  p_lock_batch_id => NULL,
-  p_meta => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_las), 'case', 'lotto_attivita'),
-  p_emittente_soggetto_ruolo_id => NULL
-) AS lotto_id;
-
-SELECT ok(
-  (SELECT lotto_id IS NOT NULL AND lotto_id > 0 FROM tmp_lotto_att_las),
-  'fn_get_or_create_lotto_attivita crea lotto'
-);
-
-SELECT is(
-  (
-    SELECT l.utility_id
-    FROM vendite.attivita_fatturabili_lotti l
-    WHERE l.id = (SELECT lotto_id FROM tmp_lotto_att_las)
-  ),
-  (SELECT utility_id FROM tmp_refs_las),
-  'Lotto attivita utility coerente con billing_account'
-);
-
-SELECT is(
-  (
-    SELECT l.emittente_soggetto_ruolo_id
-    FROM vendite.attivita_fatturabili_lotti l
-    WHERE l.id = (SELECT lotto_id FROM tmp_lotto_att_las)
-  ),
-  (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_las),
-  'Lotto attivita emittente valorizzato via fallback BA/default'
-);
-
-SELECT is(
-  (
-    SELECT l.stato_operativo
-    FROM vendite.attivita_fatturabili_lotti l
-    WHERE l.id = (SELECT lotto_id FROM tmp_lotto_att_las)
-  ),
-  'APERTO'::text,
-  'Lotto attivita creato con stato_operativo APERTO'
-);
-
 SELECT is(
   (
     SELECT r.resolved_utility_id
@@ -510,129 +344,6 @@ SELECT throws_ok(
   'P0001',
   NULL,
   'fn_resolve_lotto_utility_emittente blocca utility incoerente con BA'
-);
-
-INSERT INTO vendite.attivita_fatturabili (
-  articolo_id,
-  istanza_utility_id,
-  billing_account_id,
-  data_attivita,
-  quantita,
-  competenza_mese,
-  tipo_doc_fiscale_id,
-  valuta_id,
-  lotto_attivita_id,
-  approvato,
-  fatturato,
-  stato_esecuzione,
-  meta
-)
-SELECT
-  r.articolo_id,
-  r.istanza_utility_id,
-  r.billing_account_id,
-  current_date,
-  1,
-  date_trunc('month', current_date)::date,
-  r.tipo_doc_fiscale_id,
-  r.valuta_id,
-  (SELECT lotto_id FROM tmp_lotto_att_las),
-  true,
-  false,
-  NULL,
-  jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_las), 'case', 'attivita_lotto_non_fatturata')
-FROM tmp_refs_las r;
-
-INSERT INTO vendite.attivita_fatturabili (
-  articolo_id,
-  istanza_utility_id,
-  billing_account_id,
-  data_attivita,
-  quantita,
-  competenza_mese,
-  tipo_doc_fiscale_id,
-  valuta_id,
-  lotto_attivita_id,
-  approvato,
-  fatturato,
-  stato_esecuzione,
-  meta
-)
-SELECT
-  r.articolo_id,
-  r.istanza_utility_id,
-  r.billing_account_id,
-  current_date,
-  1,
-  date_trunc('month', current_date)::date,
-  r.tipo_doc_fiscale_id,
-  r.valuta_id,
-  (SELECT lotto_id FROM tmp_lotto_att_las),
-  true,
-  true,
-  'PENDING',
-  jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_las), 'case', 'attivita_lotto_fatturata')
-FROM tmp_refs_las r;
-
-SELECT lives_ok(
-  $$
-  SELECT vendite.fn_set_attivita_lotto_stato(
-    p_lotto_id => (SELECT lotto_id FROM tmp_lotto_att_las),
-    p_stato_lotto => 'COMPLETATO',
-    p_note => 'pgtap attivita completato'
-  );
-  $$,
-  'fn_set_attivita_lotto_stato COMPLETATO eseguita'
-);
-
-SELECT is(
-  (
-    SELECT l.stato_operativo
-    FROM vendite.attivita_fatturabili_lotti l
-    WHERE l.id = (SELECT lotto_id FROM tmp_lotto_att_las)
-  ),
-  'CHIUSO'::text,
-  'fn_set_attivita_lotto_stato allinea stato_operativo=CHIUSO'
-);
-
-SELECT ok(
-  (
-    SELECT count(*) = 0
-    FROM vendite.attivita_fatturabili a
-    WHERE a.lotto_attivita_id = (SELECT lotto_id FROM tmp_lotto_att_las)
-      AND a.stato_esecuzione IS DISTINCT FROM 'COMPLETED'
-  ),
-  'Sync su COMPLETATO porta attivita a COMPLETED'
-);
-
-SELECT lives_ok(
-  $$
-  SELECT vendite.fn_set_attivita_lotto_stato(
-    p_lotto_id => (SELECT lotto_id FROM tmp_lotto_att_las),
-    p_stato_lotto => 'IN_ESECUZIONE',
-    p_note => 'pgtap attivita running'
-  );
-  $$,
-  'fn_set_attivita_lotto_stato IN_ESECUZIONE eseguita'
-);
-
-SELECT ok(
-  (
-    SELECT count(*) = 1
-    FROM vendite.attivita_fatturabili a
-    WHERE a.lotto_attivita_id = (SELECT lotto_id FROM tmp_lotto_att_las)
-      AND a.fatturato IS FALSE
-      AND a.stato_esecuzione = 'RUNNING'
-  )
-  AND
-  (
-    SELECT count(*) = 1
-    FROM vendite.attivita_fatturabili a
-    WHERE a.lotto_attivita_id = (SELECT lotto_id FROM tmp_lotto_att_las)
-      AND a.fatturato IS TRUE
-      AND a.stato_esecuzione = 'COMPLETED'
-  ),
-  'Sync su IN_ESECUZIONE: non fatturata RUNNING, fatturata COMPLETED'
 );
 
 SELECT is(
