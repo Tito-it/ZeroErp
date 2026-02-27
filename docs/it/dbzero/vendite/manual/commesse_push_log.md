@@ -21,7 +21,7 @@ sorgenti verso commesse/attivita` con un audit minimale ma operativo.
 * **Run**: `run_at`, `dry_run`, `source_types`.
 * **Esito**: `stato` (`COMPLETATO | PARZIALE | ERRORE`), `durata_ms`.
 * **Dettaglio**: `risultato` (`jsonb` per handler: created/updated/skipped/errors).
-* **Audit**: `user_run`, `data_insert`, `user_insert`, `data_update`, `user_update`.
+* **Audit**: `data_insert`, `user_insert`, `data_update`, `user_update` (user reale via JWT).
 
 ---
 

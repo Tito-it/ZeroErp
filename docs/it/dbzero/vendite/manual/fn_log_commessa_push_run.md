@@ -20,8 +20,8 @@ run dell'orchestratore push commesse scrivendo una riga in `commesse_push_log`.
 * valida `stato` (`COMPLETATO | PARZIALE | ERRORE`),
 * valida `durata_ms` (se presente, `>= 0`),
 * normalizza `stato` in uppercase,
-* applica fallback `user_run = current_user` quando non fornito,
 * ritorna l'`id` della riga log inserita.
+* user tracciato automaticamente dal trigger audit JWT (`user_insert`).
 
 ---
 
@@ -33,8 +33,7 @@ SELECT vendite.fn_log_commessa_push_run(
   p_source_types => ARRAY['HandlerPreventivi', 'HandlerOrdini'],
   p_risultato => jsonb_build_object('HandlerPreventivi', jsonb_build_object('created', 12, 'errors', '[]'::jsonb)),
   p_stato => 'COMPLETATO',
-  p_durata_ms => 842,
-  p_user_run => 'scheduler'
+  p_durata_ms => 842
 );
 ```
 
