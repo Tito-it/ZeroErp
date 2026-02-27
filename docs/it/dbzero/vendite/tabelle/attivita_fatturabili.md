@@ -35,7 +35,6 @@
 | factor_to_base | numeric | NO | 1 |
 | valuta_id | integer | YES |  |
 | prezzo_unitario | numeric | YES |  |
-| lotto_attivita_id | bigint | YES |  |
 | attivita_consumi_id | bigint | YES |  |
 | uid | uuid | NO | uuidv7() |
 | tipo_doc_fiscale_id | bigint | YES |  |
@@ -57,7 +56,6 @@
 | FOREIGN KEY | fk_attivita_fatturabili_area_geografica | area_geografica_id |
 | FOREIGN KEY | fk_attivita_fatturabili_articoli | articolo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_attivita_consumi | attivita_consumi_id |
-| FOREIGN KEY | fk_attivita_fatturabili_attivita_lotto | lotto_attivita_id |
 | FOREIGN KEY | fk_attivita_fatturabili_billing_account | billing_account_id |
 | FOREIGN KEY | fk_attivita_fatturabili_commessa | commessa_id |
 | FOREIGN KEY | fk_attivita_fatturabili_commessa_attivita | commessa_attivita_id |
@@ -74,7 +72,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| idx_att_fatt_lotto_stato_exec | `CREATE INDEX idx_att_fatt_lotto_stato_exec ON vendite.attivita_fatturabili USING btree (lotto_attivita_id, stato_esecuzione)` |
 | ix_attivita_articolo_flags | `CREATE INDEX ix_attivita_articolo_flags ON vendite.attivita_fatturabili USING btree (articolo_id, approvato, fatturato)` |
 | ix_attivita_billing_competenza | `CREATE INDEX ix_attivita_billing_competenza ON vendite.attivita_fatturabili USING btree (billing_account_id, competenza_mese)` |
 | ix_attivita_fatturabili_commessa_attivita_id | `CREATE INDEX ix_attivita_fatturabili_commessa_attivita_id ON vendite.attivita_fatturabili USING btree (commessa_attivita_id)` |

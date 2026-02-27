@@ -1,4 +1,3 @@
-{% include-markdown "it/dbzero/vendite/manual/fn_list_attivita_sorgenti_abilitate.md" %}
 # ⚙️ Funzione `fn_list_attivita_sorgenti_abilitate`
 
 ```sql

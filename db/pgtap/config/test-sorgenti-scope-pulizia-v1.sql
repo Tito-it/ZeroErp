@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: Pulizia config.sorgenti — scope + trigger polimorfo + RIGA
 -- ------------------------------------------------------------
--- Indice test (1..10):
+-- Indice test (1..9):
 --  1) Colonna scope presente su config.sorgenti
 --  2) Constraint chk_sorgenti_scope attivo
 --  3) scope NOT NULL su tutti i record
@@ -12,12 +12,11 @@
 --  6) Sorgenti ROW_VALIDATOR: tutti disattivati (attivo=false)
 --  7) Sorgente POST_INVOICE: FATTURA attiva
 --  8) Trigger polimorfo rimosso da attivita_fatturabili
---  9) Branch policy: nessuna riga RIGA residua
--- 10) Sorgenti RIGA archiviate con meta.archived=true
+--  9) Sorgenti RIGA archiviate con meta.archived=true
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(10);
+SELECT plan(9);
 
 -- ============================================================
 -- 1) Colonna scope presente su config.sorgenti
@@ -110,19 +109,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- 9) Branch policy: nessuna riga RIGA residua
--- ============================================================
-SELECT ok(
-  NOT EXISTS (
-    SELECT 1
-    FROM vendite.attivita_fatturabili_sorgenti_branch_policy bp
-    WHERE bp.sorgente_tipo_id IN (3, 5, 7, 9, 11)
-  ),
-  'Branch policy: nessuna riga per sorgenti RIGA (3,5,7,9,11)'
-);
-
--- ============================================================
--- 10) Sorgenti RIGA archiviate con meta.archived=true
+-- 9) Sorgenti RIGA archiviate con meta.archived=true
 -- ============================================================
 SELECT ok(
   (
