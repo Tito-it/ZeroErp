@@ -11,7 +11,6 @@
 | risultato | jsonb | NO | '{}'::jsonb |
 | stato | character varying | NO |  |
 | durata_ms | integer | YES |  |
-| user_run | text | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
