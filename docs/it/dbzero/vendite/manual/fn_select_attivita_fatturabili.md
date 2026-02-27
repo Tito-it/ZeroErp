@@ -10,8 +10,7 @@
 >
 > **Approfondimento funzioni:**
 >
-> • [vendite.fn_execute_pipeline_step](/dbzero/vendite/funzioni/fn_execute_pipeline_step)   
-> • [vendite.pr_run_lotto_pipeline](/dbzero/vendite/funzioni/pr_run_lotto_pipeline)   
+> • [backend.fn_execute_pipeline_step](/backend/vendite/funzioni/fn_execute_pipeline_step)   
 >
 ---
 
