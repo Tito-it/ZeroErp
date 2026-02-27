@@ -1,8 +1,6 @@
 # Area 'vendite' (Backend)
 
 ## API
-- [api_attivita_pipeline_status](manual/api_attivita_pipeline_status.md) — Esporre via HTTP lo stato corrente della pipeline attivita fatturabili di un lotto, con riepilogo aggregato per branch.
-- [api_attivita_task_runs](manual/api_attivita_task_runs.md) — Esporre via HTTP i task run runtime del lotto attivita fatturabili per monitoraggio operativo e diagnostica pipeline.
 - [api_commessa_attivita](manual/api_commessa_attivita.md) — Esporre via HTTP la lista paginata delle attività (commesse_attivita) di una commessa, con filtri opzionali per stato emissione, stato approvazione e mese di competenza.
 - [api_commessa_stato](manual/api_commessa_stato.md) — Esporre via HTTP lo stato e i contatori aggregati di una singola commessa, per dashboard e monitoraggio avanzamento.
 - [api_commesse_push_log](manual/api_commesse_push_log.md) — Esporre via HTTP il dettaglio di un singolo push log commesse, per consultazione operativa e diagnostica delle esecuzioni push.
@@ -25,4 +23,3 @@
 - [fn_prepare_sdi_payload_lotto](manual/fn_prepare_sdi_payload_lotto.md) — Reperire dal database il dataset SDI di un lotto, aprendo/riusando i tentativi di invio e restituendo le righe da usare per la generazione file.
 - [fn_reset_lotto_draft](manual/fn_reset_lotto_draft.md) — Eseguire il reset tecnico di un lotto MASSIVO in DRAFT invocando la funzione DB.
 - [fn_reset_lotto_fattura_draft](manual/fn_reset_lotto_fattura_draft.md) — Eseguire il reset tecnico di una singola fattura in un lotto MASSIVO DRAFT.
-- [test_attivita_pipeline](manual/test_attivita_pipeline.md) — Descrivere la struttura, i pattern e la copertura dei test per il dominio ATTIVITA_FATTURABILI della pipeline vendite.

@@ -9,7 +9,7 @@
 Indice test eseguiti:
 1) CommesseRepositoryUnitTests.test_get_or_create_commessa_returns_int
 2) CommesseRepositoryUnitTests.test_link_sorgente_returns_int
-3) CommesseRepositoryUnitTests.test_upsert_attivita_returns_int
+3) CommesseRepositoryUnitTests.test_upsert_attivita_returns_result
 4) CommesseRepositoryUnitTests.test_upsert_attivita_uses_defaults
 5) CommesseRepositoryUnitTests.test_emit_attivita_fatturabili_maps_result
 6) CommesseRepositoryUnitTests.test_emit_attivita_fatturabili_dry_run_zero_writes
@@ -29,6 +29,8 @@ Indice test eseguiti:
 20) CommesseRepositoryUnitTests.test_list_commessa_attivita_maps_rows
 21) CommesseRepositoryUnitTests.test_list_commessa_attivita_empty
 22) CommesseRepositoryUnitTests.test_list_active_push_sources
+23) CommesseRepositoryUnitTests.test_batch_upsert_attivita_maps_result
+24) CommesseRepositoryUnitTests.test_batch_upsert_attivita_empty_list
 """
 
 from datetime import date, datetime, timezone
@@ -37,9 +39,11 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from apps.vendite.db.commesse_repository import (
+    BatchUpsertResult,
     CommessaAttivitaInput,
     CommesseRepository,
     PushableRow,
+    UpsertAttivitaResult,
     _SORGENTE_FN_MAP,
 )
 
@@ -134,10 +138,10 @@ class CommesseRepositoryUnitTests(TestCase):
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
         self.assertIn("fn_link_commessa_sorgente", sql)
 
-    # Scopo: Verifica che upsert_attivita chiami la funzione DB e restituisca int.
+    # Scopo: Verifica che upsert_attivita chiami la fn DB e restituisca UpsertAttivitaResult.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
-    def test_upsert_attivita_returns_int(self, mock_cursor_factory):
-        mock_cursor_factory.return_value = _mock_cursor(fetchone=(77,))
+    def test_upsert_attivita_returns_result(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=(77, True))
         repo = CommesseRepository()
         inp = CommessaAttivitaInput(
             commessa_id=10,
@@ -154,14 +158,16 @@ class CommesseRepositoryUnitTests(TestCase):
             tipo_consumo="ACCONTO",
         )
         result = repo.upsert_attivita(inp)
-        self.assertEqual(result, 77)
+        self.assertIsInstance(result, UpsertAttivitaResult)
+        self.assertEqual(result.attivita_id, 77)
+        self.assertTrue(result.is_new)
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
         self.assertIn("fn_upsert_commessa_attivita", sql)
 
     # Scopo: Verifica default di CommessaAttivitaInput (#3, #4, #5, #10).
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
     def test_upsert_attivita_uses_defaults(self, mock_cursor_factory):
-        mock_cursor_factory.return_value = _mock_cursor(fetchone=(1,))
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=(1, False))
         repo = CommesseRepository()
         inp = CommessaAttivitaInput(
             commessa_id=10,
@@ -424,3 +430,35 @@ class CommesseRepositoryUnitTests(TestCase):
         result = repo.list_commessa_attivita(1)
         self.assertEqual(result["count"], 0)
         self.assertEqual(result["rows"], [])
+
+    # Scopo: Verifica mapping BatchUpsertResult da fn_batch_upsert_commessa_attivita.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_batch_upsert_attivita_maps_result(self, mock_cursor_factory):
+        errors_json = '[{"index": 0, "segment_key": "SEG:001", "error": "duplicate"}]'
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=(3, 2, 1, errors_json))
+        repo = CommesseRepository()
+        inp = CommessaAttivitaInput(
+            commessa_id=10, segment_key="SEG:001",
+            quantita=Decimal("1"), competenza_mese=date(2026, 6, 1),
+            articolo_id=None, prezzo_snapshot=None,
+        )
+        result = repo.batch_upsert_attivita([inp])
+        self.assertIsInstance(result, BatchUpsertResult)
+        self.assertEqual(result.total_rows, 3)
+        self.assertEqual(result.inserted, 2)
+        self.assertEqual(result.updated, 1)
+        self.assertEqual(len(result.errors), 1)
+        self.assertEqual(result.errors[0]["segment_key"], "SEG:001")
+        sql = mock_cursor_factory.return_value.execute.call_args[0][0]
+        self.assertIn("fn_batch_upsert_commessa_attivita", sql)
+
+    # Scopo: Verifica che batch_upsert con lista vuota non chiami il DB.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_batch_upsert_attivita_empty_list(self, mock_cursor_factory):
+        repo = CommesseRepository()
+        result = repo.batch_upsert_attivita([])
+        self.assertEqual(result.total_rows, 0)
+        self.assertEqual(result.inserted, 0)
+        self.assertEqual(result.updated, 0)
+        self.assertEqual(result.errors, [])
+        mock_cursor_factory.return_value.execute.assert_not_called()

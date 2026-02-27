@@ -20,6 +20,7 @@ Indice test eseguiti:
 11) CommesseSourceHandlersTests.test_handler_ddt_esiste
 12) CommesseSourceHandlersTests.test_handler_consumi_expand_rows_fanout
 13) CommesseSourceHandlersTests.test_process_rows_cache_commessa_evita_chiamate_ripetute
+14) CommesseSourceHandlersTests.test_process_rows_batch_created_vs_updated
 """
 
 from datetime import date
@@ -27,7 +28,7 @@ from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import MagicMock
 
-from apps.vendite.db.commesse_repository import CommesseRepository, PushableRow
+from apps.vendite.db.commesse_repository import BatchUpsertResult, CommesseRepository, PushableRow
 from apps.vendite.services.commesse_source_handlers import (
     ComponenteConsumabile,
     HandlerConsumi,
@@ -72,13 +73,15 @@ def _make_row(**overrides) -> PushableRow:
     return PushableRow(**defaults)
 
 
-def _mock_repo(commessa_id: int = 10, attivita_id: int = 77) -> MagicMock:
+def _mock_repo(commessa_id: int = 10, inserted: int = 1, updated: int = 0) -> MagicMock:
     """Crea un mock CommesseRepository con risposte standard."""
     repo = MagicMock(spec=CommesseRepository)
     repo.fetch_pushable_rows.return_value = []
     repo.get_or_create_commessa.return_value = commessa_id
     repo.link_sorgente.return_value = 1
-    repo.upsert_attivita.return_value = attivita_id
+    repo.batch_upsert_attivita.return_value = BatchUpsertResult(
+        total_rows=inserted + updated, inserted=inserted, updated=updated, errors=[],
+    )
     return repo
 
 
@@ -91,7 +94,7 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual(handler.sorgente_codice, "ORDINE_VENDITA")
         self.assertEqual(handler.name, "HandlerOrdini")
 
-    # Scopo: Happy path — una riga → get_or_create_commessa + link + upsert.
+    # Scopo: Happy path — una riga → get_or_create_commessa + link + batch_upsert.
     def test_process_rows_crea_commessa_e_upsert(self):
         repo = _mock_repo()
         row = _make_row()
@@ -104,9 +107,11 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual(result.errors, [])
         repo.get_or_create_commessa.assert_called_once()
         repo.link_sorgente.assert_called_once()
-        repo.upsert_attivita.assert_called_once()
+        repo.batch_upsert_attivita.assert_called_once()
+        inputs = repo.batch_upsert_attivita.call_args[0][0]
+        self.assertEqual(len(inputs), 1)
 
-    # Scopo: dry_run=True → nessuna chiamata upsert, ma commessa creata e linked.
+    # Scopo: dry_run=True → nessuna chiamata batch_upsert, ma commessa creata e linked.
     def test_process_rows_dry_run_skippa_upsert(self):
         repo = _mock_repo()
         repo.fetch_pushable_rows.return_value = [_make_row()]
@@ -117,7 +122,7 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual(result.created, 1)
         repo.get_or_create_commessa.assert_called_once()
         repo.link_sorgente.assert_called_once()
-        repo.upsert_attivita.assert_not_called()
+        repo.batch_upsert_attivita.assert_not_called()
 
     # Scopo: tipo_commessa estratto da meta (#6).
     def test_process_rows_extract_tipo_commessa_da_meta(self):
@@ -163,7 +168,7 @@ class CommesseSourceHandlersTests(TestCase):
 
         handler.run()
 
-        inp = repo.upsert_attivita.call_args[0][0]
+        inp = repo.batch_upsert_attivita.call_args[0][0][0]
         self.assertFalse(inp.prezzo_da_riallineare)
 
     # Scopo: stato_approvazione default BOZZA, stato_emissione default NON_EMESSA (#10).
@@ -174,7 +179,7 @@ class CommesseSourceHandlersTests(TestCase):
 
         handler.run()
 
-        inp = repo.upsert_attivita.call_args[0][0]
+        inp = repo.batch_upsert_attivita.call_args[0][0][0]
         self.assertEqual(inp.stato_approvazione, "BOZZA")
         self.assertEqual(inp.stato_emissione, "NON_EMESSA")
 
@@ -193,6 +198,9 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual(result.created, 1)
         self.assertEqual(len(result.errors), 1)
         self.assertIn("FAIL:row1", result.errors[0])
+        # Batch chiamato con solo la riga riuscita.
+        inputs = repo.batch_upsert_attivita.call_args[0][0]
+        self.assertEqual(len(inputs), 1)
 
     # Scopo: HandlerContratti esiste e ha sorgente_codice CONTRATTO (#8).
     def test_handler_contratti_esiste(self):
@@ -210,7 +218,7 @@ class CommesseSourceHandlersTests(TestCase):
 
     # Scopo: HandlerConsumi fan-out 1→N con _expand_rows (#9).
     def test_handler_consumi_expand_rows_fanout(self):
-        repo = _mock_repo()
+        repo = _mock_repo(inserted=2)
         row = _make_row(
             segment_key="CONS:uid-001",
             articolo_id=None,
@@ -242,16 +250,17 @@ class CommesseSourceHandlersTests(TestCase):
         result = handler.run()
 
         self.assertEqual(result.created, 2)
-        self.assertEqual(repo.upsert_attivita.call_count, 2)
-        # Verifica segment_key espanso.
-        calls = repo.upsert_attivita.call_args_list
-        keys = [c[0][0].segment_key for c in calls]
+        repo.batch_upsert_attivita.assert_called_once()
+        # Verifica segment_key espanso nel batch.
+        inputs = repo.batch_upsert_attivita.call_args[0][0]
+        self.assertEqual(len(inputs), 2)
+        keys = [inp.segment_key for inp in inputs]
         self.assertIn("CONS:uid-001:COMP:COMP_A", keys)
         self.assertIn("CONS:uid-001:COMP:COMP_B", keys)
 
     # Scopo: due righe con stessi parametri commessa → get_or_create_commessa chiamata una sola volta (cache).
     def test_process_rows_cache_commessa_evita_chiamate_ripetute(self):
-        repo = _mock_repo()
+        repo = _mock_repo(inserted=2)
         # Due righe con stessi parametri commessa ma segment_key diverso.
         row1 = _make_row(segment_key="TEST:uid-001:R:1", sorgente_uid="uid-001")
         row2 = _make_row(segment_key="TEST:uid-002:R:1", sorgente_uid="uid-002")
@@ -265,4 +274,19 @@ class CommesseSourceHandlersTests(TestCase):
         repo.get_or_create_commessa.assert_called_once()
         # link_sorgente comunque chiamata per ogni riga (sorgente diversa).
         self.assertEqual(repo.link_sorgente.call_count, 2)
-        self.assertEqual(repo.upsert_attivita.call_count, 2)
+        # Batch upsert: 1 sola chiamata con 2 input.
+        repo.batch_upsert_attivita.assert_called_once()
+        self.assertEqual(len(repo.batch_upsert_attivita.call_args[0][0]), 2)
+
+    # Scopo: Verifica distinzione created vs updated da BatchUpsertResult.
+    def test_process_rows_batch_created_vs_updated(self):
+        repo = _mock_repo(inserted=1, updated=1)
+        row1 = _make_row(segment_key="NEW:row1", sorgente_uid="uid-001")
+        row2 = _make_row(segment_key="UPD:row2", sorgente_uid="uid-002")
+        repo.fetch_pushable_rows.return_value = [row1, row2]
+        handler = HandlerPreventivi(repo)
+
+        result = handler.run()
+
+        self.assertEqual(result.created, 1)
+        self.assertEqual(result.updated, 1)
