@@ -1,8 +1,6 @@
 from django.urls import path
 
 from apps.vendite.api.views import (
-    ApiAttivitaPipelineStatusV1,
-    ApiAttivitaTaskRunsV1,
     ApiCommessaAttivitaV1,
     ApiCommessePushLogV1,
     ApiCommessaStatoV1,
@@ -43,16 +41,6 @@ urlpatterns = [
         "lotti/<int:lotto_id>/fatture/<int:fattura_id>/reset-draft/",
         ApiResetLottoFatturaDraftV1.as_view(),
         name="vendite-v1-reset-lotto-fattura-draft",
-    ),
-    path(
-        "attivita_fatturabili/pipeline/<int:lotto_id>/status/",
-        ApiAttivitaPipelineStatusV1.as_view(),
-        name="vendite-v1-attivita-pipeline-status",
-    ),
-    path(
-        "attivita_fatturabili/pipeline/<int:lotto_id>/task-runs/",
-        ApiAttivitaTaskRunsV1.as_view(),
-        name="vendite-v1-attivita-task-runs",
     ),
     # --- Commesse ---
     path(

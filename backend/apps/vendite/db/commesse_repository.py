@@ -59,6 +59,27 @@ _PUSHABLE_SHARED_COLS = (
 )
 
 
+# --- Risultati upsert ---
+
+
+@dataclass(frozen=True)
+class UpsertAttivitaResult:
+    """Risultato singolo di fn_upsert_commessa_attivita (attivita_id, is_new)."""
+
+    attivita_id: int
+    is_new: bool
+
+
+@dataclass(frozen=True)
+class BatchUpsertResult:
+    """Risultato batch di fn_batch_upsert_commessa_attivita."""
+
+    total_rows: int
+    inserted: int
+    updated: int
+    errors: list[dict]
+
+
 # --- Costanti dominio commesse (valori allineati ai DEFAULT delle fn SQL) ---
 TIPO_COMMESSA_AUTO = "AUTO"
 POLICY_FATTURAZIONE_DA_DOCUMENTO = "DA_DOCUMENTO"
@@ -390,13 +411,13 @@ class CommesseRepository:
 
     # --- Gruppo 2: Attività commessa ---
 
-    def upsert_attivita(self, inp: CommessaAttivitaInput) -> int:
+    def upsert_attivita(self, inp: CommessaAttivitaInput) -> UpsertAttivitaResult:
         """Inserisce o aggiorna una riga operativa sulla commessa (idempotente su segment_key).
-        Restituisce commessa_attivita_id."""
+        Restituisce UpsertAttivitaResult(attivita_id, is_new)."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT vendite.fn_upsert_commessa_attivita(
+                SELECT attivita_id, is_new FROM vendite.fn_upsert_commessa_attivita(
                     p_commessa_id => %s,
                     p_segment_key => %s,
                     p_articolo_id => %s,
@@ -462,7 +483,71 @@ class CommesseRepository:
             )
             row = cursor.fetchone()
         assert row is not None
-        return int(row[0])
+        return UpsertAttivitaResult(attivita_id=int(row[0]), is_new=bool(row[1]))
+
+    # --- Gruppo 2b: Batch upsert attività ---
+
+    @staticmethod
+    def _inp_to_jsonb_row(inp: CommessaAttivitaInput) -> dict:
+        """Serializza CommessaAttivitaInput in dict JSONB-safe per fn_batch_upsert."""
+        def _date(v: date | None) -> str | None:
+            return v.isoformat() if v else None
+
+        def _decimal(v: Decimal | None) -> str | None:
+            return str(v) if v is not None else None
+
+        return {
+            "commessa_id": inp.commessa_id,
+            "segment_key": inp.segment_key,
+            "articolo_id": str(inp.articolo_id) if inp.articolo_id else None,
+            "istanza_utility_id": inp.istanza_utility_id,
+            "data_attivita": _date(inp.data_attivita),
+            "uom_id": inp.uom_id,
+            "quantita": _decimal(inp.quantita),
+            "competenza_mese": _date(inp.competenza_mese),
+            "competenza_dal": _date(inp.competenza_dal),
+            "competenza_al": _date(inp.competenza_al),
+            "prezzo_snapshot": _decimal(inp.prezzo_snapshot),
+            "qta_operativa": _decimal(inp.qta_operativa),
+            "uom_operativa_id": inp.uom_operativa_id,
+            "factor_to_base": _decimal(inp.factor_to_base),
+            "posticipa_al": _date(inp.posticipa_al),
+            "tipo_doc_fiscale_id": inp.tipo_doc_fiscale_id,
+            "valuta_id": inp.valuta_id,
+            "area_geografica_id": inp.area_geografica_id,
+            "listino_versione_id": inp.listino_versione_id,
+            "prezzo_bloccato": inp.prezzo_bloccato,
+            "pricing_mode": inp.pricing_mode,
+            "prezzo_da_riallineare": inp.prezzo_da_riallineare,
+            "stato_approvazione": inp.stato_approvazione,
+            "stato_emissione": inp.stato_emissione,
+            "sorgente_tipo_id": inp.sorgente_tipo_id,
+            "sorgente_uid": inp.sorgente_uid,
+            "tipo_movimento": inp.tipo_movimento,
+            "tipo_consumo": inp.tipo_consumo,
+            "meta": inp.meta or {},
+        }
+
+    def batch_upsert_attivita(self, inputs: list[CommessaAttivitaInput]) -> BatchUpsertResult:
+        """Upsert batch di righe attivita in una sola chiamata DB.
+        Restituisce BatchUpsertResult con contatori e errori per riga."""
+        if not inputs:
+            return BatchUpsertResult(total_rows=0, inserted=0, updated=0, errors=[])
+        rows_json = json.dumps([self._inp_to_jsonb_row(inp) for inp in inputs])
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM vendite.fn_batch_upsert_commessa_attivita(%s::jsonb)",
+                [rows_json],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        errors_raw = _decode_jsonb(row[3], [])
+        return BatchUpsertResult(
+            total_rows=int(row[0]),
+            inserted=int(row[1]),
+            updated=int(row[2]),
+            errors=errors_raw if isinstance(errors_raw, list) else [],
+        )
 
     # --- Gruppo 3: Emit attività fatturabili (pull) ---
 

@@ -105,6 +105,7 @@ class BaseSourceHandler(ABC):
 
         # Cache locale: evita round-trip DB ripetuti per la stessa commessa.
         commessa_cache: dict[tuple, int] = {}
+        pending_inputs: list[CommessaAttivitaInput] = []
 
         for row in rows:
             try:
@@ -145,15 +146,24 @@ class BaseSourceHandler(ABC):
                 )
 
                 for exp in expanded:
-                    inp = self._build_attivita_input(commessa_id, exp)
-                    if not dry_run:
-                        self._repo.upsert_attivita(inp)
-                    result.created += 1
+                    pending_inputs.append(self._build_attivita_input(commessa_id, exp))
 
             except Exception as exc:
                 msg = f"Errore riga segment_key={row.segment_key}: {type(exc).__name__}: {exc}"
                 logger.exception(msg)
                 result.errors.append(msg)
+
+        # Batch upsert in una sola chiamata DB (N round-trip → 1).
+        if pending_inputs and not dry_run:
+            batch = self._repo.batch_upsert_attivita(pending_inputs)
+            result.created = batch.inserted
+            result.updated = batch.updated
+            for err in batch.errors:
+                result.errors.append(
+                    f"Errore batch segment_key={err.get('segment_key')}: {err.get('error')}"
+                )
+        elif pending_inputs:
+            result.created = len(pending_inputs)
 
         return result
 

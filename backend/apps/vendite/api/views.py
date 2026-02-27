@@ -10,10 +10,6 @@ from apps.core.api.error_responses import exception_to_error_response
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
 from apps.core.api.success_responses import success_response
-from apps.vendite.services.attivita_pipeline_service import (
-    fn_get_attivita_pipeline_status,
-    fn_get_attivita_task_runs,
-)
 from apps.vendite.services.commesse_service import (
     fn_get_commessa_stato,
     fn_get_commesse_push_log,
@@ -392,91 +388,6 @@ class ApiLottoFattureListV1(ApiLottoFattureList):
     permission_classes = [IsAuthenticated]
 
 
-class ApiAttivitaPipelineStatus(APIView):
-    @extend_schema(
-        responses={
-            200: inline_serializer(
-                name="VenditeAttivitaPipelineStatusResponse",
-                fields={
-                    "data": inline_serializer(
-                        name="VenditeAttivitaPipelineStatusData",
-                        fields={
-                            "lotto_id": serializers.IntegerField(),
-                            "stato_lotto": serializers.CharField(),
-                            "stato_operativo": serializers.CharField(),
-                            "branch_summary": serializers.DictField(),
-                        },
-                    ),
-                    "meta": serializers.DictField(required=False),
-                },
-            )
-        },
-    )
-    # Scopo: Restituisce via GET lo stato pipeline e il riepilogo branch del lotto attivita.
-    def get(self, request: Request, lotto_id: int) -> JsonResponse:
-        try:
-            data = fn_get_attivita_pipeline_status(lotto_id=lotto_id)
-            return success_response(data)
-        except Exception as exc:
-            return exception_to_error_response(exc)
-
-
-class ApiAttivitaPipelineStatusV1(ApiAttivitaPipelineStatus):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
-
-
-class ApiAttivitaTaskRuns(APIView):
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="limit",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Numero massimo task run restituiti (default 100, max 500).",
-            ),
-            OpenApiParameter(
-                name="branch_code",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Filtro per branch (es. DEFAULT, PREVENTIVI).",
-            ),
-        ],
-        responses={
-            200: inline_serializer(
-                name="VenditeAttivitaTaskRunsResponse",
-                fields={
-                    "data": inline_serializer(
-                        name="VenditeAttivitaTaskRunsData",
-                        fields={
-                            "lotto_id": serializers.IntegerField(),
-                            "count": serializers.IntegerField(),
-                            "task_runs": serializers.ListField(child=serializers.DictField()),
-                        },
-                    ),
-                    "meta": serializers.DictField(required=False),
-                },
-            )
-        },
-    )
-    # Scopo: Restituisce via GET i task run runtime del lotto attivita per monitoraggio operativo.
-    def get(self, request: Request, lotto_id: int) -> JsonResponse:
-        try:
-            limit = optional_int({"limit": request.query_params.get("limit", "100")}, "limit")
-            branch_code = request.query_params.get("branch_code") or None
-            data = fn_get_attivita_task_runs(lotto_id=lotto_id, limit=limit, branch_code=branch_code)
-            return success_response(data)
-        except Exception as exc:
-            return exception_to_error_response(exc)
-
-
-class ApiAttivitaTaskRunsV1(ApiAttivitaTaskRuns):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
-
-
 # ================================================================== #
 # Commesse — push orchestrator + stato + attivita                     #
 # ================================================================== #
@@ -498,8 +409,8 @@ class ApiRunCommessePush(APIView):
             fields={
                 "source_types": serializers.ListField(
                     child=serializers.CharField(),
-                    required=False,
-                    help_text="Codici sorgente da processare (es. PREVENTIVO, ORDINE_VENDITA, CONTRATTO, DDT_VENDITA, ATTIVITA_CONSUMI). Se omesso processa tutte le sorgenti attive in config.sorgenti.",
+                    required=True,
+                    help_text="Codici sorgente da processare (es. PREVENTIVO, ORDINE_VENDITA, CONTRATTO, DDT_VENDITA, ATTIVITA_CONSUMI).",
                 ),
                 "dry_run": serializers.BooleanField(required=False),
             },
