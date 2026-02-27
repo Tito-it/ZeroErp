@@ -45,13 +45,14 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_vendite_movimenti_a10_centri_riscossione_require_att_4ac599 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'centri_riscossione', 'attivo', 'centro_riscossione_id')` |
 | trg_vendite_movimenti_a10_centri_riscossione_require_att_4ac599 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'centri_riscossione', 'attivo', 'centro_riscossione_id')` |
+| trg_vendite_movimenti_a10_centri_riscossione_require_att_4ac599 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'centri_riscossione', 'attivo', 'centro_riscossione_id')` |
 | trg_vendite_movimenti_a10_sync_contabile_from_riga_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga()` |
 | trg_vendite_movimenti_a10_sync_contabile_from_riga_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga()` |
 | trg_vendite_movimenti_a10_vendite_contabili_righe_requir_913f22 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_righe', 'attivo', 'contabile_riga_id')` |
 | trg_vendite_movimenti_a10_vendite_contabili_righe_requir_913f22 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_righe', 'attivo', 'contabile_riga_id')` |
 | trg_vendite_movimenti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_vendite_movimenti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_vendite_movimenti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_vendite_movimenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 

@@ -33,6 +33,7 @@
 |------|--------|--------|--------|
 | trg_articoli_descrizioni_aggiuntive_a10_articoli_require_73ce13 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id')` |
 | trg_articoli_descrizioni_aggiuntive_a10_articoli_require_73ce13 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id')` |
+| trg_articoli_descrizioni_aggiuntive_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_articoli_descrizioni_aggiuntive_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---

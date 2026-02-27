@@ -42,6 +42,7 @@
 |------|--------|--------|--------|
 | trg_attivita_fatturabili_sorgenti_branch_policy_a10_sorg_9649f2 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
 | trg_attivita_fatturabili_sorgenti_branch_policy_a10_sorg_9649f2 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
+| trg_attivita_fatturabili_sorgenti_branch_policy_audit_da_f8fcc1 | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_attivita_fatturabili_sorgenti_branch_policy_audit_da_f8fcc1 | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_attivita_fatturabili_sorgenti_branch_policy_gen_tx_i_b250d3 | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_attivita_fatturabili_sorgenti_branch_policy_gen_tx_i_b250d3 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

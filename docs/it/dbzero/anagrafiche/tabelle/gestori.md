@@ -35,6 +35,7 @@
 | trg_gestori_a10_delete_block_dlt | AFTER | DELETE | `EXECUTE FUNCTION script.trgfn_delete_block_by_guc('zeroerp.maintenance_ruoli_delete')` |
 | trg_gestori_a10_guard_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_guard()` |
 | trg_gestori_a10_guard_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_guard()` |
+| trg_gestori_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_gestori_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_gestori_guard_ruolo_gestore_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_guard_ruolo_gestore()` |
 | trg_gestori_guard_ruolo_gestore_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_guard_ruolo_gestore()` |

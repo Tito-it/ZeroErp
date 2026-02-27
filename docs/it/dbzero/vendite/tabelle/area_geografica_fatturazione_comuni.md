@@ -33,6 +33,7 @@
 |------|--------|--------|--------|
 | trg_area_geografica_fatturazione_comuni_a10_area_geograf_f88212 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id')` |
 | trg_area_geografica_fatturazione_comuni_a10_area_geograf_f88212 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id')` |
+| trg_area_geografica_fatturazione_comuni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_area_geografica_fatturazione_comuni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---

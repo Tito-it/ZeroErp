@@ -40,8 +40,9 @@
 | trg_unita_organizzative_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
 | trg_unita_organizzative_a10_risorse_umane_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'risorse_umane', 'unita_organizzativa_id', 'id')` |
 | trg_unita_organizzative_a10_unita_organizzative_block_de_619e29 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'unita_organizzative', 'parent_id', 'id')` |
-| trg_unita_organizzative_a10_unita_organizzative_require__e47f05 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'parent_id')` |
 | trg_unita_organizzative_a10_unita_organizzative_require__e47f05 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'parent_id')` |
+| trg_unita_organizzative_a10_unita_organizzative_require__e47f05 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'parent_id')` |
+| trg_unita_organizzative_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_unita_organizzative_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
