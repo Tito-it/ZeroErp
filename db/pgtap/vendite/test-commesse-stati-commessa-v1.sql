@@ -309,7 +309,8 @@ SELECT is(
 -- ============================================================
 
 CREATE TEMP TABLE tmp_upsert_sc AS
-SELECT vendite.fn_upsert_commessa_attivita(
+SELECT r.attivita_id AS commessa_attivita_id
+FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_sc),
   p_segment_key => ('SEG-SC-' || substr(md5(clock_timestamp()::text), 1, 16))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_sc),
@@ -326,7 +327,7 @@ SELECT vendite.fn_upsert_commessa_attivita(
   p_tipo_movimento => 'NORMALE',
   p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'SC_UPSERT')
-) AS commessa_attivita_id;
+) r;
 
 SELECT ok(
   (SELECT commessa_attivita_id IS NOT NULL FROM tmp_upsert_sc),

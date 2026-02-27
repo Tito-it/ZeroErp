@@ -3941,3 +3941,9 @@ databaseChangeLog:
   - include:
       file: migrations_v2/20_code/vendite/20260227-11-update-fn-log-commessa-push-run-drop-user-run-mctit.yaml
       relativeToChangelogFile: true
+  - include:
+      file: migrations_v2/20_code/vendite/20260227-12-update-fn-upsert-commessa-attivita-return-is-new-mctit.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: migrations_v2/20_code/vendite/20260227-13-create-fn-batch-upsert-commessa-attivita-mctit.yaml
+      relativeToChangelogFile: true

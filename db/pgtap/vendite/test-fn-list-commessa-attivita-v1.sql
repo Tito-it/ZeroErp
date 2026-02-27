@@ -109,7 +109,8 @@ SELECT ok(
 
 -- Attivita` 1: APPROVATA, NON_EMESSA, competenza_mese = 2026-07
 CREATE TEMP TABLE tmp_att1_lca AS
-SELECT vendite.fn_upsert_commessa_attivita(
+SELECT r.attivita_id AS commessa_attivita_id
+FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_lca),
   p_segment_key => ('SEG-LCA-1-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_lca),
@@ -126,7 +127,7 @@ SELECT vendite.fn_upsert_commessa_attivita(
   p_tipo_movimento => 'NORMALE',
   p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'LCA_ATT1')
-) AS commessa_attivita_id;
+) r;
 
 SELECT ok(
   (SELECT commessa_attivita_id IS NOT NULL FROM tmp_att1_lca),
@@ -135,7 +136,8 @@ SELECT ok(
 
 -- Attivita` 2: BOZZA, NON_EMESSA, competenza_mese = 2026-08
 CREATE TEMP TABLE tmp_att2_lca AS
-SELECT vendite.fn_upsert_commessa_attivita(
+SELECT r.attivita_id AS commessa_attivita_id
+FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_lca),
   p_segment_key => ('SEG-LCA-2-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_lca),
@@ -152,7 +154,7 @@ SELECT vendite.fn_upsert_commessa_attivita(
   p_tipo_movimento => 'NORMALE',
   p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'LCA_ATT2')
-) AS commessa_attivita_id;
+) r;
 
 SELECT ok(
   (SELECT commessa_attivita_id IS NOT NULL FROM tmp_att2_lca),

@@ -112,7 +112,8 @@ SELECT ok(
 
 -- Inserisci attivita` con competenza_mese specifica (senza tipo_doc e valuta su CA)
 CREATE TEMP TABLE tmp_att_tca AS
-SELECT vendite.fn_upsert_commessa_attivita(
+SELECT r.attivita_id AS commessa_attivita_id
+FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_tca),
   p_segment_key => ('SEG-TCA-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_tca),
@@ -135,7 +136,7 @@ SELECT vendite.fn_upsert_commessa_attivita(
   p_tipo_movimento => 'NORMALE',
   p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'TCA_TRIGGER_TEST')
-) AS commessa_attivita_id;
+) r;
 
 SELECT ok(
   (SELECT commessa_attivita_id IS NOT NULL FROM tmp_att_tca),

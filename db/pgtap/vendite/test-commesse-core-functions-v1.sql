@@ -181,11 +181,11 @@ SELECT ok(
 );
 
 INSERT INTO config.sorgenti (
-  codice_interno, codice, categoria, descrizione, attivo, target_table, key_selector, meta
+  codice_interno, codice, categoria, descrizione, attivo, target_table, key_selector, scope, meta
 )
 VALUES (
   'COMMESSA', 'COMMESSA', 'DOCUMENTO', 'Commessa test pgtap', true,
-  'vendite.commesse_attivita'::regclass, 'id',
+  'vendite.commesse_attivita'::regclass, 'id', 'PIPELINE_MARKER',
   jsonb_build_object('idempotency_key','segment_key')
 )
 ON CONFLICT (codice)
@@ -275,7 +275,8 @@ SELECT throws_ok(
 );
 
 CREATE TEMP TABLE tmp_upsert_core AS
-SELECT vendite.fn_upsert_commessa_attivita(
+SELECT r.attivita_id AS commessa_attivita_id
+FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
   p_segment_key => ('SEG-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_commesse_core),
@@ -305,7 +306,7 @@ SELECT vendite.fn_upsert_commessa_attivita(
   p_tipo_movimento => 'NORMALE',
   p_tipo_consumo => 'ACCONTO',
   p_meta => jsonb_build_object('case', 'UPSERT_INSERT')
-) AS commessa_attivita_id;
+) r;
 
 SELECT ok(
   (SELECT commessa_attivita_id IS NOT NULL FROM tmp_upsert_core),
@@ -328,7 +329,8 @@ lst_v AS (
   FROM lst l
   RETURNING id
 )
-SELECT vendite.fn_upsert_commessa_attivita(
+SELECT r.attivita_id AS commessa_attivita_id
+FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
   p_segment_key => (
     SELECT ca.segment_key
@@ -366,7 +368,7 @@ SELECT vendite.fn_upsert_commessa_attivita(
   p_tipo_movimento => 'NORMALE',
   p_tipo_consumo => 'ACCONTO',
   p_meta => jsonb_build_object('case', 'UPSERT_UPDATE')
-) AS commessa_attivita_id;
+) r;
 
 SELECT is(
   (SELECT commessa_attivita_id::text FROM tmp_upsert_core_update),
@@ -427,7 +429,7 @@ UPDATE vendite.commesse_attivita
 SET stato_emissione = 'NON_EMESSA'
 WHERE id = (SELECT commessa_attivita_id FROM tmp_upsert_core);
 
-SELECT vendite.fn_upsert_commessa_attivita(
+SELECT * FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
   p_segment_key => (
     SELECT ca.segment_key

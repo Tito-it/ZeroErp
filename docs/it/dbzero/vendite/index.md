@@ -73,6 +73,7 @@
 ## ⚙️ Funzioni
 - [fn_applica_fondi_fattura](funzioni/fn_applica_fondi_fattura.md) — La funzione **`vendite.fn_applica_fondi_fattura()`** applica i fondi fattura in stato `DISPONIBILE` ad una **fattura figlia**, creando le righe in `vendite.fatture_fondi_fattura` e aggiornando la `source` a stato `ASSEGNATO`.
 - [fn_assign_numero_fattura](funzioni/fn_assign_numero_fattura.md) — (latest review 09-02-2026) La funzione **`vendite.fn_assign_numero_fattura()`** assegna il progressivo in base al registro e aggiorna `anno`, `serie` e `numero` sulla testata fattura.
+- [fn_batch_upsert_commessa_attivita](funzioni/fn_batch_upsert_commessa_attivita.md)
 - [fn_build_fattura_key](funzioni/fn_build_fattura_key.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_build_fattura_key()`** costruisce la **chiave logica** di aggregazione documento a partire da una riga di `attivita_fatturabili`.
 - [fn_cancel_attivita_lotto_task_run](funzioni/fn_cancel_attivita_lotto_task_run.md) — Marca come annullato un task-run runtime attività.
 - [fn_cancel_lotto_task_run](funzioni/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
