@@ -162,18 +162,88 @@ Regole principali:
 
 Dopo la fase commesse, la fatturazione resta governata dal dominio lotti.
 
-Pipeline principale:
+### Modello lotti (visione sintetica)
 
-* [vendite.fatturazione_pipeline](/dbzero/vendite/tabelle/fatturazione_pipeline)
+1. Un lotto (`fatturazione_lotti`) definisce perimetro operativo (competenza, utility, tipo documento, BA/emittente).
+2. Gli step sono configurati in `fatturazione_pipeline` e risolti con fallback su `tipo_lotto`, `utility_id`, `tipo_doc_fiscale_id`.
+3. Il runner esegue i task di step e traccia i tentativi in `fatturazione_lotti_task_runs`.
+4. Le fatture generate sono collegate al lotto tramite `fatturazione_lotti_fatture`.
+
+### Schema ER (pipeline lotti)
+
+```mermaid
+erDiagram
+  FATTURAZIONE_LOTTI ||--o{ FATTURAZIONE_LOTTI_FATTURE : "lotto_id"
+  FATTURE ||--o{ FATTURAZIONE_LOTTI_FATTURE : "fattura_id"
+  FATTURAZIONE_PIPELINE ||--o{ FATTURAZIONE_LOTTI_TASK_RUNS : "pipeline_id"
+  FATTURAZIONE_LOTTI ||--o{ FATTURAZIONE_LOTTI_TASK_RUNS : "lotto_id"
+
+  FATTURAZIONE_LOTTI {
+    bigint id PK
+    varchar tipo_lotto
+    bigint stato_doc_fiscale_id FK
+    varchar stato_lotto
+  }
+  FATTURAZIONE_PIPELINE {
+    bigint id PK
+    varchar tipo_lotto
+    bigint stato_doc_fiscale_id FK
+    jsonb processi
+    jsonb rollback
+  }
+  FATTURAZIONE_LOTTI_TASK_RUNS {
+    bigint id PK
+    bigint lotto_id FK
+    bigint pipeline_id FK
+    varchar task_code
+    smallint tentativo
+    varchar task_stato
+  }
+  FATTURAZIONE_LOTTI_FATTURE {
+    bigint id PK
+    bigint lotto_id FK
+    bigint fattura_id FK
+  }
+  FATTURE {
+    bigint id PK
+  }
+```
+
+### Tabelle core del modello lotti
+
 * [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)
+* [vendite.fatturazione_pipeline](/dbzero/vendite/tabelle/fatturazione_pipeline)
+* [vendite.fatturazione_lotti_task_runs](/dbzero/vendite/tabelle/fatturazione_lotti_task_runs)
+* [vendite.fatturazione_pipeline_task_policy](/dbzero/vendite/tabelle/fatturazione_pipeline_task_policy)
+* [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)
+
+### Funzioni chiave pipeline lotti
+
+* [vendite.fn_resolve_fatturazione_pipeline_step](/dbzero/vendite/funzioni/fn_resolve_fatturazione_pipeline_step)
+* [vendite.fn_list_fatturazione_pipeline_steps](/dbzero/vendite/funzioni/fn_list_fatturazione_pipeline_steps)
+* [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)
 * [vendite.pr_run_lotto_pipeline](/dbzero/vendite/funzioni/pr_run_lotto_pipeline)
+* [vendite.fn_execute_pipeline_step](/dbzero/vendite/funzioni/fn_execute_pipeline_step)
+* [vendite.fn_start_lotto_task_run](/dbzero/vendite/funzioni/fn_start_lotto_task_run)
+* [vendite.fn_complete_lotto_task_run](/dbzero/vendite/funzioni/fn_complete_lotto_task_run)
+* [vendite.fn_fail_lotto_task_run](/dbzero/vendite/funzioni/fn_fail_lotto_task_run)
+* [vendite.fn_cancel_lotto_task_run](/dbzero/vendite/funzioni/fn_cancel_lotto_task_run)
+* [vendite.fn_list_lotto_task_runs](/dbzero/vendite/funzioni/fn_list_lotto_task_runs)
 
-Fasi operative tipiche:
+### Step operativi tipici (massivo)
 
-1. DRAFT: selezione/preparazione attivita` da fatturare.
-2. EMESSA: generazione documento e processi pre-fiscali.
+1. DRAFT: selezione/preparazione delle attivita` da fatturare.
+2. EMESSA: generazione documento e task pre-fiscali.
 3. DEFINITIVA: numerazione documento.
 4. INVIATA: preparazione/invio su canale esterno (es. SDI).
+
+### Regole operative del modello lotti
+
+1. Lo step effettivo viene risolto con fallback configurativo (`utility + tipo_doc`, `utility`, `tipo_doc`, globale).
+2. Le transizioni tecniche del lotto sono governate da `fn_set_fatturazione_lotto_stato`.
+3. Ogni task-run deve essere tracciato con `tentativo` ed esito (`IN_ESECUZIONE`, `COMPLETATO`, `ERRORE`, `ANNULLATO`).
+4. Le policy runtime task (resume/reset/annullabilita`) sono esterne alla sequenza step e risiedono in `fatturazione_pipeline_task_policy`.
+5. I task devono lavorare con input centrato sul `lotto_id`, recuperando il resto dal contesto lotto.
 
 ---
 
