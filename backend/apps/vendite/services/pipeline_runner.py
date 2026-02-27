@@ -20,7 +20,7 @@ from apps.vendite.types import LottoPipelineMeta, PipelineStepLogMeta
 from apps.vendite.services.pipeline_error_logger import PipelineErrorLogger
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 
-# Orchestratore applicativo della pipeline lotto vendite (equivalente SQL).
+# Orchestratore applicativo della pipeline lotto vendite.
 
 @dataclass(frozen=True)
 class LottoPipelineParams:
@@ -37,7 +37,7 @@ class LottoPipelineParams:
 
 
 class LottoPipelineRunner:
-    """Controparte Django della procedura SQL vendite.pr_run_lotto_pipeline."""
+    """Orchestratore Django della pipeline lotto vendite."""
 
     # Scopo: Inizializza la istanza.
     def __init__(
@@ -73,7 +73,7 @@ class LottoPipelineRunner:
                 detail=detail,
                 lotto_id=lotto_id,
                 context={"tipo_lotto": tipo_lotto},
-                function_name="vendite.pr_run_lotto_pipeline",
+                function_name="vendite.run_lotto_pipeline",
             )
             self.repository.set_lotto_job_stato(lotto_id, "ERRORE", "Errore pipeline")
             self.repository.log_lotto_esito_fatture(lotto_id)
@@ -105,7 +105,7 @@ class LottoPipelineRunner:
                     "mark_error": str(mark_exc),
                 },
                 area="backend",
-                function_name="vendite.pr_run_lotto_pipeline",
+                function_name="vendite.run_lotto_pipeline",
             )
 
     # Scopo: Determina da quale step ripartire in caso di rerun MASSIVO su lotto in errore.
@@ -262,7 +262,7 @@ class LottoPipelineRunner:
                             "lotto_id": lotto_id,
                             "tipo_lotto": effective_tipo_lotto,
                         },
-                        function_name="vendite.pr_run_lotto_pipeline",
+                        function_name="vendite.run_lotto_pipeline",
                         log_to_db=True,
                     )
                 # Regola dominio: "lotto in errore" e` deciso dallo stato_lotto persistito,
@@ -286,7 +286,7 @@ class LottoPipelineRunner:
                     message="Lotto pipeline non trovato.",
                     detail=f"Lotto non trovato: {lotto_id}",
                     context={"lotto_id": lotto_id},
-                    function_name="vendite.pr_run_lotto_pipeline",
+                    function_name="vendite.run_lotto_pipeline",
                     log_to_db=True,
                 )
                 assert lotto_context is not None
@@ -323,7 +323,7 @@ class LottoPipelineRunner:
                             "stato_esecuzione_errore_count": lotto_signal_status.fatture_stato_esecuzione_errore_count,
                             "summary": lotto_signal_status.summary,
                         },
-                        function_name="vendite.pr_run_lotto_pipeline",
+                        function_name="vendite.run_lotto_pipeline",
                         log_to_db=True,
                     )
                 self.repository.set_lotto_job_stato(lotto_id, "IN_ESECUZIONE", "Avvio pipeline")
@@ -376,7 +376,7 @@ class LottoPipelineRunner:
                 message="Errore nella pipeline di fatturazione.",
                 detail=str(exc),
                 context={"lotto_id": lotto_id, "tipo_lotto": effective_tipo_lotto},
-                function_name="vendite.pr_run_lotto_pipeline",
+                function_name="vendite.run_lotto_pipeline",
                 # Se il lotto è già creato l'errore è già persistito da _mark_lotto_error.
                 log_to_db=lotto_id is None,
                 cause=exc,

@@ -161,10 +161,6 @@ def nome_metodo(self, ...):
 - Runtime task tracing: `vendite.fatturazione_pipeline_task_policy` + `vendite.fatturazione_lotti_task_runs`
 - Test pgtap runtime task + test Django pipeline runner
 
-### Aperto — Alta priorità ⚠️
-- **Pipeline `attivita_fatturabili`**: tabella `vendite.attivita_fatturabili_pipeline` introdotta,
-  ma mancano log dedicato, runner Django, handler dominio e test completi
-
 ### Aperto — Media priorità
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata
@@ -173,7 +169,7 @@ def nome_metodo(self, ...):
 ### Note operative
 - `config.stati_doc_fiscale.chiude_lotto = true` → unico meccanismo di chiusura lotto (nessun hardcode)
 - Reset lotto MASSIVO: ammesso in DRAFT; la DEFINITIVA fa resume per fattura (non reset globale)
-- La legacy SQL (`pr_run_lotto_pipeline`) è mantenuta solo per compatibilità; l'orchestrazione runtime è in Django
+- La procedura SQL `pr_run_lotto_pipeline` è deprecata e in fase di rimozione lato DB; l'orchestrazione è in Django (`run_lotto_pipeline`)
 
 ## File Django Chiave (vendite)
 

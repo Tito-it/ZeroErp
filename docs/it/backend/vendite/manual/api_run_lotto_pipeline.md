@@ -6,7 +6,7 @@ Esporre via HTTP l'avvio della pipeline lotto vendite.
 
 ## Contesto
 
-Endpoint applicativo che invoca il servizio Python `pr_run_lotto_pipeline`, equivalente alla procedura SQL omonima.
+Endpoint applicativo che invoca il servizio Python `run_lotto_pipeline`.
 
 ## Input
 
@@ -57,5 +57,4 @@ Endpoint applicativo che invoca il servizio Python `pr_run_lotto_pipeline`, equi
 
 ## Note di migrazione
 
-- Primo endpoint operativo per pilotare la migrazione SQL -> Django della pipeline vendite.
 - L'emittente fiscale era in precedenza dedotto a runtime dai parametri; ora è attributo esplicito del lotto (persistito in DB alla creazione).

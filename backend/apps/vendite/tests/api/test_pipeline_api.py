@@ -41,7 +41,7 @@ class VenditePipelineApiTests(SimpleTestCase):
 
     # Scopo: Verifica il caso `test_run_lotto_pipeline_ok`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    @patch("apps.vendite.api.views.run_lotto_pipeline")
     def test_run_lotto_pipeline_ok(self, mocked_service, _mock_auth):
         mocked_service.return_value = 123
         response = self.client.post(
@@ -70,7 +70,7 @@ class VenditePipelineApiTests(SimpleTestCase):
 
     # Scopo: Verifica il caso `test_run_lotto_pipeline_pipeline_error`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    @patch("apps.vendite.api.views.run_lotto_pipeline")
     def test_run_lotto_pipeline_pipeline_error(self, mocked_service, _mock_auth):
         mocked_service.side_effect = ServiceError(
             code="E_PIPELINE_LOTTO_NOT_FOUND",
@@ -91,7 +91,7 @@ class VenditePipelineApiTests(SimpleTestCase):
 
     # Scopo: Verifica il caso `test_run_lotto_pipeline_retryable_error`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    @patch("apps.vendite.api.views.run_lotto_pipeline")
     def test_run_lotto_pipeline_retryable_error(self, mocked_service, _mock_auth):
         mocked_service.side_effect = ServiceError(
             code="E_DATABASE_RETRYABLE",
@@ -112,7 +112,7 @@ class VenditePipelineApiTests(SimpleTestCase):
 
     # Scopo: Verifica il caso `test_run_lotto_pipeline_echoes_idempotency_key`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    @patch("apps.vendite.api.views.run_lotto_pipeline")
     def test_run_lotto_pipeline_echoes_idempotency_key(self, mocked_service, _mock_auth):
         mocked_service.return_value = 321
         response = self.client.post(
@@ -139,7 +139,7 @@ class VenditePipelineApiTests(SimpleTestCase):
 
     # Scopo: Verifica il caso `test_run_lotto_pipeline_accepts_null_lotto_id`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    @patch("apps.vendite.api.views.run_lotto_pipeline")
     def test_run_lotto_pipeline_accepts_null_lotto_id(self, mocked_service, _mock_auth):
         mocked_service.return_value = 777
         response = self.client.post(
@@ -155,7 +155,7 @@ class VenditePipelineApiTests(SimpleTestCase):
 
     # Scopo: Verifica il caso `test_run_lotto_pipeline_converts_zero_optional_ids_to_none`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    @patch("apps.vendite.api.views.run_lotto_pipeline")
     def test_run_lotto_pipeline_converts_zero_optional_ids_to_none(self, mocked_service, _mock_auth):
         mocked_service.return_value = 778
         response = self.client.post(
@@ -184,7 +184,7 @@ class VenditePipelineApiTests(SimpleTestCase):
 
     # Scopo: Verifica il caso `test_run_lotto_pipeline_full_payload_new_lotto_massivo_ok`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    @patch("apps.vendite.api.views.run_lotto_pipeline")
     def test_run_lotto_pipeline_full_payload_new_lotto_massivo_ok(self, mocked_service, _mock_auth):
         mocked_service.return_value = 78
         response = self.client.post(
@@ -246,7 +246,7 @@ class VenditePipelineApiTests(SimpleTestCase):
     # Scopo: Verifica il caso `test_run_lotto_pipeline_hides_technical_detail_for_generic_errors`.
     @override_settings(API_EXPOSE_TECHNICAL_DETAILS=False)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    @patch("apps.vendite.api.views.run_lotto_pipeline")
     def test_run_lotto_pipeline_hides_technical_detail_for_generic_errors(self, mocked_service, _mock_auth):
         mocked_service.side_effect = RuntimeError("CONTEXT: SQL interno sensibile")
         response = self.client.post(
@@ -266,7 +266,7 @@ class VenditePipelineApiTests(SimpleTestCase):
     # Scopo: Verifica il caso `test_run_lotto_pipeline_exposes_technical_message_in_debug_mode`.
     @override_settings(API_EXPOSE_TECHNICAL_DETAILS=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    @patch("apps.vendite.api.views.run_lotto_pipeline")
     def test_run_lotto_pipeline_exposes_technical_message_in_debug_mode(self, mocked_service, _mock_auth):
         mocked_service.side_effect = RuntimeError("CONTEXT: SQL interno sensibile")
         response = self.client.post(
@@ -285,7 +285,7 @@ class VenditePipelineApiTests(SimpleTestCase):
     @override_settings(API_STRONG_IDEMPOTENCY_ENABLED=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.core.api.endpoint_helpers.IdempotencyStore.claim_or_replay")
-    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    @patch("apps.vendite.api.views.run_lotto_pipeline")
     def test_run_lotto_pipeline_replays_completed_response_when_strong_idempotency_enabled(
         self,
         mocked_service,
@@ -316,7 +316,7 @@ class VenditePipelineApiTests(SimpleTestCase):
     @override_settings(API_STRONG_IDEMPOTENCY_ENABLED=True)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.core.api.endpoint_helpers.IdempotencyStore.claim_or_replay")
-    @patch("apps.vendite.api.views.pr_run_lotto_pipeline")
+    @patch("apps.vendite.api.views.run_lotto_pipeline")
     def test_run_lotto_pipeline_returns_conflict_when_idempotency_in_progress(
         self,
         mocked_service,

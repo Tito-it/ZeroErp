@@ -24,10 +24,10 @@ from apps.vendite.types import (
     ResetLottoFatturaDraftResult,
 )
 
-# Facade servizi: mantiene firme SQL-like e delega alle classi OOP.
+# Facade servizi: mantiene firme dichiarative e delega alle classi OOP.
 
 # Scopo: Facade applicativa: avvia il runner pipeline lotto e restituisce lotto_id eseguito.
-def pr_run_lotto_pipeline(
+def run_lotto_pipeline(
     *,
     lotto_id: int | None = None,
     competenza_mese: date | None = None,
@@ -40,7 +40,7 @@ def pr_run_lotto_pipeline(
     dry_run: bool = False,
     tipo_lotto: str = "MASSIVO",
 ) -> int:
-    """Entrypoint servizio Python con lo stesso intento della procedura SQL pr_run_lotto_pipeline."""
+    """Entrypoint servizio Python per avvio pipeline lotto vendite."""
     # Validazione lookup ID opzionali contro tabelle config attive.
     if tipo_doc_fiscale_id is not None:
         dbops = DbopsRepository()
@@ -50,7 +50,7 @@ def pr_run_lotto_pipeline(
                 message="Tipo documento fiscale non valido.",
                 detail=f"tipo_doc_fiscale_id={tipo_doc_fiscale_id} non trovato o non attivo in config.tipi_doc_fiscale",
                 context={"tipo_doc_fiscale_id": tipo_doc_fiscale_id},
-                function_name="vendite.pipeline_service.pr_run_lotto_pipeline",
+                function_name="vendite.pipeline_service.run_lotto_pipeline",
             )
     if utility_id is not None:
         dbops = DbopsRepository()
@@ -60,9 +60,9 @@ def pr_run_lotto_pipeline(
                 message="Utility non valida.",
                 detail=f"utility_id={utility_id} non trovato o non attivo in config.utilities",
                 context={"utility_id": utility_id},
-                function_name="vendite.pipeline_service.pr_run_lotto_pipeline",
+                function_name="vendite.pipeline_service.run_lotto_pipeline",
             )
-    # Facade sottile: firma simile alla SQL, comportamento delegato al runner OOP.
+    # Facade sottile: comportamento delegato al runner OOP.
     runner = LottoPipelineRunner()
     params = LottoPipelineParams(
         lotto_id=lotto_id,

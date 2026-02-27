@@ -21,7 +21,7 @@ from apps.vendite.services.pipeline_service import (
     fn_get_lotto_task_runs,
     fn_reset_lotto_draft,
     fn_reset_lotto_fattura_draft,
-    pr_run_lotto_pipeline,
+    run_lotto_pipeline,
 )
 from apps.vendite.services.vendite_service import fn_list_lotti, fn_list_lotto_fatture
 
@@ -74,7 +74,7 @@ class ApiRunLottoPipeline(APIView):
     def post(self, request: Request) -> JsonResponse:
         # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
         def _handler(payload: dict[str, object]) -> dict[str, object]:
-            lotto_id = pr_run_lotto_pipeline(
+            lotto_id = run_lotto_pipeline(
                 lotto_id=optional_int(payload, "lotto_id", zero_as_none=True),
                 competenza_mese=optional_iso_date(payload, "competenza_mese"),
                 tipo_doc_fiscale_id=optional_int(payload, "tipo_doc_fiscale_id", zero_as_none=True),
