@@ -10,7 +10,7 @@
 >
 > **Approfondimento funzioni:**
 >
-> • [`vendite.fn_execute_pipeline_step`](/dbzero/vendite/funzioni/fn_execute_pipeline_step)   
+> • [`backend.fn_execute_pipeline_step`](/backend/vendite/funzioni/fn_execute_pipeline_step)   
 > • [`vendite.fn_select_attivita_fatturabili`](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili)  
 >
 ---
@@ -106,7 +106,7 @@ tecnici. Esempio (schema indicativo):
 * L’orchestratore legge questa tabella per decidere **quali processi** eseguire
   e come gestire il **rollback**.
 * I singoli processi devono essere **idempotenti** o progettati per gestire retry.
-* I task eseguiti sono gestiti da `vendite.fn_execute_pipeline_step` tramite
+* I task eseguiti sono gestiti dal runtime Django (`PipelineStepExecutor`) tramite
   whitelist (es. `select_attivita`, `genera_fondi_source_lotto`,
   `applica_fondi_lotto`, `ricalcola_iva_lotto`, `prepare_sdi_payload_lotto`, `numera_fatture`,
   `reset_lotto_draft`, `noop`, `log_only`).

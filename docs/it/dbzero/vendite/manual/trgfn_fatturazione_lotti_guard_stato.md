@@ -10,7 +10,6 @@
 > **Approfondimento funzioni:**
 >
 > • [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)  
-> • [vendite.pr_run_lotto_pipeline](/dbzero/vendite/funzioni/pr_run_lotto_pipeline)  
 >
 ---
 

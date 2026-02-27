@@ -222,8 +222,8 @@ erDiagram
 * [vendite.fn_resolve_fatturazione_pipeline_step](/dbzero/vendite/funzioni/fn_resolve_fatturazione_pipeline_step)
 * [vendite.fn_list_fatturazione_pipeline_steps](/dbzero/vendite/funzioni/fn_list_fatturazione_pipeline_steps)
 * [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)
-* [vendite.pr_run_lotto_pipeline](/dbzero/vendite/funzioni/pr_run_lotto_pipeline)
-* [vendite.fn_execute_pipeline_step](/dbzero/vendite/funzioni/fn_execute_pipeline_step)
+* [backend.execute_pipeline_step](/backend/vendite/funzioni/fn_execute_pipeline_step)
+* [backend.run_lotto_pipeline](/backend/vendite/manual/pr_run_lotto_pipeline)
 * [vendite.fn_start_lotto_task_run](/dbzero/vendite/funzioni/fn_start_lotto_task_run)
 * [vendite.fn_complete_lotto_task_run](/dbzero/vendite/funzioni/fn_complete_lotto_task_run)
 * [vendite.fn_fail_lotto_task_run](/dbzero/vendite/funzioni/fn_fail_lotto_task_run)
@@ -244,6 +244,14 @@ erDiagram
 3. Ogni task-run deve essere tracciato con `tentativo` ed esito (`IN_ESECUZIONE`, `COMPLETATO`, `ERRORE`, `ANNULLATO`).
 4. Le policy runtime task (resume/reset/annullabilita`) sono esterne alla sequenza step e risiedono in `fatturazione_pipeline_task_policy`.
 5. I task devono lavorare con input centrato sul `lotto_id`, recuperando il resto dal contesto lotto.
+
+### Naming runtime (Python)
+
+Per evitare ambiguita` tra SQL legacy e runtime applicativo:
+
+* nel runtime Python usare naming senza prefissi DB (`run_lotto_pipeline`, `execute_pipeline_step`, `run_commesse_push`);
+* i nomi storici SQL (`pr_*`, `fn_*`) restano solo riferimento storico/documentale quando presenti;
+* la semantica operativa corrente e` governata dai service Django.
 
 ---
 
@@ -295,6 +303,8 @@ Regole tecniche:
 
 Il flusso e` pensato per esecuzione schedulata e on-demand.
 
+L'orchestrazione runtime e` applicativa (Python): il database mantiene stato, regole e log di dominio.
+
 Pattern consigliato:
 
 1. Job push commesse (frequenza alta, perimetro sorgenti configurabile).
@@ -306,6 +316,7 @@ Guardrail operativi:
 * evitare sovrapposizione di job sullo stesso perimetro BA/utility/competenza;
 * usare lock applicativi/DB e run marker;
 * prevedere retry controllato solo su step idempotenti.
+* mantenere la policy di retry/backoff nel layer orchestratore Python (non nelle funzioni SQL).
 
 ---
 

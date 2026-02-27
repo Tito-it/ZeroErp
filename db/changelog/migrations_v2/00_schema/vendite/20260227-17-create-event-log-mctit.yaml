@@ -1,0 +1,201 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260227-17-create-event-log-mctit.yaml
+
+  - changeSet:
+      id: 20260227-17-create-event-log
+      author: mctit
+      comment: "Crea event log unificato append-only per timeline cross-dominio."
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: event_log
+            remarks: "Event log append-only unificato per pipeline/commesse/sdi/fatture."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: ALWAYS
+                  remarks: "PK tecnica evento."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_event_log
+                    nullable: false
+              - column:
+                  name: event_time
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp evento in timeline."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: domain
+                  type: text
+                  remarks: "Dominio funzionale evento (PIPELINE, COMMESSE, SDI, FATTURE)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: entity_type
+                  type: text
+                  remarks: "Tipo entita` referenziata dall'evento."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: entity_id
+                  type: bigint
+                  remarks: "ID entita` nel dominio indicato da entity_type."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: event_code
+                  type: text
+                  remarks: "Codice canonico evento (es. STEP_STARTED, PUSH_COMPLETED)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: severity
+                  type: text
+                  defaultValue: "INFO"
+                  remarks: "Severita` evento: INFO, WARN, ERROR."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: correlation_id
+                  type: uuid
+                  remarks: "Correlation ID cross-servizio (job_run_id/lock_batch_id)."
+                  constraints:
+                    nullable: true
+              - column:
+                  name: actor
+                  type: text
+                  remarks: "Attore tecnico che emette l'evento."
+                  constraints:
+                    nullable: true
+              - column:
+                  name: source
+                  type: text
+                  remarks: "Origine tecnica evento (django, sql, api)."
+                  constraints:
+                    nullable: true
+              - column:
+                  name: payload
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Dettaglio evento serializzato in JSONB."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: data inserimento record."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente inserimento record."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: data aggiornamento record (non usata in append-only)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente aggiornamento record (non usata in append-only)."
+                  constraints:
+                    nullable: false
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Rendere il log eventi append-only con indice timeline.
+              --
+              -- Regole:
+              --   - severity ammessa: INFO|WARN|ERROR
+              --   - UPDATE/DELETE non consentiti su event_log
+              -- =========================================================
+              ALTER TABLE vendite.event_log
+                ADD CONSTRAINT chk_event_log_severity
+                CHECK (severity IN ('INFO', 'WARN', 'ERROR'));
+
+              CREATE INDEX IF NOT EXISTS ix_event_log_entity_time
+                ON vendite.event_log (entity_type, entity_id, event_time DESC);
+
+              CREATE INDEX IF NOT EXISTS ix_event_log_domain_time
+                ON vendite.event_log (domain, event_time DESC);
+
+              CREATE INDEX IF NOT EXISTS ix_event_log_corr_time
+                ON vendite.event_log (correlation_id, event_time DESC);
+
+              COMMENT ON TABLE vendite.event_log
+                IS 'Event log unificato append-only per timeline cross-dominio (pipeline, commesse, sdi, fatture).';
+
+              COMMENT ON COLUMN vendite.event_log.domain
+                IS 'Dominio evento (es. PIPELINE, COMMESSE, SDI, FATTURE).';
+
+              COMMENT ON COLUMN vendite.event_log.entity_type
+                IS 'Tipo entita` tracciata (es. LOTTO, FATTURA, COMMESSA, TASK_RUN).';
+
+              COMMENT ON COLUMN vendite.event_log.entity_id
+                IS 'ID della singola entita` tracciata nel dominio indicato da entity_type.';
+
+              COMMENT ON COLUMN vendite.event_log.event_code
+                IS 'Codice evento canonico (es. STEP_STARTED, STEP_COMPLETED, PUSH_STARTED).';
+
+              COMMENT ON COLUMN vendite.event_log.severity
+                IS 'Severita` evento: INFO | WARN | ERROR.';
+
+              COMMENT ON COLUMN vendite.event_log.correlation_id
+                IS 'Correlation ID cross-servizio per ricostruire flussi distribuiti.';
+
+              COMMENT ON COLUMN vendite.event_log.actor
+                IS 'Attore tecnico che emette l''evento (es. system, service:django, db:function_name).';
+
+              COMMENT ON COLUMN vendite.event_log.source
+                IS 'Origine tecnica evento (es. django, sql, api).';
+
+              COMMENT ON COLUMN vendite.event_log.payload
+                IS 'Payload JSONB con dettaglio tecnico/funzionale dell''evento.';
+
+              COMMENT ON COLUMN vendite.event_log.data_insert
+                IS 'Audit standard: data inserimento record.';
+
+              COMMENT ON COLUMN vendite.event_log.user_insert
+                IS 'Audit standard: utente inserimento record.';
+
+              COMMENT ON COLUMN vendite.event_log.data_update
+                IS 'Audit standard: data aggiornamento record (append-only: invariata).';
+
+              COMMENT ON COLUMN vendite.event_log.user_update
+                IS 'Audit standard: utente aggiornamento record (append-only: invariata).';
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_event_log_append_only()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $$
+              BEGIN
+                RAISE EXCEPTION 'vendite.event_log e'' append-only: operazione % non consentita', TG_OP;
+              END;
+              $$;
+
+              DROP TRIGGER IF EXISTS trg_event_log_append_only_ud ON vendite.event_log;
+              CREATE TRIGGER trg_event_log_append_only_ud
+              BEFORE UPDATE OR DELETE ON vendite.event_log
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_event_log_append_only();

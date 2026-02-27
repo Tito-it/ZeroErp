@@ -13,7 +13,7 @@
 ## ✅ Recap stato (sintesi)
 
 - [x] Pipeline fatturazione su `vendite.fatturazione_pipeline` con fallback `utility_id`/`tipo_doc_fiscale_id`.
-- [x] Orchestrazione Django (`pr_run_lotto_pipeline`, `fn_execute_pipeline_step`).
+- [x] Orchestrazione Django (`pr_run_lotto_pipeline` e `fn_execute_pipeline_step` Python; componenti SQL legacy rimosse).
 - [x] Registry task multi-dominio in DB (`dbops.domini_task`, `dbops.pipeline_task_registry`, `dbops.pipeline_task_registry_impl`).
 - [x] `implementation_key` nei task JSON e dispatch via registry DB.
 - [x] Log fatture e flag `critical` (tabella `vendite.fatture_log` + sync).
@@ -35,8 +35,6 @@
 - [x] Modello compensazioni spostato su `pagamenti.vendite_contabili.compensazione_id`.
 - [x] Blocco link lotto su testate di compensazione (guard su `vendite_contabili_lotti`).
 - [x] Guida tecnica pagamenti creata (`docs/it/guide/pagamenti.md`).
-- [x] Pipeline dedicata per `attivita_fatturabili` (tabella + funzioni resolve/list).
-- [ ] Pipeline `attivita_fatturabili`: completamento log/runner/handler dominio.
 - [ ] Registry runtime multi-dominio completo in Django (mappa per dominio).
 - [x] Resume `DEFINITIVA` a livello fattura (ripartenza da errore senza reset globale).
 - [x] Policy rerun `MASSIVO` nel runner Django: resume dallo step corrente + rollback step opzionale con `meta.auto_step_rollback=true` (skip rollback distruttivi in auto-run).
@@ -96,77 +94,21 @@ Changeset principali:
    - riallineate:
      - `trgfn_attivita_fatturabili_guard_ba_coerenza`
      - `trgfn_attivita_fatturabili_guard_fonte`
-10. `20260222-10`  
-    `00_schema/vendite/20260222-10-create-attivita-fatturabili-pipeline-task-policy-mctit.yaml`
-    - nuova tabella `attivita_fatturabili_pipeline_task_policy`
-    - policy task runtime dedicate al dominio attività con:
-      - `branch_code`
-      - `resume_mode` esteso (`...|RESUME_BRANCH`)
-      - `block_scope` (`BRANCH|GLOBAL`)
-      - `depends_on` (`jsonb`)
-11. `20260222-11`  
-    `00_schema/vendite/20260222-11-create-attivita-fatturabili-lotti-task-runs-mctit.yaml`
-    - nuova tabella tracing `attivita_fatturabili_lotti_task_runs`
-    - supporto runtime branch-oriented (`branch_code`, `block_scope`, `depends_on`)
-    - FK verso `attivita_fatturabili_lotti`, `attivita_fatturabili_pipeline`, `config.sorgenti`
-12. `20260222-12`  
-    `20_code/vendite/20260222-12-create-fn-attivita-pipeline-task-runtime-support-mctit.yaml`
-    - nuove funzioni runtime attività:
-      - `fn_get_attivita_pipeline_task_policy`
-      - `fn_start_attivita_lotto_task_run`
-      - `fn_complete_attivita_lotto_task_run`
-      - `fn_fail_attivita_lotto_task_run`
-      - `fn_cancel_attivita_lotto_task_run`
-      - `fn_list_attivita_lotto_task_runs`
-
 Nota operativa:
 - Prima della conferma finale del pacchetto DB-2, consigliata esecuzione test pgtap dedicati su:
   - coerenza BA/emittente
   - mapping stati esecuzione
   - transizioni stato lotto attività.
 
-## ✅ Recap operativo pipeline fatturazione (DB + Django)
-
-- [x] Runner Django in produzione logica pipeline (`LottoPipelineRunner` + `PipelineStepExecutor`).
-- [x] Config pipeline DB allineata agli step `DRAFT` -> `EMESSA` -> `DEFINITIVA`.
-- [x] Step `EMESSA` massivo con task fondi/IVA e chiusure operative coerenti.
-- [x] Policy rerun `MASSIVO` in errore: resume dallo step corrente.
-- [x] Rollback step opzionale (`meta.auto_step_rollback=true`) con guard su rollback distruttivi.
-- [x] `DEFINITIVA` in modalita resume (no reset globale lotto).
-- [x] Error envelope + idempotency API centralizzati e allineati al flusso.
-- [x] Test unit runner aggiornati e verdi (`apps.vendite.tests.services.test_pipeline_runner`).
 
 ## 🛣️ Roadmap runtime task/stato_lotto (nuova)
 
 Obiettivo: rendere esplicita la gestione runtime per task, mantenendo `stato_lotto`
 come stato tecnico di esecuzione e `stato_operativo` come stato business del lotto.
 
-### Decisioni confermate
 
-- [x] Chiusura lotto solo via flag `config.stati_doc_fiscale.chiude_lotto` a fine step.
-- [x] Nessuna chiusura hardcoded su stato specifico.
-- [x] In errore step/task: stop del flusso e blocco task successivi nello stesso run.
-- [x] Annulla/reset gestiti fuori dal flusso di avanzamento standard.
 
-### Sviluppi DB da introdurre
 
-- [x] `vendite.fatturazione_pipeline_task_policy`
-  - policy task per pipeline (`annullabile`, strategia resume/reset, metadati operativi).
-- [x] `vendite.fatturazione_lotti_task_runs`
-  - traccia runtime per task (start/end, esito, tentativo, errore, contesto step/lotto).
-
-### Sviluppi Django successivi
-
-- [x] runner aggiornato per leggere policy task da DB prima dell'esecuzione.
-- [x] gestione resume/reset per task in base alla policy (`annullabile`, `resume_mode`).
-- [x] blocco rilancio task quando policy non consente retry automatico.
-
-### Criteri di completamento roadmap
-
-- [x] policy task applicata in runtime su almeno i task DRAFT/EMESSA/DEFINITIVA.
-- [x] tracing task consultabile da API/log dominio senza parsing del solo `error_log`.
-- [x] test pgtap + test service Django verdi su flussi: ok, errore task, resume/reset.
-  - Django/API verdi; pgtap runtime da rieseguire in ambiente con `internal.env` disponibile.
 
 ### Stato SDI (dettaglio operativo)
 
@@ -183,14 +125,6 @@ Da implementare (step successivi):
 * evento applicativo su `vendite.fatture_sdi_eventi` (`FILE_GENERATO` e successivi).
 * step invio canale SDI con gestione esiti (accettazione/scarto/consegna).
 
-## ✅ Go-live checklist tecnica (stato)
-
-- [x] Seed transizioni lotto coerente con step pipeline (evitati duplicati logici su `8 -> 3`).
-- [x] Seed registry task/implementation coerente con task JSON pipeline.
-- [x] Documentazione guida + WIP riallineata al comportamento reale runner.
-- [x] Consolidare checklist test finale unica (pgtap + Django + smoke API end-to-end).
-- [ ] Estendere stesso pattern a pipeline `attivita_fatturabili` (runner/handler/test).
-
 ## 🚦 Test gravita disallineamenti (guida vs WIP)
 
 Riferimento confronto:
@@ -201,16 +135,8 @@ Riferimento confronto:
 
 Esito sintetico:
 
-* **ALTA**: 1 area
 * **MEDIA**: 3 aree
 * **BASSA**: 2 aree
-
-### Alta gravita
-
-* **Pipeline `attivita_fatturabili` non ancora attiva**
-  * Impatto: blocca la chiusura completa del disegno end-to-end (alimentazione -> fatturazione) in modalita pipeline uniforme.
-  * Azione: introdurre tabella/funzioni pipeline dominio attivita e relativo pacchetto test.
-  * Stato: **aperta**.
 
 ### Media gravita
 
@@ -241,75 +167,11 @@ Esito sintetico:
   * Azione: concentrare i TODO residui in checklist finale.
   * Stato: **pianificata**.
 
-## ✅ Attivita chiuse (formalizzazione)
-
-Le seguenti attivita sono considerate **chiuse** e allineate con la guida principale:
-
-* [x] Pipeline fatturazione configurabile (`vendite.fatturazione_pipeline`) con fallback.
-* [x] Orchestrazione spostata in Django (runner/step executor).
-* [x] Registry task DB multi-dominio introdotto (`dbops.*`).
-* [x] Dispatch con `implementation_key` e binding controllato.
-* [x] Gestione log fatture e allineamento flag `critical`.
-* [x] Chiusura operativa lotto a fine step guidata da `chiude_lotto` (senza task dedicato).
-* [x] Refactor fondi fattura verso contabili/righe.
-* [x] Refactor saldo fattura (residuo documento) + saldo contabile postabile.
-* [x] Compensazioni agganciate a testata contabile.
-* [x] Guida pagamenti pubblicata e coerente col modello contabile.
-
-Nota:
-le chiusure sopra restano valide salvo refactor strutturali successivi.
 
 
 ***Fine test gravità***
 
-
-### Stato documenti WIP (allineamento)
-
-* [x] `pipeline-domini-engine.md` riallineato su scelta: pipeline DB per dominio + registry condiviso
-* [x] `fatturazione-attivita-progetto.md` aggiornato con avanzamento su fondi/contabili/saldi
-* [x] Guida `fatturazione.md` integrata con sezione minimi/fondi fattura
-* [x] Guida `pagamenti.md` introdotta con dashboard (WIP) e vincoli architetturali
-* [x] Consolidare checklist test finali (pgtap + Django) in sezione unica di chiusura
-
-### ✅ Checklist finale unificata (DB + Django + API)
-
-#### 1) Test DB / pgtap (SQL)
-
-* [x] Eseguiti test pgtap SQL principali del dominio fatturazione/pagamenti.
-* [x] Nessun errore bloccante su migrazioni/funzioni SQL coinvolte nel flusso.
-
-Comando base:
-
-```bash
-scripts/testpgtap.sh db/pgtap/<schema>/<test-file>.sql
-```
-
-#### 2) Test Django services
-
-* [x] Eseguire suite servizi pipeline:
-  * [x] `apps.vendite.tests.services.test_pipeline_runner`
-  * [x] `apps.vendite.tests.services.test_pipeline_step_executor`
-* [x] Eseguire suite servizi reset/lotto/fattura.
-
-Comando base:
-
-```bash
-./manage-test.sh apps.vendite.tests.services -v 2
-```
-
-#### 3) Test API
-
-* [x] Eseguire test API pipeline/reset:
-  * [x] `apps.vendite.tests.api.test_pipeline_api`
-  * [x] `apps.vendite.tests.api.test_reset_lotto_draft_api`
-  * [x] `apps.vendite.tests.api.test_reset_lotto_fattura_draft_api`
-* [x] Verificare idempotency + envelope errori.
-
-Comando base:
-
-```bash
-./manage-test.sh apps.vendite.tests.api -v 2
-```
+## ✅ Checklist finale unificata (DB + Django + API)
 
 #### 4) Smoke end-to-end (manuale)
 
@@ -373,14 +235,6 @@ ma mantenendo la tracciabilita` tramite lotto giornaliero.
 * Nessuna chiusura hardcoded su stato specifico (es. `INVIATA`):
   vale solo la regola `chiude_lotto`.
 
-### Processo puntuale (fuori pipeline)
-
-* Deve riusare **gli stessi servizi/primitive** del massivo:
-  `select_attivita` (lock), `get_or_create_fattura_header`,
-  `generate_fatture_righe`, `fn_numera_fattura_opz_emessa`.
-* Deve garantire **idempotenza** e **lock** sul lotto giornaliero.
-* Deve loggare su `fatturazione_lotti_log` per tracciabilita`.
-* Deve agganciare sempre la fattura al lotto giornaliero aperto.
 
 ### Nota di coerenza
 
@@ -401,252 +255,7 @@ ma senza passare dalla pipeline lotto.
 
 ---
 
-## 1) Processo di alimentazione `attivita_fatturabili`
-
-### 🎯 Scopo
-Creare le righe pre‑documentali che rappresentano **tutto cio` che potra` essere fatturato**.
-
-### 🔌 Sorgenti (macro‑tipi)
-Le sorgenti sono definite in `config.sorgenti` e rappresentano **origini dati** eterogenee. Esempio:
-
-1. ATTIVITA (RIGA)  
-2. PREVENTIVO (DOCUMENTO)  
-3. PREVENTIVO_RIGA (RIGA)  
-4. CONTRATTO (DOCUMENTO)  
-5. CONTRATTO_RIGA (RIGA)  
-6. ORDINE_VENDITA (DOCUMENTO)  
-7. ORDINE_VENDITA_RIGA (RIGA)  
-8. DDT_VENDITA (DOCUMENTO)  
-9. DDT_VENDITA_RIGA (RIGA)  
-10. FATTURA (DOCUMENTO)  
-11. FATTURA_RIGA (RIGA)
-
-### 🧩 Logica di alimentazione
-* Ogni sorgente genera righe in `vendite.attivita_fatturabili` con:
-  `sorgente_tipo_id`, `sorgente_uid`/`sorgente_riga`, `articolo_id`, `istanza_utility_id`, `quantita`, `competenza_*`.
-* L’idempotenza e` garantita dalla coppia `(sorgente_tipo_id, sorgente_uid)` con indice unico parziale.
-* Le righe nascono **in bozza** (`approvato = false`) e vengono validate/approvate nel passaggio successivo.
-
-### 🖥️ Dashboard “Input Fatturazione”
-* Selezione sorgenti e intervalli (periodo, BA, istanza, utility).
-* Visualizzazione righe candidate e preview dei conteggi.
-* Avvio del processo di alimentazione (batch o manuale).
-
-**Integrazione utilities (gas/energia/acqua)**  
-Non tutte le sorgenti possono alimentare direttamente `attivita_fatturabili`:
-nei casi utilities serve un **processo di calcolo preliminare** dei consumi.
-La dashboard “Input” deve quindi gestire due flussi:
-
-1) **Alimentazione diretta** → inserimento righe `attivita_fatturabili` da sorgenti semplici.  
-2) **Alimentazione con calcolo** → generazione di `attivita_consumi` (testata consumi),
-   log dedicato e successiva produzione di righe `attivita_fatturabili`.
-
-Il processo di alimentazione avviene **prima** del lotto fatture e mantiene tracciabilita`
-tramite `attivita_fatturabili_lotti`.
-
----
-
-## 2) Processo operativo di calcolo (pre‑emissione)
-
-### 🎯 Scopo
-Trasformare attivita` approvate e fatturabili in **righe economiche** di fattura.
-
-### 🔎 Selezione
-* `approvato = true`
-* `fatturato = false`
-* `sospesa = false`
-* `posticipa_al` in regola con la data fatturazione
-* competenza mensile/puntuale in regola
-
-### 🔒 Isolamento batch
-* `lock_in_fatturazione` e `lock_batch_id` garantiscono coerenza di selezione.
-* Evita doppie estrazioni concorrenti.
-
-### 🧮 Output
-* Generazione `vendite.fatture_righe` con snapshot economici (prezzo, IVA, UoM, importi).
-* Aggancio a `vendite.attivita_fatturabili` (`fattura_riga_id`, `fatturato = true`).
-
-### 🖥️ Dashboard “Pre‑Calcolo”
-* Visualizzazione delle righe eleggibili e motivi di esclusione.
-* Azioni: approva/sospendi/posticipa.
-* Lancio calcolo batch con log esiti e anomalie.
-
----
-
-## 3) Processo di emissione documento (output)
-
-### 🎯 Scopo
-Convertire il risultato del calcolo in **documento fiscale numerato**.
-
-### ✅ Separazione dal calcolo
-Il **calcolo** produce righe; l’**emissione** produce la testata, la numerazione e gli output fiscali.
-
-### 🔢 Numerazione
-* Assegnata **solo** in fase di emissione (cambio di stato).
-* Regole gestite da `vendite.registri_fatturazione`.
-
-### 📦 Output correlati
-* `vendite.fatture_riepiloghi_iva`
-* `vendite.fatture_scadenze`
-* `vendite.note` (e partizioni dedicate)
-* `vendite.fatture_indirizzi` (se previsto)
-
-### 🖥️ Dashboard “Emissione”
-* Preview del documento, controlli finali e numerazione.
-* Conferma emissione con log degli esiti.
-
----
-
-## 4) Dashboard e varianti operative
-
-### ✅ Dashboard standard
-* **Input Fatturazione** → alimenta `attivita_fatturabili`
-* **Pre‑Calcolo** → selezione, approvazione, calcolo righe
-* **Emissione** → numerazione e creazione documento
-
-### 🔁 Variante: invio SDI (Italia)
-* **Estrazione** del documento in formato fiscale (es. XML FatturaPA).
-* **Invio** a canali SDI e registrazione esiti (accettato/scartato).
-* **Nota di variante**: in altri paesi si sostituisce il canale SDI con sistemi locali o e‑invoicing alternativi.
-
-### 📊 Variante: controlli e statistiche
-* **Pre‑emissione**: controlli di anomalia (importi negativi, IVA mancante, competenze fuori periodo, mismatch BA/istanza).
-* **Post‑emissione**: riepiloghi fiscali e gestionali:
-  * per gruppi voce / articoli
-  * per utility / BA / periodo
-  * per stato documento (bozza, emessa, annullata)
-
----
-
-## 🧠 Linee guida di progettazione
-
-1. **Separare sempre calcolo vs emissione**  
-   Il calcolo e` idempotente e ripetibile; l’emissione e` un’azione fiscale “finale”.
-
-2. **Dashboard come orchestratore**  
-   Il motore batch deve essere avviato da contesto visibile e controllato (input + pre‑calcolo + emissione).
-
-3. **Idempotenza garantita dalle sorgenti**  
-   Le sorgenti alimentano `attivita_fatturabili` evitando duplicazioni con chiavi uniche parziali.
-
-4. **Audit e log sempre presenti**  
-   Ogni fase deve loggare esiti, scarti, errori e motivi di esclusione.
-
----
-
-## ✅ Risultato atteso
-
-Un processo fatturazione **modulare**, verificabile e scalabile:
-
-* sorgenti ingegnerizzate → `attivita_fatturabili`
-* calcolo controllato → `fatture_righe`
-* emissione separata → `fatture` numerate
-* dashboard e output fiscali governati
-
----
-
-## 🧩 Collegamenti tabellari (visione sintetica)
-
-```mermaid
-flowchart TD
-  subgraph INPUT["Sorgenti (input)"]
-    PREV["vendite.preventivi"]
-    PREVR["vendite.preventivi_righe"]
-    CONT["vendite.contratti"]
-    CONTR["vendite.contratti_righe"]
-    ORD["vendite.ordini"]
-    ORDR["vendite.ordini_righe"]
-    DDT["vendite.ddt"]
-    DDTR["vendite.ddt_righe"]
-  end
-
-  AF["vendite.attivita_fatturabili"]
-
-  subgraph OUTPUT["Output (documenti)"]
-    FR["vendite.fatture_righe"]
-    F["vendite.fatture"]
-  end
-
-  PREV --> AF
-  PREVR --> AF
-  CONT --> AF
-  CONTR --> AF
-  ORD --> AF
-  ORDR --> AF
-  DDT --> AF
-  DDTR --> AF
-
-  AF --> FR
-  FR --> F
-```
-
----
-
-## 📌 Attivita` da introdurre – Fondi fattura (WIP)
-
-### Scopo
-Separare i **fondi fattura** dalle righe standard per garantire semantica corretta,
-tracciabilita` verso documenti precedenti e calcolo deterministico del totale a pagare.
-
-### Modello proposto
-
-**Nuove tabelle:**
-
-* `vendite.tipi_fondi_fattura`
-  * `id`, `codice`, `codice_interno`, `descrizione`, `meta`, audit
-* `vendite.fatture_fondi_fattura`
-  * `id`, `fattura_id`, `riferimento_fattura_id`, `tipo_fondo_fattura_id`, `importo`, `meta`, audit
-
-**Modifiche a `vendite.fatture`:**
-
-* `totale_doc` resta: `imponibile_tot + imposta_tot`
-* introdurre `totale_a_pagare` (totale fiscale + arrotondamenti + fondi)
-* rimuovere `totale_escluso_imponibile` (sostituito dalla somma fondi)
-
-**Modifiche a `catalogo.articoli`:**
-
-* rimuovere `fondo_fattura` (non piu` coerente come flag articolo)
-
-### Impatti su logica Django
-
-* Il processo di generazione righe **non** deve creare fondi fattura.
-* I fondi fattura vanno gestiti da **servizio dedicato** (API o batch).
-* Il ricalcolo totali deve includere `SUM(fatture_fondi_fattura.importo)`.
-
-### Note operative
-
-* Nessuna migrazione dati (al momento non esistono righe fondo fattura).
-* Aggiornare `fn_ricalcola_totali_fattura` e test pgtap relativi.
-
----
-
-## 📌 Analisi fondi fattura – processo e regole (WIP)
-
-### Problema da risolvere
-
-I fondi fattura non sono righe di vendita. Sono addebiti/accrediti extra
-(minimi fatturati, canone RAI, recuperi precedenti) e richiedono:
-
-* tracciabilita` verso fattura origine
-* idempotenza (niente riaddebiti)
-* gestione storni/riaperture
-
-### Separazione necessaria
-
-1) **Sorgente fondo**: credito/debito originario da fattura precedente.  
-2) **Fondo applicato**: addebito collegato alla fattura corrente.
-
-### Tabella sorgente (core logico)
-
-`vendite.fatture_fondi_fattura_source`:
-
-* `fattura_sorgente_id`
-* `tipo_fondo_fattura_id`
-* `importo`
-* `stato`: `DISPONIBILE` | `ASSEGNATO` | `ANNULLATO`
-* `fattura_figlia_id`, `data_assegnazione`, `user_assegnazione`
-* denormalizzazioni: `billing_account_id`, `utility_id`, `tipo_doc_fiscale_id`,
-  `emittente_soggetto_ruolo_id`, `valuta_id`
+## 📌 Analisi fondi fattura (WIP)
 
 ### Processo 1: Generazione source
 
@@ -721,42 +330,6 @@ Il lotto viene marcato: `stato_doc_fiscale = ANNULLATA`, `stato_operativo = CHIU
 
 ---
 
-### 1.1) Processo di alimentazione attivita_fatturabili (necessita`)
-
-In ambito utilities (gas/energia/acqua) la **generazione** di `attivita_fatturabili`
-non e` un semplice import ma un **calcolo complesso** (consumi, conguagli, minimi, fasce).
-Questo richiede:
-
-* **tracciabilita` batch** (quando e` stato eseguito il calcolo, con quali parametri);
-* **log dedicato** (warning/critical specifici del calcolo consumi);
-* **testata di calcolo** con totali e periodi per BA/competenza;
-* separazione chiara tra **alimentazione** e **fatturazione**.
-
-Per questo si introduce un **processo di alimentazione** separato dal lotto fatture,
-ma collegabile in dashboard.
-
-> Nota: le validazioni/normalizzazioni su `attivita_fatturabili` sono gestite da
-> trigger dedicati (es. `trgfn_attivita_fatturabili_guard_ba_coerenza`,
-> `trgfn_attivita_fatturabili_guard_fonte`, `trgfn_attivita_norm_competenza_mese`).
-
----
-
-### 1.2) Lotto alimentazione + attivita_consumi (design)
-
-**Lotto alimentazione** (`vendite.attivita_fatturabili_lotti`):
-* batch di generazione `attivita_fatturabili` con parametri di calcolo (competenza, utility, BA);
-* stato lotto (IN_ESECUZIONE | COMPLETATO | ERRORE);
-* riferimento per dashboard e audit.
-
-**Testata consumi** (`vendite.attivita_consumi`):
-* totalizzatori per BA/periodo (consumo_totale, uom, periodo);
-* punto di aggregazione per i dettagli futuri (fasce, minimi, ecc.);
-* collegabile a `fattura_id` quando il documento e` emesso.
-
-**Log dedicato** (`vendite.attivita_fatturabili_log`):
-* messaggi W/C riferiti al lotto o alla testata consumi.
-
----
 
 ### 1.3) Area geografica (analisi)
 
@@ -1018,23 +591,7 @@ In questo modo ogni esecuzione e` **monitorabile** e correlata al `lotto_id`.
 
 ---
 
-### 11) Emittente fiscale e valuta in `attivita_fatturabili` (proposta)
-
-**Emittente fiscale (ruolo):**
-
-* ✅ introdurre una tabella di mapping **billing_account → emittente fiscale** (ruolo).
-* ✅ l’emittente fiscale va **sempre valorizzato** per coerenza, anche quando coincide con il gestore.
-* ✅ se un **billing_account** non e` associato, usare un **emittente di default** (per evitare configurazioni manuali in presenza di un solo emittente).
-
-**Valuta + prezzo in attivita_fatturabili:**
-
-* ✅ aggiungere `valuta_id` su `vendite.attivita_fatturabili`.
-* ✅ aggiungere `prezzo_unitario numeric(20,8)`.
-* ✅ la valuta di default resta derivabile da configurazione (utility/azienda), ma la riga deve avere il valore **esplicito** per calcoli deterministici.
-
----
-
-### 12) Sottoprocessi richiamabili (scomposizione)
+### 11) Sottoprocessi richiamabili (scomposizione)
 
 Per evitare monoliti, la pipeline deve essere composta da procedure richiamabili:
 
@@ -1046,55 +603,7 @@ Per evitare monoliti, la pipeline deve essere composta da procedure richiamabili
 
 ---
 
-### 13) Tabelle da introdurre o modificare (prima della logica)
-
-**Nuove tabelle (proposte):**
-
-* ✅ `vendite.fatturazione_lotti` (lotto + stato job/documenti + lock uuid)
-* ✅ `vendite.fatturazione_lotti_fatture` (relazione lotto ↔ fattura + stato SDI + esclusione)
-  
-* ✅ -`config.stati_sdi` (stati canale SDI)
-* ✅ `config.stati_doc_fiscale` (stati documento con flag `applica_lotto` / `applica_fattura`)
-  
-* ✅ `vendite.tipi_doc_fiscale_registri` (mapping **tipo documento → registro**)
-
-* ✅ `anagrafiche.emittenti_fiscali_billing_account` (mapping **billing_account → emittente fiscale**)
-  * aggiungere `default boolean` con **unicita`** del valore `true`
- `dbops.jobs`, `dbops.job_runs`, `dbops.job_steps` (modello job)
-  
-* ✅ `vendite.fatture_log` (log anomalie documento)
-
-* ✅  `anagrafiche.resellers_billing_account` (mapping **billing_account → reseller** senza default)
-  * campi minimi: `id`, `billing_account_id`, `reseller_soggetto_ruolo_id`, `meta`, audit
-
-**Tabelle da modificare (proposte):**
-
-* ✅ `vendite.attivita_fatturabili` → aggiungere `tipo_doc_fiscale_id`, `valuta_id`, `prezzo_unitario`
-* ✅ `config.sorgenti` → aggiungere `tipo_doc_fiscale_id` (per sorgenti RIGA)
-* ✅ `config.utilities` → aggiungere `tipo_doc_fiscale_id` default
-* ✅ `vendite.fatture` → aggiungere `registro_id` e `critical`
-
-* ✅ `config.stati_doc_fiscale` → rimuovere stati SDI e aggiungere `stato_precedente_ammesso`
- 
-* ✅  `catalogo.articoli_componenti` → aggiungere `determina_qta_padre`
-
-* ✅ `anagrafiche.resellers` → bloccare `attivo = false` se esistono mapping su `resellers_billing_account`
-
----
-
-### 14) Collegamento lotto ↔ fatture e esclusioni
-
-La relazione tra lotto e fatture deve essere esplicita:
-
-* ✅ tabella `vendite.fatturazione_lotti_fatture` con `lotto_id`, `fattura_id`, `stato_sdi_id`
-* ✅ flag `esclusa boolean` per escludere una fattura dal lotto
-  * ✅ `esclusa = true` ammesso **solo** se `stato_doc_fiscale = DRAFT`
-
-Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fatture.
-
----
-
-### 15) Log anomalie fattura e blocco numerazione/invio
+### 12) Log anomalie fattura e blocco numerazione/invio
 
 * ✅ tabella `vendite.fatture_log` con:
   * `id`, `fattura_id`, `data_ora`, `messaggio`, `status` (W=warning, C=critical), `disabilitato`
@@ -1106,7 +615,7 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 
 ---
 
-### 16) Sviluppi funzioni (backlog)
+### 13) Sviluppi funzioni (backlog)
 
 **Preparazione lotto**
 
@@ -1145,21 +654,21 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 
 **Pipeline (orchestrazione lotto)**
 
-*✅ `vendite.pr_run_lotto_pipeline(...)` → esegue la pipeline configurabile leggendo `vendite.fatturazione_pipeline`.
+* ✅ Servizio Python `pr_run_lotto_pipeline(...)` → esegue la pipeline configurabile leggendo `vendite.fatturazione_pipeline`.
   * imposta `stato_lotto = IN_ESECUZIONE` all’avvio e `COMPLETATO` a fine job.
   * per ogni step:
     * aggiorna `stato_doc_fiscale_id` del lotto,
     * scrive un log `status=I` con `fase` su `fatturazione_lotti_log`,
     * esegue i task definiti in `processi`.
   * in caso di errore: `stato_lotto = ERRORE` + log errore.
-* ✅`vendite.fn_execute_pipeline_step(...)` → esegue i task di uno step (lettura `processi`/`rollback`).
+* ✅ Servizio Python `fn_execute_pipeline_step(...)` → esegue i task di uno step (lettura `processi`/`rollback`).
 * ✅ `vendite.fn_log_pipeline_fase(...)` → inserisce log `I/W/C` con fase e stato lotto.
 * Pipeline configurabile anche per `utility_id` e `tipo_doc_fiscale_id`, con fallback su `NULL`
   per mantenere una configurazione base riusabile.
 
 ---
 
-### 18) Sviluppi – Area geografica (backlog)
+### 14) Sviluppi – Area geografica (backlog)
 
 **Tabelle**
 
@@ -1180,7 +689,7 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 
 ---
 
-### 17) Nota su Fatturazione Elettronica (FE)
+### 15) Nota su Fatturazione Elettronica (FE)
 
 * Il mapping **FE** (es. TD01, TD04) non e` gestito nel tipo documento attuale.
 * La classificazione FE verra` introdotta in una fase successiva con un dominio dedicato
@@ -1188,70 +697,9 @@ Questa tabella e` il punto estensibile per metadati futuri legati a lotto/fattur
 
 ---
 
-### 19) Promemoria refactor
-
-* Rinominare `vendite.fatturazione_lotti_attivita` in `vendite.attivita_fatturabili_lotti`.
-
----
-
-### 20) error_log refactor
+### 16) error_log refactor
 
 Obiettivo: classificare le funzioni perimetro `LOTTO` vs `FATTURA` vs `ATTIVITA_FATTURABILI` per applicare in modo coerente il routing errori applicativi (`scope`, `severity`, `code`, `lotto_id`, `fattura_id`, `context`) su `dbops.error_log` e log dominio.
-
-**Perimetro LOTTO**
-
-* ✅X`vendite.fn_create_fatturazione_lotto`
-* ✅X `vendite.fn_get_or_create_lotto`
-* ✅X `vendite.fn_set_fatturazione_lotto_stato`
-* ✅X `vendite.fn_sync_lotto_fatture_stato`
-* ✅X `vendite.fn_log_pipeline_fase`
-* ✅X `vendite.fn_log_lotto_esito_fatture`
-* ✅X `vendite.fn_list_fatturazione_pipeline_steps`
-* ✅X `vendite.fn_resolve_fatturazione_pipeline_step`
-* ✅X `vendite.fn_prepare_sdi_payload`
-* ✅X `vendite.fn_close_giornaliero_lotto` (legacy/fallback, non usata nel canale principale runner)
-* ✅X `vendite.fn_reset_lotto_draft`
-* ✅X `vendite.fn_reset_lotto_fattura_draft`
-* ✅ Trigger: `vendite.trgfn_fatturazione_lotti_guard_stato`, `vendite.trgfn_fatturazione_lotti_gen_codice`
-
-**Perimetro FATTURA**
-
-* ✅ X`vendite.fn_build_fattura_key`
-* ✅ X`vendite.fn_get_or_create_fattura_header`
-* ✅ X`vendite.fn_group_attivita_fatturabili`
-* ✅ X`vendite.fn_generate_fatture_righe`
-* ✅ X`vendite.fn_assign_numero_fattura`
-* ✅ X`vendite.fn_numera_fattura_opz_emessa`
-* ✅ X`vendite.fn_ricalcola_riepilogo_iva_fattura`
-* ✅ X`vendite.fn_ricalcola_totali_fattura`
-* ✅ X`vendite.fn_ricalcola_fattura`
-* ✅ X`vendite.fn_ricalcola_riepiloghi_iva_lotto`
-* ✅ X`vendite.fn_get_totale_fondi_fattura`
-* ✅ X`vendite.fn_genera_fondi_fattura_source`
-* ✅ X`vendite.fn_applica_fondi_fattura`
-* ✅ X`vendite.fn_reset_fondi_fattura`
-* ✅ X`vendite.fn_sync_contabili_fondo_fattura`
-* ✅ X`vendite.fn_sync_pagamento_fondo_fattura` (wrapper, da tenere solo come compatibilità)
-* ✅ X`vendite.fn_sync_fattura_critical`
-* ✅ X`vendite.fn_resolve_termini_pagamento`
-* ✅ Trigger: `vendite.trgfn_fatture_*`, `vendite.trgfn_fatture_righe_guard_normalize`
-
-**Perimetro ATTIVITA_FATTURABILI (pre-fattura)**
-
-* ✅ `vendite.fn_select_attivita_fatturabili`
-* ✅ `vendite.fn_get_registro_id`
-* ✅ `vendite.fn_get_tipo_doc_fiscale_id`
-* ✅ `vendite.fn_get_valuta_id`
-* ✅ `vendite.fn_get_vendite_note`
-* ✅ `vendite.fn_list_attivita_pipeline_steps`
-* ✅ `vendite.fn_resolve_attivita_pipeline_step`
-* ✅ Trigger: `vendite.trgfn_attivita_fatturabili_*`, `vendite.trgfn_attivita_norm_competenza_mese`
-
-**Legacy orchestration SQL (deprecata lato runtime)**
-
-* ✅ `vendite.pr_run_lotto_pipeline`
-* ✅ `vendite.fn_execute_pipeline_step`
-* Nota: runtime corrente orchestrato in Django/Python; mantenere SQL solo come compatibilità tecnica/documentale finché non rimosso.
 
 **Owner runtime per blocco**
 
@@ -1260,7 +708,7 @@ Obiettivo: classificare le funzioni perimetro `LOTTO` vs `FATTURA` vs `ATTIVITA_
 | LOTTO                    | Django orchestration + SQL guard | Python gestisce sequencing/retry/logica step; DB applica vincoli e guardrail di stato/integrità.           |
 | FATTURA                  | Ibrido                           | Python orchestration per processo; SQL per calcoli atomici, consistenza dati e operazioni batch/sincronia. |
 | ATTIVITA_FATTURABILI     | Ibrido                           | SQL forte su selezione/lock/normalize; Python usa le funzioni DB dentro flussi pipeline/applicativi.       |
-| Legacy orchestration SQL | Deprecato                        | Da non usare come entrypoint runtime; mantenuto solo per compatibilità tecnica temporanea.                 |
+| Legacy orchestration SQL | Rimosso                          | Entry point runtime SQL eliminati; orchestrazione attiva solo Django/Python.                               |
 
 Legenda owner:
 
@@ -1270,7 +718,7 @@ Legenda owner:
 
 ---
 
-### 21) Refactor lotto/fatture (analisi consolidata)
+### 17) Refactor lotto/fatture (analisi consolidata)
 
 #### Descrizione funzionale
 
@@ -1288,44 +736,8 @@ resta opzionale solo come filtro operativo di creazione lotto.
 
 **`vendite.fatturazione_lotti`**
 
-* aggiungere `emittente_soggetto_ruolo_id` (FK su `anagrafiche.soggetti_ruoli.id`, ruolo EF).
-* mantenere `billing_account_id` opzionale come filtro run (non chiave concettuale del lotto).
-* aggiornare funzioni di creazione/risoluzione lotto per usare prioritariamente emittente.
-
-Nota operativa fallback emittente in creazione lotto:
-
-1. se `p_emittente_soggetto_ruolo_id` e` valorizzato -> usare/validare quello.
-2. altrimenti, se `p_billing_account_id` e` valorizzato -> risolvere da mapping BA.
-3. altrimenti, se esiste un solo emittente fiscale attivo -> usare quello.
-4. se non risolto -> errore bloccante (emittente non determinabile).
-
-**`vendite.fatturazione_lotti_fatture`**
-
-* aggiungere `stato_doc_fiscale_id` (FK su `config.stati_doc_fiscale.id`).
-* aggiungere `stato_esecuzione` con set minimo: `OK | ERRORE`.
-* non introdurre `SKIPPATA` (equivalente funzionale di `esclusa=true`).
-* mantenere `esclusa` come flag separato.
-
-**Allineamento `critical`**
-
-* regola di coerenza: `fatture.critical=true` <-> `lotti_fatture.stato_esecuzione='ERRORE'`.
-* tutte le fatture `critical=true` devono essere bloccate dagli step successivi.
-* introdurre funzione SQL unica di sync per evitare update sparsi incoerenti.
-
-#### Verifica/refactor funzioni SQL
-
-Da aggiornare (priorita`):
-
-* ✅`vendite.fn_create_fatturazione_lotto`
-* ✅`vendite.fn_get_or_create_lotto`
-* ✅`vendite.fn_sync_lotto_fatture_stato`
-* ✅`vendite.fn_log_lotto_esito_fatture`
-* eventuali funzioni reset/sync che aggiornano stato fattura o ponte lotto-fattura
-
-Da introdurre:
-
-* ✅funzione centralizzata di sync esito fattura nel lotto
-  (aggiorna insieme `stato_esecuzione`, `stato_doc_fiscale_id` ponte, `fatture.critical`).
+* completare checklist campi/stati effettivamente necessari al run corrente;
+* verificare che i vincoli supportino il perimetro `MASSIVO` e `GIORNALIERO` senza casi edge.
 
 #### API / Django (refactor richiesto)
 
@@ -1356,41 +768,12 @@ Prima di riprendere implementazioni pipeline `attivita_fatturabili` verificare:
 
 ---
 
-### 22) Allineamento log fattura/lotto (chiuso)
-
-#### Chiarimento ruoli tabelle log
-
-* `vendite.fatture_log`: log **per-fattura** (`fattura_id` presente), sorgente ufficiale per warning/critical documento.
-* `vendite.fatturazione_lotti_log`: log **per-lotto/processo** (`lotto_id`, `fase`, `status`), senza riferimento diretto a singola fattura.
-
-Quindi gli errori documento non devono essere forzati su `fatturazione_lotti_log`: il dettaglio resta in `fatture_log`.
 
 #### Problema operativo rilevato
 
 Nel runtime attuale `fn_sync_lotto_fatture_stato` legge `vendite.fatture.critical`, ma la sincronizzazione di `critical` dipende da chiamate esplicite (`fn_sync_fattura_critical`) e non da un automatismo unico su ogni modifica log.
 
-#### Decisione tecnica proposta (DB-first)
+Azioni suggerite:
 
-Introdurre trigger su `vendite.fatture_log` per sincronizzazione automatica:
-
-* evento: `AFTER INSERT OR UPDATE OR DELETE`;
-* logica: ricalcolo `vendite.fatture.critical` considerando solo log attivi
-  (`disabilitato = false` e `status = 'C'`);
-* propagazione su `vendite.fatturazione_lotti_fatture.stato_esecuzione`:
-  * `ERRORE` se `fatture.critical = true`
-  * `OK` se `fatture.critical = false` (salvo `esclusa = true`);
-* perimetro aggiornamento ponte lotto-fattura: solo lotti con
-  `stato_lotto = 'IN_ESECUZIONE'` **oppure** `stato_operativo = 'APERTO'`.
-
-#### Regole funzionali confermate
-
-* Azioni su `fatture_log` per lotti fuori perimetro (`stato_lotto != IN_ESECUZIONE` e `stato_operativo != APERTO`) non devono alterare `stato_esecuzione` nel ponte.
-* Un log `disabilitato = true` non contribuisce al `critical`: la fattura torna “corretta” se non restano critical attivi.
-* `DELETE` su `fatture_log` e `fatturazione_lotti_log` bloccato di default; ammesso solo con GUC dedicata
-  (`zeroerp.maintenance_allow_delete_logs=on`, compatibile con GUC reset tecnico).
-
-#### Esito implementazione
-
-* ✅ trigger `AFTER INSERT/UPDATE/DELETE` su `vendite.fatture_log` attivi per sync automatica (`vendite.fatture.critical` + ponte lotto-fattura).
-* ✅ guard `DELETE` su `vendite.fatture_log` e `vendite.fatturazione_lotti_log` con sblocco solo via GUC.
-* ✅ refactor servizi Django/test allineato al modello corretto (`status` su `fatture_log`, non colonna `critical`).
+* introdurre un punto unico di sync `critical` richiamato a fine step pipeline e su eventi log `C/W`;
+* aggiungere test DB + Django che validino la coerenza `fatture_log` -> `fatture.critical` -> avanzamento stato lotto.
