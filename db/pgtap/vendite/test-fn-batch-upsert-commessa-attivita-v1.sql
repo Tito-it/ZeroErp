@@ -1,0 +1,319 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: fn_batch_upsert_commessa_attivita + fn_upsert is_new
+-- (changeset 20260227-12, 20260227-13)
+-- ------------------------------------------------------------
+-- Indice test (1..8):
+-- 1) fn_batch_upsert_commessa_attivita presente
+-- 2) fn_upsert singolo: is_new = true su insert
+-- 3) fn_upsert singolo: is_new = false su update (stesso segment_key)
+-- 4) Batch array vuoto -> 0/0/0
+-- 5) Batch 1 riga nuova -> inserted=1, updated=0
+-- 6) Batch riga duplicata (stessa segment_key 2 volte) -> inserted=1, updated=1
+-- 7) Batch errore validazione (quantita=0) -> errore raccolto, altre ok
+-- 8) Contatori aggregati corretti su batch misto
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(8);
+
+-- ============================================================
+-- TEST 1: Funzione batch presente
+-- ============================================================
+
+SELECT ok(
+  EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'vendite'
+      AND p.proname = 'fn_batch_upsert_commessa_attivita'
+  ),
+  'fn_batch_upsert_commessa_attivita presente'
+);
+
+-- ============================================================
+-- SETUP: riferimenti minimi (riusa pattern test-commesse-core)
+-- ============================================================
+
+CREATE TEMP TABLE tmp_batch_refs AS
+SELECT
+  (
+    SELECT ba.id
+    FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL
+      AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id
+    LIMIT 1
+  ) AS billing_account_id,
+  (
+    SELECT ba.utility_id
+    FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL
+      AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id
+    LIMIT 1
+  ) AS utility_id,
+  (
+    SELECT ba.istanza_utility_id
+    FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL
+      AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id
+    LIMIT 1
+  ) AS istanza_utility_id,
+  (
+    SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id)
+    FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL
+      AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id
+    LIMIT 1
+  ) AS emittente_soggetto_ruolo_id,
+  (
+    SELECT a.id
+    FROM catalogo.articoli a
+    WHERE a.attivo IS TRUE
+    ORDER BY a.data_insert DESC NULLS LAST
+    LIMIT 1
+  ) AS articolo_id,
+  (
+    SELECT u.id
+    FROM catalogo.unita_misura u
+    WHERE u.attivo IS TRUE
+    ORDER BY u.id
+    LIMIT 1
+  ) AS uom_id,
+  (
+    SELECT t.id
+    FROM config.tipi_doc_fiscale t
+    WHERE t.attivo IS TRUE
+    ORDER BY t.id
+    LIMIT 1
+  ) AS tipo_doc_fiscale_id,
+  (
+    SELECT v.id
+    FROM config.valute v
+    ORDER BY v.id
+    LIMIT 1
+  ) AS valuta_id,
+  (
+    SELECT s.id
+    FROM config.sorgenti s
+    WHERE s.codice = 'PREVENTIVO'
+    LIMIT 1
+  ) AS root_sorgente_tipo_id;
+
+-- Crea commessa di test
+CREATE TEMP TABLE tmp_batch_commessa AS
+SELECT vendite.fn_get_or_create_commessa(
+  p_billing_account_id => (SELECT billing_account_id FROM tmp_batch_refs),
+  p_utility_id => (SELECT utility_id FROM tmp_batch_refs),
+  p_tipo_commessa => 'AUTO',
+  p_policy_fatturazione => 'DA_DOCUMENTO',
+  p_fatturazione_immediata => false,
+  p_priorita_operativa => 'NORMALE',
+  p_emittente_soggetto_ruolo_id => (SELECT emittente_soggetto_ruolo_id FROM tmp_batch_refs),
+  p_competenza_dal => DATE '2026-06-01',
+  p_competenza_al => DATE '2026-06-30',
+  p_meta => jsonb_build_object('test_scope', 'pgtap_batch_upsert'),
+  p_force_new => true
+) AS commessa_id;
+
+-- Link ROOT sorgente (obbligatorio)
+SELECT vendite.fn_link_commessa_sorgente(
+  p_commessa_id => (SELECT commessa_id FROM tmp_batch_commessa),
+  p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_batch_refs),
+  p_sorgente_uid => ('BSRC-' || substr(md5(clock_timestamp()::text), 1, 12))::text,
+  p_sorgente_riga => 1,
+  p_meta => jsonb_build_object('test_scope', 'pgtap_batch_upsert')
+);
+
+-- Segment key univoci per test
+CREATE TEMP TABLE tmp_batch_keys AS
+SELECT
+  'BATCH-A-' || substr(md5(clock_timestamp()::text), 1, 10) AS seg_a,
+  'BATCH-B-' || substr(md5(clock_timestamp()::text || 'b'), 1, 10) AS seg_b,
+  'BATCH-C-' || substr(md5(clock_timestamp()::text || 'c'), 1, 10) AS seg_c;
+
+-- ============================================================
+-- TEST 2: fn_upsert singolo: is_new = true su insert
+-- ============================================================
+
+CREATE TEMP TABLE tmp_upsert_new AS
+SELECT r.attivita_id, r.is_new
+FROM vendite.fn_upsert_commessa_attivita(
+  p_commessa_id => (SELECT commessa_id FROM tmp_batch_commessa),
+  p_segment_key => (SELECT seg_a FROM tmp_batch_keys),
+  p_articolo_id => (SELECT articolo_id FROM tmp_batch_refs),
+  p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_batch_refs),
+  p_data_attivita => DATE '2026-06-15',
+  p_uom_id => (SELECT uom_id FROM tmp_batch_refs),
+  p_quantita => 1.000000,
+  p_competenza_mese => DATE '2026-06-01',
+  p_competenza_dal => DATE '2026-06-01',
+  p_competenza_al => DATE '2026-06-30',
+  p_prezzo_snapshot => 10.0000000000,
+  p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_batch_refs),
+  p_sorgente_uid => ('EXT-' || substr(md5(clock_timestamp()::text || 'a'), 1, 10))::text
+) r;
+
+SELECT ok(
+  (SELECT is_new FROM tmp_upsert_new),
+  'fn_upsert singolo: is_new = true su insert'
+);
+
+-- ============================================================
+-- TEST 3: fn_upsert singolo: is_new = false su update
+-- ============================================================
+
+CREATE TEMP TABLE tmp_upsert_upd AS
+SELECT r.attivita_id, r.is_new
+FROM vendite.fn_upsert_commessa_attivita(
+  p_commessa_id => (SELECT commessa_id FROM tmp_batch_commessa),
+  p_segment_key => (SELECT seg_a FROM tmp_batch_keys),
+  p_articolo_id => (SELECT articolo_id FROM tmp_batch_refs),
+  p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_batch_refs),
+  p_data_attivita => DATE '2026-06-15',
+  p_uom_id => (SELECT uom_id FROM tmp_batch_refs),
+  p_quantita => 2.000000,
+  p_competenza_mese => DATE '2026-06-01',
+  p_competenza_dal => DATE '2026-06-01',
+  p_competenza_al => DATE '2026-06-30',
+  p_prezzo_snapshot => 20.0000000000,
+  p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_batch_refs),
+  p_sorgente_uid => (
+    SELECT sorgente_uid FROM vendite.commesse_attivita
+    WHERE id = (SELECT attivita_id FROM tmp_upsert_new)
+  )
+) r;
+
+SELECT ok(
+  NOT (SELECT is_new FROM tmp_upsert_upd),
+  'fn_upsert singolo: is_new = false su update'
+);
+
+-- ============================================================
+-- TEST 4: Batch array vuoto -> 0/0/0
+-- ============================================================
+
+SELECT is(
+  (SELECT inserted FROM vendite.fn_batch_upsert_commessa_attivita('[]'::jsonb)),
+  0,
+  'Batch array vuoto: inserted = 0'
+);
+
+-- ============================================================
+-- Funzione helper per costruire riga JSONB
+-- ============================================================
+
+CREATE FUNCTION pg_temp.mk_row(
+  p_seg text,
+  p_qta numeric DEFAULT 1.0,
+  p_prezzo numeric DEFAULT 10.0,
+  p_sorgente_uid text DEFAULT NULL
+) RETURNS jsonb AS $$
+  SELECT jsonb_build_object(
+    'commessa_id', (SELECT commessa_id FROM tmp_batch_commessa),
+    'segment_key', p_seg,
+    'articolo_id', (SELECT articolo_id FROM tmp_batch_refs)::text,
+    'istanza_utility_id', (SELECT istanza_utility_id FROM tmp_batch_refs),
+    'data_attivita', '2026-06-15',
+    'uom_id', (SELECT uom_id FROM tmp_batch_refs),
+    'quantita', p_qta,
+    'competenza_mese', '2026-06-01',
+    'competenza_dal', '2026-06-01',
+    'competenza_al', '2026-06-30',
+    'prezzo_snapshot', p_prezzo,
+    'sorgente_tipo_id', (SELECT root_sorgente_tipo_id FROM tmp_batch_refs),
+    'sorgente_uid', COALESCE(p_sorgente_uid, 'BEXT-' || substr(md5(p_seg || clock_timestamp()::text), 1, 10))
+  );
+$$ LANGUAGE sql;
+
+-- ============================================================
+-- TEST 5: Batch 1 riga nuova -> inserted=1, updated=0
+-- ============================================================
+
+CREATE TEMP TABLE tmp_batch_5 AS
+SELECT * FROM vendite.fn_batch_upsert_commessa_attivita(
+  jsonb_build_array(pg_temp.mk_row((SELECT seg_b FROM tmp_batch_keys)))
+);
+
+SELECT ok(
+  (SELECT inserted = 1 AND updated = 0 FROM tmp_batch_5),
+  'Batch 1 riga nuova: inserted=1, updated=0'
+);
+
+-- ============================================================
+-- TEST 6: Batch riga duplicata (stessa seg_key 2 volte)
+--         -> inserted=1 (prima), updated=1 (seconda)
+-- ============================================================
+
+CREATE TEMP TABLE tmp_batch_6 AS
+SELECT * FROM vendite.fn_batch_upsert_commessa_attivita(
+  jsonb_build_array(
+    pg_temp.mk_row((SELECT seg_c FROM tmp_batch_keys), 1.0, 10.0),
+    pg_temp.mk_row((SELECT seg_c FROM tmp_batch_keys), 2.0, 20.0)
+  )
+);
+
+SELECT ok(
+  (SELECT inserted = 1 AND updated = 1 FROM tmp_batch_6),
+  'Batch riga duplicata: inserted=1, updated=1'
+);
+
+-- ============================================================
+-- TEST 7: Batch errore validazione (quantita=0) -> raccolto
+-- ============================================================
+
+CREATE TEMP TABLE tmp_batch_7 AS
+SELECT * FROM vendite.fn_batch_upsert_commessa_attivita(
+  jsonb_build_array(
+    pg_temp.mk_row('BATCH-ERR-' || substr(md5(clock_timestamp()::text || 'e'), 1, 8), 0, 10.0),
+    pg_temp.mk_row('BATCH-OK-' || substr(md5(clock_timestamp()::text || 'f'), 1, 8), 1.0, 10.0)
+  )
+);
+
+SELECT ok(
+  (SELECT total_rows = 2
+     AND inserted = 1
+     AND jsonb_array_length(errors) = 1
+   FROM tmp_batch_7),
+  'Batch errore validazione: raccolto in errors, riga ok processata'
+);
+
+-- ============================================================
+-- TEST 8: Contatori aggregati batch misto (3 righe)
+-- ============================================================
+
+-- Pre-calcola segment_key per garantire che riga 1 e 3 condividano la stessa chiave
+CREATE TEMP TABLE tmp_batch_8_keys AS
+SELECT
+  'BATCH-MIX-' || substr(md5(clock_timestamp()::text || 'g'), 1, 8) AS seg_dup,
+  'BATCH-MIX-' || substr(md5(clock_timestamp()::text || 'h'), 1, 8) AS seg_new;
+
+CREATE TEMP TABLE tmp_batch_8 AS
+SELECT * FROM vendite.fn_batch_upsert_commessa_attivita(
+  jsonb_build_array(
+    pg_temp.mk_row((SELECT seg_dup FROM tmp_batch_8_keys), 1.0, 10.0),
+    pg_temp.mk_row((SELECT seg_new FROM tmp_batch_8_keys), 1.0, 10.0),
+    pg_temp.mk_row((SELECT seg_dup FROM tmp_batch_8_keys), 3.0, 30.0)
+  )
+);
+
+SELECT ok(
+  (SELECT total_rows = 3
+     AND inserted = 2
+     AND updated = 1
+     AND jsonb_array_length(errors) = 0
+   FROM tmp_batch_8),
+  'Batch misto 3 righe: contatori corretti (2 inserted, 1 updated)'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

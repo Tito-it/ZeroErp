@@ -160,7 +160,8 @@ SELECT vendite.fn_link_commessa_sorgente(
 
 -- Upsert attivita con sorgente_tipo_id = PREVENTIVO (sorgente originale)
 CREATE TEMP TABLE tmp_ca_sot AS
-SELECT vendite.fn_upsert_commessa_attivita(
+SELECT r.attivita_id AS commessa_attivita_id
+FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_sot),
   p_segment_key => ('SOT-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_sot),
@@ -190,7 +191,7 @@ SELECT vendite.fn_upsert_commessa_attivita(
   p_tipo_movimento => 'NORMALE',
   p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'SORGENTE_ORIGINE_TEST')
-) AS commessa_attivita_id;
+) r;
 
 -- Emit
 CREATE TEMP TABLE tmp_emit_sot AS

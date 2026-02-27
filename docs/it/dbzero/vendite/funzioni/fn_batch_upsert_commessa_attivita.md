@@ -1,0 +1,112 @@
+# ⚙️ Funzione `fn_batch_upsert_commessa_attivita`
+
+```sql
+CREATE FUNCTION fn_batch_upsert_commessa_attivita(p_rows jsonb)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_batch_upsert_commessa_attivita(p_rows jsonb)
+ RETURNS TABLE(total_rows integer, inserted integer, updated integer, errors jsonb)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_total integer := 0;
+  v_inserted integer := 0;
+  v_updated integer := 0;
+  v_errors jsonb := '[]'::jsonb;
+  v_len integer;
+  v_row jsonb;
+  v_result record;
+  i integer;
+BEGIN
+  -- =========================================================
+  -- Scopo:
+  --   Batch wrapper che chiama fn_upsert_commessa_attivita
+  --   per ogni elemento di p_rows (jsonb array).
+  --   Riduce N round-trip Python->DB a 1.
+  --
+  -- Comportamento:
+  --   - collect-all: errori raccolti in array, non bloccanti
+  --   - contatori inserted/updated distinti via is_new
+  --   - validazione e guard delegate a fn_upsert_commessa_attivita
+  -- =========================================================
+
+  IF p_rows IS NULL OR jsonb_typeof(p_rows) <> 'array' THEN
+    RETURN QUERY SELECT 0, 0, 0, '[]'::jsonb;
+    RETURN;
+  END IF;
+
+  v_len := jsonb_array_length(p_rows);
+  IF v_len = 0 THEN
+    RETURN QUERY SELECT 0, 0, 0, '[]'::jsonb;
+    RETURN;
+  END IF;
+
+  FOR i IN 0 .. v_len - 1 LOOP
+    v_row := p_rows -> i;
+    v_total := v_total + 1;
+
+    BEGIN
+      SELECT r.attivita_id, r.is_new
+      INTO v_result
+      FROM vendite.fn_upsert_commessa_attivita(
+        p_commessa_id        => (v_row ->> 'commessa_id')::bigint,
+        p_segment_key        => (v_row ->> 'segment_key')::varchar,
+        p_articolo_id        => (v_row ->> 'articolo_id')::uuid,
+        p_istanza_utility_id => (v_row ->> 'istanza_utility_id')::bigint,
+        p_data_attivita      => (v_row ->> 'data_attivita')::date,
+        p_uom_id             => (v_row ->> 'uom_id')::bigint,
+        p_quantita           => (v_row ->> 'quantita')::numeric,
+        p_competenza_mese    => (v_row ->> 'competenza_mese')::date,
+        p_competenza_dal     => (v_row ->> 'competenza_dal')::date,
+        p_competenza_al      => (v_row ->> 'competenza_al')::date,
+        p_prezzo_snapshot    => (v_row ->> 'prezzo_snapshot')::numeric,
+        p_qta_operativa      => (v_row ->> 'qta_operativa')::numeric,
+        p_uom_operativa_id   => (v_row ->> 'uom_operativa_id')::bigint,
+        p_factor_to_base     => (v_row ->> 'factor_to_base')::numeric,
+        p_posticipa_al       => (v_row ->> 'posticipa_al')::date,
+        p_tipo_doc_fiscale_id => (v_row ->> 'tipo_doc_fiscale_id')::bigint,
+        p_valuta_id          => (v_row ->> 'valuta_id')::integer,
+        p_area_geografica_id => (v_row ->> 'area_geografica_id')::bigint,
+        p_listino_versione_id => (v_row ->> 'listino_versione_id')::bigint,
+        p_prezzo_bloccato    => (v_row ->> 'prezzo_bloccato')::boolean,
+        p_pricing_mode       => (v_row ->> 'pricing_mode')::varchar,
+        p_prezzo_da_riallineare => (v_row ->> 'prezzo_da_riallineare')::boolean,
+        p_stato_approvazione => (v_row ->> 'stato_approvazione')::varchar,
+        p_stato_emissione    => (v_row ->> 'stato_emissione')::varchar,
+        p_sorgente_tipo_id   => (v_row ->> 'sorgente_tipo_id')::bigint,
+        p_sorgente_uid       => (v_row ->> 'sorgente_uid')::text,
+        p_tipo_movimento     => (v_row ->> 'tipo_movimento')::varchar,
+        p_tipo_consumo       => (v_row ->> 'tipo_consumo')::varchar,
+        p_meta               => CASE WHEN v_row ? 'meta' THEN (v_row -> 'meta') ELSE '{}'::jsonb END
+      ) r;
+
+      IF v_result.is_new THEN
+        v_inserted := v_inserted + 1;
+      ELSE
+        v_updated := v_updated + 1;
+      END IF;
+
+    EXCEPTION WHEN others THEN
+      v_errors := v_errors || jsonb_build_array(
+        jsonb_build_object(
+          'index', i,
+          'segment_key', v_row ->> 'segment_key',
+          'error', SQLERRM
+        )
+      );
+    END;
+  END LOOP;
+
+  RETURN QUERY SELECT v_total, v_inserted, v_updated, v_errors;
+END
+$function$
+
+COMMENT ON FUNCTION vendite.fn_batch_upsert_commessa_attivita(p_rows jsonb)
+IS 'Batch wrapper: accetta jsonb array di righe, chiama fn_upsert_commessa_attivita per ciascuna. 1 round-trip, collect-all errors, contatori inserted/updated distinti.';
+```
+
+---
+{% include-markdown "signature-core.md" %}
