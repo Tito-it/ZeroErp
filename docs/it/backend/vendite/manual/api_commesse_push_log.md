@@ -34,8 +34,7 @@ View: `ApiCommessePushLog` / `ApiCommessePushLogV1` (`apps.vendite.api.views`).
     "source_types": ["HandlerPreventivi", "HandlerOrdini"],
     "risultato": { "HandlerPreventivi": { "created": 1 } },
     "stato": "COMPLETATO",
-    "durata_ms": 100,
-    "user_run": null
+    "durata_ms": 100
   },
   "meta": { ... }
 }

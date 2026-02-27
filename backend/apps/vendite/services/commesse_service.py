@@ -41,13 +41,12 @@ def pr_run_commesse_push(
     *,
     source_types: list[str] | None = None,
     dry_run: bool = False,
-    user_run: str | None = None,
 ) -> dict:
     """Entrypoint servizio Python: esegue il push commesse da sorgenti esterne."""
     repo = CommesseRepository()
     handlers = _build_handlers(repo)
     orch = CommessaPushOrchestrator(repo, handlers)
-    report = orch.run(source_types=source_types, dry_run=dry_run, user_run=user_run)
+    report = orch.run(source_types=source_types, dry_run=dry_run)
     return {
         "stato": report.stato,
         "dry_run": report.dry_run,

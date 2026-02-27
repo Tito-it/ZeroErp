@@ -233,7 +233,6 @@ class CommesseRepositoryUnitTests(TestCase):
             source_types=["HandlerPreventivi"],
             risultato={"HandlerPreventivi": {"created": 3, "errors": []}},
             durata_ms=1200,
-            user_run="scheduler",
         )
         self.assertEqual(result, 55)
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
@@ -248,7 +247,7 @@ class CommesseRepositoryUnitTests(TestCase):
                 55, ts, False,
                 ["HandlerPreventivi", "HandlerOrdini"],
                 '{"HandlerPreventivi": {"created": 3}}',
-                "COMPLETATO", 1200, "scheduler",
+                "COMPLETATO", 1200,
             )
         )
         repo = CommesseRepository()

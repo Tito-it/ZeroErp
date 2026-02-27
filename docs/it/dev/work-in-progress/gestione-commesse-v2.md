@@ -1364,9 +1364,8 @@ vendite.commesse_push_log (
     risultato       jsonb,           -- dettaglio per handler (vedi sotto)
     stato           text NOT NULL,   -- COMPLETATO | PARZIALE | ERRORE
     durata_ms       int,
-    user_run        text,            -- 'scheduler' | user applicativo
     data_insert     timestamptz DEFAULT now(),
-    user_insert     text DEFAULT current_user
+    user_insert     text  -- audit: JWT user reale via GUC app.jwt_user (trgfn_audit_data_user_generic)
 )
 ```
 
@@ -1750,7 +1749,7 @@ Le funzioni DB di L4 sono già presenti (team DB). Serve il layer Python.
 #### 25.6.1 Endpoint push orchestratore
 
 - [x] `POST /api/v1/vendite/commesse/push/run/` — lancia `CommessaPushOrchestrator.run()`
-  - Parametri body: `source_types[]`, `dry_run`, `user_run`
+  - Parametri body: `source_types[]`, `dry_run` (audit user via middleware JWT → GUC `app.jwt_user`)
   - Response: `{stato, dry_run, push_log_id, durata_ms, handlers[]}`
   - Header obbligatorio: `Idempotency-Key`
   - Lock occupato → `stato: "SKIPPED"` (non errore, HTTP 200)

@@ -22,7 +22,7 @@ View: `ApiRunCommessePush` / `ApiRunCommessePushV1` (`apps.vendite.api.views`).
 - Body JSON (tutti i campi opzionali):
   - `source_types` (list[string]) — filtro sorgenti da processare (es. `["PREVENTIVO", "ORDINE_VENDITA"]`). Se omesso processa tutte le sorgenti registrate.
   - `dry_run` (bool) — `true` = simula senza effetti reali (default `false`)
-- `user_run` viene rilevato automaticamente dall'utente JWT autenticato (non inviare nel payload).
+- L'utente JWT viene propagato automaticamente al DB via middleware `JwtAuditMiddleware` → GUC `app.jwt_user`, registrato nei campi audit `user_insert`/`user_update`.
 
 ## Output
 

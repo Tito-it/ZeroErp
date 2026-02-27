@@ -578,7 +578,6 @@ class CommesseRepository:
         source_types: list[str] | None = None,
         risultato: dict[str, Any] | None = None,
         durata_ms: int | None = None,
-        user_run: str | None = None,
     ) -> int:
         """Registra il risultato di un run dell'orchestratore push.
         Restituisce push_log_id."""
@@ -590,8 +589,7 @@ class CommesseRepository:
                     p_source_types => %s,
                     p_risultato => %s::jsonb,
                     p_stato => %s,
-                    p_durata_ms => %s,
-                    p_user_run => %s
+                    p_durata_ms => %s
                 )
                 """,
                 [
@@ -600,7 +598,6 @@ class CommesseRepository:
                     self._to_jsonb_param(risultato),
                     stato,
                     durata_ms,
-                    user_run,
                 ],
             )
             row = cursor.fetchone()
@@ -613,7 +610,7 @@ class CommesseRepository:
             cursor.execute(
                 """
                 SELECT id, run_at, dry_run, source_types,
-                       risultato, stato, durata_ms, user_run
+                       risultato, stato, durata_ms
                 FROM vendite.commesse_push_log
                 WHERE id = %s
                 """,
@@ -631,5 +628,4 @@ class CommesseRepository:
             risultato=risultato_raw if isinstance(risultato_raw, dict) else None,
             stato=str(row[5]),
             durata_ms=None if row[6] is None else int(row[6]),
-            user_run=row[7],
         )

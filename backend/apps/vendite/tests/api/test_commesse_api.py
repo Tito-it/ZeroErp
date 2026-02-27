@@ -111,7 +111,6 @@ class VenditeCommesseApiTests(SimpleTestCase):
             "risultato": {"HandlerA": {"created": 1}},
             "stato": "COMPLETATO",
             "durata_ms": 100,
-            "user_run": None,
         }
         response = self.client.get("/api/v1/vendite/commesse/push/5/")
         self.assertEqual(response.status_code, 200)

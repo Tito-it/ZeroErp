@@ -115,7 +115,6 @@ class CommessaPushOrchestrator:
         *,
         source_types: list[str] | None = None,
         dry_run: bool = False,
-        user_run: str | None = None,
     ) -> PushReport:
         """Esegue il push per tutti gli handler (o per i source_types selezionati).
 
@@ -123,7 +122,6 @@ class CommessaPushOrchestrator:
             source_types — None = tutti; lista di nomi = sottoinsieme
             dry_run      — True: gli handler non scrivono, ma il log viene comunque
                            scritto con dry_run=True per audit
-            user_run     — identificativo dell'utente/scheduler che ha lanciato il run
 
         Restituisce PushReport con stato, risultati per handler e push_log_id.
         Se un altro run è già in corso restituisce PushReport con stato SKIPPED.
@@ -133,7 +131,7 @@ class CommessaPushOrchestrator:
 
         try:
             return self._run_locked(
-                source_types=source_types, dry_run=dry_run, user_run=user_run,
+                source_types=source_types, dry_run=dry_run,
             )
         finally:
             self._release_lock()
@@ -143,7 +141,6 @@ class CommessaPushOrchestrator:
         *,
         source_types: list[str] | None,
         dry_run: bool,
-        user_run: str | None,
     ) -> PushReport:
         """Logica di run effettiva, eseguita sotto advisory lock."""
         t0 = time.monotonic()
@@ -175,7 +172,6 @@ class CommessaPushOrchestrator:
             source_types=report.source_type_names() or None,
             risultato=report.as_risultato() or None,
             durata_ms=durata_ms,
-            user_run=user_run,
         )
         report.push_log_id = push_log_id
 

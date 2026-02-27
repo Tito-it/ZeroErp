@@ -525,12 +525,9 @@ class ApiRunCommessePush(APIView):
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             source_types = payload.get("source_types") or None
-            user = getattr(request, "user", None)
-            user_run = str(user) if user and user.is_authenticated else None
             return pr_run_commesse_push(
                 source_types=source_types,
                 dry_run=optional_bool(payload, "dry_run", default=False),
-                user_run=user_run,
             )
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)

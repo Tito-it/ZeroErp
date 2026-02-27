@@ -91,7 +91,6 @@ class CommesseServiceTests(TestCase):
             "risultato": {"HandlerA": {"created": 1}},
             "stato": "COMPLETATO",
             "durata_ms": 100,
-            "user_run": None,
         }
 
         result = fn_get_commesse_push_log(push_log_id=5)
