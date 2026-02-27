@@ -3,17 +3,17 @@
 ## API
 - [api_attivita_pipeline_status](manual/api_attivita_pipeline_status.md) — Esporre via HTTP lo stato corrente della pipeline attivita fatturabili di un lotto, con riepilogo aggregato per branch.
 - [api_attivita_task_runs](manual/api_attivita_task_runs.md) — Esporre via HTTP i task run runtime del lotto attivita fatturabili per monitoraggio operativo e diagnostica pipeline.
+- [api_commessa_attivita](manual/api_commessa_attivita.md) — Esporre via HTTP la lista paginata delle attività (commesse_attivita) di una commessa, con filtri opzionali per stato emissione, stato approvazione e mese di competenza.
+- [api_commessa_stato](manual/api_commessa_stato.md) — Esporre via HTTP lo stato e i contatori aggregati di una singola commessa, per dashboard e monitoraggio avanzamento.
+- [api_commesse_push_log](manual/api_commesse_push_log.md) — Esporre via HTTP il dettaglio di un singolo push log commesse, per consultazione operativa e diagnostica delle esecuzioni push.
 - [api_lotti_list](manual/api_lotti_list.md) — Esporre via HTTP l'elenco paginato dei lotti di fatturazione con filtri opzionali e decodifica delle FK.
 - [api_lotto_fatture_list](manual/api_lotto_fatture_list.md) — Esporre via HTTP l'elenco paginato delle fatture appartenenti a un lotto, con decodifiche FK, filtri opzionali e ordinamento configurabile.
 - [api_lotto_segnalazioni_summary](manual/api_lotto_segnalazioni_summary.md) — Esporre via HTTP il riepilogo segnalazioni attive di un lotto, con indicazione di blocco avanzamento step.
 - [api_lotto_task_runs](manual/api_lotto_task_runs.md) — Esporre via HTTP i task run runtime di un lotto per monitoraggio operativo e diagnostica pipeline.
 - [api_reset_lotto_draft](manual/api_reset_lotto_draft.md) — Esporre via HTTP il reset tecnico di un lotto MASSIVO in DRAFT.
 - [api_reset_lotto_fattura_draft](manual/api_reset_lotto_fattura_draft.md) — Esporre via HTTP il reset tecnico di una singola fattura in un lotto MASSIVO in DRAFT.
+- [api_run_commesse_push](manual/api_run_commesse_push.md) — Esporre via HTTP l'avvio dell'orchestratore push commesse, che sincronizza documenti sorgente (preventivi, ordini, contratti, DDT, consumi) verso commesse e commesse_attivita.
 - [api_run_lotto_pipeline](manual/api_run_lotto_pipeline.md) — Esporre via HTTP l'avvio della pipeline lotto vendite.
-- [api_run_commesse_push](manual/api_run_commesse_push.md) — Esporre via HTTP l'avvio dell'orchestratore push commesse da sorgenti esterne.
-- [api_commesse_push_log](manual/api_commesse_push_log.md) — Esporre via HTTP il dettaglio di un push log commesse.
-- [api_commessa_stato](manual/api_commessa_stato.md) — Esporre via HTTP stato e contatori aggregati di una commessa.
-- [api_commessa_attivita](manual/api_commessa_attivita.md) — Esporre via HTTP la lista paginata delle attivita di una commessa con filtri opzionali.
 
 ## Funzioni
 - [fn_execute_pipeline_step](funzioni/fn_execute_pipeline_step.md) — Eseguire un singolo step di pipeline, applicando i task definiti nello step corrente.
