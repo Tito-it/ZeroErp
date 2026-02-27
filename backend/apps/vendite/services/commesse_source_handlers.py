@@ -17,7 +17,7 @@ Handler registrati:
 - HandlerConsumi     — consumi utility → commesse mensili AUTO (fan-out 1→N)
 
 Architettura:
-  Tutte le 5 fn_list_*_da_pushare SQL restituiscono 25 colonne condivise
+  Tutte le 5 fn_list_*_da_pushare SQL restituiscono 26 colonne condivise
   normalizzate in PushableRow. _process_rows è l'unico punto di
   orchestrazione: cicla le righe, crea/riusa commesse e upsert attivita.
 """
@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from apps.vendite.db.commesse_repository import (
+    POLICY_FATTURAZIONE_DA_DOCUMENTO,
+    TIPO_COMMESSA_AUTO,
     CommessaAttivitaInput,
     CommesseRepository,
     PushableRow,
@@ -42,6 +44,7 @@ class HandlerResult:
     """Risultato di un singolo handler all'interno di un run orchestratore."""
 
     handler_name: str
+    sorgente_codice: str = ""
     created: int = 0
     updated: int = 0
     skipped: int = 0
@@ -87,8 +90,12 @@ class BaseSourceHandler(ABC):
         billing_account_id=None,
         limit=None,
     ) -> HandlerResult:
-        """Ciclo principale: fetch → get_or_create_commessa → link → upsert."""
-        result = HandlerResult(handler_name=self.name)
+        """Ciclo principale: fetch → get_or_create_commessa → link → upsert.
+
+        Usa cache locale per evitare chiamate DB ridondanti a get_or_create_commessa
+        quando piu` righe appartengono alla stessa commessa (stessi parametri chiave).
+        """
+        result = HandlerResult(handler_name=self.name, sorgente_codice=self.sorgente_codice)
         rows = self._repo.fetch_pushable_rows(
             self.sorgente_codice,
             competenza_mese=competenza_mese,
@@ -96,22 +103,40 @@ class BaseSourceHandler(ABC):
             limit=limit,
         )
 
+        # Cache locale: evita round-trip DB ripetuti per la stessa commessa.
+        commessa_cache: dict[tuple, int] = {}
+
         for row in rows:
             try:
                 expanded = self._expand_rows(row)
                 tipo_commessa = self._extract_tipo_commessa(row)
                 policy_fatturazione = self._extract_policy_fatturazione(row)
 
-                commessa_id = self._repo.get_or_create_commessa(
-                    billing_account_id=row.billing_account_id,
-                    utility_id=row.utility_id,
-                    tipo_commessa=tipo_commessa,
-                    policy_fatturazione=policy_fatturazione,
-                    fatturazione_immediata=row.fatturazione_immediata,
-                    emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
-                    competenza_dal=row.competenza_dal,
-                    competenza_al=row.competenza_al,
+                cache_key = (
+                    row.billing_account_id,
+                    row.utility_id,
+                    tipo_commessa,
+                    policy_fatturazione,
+                    row.fatturazione_immediata,
+                    row.emittente_soggetto_ruolo_id,
+                    row.competenza_dal,
+                    row.competenza_al,
                 )
+
+                if cache_key in commessa_cache:
+                    commessa_id = commessa_cache[cache_key]
+                else:
+                    commessa_id = self._repo.get_or_create_commessa(
+                        billing_account_id=row.billing_account_id,
+                        utility_id=row.utility_id,
+                        tipo_commessa=tipo_commessa,
+                        policy_fatturazione=policy_fatturazione,
+                        fatturazione_immediata=row.fatturazione_immediata,
+                        emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
+                        competenza_dal=row.competenza_dal,
+                        competenza_al=row.competenza_al,
+                    )
+                    commessa_cache[cache_key] = commessa_id
 
                 self._repo.link_sorgente(
                     commessa_id=commessa_id,
@@ -125,8 +150,8 @@ class BaseSourceHandler(ABC):
                         self._repo.upsert_attivita(inp)
                     result.created += 1
 
-            except Exception:
-                msg = f"Errore riga segment_key={row.segment_key}"
+            except Exception as exc:
+                msg = f"Errore riga segment_key={row.segment_key}: {type(exc).__name__}: {exc}"
                 logger.exception(msg)
                 result.errors.append(msg)
 
@@ -138,17 +163,17 @@ class BaseSourceHandler(ABC):
 
     @staticmethod
     def _extract_tipo_commessa(row: PushableRow) -> str:
-        """#6: tipo_commessa da meta, default 'AUTO'."""
+        """#6: tipo_commessa da meta, default TIPO_COMMESSA_AUTO."""
         if isinstance(row.meta, dict):
-            return row.meta.get("tipo_commessa", "AUTO")
-        return "AUTO"
+            return row.meta.get("tipo_commessa", TIPO_COMMESSA_AUTO)
+        return TIPO_COMMESSA_AUTO
 
     @staticmethod
     def _extract_policy_fatturazione(row: PushableRow) -> str:
-        """#6: policy_fatturazione da meta, default 'DA_DOCUMENTO'."""
+        """#6: policy_fatturazione da meta, default POLICY_FATTURAZIONE_DA_DOCUMENTO."""
         if isinstance(row.meta, dict):
-            return row.meta.get("policy_fatturazione", "DA_DOCUMENTO")
-        return "DA_DOCUMENTO"
+            return row.meta.get("policy_fatturazione", POLICY_FATTURAZIONE_DA_DOCUMENTO)
+        return POLICY_FATTURAZIONE_DA_DOCUMENTO
 
     def _build_attivita_input(
         self, commessa_id: int, row: PushableRow

@@ -42,8 +42,8 @@ class PushReport:
         return {r.handler_name: r.as_dict() for r in self.handlers}
 
     def source_type_names(self) -> list[str]:
-        """Nomi dei sorgenti processati, nell'ordine di esecuzione."""
-        return [r.handler_name for r in self.handlers]
+        """Codici sorgente processati (config.sorgenti), nell'ordine di esecuzione."""
+        return [r.sorgente_codice for r in self.handlers if r.sorgente_codice]
 
 
 class CommessaPushOrchestrator:
@@ -90,7 +90,7 @@ class CommessaPushOrchestrator:
         """
         if source_types is None:
             return self._handlers
-        return [h for h in self._handlers if h.name in source_types]
+        return [h for h in self._handlers if h.sorgente_codice in source_types]
 
     @staticmethod
     def _compute_stato(results: list[HandlerResult]) -> str:
@@ -152,6 +152,7 @@ class CommessaPushOrchestrator:
             except Exception as exc:
                 result = HandlerResult(
                     handler_name=handler.name,
+                    sorgente_codice=handler.sorgente_codice,
                     errors=[str(exc)],
                 )
             results.append(result)

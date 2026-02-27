@@ -9,7 +9,7 @@ Esporre via HTTP l'avvio dell'orchestratore push commesse, che sincronizza docum
 
 Endpoint applicativo che invoca il servizio Python `pr_run_commesse_push`
 (`apps.vendite.services.commesse_service`), il quale istanzia `CommessaPushOrchestrator`
-con i 5 handler sorgente registrati e ne esegue il metodo `run()`.
+con gli handler sorgente attivi (letti dinamicamente da `config.sorgenti`) e ne esegue il metodo `run()`.
 
 View: `ApiRunCommessePush` / `ApiRunCommessePushV1` (`apps.vendite.api.views`).
 
@@ -20,7 +20,7 @@ View: `ApiRunCommessePush` / `ApiRunCommessePushV1` (`apps.vendite.api.views`).
 - Header richiesto: `Idempotency-Key`
 - Header sicurezza: `Authorization: Bearer <access_token>`
 - Body JSON (tutti i campi opzionali):
-  - `source_types` (list[string]) — filtro sorgenti da processare (es. `["PREVENTIVO", "ORDINE_VENDITA"]`). Se omesso processa tutte le sorgenti registrate.
+  - `source_types` (list[string]) — filtro sorgenti da processare (es. `["PREVENTIVO", "ORDINE_VENDITA"]`). Se omesso processa tutte le sorgenti attive in `config.sorgenti`.
   - `dry_run` (bool) — `true` = simula senza effetti reali (default `false`)
 - L'utente JWT viene propagato automaticamente al DB via middleware `JwtAuditMiddleware` → GUC `app.jwt_user`, registrato nei campi audit `user_insert`/`user_update`.
 
@@ -59,7 +59,8 @@ View: `ApiRunCommessePush` / `ApiRunCommessePushV1` (`apps.vendite.api.views`).
 - Endpoint v1 richiede JWT.
 - Concorrenza gestita via `pg_try_advisory_lock(hashtext('commesse_push_orchestrator'))`:
   lock occupato → `stato: "SKIPPED"` (HTTP 200, non errore).
-- `source_types` filtrano i handler da eseguire; codici non riconosciuti vengono ignorati.
+- `source_types` validati contro le sorgenti attive in `config.sorgenti` (`scope = 'PUSH_COMMESSA'`, `attivo = true`). Codici non riconosciuti o inattivi restituiscono `E_COMMESSA_VALIDATION` con l'elenco delle sorgenti attive.
+- La lista delle sorgenti processabili è dinamica: attivazione/disattivazione gestita in `config.sorgenti` senza deploy backend.
 - Il risultato per handler include contatori `created`, `updated`, `skipped` e lista `errors`.
 
 ## Dipendenze DB

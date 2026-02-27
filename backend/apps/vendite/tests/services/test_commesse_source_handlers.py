@@ -19,6 +19,7 @@ Indice test eseguiti:
 10) CommesseSourceHandlersTests.test_handler_contratti_esiste
 11) CommesseSourceHandlersTests.test_handler_ddt_esiste
 12) CommesseSourceHandlersTests.test_handler_consumi_expand_rows_fanout
+13) CommesseSourceHandlersTests.test_process_rows_cache_commessa_evita_chiamate_ripetute
 """
 
 from datetime import date
@@ -247,3 +248,21 @@ class CommesseSourceHandlersTests(TestCase):
         keys = [c[0][0].segment_key for c in calls]
         self.assertIn("CONS:uid-001:COMP:COMP_A", keys)
         self.assertIn("CONS:uid-001:COMP:COMP_B", keys)
+
+    # Scopo: due righe con stessi parametri commessa → get_or_create_commessa chiamata una sola volta (cache).
+    def test_process_rows_cache_commessa_evita_chiamate_ripetute(self):
+        repo = _mock_repo()
+        # Due righe con stessi parametri commessa ma segment_key diverso.
+        row1 = _make_row(segment_key="TEST:uid-001:R:1", sorgente_uid="uid-001")
+        row2 = _make_row(segment_key="TEST:uid-002:R:1", sorgente_uid="uid-002")
+        repo.fetch_pushable_rows.return_value = [row1, row2]
+        handler = HandlerPreventivi(repo)
+
+        result = handler.run()
+
+        self.assertEqual(result.created, 2)
+        # Cache: get_or_create_commessa chiamata 1 volta, non 2.
+        repo.get_or_create_commessa.assert_called_once()
+        # link_sorgente comunque chiamata per ogni riga (sorgente diversa).
+        self.assertEqual(repo.link_sorgente.call_count, 2)
+        self.assertEqual(repo.upsert_attivita.call_count, 2)
