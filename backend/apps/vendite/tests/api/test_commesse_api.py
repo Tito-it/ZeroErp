@@ -107,11 +107,10 @@ class VenditeCommesseApiTests(SimpleTestCase):
             "id": 5,
             "run_at": "2026-02-26T10:00:00",
             "dry_run": False,
-            "source_types": ["HandlerA"],
+            "source_types": ["SRC_A"],
             "risultato": {"HandlerA": {"created": 1}},
             "stato": "COMPLETATO",
             "durata_ms": 100,
-            "user_run": None,
         }
         response = self.client.get("/api/v1/vendite/commesse/push/5/")
         self.assertEqual(response.status_code, 200)

@@ -15,6 +15,8 @@ Indice test eseguiti:
 6) CommesseServiceTests.test_fn_get_commessa_stato_not_found
 7) CommesseServiceTests.test_fn_list_commessa_attivita_ok
 8) CommesseServiceTests.test_fn_list_commessa_attivita_invalid_limit
+9) CommesseServiceTests.test_pr_run_commesse_push_invalid_source_types
+10) CommesseServiceTests.test_build_handlers_only_active_sources
 """
 
 from unittest import TestCase
@@ -76,6 +78,32 @@ class CommesseServiceTests(TestCase):
         self.assertIsNone(result["push_log_id"])
         self.assertEqual(result["handlers"], [])
 
+    # Scopo: source_types con codice non riconosciuto → ServiceError validazione.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_pr_run_commesse_push_invalid_source_types(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push
+
+        mock_repo_cls.return_value.list_active_push_sources.return_value = ["PREVENTIVO"]
+
+        with self.assertRaises(ServiceError) as ctx:
+            pr_run_commesse_push(source_types=["SORGENTE_INESISTENTE"])
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        self.assertIn("SORGENTE_INESISTENTE", ctx.exception.detail)
+        self.assertIn("PREVENTIVO", ctx.exception.detail)
+
+    # Scopo: _build_handlers costruisce solo handler per sorgenti attive in DB.
+    def test_build_handlers_only_active_sources(self):
+        from apps.vendite.services.commesse_service import _build_handlers
+
+        mock_repo = MagicMock()
+        mock_repo.list_active_push_sources.return_value = ["PREVENTIVO", "CONTRATTO"]
+
+        handlers = _build_handlers(mock_repo)
+
+        self.assertEqual(len(handlers), 2)
+        codici = [h.sorgente_codice for h in handlers]
+        self.assertEqual(codici, ["PREVENTIVO", "CONTRATTO"])
+
     # --- fn_get_commesse_push_log ---
 
     # Scopo: push log trovato → restituisce dict con i dati.
@@ -87,11 +115,10 @@ class CommesseServiceTests(TestCase):
             "id": 5,
             "run_at": "2026-02-26T10:00:00",
             "dry_run": False,
-            "source_types": ["HandlerA"],
+            "source_types": ["SRC_A"],
             "risultato": {"HandlerA": {"created": 1}},
             "stato": "COMPLETATO",
             "durata_ms": 100,
-            "user_run": None,
         }
 
         result = fn_get_commesse_push_log(push_log_id=5)

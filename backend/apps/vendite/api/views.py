@@ -172,8 +172,7 @@ class ApiLottoTaskRuns(APIView):
     # Scopo: Restituisce via GET i task run runtime del lotto per monitoraggio operativo.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
         try:
-            limit_value = request.query_params.get("limit", "100")
-            limit = int(limit_value)
+            limit = optional_int({"limit": request.query_params.get("limit", "100")}, "limit")
             data = fn_get_lotto_task_runs(lotto_id=lotto_id, limit=limit)
             return success_response(data)
         except Exception as exc:
@@ -334,8 +333,8 @@ class ApiLottiList(APIView):
             raw_emittente = request.query_params.get("emittente_soggetto_ruolo_id")
             emittente_soggetto_ruolo_id = optional_int({"emittente_soggetto_ruolo_id": raw_emittente}, "emittente_soggetto_ruolo_id") if raw_emittente is not None else None
 
-            page = int(request.query_params.get("page", "1"))
-            page_size = int(request.query_params.get("page_size", "50"))
+            page = optional_int({"page": request.query_params.get("page", "1")}, "page")
+            page_size = optional_int({"page_size": request.query_params.get("page_size", "50")}, "page_size")
 
             data = fn_list_lotti(
                 competenza_mese=competenza_mese,
@@ -371,8 +370,8 @@ class ApiLottoFattureList(APIView):
 
             sort_by = request.query_params.get("sort_by", "fattura_id").strip() or "fattura_id"
             sort_dir = request.query_params.get("sort_dir", "asc").strip() or "asc"
-            page = int(request.query_params.get("page", "1"))
-            page_size = int(request.query_params.get("page_size", "50"))
+            page = optional_int({"page": request.query_params.get("page", "1")}, "page")
+            page_size = optional_int({"page_size": request.query_params.get("page_size", "50")}, "page_size")
 
             data = fn_list_lotto_fatture(
                 lotto_id=lotto_id,
@@ -465,8 +464,7 @@ class ApiAttivitaTaskRuns(APIView):
     # Scopo: Restituisce via GET i task run runtime del lotto attivita per monitoraggio operativo.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
         try:
-            limit_value = request.query_params.get("limit", "100")
-            limit = int(limit_value)
+            limit = optional_int({"limit": request.query_params.get("limit", "100")}, "limit")
             branch_code = request.query_params.get("branch_code") or None
             data = fn_get_attivita_task_runs(lotto_id=lotto_id, limit=limit, branch_code=branch_code)
             return success_response(data)
@@ -498,7 +496,11 @@ class ApiRunCommessePush(APIView):
         request=inline_serializer(
             name="VenditeRunCommessePushRequest",
             fields={
-                "source_types": serializers.ListField(child=serializers.CharField(), required=False),
+                "source_types": serializers.ListField(
+                    child=serializers.CharField(),
+                    required=False,
+                    help_text="Codici sorgente da processare (es. PREVENTIVO, ORDINE_VENDITA, CONTRATTO, DDT_VENDITA, ATTIVITA_CONSUMI). Se omesso processa tutte le sorgenti attive in config.sorgenti.",
+                ),
                 "dry_run": serializers.BooleanField(required=False),
             },
         ),
@@ -525,12 +527,9 @@ class ApiRunCommessePush(APIView):
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             source_types = payload.get("source_types") or None
-            user = getattr(request, "user", None)
-            user_run = str(user) if user and user.is_authenticated else None
             return pr_run_commesse_push(
                 source_types=source_types,
                 dry_run=optional_bool(payload, "dry_run", default=False),
-                user_run=user_run,
             )
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -635,8 +634,8 @@ class ApiCommessaAttivita(APIView):
             stato_emissione = request.query_params.get("stato_emissione") or None
             stato_approvazione = request.query_params.get("stato_approvazione") or None
             competenza_mese = request.query_params.get("competenza_mese") or None
-            limit = int(request.query_params.get("limit", "50"))
-            offset = int(request.query_params.get("offset", "0"))
+            limit = optional_int({"limit": request.query_params.get("limit", "50")}, "limit")
+            offset = optional_int({"offset": request.query_params.get("offset", "0")}, "offset")
             data = fn_list_commessa_attivita(
                 commessa_id=commessa_id,
                 stato_emissione=stato_emissione,

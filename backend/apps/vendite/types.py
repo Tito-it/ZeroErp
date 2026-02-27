@@ -144,4 +144,3 @@ class CommessaPushLogRow(TypedDict):
     risultato: dict[str, Any] | None
     stato: str
     durata_ms: int | None
-    user_run: str | None

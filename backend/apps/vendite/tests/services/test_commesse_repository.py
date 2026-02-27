@@ -28,6 +28,7 @@ Indice test eseguiti:
 19) CommesseRepositoryUnitTests.test_list_commesse_emittibili_empty
 20) CommesseRepositoryUnitTests.test_list_commessa_attivita_maps_rows
 21) CommesseRepositoryUnitTests.test_list_commessa_attivita_empty
+22) CommesseRepositoryUnitTests.test_list_active_push_sources
 """
 
 from datetime import date, datetime, timezone
@@ -230,10 +231,9 @@ class CommesseRepositoryUnitTests(TestCase):
         result = repo.log_push_run(
             stato="COMPLETATO",
             dry_run=False,
-            source_types=["HandlerPreventivi"],
+            source_types=["PREVENTIVO"],
             risultato={"HandlerPreventivi": {"created": 3, "errors": []}},
             durata_ms=1200,
-            user_run="scheduler",
         )
         self.assertEqual(result, 55)
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
@@ -246,9 +246,9 @@ class CommesseRepositoryUnitTests(TestCase):
         mock_cursor_factory.return_value = _mock_cursor(
             fetchone=(
                 55, ts, False,
-                ["HandlerPreventivi", "HandlerOrdini"],
+                ["PREVENTIVO", "ORDINE_VENDITA"],
                 '{"HandlerPreventivi": {"created": 3}}',
-                "COMPLETATO", 1200, "scheduler",
+                "COMPLETATO", 1200,
             )
         )
         repo = CommesseRepository()
@@ -259,7 +259,7 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(result["stato"], "COMPLETATO")
         self.assertEqual(result["durata_ms"], 1200)
         self.assertFalse(result["dry_run"])
-        self.assertEqual(result["source_types"], ["HandlerPreventivi", "HandlerOrdini"])
+        self.assertEqual(result["source_types"], ["PREVENTIVO", "ORDINE_VENDITA"])
         self.assertIn("HandlerPreventivi", result["risultato"] or {})
 
     # Scopo: Verifica che get_push_log restituisca None quando il log non esiste.
@@ -333,6 +333,19 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(len(warnings), 1)
         self.assertIn("NUOVA_SORGENTE", warnings[0])
 
+    # Scopo: Verifica che list_active_push_sources restituisca codici attivi ordinati per id.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_list_active_push_sources(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(
+            fetchall=[("PREVENTIVO",), ("ORDINE_VENDITA",), ("CONTRATTO",)]
+        )
+        result = CommesseRepository.list_active_push_sources()
+        self.assertEqual(result, ["PREVENTIVO", "ORDINE_VENDITA", "CONTRATTO"])
+        sql = mock_cursor_factory.return_value.execute.call_args[0][0]
+        self.assertIn("PUSH_COMMESSA", sql)
+        self.assertIn("attivo", sql)
+        self.assertIn("ORDER BY id", sql)
+
     # Scopo: Verifica che list_commesse_emittibili chiami la fn DB e restituisca list[int].
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
     def test_list_commesse_emittibili_returns_ids(self, mock_cursor_factory):
@@ -362,17 +375,9 @@ class CommesseRepositoryUnitTests(TestCase):
         result = repo.list_commesse_emittibili()
         self.assertEqual(result, [])
 
-    # Scopo: Verifica che list_commessa_attivita chiami la fn DB e mappa le righe in dict.
+    # Scopo: Verifica che list_commessa_attivita chiami count + fn DB e mappa le righe in dict.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
     def test_list_commessa_attivita_maps_rows(self, mock_cursor_factory):
-        _attivita_desc = [
-            ("id",), ("commessa_id",), ("segment_key",), ("articolo_id",),
-            ("istanza_utility_id",), ("data_attivita",), ("uom_id",), ("quantita",),
-            ("competenza_mese",), ("competenza_dal",), ("competenza_al",),
-            ("prezzo_snapshot",), ("prezzo_bloccato",), ("prezzo_da_riallineare",),
-            ("stato_approvazione",), ("stato_emissione",), ("sorgente_tipo_id",),
-            ("sorgente_codice",), ("meta",), ("data_update",),
-        ]
         import uuid
         from datetime import datetime
         _art_id = uuid.uuid4()
@@ -384,32 +389,36 @@ class CommesseRepositoryUnitTests(TestCase):
             "APPROVATA", "NON_EMESSA", 3,
             "PREVENTIVO", {"note": "test"}, datetime(2026, 2, 26, 10, 0, 0),
         )
+        # Due execute: 1) COUNT → fetchone, 2) data → fetchall.
         mock_cursor_factory.return_value = _mock_cursor(
-            fetchall=[_row], description=_attivita_desc,
+            fetchone=(5,), fetchall=[_row],
         )
         repo = CommesseRepository()
         result = repo.list_commessa_attivita(
             1, stato_emissione="NON_EMESSA", limit=50, offset=0,
         )
-        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["count"], 5)  # total count, non len(rows)
         row = result["rows"][0]
         self.assertEqual(row["id"], 100)
         self.assertEqual(row["segment_key"], "SEG:001")
         self.assertEqual(row["articolo_id"], str(_art_id))
         self.assertEqual(row["stato_emissione"], "NON_EMESSA")
         self.assertEqual(row["meta"], {"note": "test"})
+        # Seconda execute (data query) contiene fn_list_commessa_attivita.
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
         self.assertIn("fn_list_commessa_attivita", sql)
         params = mock_cursor_factory.return_value.execute.call_args[0][1]
         self.assertEqual(params[0], 1)  # commessa_id
         self.assertEqual(params[1], "NON_EMESSA")  # stato_emissione
+        # Prima execute (count query) verifica.
+        count_sql = mock_cursor_factory.return_value.execute.call_args_list[0][0][0]
+        self.assertIn("COUNT(*)", count_sql)
 
     # Scopo: Verifica che list_commessa_attivita restituisca count=0 se nessun risultato.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
     def test_list_commessa_attivita_empty(self, mock_cursor_factory):
-        _attivita_desc = [("id",), ("commessa_id",)]
         mock_cursor_factory.return_value = _mock_cursor(
-            fetchall=[], description=_attivita_desc,
+            fetchone=(0,), fetchall=[],
         )
         repo = CommesseRepository()
         result = repo.list_commessa_attivita(1)

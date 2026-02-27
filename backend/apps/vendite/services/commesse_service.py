@@ -17,6 +17,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.services.commesse_push_orchestrator import CommessaPushOrchestrator
 from apps.vendite.services.commesse_source_handlers import (
+    BaseSourceHandler,
     HandlerContratti,
     HandlerConsumi,
     HandlerDdt,
@@ -24,15 +25,29 @@ from apps.vendite.services.commesse_source_handlers import (
     HandlerPreventivi,
 )
 
+# Registry: codice config.sorgenti → handler class.
+# Permette costruzione dinamica basata sulle sorgenti attive in DB.
+_HANDLER_REGISTRY: dict[str, type[BaseSourceHandler]] = {
+    "PREVENTIVO": HandlerPreventivi,
+    "ORDINE_VENDITA": HandlerOrdini,
+    "CONTRATTO": HandlerContratti,
+    "DDT_VENDITA": HandlerDdt,
+    "ATTIVITA_CONSUMI": HandlerConsumi,
+}
 
-def _build_handlers(repo: CommesseRepository) -> list:
-    """Costruisce la lista ordinata di handler sorgente per l'orchestratore."""
+
+def _build_handlers(repo: CommesseRepository) -> list[BaseSourceHandler]:
+    """Costruisce handler solo per le sorgenti attive in config.sorgenti.
+
+    Ordine determinato da config.sorgenti.id (registrazione).
+    Sorgenti attive in DB ma senza handler Python vengono silenziosamente
+    ignorate (validate_sorgente_map le rileva come warning).
+    """
+    active_codes = repo.list_active_push_sources()
     return [
-        HandlerPreventivi(repo),
-        HandlerOrdini(repo),
-        HandlerContratti(repo),
-        HandlerDdt(repo),
-        HandlerConsumi(repo),
+        _HANDLER_REGISTRY[codice](repo)
+        for codice in active_codes
+        if codice in _HANDLER_REGISTRY
     ]
 
 
@@ -41,13 +56,25 @@ def pr_run_commesse_push(
     *,
     source_types: list[str] | None = None,
     dry_run: bool = False,
-    user_run: str | None = None,
 ) -> dict:
     """Entrypoint servizio Python: esegue il push commesse da sorgenti esterne."""
     repo = CommesseRepository()
     handlers = _build_handlers(repo)
+
+    if source_types is not None:
+        valid_codes = {h.sorgente_codice for h in handlers}
+        unknown = [s for s in source_types if s not in valid_codes]
+        if unknown:
+            ErrorManager.raise_error(
+                code="E_COMMESSA_VALIDATION",
+                message="Codici sorgente non validi.",
+                detail=f"source_types non riconosciuti: {unknown}. Sorgenti attive: {sorted(valid_codes)}",
+                context={"source_types": source_types, "unknown": unknown},
+                function_name="vendite.commesse_service.pr_run_commesse_push",
+            )
+
     orch = CommessaPushOrchestrator(repo, handlers)
-    report = orch.run(source_types=source_types, dry_run=dry_run, user_run=user_run)
+    report = orch.run(source_types=source_types, dry_run=dry_run)
     return {
         "stato": report.stato,
         "dry_run": report.dry_run,

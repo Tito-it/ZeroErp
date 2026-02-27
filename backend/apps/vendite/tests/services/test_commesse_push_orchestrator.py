@@ -35,15 +35,16 @@ def _mock_repo(push_log_id: int = 1) -> MagicMock:
     return repo
 
 
-def _mock_handler(name: str, result: HandlerResult) -> MagicMock:
+def _mock_handler(name: str, result: HandlerResult, sorgente_codice: str = "") -> MagicMock:
     h = MagicMock(spec=BaseSourceHandler)
     h.name = name
+    h.sorgente_codice = sorgente_codice or name
     h.run.return_value = result
     return h
 
 
-def _ok_result(name: str, created: int = 1) -> HandlerResult:
-    return HandlerResult(handler_name=name, created=created)
+def _ok_result(name: str, created: int = 1, sorgente_codice: str = "") -> HandlerResult:
+    return HandlerResult(handler_name=name, sorgente_codice=sorgente_codice or name, created=created)
 
 
 class CommessePushOrchestratorTests(TestCase):
@@ -67,6 +68,7 @@ class CommessePushOrchestratorTests(TestCase):
         h_ok = _mock_handler("HandlerA", _ok_result("HandlerA"))
         h_fail = MagicMock(spec=BaseSourceHandler)
         h_fail.name = "HandlerB"
+        h_fail.sorgente_codice = "SRC_B"
         h_fail.run.side_effect = RuntimeError("DB error")
         orch = CommessaPushOrchestrator(repo, [h_ok, h_fail])
 
@@ -83,9 +85,11 @@ class CommessePushOrchestratorTests(TestCase):
         repo = _mock_repo()
         h1 = MagicMock(spec=BaseSourceHandler)
         h1.name = "HandlerA"
+        h1.sorgente_codice = "SRC_A"
         h1.run.side_effect = RuntimeError("fail A")
         h2 = MagicMock(spec=BaseSourceHandler)
         h2.name = "HandlerB"
+        h2.sorgente_codice = "SRC_B"
         h2.run.side_effect = RuntimeError("fail B")
         orch = CommessaPushOrchestrator(repo, [h1, h2])
 
@@ -105,17 +109,18 @@ class CommessePushOrchestratorTests(TestCase):
         self.assertEqual(report.handlers, [])
         repo.log_push_run.assert_called_once()
 
-    # Scopo: source_types=[X] esegue solo l'handler X, gli altri non chiamati.
+    # Scopo: source_types=[codice_sorgente] esegue solo l'handler corrispondente.
     def test_run_source_types_filtra_handler(self):
         repo = _mock_repo()
-        h1 = _mock_handler("HandlerA", _ok_result("HandlerA"))
-        h2 = _mock_handler("HandlerB", _ok_result("HandlerB"))
+        h1 = _mock_handler("HandlerA", _ok_result("HandlerA", sorgente_codice="SRC_A"), sorgente_codice="SRC_A")
+        h2 = _mock_handler("HandlerB", _ok_result("HandlerB", sorgente_codice="SRC_B"), sorgente_codice="SRC_B")
         orch = CommessaPushOrchestrator(repo, [h1, h2])
 
-        report = orch.run(source_types=["HandlerA"])
+        report = orch.run(source_types=["SRC_A"])
 
         self.assertEqual(len(report.handlers), 1)
         self.assertEqual(report.handlers[0].handler_name, "HandlerA")
+        self.assertEqual(report.handlers[0].sorgente_codice, "SRC_A")
         h1.run.assert_called_once()
         h2.run.assert_not_called()
 
@@ -148,6 +153,7 @@ class CommessePushOrchestratorTests(TestCase):
         repo = _mock_repo()
         h_fail = MagicMock(spec=BaseSourceHandler)
         h_fail.name = "HandlerA"
+        h_fail.sorgente_codice = "SRC_A"
         h_fail.run.side_effect = RuntimeError("crash")
         h_ok = _mock_handler("HandlerB", _ok_result("HandlerB", created=3))
         orch = CommessaPushOrchestrator(repo, [h_fail, h_ok])
@@ -162,8 +168,8 @@ class CommessePushOrchestratorTests(TestCase):
     # Scopo: as_risultato include chiavi per tutti gli handler eseguiti.
     def test_run_risultato_jsonb_include_tutti_handler(self):
         repo = _mock_repo()
-        h1 = _mock_handler("HandlerA", HandlerResult(handler_name="HandlerA", created=2, updated=1))
-        h2 = _mock_handler("HandlerB", HandlerResult(handler_name="HandlerB", skipped=5))
+        h1 = _mock_handler("HandlerA", HandlerResult(handler_name="HandlerA", sorgente_codice="SRC_A", created=2, updated=1))
+        h2 = _mock_handler("HandlerB", HandlerResult(handler_name="HandlerB", sorgente_codice="SRC_B", skipped=5))
         orch = CommessaPushOrchestrator(repo, [h1, h2])
 
         report = orch.run()
@@ -199,6 +205,7 @@ class CommessePushOrchestratorTests(TestCase):
         repo = _mock_repo()
         h = MagicMock(spec=BaseSourceHandler)
         h.name = "HandlerA"
+        h.sorgente_codice = "SRC_A"
         h.run.side_effect = RuntimeError("crash")
         orch = CommessaPushOrchestrator(repo, [h])
 

@@ -87,12 +87,11 @@ Aggiungere in `settings.py` MIDDLEWARE, dopo `AuthenticationMiddleware`:
 "apps.core.middleware.jwt_audit_middleware.JwtAuditMiddleware",
 ```
 
-### 3. Conseguenza su `user_run`
+### 3. `user_run` rimosso
 
-Una volta attivo questo meccanismo, `user_run` su `commesse_push_log` diventa
-effettivamente ridondante — `user_insert` registrerà già lo user JWT reale.
-Si può rimuovere in un secondo momento o mantenerlo come campo applicativo
-esplicito (es. per distinguere scheduler vs utente).
+`user_run` è stato rimosso da tutto il flusso backend (view → service →
+orchestrator → repository → types). L'audit user è ora gestito interamente
+dal trigger DB via GUC `app.jwt_user`, eliminando la duplicazione.
 
 ---
 
