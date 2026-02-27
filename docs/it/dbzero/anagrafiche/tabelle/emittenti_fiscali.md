@@ -55,12 +55,13 @@
 | trg_emittenti_fiscali_a10_guard_attivo_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_attivo()` |
 | trg_emittenti_fiscali_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'CODICE_NON_MODIFICABILE')` |
 | trg_emittenti_fiscali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_emittenti_fiscali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_emittenti_fiscali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_emittenti_fiscali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()` |
 | trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()` |
-| trg_emittenti_fiscali_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()` |
+| trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()` |
 | trg_emittenti_fiscali_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()` |
+| trg_emittenti_fiscali_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()` |
 | trg_emittenti_fiscali_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('emittenti_fiscali_id')` |
 | trg_emittenti_fiscali_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('emittenti_fiscali_id')` |
 

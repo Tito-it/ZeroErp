@@ -40,6 +40,7 @@
 |------|--------|--------|--------|
 | trg_attivita_fatturabili_pipeline_task_policy_a10_attivi_e5cbb8 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'attivita_fatturabili_pipeline', 'attivo', 'pipeline_id')` |
 | trg_attivita_fatturabili_pipeline_task_policy_a10_attivi_e5cbb8 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'attivita_fatturabili_pipeline', 'attivo', 'pipeline_id')` |
+| trg_attivita_fatturabili_pipeline_task_policy_audit_data_86cb4c | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_attivita_fatturabili_pipeline_task_policy_audit_data_86cb4c | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_attivita_fatturabili_pipeline_task_policy_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_attivita_fatturabili_pipeline_task_policy_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

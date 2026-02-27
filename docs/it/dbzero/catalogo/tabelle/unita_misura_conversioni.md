@@ -42,6 +42,7 @@
 | trg_unita_misura_conversioni_a10_unita_misura_require_at_2627db | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_to_id')` |
 | trg_unita_misura_conversioni_a10_unita_misura_require_at_3ec9a9 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_from_id')` |
 | trg_unita_misura_conversioni_a10_unita_misura_require_at_3ec9a9 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_from_id')` |
+| trg_unita_misura_conversioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_unita_misura_conversioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---

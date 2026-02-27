@@ -39,13 +39,14 @@
 | trg_ordini_righe_fulfillment_a10_ddt_righe_require_attiv_ae2869 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ddt_righe', 'attivo', 'ddt_riga_id')` |
 | trg_ordini_righe_fulfillment_a10_guard_consistenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()` |
 | trg_ordini_righe_fulfillment_a10_guard_consistenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()` |
-| trg_ordini_righe_fulfillment_a10_ordini_righe_require_at_925d38 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ordini_righe', 'attivo', 'ordine_riga_id')` |
 | trg_ordini_righe_fulfillment_a10_ordini_righe_require_at_925d38 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ordini_righe', 'attivo', 'ordine_riga_id')` |
+| trg_ordini_righe_fulfillment_a10_ordini_righe_require_at_925d38 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ordini_righe', 'attivo', 'ordine_riga_id')` |
+| trg_ordini_righe_fulfillment_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ordini_righe_fulfillment_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ordini_righe_fulfillment_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_ordini_righe_fulfillment_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_ordini_righe_fulfillment_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('ordini_righe_fulfillment_id')` |
 | trg_ordini_righe_fulfillment_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('ordini_righe_fulfillment_id')` |
+| trg_ordini_righe_fulfillment_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('ordini_righe_fulfillment_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

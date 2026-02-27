@@ -34,6 +34,7 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_vendite_contabili_righe_stati_a10_vendite_contabili__b3c071 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pagamenti', 'vendite_contabili_righe', 'stato_id', 'id')` |
+| trg_vendite_contabili_righe_stati_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_vendite_contabili_righe_stati_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---

@@ -42,6 +42,7 @@
 | trg_attivita_fatturabili_pipeline_a10_attivita_fatturabi_7d3dd3 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'attivita_fatturabili_pipeline_task_policy', 'pipeline_id', 'id')` |
 | trg_attivita_fatturabili_pipeline_a10_sorgenti_require_a_7092b0 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
 | trg_attivita_fatturabili_pipeline_a10_sorgenti_require_a_7092b0 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id')` |
+| trg_attivita_fatturabili_pipeline_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_attivita_fatturabili_pipeline_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---

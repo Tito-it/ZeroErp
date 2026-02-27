@@ -37,6 +37,7 @@
 |------|--------|--------|--------|
 | trg_fatture_fondi_fattura_a10_tipi_fondi_fattura_require_248952 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'tipi_fondi_fattura', 'attivo', 'tipo_fondo_fattura_id')` |
 | trg_fatture_fondi_fattura_a10_tipi_fondi_fattura_require_248952 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'tipi_fondi_fattura', 'attivo', 'tipo_fondo_fattura_id')` |
+| trg_fatture_fondi_fattura_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatture_fondi_fattura_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatture_fondi_fattura_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_fatture_fondi_fattura_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

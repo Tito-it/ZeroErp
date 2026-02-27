@@ -44,6 +44,7 @@
 | trg_fatturazione_lotti_fatture_a10_stati_sdi_require_att_811d57 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_sdi', 'attivo', 'stato_sdi_id')` |
 | trg_fatturazione_lotti_fatture_a10_stati_sdi_require_att_811d57 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_sdi', 'attivo', 'stato_sdi_id')` |
 | trg_fatturazione_lotti_fatture_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_fatturazione_lotti_fatture_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatturazione_lotti_fatture_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_fatturazione_lotti_fatture_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_fatturazione_lotti_fatture_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('fatturazione_lotti_fatture_id')` |

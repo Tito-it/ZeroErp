@@ -39,9 +39,10 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_istanze_dati_precontrattuali_a10_protect_update_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update()` |
 | trg_istanze_dati_precontrattuali_a10_protect_update_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update()` |
+| trg_istanze_dati_precontrattuali_a10_protect_update_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update()` |
 | trg_istanze_dati_precontrattuali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_istanze_dati_precontrattuali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_istanze_dati_precontrattuali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_istanze_dati_precontrattuali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_istanze_dati_precontrattuali_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('istanze_dati_precontrattuali_id')` |

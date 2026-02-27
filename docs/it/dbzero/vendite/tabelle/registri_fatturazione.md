@@ -48,6 +48,7 @@
 | trg_registri_fatturazione_a10_sorgenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'sorgenti', 'registro_id', 'id')` |
 | trg_registri_fatturazione_a10_tipi_doc_fiscale_registri__d1c865 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'tipi_doc_fiscale_registri', 'registro_id', 'id')` |
 | trg_registri_fatturazione_a10_utilities_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'utilities', 'registro_id', 'id')` |
+| trg_registri_fatturazione_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_registri_fatturazione_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_registri_fatturazione_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_registri_fatturazione_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
