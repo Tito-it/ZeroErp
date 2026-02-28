@@ -11,6 +11,7 @@
 > * [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa)
 > * [vendite.fatture](/dbzero/vendite/tabelle/fatture)
 > * [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)
+> * [vendite.event_log](/dbzero/vendite/tabelle/event_log)
 > * [Messaggi di errore e log](/guide/Messaggi-di-Errore-e-Generazione-Log)
 
 ---
@@ -44,6 +45,36 @@ flowchart TD
   G --> I[vendite.fatture]
   I --> L[DEFINITIVA numerazione]
   L --> M[INVIATA SDI output]
+```
+
+### Ruolo dei layer
+
+Il processo e` suddiviso su tre layer con responsabilita` distinte:
+
+| Layer             | Responsabilita`                                                | Esempi                                                                              |
+| ----------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **PostgreSQL**    | Stato, regole di dominio, vincoli, log funzionali              | `fn_get_or_create_commessa`, `fn_set_fatturazione_lotto_stato`, trigger append-only |
+| **Python/Django** | Orchestrazione, sequencing, fan-out, gestione errori, API REST | `CommessaPushOrchestrator`, `LottoPipelineRunner`, `PipelineStepExecutor`           |
+| **API REST**      | Esposizione endpoint, validazione input, idempotenza request   | `/api/vendite/run-lotto-pipeline/`, `/api/vendite/run-commesse-push/`               |
+
+Principio generale: il database e` l'autorita` su stato e regole; Python orchestra il flusso e gestisce le eccezioni; l'API espone e protegge.
+
+### Componenti Python principali
+
+```text
+apps/vendite/
+  api/views.py                         # Endpoint REST
+  services/
+    pipeline_service.py                # Entrypoint facade (run_lotto_pipeline)
+    pipeline_runner.py                 # LottoPipelineRunner — orchestratore pipeline lotti
+    pipeline_step_executor.py          # PipelineStepExecutor — esecuzione singolo step
+    pipeline_error_logger.py           # PipelineErrorLogger — dual-log (error_log + dominio)
+    commesse_push_orchestrator.py      # CommessaPushOrchestrator — fan-out push sorgenti
+    commesse_source_handlers.py        # BaseSourceHandler + handler concreti per sorgente
+    lotto_segnalazioni_service.py      # Valutazione segnalazioni blocco lotto
+  db/
+    pipeline_repository.py             # Repository DB pipeline (stato, log, event_log)
+    commesse_repository.py             # Repository DB commesse (CRUD, push log, event_log)
 ```
 
 ---
@@ -108,17 +139,34 @@ erDiagram
 
 Scopo: costruire/aggiornare le commesse e le relative righe tecniche da emettere.
 
-Funzioni e API principali:
+### Orchestrazione push (Python)
+
+L'ingestione e` gestita da `CommessaPushOrchestrator` che:
+
+1. Acquisisce un advisory lock PostgreSQL per evitare run concorrenti.
+2. Esegue in sequenza gli handler registrati (uno per sorgente: preventivi, ordini, consumi, ...).
+3. Isola gli errori per handler: un fallimento non blocca gli altri.
+4. Scrive il log in `commesse_push_log` e emette eventi su `event_log` (`PUSH_STARTED`, `PUSH_COMPLETED`).
+
+Ogni handler (`BaseSourceHandler`) implementa:
+
+* `fetch_pushable_rows()` — recupera righe sorgente da sincronizzare
+* `_expand_rows()` — trasforma una riga sorgente in una o piu` righe commessa
+* `_process_rows()` — risolve/crea commessa, linka sorgente, batch upsert righe
+
+### Funzioni DB
 
 * [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
 * [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
+* [vendite.fn_batch_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_batch_upsert_commessa_attivita)
 * [vendite.fn_link_commessa_sorgente](/dbzero/vendite/funzioni/fn_link_commessa_sorgente)
 * [API run_commesse_push](/backend/vendite/manual/api_run_commesse_push)
 
-Regole principali:
+### Regole principali
 
 * match/creazione commessa su perimetro BA/utility/policy/emittente/competenza;
 * idempotenza riga su `(commessa_id, segment_key)`;
+* batch upsert: N righe in una singola chiamata DB per performance;
 * validazioni forti su quantita`, prezzo e stato commessa modificabile;
 * nessun bypass diretto sorgente -> `attivita_fatturabili`.
 
@@ -161,6 +209,25 @@ Regole principali:
 ## Fase 4 - Pipeline fatturazione a lotti
 
 Dopo la fase commesse, la fatturazione resta governata dal dominio lotti.
+
+### Orchestrazione pipeline (Python)
+
+Il flusso e` orchestrato da `LottoPipelineRunner`:
+
+1. Risolve o crea il lotto (`get_or_create_lotto`).
+2. Verifica precondizioni: lotto non gia` in esecuzione, nessuna segnalazione critica attiva.
+3. Imposta stato `IN_ESECUZIONE` e emette `PIPELINE_STARTED` su `event_log`.
+4. Esegue un singolo step per run (modalita` operativa: avanzamento incrementale).
+5. Per ogni step: aggiorna stato doc, logga fase, delega a `PipelineStepExecutor`, emette `STEP_COMPLETED`.
+6. Se tutti gli step completano: stato `COMPLETATO`, emette `PIPELINE_COMPLETED`.
+7. In caso di errore: stato `ERRORE`, dual-log (`error_log` tecnico + `event_log` di dominio), emette `PIPELINE_ERROR`.
+
+Componenti:
+
+* `LottoPipelineRunner` — orchestra il flusso, gestisce retry/rerun su lotti in errore.
+* `PipelineStepExecutor` — esegue il singolo step con risoluzione task da registry.
+* `PipelineErrorLogger` — dual-log: errore tecnico su `dbops.error_log` + log funzionale su tabelle dominio.
+* `LottoSegnalazioniService` — valuta se il lotto ha segnalazioni bloccanti prima dell'avanzamento.
 
 ### Modello lotti (visione sintetica)
 
@@ -223,7 +290,7 @@ erDiagram
 * [vendite.fn_list_fatturazione_pipeline_steps](/dbzero/vendite/funzioni/fn_list_fatturazione_pipeline_steps)
 * [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)
 * [backend.execute_pipeline_step](/backend/vendite/funzioni/fn_execute_pipeline_step)
-* [backend.run_lotto_pipeline](/backend/vendite/manual/pr_run_lotto_pipeline)
+* [backend.run_lotto_pipeline](/backend/vendite/funzioni/run_lotto_pipeline)
 * [vendite.fn_start_lotto_task_run](/dbzero/vendite/funzioni/fn_start_lotto_task_run)
 * [vendite.fn_complete_lotto_task_run](/dbzero/vendite/funzioni/fn_complete_lotto_task_run)
 * [vendite.fn_fail_lotto_task_run](/dbzero/vendite/funzioni/fn_fail_lotto_task_run)
@@ -250,7 +317,7 @@ erDiagram
 Per evitare ambiguita` tra SQL legacy e runtime applicativo:
 
 * nel runtime Python usare naming senza prefissi DB (`run_lotto_pipeline`, `execute_pipeline_step`, `run_commesse_push`);
-* i nomi storici SQL (`pr_*`, `fn_*`) restano solo riferimento storico/documentale quando presenti;
+
 * la semantica operativa corrente e` governata dai service Django.
 
 ---
@@ -270,15 +337,50 @@ Vista funzionale consigliata (anche in singola UI a sezioni):
 
 Obiettivo: garantire diagnosi rapida e riesecuzione sicura senza perdita di coerenza.
 
-Regole operative:
+### Tre livelli di log
+
+Il sistema utilizza tre livelli di logging complementari, ciascuno con finalita` distinta:
+
+| Log                | Scopo                                    | Risponde a                            | Tabella                                                      |
+| ------------------ | ---------------------------------------- | ------------------------------------- | ------------------------------------------------------------ |
+| **Error log**      | Eccezioni tecniche con catalogo messaggi | "Cosa e` andato storto?"              | `dbops.error_log`                                            |
+| **Event log**      | Timeline eventi di dominio per entita`   | "Cosa e` successo al lotto/commessa?" | `vendite.event_log`                                          |
+| **Log funzionali** | Dettaglio operativo fase/fattura/push    | "Qual e` l'esito di questa fase?"     | `fatturazione_lotti_log`, `fatture_log`, `commesse_push_log` |
+
+### vendite.event_log — timeline unificata
+
+Tabella append-only (UPDATE/DELETE bloccati da trigger) che registra tutti gli eventi di dominio:
+
+* **Domini**: `PIPELINE`, `COMMESSE`, `SDI`, `FATTURE`
+* **Entita`**: `LOTTO`, `FATTURA`, `COMMESSA`, `TASK_RUN`
+* **Severita`**: `INFO`, `WARN`, `ERROR`
+* **Correlazione**: `correlation_id` (UUID) lega eventi dello stesso batch/job
+
+Eventi emessi dal backend:
+
+| Dominio  | event_code           | Emesso da                  | Quando                                    |
+| -------- | -------------------- | -------------------------- | ----------------------------------------- |
+| PIPELINE | `PIPELINE_STARTED`   | `LottoPipelineRunner`      | Avvio pipeline lotto                      |
+| PIPELINE | `STEP_COMPLETED`     | `LottoPipelineRunner`      | Completamento singolo step                |
+| PIPELINE | `PIPELINE_COMPLETED` | `LottoPipelineRunner`      | Pipeline lotto completata                 |
+| PIPELINE | `PIPELINE_ERROR`     | `LottoPipelineRunner`      | Errore pipeline (severity ERROR)          |
+| COMMESSE | `PUSH_STARTED`       | `CommessaPushOrchestrator` | Avvio push sorgenti                       |
+| COMMESSE | `PUSH_COMPLETED`     | `CommessaPushOrchestrator` | Push completato (WARN se parziale/errore) |
+
+Funzione DB: `vendite.fn_log_event()` — interfaccia unificata chiamata dai repository Python.
+
+### Regole operative
 
 1. Le funzioni DB devono alzare errori strutturati tramite `script.fn_log_and_raise_error`.
 2. Gli errori di validazione input devono essere distinti da errori runtime/transazionali.
 3. Ogni run push/emissione deve produrre log di esito con contatori (`created`, `updated`, `skipped`, `errors`).
 4. I servizi backend devono propagare un envelope errore coerente verso API.
+5. I servizi Python emettono eventi di dominio su `event_log` nei punti chiave di inizio/fine/errore.
 
-Riferimenti:
+### Riferimenti
 
+* [vendite.event_log](/dbzero/vendite/tabelle/event_log)
+* [vendite.fn_log_event](/dbzero/vendite/funzioni/fn_log_event)
 * [Messaggi di errore e log](/guide/Messaggi-di-Errore-e-Generazione-Log)
 * [vendite.commesse_push_log](/dbzero/vendite/tabelle/commesse_push_log)
 * [API run_commesse_push](/backend/vendite/manual/api_run_commesse_push)
@@ -303,20 +405,24 @@ Regole tecniche:
 
 Il flusso e` pensato per esecuzione schedulata e on-demand.
 
-L'orchestrazione runtime e` applicativa (Python): il database mantiene stato, regole e log di dominio.
+L'orchestrazione runtime e` applicativa (Python/Django): il database mantiene stato, regole e log di dominio.
 
-Pattern consigliato:
+### Job e classi orchestranti
 
-1. Job push commesse (frequenza alta, perimetro sorgenti configurabile).
-2. Job emissione da commesse (frequenza media, con filtri per competenza/perimetro).
-3. Job pipeline lotti fatturazione (finestre batch controllate).
+| Job                   | Classe Python              | Protezione concorrenza              | Frequenza tipica  |
+| --------------------- | -------------------------- | ----------------------------------- | ----------------- |
+| Push commesse         | `CommessaPushOrchestrator` | Advisory lock PostgreSQL            | Alta (minuti)     |
+| Emissione da commesse | (funzione DB diretta)      | Lock transazionale su commessa      | Media (oraria)    |
+| Pipeline lotti        | `LottoPipelineRunner`      | Stato lotto `IN_ESECUZIONE` + guard | Batch controllato |
 
-Guardrail operativi:
+### Guardrail operativi
 
 * evitare sovrapposizione di job sullo stesso perimetro BA/utility/competenza;
-* usare lock applicativi/DB e run marker;
-* prevedere retry controllato solo su step idempotenti.
-* mantenere la policy di retry/backoff nel layer orchestratore Python (non nelle funzioni SQL).
+* `CommessaPushOrchestrator`: advisory lock impedisce run concorrenti (stato `SKIPPED` se lock non acquisito);
+* `LottoPipelineRunner`: lotto in `IN_ESECUZIONE` rifiuta nuovo avvio (`E_PIPELINE_LOTTO_IN_ESECUZIONE`);
+* prevedere retry controllato solo su step idempotenti;
+* mantenere la policy di retry/backoff nel layer orchestratore Python (non nelle funzioni SQL);
+* monitorare timeline `event_log` per identificare run bloccati o anomali.
 
 ---
 

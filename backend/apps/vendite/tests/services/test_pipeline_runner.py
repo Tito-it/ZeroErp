@@ -15,10 +15,14 @@ Indice test eseguiti:
 13) LottoPipelineRunnerUnitTests.test_runner_blocks_when_lotto_has_critical_signals
 14) LottoPipelineRunnerUnitTests.test_runner_blocks_when_fatture_hanno_stato_esecuzione_errore
 15) LottoPipelineRunnerUnitTests.test_runner_non_blocca_se_solo_warning_senza_critical_e_senza_stato_errore
+16) LottoPipelineRunnerUnitTests.test_runner_emits_pipeline_started_event
+17) LottoPipelineRunnerUnitTests.test_runner_emits_pipeline_completed_event
+18) LottoPipelineRunnerUnitTests.test_runner_emits_step_completed_event
+19) LottoPipelineRunnerUnitTests.test_runner_emits_pipeline_error_event
 """
 
 from contextlib import nullcontext
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
@@ -153,6 +157,10 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 emittente_soggetto_ruolo_id = None
 
             return _Ctx()
+
+        # Scopo: Stub per log_event su event_log.
+        def log_event(self, **kwargs):
+            return 1
 
     class _StepExecutorMock:
         # Scopo: Inizializza la istanza.
@@ -491,3 +499,64 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             result = runner.run_pipeline(LottoPipelineParams(dry_run=True))
         self.assertEqual(result, 10)
         self.assertTrue(step_executor.called)
+
+    # Scopo: Verifica che run_pipeline emetta PIPELINE_STARTED su event_log.
+    def test_runner_emits_pipeline_started_event(self):
+        repo = MagicMock(wraps=self._RepoMock())
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            runner.run_pipeline(LottoPipelineParams(dry_run=True))
+        started_calls = [
+            c for c in repo.log_event.call_args_list
+            if c.kwargs.get("event_code") == "PIPELINE_STARTED"
+        ]
+        self.assertEqual(len(started_calls), 1)
+        self.assertEqual(started_calls[0].kwargs["domain"], "PIPELINE")
+        self.assertEqual(started_calls[0].kwargs["entity_type"], "LOTTO")
+        self.assertEqual(started_calls[0].kwargs["entity_id"], 10)
+
+    # Scopo: Verifica che run_pipeline emetta PIPELINE_COMPLETED su event_log.
+    def test_runner_emits_pipeline_completed_event(self):
+        repo = MagicMock(wraps=self._RepoMock())
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            runner.run_pipeline(LottoPipelineParams(dry_run=True))
+        completed_calls = [
+            c for c in repo.log_event.call_args_list
+            if c.kwargs.get("event_code") == "PIPELINE_COMPLETED"
+        ]
+        self.assertEqual(len(completed_calls), 1)
+        self.assertEqual(completed_calls[0].kwargs["domain"], "PIPELINE")
+        self.assertEqual(completed_calls[0].kwargs["payload"]["tipo_lotto"], "MASSIVO")
+
+    # Scopo: Verifica che _execute_pipeline_step emetta STEP_COMPLETED su event_log.
+    def test_runner_emits_step_completed_event(self):
+        repo = MagicMock(wraps=self._RepoMock())
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            runner.run_pipeline(LottoPipelineParams(dry_run=True))
+        step_calls = [
+            c for c in repo.log_event.call_args_list
+            if c.kwargs.get("event_code") == "STEP_COMPLETED"
+        ]
+        self.assertEqual(len(step_calls), 1)
+        self.assertEqual(step_calls[0].kwargs["payload"]["stato_doc_fiscale_id"], 1)
+
+    # Scopo: Verifica che un errore pipeline emetta PIPELINE_ERROR su event_log.
+    def test_runner_emits_pipeline_error_event(self):
+        repo = MagicMock(wraps=self._RepoMock())
+        step_executor = self._UnexpectedFailingStepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            with self.assertRaises(ServiceError):
+                runner.run_pipeline(LottoPipelineParams(dry_run=False))
+        error_calls = [
+            c for c in repo.log_event.call_args_list
+            if c.kwargs.get("event_code") == "PIPELINE_ERROR"
+        ]
+        self.assertEqual(len(error_calls), 1)
+        self.assertEqual(error_calls[0].kwargs["severity"], "ERROR")
+        self.assertEqual(error_calls[0].kwargs["domain"], "PIPELINE")

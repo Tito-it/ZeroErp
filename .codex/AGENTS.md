@@ -3,7 +3,7 @@
 ## Quick Start per AI Agent
 
 - Progetto: ERP Django + PostgreSQL, open-source GPL v3
-- Stack: Python 3.14, Django 6.01, Liquibase v2, pgTAP per test DB
+- Stack: Python 3.14, Django 6.01, Liquibase 5, PostgreSQL 18, pgTAP per test DB
 - Prima di implementare: leggi docs in `docs/it/` pertinenti
 - Struttura: backend in `backend/`, DB migrations in `db/changelog/migrations_v2/`
 - Filosofia: **DB-first** — la logica di business sta in PostgreSQL; Django orchestra e espone API; Vue (futuro) solo presentazione
@@ -13,6 +13,14 @@
 - Repo: ZeroErp
 - Default language: it-IT (docs, commenti Python e SQL)
 - Follow docs in `docs/it/linee-guida-sql.md`, `docs/it/linee-guida-trigger.md`, `docs/it/liquibase-setup-workflow.md`
+
+## Dipendenze e versioni runtime
+
+- Prima di sviluppare, consultare le dipendenze correnti:
+  - **Backend Python**: `backend/requirements.in` (dipendenze dirette) e `backend/requirements.txt` (lock file generato)
+  - **Strumenti dev**: `requirements.txt` nella root (mkdocs, pre-commit, ecc.)
+- **Liquibase 5** + **PostgreSQL 18**: usare sintassi e funzionalità compatibili con queste versioni (es. SQL/JSON standard ISO, funzioni PG 18)
+- Non aggiungere dipendenze Python senza conferma dell'utente
 
 ## Ambiente di sviluppo
 
