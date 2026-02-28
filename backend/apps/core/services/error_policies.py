@@ -137,6 +137,25 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Errore non gestito.",
         ),
+        # ── Permessi e autorizzazioni ──
+        "E_USER_DISABILITATO": ErrorPolicy(
+            code="E_USER_DISABILITATO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Utente disabilitato. Contattare l'amministratore.",
+        ),
+        "E_PERMESSO_NEGATO": ErrorPolicy(
+            code="E_PERMESSO_NEGATO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Non hai i permessi per questa operazione.",
+        ),
+        "E_REPARTO_SENZA_PROFILO": ErrorPolicy(
+            code="E_REPARTO_SENZA_PROFILO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Il reparto non ha ancora un profilo permessi configurato.",
+        ),
     }
 
     # Scopo: Gestisce `resolve` nel flusso applicativo del modulo.

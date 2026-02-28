@@ -1,7 +1,8 @@
+from django.contrib.auth import get_user_model
 from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
-from rest_framework.permissions import IsAuthenticated
+from apps.core.api.permissions import ZeroERPPermission
 from rest_framework.request import Request
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -10,6 +11,7 @@ from apps.core.api.error_responses import exception_to_error_response
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
 from apps.core.services.lookup_service import fn_list_lookup_codici
+from apps.core.services.permissions_resolver import LIVELLO_MAP, PermissionResolver
 from apps.core.services.service_errors import ServiceError
 
 # Endpoint diagnostici core: utili per verificare contratto error envelope API.
@@ -66,7 +68,7 @@ class ApiDiagnosticsErrorEnvelope(APIView):
 class ApiDiagnosticsErrorEnvelopeV1(ApiDiagnosticsErrorEnvelope):
     # Versione canonica protetta: richiede JWT su /api/v1/*
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
 
 
 class ApiLookupCodici(APIView):
@@ -136,4 +138,104 @@ class ApiLookupCodici(APIView):
 
 class ApiLookupCodiciV1(ApiLookupCodici):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+
+
+class ApiPermessiEffettivi(APIView):
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="CorePermessiEffettiviResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="CorePermessiEffettiviData",
+                        fields={
+                            "user_id": serializers.IntegerField(),
+                            "username": serializers.CharField(),
+                            "ruolo_sistema": serializers.CharField(allow_null=True),
+                            "unita_organizzativa_id": serializers.IntegerField(allow_null=True),
+                            "aree": serializers.ListField(child=serializers.DictField()),
+                            "emittenti_ids": serializers.ListField(
+                                child=serializers.IntegerField(), allow_null=True
+                            ),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET i permessi effettivi risolti per un utente.
+    # Solo ADMIN e superuser possono consultare altri utenti.
+    def get(self, request: Request, user_id: int) -> JsonResponse:
+        try:
+            user = request.user
+            cache: dict = {}
+
+            # Solo ADMIN/superuser possono vedere permessi di altri utenti
+            ruolo_richiedente = PermissionResolver.get_ruolo_sistema(user, cache=cache)
+            if user_id != user.id:
+                if not user.is_superuser and ruolo_richiedente != "ADMIN":
+                    raise ServiceError(
+                        code="E_PERMESSO_NEGATO",
+                        message="Non hai i permessi per questa operazione.",
+                        detail="Solo ADMIN possono consultare permessi di altri utenti.",
+                    )
+
+            # Carica l'utente target
+            User = get_user_model()
+            try:
+                target_user = User.objects.get(pk=user_id)
+            except User.DoesNotExist:
+                raise ServiceError(
+                    code="E_CORE_VALIDATION",
+                    message="Utente non trovato.",
+                    detail=f"Nessun utente con id={user_id}.",
+                )
+
+            # Risolvi permessi per target
+            target_cache: dict = {}
+            ruolo = PermissionResolver.get_ruolo_sistema(target_user, cache=target_cache)
+            uo_id = PermissionResolver._get_unita_organizzativa_id(
+                target_user, cache=target_cache
+            )
+            emittenti_ids = PermissionResolver.get_emittenti_ids(
+                target_user, cache=target_cache
+            )
+
+            # Itera tutte le aree funzionali attive
+            from apps.config.models import AreaFunzionale
+
+            aree_result = []
+            for area in AreaFunzionale.objects.filter(attivo=True):
+                livello = PermissionResolver.get_livello_area(
+                    target_user, area.schema_db, cache=target_cache
+                )
+                has_profilo = PermissionResolver.has_profilo_reparto_area(
+                    target_user, area.schema_db, cache=target_cache
+                )
+                aree_result.append({
+                    "codice": area.codice,
+                    "schema_db": area.schema_db,
+                    "descrizione": area.descrizione,
+                    "livello": livello,
+                    "azioni_consentite": sorted(LIVELLO_MAP.get(livello, frozenset())),
+                    "has_profilo_reparto": has_profilo,
+                })
+
+            data = {
+                "user_id": target_user.id,
+                "username": target_user.get_username(),
+                "ruolo_sistema": ruolo,
+                "unita_organizzativa_id": uo_id,
+                "aree": aree_result,
+                "emittenti_ids": emittenti_ids,
+            }
+            return success_response(data)
+        except Exception as exc:
+            return exception_to_error_response(exc)
+
+
+class ApiPermessiEffettiviV1(ApiPermessiEffettivi):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [ZeroERPPermission]

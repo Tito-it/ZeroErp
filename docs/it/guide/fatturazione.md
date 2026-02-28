@@ -192,17 +192,39 @@ Funzioni di supporto:
 
 Scopo: trasferire le righe `commesse_attivita` idonee in `attivita_fatturabili`.
 
-Funzione principale:
+### Orchestrazione emissione (Python)
+
+L'emissione non e` un job autonomo: e` un **task pipeline** eseguito come primo
+step del lotto (tipicamente DRAFT), gestito da `PipelineStepExecutor`:
+
+1. Il task `pull_attivita_da_commessa_default` viene invocato dal runner.
+2. L'executor chiama `commesse_repository.list_commesse_emittibili()` per scoprire
+   le commesse pronte nel perimetro del lotto (competenza, utility, BA, emittente).
+3. Per ogni commessa trovata chiama `commesse_repository.emit_attivita_fatturabili()`.
+4. La funzione SQL sottostante trasferisce le righe e restituisce contatori
+   (`inserted_rows`, `updated_rows`, `skipped_rows`).
+
+Componenti Python:
+
+| Componente | File | Ruolo |
+| --- | --- | --- |
+| Task handler | `pipeline_step_executor.py` (`_handle_pull_attivita_da_commessa_task`) | Orchestrazione discovery + emit per lotto |
+| Discovery | `commesse_repository.py` (`list_commesse_emittibili`) | Trova commesse pronte per emissione |
+| Emit wrapper | `commesse_repository.py` (`emit_attivita_fatturabili`) | Wrappa la fn SQL, restituisce `CommessaEmitResult` |
+
+### Funzioni DB emissione
 
 * [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa)
+* [vendite.fn_list_commesse_emittibili](/dbzero/vendite/funzioni/fn_list_commesse_emittibili)
 
-Regole principali:
+### Regole emissione
 
 * sorgente AF forzata a tipo `COMMESSA`;
-* mapping deterministico di `segment_key` su identificativo sorgente AF;
-* idempotenza su chiave sorgente in AF;
+* mapping deterministico di `segment_key` su identificativo sorgente AF (`md5 → UUID`);
+* idempotenza su chiave sorgente in AF (`sorgente_tipo_id`, `sorgente_uid`);
 * blocco aggiornamento se la riga AF risulta gia` fatturata;
-* aggiornamento stato righe commessa emesse (`stato_emissione = EMESSA`).
+* aggiornamento stato righe commessa emesse (`stato_emissione = EMESSA`);
+* supporto `dry_run` e filtro `only_approved` sulla funzione SQL.
 
 ---
 
@@ -240,11 +262,33 @@ Componenti:
 
 ```mermaid
 erDiagram
+  ATTIVITA_FATTURABILI_LOTTI ||--o{ ATTIVITA_FATTURABILI : "lotto_attivita_id"
+  ATTIVITA_FATTURABILI }o--|| COMMESSE_ATTIVITA : "commessa_attivita_id"
   FATTURAZIONE_LOTTI ||--o{ FATTURAZIONE_LOTTI_FATTURE : "lotto_id"
   FATTURE ||--o{ FATTURAZIONE_LOTTI_FATTURE : "fattura_id"
   FATTURAZIONE_PIPELINE ||--o{ FATTURAZIONE_LOTTI_TASK_RUNS : "pipeline_id"
   FATTURAZIONE_LOTTI ||--o{ FATTURAZIONE_LOTTI_TASK_RUNS : "lotto_id"
 
+  COMMESSE_ATTIVITA {
+    bigint id PK
+    bigint commessa_id FK
+    varchar segment_key
+    varchar stato_emissione
+  }
+  ATTIVITA_FATTURABILI {
+    bigint id PK
+    bigint lotto_attivita_id FK
+    bigint commessa_id FK
+    bigint commessa_attivita_id FK
+    varchar stato_esecuzione
+  }
+  ATTIVITA_FATTURABILI_LOTTI {
+    bigint id PK
+    varchar codice
+    date competenza_mese
+    bigint utility_id FK
+    varchar stato_lotto
+  }
   FATTURAZIONE_LOTTI {
     bigint id PK
     varchar tipo_lotto
@@ -304,6 +348,42 @@ erDiagram
 3. DEFINITIVA: numerazione documento.
 4. INVIATA: preparazione/invio su canale esterno (es. SDI).
 
+### Rollback di step (`fatturazione_pipeline.rollback`)
+
+Ogni riga di `fatturazione_pipeline` ha due array JSONB paralleli:
+
+* **`processi`** — task da eseguire in avanzamento (forward);
+* **`rollback`** — task da eseguire quando il lotto torna a questo step (cleanup).
+
+La fn SQL `fn_resolve_fatturazione_pipeline_step(p_rollback => true)` restituisce
+i task di rollback al posto di quelli forward. Il `PipelineStepExecutor` chiama
+`get_step_processes(rollback=True)` e li esegue con lo stesso meccanismo dei task normali.
+
+**Quando scatta il rollback:**
+
+Il rollback e` manuale (richiesto dall'operatore o dall'API `reset_lotto`) oppure
+automatico se la pipeline ha `meta.auto_step_rollback = true`. Non scatta mai
+spontaneamente su errore: un errore lascia il lotto in stato `ERRORE` e serve
+un rerun esplicito.
+
+**Esempio concreto (seed):**
+
+| Step   | `processi`                                               | `rollback`           |
+| ------ | -------------------------------------------------------- | -------------------- |
+| DRAFT  | `select_attivita`, `generate_fatture_righe`              | `[]` (nessuno)       |
+| EMESSA | `genera_fondi`, `applica_fondi`, `ricalcola_iva`         | `reset_lotto_draft`  |
+
+In questo caso, se un lotto MASSIVO in stato EMESSA deve tornare a DRAFT,
+il sistema esegue il task `reset_lotto_draft` che pulisce fondi, righe IVA
+e totali generati dallo step forward.
+
+**Vincoli:**
+
+* Il rollback e` ammesso solo per lotti MASSIVO in stati pre-fiscali (tipicamente DRAFT ed EMESSA).
+* Dopo la DEFINITIVA (numerazione fiscale) il rollback globale non e` piu` possibile;
+  il sistema usa resume per fattura.
+* Se `rollback` e` `[]` (array vuoto), lo step non prevede operazioni di pulizia.
+
 ### Regole operative del modello lotti
 
 1. Lo step effettivo viene risolto con fallback configurativo (`utility + tipo_doc`, `utility`, `tipo_doc`, globale).
@@ -355,6 +435,38 @@ Tabella append-only (UPDATE/DELETE bloccati da trigger) che registra tutti gli e
 * **Entita`**: `LOTTO`, `FATTURA`, `COMMESSA`, `TASK_RUN`
 * **Severita`**: `INFO`, `WARN`, `ERROR`
 * **Correlazione**: `correlation_id` (UUID) lega eventi dello stesso batch/job
+
+### Come funziona il correlation_id
+
+Il `correlation_id` consente di ricostruire la timeline completa di un singolo
+run pipeline, collegando tutti gli eventi (start, step, completamento, errore)
+in un'unica traccia.
+
+**Ciclo di vita:**
+
+1. Il chiamante (API o scheduler) passa un `lock_batch_id` (UUID) nella request.
+2. `LottoPipelineRunner` lo estrae dal contesto lotto e lo usa come `correlation_id`.
+3. Ogni chiamata a `fn_log_event()` lo riceve e lo persiste in `event_log`.
+4. Se non fornito dal chiamante, il campo resta `NULL` (eventi non correlati).
+
+**Query di debug:**
+
+```sql
+-- Timeline completa di un run pipeline
+SELECT event_time, domain, event_code, severity, entity_type, entity_id, payload
+FROM vendite.event_log
+WHERE correlation_id = '<uuid-del-lock-batch>'
+ORDER BY event_time;
+```
+
+**Stato attuale e limiti:**
+
+* Il runner propaga il correlation_id a tutti e 4 gli eventi pipeline
+  (`PIPELINE_STARTED`, `STEP_COMPLETED`, `PIPELINE_COMPLETED`, `PIPELINE_ERROR`).
+* Il `PipelineStepExecutor` e i singoli `task_run` non ricevono ancora il
+  correlation_id — la correlazione a livello task va ricostruita tramite
+  `lotto_id` + `event_time`.
+* Il push commesse (`CommessaPushOrchestrator`) non popola il correlation_id.
 
 Eventi emessi dal backend:
 
@@ -409,11 +521,11 @@ L'orchestrazione runtime e` applicativa (Python/Django): il database mantiene st
 
 ### Job e classi orchestranti
 
-| Job                   | Classe Python              | Protezione concorrenza              | Frequenza tipica  |
-| --------------------- | -------------------------- | ----------------------------------- | ----------------- |
-| Push commesse         | `CommessaPushOrchestrator` | Advisory lock PostgreSQL            | Alta (minuti)     |
-| Emissione da commesse | (funzione DB diretta)      | Lock transazionale su commessa      | Media (oraria)    |
-| Pipeline lotti        | `LottoPipelineRunner`      | Stato lotto `IN_ESECUZIONE` + guard | Batch controllato |
+| Job                   | Classe Python                                                     | Protezione concorrenza              | Frequenza tipica            |
+| --------------------- | ----------------------------------------------------------------- | ----------------------------------- | --------------------------- |
+| Push commesse         | `CommessaPushOrchestrator`                                        | Advisory lock PostgreSQL            | Alta (minuti)               |
+| Emissione da commesse | `PipelineStepExecutor` (task `pull_attivita_da_commessa_default`) | Stato lotto `IN_ESECUZIONE` + guard | Integrata in pipeline lotto |
+| Pipeline lotti        | `LottoPipelineRunner`                                             | Stato lotto `IN_ESECUZIONE` + guard | Batch controllato           |
 
 ### Guardrail operativi
 

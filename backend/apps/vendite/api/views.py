@@ -1,7 +1,7 @@
 from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
-from rest_framework.permissions import IsAuthenticated
+from apps.core.api.permissions import ZeroERPPermission
 from rest_framework.request import Request
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -97,7 +97,9 @@ class ApiRunLottoPipeline(APIView):
 class ApiRunLottoPipelineV1(ApiRunLottoPipeline):
     # Versione canonica protetta: richiede JWT su /api/v1/*
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
+    post_permission = "genera_fatture_lotti"
 
 
 class ApiLottoSegnalazioniSummary(APIView):
@@ -134,7 +136,8 @@ class ApiLottoSegnalazioniSummary(APIView):
 
 class ApiLottoSegnalazioniSummaryV1(ApiLottoSegnalazioniSummary):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 class ApiLottoTaskRuns(APIView):
@@ -177,7 +180,8 @@ class ApiLottoTaskRuns(APIView):
 
 class ApiLottoTaskRunsV1(ApiLottoTaskRuns):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 class ApiResetLottoDraft(APIView):
@@ -225,7 +229,8 @@ class ApiResetLottoDraft(APIView):
 
 class ApiResetLottoDraftV1(ApiResetLottoDraft):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 class ApiResetLottoFatturaDraft(APIView):
@@ -272,7 +277,8 @@ class ApiResetLottoFatturaDraft(APIView):
 
 class ApiResetLottoFatturaDraftV1(ApiResetLottoFatturaDraft):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 class ApiLottiList(APIView):
@@ -349,7 +355,8 @@ class ApiLottiList(APIView):
 
 class ApiLottiListV1(ApiLottiList):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 class ApiLottoFattureList(APIView):
@@ -385,7 +392,8 @@ class ApiLottoFattureList(APIView):
 
 class ApiLottoFattureListV1(ApiLottoFattureList):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 # ================================================================== #
@@ -448,7 +456,8 @@ class ApiRunCommessePush(APIView):
 
 class ApiRunCommessePushV1(ApiRunCommessePush):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 class ApiCommessePushLog(APIView):
@@ -474,7 +483,8 @@ class ApiCommessePushLog(APIView):
 
 class ApiCommessePushLogV1(ApiCommessePushLog):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 class ApiCommessaStato(APIView):
@@ -508,7 +518,8 @@ class ApiCommessaStato(APIView):
 
 class ApiCommessaStatoV1(ApiCommessaStato):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 class ApiCommessaAttivita(APIView):
@@ -562,4 +573,5 @@ class ApiCommessaAttivita(APIView):
 
 class ApiCommessaAttivitaV1(ApiCommessaAttivita):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
