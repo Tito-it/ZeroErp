@@ -30,5 +30,15 @@
 | pk_profili_reparto_aree | `CREATE UNIQUE INDEX pk_profili_reparto_aree ON config.profili_reparto_aree USING btree (id)` |
 | uq_profili_reparto_aree_uo_area | `CREATE UNIQUE INDEX uq_profili_reparto_aree_uo_area ON config.profili_reparto_aree USING btree (unita_organizzativa_id, area_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_profili_reparto_aree_a10_aree_funzionali_require_att_9cb941 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aree_funzionali', 'attivo', 'area_id')` |
+| trg_profili_reparto_aree_a10_aree_funzionali_require_att_9cb941 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aree_funzionali', 'attivo', 'area_id')` |
+| trg_profili_reparto_aree_a10_unita_organizzative_require_e4ae20 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id')` |
+| trg_profili_reparto_aree_a10_unita_organizzative_require_e4ae20 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id')` |
+| trg_profili_reparto_aree_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_profili_reparto_aree_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

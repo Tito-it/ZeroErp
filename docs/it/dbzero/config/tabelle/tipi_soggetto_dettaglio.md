@@ -17,12 +17,16 @@
 | data_update | timestamp with time zone | YES |  |
 | stato_id | bigint | YES |  |
 | dati_societari_policy | USER-DEFINED | NO | 'NONE'::config.dati_societari_policy_enum |
+| piva_obbligatoria | boolean | NO | false |
+| cf_obbligatorio | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_tipi_soggetto_dettaglio_cf_obbl_vs_formato |  |
 | CHECK | chk_tipi_soggetto_dettaglio_formato_cf |  |
 | CHECK | chk_tipi_soggetto_dettaglio_formato_piva |  |
+| CHECK | chk_tipi_soggetto_dettaglio_piva_obbl_vs_formato |  |
 | CHECK | chk_tipi_soggetto_dettaglio_piva_vs_policy |  |
 | FOREIGN KEY | fk_tipi_soggetto_dettaglio_stato_id | stato_id |
 | FOREIGN KEY | fk_tipi_soggetto_dettaglio_tipi_soggetto_id | tipo_soggetto_id |

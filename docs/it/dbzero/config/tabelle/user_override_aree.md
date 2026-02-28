@@ -33,5 +33,13 @@
 | pk_user_override_aree | `CREATE UNIQUE INDEX pk_user_override_aree ON config.user_override_aree USING btree (id)` |
 | uq_user_override_aree_user_area | `CREATE UNIQUE INDEX uq_user_override_aree_user_area ON config.user_override_aree USING btree (auth_user_id, area_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_user_override_aree_a10_aree_funzionali_require_attiv_bb335d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aree_funzionali', 'attivo', 'area_id')` |
+| trg_user_override_aree_a10_aree_funzionali_require_attiv_bb335d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aree_funzionali', 'attivo', 'area_id')` |
+| trg_user_override_aree_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_user_override_aree_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -28,5 +28,13 @@
 | pk_user_emittenti_fiscali | `CREATE UNIQUE INDEX pk_user_emittenti_fiscali ON config.user_emittenti_fiscali USING btree (id)` |
 | uq_user_emittenti_fiscali_user_emittente | `CREATE UNIQUE INDEX uq_user_emittenti_fiscali_user_emittente ON config.user_emittenti_fiscali USING btree (auth_user_id, emittente_fiscale_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_user_emittenti_fiscali_a10_emittenti_fiscali_require_4dae7e | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id')` |
+| trg_user_emittenti_fiscali_a10_emittenti_fiscali_require_4dae7e | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id')` |
+| trg_user_emittenti_fiscali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_user_emittenti_fiscali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Aggiunge piva_obbligatoria e cf_obbligatorio su tipi_soggetto_dettaglio
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260228-18-add-piva-cf-obbligatori-tipi-soggetto-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260228-18-add-piva-cf-obbligatori-tipi-soggetto-dettaglio
+      author: mctit
+      comment: >
+        Aggiunge colonne piva_obbligatoria e cf_obbligatorio su tipi_soggetto_dettaglio
+        per imporre la presenza dei dati fiscali in base al tipo soggetto.
+        Complementare alla validazione formato di fn_validate_cf_piva_it.
+
+      changes:
+        - addColumn:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            columns:
+              - column:
+                  name: piva_obbligatoria
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Se true, partita_iva obbligatoria per soggetti di questo tipo."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: cf_obbligatorio
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Se true, codice_fiscale obbligatorio per soggetti di questo tipo."
+                  constraints:
+                    nullable: false
+
+        # CHECK: piva_obbligatoria solo se formato_piva != 'NON_APPLICABILE'
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.tipi_soggetto_dettaglio
+              ADD CONSTRAINT chk_tipi_soggetto_dettaglio_piva_obbl_vs_formato
+              CHECK (
+                piva_obbligatoria = false
+                OR formato_piva <> 'NON_APPLICABILE'
+              );
+
+        # CHECK: cf_obbligatorio solo se formato_cf != 'NON_APPLICABILE'
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.tipi_soggetto_dettaglio
+              ADD CONSTRAINT chk_tipi_soggetto_dettaglio_cf_obbl_vs_formato
+              CHECK (
+                cf_obbligatorio = false
+                OR formato_cf <> 'NON_APPLICABILE'
+              );
+
+        # Commenti colonne
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN config.tipi_soggetto_dettaglio.piva_obbligatoria IS
+              'Se true, la partita_iva e'' obbligatoria per i soggetti con questo tipo_soggetto_dettaglio.
+               Puo'' essere true solo se formato_piva <> NON_APPLICABILE.';
+              COMMENT ON COLUMN config.tipi_soggetto_dettaglio.cf_obbligatorio IS
+              'Se true, il codice_fiscale e'' obbligatorio per i soggetti con questo tipo_soggetto_dettaglio.
+               Puo'' essere true solo se formato_cf <> NON_APPLICABILE.';
+
+      rollback:
+        - dropColumn:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            columnName: piva_obbligatoria
+        - dropColumn:
+            schemaName: config
+            tableName: tipi_soggetto_dettaglio
+            columnName: cf_obbligatorio

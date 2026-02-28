@@ -98,3 +98,7 @@ E_SOGGETTO_NULL,it,soggetto_id (%s)  mancante per il ruolo   %s.,98,"",""
 E_SOGGETTI_RUOLI_RACE,it,"Race condition su soggetti_ruoli per soggetto %s, id ruolo %s , cod_int_ruolo %."" .",99,"",""
 E_BILLING_ACCOUNT_UTILITY_NULL,it,Billing account %s senza utility associata.,100,"",""
 E_RISORSA_UMANA_SOGGETTO_MISMATCH,it,Il soggetto  a cui è collegata la risorsa non è un gestore (soggetto_ruolo id %s).,126,"",""
+E_RUOLO_NATURA_NON_AMMESSA,it,Natura soggetto %s non ammessa per il ruolo %s. Soggetto_id %s,200,La natura del soggetto non rientra tra quelle previste per il ruolo.,Verificare la configurazione in config.tipi_ruoli_nature_ammesse.
+E_RUOLO_NATURA_TIPO_DET_NULL,it,Impossibile assegnare il ruolo %s al soggetto %s: tipo_soggetto_dettaglio non configurato.,201,Il soggetto non ha tipo_soggetto_dettaglio_id valorizzato ma il ruolo richiede una verifica della natura.,Configurare tipo_soggetto_dettaglio_id sul soggetto prima di assegnare il ruolo.
+E_PIVA_OBBLIGATORIA,it,Partita IVA obbligatoria per tipo soggetto %s. Soggetto_id %s,202,Il tipo di soggetto richiede la partita IVA ma il campo e' vuoto.,Valorizzare il campo partita_iva prima di proseguire.
+E_CF_OBBLIGATORIO,it,Codice Fiscale obbligatorio per tipo soggetto %s. Soggetto_id %s,203,Il tipo di soggetto richiede il codice fiscale ma il campo e' vuoto.,Valorizzare il campo codice_fiscale prima di proseguire.
