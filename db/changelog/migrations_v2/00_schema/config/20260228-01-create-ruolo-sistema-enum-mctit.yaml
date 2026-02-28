@@ -1,0 +1,42 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ENUM config.ruolo_sistema — ruolo sistema per catena permessi
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260228-01-create-ruolo-sistema-enum-mctit.yaml
+
+  - changeSet:
+      id: 20260228-01-create-ruolo-sistema-enum
+      author: mctit
+
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT COUNT(*)
+              FROM pg_type t
+              JOIN pg_namespace n ON n.oid = t.typnamespace
+              WHERE n.nspname = 'config'
+                AND t.typname = 'ruolo_sistema';
+
+      changes:
+        - sql:
+            sql: |
+              CREATE TYPE config.ruolo_sistema AS ENUM ('ADMIN', 'OPERATIVO', 'DISABILITATO');
+
+        - sql:
+            sql: |
+              COMMENT ON TYPE config.ruolo_sistema IS
+              'Ruolo sistema per la catena di risoluzione permessi:
+               - ADMIN: bypass completo della catena permessi (titolare, responsabile IT)
+               - OPERATIVO: eredita dal reparto + override individuali (dipendente standard)
+               - DISABILITATO: nessun accesso, nemmeno login (ex-dipendente, utente sospeso)';
+
+      rollback:
+        - sql:
+            sql: |
+              DROP TYPE IF EXISTS config.ruolo_sistema;

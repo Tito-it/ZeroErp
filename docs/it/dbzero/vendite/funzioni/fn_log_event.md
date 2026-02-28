@@ -8,19 +8,9 @@ CREATE FUNCTION fn_log_event(p_domain text, p_entity_type text, p_entity_id bigi
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_log_event(
-  p_domain vendite.event_log.domain%TYPE,
-  p_entity_type vendite.event_log.entity_type%TYPE,
-  p_entity_id vendite.event_log.entity_id%TYPE,
-  p_event_code vendite.event_log.event_code%TYPE,
-  p_severity vendite.event_log.severity%TYPE DEFAULT 'INFO'::text,
-  p_correlation_id vendite.event_log.correlation_id%TYPE DEFAULT NULL::uuid,
-  p_actor vendite.event_log.actor%TYPE DEFAULT NULL::text,
-  p_source vendite.event_log.source%TYPE DEFAULT NULL::text,
-  p_payload vendite.event_log.payload%TYPE DEFAULT '{}'::jsonb
-)
-RETURNS vendite.event_log.id%TYPE
-LANGUAGE plpgsql
+CREATE OR REPLACE FUNCTION vendite.fn_log_event(p_domain text, p_entity_type text, p_entity_id bigint, p_event_code text, p_severity text DEFAULT 'INFO'::text, p_correlation_id uuid DEFAULT NULL::uuid, p_actor text DEFAULT NULL::text, p_source text DEFAULT NULL::text, p_payload jsonb DEFAULT '{}'::jsonb)
+ RETURNS bigint
+ LANGUAGE plpgsql
 AS $function$
 DECLARE
   v_event_id vendite.event_log.id%TYPE;
@@ -31,6 +21,10 @@ BEGIN
   -- Scopo:
   --   Inserire un evento append-only in vendite.event_log
   --   e restituire l'identificativo generato.
+  --
+  -- Regole:
+  --   - nessuna logica di orchestrazione interna
+  --   - validazioni di severita` delegate a CHECK su tabella
   -- =========================================================
   v_severity := COALESCE(p_severity, 'INFO');
   v_payload := COALESCE(p_payload, '{}'::jsonb);
@@ -62,6 +56,9 @@ BEGIN
   RETURN v_event_id;
 END
 $function$
+
+COMMENT ON FUNCTION vendite.fn_log_event(p_domain text, p_entity_type text, p_entity_id bigint, p_event_code text, p_severity text, p_correlation_id uuid, p_actor text, p_source text, p_payload jsonb)
+IS 'Inserisce un evento append-only in vendite.event_log e ritorna id evento.';
 ```
 
 ---

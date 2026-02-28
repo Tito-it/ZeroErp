@@ -21,19 +21,19 @@
 
 ### DB
 
-- [ ] 1.1 — ENUM `config.tipo_utente` (`ADMIN`, `OPERATIVO`, `DISABILITATO`)
-- [ ] 1.2 — ALTER `anagrafiche.risorse_umane_auth_user` ADD `tipo_utente` (default `OPERATIVO`)
-- [ ] 1.3 — ENUM `config.livello_accesso` (`TUTTO`, `LETTURA`, `BLOCCATO`)
-- [ ] 1.4 — Tabella `config.aree_funzionali` + seed 10 aree
-- [ ] 1.5 — Tabella `config.azioni_processo` + seed iniziale
-- [ ] 1.6 — Tabella `config.area_model_overrides`
+- [x] 1.1 — ENUM `config.ruolo_sistema` (`ADMIN`, `OPERATIVO`, `DISABILITATO`)
+- [x] 1.2 — ALTER `anagrafiche.risorse_umane_auth_user` ADD `ruolo_sistema` (default `OPERATIVO`)
+- [x] 1.3 — ENUM `config.livello_accesso` (`TUTTO`, `LETTURA`, `BLOCCATO`)
+- [x] 1.4 — Tabella `config.aree_funzionali` + seed 10 aree
+- [x] 1.5 — Tabella `config.azioni_processo` + seed iniziale
+- [x] 1.6 — Tabella `config.area_model_overrides`
 
 ### Backend
 
 - [ ] 1.7 — Model ORM `AreaFunzionale` (`managed=False`) — atteso DB 1.4
 - [ ] 1.8 — Model ORM `AzioneProcesso` (`managed=False`) — atteso DB 1.5
 - [ ] 1.9 — Model ORM `AreaModelOverride` (`managed=False`) — atteso DB 1.6
-- [ ] 1.10 — Model ORM `RisorseUmaneAuthUser` aggiornato con campo `tipo_utente` — atteso DB 1.2
+- [ ] 1.10 — Model ORM `RisorseUmaneAuthUser` aggiornato con campo `ruolo_sistema` — atteso DB 1.2
 
 ---
 
@@ -41,8 +41,8 @@
 
 ### DB
 
-- [ ] 2.1 — Tabella `config.profili_reparto_aree` — atteso DB 1.3, 1.4
-- [ ] 2.2 — Tabella `config.profili_reparto_azioni` — atteso DB 1.5
+- [x] 2.1 — Tabella `config.profili_reparto_aree` — atteso DB 1.3, 1.4
+- [x] 2.2 — Tabella `config.profili_reparto_azioni` — atteso DB 1.5
 
 ### Backend
 
@@ -55,10 +55,10 @@
 
 ### DB
 
-- [ ] 3.1 — Tabella `config.user_override_aree` — atteso DB 1.3, 1.4
-- [ ] 3.2 — Tabella `config.user_override_oggetti` — atteso DB 1.3
-- [ ] 3.3 — Tabella `config.user_override_azioni` — atteso DB 1.5
-- [ ] 3.4 — Tabella `config.user_emittenti_fiscali` — atteso DB prerequisito emittenti_fiscali
+- [x] 3.1 — Tabella `config.user_override_aree` — atteso DB 1.3, 1.4
+- [x] 3.2 — Tabella `config.user_override_oggetti` — atteso DB 1.3
+- [x] 3.3 — Tabella `config.user_override_azioni` — atteso DB 1.5
+- [x] 3.4 — Tabella `config.user_emittenti_fiscali` — atteso DB prerequisito emittenti_fiscali
 
 ### Backend
 
@@ -172,7 +172,7 @@ Completare sezioni **5**, **6**, **7**, **8**.
 
 ## Note
 
-- Il documento architetturale (sez. 13) definisce il campo `tipo_utente` e la catena di risoluzione aggiornata.
+- Il documento architetturale (sez. 13) definisce il campo `ruolo_sistema` e la catena di risoluzione aggiornata.
 - L'ordine delle sezioni rispecchia le dipendenze: ogni punto backend indica i prerequisiti DB.
 - I punti sono sequenziali per sezione: all'interno di una sezione, i numeri DB vengono prima dei backend.
 - Le **Fasi di rilascio** indicano quando le API già esistenti (vendite, pipeline) vengono integrate nel sistema permessi.
