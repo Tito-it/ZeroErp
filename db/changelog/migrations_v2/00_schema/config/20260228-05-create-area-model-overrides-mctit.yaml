@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella config.area_model_overrides — riassegnazione model a area diversa dallo schema
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260228-05-create-area-model-overrides-mctit.yaml
+
+  - changeSet:
+      id: 20260228-05-create-area-model-overrides
+      author: mctit
+      comment: >
+        Tabella tecnica di mapping: riassegna un model Django
+        a un'area funzionale diversa dal suo schema DB.
+        Eccezione rara — il caso standard e' area = schema.
+
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: area_model_overrides
+            remarks: "Override opzionale: riassegna un model Django a un'area diversa dal suo schema."
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_area_model_overrides
+                    nullable: false
+
+              - column:
+                  name: app_label
+                  type: VARCHAR(100)
+                  remarks: "Label app Django (es. anagrafiche, vendite)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: model_name
+                  type: VARCHAR(100)
+                  remarks: "Nome model Django (es. clienti, fatture)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: area_id
+                  type: integer
+                  remarks: "FK -> config.aree_funzionali.id — area a cui riassegnare il model."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp ultima modifica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente ultima modifica."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: area_model_overrides
+            columnNames: app_label, model_name
+            constraintName: uq_area_model_overrides_app_model
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: area_model_overrides
+            baseColumnNames: area_id
+            constraintName: fk_area_model_overrides_aree_funzionali
+            referencedTableSchemaName: config
+            referencedTableName: aree_funzionali
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - createIndex:
+            schemaName: config
+            tableName: area_model_overrides
+            indexName: ix_area_model_overrides_area_id
+            columns:
+              - column:
+                  name: area_id
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE config.area_model_overrides IS
+              'Override opzionale: riassegna un model Django a un''area funzionale
+               diversa dal suo schema DB. Eccezione rara — il caso standard
+               e'' area = schema (risoluzione automatica).';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: area_model_overrides

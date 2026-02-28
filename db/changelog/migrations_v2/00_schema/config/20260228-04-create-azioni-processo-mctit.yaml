@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella config.azioni_processo — registro azioni di processo gestibili
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260228-04-create-azioni-processo-mctit.yaml
+
+  - changeSet:
+      id: 20260228-04-create-azioni-processo
+      author: mctit
+      comment: >
+        Registro delle azioni di processo (permessi puntuali).
+        Le azioni nascono nel codice Django (Meta.permissions) e vengono
+        registrate in auth_permission. Questa tabella le rende visibili
+        e gestibili nell'interfaccia admin.
+        permission_codename fa le veci di codice_interno (chiave tecnica immutabile),
+        descrizione copre l'aspetto UI.
+
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: azioni_processo
+            remarks: "Registro azioni di processo gestibili nell'interfaccia permessi."
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_azioni_processo
+                    nullable: false
+
+              - column:
+                  name: area_id
+                  type: integer
+                  remarks: "FK -> config.aree_funzionali.id — area a cui appartiene l'azione."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: permission_codename
+                  type: VARCHAR(100)
+                  remarks: "Codename tecnico immutabile, riferimento a django.auth_permission (es. genera_fatture_lotti)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: VARCHAR(200)
+                  remarks: "Descrizione leggibile per l'interfaccia."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: pericolosa
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Flag: azione critica che richiede conferma aggiuntiva nella UI."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag attivazione logica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili (icone, alias, traduzioni)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp ultima modifica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente ultima modifica."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: azioni_processo
+            columnNames: permission_codename
+            constraintName: uq_azioni_processo_permission_codename
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: azioni_processo
+            baseColumnNames: area_id
+            constraintName: fk_azioni_processo_aree_funzionali
+            referencedTableSchemaName: config
+            referencedTableName: aree_funzionali
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - createIndex:
+            schemaName: config
+            tableName: azioni_processo
+            indexName: ix_azioni_processo_area_id
+            columns:
+              - column:
+                  name: area_id
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE config.azioni_processo IS
+              'Registro azioni di processo gestibili nell''interfaccia permessi.
+               permission_codename e'' la chiave tecnica immutabile (riferimento
+               al codename in django.auth_permission).
+               Il flag pericolosa segnala azioni che richiedono conferma aggiuntiva.';
+
+              COMMENT ON COLUMN config.azioni_processo.permission_codename IS
+              'Riferimento al codename in django.auth_permission (es. genera_fatture_lotti).
+               Chiave tecnica immutabile — fa le veci di codice_interno.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: azioni_processo

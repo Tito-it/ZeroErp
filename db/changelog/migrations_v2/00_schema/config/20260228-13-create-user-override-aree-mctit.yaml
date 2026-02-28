@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella config.user_override_aree — override individuale su area funzionale
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260228-13-create-user-override-aree-mctit.yaml
+
+  - changeSet:
+      id: 20260228-13-create-user-override-aree
+      author: mctit
+      comment: >
+        Override individuale su area funzionale.
+        Sovrascrive il profilo del reparto per il singolo utente.
+        Supporta validita' temporale per deleghe o restrizioni temporanee.
+
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: user_override_aree
+            remarks: "Override individuale su area funzionale. Sovrascrive il profilo del reparto."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_user_override_aree
+                    nullable: false
+
+              - column:
+                  name: auth_user_id
+                  type: integer
+                  remarks: "FK -> django.auth_user.id — utente."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: area_id
+                  type: integer
+                  remarks: "FK -> config.aree_funzionali.id — area funzionale."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: livello
+                  type: config.livello_accesso
+                  remarks: "Livello di accesso che sovrascrive il profilo reparto."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: motivo
+                  type: text
+                  remarks: "Governance: motivazione dell'override."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: valido_dal
+                  type: date
+                  defaultValueComputed: "CURRENT_DATE"
+                  remarks: "Inizio validita' dell'override."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: valido_al
+                  type: date
+                  remarks: "Fine validita' (NULL = indeterminato)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp ultima modifica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente ultima modifica."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: user_override_aree
+            columnNames: auth_user_id, area_id
+            constraintName: uq_user_override_aree_user_area
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: user_override_aree
+            baseColumnNames: area_id
+            constraintName: fk_user_override_aree_area
+            referencedTableSchemaName: config
+            referencedTableName: aree_funzionali
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - createIndex:
+            schemaName: config
+            tableName: user_override_aree
+            indexName: ix_user_override_aree_auth_user_id
+            columns:
+              - column:
+                  name: auth_user_id
+
+        - createIndex:
+            schemaName: config
+            tableName: user_override_aree
+            indexName: ix_user_override_aree_area_id
+            columns:
+              - column:
+                  name: area_id
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.user_override_aree
+              ADD CONSTRAINT chk_user_override_aree_validita
+              CHECK (valido_al IS NULL OR valido_dal IS NULL OR valido_al >= valido_dal);
+
+              COMMENT ON TABLE config.user_override_aree IS
+              'Override individuale su area funzionale. Sovrascrive il profilo del reparto.
+               Supporta validita'' temporale per deleghe o restrizioni temporanee.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: user_override_aree

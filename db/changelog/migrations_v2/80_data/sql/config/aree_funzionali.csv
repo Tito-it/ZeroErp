@@ -1,0 +1,11 @@
+id,codice,codice_interno,descrizione,schema_db,attivo,ordinamento,meta,data_insert,user_insert,data_update,user_update
+1,anagrafiche,anagrafiche,Anagrafiche,anagrafiche,t,10,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+2,vendite,vendite,Vendite,vendite,t,20,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+3,acquisti,acquisti,Acquisti,acquisti,t,30,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+4,catalogo,catalogo,Catalogo,catalogo,t,40,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+5,contabilita,contabilita,Contabilità,contabilita,t,50,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+6,magazzino,magazzino,Magazzino,magazzino,t,60,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+7,pagamenti,pagamenti,Pagamenti,pagamenti,t,70,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+8,storico,storico,Storico,storico,t,80,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+9,config,config,Configurazione,config,t,90,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+10,core,core,Core,core,t,100,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres

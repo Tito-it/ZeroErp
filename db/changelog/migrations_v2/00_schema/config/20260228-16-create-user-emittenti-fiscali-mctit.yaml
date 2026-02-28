@@ -1,0 +1,134 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella config.user_emittenti_fiscali — scope operativo emittenti fiscali
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260228-16-create-user-emittenti-fiscali-mctit.yaml
+
+  - changeSet:
+      id: 20260228-16-create-user-emittenti-fiscali
+      author: mctit
+      comment: >
+        Scope operativo: emittenti fiscali su cui l'utente puo' operare.
+        Whitelist opzionale: se l'utente non ha righe vede tutto;
+        se ha almeno una riga e' limitato a quelli elencati.
+
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: user_emittenti_fiscali
+            remarks: "Scope operativo: whitelist opzionale emittenti fiscali per utente."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_user_emittenti_fiscali
+                    nullable: false
+
+              - column:
+                  name: auth_user_id
+                  type: integer
+                  remarks: "FK -> django.auth_user.id — utente."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: emittente_fiscale_id
+                  type: bigint
+                  remarks: "FK -> anagrafiche.emittenti_fiscali.id — emittente autorizzato."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp ultima modifica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente ultima modifica."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: user_emittenti_fiscali
+            columnNames: auth_user_id, emittente_fiscale_id
+            constraintName: uq_user_emittenti_fiscali_user_emittente
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: user_emittenti_fiscali
+            baseColumnNames: emittente_fiscale_id
+            constraintName: fk_user_emittenti_fiscali_emittente
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: emittenti_fiscali
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - createIndex:
+            schemaName: config
+            tableName: user_emittenti_fiscali
+            indexName: ix_user_emittenti_fiscali_auth_user_id
+            columns:
+              - column:
+                  name: auth_user_id
+
+        - createIndex:
+            schemaName: config
+            tableName: user_emittenti_fiscali
+            indexName: ix_user_emittenti_fiscali_emittente_id
+            columns:
+              - column:
+                  name: emittente_fiscale_id
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE config.user_emittenti_fiscali IS
+              'Scope operativo: emittenti fiscali su cui l''utente puo'' operare.
+               Whitelist opzionale: se l''utente non ha righe puo'' operare su TUTTI
+               gli emittenti; se ha almeno una riga e'' limitato a quelli elencati.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: user_emittenti_fiscali

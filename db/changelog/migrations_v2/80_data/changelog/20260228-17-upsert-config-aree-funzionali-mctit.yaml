@@ -1,0 +1,49 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Seed config.aree_funzionali — 10 aree funzionali (1 per schema DB)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20260228-17-upsert-config-aree-funzionali
+      logicalFilePath: migrations_v2/80_data/20260228-17-upsert-config-aree-funzionali-mctit.yaml
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: aree_funzionali
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/aree_funzionali.csv
+            tableName: aree_funzionali
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: schema_db, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: ordinamento, type: STRING }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update, type: STRING }
