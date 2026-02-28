@@ -1,0 +1,109 @@
+{% include-markdown "it/dbzero/config/manual/trgfn_guard_emittente_scope.md" %}
+# ⚙️ Funzione `trgfn_guard_emittente_scope`
+
+```sql
+CREATE FUNCTION trgfn_guard_emittente_scope()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION config.trgfn_guard_emittente_scope()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_auth_user_id         integer;
+  v_emittente_fiscale_id bigint;
+  v_col_value            bigint;
+  v_mode                 text := TG_ARGV[0];
+  v_col_name             text := TG_ARGV[1];
+BEGIN
+  -- =========================================================
+  -- Defense-in-depth: verifica che l'utente corrente abbia
+  -- scope sull'emittente fiscale della riga.
+  --
+  -- Modalita':
+  --   'soggetto_ruolo' = la colonna contiene soggetto_ruolo_id,
+  --       si risolve via anagrafiche.emittenti_fiscali
+  --   'fattura' = la colonna contiene fattura_id,
+  --       si risolve via vendite.fatture → emittenti_fiscali
+  --
+  -- Se app.current_user_id non e' settato (batch job) → skip.
+  -- Se emittente non risolvibile → skip (dati non ancora linkati).
+  -- =========================================================
+
+  -- 1. Leggi user_id dalla sessione PG
+  v_auth_user_id := NULLIF(
+    current_setting('app.current_user_id', true), ''
+  )::integer;
+
+  IF v_auth_user_id IS NULL THEN
+    RETURN NEW;  -- batch job, nessun filtro
+  END IF;
+
+  -- 2. Leggi valore colonna da NEW
+  v_col_value := (to_jsonb(NEW) ->> v_col_name)::bigint;
+
+  IF v_col_value IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- Su UPDATE, skip se la colonna non e' cambiata
+  IF TG_OP = 'UPDATE' AND
+     v_col_value = (to_jsonb(OLD) ->> v_col_name)::bigint THEN
+    RETURN NEW;
+  END IF;
+
+  -- 3. Risolvi emittente_fiscale_id in base alla modalita'
+  IF v_mode = 'soggetto_ruolo' THEN
+    SELECT ef.id
+      INTO v_emittente_fiscale_id
+      FROM anagrafiche.emittenti_fiscali ef
+     WHERE ef.soggetto_ruolo_id = v_col_value;
+
+  ELSIF v_mode = 'fattura' THEN
+    SELECT ef.id
+      INTO v_emittente_fiscale_id
+      FROM vendite.fatture f
+      JOIN anagrafiche.emittenti_fiscali ef
+        ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+     WHERE f.id = v_col_value;
+  END IF;
+
+  IF v_emittente_fiscale_id IS NULL THEN
+    RETURN NEW;  -- emittente non risolvibile
+  END IF;
+
+  -- 4. Verifica scope
+  IF NOT config.fn_check_user_emittente_scope(
+           v_auth_user_id, v_emittente_fiscale_id) THEN
+    PERFORM script.fn_log_and_raise_error(
+      TG_TABLE_SCHEMA::text,
+      'trgfn_guard_emittente_scope',
+      'E_SCOPE_EMITTENTE',
+      jsonb_build_object(
+        'detail', 'Utente non autorizzato per emittente fiscale',
+        'auth_user_id', v_auth_user_id,
+        'emittente_fiscale_id', v_emittente_fiscale_id,
+        'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+      ),
+      NULL::uuid,
+      format(
+        'Utente %s non autorizzato per emittente fiscale %s su %s.%s',
+        v_auth_user_id, v_emittente_fiscale_id,
+        TG_TABLE_SCHEMA, TG_TABLE_NAME
+      )
+    );
+  END IF;
+
+  RETURN NEW;
+END
+$function$
+
+COMMENT ON FUNCTION config.trgfn_guard_emittente_scope()
+IS 'Defense-in-depth: blocca INSERT/UPDATE se utente non ha scope su emittente fiscale.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

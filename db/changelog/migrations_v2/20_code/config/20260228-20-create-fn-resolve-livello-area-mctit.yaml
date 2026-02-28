@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260228-20-create-fn-resolve-livello-area-mctit.yaml
+
+  - changeSet:
+      id: 20260228-20-create-fn-resolve-livello-area
+      author: mctit
+      comment: "Risolve il livello di accesso effettivo di un utente per un'area funzionale"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_resolve_livello_area(
+                p_auth_user_id   integer,
+                p_area_schema_db varchar(50)
+              )
+              RETURNS config.livello_accesso
+              LANGUAGE plpgsql
+              STABLE
+              AS $$
+              DECLARE
+                v_ruolo   config.ruolo_sistema;
+                v_livello config.livello_accesso;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Risolve il livello di accesso effettivo di un utente
+                --   per un'area funzionale identificata da schema_db.
+                --
+                -- Catena di risoluzione:
+                --   1. ruolo_sistema (NULL/DISABILITATO → BLOCCATO, ADMIN → TUTTO)
+                --   2. Override utente area (se presente e valido temporalmente)
+                --   3. Profilo reparto (ereditato dall'unita organizzativa)
+                --   4. Default → BLOCCATO
+                -- =========================================================
+
+                -- 1. Ruolo sistema
+                v_ruolo := config.fn_get_ruolo_sistema(p_auth_user_id);
+
+                IF v_ruolo IS NULL OR v_ruolo = 'DISABILITATO' THEN
+                  RETURN 'BLOCCATO'::config.livello_accesso;
+                END IF;
+
+                IF v_ruolo = 'ADMIN' THEN
+                  RETURN 'TUTTO'::config.livello_accesso;
+                END IF;
+
+                -- 2. Override utente area (OPERATIVO)
+                SELECT uoa.livello
+                  INTO v_livello
+                  FROM config.user_override_aree uoa
+                  JOIN config.aree_funzionali af ON af.id = uoa.area_id
+                 WHERE uoa.auth_user_id = p_auth_user_id
+                   AND af.schema_db = p_area_schema_db
+                   AND (uoa.valido_dal IS NULL OR uoa.valido_dal <= CURRENT_DATE)
+                   AND (uoa.valido_al  IS NULL OR uoa.valido_al  >= CURRENT_DATE);
+
+                IF FOUND THEN
+                  RETURN v_livello;
+                END IF;
+
+                -- 3. Profilo reparto
+                SELECT pra.livello
+                  INTO v_livello
+                  FROM config.profili_reparto_aree pra
+                  JOIN config.aree_funzionali af ON af.id = pra.area_id
+                  JOIN anagrafiche.risorse_umane_auth_user rau
+                    ON rau.auth_user_id = p_auth_user_id
+                  JOIN anagrafiche.risorse_umane ru
+                    ON ru.id = rau.risorsa_umana_id
+                 WHERE ru.unita_organizzativa_id = pra.unita_organizzativa_id
+                   AND af.schema_db = p_area_schema_db;
+
+                IF FOUND THEN
+                  RETURN v_livello;
+                END IF;
+
+                -- 4. Default sicuro
+                RETURN 'BLOCCATO'::config.livello_accesso;
+              END
+              $$;
+
+              COMMENT ON FUNCTION config.fn_resolve_livello_area(integer, varchar)
+                IS 'Risolve livello accesso utente per area: override → profilo reparto → BLOCCATO.';

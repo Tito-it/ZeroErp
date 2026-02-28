@@ -84,9 +84,9 @@
 
 ### DB
 
-- [ ] 5.1 — Funzione `config.fn_check_user_emittente_scope()` — atteso DB 3.4
-- [ ] 5.2 — Trigger guard su `vendite.fatture` (scope emittente) — atteso DB 5.1
-- [ ] 5.3 — Trigger guard su altre tabelle operative (ordini, pagamenti) — atteso DB 5.1
+- [x] 5.1 — Funzione `config.fn_check_user_emittente_scope()` — `20_code/config/20260228-24`
+- [x] 5.2 — Trigger guard su `vendite.fatture` (scope emittente) — `trgfn_guard_emittente_scope` + trigger `20260228-25/-26`
+- [x] 5.3 — Trigger guard su `pagamenti.vendite_movimenti` (scope emittente via fattura) — `20260228-27`. NB: ordini (vendite/acquisti) non hanno colonna emittente
 
 ### Backend
 
@@ -95,8 +95,8 @@
 
 ### Test DB
 
-- [ ] 5.6 — Test pgTAP per `fn_check_user_emittente_scope` — atteso DB 5.1
-- [ ] 5.7 — Test pgTAP per trigger guard fatture — atteso DB 5.2
+- [x] 5.6 — Test pgTAP per `fn_check_user_emittente_scope` — atteso DB 5.1
+- [x] 5.7 — Test pgTAP per trigger guard fatture — atteso DB 5.2
 
 ---
 
@@ -124,7 +124,7 @@
 
 ### DB
 
-- [ ] 8.1 — Job/funzione per segnalare override con `valido_al` scaduto — atteso DB 3.1, 3.3
+- [x] 8.1 — Funzione `config.fn_get_override_scaduti(p_giorni_tolleranza)` — `20_code/config/20260228-28`
 
 ### Backend
 
@@ -254,13 +254,13 @@ SELECT ruolo_sistema
 **Scopo**: Risolve il livello di accesso effettivo di un utente per un'area funzionale.
 Catena completa: `ruolo_sistema → override utente area → profilo reparto → BLOCCATO`.
 
-| Elemento    | Valore                                                     |
-| ----------- | ---------------------------------------------------------- |
-| Schema      | `config`                                                   |
-| Nome        | `fn_resolve_livello_area`                                  |
-| Parametri   | `p_auth_user_id integer`, `p_area_schema_db varchar(50)`   |
-| Ritorno     | `config.livello_accesso` (ENUM: TUTTO, LETTURA, BLOCCATO)  |
-| Volatilita' | STABLE                                                     |
+| Elemento    | Valore                                                    |
+| ----------- | --------------------------------------------------------- |
+| Schema      | `config`                                                  |
+| Nome        | `fn_resolve_livello_area`                                 |
+| Parametri   | `p_auth_user_id integer`, `p_area_schema_db varchar(50)`  |
+| Ritorno     | `config.livello_accesso` (ENUM: TUTTO, LETTURA, BLOCCATO) |
+| Volatilita' | STABLE                                                    |
 
 **Logica (catena di risoluzione)**:
 
@@ -342,13 +342,13 @@ SELECT livello
 **Scopo**: Verifica se un'azione di processo e' abilitata per un utente.
 Catena: `ruolo_sistema → override utente → profilo reparto → negata`.
 
-| Elemento    | Valore                                                          |
-| ----------- | --------------------------------------------------------------- |
-| Schema      | `config`                                                        |
-| Nome        | `fn_check_azione_processo`                                      |
-| Parametri   | `p_auth_user_id integer`, `p_permission_codename varchar(100)`  |
-| Ritorno     | `boolean`                                                       |
-| Volatilita' | STABLE                                                          |
+| Elemento    | Valore                                                         |
+| ----------- | -------------------------------------------------------------- |
+| Schema      | `config`                                                       |
+| Nome        | `fn_check_azione_processo`                                     |
+| Parametri   | `p_auth_user_id integer`, `p_permission_codename varchar(100)` |
+| Ritorno     | `boolean`                                                      |
+| Volatilita' | STABLE                                                         |
 
 **Logica**:
 
@@ -392,13 +392,13 @@ SELECT pra.abilitata
 **Scopo**: Restituisce gli ID emittenti fiscali autorizzati per un utente.
 NULL = nessuna restrizione (whitelist vuota, vede tutto).
 
-| Elemento    | Valore                                          |
-| ----------- | ----------------------------------------------- |
-| Schema      | `config`                                        |
-| Nome        | `fn_get_emittenti_scope`                        |
-| Parametri   | `p_auth_user_id integer`                        |
-| Ritorno     | `bigint[]` (array). NULL = nessuna restrizione  |
-| Volatilita' | STABLE                                          |
+| Elemento    | Valore                                         |
+| ----------- | ---------------------------------------------- |
+| Schema      | `config`                                       |
+| Nome        | `fn_get_emittenti_scope`                       |
+| Parametri   | `p_auth_user_id integer`                       |
+| Ritorno     | `bigint[]` (array). NULL = nessuna restrizione |
+| Volatilita' | STABLE                                         |
 
 **Logica**:
 
