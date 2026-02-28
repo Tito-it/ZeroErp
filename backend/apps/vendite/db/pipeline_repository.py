@@ -798,6 +798,43 @@ class VenditePipelineRepository:
                 [lotto_id],
             )
 
+    # Scopo: Scrive un evento su vendite.event_log tramite fn_log_event.
+    def log_event(
+        self,
+        *,
+        domain: str,
+        entity_type: str,
+        entity_id: int,
+        event_code: str,
+        severity: str = "INFO",
+        correlation_id: str | None = None,
+        actor: str = "service:django",
+        source: str = "django",
+        payload: dict[str, Any] | None = None,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT vendite.fn_log_event(
+                    %s, %s, %s, %s, %s, %s::uuid, %s, %s, %s::jsonb
+                )
+                """,
+                [
+                    domain,
+                    entity_type,
+                    entity_id,
+                    event_code,
+                    severity,
+                    correlation_id,
+                    actor,
+                    source,
+                    self._to_jsonb_param(payload or {}),
+                ],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
     # Scopo: Scrive un log massivo su tutte le fatture collegate al lotto.
     def log_fatture_lotto(
         self,

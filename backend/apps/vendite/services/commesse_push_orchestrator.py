@@ -146,6 +146,14 @@ class CommessaPushOrchestrator:
         t0 = time.monotonic()
         results: list[HandlerResult] = []
 
+        self._repo.log_event(
+            domain="COMMESSE",
+            entity_type="TASK_RUN",
+            entity_id=0,
+            event_code="PUSH_STARTED",
+            payload={"source_types": source_types, "dry_run": dry_run},
+        )
+
         for handler in self._resolve_handlers(source_types):
             try:
                 result = handler.run(dry_run=dry_run)
@@ -175,5 +183,21 @@ class CommessaPushOrchestrator:
             durata_ms=durata_ms,
         )
         report.push_log_id = push_log_id
+
+        errors_count = sum(len(r.errors) for r in results)
+        self._repo.log_event(
+            domain="COMMESSE",
+            entity_type="TASK_RUN",
+            entity_id=push_log_id,
+            event_code="PUSH_COMPLETED",
+            severity="WARN" if stato != "COMPLETATO" else "INFO",
+            payload={
+                "stato": stato,
+                "durata_ms": durata_ms,
+                "push_log_id": push_log_id,
+                "handlers_count": len(results),
+                "errors_count": errors_count,
+            },
+        )
 
         return report

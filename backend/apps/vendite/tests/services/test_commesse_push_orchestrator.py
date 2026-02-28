@@ -19,6 +19,7 @@ Indice test eseguiti:
 9) CommessePushOrchestratorTests.test_run_risultato_jsonb_include_tutti_handler
 10) CommessePushOrchestratorTests.test_run_skipped_quando_lock_non_acquisito
 11) CommessePushOrchestratorTests.test_run_rilascia_lock_dopo_esecuzione
+12) CommessePushOrchestratorTests.test_run_emits_push_started_and_completed_events
 """
 
 from unittest import TestCase
@@ -32,6 +33,7 @@ from apps.vendite.services.commesse_source_handlers import BaseSourceHandler, Ha
 def _mock_repo(push_log_id: int = 1) -> MagicMock:
     repo = MagicMock(spec=CommesseRepository)
     repo.log_push_run.return_value = push_log_id
+    repo.log_event.return_value = 1
     return repo
 
 
@@ -213,3 +215,26 @@ class CommessePushOrchestratorTests(TestCase):
 
         self.assertEqual(report.stato, "ERRORE")
         mock_release.assert_called_once()
+
+    # Scopo: Verifica che _run_locked emetta PUSH_STARTED e PUSH_COMPLETED su event_log.
+    @patch.object(CommessaPushOrchestrator, "_release_lock")
+    @patch.object(CommessaPushOrchestrator, "_try_acquire_lock", return_value=True)
+    def test_run_emits_push_started_and_completed_events(self, _mock_acquire, _mock_release):
+        repo = _mock_repo(push_log_id=42)
+        h = _mock_handler("HandlerA", _ok_result("HandlerA"))
+        orch = CommessaPushOrchestrator(repo, [h])
+
+        report = orch.run()
+
+        event_calls = repo.log_event.call_args_list
+        self.assertEqual(len(event_calls), 2)
+        started = event_calls[0].kwargs
+        self.assertEqual(started["event_code"], "PUSH_STARTED")
+        self.assertEqual(started["domain"], "COMMESSE")
+        self.assertEqual(started["entity_type"], "TASK_RUN")
+        self.assertEqual(started["entity_id"], 0)
+        completed = event_calls[1].kwargs
+        self.assertEqual(completed["event_code"], "PUSH_COMPLETED")
+        self.assertEqual(completed["entity_id"], 42)
+        self.assertEqual(completed["severity"], "INFO")
+        self.assertEqual(completed["payload"]["stato"], "COMPLETATO")

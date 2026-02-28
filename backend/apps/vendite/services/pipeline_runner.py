@@ -62,6 +62,7 @@ class LottoPipelineRunner:
         code: str,
         tipo_lotto: str,
         detail: str | None,
+        correlation_id: str | None = None,
     ) -> None:
         # Mantiene stato lotto coerente e traccia errore con codice uniforme.
         with transaction.atomic():
@@ -77,6 +78,15 @@ class LottoPipelineRunner:
             )
             self.repository.set_lotto_job_stato(lotto_id, "ERRORE", "Errore pipeline")
             self.repository.log_lotto_esito_fatture(lotto_id)
+            self.repository.log_event(
+                domain="PIPELINE",
+                entity_type="LOTTO",
+                entity_id=lotto_id,
+                event_code="PIPELINE_ERROR",
+                severity="ERROR",
+                correlation_id=correlation_id,
+                payload={"code": code, "detail": detail, "tipo_lotto": tipo_lotto},
+            )
 
     # Scopo: Prova a marcare il lotto in errore senza mascherare l'eccezione principale.
     def _mark_lotto_error_safely(
@@ -86,6 +96,7 @@ class LottoPipelineRunner:
         code: str,
         tipo_lotto: str,
         detail: str | None,
+        correlation_id: str | None = None,
     ) -> None:
         # Il mark errore non deve mai mascherare l'eccezione principale.
         try:
@@ -94,6 +105,7 @@ class LottoPipelineRunner:
                 code=code,
                 tipo_lotto=tipo_lotto,
                 detail=detail,
+                correlation_id=correlation_id,
             )
         except Exception as mark_exc:
             ErrorManager.log_error_only(
@@ -167,6 +179,7 @@ class LottoPipelineRunner:
         step: Any,
         effective_tipo_lotto: str,
         dry_run: bool,
+        correlation_id: str | None = None,
     ) -> None:
         # Traccia avanzamento step coerente con il flusso SQL originale.
         self.repository.set_lotto_job_stato(
@@ -197,6 +210,19 @@ class LottoPipelineRunner:
             dry_run=dry_run,
         )
         self.repository.log_lotto_esito_fatture(lotto_id)
+        self.repository.log_event(
+            domain="PIPELINE",
+            entity_type="LOTTO",
+            entity_id=lotto_id,
+            event_code="STEP_COMPLETED",
+            correlation_id=correlation_id,
+            payload={
+                "step_ordine": step.ordine,
+                "step_desc": step.descrizione,
+                "stato_doc_fiscale_id": step.stato_doc_fiscale_id,
+                "dry_run": dry_run,
+            },
+        )
         self._process_close_lotto_by_flag(
             lotto_id=lotto_id,
             stato_doc_fiscale_id=step.stato_doc_fiscale_id,
@@ -228,6 +254,7 @@ class LottoPipelineRunner:
     # Scopo: Orchestra l'intero flusso pipeline lotto: risoluzione lotto, step execution, resume/rollback e gestione errori finali.
     def run_pipeline(self, params: LottoPipelineParams) -> int:
         lotto_id: int | None = None
+        correlation_id: str | None = None
         effective_tipo_lotto = params.tipo_lotto or "MASSIVO"
         try:
             with transaction.atomic():
@@ -327,6 +354,22 @@ class LottoPipelineRunner:
                         log_to_db=True,
                     )
                 self.repository.set_lotto_job_stato(lotto_id, "IN_ESECUZIONE", "Avvio pipeline")
+                correlation_id = (
+                    str(lotto_context.lock_batch_id)
+                    if getattr(lotto_context, "lock_batch_id", None)
+                    else None
+                )
+                self.repository.log_event(
+                    domain="PIPELINE",
+                    entity_type="LOTTO",
+                    entity_id=lotto_id,
+                    event_code="PIPELINE_STARTED",
+                    correlation_id=correlation_id,
+                    payload={
+                        "tipo_lotto": effective_tipo_lotto,
+                        "dry_run": params.dry_run,
+                    },
+                )
 
                 for step in steps:
                     if self._should_execute_auto_step_rollback(
@@ -350,9 +393,18 @@ class LottoPipelineRunner:
                         step=step,
                         effective_tipo_lotto=effective_tipo_lotto,
                         dry_run=params.dry_run,
+                        correlation_id=correlation_id,
                     )
 
                 self.repository.set_lotto_job_stato(lotto_id, "COMPLETATO", "Pipeline completata")
+                self.repository.log_event(
+                    domain="PIPELINE",
+                    entity_type="LOTTO",
+                    entity_id=lotto_id,
+                    event_code="PIPELINE_COMPLETED",
+                    correlation_id=correlation_id,
+                    payload={"tipo_lotto": effective_tipo_lotto},
+                )
                 return lotto_id
         except ServiceError as exc:
             if lotto_id is not None:
@@ -361,6 +413,7 @@ class LottoPipelineRunner:
                     code=exc.code,
                     tipo_lotto=effective_tipo_lotto,
                     detail=exc.detail or str(exc),
+                    correlation_id=correlation_id,
                 )
             raise
         except Exception as exc:
@@ -370,6 +423,7 @@ class LottoPipelineRunner:
                     code="E_PIPELINE",
                     tipo_lotto=effective_tipo_lotto,
                     detail=str(exc),
+                    correlation_id=correlation_id,
                 )
             ErrorManager.raise_error(
                 code="E_PIPELINE",
