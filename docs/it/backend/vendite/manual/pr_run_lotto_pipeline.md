@@ -1,4 +1,4 @@
-# pr_run_lotto_pipeline (Django)
+# run_lotto_pipeline (Django)
 
 ## Scopo
 
@@ -10,10 +10,9 @@ Orchestrare l'esecuzione della pipeline di fatturazione per un lotto, gestendo:
 
 ## Contesto
 
-La procedura SQL `vendite.pr_run_lotto_pipeline()` è stata migrata lato backend Django.
-L'orchestrazione ora vive in:
+L'orchestrazione vive in:
 
-- `apps/vendite/services/pipeline_service.py` (`pr_run_lotto_pipeline`)
+- `apps/vendite/services/pipeline_service.py` (`run_lotto_pipeline`)
 - `apps/vendite/services/pipeline_runner.py` (`LottoPipelineRunner.run_pipeline`)
 - `apps/vendite/services/pipeline_error_logger.py` (`PipelineErrorLogger`, routing errori `LOTTO`/`FATTURA`)
 

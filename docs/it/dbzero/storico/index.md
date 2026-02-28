@@ -9,7 +9,6 @@
 - [assets](tabelle/assets.md)
 - [attivita_consumi](tabelle/attivita_consumi.md)
 - [attivita_fatturabili](tabelle/attivita_fatturabili.md)
-- [attivita_fatturabili_lotti](tabelle/attivita_fatturabili_lotti.md)
 - [bank_branches](tabelle/bank_branches.md)
 - [billing_account](tabelle/billing_account.md)
 - [catasto_unita_immobiliari](tabelle/catasto_unita_immobiliari.md)
@@ -53,6 +52,7 @@
 - [parameter_overrides](tabelle/parameter_overrides.md) — * **Versionamento degli override**   Catturare ogni modifica ai record di `config.parameter_overrides`, consentendo di risalire allo stato precedente o iniziale di un override. * **Audit e compliance**   Archivio immutabile di tutte le operazioni, con metadati di utente e timestamp, per garantire tracciabilità e analisi storiche.
 - [parameters](tabelle/parameters.md) — * **Versionamento dei parametri**   Registrare ogni modifica (INSERT, UPDATE, DELETE) sui parametri definiti in `config.parameters`, abilitando rollback e analisi storica. * **Audit e compliance**   Documentare chi (`user_insert`) e quando (`data_insert`) hanno effettuato le modifiche, mantenendo un registro immutabile.
 - [pdp](tabelle/pdp.md) — `storico.pdp` conserva la **timeline** dei Punti di Prelievo: per ogni modifica allo stato corrente (`anagrafiche.pdp`) registra uno **snapshot JSONB**, la **tipologia di operazione** (`I`,`U`,`D`), il **tx_id** e la **finestra di validità** (`valid_from`, `valid_to`). È di fatto una **SCD Type 2** (Slowly Changing Dimension) specializzata per i PDP.
+- [preventivi](tabelle/preventivi.md)
 - [psp](tabelle/psp.md)
 - [registri_fatturazione](tabelle/registri_fatturazione.md)
 - [regole_fatturazione_articolo](tabelle/regole_fatturazione_articolo.md)
@@ -69,6 +69,7 @@
 - [sto_demo_storico](tabelle/sto_demo_storico.md)
 - [stradario](tabelle/stradario.md) — * **Audit Trail**: Conservare una traccia completa di ogni modifica o cancellazione effettuata su `config.stradario`. * **Versioning dei record**: Permettere la ricostruzione dello stato di una via in un dato momento, grazie ai campi `valid_from` e `valid_to`. * **Riproduzione dello schema**: Utilizzare il campo **`snapshot`** (JSONB) per salvare tutti i dettagli di `config.stradario` al momento dell’operazione, anche a fronte di evoluzioni dello schema. * **Classificazione delle operazioni**: Impiegare **`tipo_operazione_id`** (1=insert iniziale, 2=update, 3=delete) e **`change_type`** (A=Active, S=Suppressed, F=Fused, D=Divided) per distinguere rapidamente la natura del cambiamento.
 - [stradario_trasformazioni](tabelle/stradario_trasformazioni.md)
+- [tipi_ruoli_nature_ammesse](tabelle/tipi_ruoli_nature_ammesse.md)
 - [tipi_ruolo_tipi_indirizzo](tabelle/tipi_ruolo_tipi_indirizzo.md)
 - [tipi_soggetto_dettaglio_tipi_indirizzo](tabelle/tipi_soggetto_dettaglio_tipi_indirizzo.md)
 - [trasferimenti](tabelle/trasferimenti.md)

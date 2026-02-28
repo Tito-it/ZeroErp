@@ -36,6 +36,7 @@
 |------|--------|--------|--------|
 | trg_forme_giuridiche_tipi_soggetto_dettaglio_a10_forme_g_af5323 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'forme_giuridiche', 'attivo', 'forma_giuridica_id')` |
 | trg_forme_giuridiche_tipi_soggetto_dettaglio_a10_forme_g_af5323 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'forme_giuridiche', 'attivo', 'forma_giuridica_id')` |
+| trg_forme_giuridiche_tipi_soggetto_dettaglio_audit_data__eaaf9f | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_forme_giuridiche_tipi_soggetto_dettaglio_audit_data__eaaf9f | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_forme_giuridiche_tipi_soggetto_dettaglio_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_forme_giuridiche_tipi_soggetto_dettaglio_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

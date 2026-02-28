@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Accesso DB per dominio commesse (CRUD + pull AF).
+# Scopo: Accesso DB per dominio commesse (CRUD + pull AF + push sorgenti).
 # ------------------------------------------------------------
 
 from dataclasses import dataclass
@@ -13,31 +13,113 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.services.error_manager import ErrorManager
 from apps.vendite.types import CommessaEmitResult, CommessaPushLogRow, CommessaStatoResult
 
 # Repository SQL: incapsula accesso DB per commesse, commesse_attivita e push log.
 
 
+# --- Mapping codice sorgente → fn SQL da chiamare ---
+_SORGENTE_FN_MAP: dict[str, str] = {
+    "PREVENTIVO": "vendite.fn_list_preventivi_da_pushare",
+    "ORDINE_VENDITA": "vendite.fn_list_ordini_da_pushare",
+    "ATTIVITA_CONSUMI": "vendite.fn_list_consumi_da_pushare",
+    "CONTRATTO": "vendite.fn_list_contratti_da_pushare",
+    "DDT_VENDITA": "vendite.fn_list_ddt_da_pushare",
+}
+
+# Nomi delle 26 colonne condivise da tutte le fn_list_*_da_pushare.
+_PUSHABLE_SHARED_COLS = (
+    "billing_account_id",
+    "utility_id",
+    "emittente_soggetto_ruolo_id",
+    "competenza_dal",
+    "competenza_al",
+    "fatturazione_immediata",
+    "sorgente_tipo_id",
+    "sorgente_uid",
+    "segment_key",
+    "articolo_id",
+    "istanza_utility_id",
+    "data_attivita",
+    "uom_id",
+    "quantita",
+    "qta_operativa",
+    "uom_operativa_id",
+    "factor_to_base",
+    "competenza_mese",
+    "prezzo_snapshot",
+    "prezzo_bloccato",
+    "pricing_mode",
+    "tipo_movimento",
+    "tipo_consumo",
+    "valuta_id",
+    "meta",
+    "tipo_doc_fiscale_id",
+)
+
+
+# --- Risultati upsert ---
+
+
+@dataclass(frozen=True)
+class UpsertAttivitaResult:
+    """Risultato singolo di fn_upsert_commessa_attivita (attivita_id, is_new)."""
+
+    attivita_id: int
+    is_new: bool
+
+
+@dataclass(frozen=True)
+class BatchUpsertResult:
+    """Risultato batch di fn_batch_upsert_commessa_attivita."""
+
+    total_rows: int
+    inserted: int
+    updated: int
+    errors: list[dict]
+
+
+# --- Costanti dominio commesse (valori allineati ai DEFAULT delle fn SQL) ---
+TIPO_COMMESSA_AUTO = "AUTO"
+POLICY_FATTURAZIONE_DA_DOCUMENTO = "DA_DOCUMENTO"
+PRIORITA_OPERATIVA_NORMALE = "NORMALE"
+PRICING_MODE_FIXED = "FIXED"
+STATO_APPROVAZIONE_BOZZA = "BOZZA"
+STATO_EMISSIONE_NON_EMESSA = "NON_EMESSA"
+TIPO_MOVIMENTO_NORMALE = "NORMALE"
+TIPO_CONSUMO_CONGUAGLIO = "CONGUAGLIO"
+
+
 @dataclass(frozen=True)
 class CommessaAttivitaInput:
-    """Input per fn_upsert_commessa_attivita — tutti i campi della riga operativa."""
+    """Input per fn_upsert_commessa_attivita — tutti i campi della riga operativa.
 
+    Campi obbligatori (senza default) prima; opzionali (con default) dopo.
+    I default sono allineati ai DEFAULT della fn_upsert_commessa_attivita.
+    """
+
+    # === Campi obbligatori (sempre presenti dalle fn_list) ===
     commessa_id: int
     segment_key: str
-    articolo_id: int
-    uom_id: int
     quantita: Decimal
     competenza_mese: date
-    prezzo_snapshot: Decimal
-    tipo_doc_fiscale_id: int
-    valuta_id: int
-    prezzo_bloccato: bool
-    pricing_mode: str  # FIXED | FORMULA | SCAGLIONI
-    prezzo_da_riallineare: bool
-    stato_approvazione: str  # BOZZA | APPROVATA | RIFIUTATA
-    stato_emissione: str  # NON_EMESSA | EMESSA | ANNULLATA
-    tipo_movimento: str  # NORMALE | ...
-    tipo_consumo: str  # ACCONTO | ...
+    articolo_id: Any | None  # UUID dal DB; None per consumi (handler risolve)
+    prezzo_snapshot: Decimal | None  # None per consumi (calcolato da listino)
+
+    # === Campi con default — allineati a fn_upsert_commessa_attivita ===
+    uom_id: int | None = None  # #3: nullable (handler risolve da catalogo)
+    tipo_doc_fiscale_id: int | None = None  # #4: default da config
+    valuta_id: int | None = None  # None per consumi/contratti
+    prezzo_bloccato: bool = False
+    pricing_mode: str = PRICING_MODE_FIXED
+    prezzo_da_riallineare: bool = False  # #5: default False
+    stato_approvazione: str = STATO_APPROVAZIONE_BOZZA
+    stato_emissione: str = STATO_EMISSIONE_NON_EMESSA
+    tipo_movimento: str = TIPO_MOVIMENTO_NORMALE
+    tipo_consumo: str = TIPO_CONSUMO_CONGUAGLIO
+
+    # === Campi opzionali ===
     istanza_utility_id: int | None = None
     data_attivita: date | None = None
     competenza_dal: date | None = None
@@ -53,6 +135,87 @@ class CommessaAttivitaInput:
     meta: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class PushableRow:
+    """Riga normalizzata da fn_list_*_da_pushare — 26 colonne condivise."""
+
+    billing_account_id: int
+    utility_id: int | None
+    emittente_soggetto_ruolo_id: int
+    competenza_dal: date | None
+    competenza_al: date | None
+    fatturazione_immediata: bool
+    sorgente_tipo_id: int
+    sorgente_uid: str
+    segment_key: str
+    articolo_id: Any  # UUID o None (consumi)
+    istanza_utility_id: int | None
+    data_attivita: date | None
+    uom_id: int | None
+    quantita: Decimal | None
+    qta_operativa: Decimal | None
+    uom_operativa_id: int | None
+    factor_to_base: Decimal
+    competenza_mese: date
+    prezzo_snapshot: Decimal | None
+    prezzo_bloccato: bool
+    pricing_mode: str
+    tipo_movimento: str
+    tipo_consumo: str
+    valuta_id: int | None
+    meta: dict[str, Any]
+    tipo_doc_fiscale_id: int | None
+
+
+def _decode_jsonb(value: Any, default: Any) -> Any:
+    """Decodifica JSONB: gestisce str, dict, list. Unico punto di decodifica."""
+    if isinstance(value, (list, dict)):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            pass
+    return default
+
+
+def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
+    """Scopo: converte una tupla cursor in PushableRow usando la mappa colonne per nome."""
+    def _col(name: str) -> Any:
+        return row[col_map[name]]
+
+    meta_raw = _decode_jsonb(_col("meta"), {})
+
+    return PushableRow(
+        billing_account_id=_col("billing_account_id"),
+        utility_id=_col("utility_id"),
+        emittente_soggetto_ruolo_id=_col("emittente_soggetto_ruolo_id"),
+        competenza_dal=_col("competenza_dal"),
+        competenza_al=_col("competenza_al"),
+        fatturazione_immediata=bool(_col("fatturazione_immediata")),
+        sorgente_tipo_id=_col("sorgente_tipo_id"),
+        sorgente_uid=str(_col("sorgente_uid")),
+        segment_key=str(_col("segment_key")),
+        articolo_id=_col("articolo_id"),
+        istanza_utility_id=_col("istanza_utility_id"),
+        data_attivita=_col("data_attivita"),
+        uom_id=_col("uom_id"),
+        quantita=_col("quantita"),
+        qta_operativa=_col("qta_operativa"),
+        uom_operativa_id=_col("uom_operativa_id"),
+        factor_to_base=_col("factor_to_base") or Decimal(1),
+        competenza_mese=_col("competenza_mese"),
+        prezzo_snapshot=_col("prezzo_snapshot"),
+        prezzo_bloccato=bool(_col("prezzo_bloccato")),
+        pricing_mode=str(_col("pricing_mode")),
+        tipo_movimento=str(_col("tipo_movimento")),
+        tipo_consumo=str(_col("tipo_consumo")),
+        valuta_id=_col("valuta_id"),
+        meta=meta_raw,
+        tipo_doc_fiscale_id=_col("tipo_doc_fiscale_id"),
+    )
+
+
 class CommesseRepository:
     """Wrapper SQL a basso livello per il dominio commesse."""
 
@@ -64,29 +227,96 @@ class CommesseRepository:
 
     @staticmethod
     def _decode_jsonb(value: Any, default: Any) -> Any:
-        if isinstance(value, (list, dict)):
-            return value
-        if isinstance(value, str):
-            try:
-                return json.loads(value)
-            except json.JSONDecodeError:
-                pass
-        return default
+        return _decode_jsonb(value, default)
+
+    # --- Gruppo 0: Fetch righe sorgente per push ---
+
+    @staticmethod
+    def validate_sorgente_map() -> list[str]:
+        """Verifica _SORGENTE_FN_MAP contro config.sorgenti (scope=PUSH_COMMESSA).
+
+        Restituisce lista di warning (vuota = tutto OK).
+        Utile come safety-net a startup o nei test di integrazione.
+        """
+        warnings: list[str] = []
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT codice FROM config.sorgenti"
+                " WHERE scope = 'PUSH_COMMESSA' AND attivo = true"
+            )
+            db_codici = {row[0] for row in cursor.fetchall()}
+
+        map_codici = set(_SORGENTE_FN_MAP.keys())
+        missing = db_codici - map_codici
+        extra = map_codici - db_codici
+        if missing:
+            warnings.append(
+                f"Sorgenti PUSH_COMMESSA nel DB ma non in _SORGENTE_FN_MAP: {sorted(missing)}"
+            )
+        if extra:
+            warnings.append(
+                f"Codici in _SORGENTE_FN_MAP ma non nel DB (scope PUSH_COMMESSA): {sorted(extra)}"
+            )
+        return warnings
+
+    @staticmethod
+    def list_active_push_sources() -> list[str]:
+        """Codici sorgente attivi per scope PUSH_COMMESSA, ordinati per id registrazione."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT codice FROM config.sorgenti"
+                " WHERE scope = 'PUSH_COMMESSA' AND attivo = true"
+                " ORDER BY id"
+            )
+            return [row[0] for row in cursor.fetchall()]
+
+    # Scopo: invoca la fn_list_<sorgente>_da_pushare parametrizzata e restituisce
+    # le righe normalizzate come PushableRow. Unico punto di accesso per tutti gli handler.
+    def fetch_pushable_rows(
+        self,
+        sorgente_codice: str,
+        *,
+        competenza_mese: date | None = None,
+        billing_account_id: int | None = None,
+        limit: int | None = None,
+    ) -> list[PushableRow]:
+        """Chiama fn_list_<sorgente>_da_pushare e restituisce PushableRow normalizzati."""
+        fn_name = _SORGENTE_FN_MAP.get(sorgente_codice)
+        ErrorManager.require(
+            fn_name is not None,
+            code="E_COMMESSA_SORGENTE_SCONOSCIUTA",
+            message=f"Sorgente '{sorgente_codice}' non supportata per push",
+        )
+        assert fn_name is not None
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT * FROM {fn_name}(%s, %s, %s)",  # noqa: S608 — fn_name da whitelist
+                [competenza_mese, billing_account_id, limit],
+            )
+            # Costruisce mappa colonna → indice per estrarre solo le 25 condivise.
+            col_names = [desc[0] for desc in cursor.description]
+            col_map = {name: idx for idx, name in enumerate(col_names) if name in _PUSHABLE_SHARED_COLS}
+            rows = cursor.fetchall()
+
+        return [_map_pushable_row(col_map, row) for row in rows]
 
     # --- Gruppo 1: Commessa ---
 
+    # Scopo: risolve o crea una commessa. Restituisce commessa_id.
+    # Default allineati a fn_get_or_create_commessa.
     def get_or_create_commessa(
         self,
         *,
         billing_account_id: int,
-        utility_id: int | None,
-        tipo_commessa: str,
-        policy_fatturazione: str,
-        fatturazione_immediata: bool,
-        priorita_operativa: str,
-        emittente_soggetto_ruolo_id: int,
-        competenza_dal: date,
-        competenza_al: date,
+        utility_id: int | None = None,
+        tipo_commessa: str = TIPO_COMMESSA_AUTO,
+        policy_fatturazione: str = POLICY_FATTURAZIONE_DA_DOCUMENTO,
+        fatturazione_immediata: bool = False,
+        priorita_operativa: str = PRIORITA_OPERATIVA_NORMALE,
+        emittente_soggetto_ruolo_id: int | None = None,
+        competenza_dal: date | None = None,
+        competenza_al: date | None = None,
         meta: dict | None = None,
         force_new: bool = False,
     ) -> int:
@@ -181,13 +411,13 @@ class CommesseRepository:
 
     # --- Gruppo 2: Attività commessa ---
 
-    def upsert_attivita(self, inp: CommessaAttivitaInput) -> int:
+    def upsert_attivita(self, inp: CommessaAttivitaInput) -> UpsertAttivitaResult:
         """Inserisce o aggiorna una riga operativa sulla commessa (idempotente su segment_key).
-        Restituisce commessa_attivita_id."""
+        Restituisce UpsertAttivitaResult(attivita_id, is_new)."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT vendite.fn_upsert_commessa_attivita(
+                SELECT attivita_id, is_new FROM vendite.fn_upsert_commessa_attivita(
                     p_commessa_id => %s,
                     p_segment_key => %s,
                     p_articolo_id => %s,
@@ -253,7 +483,71 @@ class CommesseRepository:
             )
             row = cursor.fetchone()
         assert row is not None
-        return int(row[0])
+        return UpsertAttivitaResult(attivita_id=int(row[0]), is_new=bool(row[1]))
+
+    # --- Gruppo 2b: Batch upsert attività ---
+
+    @staticmethod
+    def _inp_to_jsonb_row(inp: CommessaAttivitaInput) -> dict:
+        """Serializza CommessaAttivitaInput in dict JSONB-safe per fn_batch_upsert."""
+        def _date(v: date | None) -> str | None:
+            return v.isoformat() if v else None
+
+        def _decimal(v: Decimal | None) -> str | None:
+            return str(v) if v is not None else None
+
+        return {
+            "commessa_id": inp.commessa_id,
+            "segment_key": inp.segment_key,
+            "articolo_id": str(inp.articolo_id) if inp.articolo_id else None,
+            "istanza_utility_id": inp.istanza_utility_id,
+            "data_attivita": _date(inp.data_attivita),
+            "uom_id": inp.uom_id,
+            "quantita": _decimal(inp.quantita),
+            "competenza_mese": _date(inp.competenza_mese),
+            "competenza_dal": _date(inp.competenza_dal),
+            "competenza_al": _date(inp.competenza_al),
+            "prezzo_snapshot": _decimal(inp.prezzo_snapshot),
+            "qta_operativa": _decimal(inp.qta_operativa),
+            "uom_operativa_id": inp.uom_operativa_id,
+            "factor_to_base": _decimal(inp.factor_to_base),
+            "posticipa_al": _date(inp.posticipa_al),
+            "tipo_doc_fiscale_id": inp.tipo_doc_fiscale_id,
+            "valuta_id": inp.valuta_id,
+            "area_geografica_id": inp.area_geografica_id,
+            "listino_versione_id": inp.listino_versione_id,
+            "prezzo_bloccato": inp.prezzo_bloccato,
+            "pricing_mode": inp.pricing_mode,
+            "prezzo_da_riallineare": inp.prezzo_da_riallineare,
+            "stato_approvazione": inp.stato_approvazione,
+            "stato_emissione": inp.stato_emissione,
+            "sorgente_tipo_id": inp.sorgente_tipo_id,
+            "sorgente_uid": inp.sorgente_uid,
+            "tipo_movimento": inp.tipo_movimento,
+            "tipo_consumo": inp.tipo_consumo,
+            "meta": inp.meta or {},
+        }
+
+    def batch_upsert_attivita(self, inputs: list[CommessaAttivitaInput]) -> BatchUpsertResult:
+        """Upsert batch di righe attivita in una sola chiamata DB.
+        Restituisce BatchUpsertResult con contatori e errori per riga."""
+        if not inputs:
+            return BatchUpsertResult(total_rows=0, inserted=0, updated=0, errors=[])
+        rows_json = json.dumps([self._inp_to_jsonb_row(inp) for inp in inputs])
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM vendite.fn_batch_upsert_commessa_attivita(%s::jsonb)",
+                [rows_json],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        errors_raw = _decode_jsonb(row[3], [])
+        return BatchUpsertResult(
+            total_rows=int(row[0]),
+            inserted=int(row[1]),
+            updated=int(row[2]),
+            errors=errors_raw if isinstance(errors_raw, list) else [],
+        )
 
     # --- Gruppo 3: Emit attività fatturabili (pull) ---
 
@@ -288,6 +582,127 @@ class CommesseRepository:
             updated_rows=int(row[2]),
         )
 
+    # Scopo: Restituisce le commesse emittibili nel perimetro del contesto lotto.
+    def list_commesse_emittibili(
+        self,
+        *,
+        competenza_mese: date | None = None,
+        billing_account_id: int | None = None,
+        utility_id: int | None = None,
+        emittente_soggetto_ruolo_id: int | None = None,
+        limit: int = 1000,
+    ) -> list[int]:
+        """Chiama vendite.fn_list_commesse_emittibili e restituisce i commessa_id."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT commessa_id
+                FROM vendite.fn_list_commesse_emittibili(
+                    p_competenza_mese => %s,
+                    p_billing_account_id => %s,
+                    p_utility_id => %s,
+                    p_emittente_soggetto_ruolo_id => %s,
+                    p_limit => %s
+                )
+                """,
+                [competenza_mese, billing_account_id, utility_id,
+                 emittente_soggetto_ruolo_id, limit],
+            )
+            return [row[0] for row in cursor.fetchall()]
+
+    # --- Gruppo 3b: Lista attività commessa (paginata) ---
+
+    # Colonne restituite da vendite.fn_list_commessa_attivita.
+    _ATTIVITA_COLS = (
+        "id", "commessa_id", "segment_key", "articolo_id",
+        "istanza_utility_id", "data_attivita", "uom_id", "quantita",
+        "competenza_mese", "competenza_dal", "competenza_al",
+        "prezzo_snapshot", "prezzo_bloccato", "prezzo_da_riallineare",
+        "stato_approvazione", "stato_emissione", "sorgente_tipo_id",
+        "sorgente_codice", "meta", "data_update",
+    )
+    # Type mapping per serializzazione colonne attivita.
+    _ATTIVITA_DATE_COLS = frozenset({
+        "data_attivita", "competenza_mese", "competenza_dal", "competenza_al", "data_update",
+    })
+    _ATTIVITA_JSONB_COLS = frozenset({"meta"})
+    _ATTIVITA_UUID_COLS = frozenset({"articolo_id"})
+
+    def list_commessa_attivita(
+        self,
+        commessa_id: int,
+        *,
+        stato_emissione: str | None = None,
+        stato_approvazione: str | None = None,
+        competenza_mese: date | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        """Lista paginata attività di una commessa via vendite.fn_list_commessa_attivita.
+
+        Restituisce {"count": <total_righe_filtrate>, "rows": [dict, ...]}.
+        """
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+
+        # Parametri WHERE condivisi tra count e data query.
+        where_params: list = [commessa_id]
+        where_clauses = ["ca.commessa_id = %s"]
+        if stato_emissione is not None:
+            where_clauses.append("ca.stato_emissione = %s")
+            where_params.append(stato_emissione)
+        if stato_approvazione is not None:
+            where_clauses.append("ca.stato_approvazione = %s")
+            where_params.append(stato_approvazione)
+        if competenza_mese is not None:
+            where_clauses.append("ca.competenza_mese = date_trunc('month', %s::date)::date")
+            where_params.append(competenza_mese)
+        where_sql = " AND ".join(where_clauses)
+
+        _cols_sql = ", ".join(self._ATTIVITA_COLS)
+        with connection.cursor() as cursor:
+            # Total count (stessi filtri, senza LIMIT/OFFSET).
+            cursor.execute(
+                f"SELECT COUNT(*) FROM vendite.commesse_attivita ca WHERE {where_sql}",
+                where_params,
+            )
+            count_row = cursor.fetchone()
+            total_count = int(count_row[0]) if count_row else 0
+
+            # Data query paginata.
+            cursor.execute(
+                f"""
+                SELECT {_cols_sql}
+                FROM vendite.fn_list_commessa_attivita(
+                    p_commessa_id => %s,
+                    p_stato_emissione => %s,
+                    p_stato_approvazione => %s,
+                    p_competenza_mese => %s,
+                    p_limit => %s,
+                    p_offset => %s
+                )
+                """,  # noqa: S608 — colonne da costante _ATTIVITA_COLS
+                [commessa_id, stato_emissione, stato_approvazione,
+                 competenza_mese, safe_limit, safe_offset],
+            )
+            raw_rows = cursor.fetchall()
+
+        rows = []
+        for raw in raw_rows:
+            row_dict: dict[str, Any] = {}
+            for idx, col in enumerate(self._ATTIVITA_COLS):
+                val = raw[idx]
+                if col in self._ATTIVITA_JSONB_COLS:
+                    val = self._decode_jsonb(val, {})
+                elif col in self._ATTIVITA_DATE_COLS and val is not None:
+                    val = val.isoformat()
+                elif col in self._ATTIVITA_UUID_COLS and val is not None:
+                    val = str(val)
+                row_dict[col] = val
+            rows.append(row_dict)
+
+        return {"count": total_count, "rows": rows}
+
     # --- Gruppo 4: Push log ---
 
     def log_push_run(
@@ -298,7 +713,6 @@ class CommesseRepository:
         source_types: list[str] | None = None,
         risultato: dict[str, Any] | None = None,
         durata_ms: int | None = None,
-        user_run: str | None = None,
     ) -> int:
         """Registra il risultato di un run dell'orchestratore push.
         Restituisce push_log_id."""
@@ -310,8 +724,7 @@ class CommesseRepository:
                     p_source_types => %s,
                     p_risultato => %s::jsonb,
                     p_stato => %s,
-                    p_durata_ms => %s,
-                    p_user_run => %s
+                    p_durata_ms => %s
                 )
                 """,
                 [
@@ -320,7 +733,6 @@ class CommesseRepository:
                     self._to_jsonb_param(risultato),
                     stato,
                     durata_ms,
-                    user_run,
                 ],
             )
             row = cursor.fetchone()
@@ -333,7 +745,7 @@ class CommesseRepository:
             cursor.execute(
                 """
                 SELECT id, run_at, dry_run, source_types,
-                       risultato, stato, durata_ms, user_run
+                       risultato, stato, durata_ms
                 FROM vendite.commesse_push_log
                 WHERE id = %s
                 """,
@@ -351,5 +763,43 @@ class CommesseRepository:
             risultato=risultato_raw if isinstance(risultato_raw, dict) else None,
             stato=str(row[5]),
             durata_ms=None if row[6] is None else int(row[6]),
-            user_run=row[7],
         )
+
+    # --- Gruppo 5: Event log ---
+
+    # Scopo: Scrive un evento su vendite.event_log tramite fn_log_event.
+    def log_event(
+        self,
+        *,
+        domain: str,
+        entity_type: str,
+        entity_id: int,
+        event_code: str,
+        severity: str = "INFO",
+        correlation_id: str | None = None,
+        actor: str = "service:django",
+        source: str = "django",
+        payload: dict[str, Any] | None = None,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT vendite.fn_log_event(
+                    %s, %s, %s, %s, %s, %s::uuid, %s, %s, %s::jsonb
+                )
+                """,
+                [
+                    domain,
+                    entity_type,
+                    entity_id,
+                    event_code,
+                    severity,
+                    correlation_id,
+                    actor,
+                    source,
+                    self._to_jsonb_param(payload or {}),
+                ],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])

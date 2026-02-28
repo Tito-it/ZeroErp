@@ -150,3 +150,19 @@ class DbopsRepository:
             for row in rows
         ]
         return results, total_count
+
+    # Scopo: Verifica esistenza di un record attivo in una tabella config whitelisted per ID.
+    def check_lookup_id_exists(self, *, rel: str, record_id: int) -> bool:
+        if rel not in _REL_CONSENTITE:
+            raise ServiceError(
+                code="E_CORE_VALIDATION",
+                message="Relazione non consentita.",
+                detail=f"rel '{rel}' non e` nella whitelist delle lookup consentite.",
+            )
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT EXISTS(SELECT 1 FROM {rel} WHERE id = %s AND attivo = true)",
+                [record_id],
+            )
+            row = cursor.fetchone()
+            return bool(row and row[0])

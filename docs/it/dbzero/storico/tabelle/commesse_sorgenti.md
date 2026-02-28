@@ -25,5 +25,11 @@
 | ix_commesse_sorgenti_commesse_sorgenti_id_fk | `CREATE INDEX ix_commesse_sorgenti_commesse_sorgenti_id_fk ON storico.commesse_sorgenti USING btree (commesse_sorgenti_id)` |
 | pk_storico_commesse_sorgenti | `CREATE UNIQUE INDEX pk_storico_commesse_sorgenti ON storico.commesse_sorgenti USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_commesse_sorgenti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_commesse_sorgenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

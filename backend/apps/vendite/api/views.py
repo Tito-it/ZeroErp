@@ -1,7 +1,7 @@
 from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
-from rest_framework.permissions import IsAuthenticated
+from apps.core.api.permissions import ZeroERPPermission
 from rest_framework.request import Request
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -10,17 +10,18 @@ from apps.core.api.error_responses import exception_to_error_response
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
 from apps.core.api.success_responses import success_response
-from apps.vendite.services.attivita_pipeline_service import (
-    fn_get_attivita_pipeline_status,
-    fn_get_attivita_task_runs,
-    pr_run_attivita_pipeline,
+from apps.vendite.services.commesse_service import (
+    fn_get_commessa_stato,
+    fn_get_commesse_push_log,
+    fn_list_commessa_attivita,
+    pr_run_commesse_push,
 )
 from apps.vendite.services.pipeline_service import (
     fn_get_lotto_segnalazioni_summary,
     fn_get_lotto_task_runs,
     fn_reset_lotto_draft,
     fn_reset_lotto_fattura_draft,
-    pr_run_lotto_pipeline,
+    run_lotto_pipeline,
 )
 from apps.vendite.services.vendite_service import fn_list_lotti, fn_list_lotto_fatture
 
@@ -73,7 +74,7 @@ class ApiRunLottoPipeline(APIView):
     def post(self, request: Request) -> JsonResponse:
         # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
         def _handler(payload: dict[str, object]) -> dict[str, object]:
-            lotto_id = pr_run_lotto_pipeline(
+            lotto_id = run_lotto_pipeline(
                 lotto_id=optional_int(payload, "lotto_id", zero_as_none=True),
                 competenza_mese=optional_iso_date(payload, "competenza_mese"),
                 tipo_doc_fiscale_id=optional_int(payload, "tipo_doc_fiscale_id", zero_as_none=True),
@@ -96,7 +97,9 @@ class ApiRunLottoPipeline(APIView):
 class ApiRunLottoPipelineV1(ApiRunLottoPipeline):
     # Versione canonica protetta: richiede JWT su /api/v1/*
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
+    post_permission = "genera_fatture_lotti"
 
 
 class ApiLottoSegnalazioniSummary(APIView):
@@ -133,7 +136,8 @@ class ApiLottoSegnalazioniSummary(APIView):
 
 class ApiLottoSegnalazioniSummaryV1(ApiLottoSegnalazioniSummary):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 class ApiLottoTaskRuns(APIView):
@@ -167,8 +171,7 @@ class ApiLottoTaskRuns(APIView):
     # Scopo: Restituisce via GET i task run runtime del lotto per monitoraggio operativo.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
         try:
-            limit_value = request.query_params.get("limit", "100")
-            limit = int(limit_value)
+            limit = optional_int({"limit": request.query_params.get("limit", "100")}, "limit")
             data = fn_get_lotto_task_runs(lotto_id=lotto_id, limit=limit)
             return success_response(data)
         except Exception as exc:
@@ -177,7 +180,8 @@ class ApiLottoTaskRuns(APIView):
 
 class ApiLottoTaskRunsV1(ApiLottoTaskRuns):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 class ApiResetLottoDraft(APIView):
@@ -225,7 +229,8 @@ class ApiResetLottoDraft(APIView):
 
 class ApiResetLottoDraftV1(ApiResetLottoDraft):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 class ApiResetLottoFatturaDraft(APIView):
@@ -272,7 +277,8 @@ class ApiResetLottoFatturaDraft(APIView):
 
 class ApiResetLottoFatturaDraftV1(ApiResetLottoFatturaDraft):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 class ApiLottiList(APIView):
@@ -329,8 +335,8 @@ class ApiLottiList(APIView):
             raw_emittente = request.query_params.get("emittente_soggetto_ruolo_id")
             emittente_soggetto_ruolo_id = optional_int({"emittente_soggetto_ruolo_id": raw_emittente}, "emittente_soggetto_ruolo_id") if raw_emittente is not None else None
 
-            page = int(request.query_params.get("page", "1"))
-            page_size = int(request.query_params.get("page_size", "50"))
+            page = optional_int({"page": request.query_params.get("page", "1")}, "page")
+            page_size = optional_int({"page_size": request.query_params.get("page_size", "50")}, "page_size")
 
             data = fn_list_lotti(
                 competenza_mese=competenza_mese,
@@ -349,7 +355,8 @@ class ApiLottiList(APIView):
 
 class ApiLottiListV1(ApiLottiList):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
 class ApiLottoFattureList(APIView):
@@ -366,8 +373,8 @@ class ApiLottoFattureList(APIView):
 
             sort_by = request.query_params.get("sort_by", "fattura_id").strip() or "fattura_id"
             sort_dir = request.query_params.get("sort_dir", "asc").strip() or "asc"
-            page = int(request.query_params.get("page", "1"))
-            page_size = int(request.query_params.get("page_size", "50"))
+            page = optional_int({"page": request.query_params.get("page", "1")}, "page")
+            page_size = optional_int({"page_size": request.query_params.get("page_size", "50")}, "page_size")
 
             data = fn_list_lotto_fatture(
                 lotto_id=lotto_id,
@@ -385,10 +392,16 @@ class ApiLottoFattureList(APIView):
 
 class ApiLottoFattureListV1(ApiLottoFattureList):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
-class ApiRunAttivitaPipeline(APIView):
+# ================================================================== #
+# Commesse — push orchestrator + stato + attivita                     #
+# ================================================================== #
+
+
+class ApiRunCommessePush(APIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(
@@ -400,28 +413,28 @@ class ApiRunAttivitaPipeline(APIView):
             )
         ],
         request=inline_serializer(
-            name="VenditeRunAttivitaPipelineRequest",
+            name="VenditeRunCommessePushRequest",
             fields={
-                "lotto_id": serializers.IntegerField(required=False, allow_null=True),
-                "competenza_mese": serializers.DateField(required=False, allow_null=True),
-                "utility_id": serializers.IntegerField(required=False, allow_null=True),
-                "billing_account_id": serializers.IntegerField(required=False, allow_null=True),
-                "sorgente_tipo_id": serializers.IntegerField(required=False, allow_null=True),
-                "emittente_soggetto_ruolo_id": serializers.IntegerField(required=False, allow_null=True),
-                "lock_batch_id": serializers.UUIDField(required=False, allow_null=True),
-                "meta": serializers.DictField(required=False),
+                "source_types": serializers.ListField(
+                    child=serializers.CharField(),
+                    required=True,
+                    help_text="Codici sorgente da processare (es. PREVENTIVO, ORDINE_VENDITA, CONTRATTO, DDT_VENDITA, ATTIVITA_CONSUMI).",
+                ),
                 "dry_run": serializers.BooleanField(required=False),
             },
         ),
         responses={
             200: inline_serializer(
-                name="VenditeRunAttivitaPipelineResponse",
+                name="VenditeRunCommessePushResponse",
                 fields={
                     "data": inline_serializer(
-                        name="VenditeRunAttivitaPipelineData",
+                        name="VenditeRunCommessePushData",
                         fields={
-                            "lotto_id": serializers.IntegerField(),
-                            "status": serializers.CharField(),
+                            "stato": serializers.CharField(),
+                            "dry_run": serializers.BooleanField(),
+                            "push_log_id": serializers.IntegerField(allow_null=True),
+                            "durata_ms": serializers.IntegerField(allow_null=True),
+                            "handlers": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -429,47 +442,64 @@ class ApiRunAttivitaPipeline(APIView):
             )
         },
     )
-    # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
+    # Scopo: Gestisce la richiesta HTTP POST per lanciare il push commesse.
     def post(self, request: Request) -> JsonResponse:
-        # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
-        def _handler(payload: dict) -> dict:
-            lotto_id = pr_run_attivita_pipeline(
-                lotto_id=optional_int(payload, "lotto_id", zero_as_none=True),
-                competenza_mese=optional_iso_date(payload, "competenza_mese"),
-                utility_id=optional_int(payload, "utility_id", zero_as_none=True),
-                billing_account_id=optional_int(payload, "billing_account_id", zero_as_none=True),
-                sorgente_tipo_id=optional_int(payload, "sorgente_tipo_id", zero_as_none=True),
-                emittente_soggetto_ruolo_id=optional_int(
-                    payload, "emittente_soggetto_ruolo_id", zero_as_none=True
-                ),
-                lock_batch_id=optional_uuid(payload, "lock_batch_id"),
-                meta=payload.get("meta"),
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            source_types = payload.get("source_types") or None
+            return pr_run_commesse_push(
+                source_types=source_types,
                 dry_run=optional_bool(payload, "dry_run", default=False),
             )
-            return {"lotto_id": lotto_id, "status": "ok"}
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
-class ApiRunAttivitaPipelineV1(ApiRunAttivitaPipeline):
-    # Versione canonica protetta: richiede JWT su /api/v1/*
+class ApiRunCommessePushV1(ApiRunCommessePush):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
-class ApiAttivitaPipelineStatus(APIView):
+class ApiCommessePushLog(APIView):
     @extend_schema(
         responses={
             200: inline_serializer(
-                name="VenditeAttivitaPipelineStatusResponse",
+                name="VenditeCommessePushLogResponse",
+                fields={
+                    "data": serializers.DictField(),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET il dettaglio di un push log commesse.
+    def get(self, request: Request, push_log_id: int) -> JsonResponse:
+        try:
+            data = fn_get_commesse_push_log(push_log_id=push_log_id)
+            return success_response(data)
+        except Exception as exc:
+            return exception_to_error_response(exc)
+
+
+class ApiCommessePushLogV1(ApiCommessePushLog):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
+
+
+class ApiCommessaStato(APIView):
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="VenditeCommessaStatoResponse",
                 fields={
                     "data": inline_serializer(
-                        name="VenditeAttivitaPipelineStatusData",
+                        name="VenditeCommessaStatoData",
                         fields={
-                            "lotto_id": serializers.IntegerField(),
-                            "stato_lotto": serializers.CharField(),
-                            "stato_operativo": serializers.CharField(),
-                            "branch_summary": serializers.DictField(),
+                            "commessa_id": serializers.IntegerField(),
+                            "total_attivita": serializers.IntegerField(),
+                            "total_approvate": serializers.IntegerField(),
+                            "total_emesse": serializers.IntegerField(),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -477,48 +507,42 @@ class ApiAttivitaPipelineStatus(APIView):
             )
         },
     )
-    # Scopo: Restituisce via GET lo stato pipeline e il riepilogo branch del lotto attivita.
-    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+    # Scopo: Restituisce via GET stato e contatori di una commessa.
+    def get(self, request: Request, commessa_id: int) -> JsonResponse:
         try:
-            data = fn_get_attivita_pipeline_status(lotto_id=lotto_id)
+            data = fn_get_commessa_stato(commessa_id=commessa_id)
             return success_response(data)
         except Exception as exc:
             return exception_to_error_response(exc)
 
 
-class ApiAttivitaPipelineStatusV1(ApiAttivitaPipelineStatus):
+class ApiCommessaStatoV1(ApiCommessaStato):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"
 
 
-class ApiAttivitaTaskRuns(APIView):
+class ApiCommessaAttivita(APIView):
+    is_search_endpoint = True
+
     @extend_schema(
         parameters=[
-            OpenApiParameter(
-                name="limit",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Numero massimo task run restituiti (default 100, max 500).",
-            ),
-            OpenApiParameter(
-                name="branch_code",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Filtro per branch (es. DEFAULT, PREVENTIVI).",
-            ),
+            OpenApiParameter(name="stato_emissione", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro stato emissione (es. NON_EMESSA, EMESSA)."),
+            OpenApiParameter(name="stato_approvazione", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro stato approvazione (es. BOZZA, APPROVATA)."),
+            OpenApiParameter(name="competenza_mese", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro mese di competenza (YYYY-MM-DD)."),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False, description="Righe per pagina (default 50, max 200)."),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False, description="Offset paginazione (default 0)."),
         ],
         responses={
             200: inline_serializer(
-                name="VenditeAttivitaTaskRunsResponse",
+                name="VenditeCommessaAttivitaResponse",
                 fields={
                     "data": inline_serializer(
-                        name="VenditeAttivitaTaskRunsData",
+                        name="VenditeCommessaAttivitaData",
                         fields={
-                            "lotto_id": serializers.IntegerField(),
+                            "commessa_id": serializers.IntegerField(),
                             "count": serializers.IntegerField(),
-                            "task_runs": serializers.ListField(child=serializers.DictField()),
+                            "rows": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -526,18 +550,28 @@ class ApiAttivitaTaskRuns(APIView):
             )
         },
     )
-    # Scopo: Restituisce via GET i task run runtime del lotto attivita per monitoraggio operativo.
-    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+    # Scopo: Restituisce via GET la lista paginata delle attivita di una commessa.
+    def get(self, request: Request, commessa_id: int) -> JsonResponse:
         try:
-            limit_value = request.query_params.get("limit", "100")
-            limit = int(limit_value)
-            branch_code = request.query_params.get("branch_code") or None
-            data = fn_get_attivita_task_runs(lotto_id=lotto_id, limit=limit, branch_code=branch_code)
+            stato_emissione = request.query_params.get("stato_emissione") or None
+            stato_approvazione = request.query_params.get("stato_approvazione") or None
+            competenza_mese = request.query_params.get("competenza_mese") or None
+            limit = optional_int({"limit": request.query_params.get("limit", "50")}, "limit")
+            offset = optional_int({"offset": request.query_params.get("offset", "0")}, "offset")
+            data = fn_list_commessa_attivita(
+                commessa_id=commessa_id,
+                stato_emissione=stato_emissione,
+                stato_approvazione=stato_approvazione,
+                competenza_mese=competenza_mese,
+                limit=limit,
+                offset=offset,
+            )
             return success_response(data)
         except Exception as exc:
             return exception_to_error_response(exc)
 
 
-class ApiAttivitaTaskRunsV1(ApiAttivitaTaskRuns):
+class ApiCommessaAttivitaV1(ApiCommessaAttivita):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "vendite"

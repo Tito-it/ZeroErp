@@ -1,5 +1,10 @@
 # Ripresa lavori - attivita_fatturabili (22-02-2026)
 
+> **SUPERATO (26-02-2026):**
+> Questo documento e` stato sostituito da `gestione-commesse-v2.md` §25.
+> La pipeline legacy `attivita-da-fatturare` e` deprecata (FASE 4 §25.4 completata).
+> La modalita` target `COMMESSA_ONLY` (push/pull via `commesse_*`) e` operativa.
+
 > Nota stato (24-02-2026):
 > la pipeline legacy `attivita-da-fatturare` e` da considerare deprecata;
 > la modalita` target e` `COMMESSA_ONLY` (push/pull via `commesse_*`).

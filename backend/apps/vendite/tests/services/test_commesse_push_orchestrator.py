@@ -17,10 +17,13 @@ Indice test eseguiti:
 7) CommessePushOrchestratorTests.test_run_push_log_id_valorizzato
 8) CommessePushOrchestratorTests.test_run_isolamento_handler_continua_dopo_eccezione
 9) CommessePushOrchestratorTests.test_run_risultato_jsonb_include_tutti_handler
+10) CommessePushOrchestratorTests.test_run_skipped_quando_lock_non_acquisito
+11) CommessePushOrchestratorTests.test_run_rilascia_lock_dopo_esecuzione
+12) CommessePushOrchestratorTests.test_run_emits_push_started_and_completed_events
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.services.commesse_push_orchestrator import CommessaPushOrchestrator, PushReport
@@ -30,18 +33,20 @@ from apps.vendite.services.commesse_source_handlers import BaseSourceHandler, Ha
 def _mock_repo(push_log_id: int = 1) -> MagicMock:
     repo = MagicMock(spec=CommesseRepository)
     repo.log_push_run.return_value = push_log_id
+    repo.log_event.return_value = 1
     return repo
 
 
-def _mock_handler(name: str, result: HandlerResult) -> MagicMock:
+def _mock_handler(name: str, result: HandlerResult, sorgente_codice: str = "") -> MagicMock:
     h = MagicMock(spec=BaseSourceHandler)
     h.name = name
+    h.sorgente_codice = sorgente_codice or name
     h.run.return_value = result
     return h
 
 
-def _ok_result(name: str, created: int = 1) -> HandlerResult:
-    return HandlerResult(handler_name=name, created=created)
+def _ok_result(name: str, created: int = 1, sorgente_codice: str = "") -> HandlerResult:
+    return HandlerResult(handler_name=name, sorgente_codice=sorgente_codice or name, created=created)
 
 
 class CommessePushOrchestratorTests(TestCase):
@@ -65,6 +70,7 @@ class CommessePushOrchestratorTests(TestCase):
         h_ok = _mock_handler("HandlerA", _ok_result("HandlerA"))
         h_fail = MagicMock(spec=BaseSourceHandler)
         h_fail.name = "HandlerB"
+        h_fail.sorgente_codice = "SRC_B"
         h_fail.run.side_effect = RuntimeError("DB error")
         orch = CommessaPushOrchestrator(repo, [h_ok, h_fail])
 
@@ -81,9 +87,11 @@ class CommessePushOrchestratorTests(TestCase):
         repo = _mock_repo()
         h1 = MagicMock(spec=BaseSourceHandler)
         h1.name = "HandlerA"
+        h1.sorgente_codice = "SRC_A"
         h1.run.side_effect = RuntimeError("fail A")
         h2 = MagicMock(spec=BaseSourceHandler)
         h2.name = "HandlerB"
+        h2.sorgente_codice = "SRC_B"
         h2.run.side_effect = RuntimeError("fail B")
         orch = CommessaPushOrchestrator(repo, [h1, h2])
 
@@ -103,17 +111,18 @@ class CommessePushOrchestratorTests(TestCase):
         self.assertEqual(report.handlers, [])
         repo.log_push_run.assert_called_once()
 
-    # Scopo: source_types=[X] esegue solo l'handler X, gli altri non chiamati.
+    # Scopo: source_types=[codice_sorgente] esegue solo l'handler corrispondente.
     def test_run_source_types_filtra_handler(self):
         repo = _mock_repo()
-        h1 = _mock_handler("HandlerA", _ok_result("HandlerA"))
-        h2 = _mock_handler("HandlerB", _ok_result("HandlerB"))
+        h1 = _mock_handler("HandlerA", _ok_result("HandlerA", sorgente_codice="SRC_A"), sorgente_codice="SRC_A")
+        h2 = _mock_handler("HandlerB", _ok_result("HandlerB", sorgente_codice="SRC_B"), sorgente_codice="SRC_B")
         orch = CommessaPushOrchestrator(repo, [h1, h2])
 
-        report = orch.run(source_types=["HandlerA"])
+        report = orch.run(source_types=["SRC_A"])
 
         self.assertEqual(len(report.handlers), 1)
         self.assertEqual(report.handlers[0].handler_name, "HandlerA")
+        self.assertEqual(report.handlers[0].sorgente_codice, "SRC_A")
         h1.run.assert_called_once()
         h2.run.assert_not_called()
 
@@ -146,6 +155,7 @@ class CommessePushOrchestratorTests(TestCase):
         repo = _mock_repo()
         h_fail = MagicMock(spec=BaseSourceHandler)
         h_fail.name = "HandlerA"
+        h_fail.sorgente_codice = "SRC_A"
         h_fail.run.side_effect = RuntimeError("crash")
         h_ok = _mock_handler("HandlerB", _ok_result("HandlerB", created=3))
         orch = CommessaPushOrchestrator(repo, [h_fail, h_ok])
@@ -160,8 +170,8 @@ class CommessePushOrchestratorTests(TestCase):
     # Scopo: as_risultato include chiavi per tutti gli handler eseguiti.
     def test_run_risultato_jsonb_include_tutti_handler(self):
         repo = _mock_repo()
-        h1 = _mock_handler("HandlerA", HandlerResult(handler_name="HandlerA", created=2, updated=1))
-        h2 = _mock_handler("HandlerB", HandlerResult(handler_name="HandlerB", skipped=5))
+        h1 = _mock_handler("HandlerA", HandlerResult(handler_name="HandlerA", sorgente_codice="SRC_A", created=2, updated=1))
+        h2 = _mock_handler("HandlerB", HandlerResult(handler_name="HandlerB", sorgente_codice="SRC_B", skipped=5))
         orch = CommessaPushOrchestrator(repo, [h1, h2])
 
         report = orch.run()
@@ -173,3 +183,58 @@ class CommessePushOrchestratorTests(TestCase):
         self.assertEqual(risultato["HandlerB"]["skipped"], 5)
         call_kwargs = repo.log_push_run.call_args.kwargs
         self.assertIn("HandlerA", call_kwargs["risultato"])
+
+    # Scopo: lock non acquisito → PushReport SKIPPED, nessun handler eseguito, nessun log.
+    @patch.object(CommessaPushOrchestrator, "_try_acquire_lock", return_value=False)
+    def test_run_skipped_quando_lock_non_acquisito(self, _mock_lock):
+        repo = _mock_repo()
+        h = _mock_handler("HandlerA", _ok_result("HandlerA"))
+        orch = CommessaPushOrchestrator(repo, [h])
+
+        report = orch.run()
+
+        self.assertEqual(report.stato, "SKIPPED")
+        self.assertEqual(report.durata_ms, 0)
+        self.assertEqual(report.handlers, [])
+        self.assertIsNone(report.push_log_id)
+        h.run.assert_not_called()
+        repo.log_push_run.assert_not_called()
+
+    # Scopo: lock rilasciato dopo run (anche se handler fallisce).
+    @patch.object(CommessaPushOrchestrator, "_release_lock")
+    @patch.object(CommessaPushOrchestrator, "_try_acquire_lock", return_value=True)
+    def test_run_rilascia_lock_dopo_esecuzione(self, _mock_acquire, mock_release):
+        repo = _mock_repo()
+        h = MagicMock(spec=BaseSourceHandler)
+        h.name = "HandlerA"
+        h.sorgente_codice = "SRC_A"
+        h.run.side_effect = RuntimeError("crash")
+        orch = CommessaPushOrchestrator(repo, [h])
+
+        report = orch.run()
+
+        self.assertEqual(report.stato, "ERRORE")
+        mock_release.assert_called_once()
+
+    # Scopo: Verifica che _run_locked emetta PUSH_STARTED e PUSH_COMPLETED su event_log.
+    @patch.object(CommessaPushOrchestrator, "_release_lock")
+    @patch.object(CommessaPushOrchestrator, "_try_acquire_lock", return_value=True)
+    def test_run_emits_push_started_and_completed_events(self, _mock_acquire, _mock_release):
+        repo = _mock_repo(push_log_id=42)
+        h = _mock_handler("HandlerA", _ok_result("HandlerA"))
+        orch = CommessaPushOrchestrator(repo, [h])
+
+        report = orch.run()
+
+        event_calls = repo.log_event.call_args_list
+        self.assertEqual(len(event_calls), 2)
+        started = event_calls[0].kwargs
+        self.assertEqual(started["event_code"], "PUSH_STARTED")
+        self.assertEqual(started["domain"], "COMMESSE")
+        self.assertEqual(started["entity_type"], "TASK_RUN")
+        self.assertEqual(started["entity_id"], 0)
+        completed = event_calls[1].kwargs
+        self.assertEqual(completed["event_code"], "PUSH_COMPLETED")
+        self.assertEqual(completed["entity_id"], 42)
+        self.assertEqual(completed["severity"], "INFO")
+        self.assertEqual(completed["payload"]["stato"], "COMPLETATO")

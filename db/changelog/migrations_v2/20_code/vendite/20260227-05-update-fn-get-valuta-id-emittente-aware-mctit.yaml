@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260227-05-update-fn-get-valuta-id-emittente-aware-mctit.yaml
+
+  - changeSet:
+      id: 20260227-05-update-fn-get-valuta-id-emittente-aware
+      author: mctit
+      runOnChange: true
+      comment: "Refactor fn_get_valuta_id: nuova catena BA -> emittente fiscale -> gestore. Rimuove dipendenza da utility_id."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- DROP vecchia signature (p_utility_id integer -> p_emittente_soggetto_ruolo_id bigint)
+              DROP FUNCTION IF EXISTS vendite.fn_get_valuta_id(bigint, integer);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_get_valuta_id(
+                p_billing_account_id anagrafiche.billing_account.id%TYPE,
+                p_emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE
+              )
+              RETURNS config.valute.id%TYPE
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_valuta_id config.valute.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Risolve la valuta con priorita` su:
+                --   1) billing_account (se presente e con valuta)
+                --   2) emittente fiscale (se presente e con valuta)
+                --   3) gestore (singleton, default di sistema, NOT NULL)
+                -- =========================================================
+
+                IF p_billing_account_id IS NOT NULL THEN
+                  SELECT ba.valuta_id
+                    INTO v_valuta_id
+                    FROM anagrafiche.billing_account ba
+                   WHERE ba.id = p_billing_account_id;
+                END IF;
+
+                IF v_valuta_id IS NULL AND p_emittente_soggetto_ruolo_id IS NOT NULL THEN
+                  SELECT ef.valuta_id
+                    INTO v_valuta_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id;
+                END IF;
+
+                IF v_valuta_id IS NULL THEN
+                  SELECT g.valuta_id
+                    INTO v_valuta_id
+                    FROM anagrafiche.gestori g
+                   ORDER BY g.id
+                   LIMIT 1;
+                END IF;
+
+                IF v_valuta_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_get_valuta_id',
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'detail', 'Valuta non risolta (BA/emittente/gestore)',
+                      'billing_account_id', p_billing_account_id,
+                      'emittente_soggetto_ruolo_id', p_emittente_soggetto_ruolo_id
+                    ),
+                    NULL::uuid,
+                    concat('Valuta non risolta (BA/emittente/gestore)',
+                      ' billing_account_id=', p_billing_account_id::text,
+                      ' emittente=', p_emittente_soggetto_ruolo_id::text)
+                  );
+                END IF;
+
+                RETURN v_valuta_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_valuta_id(bigint, bigint)
+              IS 'Risoluzione valuta_id: BA -> emittente fiscale -> gestore (fallback).';

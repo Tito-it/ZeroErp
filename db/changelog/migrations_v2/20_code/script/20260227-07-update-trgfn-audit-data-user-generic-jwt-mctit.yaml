@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260227-07-update-trgfn-audit-data-user-generic-jwt-mctit.yaml
+
+  - changeSet:
+      id: 20260227-07-update-trgfn-audit-data-user-generic-jwt
+      author: mctit
+      runOnChange: true
+      comment: "Audit user reale (JWT): usa current_setting('app.jwt_user', true) con fallback CURRENT_USER. Gestisce sia INSERT (user_insert) che UPDATE (user_update)."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_audit_data_user_generic()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Audit automatico su INSERT e UPDATE.
+                --   Usa la GUC app.jwt_user impostata dal middleware Django
+                --   per registrare l'utente reale (JWT).
+                --   Fallback a CURRENT_USER se la GUC non e` impostata
+                --   (script, cron, psql).
+                --
+                -- Regole:
+                --   - INSERT: imposta user_insert + data_update/user_update
+                --   - UPDATE: imposta solo data_update/user_update
+                --   - current_setting(..., true): no errore se GUC assente
+                -- =========================================================
+
+                IF TG_OP = 'INSERT' THEN
+                  NEW.user_insert := COALESCE(
+                    NULLIF(current_setting('app.jwt_user', true), ''),
+                    CURRENT_USER
+                  );
+                END IF;
+
+                NEW.data_update := CURRENT_TIMESTAMP;
+                NEW.user_update := COALESCE(
+                  NULLIF(current_setting('app.jwt_user', true), ''),
+                  CURRENT_USER
+                );
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_audit_data_user_generic()
+              IS 'Audit data/user su INSERT e UPDATE. Usa GUC app.jwt_user (JWT reale) con fallback CURRENT_USER.';

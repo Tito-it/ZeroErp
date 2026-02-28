@@ -91,7 +91,7 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.AllowAny",
+        "apps.core.api.permissions.ZeroERPPermission",
     ],
     "DEFAULT_THROTTLE_CLASSES": [
         "apps.core.api.throttling.SearchBurstRateThrottle",
@@ -137,6 +137,7 @@ MIDDLEWARE = [
     'apps.core.middleware.api_exception_middleware.ApiExceptionMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.core.middleware.jwt_audit_middleware.JwtAuditMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -225,6 +226,19 @@ MEDIA_URL   = "/media/"
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# --- Cache Redis ---
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": env("REDIS_URL", "redis://127.0.0.1:6379/0"),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+        "KEY_PREFIX": "zeroerp",
+    }
+}
+PERMISSIONS_CACHE_TTL = int(env("PERMISSIONS_CACHE_TTL", "300"))
 
 # --- Proxy HTTPS/Nginx + cookie sicuri ---
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # fidati dell'header di Nginx

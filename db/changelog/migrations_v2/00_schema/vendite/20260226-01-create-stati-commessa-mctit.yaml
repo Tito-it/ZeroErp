@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260226-01-create-stati-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20260226-01-create-stati-commessa
+      author: mctit
+      comment: "Tabella lookup per stati commessa, analogo a config.stati_doc_fiscale. Include seed iniziale."
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Creare tabella lookup per gli stati commessa.
+              --   Pattern: config.stati_doc_fiscale
+              --
+              -- Colonne operative:
+              --   chiude_commessa — stato terminale (no riuso)
+              --   emittibile      — permette emissione su AF
+              --   modificabile    — permette modifica commesse_attivita
+              -- =========================================================
+
+              CREATE TABLE vendite.stati_commessa (
+                id              bigint       NOT NULL,
+                codice          varchar(50)  NOT NULL,
+                descrizione     varchar(200),
+                attivo          boolean      NOT NULL DEFAULT true,
+                ordine          smallint,
+                meta            jsonb        NOT NULL DEFAULT '{}'::jsonb,
+                codice_interno  varchar(50)  NOT NULL,
+                chiude_commessa boolean      NOT NULL DEFAULT false,
+                emittibile      boolean      NOT NULL DEFAULT false,
+                modificabile    boolean      NOT NULL DEFAULT true,
+                CONSTRAINT pk_stati_commessa PRIMARY KEY (id),
+                CONSTRAINT uq_stati_commessa_codice UNIQUE (codice),
+                CONSTRAINT uq_stati_commessa_codice_interno UNIQUE (codice_interno)
+              );
+
+              COMMENT ON TABLE vendite.stati_commessa
+                IS 'Lookup stati commessa: governa ciclo di vita, emissione AF e modificabilita` attivita`.';
+              COMMENT ON COLUMN vendite.stati_commessa.chiude_commessa
+                IS 'Stato terminale: la commessa non e` piu` riusabile da fn_get_or_create_commessa.';
+              COMMENT ON COLUMN vendite.stati_commessa.emittibile
+                IS 'Abilita emissione verso attivita_fatturabili (fn_list_commesse_emittibili).';
+              COMMENT ON COLUMN vendite.stati_commessa.modificabile
+                IS 'Permette aggiunta/modifica di commesse_attivita (fn_upsert_commessa_attivita).';
+
+              -- Indice su attivo per filtri runtime
+              CREATE INDEX ix_stati_commessa_attivo
+                ON vendite.stati_commessa (attivo);
+
+              -- Trigger: codice_interno non modificabile dopo creazione
+              CREATE TRIGGER trg_stati_commessa_a10_lock_columns_upd
+                BEFORE UPDATE ON vendite.stati_commessa
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE');
+
+              -- =========================================================
+              -- Seed iniziale (necessario prima di ALTER commesse)
+              -- =========================================================
+              INSERT INTO vendite.stati_commessa
+                (id, codice, codice_interno, descrizione, ordine, chiude_commessa, emittibile, modificabile)
+              VALUES
+                (1, 'BOZZA',                'BOZZA',                'Bozza',                    10, false, false, true),
+                (2, 'APERTA',               'APERTA',               'Aperta',                   20, false, false, true),
+                (3, 'IN_ESECUZIONE',         'IN_ESECUZIONE',         'In esecuzione',            30, false, false, true),
+                (4, 'PRONTA_FATTURAZIONE',   'PRONTA_FATTURAZIONE',   'Pronta per fatturazione',  40, false, true,  true),
+                (5, 'CHIUSA',               'CHIUSA',               'Chiusa',                   50, true,  false, false),
+                (6, 'ANNULLATA',            'ANNULLATA',            'Annullata',                60, true,  false, false);

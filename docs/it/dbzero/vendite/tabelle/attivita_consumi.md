@@ -6,7 +6,6 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
-| lotto_attivita_id | bigint | YES |  |
 | fattura_id | bigint | YES |  |
 | billing_account_id | bigint | NO |  |
 | competenza_mese | date | NO |  |
@@ -27,7 +26,6 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_attivita_consumi_stato_calcolo |  |
-| FOREIGN KEY | fk_attivita_consumi_attivita_lotto | lotto_attivita_id |
 | FOREIGN KEY | fk_attivita_consumi_ba | billing_account_id |
 | FOREIGN KEY | fk_attivita_consumi_fattura | fattura_id |
 | FOREIGN KEY | fk_attivita_consumi_uom | uom_id |
@@ -45,6 +43,7 @@
 |------|--------|--------|--------|
 | trg_attivita_consumi_a10_unita_misura_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id')` |
 | trg_attivita_consumi_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id')` |
+| trg_attivita_consumi_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_attivita_consumi_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_attivita_consumi_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_attivita_consumi_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

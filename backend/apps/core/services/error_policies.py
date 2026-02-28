@@ -113,11 +113,48 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Lotto attivita non trovato.",
         ),
+        "E_COMMESSA_VALIDATION": ErrorPolicy(
+            code="E_COMMESSA_VALIDATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri commessa non validi.",
+        ),
+        "E_COMMESSA_NOT_FOUND": ErrorPolicy(
+            code="E_COMMESSA_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Commessa non trovata.",
+        ),
+        "E_COMMESSA_PUSH_LOG_NOT_FOUND": ErrorPolicy(
+            code="E_COMMESSA_PUSH_LOG_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Push log commesse non trovato.",
+        ),
         "E_GENERICO": ErrorPolicy(
             code="E_GENERICO",
             http_status=500,
             ui_action="show_error_banner",
             user_message="Errore non gestito.",
+        ),
+        # ── Permessi e autorizzazioni ──
+        "E_USER_DISABILITATO": ErrorPolicy(
+            code="E_USER_DISABILITATO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Utente disabilitato. Contattare l'amministratore.",
+        ),
+        "E_PERMESSO_NEGATO": ErrorPolicy(
+            code="E_PERMESSO_NEGATO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Non hai i permessi per questa operazione.",
+        ),
+        "E_REPARTO_SENZA_PROFILO": ErrorPolicy(
+            code="E_REPARTO_SENZA_PROFILO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Il reparto non ha ancora un profilo permessi configurato.",
         ),
     }
 

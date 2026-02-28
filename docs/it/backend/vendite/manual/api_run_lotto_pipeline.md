@@ -6,7 +6,7 @@ Esporre via HTTP l'avvio della pipeline lotto vendite.
 
 ## Contesto
 
-Endpoint applicativo che invoca il servizio Python `pr_run_lotto_pipeline`, equivalente alla procedura SQL omonima.
+Endpoint applicativo che invoca il servizio Python `run_lotto_pipeline`.
 
 ## Input
 
@@ -36,6 +36,7 @@ Endpoint applicativo che invoca il servizio Python `pr_run_lotto_pipeline`, equi
 - Valida JSON e formato date (`YYYY-MM-DD`).
 - Converte `dry_run` in boolean.
 - Converte `0` in `null` sugli ID opzionali (`lotto_id`, `tipo_doc_fiscale_id`, `utility_id`, `billing_account_id`, `emittente_soggetto_ruolo_id`).
+- **Validazione lookup ID** — `tipo_doc_fiscale_id` e `utility_id`, se valorizzati, sono validati pre-flight contro le rispettive tabelle config (`config.tipi_doc_fiscale`, `config.utilities`) con filtro `attivo = true`. ID inesistenti o non attivi restituiscono `E_PIPELINE_VALIDATION` con dettaglio esplicito.
 - `lock_batch_id` è il correlatore del lotto: se passato è **RIUSO** lotto; per creare un lotto nuovo **ometterlo** o passare `null` (il DB lo genera). Riutilizzare un `lock_batch_id` di un lotto `COMPLETATO` produce errore.
 - **Risoluzione emittente fiscale** — delegata a `vendite.fn_get_or_create_lotto` nel DB (via helper condiviso `vendite.fn_resolve_lotto_utility_emittente`) con questa priorità:
   1. `emittente_soggetto_ruolo_id` esplicito nel payload → validato e usato direttamente.
@@ -56,5 +57,4 @@ Endpoint applicativo che invoca il servizio Python `pr_run_lotto_pipeline`, equi
 
 ## Note di migrazione
 
-- Primo endpoint operativo per pilotare la migrazione SQL -> Django della pipeline vendite.
 - L'emittente fiscale era in precedenza dedotto a runtime dai parametri; ora è attributo esplicito del lotto (persistito in DB alla creazione).

@@ -24,7 +24,15 @@ BEGIN
   --   - se billing_account_id e` valorizzato, deve esistere
   --   - istanza_utility_id deve coincidere con quella del BA
   --   - variadic su fn_log_and_raise_error sempre testuali
+  --   - Commessa-aware: quando commessa_attivita_id IS NOT NULL
+  --     la coerenza BA/utility e` garantita a monte dal push
+  --     (fn_get_or_create_commessa), skip validazione.
   -- =========================================================
+
+  -- Righe da commessa: coerenza BA/utility garantita dal push.
+  IF NEW.commessa_attivita_id IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
 
   IF NEW.billing_account_id IS NOT NULL THEN
     SELECT b.istanza_utility_id
@@ -69,7 +77,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()
-IS 'Valida coerenza BA/istanza_utility su attivita_fatturabili; variadic error helper normalizzati a text.';
+IS 'Valida coerenza BA/istanza_utility su attivita_fatturabili; variadic error helper normalizzati a text. Commessa-aware: skip quando commessa_attivita_id IS NOT NULL.';
 ```
 
 ---

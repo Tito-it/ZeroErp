@@ -9,18 +9,21 @@ CREATE FUNCTION fn_get_commessa_stato(p_commessa_id bigint)
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_commessa_stato(p_commessa_id bigint)
- RETURNS TABLE(commessa_id bigint, stato_commessa character varying, policy_fatturazione character varying, fatturazione_immediata boolean, priorita_operativa character varying, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, total_attivita bigint, total_approvate bigint, total_non_approvate bigint, total_emesse bigint, total_non_emesse bigint, total_prezzo_da_riallineare bigint, last_update timestamp with time zone)
+ RETURNS TABLE(commessa_id bigint, stato_commessa_id bigint, stato_commessa character varying, chiude_commessa boolean, emittibile boolean, modificabile boolean, policy_fatturazione character varying, fatturazione_immediata boolean, priorita_operativa character varying, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, total_attivita bigint, total_approvate bigint, total_non_approvate bigint, total_emesse bigint, total_non_emesse bigint, total_prezzo_da_riallineare bigint, last_update timestamp with time zone)
  LANGUAGE plpgsql
 AS $function$
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Fornire in un'unica chiamata stato testata commessa e
-  --   contatori principali delle righe commessa.
+  --   Fornire in un'unica chiamata stato testata commessa,
+  --   flag operativi da stati_commessa e contatori principali
+  --   delle righe commessa.
   --
   -- Regole:
   --   - p_commessa_id obbligatorio e > 0
   --   - errore esplicito se commessa non trovata
+  --   - stato_commessa restituito da stati_commessa.codice
+  --     per backward compatibility
   -- =========================================================
   IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
@@ -55,7 +58,11 @@ BEGIN
   RETURN QUERY
   SELECT
     c.id AS commessa_id,
-    c.stato_commessa,
+    c.stato_commessa_id,
+    sc.codice AS stato_commessa,
+    sc.chiude_commessa,
+    sc.emittibile,
+    sc.modificabile,
     c.policy_fatturazione,
     c.fatturazione_immediata,
     c.priorita_operativa,
@@ -70,12 +77,18 @@ BEGIN
     COALESCE(count(*) FILTER (WHERE ca.prezzo_da_riallineare IS TRUE), 0)::bigint AS total_prezzo_da_riallineare,
     GREATEST(c.data_update, COALESCE(max(ca.data_update), c.data_update)) AS last_update
   FROM vendite.commesse c
+  JOIN vendite.stati_commessa sc
+    ON sc.id = c.stato_commessa_id
   LEFT JOIN vendite.commesse_attivita ca
     ON ca.commessa_id = c.id
   WHERE c.id = p_commessa_id
   GROUP BY
     c.id,
-    c.stato_commessa,
+    c.stato_commessa_id,
+    sc.codice,
+    sc.chiude_commessa,
+    sc.emittibile,
+    sc.modificabile,
     c.policy_fatturazione,
     c.fatturazione_immediata,
     c.priorita_operativa,
@@ -87,7 +100,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_commessa_stato(p_commessa_id bigint)
-IS 'Restituisce stato testata commessa e contatori principali di commesse_attivita in un singolo round-trip.';
+IS 'Restituisce stato testata commessa (con FK stato_commessa_id + codice per backward compat), flag operativi (chiude/emittibile/modificabile) e contatori principali di commesse_attivita in un singolo round-trip.';
 ```
 
 ---

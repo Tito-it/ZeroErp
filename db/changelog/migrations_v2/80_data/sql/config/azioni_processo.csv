@@ -1,0 +1,6 @@
+id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,user_insert,data_update,user_update
+1,2,genera_fatture_lotti,Genera fatture da lotti,t,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+2,2,genera_fattura,Genera singola fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+3,2,approva_fattura,Approva fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+4,2,emetti_fattura,Emetti fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+5,7,approva_rimessa,Approva rimessa di pagamento,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres

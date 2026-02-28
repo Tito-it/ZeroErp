@@ -8,6 +8,7 @@
 
 from datetime import date
 
+from apps.core.db.dbops_repository import DbopsRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.pipeline_repository import SdiPayloadRow, VenditePipelineRepository
 from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
@@ -23,10 +24,10 @@ from apps.vendite.types import (
     ResetLottoFatturaDraftResult,
 )
 
-# Facade servizi: mantiene firme SQL-like e delega alle classi OOP.
+# Facade servizi: mantiene firme dichiarative e delega alle classi OOP.
 
 # Scopo: Facade applicativa: avvia il runner pipeline lotto e restituisce lotto_id eseguito.
-def pr_run_lotto_pipeline(
+def run_lotto_pipeline(
     *,
     lotto_id: int | None = None,
     competenza_mese: date | None = None,
@@ -39,8 +40,29 @@ def pr_run_lotto_pipeline(
     dry_run: bool = False,
     tipo_lotto: str = "MASSIVO",
 ) -> int:
-    """Entrypoint servizio Python con lo stesso intento della procedura SQL pr_run_lotto_pipeline."""
-    # Facade sottile: firma simile alla SQL, comportamento delegato al runner OOP.
+    """Entrypoint servizio Python per avvio pipeline lotto vendite."""
+    # Validazione lookup ID opzionali contro tabelle config attive.
+    if tipo_doc_fiscale_id is not None:
+        dbops = DbopsRepository()
+        if not dbops.check_lookup_id_exists(rel="config.tipi_doc_fiscale", record_id=tipo_doc_fiscale_id):
+            ErrorManager.raise_error(
+                code="E_PIPELINE_VALIDATION",
+                message="Tipo documento fiscale non valido.",
+                detail=f"tipo_doc_fiscale_id={tipo_doc_fiscale_id} non trovato o non attivo in config.tipi_doc_fiscale",
+                context={"tipo_doc_fiscale_id": tipo_doc_fiscale_id},
+                function_name="vendite.pipeline_service.run_lotto_pipeline",
+            )
+    if utility_id is not None:
+        dbops = DbopsRepository()
+        if not dbops.check_lookup_id_exists(rel="config.utilities", record_id=utility_id):
+            ErrorManager.raise_error(
+                code="E_PIPELINE_VALIDATION",
+                message="Utility non valida.",
+                detail=f"utility_id={utility_id} non trovato o non attivo in config.utilities",
+                context={"utility_id": utility_id},
+                function_name="vendite.pipeline_service.run_lotto_pipeline",
+            )
+    # Facade sottile: comportamento delegato al runner OOP.
     runner = LottoPipelineRunner()
     params = LottoPipelineParams(
         lotto_id=lotto_id,

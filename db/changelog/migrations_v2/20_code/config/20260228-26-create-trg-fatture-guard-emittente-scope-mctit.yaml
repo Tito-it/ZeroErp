@@ -1,0 +1,26 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260228-26-create-trg-fatture-guard-emittente-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260228-26-create-trg-fatture-guard-emittente-scope
+      author: mctit
+      comment: >
+        Trigger defense-in-depth su vendite.fatture: blocca INSERT/UPDATE
+        se l'utente corrente non ha scope sull'emittente fiscale.
+        Risolve emittente via emittente_soggetto_ruolo_id → emittenti_fiscali.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_fatture_a10_guard_emittente_scope_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.fatture
+                FOR EACH ROW
+                EXECUTE FUNCTION config.trgfn_guard_emittente_scope(
+                  'soggetto_ruolo', 'emittente_soggetto_ruolo_id'
+                );

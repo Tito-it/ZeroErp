@@ -1,0 +1,199 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella config.tipi_ruoli_nature_ammesse — matrice nature soggetto ammesse per ruolo
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260228-17-create-tipi-ruoli-nature-ammesse-mctit.yaml
+
+  - changeSet:
+      id: 20260228-17-create-tipi-ruoli-nature-ammesse
+      author: mctit
+      comment: >
+        Matrice ruoli-nature ammesse: definisce quali tipi_soggetto (PF/PG/ENC)
+        possono ricoprire quali ruoli. Segue pattern di tipi_ruolo_tipi_indirizzo.
+
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: tipi_ruoli_nature_ammesse
+            remarks: "Matrice nature ammesse per ruolo: quali tipi_soggetto possono ricoprire quali ruoli."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_tipi_ruoli_nature_ammesse
+                    nullable: false
+
+              - column:
+                  name: tipo_ruolo_id
+                  type: integer
+                  remarks: "FK -> config.tipi_ruoli(id) — ruolo."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tipo_soggetto_id
+                  type: varchar
+                  remarks: "FK -> config.tipi_soggetto(id) — natura ammessa (PF/PG/ENC)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag attivazione logica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: valido_dal
+                  type: date
+                  remarks: "Inizio validita' della regola."
+
+              - column:
+                  name: valido_al
+                  type: date
+                  remarks: "Fine validita' della regola."
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp ultima modifica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente ultima modifica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Flag per trigger storicizzazione."
+                  constraints:
+                    nullable: false
+
+        # UNIQUE (tipo_ruolo_id, tipo_soggetto_id)
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: tipi_ruoli_nature_ammesse
+            columnNames: tipo_ruolo_id, tipo_soggetto_id
+            constraintName: uq_tipi_ruoli_nature_ammesse_ruolo_soggetto
+
+        # FK -> tipi_ruoli
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: tipi_ruoli_nature_ammesse
+            baseColumnNames: tipo_ruolo_id
+            constraintName: fk_tipi_ruoli_nature_ammesse_tipo_ruolo
+            referencedTableSchemaName: config
+            referencedTableName: tipi_ruoli
+            referencedColumnNames: id
+            onUpdate: RESTRICT
+            onDelete: RESTRICT
+
+        # FK -> tipi_soggetto
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: tipi_ruoli_nature_ammesse
+            baseColumnNames: tipo_soggetto_id
+            constraintName: fk_tipi_ruoli_nature_ammesse_tipo_soggetto
+            referencedTableSchemaName: config
+            referencedTableName: tipi_soggetto
+            referencedColumnNames: id
+            onUpdate: RESTRICT
+            onDelete: RESTRICT
+
+        # Indici operativi
+        - createIndex:
+            schemaName: config
+            tableName: tipi_ruoli_nature_ammesse
+            indexName: ix_tipi_ruoli_nature_ammesse_tipo_ruolo_id
+            columns:
+              - column:
+                  name: tipo_ruolo_id
+
+        - createIndex:
+            schemaName: config
+            tableName: tipi_ruoli_nature_ammesse
+            indexName: ix_tipi_ruoli_nature_ammesse_tipo_soggetto_id
+            columns:
+              - column:
+                  name: tipo_soggetto_id
+
+        # CHECK validita' temporale
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.tipi_ruoli_nature_ammesse
+              ADD CONSTRAINT chk_tipi_ruoli_nature_ammesse_validita
+              CHECK (
+                valido_al IS NULL
+                OR valido_dal IS NULL
+                OR valido_al >= valido_dal
+              );
+
+        # Trigger audit
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE TRIGGER trg_tipi_ruoli_nature_ammesse_audit_data_user_upd
+              BEFORE INSERT OR UPDATE
+              ON config.tipi_ruoli_nature_ammesse
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+
+        # Commento tabella
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE config.tipi_ruoli_nature_ammesse IS
+              'Matrice di configurazione: quali nature soggetto (PF/PG/ENC) sono ammesse per ogni ruolo.
+               Se non esistono righe per un tipo_ruolo, nessun vincolo viene applicato (natura libera).
+               Se esistono righe, solo le nature attive e valide temporalmente sono ammesse.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: tipi_ruoli_nature_ammesse

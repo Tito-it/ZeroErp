@@ -37,9 +37,10 @@
 | trg_iva_stati_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id')` |
 | trg_iva_stati_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id')` |
 | trg_iva_stati_a10_protect_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('aliquota_override', 'E_PERC_IVA_NO_MOD', 'assoggettamento_id_override', 'E_ASSOGGETTAMENTO_NO_MOD')` |
+| trg_iva_stati_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_iva_stati_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_iva_stati_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_iva_stati_normalize()` |
 | trg_iva_stati_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_iva_stati_normalize()` |
+| trg_iva_stati_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_iva_stati_normalize()` |
 
 ---
 {% include-markdown "signature-core.md" %}

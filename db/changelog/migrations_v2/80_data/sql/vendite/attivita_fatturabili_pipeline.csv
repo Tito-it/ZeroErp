@@ -1,3 +1,4 @@
 id,codice_step,descrizione,ordine,processi,rollback,utility_id,sorgente_tipo_id,attivo,meta,data_insert,user_insert,data_update,user_update
 1,RACCOLTA_INPUT,Pipeline base attivita fatturabili - raccolta input,10,"[{""task"":""noop"",""fase"":""Placeholder raccolta input"",""params"":{""implementation_key"":""default""}}]","[]",null,1,true,{},2026-02-16 10:00:00+01,titodb,,
 2,NORMALIZZAZIONE,Pipeline base attivita fatturabili - normalizzazione,20,"[{""task"":""noop"",""fase"":""Placeholder normalizzazione"",""params"":{""implementation_key"":""default""}}]","[]",null,1,true,{},2026-02-16 10:00:00+01,titodb,,
+3,PULL_COMMESSA,Pipeline base attivita fatturabili - pull da commesse emittibili,5,"[{""task"":""pull_attivita_da_commessa"",""fase"":""Pull attivita da commesse emittibili verso AF"",""params"":{""implementation_key"":""default""}}]","[]",null,13,true,{},2026-02-26 10:00:00+01,titodb,,

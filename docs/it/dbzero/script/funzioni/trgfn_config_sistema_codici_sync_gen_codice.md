@@ -32,7 +32,18 @@ BEGIN
     v_fn_name := format('trgfn_%s_gen_codice', v_nome_tabella);
 
     IF v_schema_tabella IS NOT NULL AND v_nome_tabella IS NOT NULL THEN
-      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, v_schema_tabella, v_nome_tabella);
+      BEGIN
+        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, v_schema_tabella, v_nome_tabella);
+      EXCEPTION WHEN undefined_table THEN
+        NULL;
+      END;
+
+      BEGIN
+        EXECUTE 'DROP TRIGGER IF EXISTS trg_attivita_fatturabili_lotti_a10_gen_codice_ins_upd ON vendite.attivita_fatturabili_lotti;';
+      EXCEPTION WHEN undefined_table THEN
+        NULL;
+      END;
+
       EXECUTE format('DROP FUNCTION IF EXISTS %I.%I();', v_schema_tabella, v_fn_name);
     END IF;
 
@@ -47,7 +58,18 @@ BEGIN
       v_fn_name := format('trgfn_%s_gen_codice', OLD.nome_tabella);
 
       IF OLD.schema_tabella IS NOT NULL AND OLD.nome_tabella IS NOT NULL THEN
-        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, OLD.schema_tabella, OLD.nome_tabella);
+        BEGIN
+          EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, OLD.schema_tabella, OLD.nome_tabella);
+        EXCEPTION WHEN undefined_table THEN
+          NULL;
+        END;
+
+        BEGIN
+          EXECUTE 'DROP TRIGGER IF EXISTS trg_attivita_fatturabili_lotti_a10_gen_codice_ins_upd ON vendite.attivita_fatturabili_lotti;';
+        EXCEPTION WHEN undefined_table THEN
+          NULL;
+        END;
+
         EXECUTE format('DROP FUNCTION IF EXISTS %I.%I();', OLD.schema_tabella, v_fn_name);
       END IF;
     END IF;
@@ -64,7 +86,18 @@ BEGIN
 
   IF v_usa_sequenza IS DISTINCT FROM TRUE THEN
     IF v_schema_tabella IS NOT NULL AND v_nome_tabella IS NOT NULL THEN
-      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, v_schema_tabella, v_nome_tabella);
+      BEGIN
+        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I;', v_trg_name, v_schema_tabella, v_nome_tabella);
+      EXCEPTION WHEN undefined_table THEN
+        NULL;
+      END;
+
+      BEGIN
+        EXECUTE 'DROP TRIGGER IF EXISTS trg_attivita_fatturabili_lotti_a10_gen_codice_ins_upd ON vendite.attivita_fatturabili_lotti;';
+      EXCEPTION WHEN undefined_table THEN
+        NULL;
+      END;
+
       EXECUTE format('DROP FUNCTION IF EXISTS %I.%I();', v_schema_tabella, v_fn_name);
     END IF;
     RETURN NULL;
@@ -104,7 +137,8 @@ BEGIN
           'colonna', v_nome_colonna
         ),
         NULL::uuid,
-        v_codice_interno::TEXT
+        coalesce(v_schema_tabella::text, '<null_schema>'),
+        coalesce(v_nome_tabella::text, '<null_tabella>')
       );
   END IF;
 

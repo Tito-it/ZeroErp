@@ -1,0 +1,33 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260227-03-add-valuta-id-billing-account-mctit.yaml
+
+  - changeSet:
+      id: 20260227-03-add-valuta-id-billing-account
+      author: mctit
+      comment: "Aggiunge valuta_id a billing_account: override valuta per rapporto cliente, fallback su emittente/gestore."
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: billing_account
+                columnName: valuta_id
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.billing_account
+                ADD COLUMN valuta_id integer;
+
+
+              COMMENT ON COLUMN anagrafiche.billing_account.valuta_id
+                IS 'Valuta override per BA. Se NULL, fallback su emittente fiscale -> gestore.';

@@ -14,14 +14,8 @@ TESTS=(
   "db/pgtap/vendite/test-lotto-segnalazioni-summary-v2.sql"
   "db/pgtap/vendite/test-sync-lotto-fatture-stato.sql"
   "db/pgtap/vendite/test-fatture-log-trigger-sync.sql"
-  "db/pgtap/vendite/test-lotti-attivita-stato-esecuzione-v2.sql"
-  "db/pgtap/vendite/test-attivita-task-runs-runtime-v1.sql"
-  "db/pgtap/vendite/test-attivita-branch-summary-v1.sql"
-  "db/pgtap/vendite/test-attivita-lotto-info-v1.sql"
-  "db/pgtap/vendite/test-attivita-list-sorgenti-abilitate-v1.sql"
-  "db/pgtap/vendite/test-attivita-sorgenti-branch-policy-v1.sql"
-  "db/pgtap/vendite/test-attivita-go-live-seed-v1.sql"
   "db/pgtap/vendite/test-logs-guard-delete.sql"
+  "db/pgtap/vendite/test-event-log-function-v1.sql"
 )
 
 if [[ ! -x "$RUNNER" ]]; then

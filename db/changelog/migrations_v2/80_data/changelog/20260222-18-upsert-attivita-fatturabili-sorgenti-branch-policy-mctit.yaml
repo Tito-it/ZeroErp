@@ -27,9 +27,8 @@ databaseChangeLog:
             separator: ","
             encoding: UTF-8
             nullValue: ""
-            primaryKey: "id"
+            primaryKey: "sorgente_tipo_id"
             columns:
-              - column: { name: id, type: STRING }
               - column: { name: sorgente_tipo_id, type: STRING }
               - column: { name: branch_code, type: STRING }
               - column: { name: abilitata, type: BOOLEAN }

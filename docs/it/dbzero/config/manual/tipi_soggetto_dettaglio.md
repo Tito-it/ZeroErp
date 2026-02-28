@@ -159,4 +159,81 @@ CHECK (
 
 Queste modifiche rappresentano un consolidamento fondamentale per la gestione internazionale dei tipi di soggetto, rendendo il modello più controllato e predittivo.
 
-Se vuoi integrare anche esempi pratici o diagrammi ER aggiornati, posso prepararli subito.
+---
+
+# 📘 Integrazione – Obbligatorieta CF/P.IVA per tipo soggetto
+
+*(Aggiornamento del 2026-02-28)*
+
+Questa integrazione documenta le nuove colonne **`piva_obbligatoria`** e **`cf_obbligatorio`** aggiunte alla tabella `config.tipi_soggetto_dettaglio`.
+
+---
+
+## 🆕 Nuove Colonne
+
+| Colonna             | Tipo    | Default | Descrizione                                                |
+| ------------------- | ------- | ------- | ---------------------------------------------------------- |
+| `piva_obbligatoria` | boolean | false   | Se `true`, il soggetto deve avere `partita_iva` valorizzata |
+| `cf_obbligatorio`   | boolean | false   | Se `true`, il soggetto deve avere `codice_fiscale` valorizzato |
+
+### Vincoli di coerenza
+
+Le nuove colonne hanno CHECK constraints che impediscono combinazioni incoerenti:
+
+```sql
+-- Non si puo rendere obbligatoria la P.IVA se il formato e NON_APPLICABILE
+CHECK (piva_obbligatoria = false OR formato_piva <> 'NON_APPLICABILE')
+
+-- Non si puo rendere obbligatorio il CF se il formato e NON_APPLICABILE
+CHECK (cf_obbligatorio = false OR formato_cf <> 'NON_APPLICABILE')
+```
+
+---
+
+## 📊 Configurazione attuale
+
+| Tipo Soggetto       | codice_interno | piva_obbligatoria | cf_obbligatorio |
+| ------------------- | -------------- | ----------------- | --------------- |
+| Privato             | PR             | false             | true            |
+| Ditta Individuale   | DI             | true              | true            |
+| Societa di Capitali | SC             | true              | true            |
+| Societa di Persone  | SP             | true              | true            |
+| Ente Non Commerc.   | ENC            | true              | true            |
+
+🔍 **Significato funzionale:**
+
+* Un **Privato** deve avere il Codice Fiscale ma non necessariamente la P.IVA.
+* Tutti gli altri tipi (DI, SC, SP, ENC) richiedono **entrambi** i dati fiscali.
+
+---
+
+## ⚙️ Trigger di enforcement
+
+La validazione e applicata dal trigger guard:
+
+* [`anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_cf_piva_obbligatori)
+
+Scatta in **BEFORE INSERT/UPDATE** su `anagrafiche.soggetti` quando cambiano:
+`tipo_soggetto_dettaglio_id`, `partita_iva` o `codice_fiscale`.
+
+Messaggi di errore:
+
+* `E_PIVA_OBBLIGATORIA` (id 202) — P.IVA mancante quando obbligatoria
+* `E_CF_OBBLIGATORIO` (id 203) — CF mancante quando obbligatorio
+
+---
+
+## 💡 Relazione con la validazione di formato
+
+Questa feature e **complementare** alla validazione di formato esistente:
+
+| Livello      | Funzione                                      | Cosa controlla                    |
+| ------------ | --------------------------------------------- | --------------------------------- |
+| **Presenza** | `trgfn_soggetti_guard_cf_piva_obbligatori`    | Campo non NULL quando obbligatorio |
+| **Formato**  | `trgfn_soggetti_valida_cf_piva_dispatch`       | Struttura corretta (lunghezza, check digit) |
+
+L'ordine di esecuzione e: prima il guard di presenza (fase `_a10_`), poi la validazione di formato.
+
+---
+
+📅 *Aggiornato: 28/02/2026*

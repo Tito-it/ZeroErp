@@ -1,0 +1,25 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260227-14-drop-pr-run-lotto-pipeline-sql-mctit.yaml
+
+  - changeSet:
+      id: 20260227-14-drop-pr-run-lotto-pipeline-sql
+      author: mctit
+      comment: "Rimuove la procedura SQL deprecata vendite.pr_run_lotto_pipeline (orchestrazione ora in Django)."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP PROCEDURE IF EXISTS vendite.pr_run_lotto_pipeline(
+                bigint, date, bigint, integer, bigint, uuid, jsonb, boolean, text
+              );
+
+              -- Overload legacy gia` dismesso in parte dei branch.
+              DROP PROCEDURE IF EXISTS vendite.pr_run_lotto_pipeline(
+                bigint, date, bigint, integer, bigint, uuid, jsonb, boolean
+              );

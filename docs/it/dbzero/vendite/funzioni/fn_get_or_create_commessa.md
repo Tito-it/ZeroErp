@@ -31,6 +31,7 @@ BEGIN
   --   - p_force_new=true forza sempre nuova creazione
   --   - advisory lock su contesto dimensionale per prevenire
   --     doppia creazione in chiamate concorrenti (solo NOT force_new)
+  --   - riuso: solo commesse in stato non terminale (chiude_commessa=false)
   -- =========================================================
   IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
@@ -103,7 +104,7 @@ BEGIN
         'context',jsonb_build_object('detail','billing account senza utility_id associata','billing_account_id',p_billing_account_id)
       ),
       NULL::uuid,
-      'billing account senza utility_id associata'
+      concat('billing account senza utility_id associata ' , p_billing_account_id::text) 
     );
   END IF;
 
@@ -121,7 +122,8 @@ BEGIN
         )
       ),
       NULL::uuid,
-      'utility incoerente con billing account'
+      concat('utility incoerente con billing account ', p_billing_account_id::text, ' - ',
+       v_ba_utility::text, ' vs ', p_utility_id::text)
     );
   END IF;
 
@@ -134,25 +136,28 @@ BEGIN
   IF NOT p_force_new THEN
     -- Advisory lock transazionale: serializza chiamate concorrenti
     -- con lo stesso contesto dimensionale per prevenire doppia INSERT.
-    -- Chiave: namespace fisso (fn_get_or_create_commessa) + hash dimensioni.
     PERFORM pg_advisory_xact_lock(
       hashtext('fn_get_or_create_commessa'),
       hashtext(
-        p_billing_account_id::text      || chr(0) ||
-        p_utility_id::text              || chr(0) ||
-        p_tipo_commessa                 || chr(0) ||
-        p_policy_fatturazione           || chr(0) ||
-        p_fatturazione_immediata::text  || chr(0) ||
-        p_priorita_operativa            || chr(0) ||
-        COALESCE(v_emittente::text, '') || chr(0) ||
-        COALESCE(p_competenza_dal::text, '') || chr(0) ||
+        p_billing_account_id::text      || E'\x1F' ||
+        p_utility_id::text              || E'\x1F' ||
+        p_tipo_commessa                 || E'\x1F' ||
+        p_policy_fatturazione           || E'\x1F' ||
+        p_fatturazione_immediata::text  || E'\x1F' ||
+        p_priorita_operativa            || E'\x1F' ||
+        COALESCE(v_emittente::text, '') || E'\x1F' ||
+        COALESCE(p_competenza_dal::text, '') || E'\x1F' ||
         COALESCE(p_competenza_al::text, '')
       )
     );
 
+    -- Cerca commessa riusabile: stato non terminale (chiude_commessa=false)
     SELECT c.id
     INTO v_commessa_id
     FROM vendite.commesse c
+    JOIN vendite.stati_commessa sc
+      ON sc.id = c.stato_commessa_id
+     AND sc.chiude_commessa = false
     WHERE c.billing_account_id = p_billing_account_id
       AND c.utility_id = p_utility_id
       AND c.tipo_commessa = p_tipo_commessa
@@ -162,7 +167,6 @@ BEGIN
       AND COALESCE(c.emittente_soggetto_ruolo_id, -1) = COALESCE(v_emittente, -1)
       AND c.competenza_dal IS NOT DISTINCT FROM p_competenza_dal
       AND c.competenza_al IS NOT DISTINCT FROM p_competenza_al
-      AND c.stato_commessa IN ('BOZZA', 'APERTA', 'IN_ESECUZIONE', 'PRONTA_FATTURAZIONE')
     ORDER BY c.id DESC
     LIMIT 1;
 
@@ -173,10 +177,10 @@ BEGIN
 
   v_codice := 'CMM-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS') || '-' || substr(md5(random()::text), 1, 6);
 
+  -- stato_commessa_id usa DEFAULT (=1, BOZZA)
   INSERT INTO vendite.commesse (
     codice,
     tipo_commessa,
-    stato_commessa,
     policy_fatturazione,
     fatturazione_immediata,
     priorita_operativa,
@@ -190,7 +194,6 @@ BEGIN
   VALUES (
     v_codice,
     p_tipo_commessa,
-    'BOZZA',
     p_policy_fatturazione,
     p_fatturazione_immediata,
     p_priorita_operativa,
@@ -208,7 +211,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying, p_policy_fatturazione character varying, p_fatturazione_immediata boolean, p_priorita_operativa character varying, p_emittente_soggetto_ruolo_id bigint, p_competenza_dal date, p_competenza_al date, p_meta jsonb, p_force_new boolean)
-IS 'Recupera o crea una commessa coerente con BA/utility e fallback emittente fiscale. Advisory lock su contesto dimensionale previene doppia creazione in concorrenza.';
+IS 'Recupera o crea una commessa coerente con BA/utility e fallback emittente fiscale. Riuso: solo commesse in stato non terminale (chiude_commessa=false). Advisory lock previene doppia creazione.';
 ```
 
 ---

@@ -1,0 +1,45 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ALTER risorse_umane_auth_user: aggiunta colonna ruolo_sistema
+# per classificazione nella catena di risoluzione permessi
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260228-07-add-ruolo-sistema-risorse-umane-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260228-07-add-ruolo-sistema-risorse-umane-auth-user
+      author: mctit
+      comment: >
+        Aggiunge il ruolo_sistema al bridge user-risorsa umana.
+        Determina il comportamento nella catena di risoluzione permessi:
+        ADMIN bypassa, OPERATIVO segue la catena, DISABILITATO blocca.
+
+      changes:
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: risorse_umane_auth_user
+            columns:
+              - column:
+                  name: ruolo_sistema
+                  type: config.ruolo_sistema
+                  defaultValue: OPERATIVO
+                  remarks: "Ruolo sistema per catena risoluzione permessi (default OPERATIVO)."
+                  constraints:
+                    nullable: false
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.ruolo_sistema IS
+              'Ruolo sistema per la catena di risoluzione permessi.
+               ADMIN = bypass completo, OPERATIVO = catena standard, DISABILITATO = accesso negato.
+               Default: OPERATIVO.';
+
+      rollback:
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: risorse_umane_auth_user
+            columnName: ruolo_sistema

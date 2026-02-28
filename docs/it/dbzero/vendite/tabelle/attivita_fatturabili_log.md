@@ -5,7 +5,6 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| lotto_attivita_id | bigint | YES |  |
 | attivita_consumi_id | bigint | YES |  |
 | data_ora | timestamp with time zone | NO | now() |
 | messaggio | text | NO |  |
@@ -22,7 +21,6 @@
 |------|------|---------|
 | CHECK | chk_attivita_fatturabili_log_status |  |
 | FOREIGN KEY | fk_attivita_fatturabili_log_attivita_consumi | attivita_consumi_id |
-| FOREIGN KEY | fk_attivita_fatturabili_log_attivita_lotto | lotto_attivita_id |
 | PRIMARY KEY | pk_attivita_fatturabili_log | id |
 
 ## 📑 Indici
@@ -33,6 +31,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_attivita_fatturabili_log_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_attivita_fatturabili_log_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---

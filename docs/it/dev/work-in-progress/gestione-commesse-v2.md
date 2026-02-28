@@ -126,11 +126,11 @@ Il campo resta sul preventivo. Su ordini non previsto per ora (lasciato aperto p
 
 Ogni commessa ha una policy che determina come si calcola l'importo fatturabile:
 
-| Policy | Significato |
-|---|---|
-| `DA_DOCUMENTO` | Usa i valori del documento commerciale come base |
-| `DA_CONSUNTIVO` | Usa solo le attività operative approvate |
-| `MISTA` | Base documento + conguaglio da consuntivo |
+| Policy          | Significato                                      |
+| --------------- | ------------------------------------------------ |
+| `DA_DOCUMENTO`  | Usa i valori del documento commerciale come base |
+| `DA_CONSUNTIVO` | Usa solo le attività operative approvate         |
+| `MISTA`         | Base documento + conguaglio da consuntivo        |
 
 **Specifica MISTA:**
 
@@ -206,23 +206,23 @@ Caratteristiche:
 
 Ogni riga commessa salva:
 
-| Campo | Significato |
-|---|---|
-| `quantita` | Quantità della prestazione |
-| `listino_versione_id` | Riferimento alla versione listino al momento del push |
-| `data_competenza` | Periodo di riferimento |
-| `prezzo_snapshot` | Prezzo al momento del push (per audit) |
-| `prezzo_bloccato` | Se TRUE il prezzo non viene mai ricalcolato |
+| Campo                   | Significato                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| `quantita`              | Quantità della prestazione                                                      |
+| `listino_versione_id`   | Riferimento alla versione listino al momento del push                           |
+| `data_competenza`       | Periodo di riferimento                                                          |
+| `prezzo_snapshot`       | Prezzo al momento del push (per audit)                                          |
+| `prezzo_bloccato`       | Se TRUE il prezzo non viene mai ricalcolato                                     |
 | `prezzo_da_riallineare` | Flag tecnico: TRUE se il documento sorgente `LIBERO` cambia prezzo dopo il push |
 
 ### 7.2 Policy prezzo per tipo sorgente
 
-| Tipo sorgente | Policy prezzo |
-|---|---|
-| Preventivo `fatturazione_immediata` | Bloccato al push — non serve ricalcolo |
-| Preventivo periodico | Ricalcolato alla fatturazione se listino è cambiato |
-| Ordine | Bloccato alla conferma ordine |
-| Consumo utility | Sempre calcolato dal listino del periodo di competenza |
+| Tipo sorgente                       | Policy prezzo                                          |
+| ----------------------------------- | ------------------------------------------------------ |
+| Preventivo `fatturazione_immediata` | Bloccato al push — non serve ricalcolo                 |
+| Preventivo periodico                | Ricalcolato alla fatturazione se listino è cambiato    |
+| Ordine                              | Bloccato alla conferma ordine                          |
+| Consumo utility                     | Sempre calcolato dal listino del periodo di competenza |
 
 ### 7.3 Allineamento quando il listino cambia
 
@@ -375,8 +375,9 @@ created_at
 
 **`vendite.attivita_fatturabili`** — aggiungere:
 ```
-commessa_id             FK → commesse   (NOT NULL dopo backfill)
-commessa_attivita_id    FK → commesse_attivita   (NOT NULL dopo backfill)
+commessa_id                 FK → commesse   (NOT NULL dopo backfill)
+commessa_attivita_id        FK → commesse_attivita   (NOT NULL dopo backfill)
+sorgente_origine_tipo_id    FK → config.sorgenti   (nullable — sorgente business originale, vedi §26)
 ```
 
 Nota ownership:
@@ -386,7 +387,11 @@ Nota ownership:
 
 I campi `sorgente_tipo_id / sorgente_uid / sorgente_riga` restano su AF come contratto
 idempotenza del pull e vengono valorizzati come `COMMESSA + segment_key`.
-La sorgente esterna originale resta su `commesse_attivita.sorgente_*`.
+
+Il nuovo campo `sorgente_origine_tipo_id` preserva la sorgente business originale
+(PREVENTIVO, ORDINE_VENDITA, CONTRATTO, etc.) direttamente su AF, evitando il JOIN
+a `commesse_attivita` per risalire all'origine. Viene popolato da `fn_emit` leggendo
+`commesse_attivita.sorgente_tipo_id`. Vedi §26 per analisi completa.
 
 **`vendite.preventivi`** (o tabella equivalente) — aggiungere:
 ```
@@ -440,14 +445,14 @@ Troppo restrittivo — impedisce la parzializzazione controllata della stessa so
 
 Funzioni dominio commessa (core DB-3) + riferimenti a funzioni pricing. Definizioni principali, dettagli tecnici al team DB.
 
-| Funzione | Scopo |
-|---|---|
-| `fn_get_or_create_commessa(...)` | Risolve o crea commessa per la sorgente in ingresso |
-| `fn_link_commessa_sorgente(...)` | Collega la sorgente ROOT alla commessa |
-| `fn_upsert_commessa_attivita(...)` | Inserisce/aggiorna riga operativa con idempotenza su `segment_key` |
-| `fn_emit_attivita_fatturabili_da_commessa(...)` | Pull commessa → `attivita_fatturabili` (step 0 pipeline) |
-| `fn_resolve_commessa_prezzi(lotto_id)` | Individua righe con listino stantio nel perimetro lotto (ownership: roadmap pricing `gestione-listini.md`, step DB-L2) |
-| `fn_get_commessa_stato(commessa_id)` | Stato + info commessa in un round-trip |
+| Funzione                                        | Scopo                                                                                                                  |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `fn_get_or_create_commessa(...)`                | Risolve o crea commessa per la sorgente in ingresso                                                                    |
+| `fn_link_commessa_sorgente(...)`                | Collega la sorgente ROOT alla commessa                                                                                 |
+| `fn_upsert_commessa_attivita(...)`              | Inserisce/aggiorna riga operativa con idempotenza su `segment_key`                                                     |
+| `fn_emit_attivita_fatturabili_da_commessa(...)` | Pull commessa → `attivita_fatturabili` (step 0 pipeline)                                                               |
+| `fn_resolve_commessa_prezzi(lotto_id)`          | Individua righe con listino stantio nel perimetro lotto (ownership: roadmap pricing `gestione-listini.md`, step DB-L2) |
+| `fn_get_commessa_stato(commessa_id)`            | Stato + info commessa in un round-trip                                                                                 |
 
 Note per `fn_emit_attivita_fatturabili_da_commessa`:
 - Legge sempre la ROOT da `commesse_sorgenti`.
@@ -526,14 +531,14 @@ Da validare col team DB prima di partire con lo schema:
 
 ## 14) Roadmap DB
 
-| Step | Contenuto |
-|---|---|
-| DB-0 | Inventario baseline — oggetti legacy, dipendenze, unique da rimuovere |
-| DB-1 | Schema commessa core (tabelle, FK, nullable per transizione) |
+| Step | Contenuto                                                                        |
+| ---- | -------------------------------------------------------------------------------- |
+| DB-0 | Inventario baseline — oggetti legacy, dipendenze, unique da rimuovere            |
+| DB-1 | Schema commessa core (tabelle, FK, nullable per transizione)                     |
 | DB-2 | Unicità e idempotenza (rimozione unique legacy, nuove unique commessa-centriche) |
-| DB-3 | Funzioni core + guardrail anti-bypass |
-| DB-4 | Seed policy e configurazione operativa |
-| DB-5 | pgTAP DDL, funzioni, anti-bypass, unicità, backfill |
+| DB-3 | Funzioni core + guardrail anti-bypass                                            |
+| DB-4 | Seed policy e configurazione operativa                                           |
+| DB-5 | pgTAP DDL, funzioni, anti-bypass, unicità, backfill                              |
 
 Gate di uscita DB (il backend parte solo dopo):
 - Schema commessa completo e vincoli attivi.
@@ -547,7 +552,9 @@ Gate di uscita DB (il backend parte solo dopo):
 ## 15) Cosa NON cambia
 
 - **Pipeline di fatturazione** (lotti, documenti fiscali, SDI) — invariata.
-- **Campi `sorgente_*` su `attivita_fatturabili`** — restano con semantica idempotenza pull (`COMMESSA + segment_key`).
+- **Campi `sorgente_tipo_id / sorgente_uid` su `attivita_fatturabili`** — restano con semantica
+  idempotenza pull (`COMMESSA + segment_key`). Il nuovo `sorgente_origine_tipo_id` (vedi §26)
+  si aggiunge come campo separato per tracciabilita`, senza alterare il contratto di idempotenza.
 - **Logica `Idempotency-Key` sulle API** — invariata.
 - **Branch policy BRANCH/GLOBAL** — invariata.
 
@@ -648,17 +655,17 @@ data_insert / user_insert
 
 ### 17.3 Mapping campi: owner vs snapshot
 
-| Campo dominio | Owner target | Su `attivita_fatturabili` |
-|---|---|---|
-| `competenza_dal`, `competenza_al` | `commesse_attivita` | snapshot copiato |
-| `competenza_mese` (mese fatturazione) | `commesse_attivita` | snapshot copiato (obbligatorio) |
-| `posticipa_al` | `commesse_attivita` | snapshot copiato |
-| `tipo_doc_fiscale_id`, `valuta_id` | `commesse_attivita` | snapshot copiato |
-| `uom_id`, `quantita` | `commesse_attivita` | snapshot copiato |
-| `prezzo_snapshot`/`prezzo_unitario` | `commesse_attivita` | snapshot copiato su `prezzo_unitario` |
-| `prezzo_bloccato` | `commesse_attivita` | snapshot operativo (gia` presente) |
-| `listino_versione_id` | `commesse_attivita` | non obbligatorio in AF v1, consigliato in v2 |
-| `sorgente_*` root | `commesse_attivita` + `commesse_sorgenti` | su AF valorizzati come `COMMESSA + segment_key` |
+| Campo dominio                         | Owner target                              | Su `attivita_fatturabili`                       |
+| ------------------------------------- | ----------------------------------------- | ----------------------------------------------- |
+| `competenza_dal`, `competenza_al`     | `commesse_attivita`                       | snapshot copiato                                |
+| `competenza_mese` (mese fatturazione) | `commesse_attivita`                       | snapshot copiato (obbligatorio)                 |
+| `posticipa_al`                        | `commesse_attivita`                       | snapshot copiato                                |
+| `tipo_doc_fiscale_id`, `valuta_id`    | `commesse_attivita`                       | snapshot copiato                                |
+| `uom_id`, `quantita`                  | `commesse_attivita`                       | snapshot copiato                                |
+| `prezzo_snapshot`/`prezzo_unitario`   | `commesse_attivita`                       | snapshot copiato su `prezzo_unitario`           |
+| `prezzo_bloccato`                     | `commesse_attivita`                       | snapshot operativo (gia` presente)              |
+| `listino_versione_id`                 | `commesse_attivita`                       | non obbligatorio in AF v1, consigliato in v2    |
+| `sorgente_*` root                     | `commesse_attivita` + `commesse_sorgenti` | su AF valorizzati come `COMMESSA + segment_key` |
 
 Regola di governo:
 
@@ -728,7 +735,7 @@ Il modello v2 resta confermato:
 - [x] aggiungere `commessa_id` (finalizzato `NOT NULL`)
 - [x] aggiungere `commessa_attivita_id` (finalizzato `NOT NULL`)
 - [x] aggiungere `prezzo_bloccato` (completato: `20260224-04`)
-- [ ] valutare introduzione `segment_key` su AF (snapshot tecnico) se richiesta idempotenza runtime
+- [x] ~~valutare introduzione `segment_key` su AF~~ — non necessario: `segment_key` resta su CA, `fn_emit` lo usa per generare `sorgente_uid` (hash MD5→UUID)
 
 ### 18.3 Vincoli e indici
 
@@ -781,11 +788,18 @@ Il modello v2 resta confermato:
 - [x] WIP `gestione-listini.md` e `gestione-commesse-v2.md` allineati
 - [x] checklist 13.3 (`gestione-listini.md`) portata a completamento coerente
 
-### 18.10 Stato transizione pipeline (COMMESSA_ONLY)
+### 18.10 Stato transizione pipeline (COMMESSA_ONLY) — COMPLETATO
 
 - [x] decisione architetturale: pipeline legacy `attivita-da-fatturare` deprecata
-- [x] applicare switch operativo `20260224-41-switch-attivita-to-commessa-only-mctit.yaml`
-- [x] validare switch con `db/pgtap/vendite/test-attivita-commessa-only-switch-v1.sql`
+- [x] switch operativo applicato: `20260224-41-switch-attivita-to-commessa-only-mctit.yaml`
+- [x] validato con `db/pgtap/vendite/test-attivita-commessa-only-switch-v1.sql`
+- [x] `config.parameters[attivita_fatturabili_require_commessa] = true`
+- [x] tutte le `attivita_fatturabili_sorgenti_branch_policy` disabilitate (`deprecated=true`)
+- [x] tutte le `attivita_fatturabili_pipeline_task_policy` disattivate
+- [x] tutte le `attivita_fatturabili_pipeline` disattivate
+
+> **Stato: CHIUSO.** La pipeline legacy e` operativamente spenta. Il percorso unico
+> e` `sorgente -> commessa -> attivita_fatturabili` via `fn_emit`.
 
 ### 18.11 Readiness backfill (analisi volumi pre-NOT-NULL)
 
@@ -948,12 +962,12 @@ i valori dal join commessa invece che dai campi diretti su AF.
 
 ### 19.5 Campi AF che diventano obsoleti con il modello commessa
 
-| Campo AF | Stato post-commessa | Note |
-|---|---|---|
-| `lotto_attivita_id` | Nullable → deprecato in R4 | Il link al lotto attività non serve più |
-| `approvato` | Ridondante con `commesse_attivita.stato_approvazione` | Snapshot derivato al pull, mantenuto per compatibilità filtri pipeline fatturazione |
-| `billing_account_id` su AF | Snapshot ridondante da `commesse.billing_account_id` | Mantenuto per performance indici esistenti |
-| `istanza_utility_id` su AF | Resta se aggiunto a `commesse_attivita`, snapshot | Ownership da chiarire (vedi §19.2 Gap 2) |
+| Campo AF                   | Stato post-commessa                                   | Note                                                                                |
+| -------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `lotto_attivita_id`        | Nullable → deprecato in R4                            | Il link al lotto attività non serve più                                             |
+| `approvato`                | Ridondante con `commesse_attivita.stato_approvazione` | Snapshot derivato al pull, mantenuto per compatibilità filtri pipeline fatturazione |
+| `billing_account_id` su AF | Snapshot ridondante da `commesse.billing_account_id`  | Mantenuto per performance indici esistenti                                          |
+| `istanza_utility_id` su AF | Resta se aggiunto a `commesse_attivita`, snapshot     | Ownership da chiarire (vedi §19.2 Gap 2)                                            |
 
 ---
 
@@ -981,12 +995,12 @@ Nota aggiornata:
 ### 19.7 Checklist integrativa (da aggiungere a §18)
 
 - [x] Ownership `istanza_utility_id`: su `commesse_attivita` (sempre valorizzata, anche con istanza fittizia)
-- [ ] Aggiungere `data_attivita` a `commesse_attivita` (o documentare esclusione)
-- [ ] Aggiungere campi misura operativa a `commesse_attivita` (o documentare esclusione)
+- [x] Aggiungere `data_attivita` a `commesse_attivita` — presente (`date NOT NULL`)
+- [x] Aggiungere campi misura operativa a `commesse_attivita` — presenti (`qta_operativa`, `uom_operativa_id`, `factor_to_base`)
 - [x] Allineare stati `commesse.stato_commessa` con set canonico (`BOZZA|APERTA|IN_ESECUZIONE|PRONTA_FATTURAZIONE|CHIUSA|ANNULLATA`)
-- [ ] Aggiornare trigger `trg_attivita_fatturabili_normalize_ins_upd` per essere commessa-aware
-- [ ] Aggiornare trigger `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` per leggere BA da commessa
-- [ ] Documentare mapping esplicito `stato_approvazione → approvato` nel pull
+- [x] Aggiornare trigger `trg_attivita_fatturabili_normalize_ins_upd` per essere commessa-aware — completato: early return con skip competenze, preserva risoluzione `tipo_doc_fiscale_id`/`valuta_id` come safety net
+- [x] Aggiornare trigger `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` per leggere BA da commessa — completato: skip validazione quando `commessa_attivita_id IS NOT NULL`
+- [x] Documentare mapping esplicito `stato_approvazione → approvato` nel pull — implementato in `fn_emit`: `approvato = (v_row.stato_approvazione = 'APPROVATA')`
 
 ---
 
@@ -1012,22 +1026,22 @@ Non c'è logica business da salvare nei task — sono gusci vuoti.
 
 ### 20.2 Cosa rimane utile (da NON eliminare)
 
-| Componente | File | Perché resta |
-|---|---|---|
-| Lotto management (`get_or_create_lotto_attivita`, `set_lotto_attivita_stato`, ecc.) | `attivita_pipeline_repository.py` | Serve per il tracing del pull (step 0 pipeline fatturazione) |
-| Task run tracing (`start/complete/fail_attivita_task_run`, `get_attivita_branch_summary`) | `attivita_pipeline_repository.py` | Serve per monitoring step 0 |
-| `_decode_jsonb` / `_to_jsonb_param` | `attivita_pipeline_repository.py` | Già estratti in §11 refactor |
-| Error logger pattern | `attivita_pipeline_error_logger.py` | Pattern riusato su step 0 e commessa |
+| Componente                                                                                | File                                | Perché resta                                                 |
+| ----------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------ |
+| Lotto management (`get_or_create_lotto_attivita`, `set_lotto_attivita_stato`, ecc.)       | `attivita_pipeline_repository.py`   | Serve per il tracing del pull (step 0 pipeline fatturazione) |
+| Task run tracing (`start/complete/fail_attivita_task_run`, `get_attivita_branch_summary`) | `attivita_pipeline_repository.py`   | Serve per monitoring step 0                                  |
+| `_decode_jsonb` / `_to_jsonb_param`                                                       | `attivita_pipeline_repository.py`   | Già estratti in §11 refactor                                 |
+| Error logger pattern                                                                      | `attivita_pipeline_error_logger.py` | Pattern riusato su step 0 e commessa                         |
 
 ### 20.3 Cosa NON serve più (candidato eliminazione)
 
-| Componente | File | Motivo |
-|---|---|---|
-| `AttivitaPipelineRunner` | `attivita_pipeline_runner.py` | Il pull da commessa è una funzione semplice, non un runner multi-branch |
-| `AttivitaPipelineStepExecutor` | `attivita_pipeline_step_executor.py` | I 7 handler sono stub — nessuna logica da preservare |
-| Tutti i `_handle_acquisisci_*` | `attivita_pipeline_step_executor.py` | Placeholder — mai implementati |
-| Endpoint API `run` pipeline attività | `api/views.py` | Sostituito da step 0 pipeline fatturazione |
-| Endpoint API `status` pipeline attività | `api/views.py` | Sostituito da stato commessa |
+| Componente                              | File                                 | Motivo                                                                  |
+| --------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------- |
+| `AttivitaPipelineRunner`                | `attivita_pipeline_runner.py`        | Il pull da commessa è una funzione semplice, non un runner multi-branch |
+| `AttivitaPipelineStepExecutor`          | `attivita_pipeline_step_executor.py` | I 7 handler sono stub — nessuna logica da preservare                    |
+| Tutti i `_handle_acquisisci_*`          | `attivita_pipeline_step_executor.py` | Placeholder — mai implementati                                          |
+| Endpoint API `run` pipeline attività    | `api/views.py`                       | Sostituito da step 0 pipeline fatturazione                              |
+| Endpoint API `status` pipeline attività | `api/views.py`                       | Sostituito da stato commessa                                            |
 
 ### 20.4 Cosa diventa lo step 0
 
@@ -1042,32 +1056,27 @@ def pull_commessa_step(lotto_id: int, dry_run: bool = False) -> dict:
 
 L'orchestrazione è già nel runner della pipeline fatturazione esistente.
 
-### 20.5 Timing deprecazione
+### 20.5 Timing deprecazione — COMPLETATO 26-02-2026
 
-**Ora — nessuna modifica**: la pipeline attività non causa danni, il DB commesse
-non esiste ancora. Congela lo sviluppo su questi file (nessun nuovo handler).
+**Stato attuale:**
 
-Dopo DB-L3 (schema commessa attivo):
-
-- Marca i file come `# DEPRECATED — sostituiti da modello commessa`
-- Disabilita gli endpoint API attività pipeline (o flag `deprecated` nella doc)
-
-Dopo DB-L5 (suite pgTAP verde):
-
-- Elimina `attivita_pipeline_runner.py`
-- Elimina `attivita_pipeline_step_executor.py`
-- Elimina `attivita_pipeline_error_logger.py`
-- Riduce `attivita_pipeline_repository.py` ai soli metodi ancora usati (lotto + task run)
-- Rimuove i 2 endpoint API pipeline attività (run + status)
-- Mantiene endpoint task-runs (riusato per il monitoring dello step 0)
+- [x] DB commesse completato (DB-L0 → DB-L5)
+- [x] Switch COMMESSA_ONLY applicato (changeset `20260224-41`, vedi §18.10)
+- [x] Pipeline legacy spenta operativamente (policy, task, branch disabilitate)
+- [x] File Python eliminati (FASE 4 backend completata, vedi §25.4)
+- [x] API commesse esposti (FASE 5 completata, vedi §25.6) — 210/210 test green
 
 ### 20.6 Endpoint API — impatto
 
-| Endpoint | Stato post-commessa |
-|---|---|
-| `POST /attivita_fatturabili/pipeline/run/` | Eliminato — il run è step 0 del lotto fatturazione |
-| `GET /attivita_fatturabili/pipeline/<id>/status/` | Eliminato — sostituito da status commessa |
-| `GET /attivita_fatturabili/pipeline/<id>/task-runs/` | Mantenuto o reindirizzato — il tracing task run resta utile |
+| Endpoint                                             | Stato post-commessa                                             |
+| ---------------------------------------------------- | --------------------------------------------------------------- |
+| `POST /attivita_fatturabili/pipeline/run/`           | **Eliminato** — sostituito da CommessaPushOrchestrator (FASE 2) |
+| `GET /attivita_fatturabili/pipeline/<id>/status/`    | **Mantenuto** — monitoraggio lotti esistenti                    |
+| `GET /attivita_fatturabili/pipeline/<id>/task-runs/` | **Mantenuto** — tracing task run per monitoring                 |
+| `POST /vendite/commesse/push/run/`                   | **Nuovo** — push orchestratore commesse (FASE 5)                |
+| `GET /vendite/commesse/push/<log_id>/`               | **Nuovo** — dettaglio push log (FASE 5)                         |
+| `GET /vendite/commesse/<id>/stato/`                  | **Nuovo** — stato commessa + contatori (FASE 5)                 |
+| `GET /vendite/commesse/<id>/attivita/`               | **Nuovo** — lista attivita commessa paginata (FASE 5)           |
 
 ---
 
@@ -1110,30 +1119,38 @@ La coppia sorgente si duplica su due livelli con semantiche distinte:
 
 ### 21.3 Catena completa per flusso concreto
 
-| Flusso | Sorgente su `commesse_attivita` | Sorgente su AF |
-|---|---|---|
-| Preventivo → ordine → commessa | Nessuna (FK al documento) | `COMMESSA` + `segment_key` |
-| Import utility batch → commessa | `LETTURE` + uid lettura | `COMMESSA` + `segment_key` |
-| API terza parte → commessa | `API_XYZ` + uid esterno | `COMMESSA` + `segment_key` |
-| Consumo automatico → commessa AUTO | `CONSUMI` + uid consumo | `COMMESSA` + `segment_key` |
+| Flusso                             | Sorgente su `commesse_attivita` | Sorgente su AF             |
+| ---------------------------------- | ------------------------------- | -------------------------- |
+| Preventivo → ordine → commessa     | Nessuna (FK al documento)       | `COMMESSA` + `segment_key` |
+| Import utility batch → commessa    | `LETTURE` + uid lettura         | `COMMESSA` + `segment_key` |
+| API terza parte → commessa         | `API_XYZ` + uid esterno         | `COMMESSA` + `segment_key` |
+| Consumo automatico → commessa AUTO | `CONSUMI` + uid consumo         | `COMMESSA` + `segment_key` |
 
-### 21.4 Perché non propagare la sorgente originale su AF
+### 21.4 ~~Perche` non propagare la sorgente originale su AF~~ — SUPERATO (25-02-2026)
 
-Due ragioni:
-
-1. **`segment_key` è sufficiente** — identifica univocamente la riga in ogni contesto; la sorgente
-   originale è rintracciabile via join `AF → commesse_attivita → sorgente_*`.
-2. **Semplificazione vincoli** — il vincolo unique su AF (`sorgente_tipo_id, sorgente_uid`) rimane
-   omogeneo: punta sempre a `COMMESSA + segment_key`, non a sorgenti eterogenee.
-   Questo evita collisioni tra sorgenti di tipo diverso sullo stesso AF.
+> **Decisione originale (24-02-2026):** non propagare la sorgente originale su AF, perche`
+> `segment_key` e` sufficiente e il vincolo unique resterebbe omogeneo.
+>
+> **Revisione (25-02-2026):** questa decisione e` stata **superata** dall'analisi in §26.
+> Il passaggio attraverso COMMESSA crea un "buco" che impedisce la risoluzione corretta
+> di `tipo_doc_fiscale_id` e nasconde la sorgente business originale dietro un JOIN.
+>
+> La soluzione adottata (§26 — Opzione B+D) aggiunge `sorgente_origine_tipo_id` su AF
+> come campo denormalizzato. I campi `sorgente_tipo_id / sorgente_uid` restano invariati
+> per idempotenza (`COMMESSA + segment_key`). Il nuovo campo serve esclusivamente per
+> tracciabilita` e risoluzione `tipo_doc_fiscale_id`.
+>
+> Vedi §26 per analisi completa, motivazioni e piano implementativo.
 
 ### 21.5 Impatto su §9 e §18
 
 - **§9.1**: `commesse_attivita` aggiornato con `sorgente_tipo_id` e `sorgente_uid` nullable.
+- **§9.2**: `attivita_fatturabili` aggiornato con `sorgente_origine_tipo_id` (vedi §26).
 - **§17.2**: idem.
 - **§18.1 / §18.3**: checklist aggiornata con unique parziale sorgente su `commesse_attivita`.
 - **§15 "Cosa NON cambia"**: la semantica dei campi `sorgente_*` su AF resta — cambia solo il
-  valore (`COMMESSA + segment_key` invece di sorgente diretta).
+  valore (`COMMESSA + segment_key` invece di sorgente diretta). Il nuovo `sorgente_origine_tipo_id`
+  si aggiunge senza alterare il contratto di idempotenza.
 
 ---
 
@@ -1144,18 +1161,18 @@ Due ragioni:
 Questi campi appartengono al **motore di fatturazione** e sono indipendenti dalla sorgente.
 Non vengono mai spostati su `commesse_attivita`.
 
-| Campo | Ruolo |
-|---|---|
-| `approvato`, `fatturato` | Flag di stato ciclo billing |
-| `lock_in_fatturazione`, `lock_batch_id` | Isolamento corsa fatturazione |
-| `fattura_riga_id` | Link al documento emesso |
-| `sospesa`, `posticipa_al` | Gating — quando fatturare |
-| `competenza_mese`, `competenza_dal/al` | Regola competenza — snapshot da commessa |
-| `tipo_doc_fiscale_id`, `valuta_id` | Tipo documento — snapshot da commessa |
-| `articolo_id` | Servizio fatturato — snapshot da commessa |
-| `billing_account_id` | Intestazione — snapshot + indice performance |
-| `prezzo_unitario`, `prezzo_bloccato` | Snapshot economico da `commesse_attivita` |
-| `uom_id`, `quantita` | Quantità fatturata — snapshot da commessa |
+| Campo                                               | Ruolo                                         |
+| --------------------------------------------------- | --------------------------------------------- |
+| `approvato`, `fatturato`                            | Flag di stato ciclo billing                   |
+| `lock_in_fatturazione`, `lock_batch_id`             | Isolamento corsa fatturazione                 |
+| `fattura_riga_id`                                   | Link al documento emesso                      |
+| `sospesa`, `posticipa_al`                           | Gating — quando fatturare                     |
+| `competenza_mese`, `competenza_dal/al`              | Regola competenza — snapshot da commessa      |
+| `tipo_doc_fiscale_id`, `valuta_id`                  | Tipo documento — snapshot da commessa         |
+| `articolo_id`                                       | Servizio fatturato — snapshot da commessa     |
+| `billing_account_id`                                | Intestazione — snapshot + indice performance  |
+| `prezzo_unitario`, `prezzo_bloccato`                | Snapshot economico da `commesse_attivita`     |
+| `uom_id`, `quantita`                                | Quantità fatturata — snapshot da commessa     |
 | `sorgente_tipo_id`, `sorgente_uid`, `sorgente_riga` | Idempotenza pull (`COMMESSA` + `segment_key`) |
 
 ### 22.2 Campi che diventano snapshot (copiati al pull)
@@ -1163,25 +1180,25 @@ Non vengono mai spostati su `commesse_attivita`.
 Al momento del pull `fn_emit_attivita_fatturabili_da_commessa`, i campi seguenti vengono
 copiati da `commesse_attivita` e non ricalcolati da AF:
 
-| Campo su AF | Fonte snapshot |
-|---|---|
-| `prezzo_unitario` | `commesse_attivita.prezzo_snapshot` |
-| `prezzo_bloccato` | `commesse_attivita.prezzo_bloccato` |
-| `competenza_mese` | `commesse_attivita.competenza_mese` |
-| `competenza_dal`, `competenza_al` | `commesse_attivita.competenza_dal/al` |
-| `posticipa_al` | `commesse_attivita.posticipa_al` |
-| `tipo_doc_fiscale_id`, `valuta_id` | `commesse_attivita.tipo_doc_fiscale_id/valuta_id` |
-| `billing_account_id` | `commesse.billing_account_id` |
-| `area_geografica_id` | `commesse_attivita.area_geografica_id` (se presente) |
-| `istanza_utility_id` | `commesse_attivita.istanza_utility_id` (per utilities) |
-| `qta_operativa`, `uom_operativa_id`, `factor_to_base` | `commesse_attivita.*` (per utilities) |
+| Campo su AF                                           | Fonte snapshot                                         |
+| ----------------------------------------------------- | ------------------------------------------------------ |
+| `prezzo_unitario`                                     | `commesse_attivita.prezzo_snapshot`                    |
+| `prezzo_bloccato`                                     | `commesse_attivita.prezzo_bloccato`                    |
+| `competenza_mese`                                     | `commesse_attivita.competenza_mese`                    |
+| `competenza_dal`, `competenza_al`                     | `commesse_attivita.competenza_dal/al`                  |
+| `posticipa_al`                                        | `commesse_attivita.posticipa_al`                       |
+| `tipo_doc_fiscale_id`, `valuta_id`                    | `commesse_attivita.tipo_doc_fiscale_id/valuta_id`      |
+| `billing_account_id`                                  | `commesse.billing_account_id`                          |
+| `area_geografica_id`                                  | `commesse_attivita.area_geografica_id` (se presente)   |
+| `istanza_utility_id`                                  | `commesse_attivita.istanza_utility_id` (per utilities) |
+| `qta_operativa`, `uom_operativa_id`, `factor_to_base` | `commesse_attivita.*` (per utilities)                  |
 
 ### 22.3 Campi da deprecare (lungo termine)
 
-| Campo | Timing | Motivo |
-| --- | --- | --- |
-| `lotto_attivita_id` | R4 post-deprecazione pipeline | Link al vecchio batch attività. Con il pull come step 0, non serve più. Nullable ora → rimosso in R4. |
-| `attivita_consumi_id` | R5 o dopo migrazione utilities | Link al modulo consumi standalone. Diventa orfano se utilities migrano a commesse. |
+| Campo                 | Timing                         | Motivo                                                                                                |
+| --------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `lotto_attivita_id`   | R4 post-deprecazione pipeline  | Link al vecchio batch attività. Con il pull come step 0, non serve più. Nullable ora → rimosso in R4. |
+| `attivita_consumi_id` | R5 o dopo migrazione utilities | Link al modulo consumi standalone. Diventa orfano se utilities migrano a commesse.                    |
 
 ### 22.4 Trigger da modificare (non eliminare)
 
@@ -1220,9 +1237,13 @@ quando `commessa_id IS NOT NULL`.
    billing puro.
 2. `commesse_attivita` è la nuova **sorgente di verità** per cosa e quanto fatturare.
 3. AF gestisce solo **quando** (competenza, gating) e **come** (documento, lock, stato).
-4. I campi `sorgente_*` su AF sono il contratto di idempotenza del pull:
-   sempre `COMMESSA + segment_key`, mai la sorgente originale esterna.
-5. La sorgente originale esterna vive su `commesse_attivita.sorgente_*` e si raggiunge via join.
+4. I campi `sorgente_tipo_id / sorgente_uid` su AF sono il contratto di idempotenza del pull:
+   sempre `COMMESSA + segment_key`. Il nuovo `sorgente_origine_tipo_id` (vedi §26) preserva
+   la sorgente business originale direttamente su AF per tracciabilita` e risoluzione
+   `tipo_doc_fiscale_id`, senza alterare il contratto di idempotenza.
+5. La sorgente originale e` ora accessibile in due modi:
+   - **denormalizzato**: `AF.sorgente_origine_tipo_id` (accesso diretto, zero JOIN)
+   - **normalizzato**: `AF.commessa_attivita_id -> commesse_attivita.sorgente_tipo_id` (via JOIN)
 
 ---
 
@@ -1260,14 +1281,14 @@ Il push commessa NON ha step sequenziali cross-handler. I singoli handler:
 
 **Differenza strutturale determinante:**
 
-| Aspetto | Pipeline AF | Orchestratore push |
-| --- | --- | --- |
-| Stato interno | Lotto + task run tracing | Nessuno (stateless) |
-| Step sequenziali | Sì, con dipendenze | No — handler indipendenti |
-| Idempotenza | Gestita dal runner | Garantita dal DB (`sorgente_uid` unique) |
-| Concorrenza | Lock di lotto | `pg_try_advisory_lock` — nessuna tabella |
-| Errore in un branch | Blocca o continua per scope | Un handler fallisce, gli altri girano |
-| Estendibilità | Nuovo handler-code nel registry | Idem — identico pattern |
+| Aspetto             | Pipeline AF                     | Orchestratore push                       |
+| ------------------- | ------------------------------- | ---------------------------------------- |
+| Stato interno       | Lotto + task run tracing        | Nessuno (stateless)                      |
+| Step sequenziali    | Sì, con dipendenze              | No — handler indipendenti                |
+| Idempotenza         | Gestita dal runner              | Garantita dal DB (`sorgente_uid` unique) |
+| Concorrenza         | Lock di lotto                   | `pg_try_advisory_lock` — nessuna tabella |
+| Errore in un branch | Blocca o continua per scope     | Un handler fallisce, gli altri girano    |
+| Estendibilità       | Nuovo handler-code nel registry | Idem — identico pattern                  |
 
 ### 23.2 Motivazione della scelta: orchestratore
 
@@ -1343,9 +1364,8 @@ vendite.commesse_push_log (
     risultato       jsonb,           -- dettaglio per handler (vedi sotto)
     stato           text NOT NULL,   -- COMPLETATO | PARZIALE | ERRORE
     durata_ms       int,
-    user_run        text,            -- 'scheduler' | user applicativo
     data_insert     timestamptz DEFAULT now(),
-    user_insert     text DEFAULT current_user
+    user_insert     text  -- audit: JWT user reale via GUC app.jwt_user (trgfn_audit_data_user_generic)
 )
 ```
 
@@ -1523,8 +1543,12 @@ La FASE 4.5 (rettifiche) precede le API per non esporre un ciclo prezzi incomple
 - [x] `log_push_run(...)` — wrappa `fn_log_commessa_push_run` → `vendite.commesse_push_log`
 - [x] `get_push_log(push_log_id)` — SELECT `vendite.commesse_push_log`
 - [x] TypedDict `CommessaEmitResult`, `CommessaStatoResult`, `CommessaPushLogRow` in `types.py`
-- [x] Dataclass `CommessaAttivitaInput` (28 campi, opzionali con default `None`)
-- [x] Test `test_commesse_repository.py` — 10 test verdi (mock DB, verifica SQL e mapping)
+- [x] Dataclass `CommessaAttivitaInput` — ristrutturato: 6 obbligatori + 10 con default + 13 opzionali
+- [x] Dataclass `PushableRow` — 25 colonne condivise da tutte le fn_list_*_da_pushare
+- [x] `_SORGENTE_FN_MAP` — mapping codice sorgente → fn SQL (5 sorgenti)
+- [x] `fetch_pushable_rows(sorgente_codice)` — generico per tutte le 5 fn_list_*_da_pushare
+- [x] Default su `get_or_create_commessa`: tipo_commessa=AUTO, priorita_operativa=NORMALE, etc.
+- [x] Test `test_commesse_repository.py` — 15 test verdi (mock DB, verifica SQL, mapping, pushable rows)
 
 ---
 
@@ -1544,29 +1568,38 @@ La FASE 4.5 (rettifiche) precede le API per non esporre un ciclo prezzi incomple
 - [x] Isolamento errori per handler (`try/except`, continua sugli altri)
 - [x] Scrittura `commesse_push_log` al completamento (successo, parziale e dry_run)
 - [x] `PushReport` dataclass: `stato`, `risultato` per handler, `dry_run`, `durata_ms`, `push_log_id`
-- [ ] Supporto `pg_try_advisory_lock` anti-concorrenza (da definire in sviluppo)
+- [x] Supporto `pg_try_advisory_lock` anti-concorrenza:
+  - `_try_acquire_lock()` / `_release_lock()` session-level su `hashtext('commesse_push_orchestrator')`
+  - Lock non acquisito → `PushReport(stato="SKIPPED", durata_ms=0)`, nessun handler, nessun log
+  - Lock rilasciato nel `finally` anche in caso di errore handler
 
 **Note implementazione:**
 
 - dry_run=True: il log viene comunque scritto con `dry_run=True` per audit
-- `_compute_stato`: COMPLETATO / PARZIALE / ERRORE (nessun handler = ERRORE)
+- `_compute_stato`: COMPLETATO / PARZIALE / ERRORE / SKIPPED
 - `HandlerResult.as_dict()` serializza per JSONB risultato per handler
 
-#### 25.2.2 Handler sorgenti
+#### 25.2.2 Handler sorgenti (allineamento DB refactor — 10 punti)
 
-- [x] `BaseSourceHandler` — classe astratta con interfaccia `run(dry_run) → HandlerResult`
+- [x] `BaseSourceHandler` — logica condivisa `_process_rows()` (zero duplicazione tra handler)
 - [x] `HandlerResult` — dataclass: `handler_name`, `created`, `updated`, `skipped`, `errors`
-- [x] `HandlerPreventivi` — stub, richiede DB: `fn_list_preventivi_da_pushare`
-  - [ ] Query selezione preventivi eleggibili — **richiede fn_list_preventivi_da_pushare (team DB)**
-  - [ ] Mapping preventivo → `CommessaAttivitaInput` — da implementare dopo fn DB
-  - [ ] Gestione `stato_commessa = CONVERTITO` (skippa senza errore)
-- [x] `HandlerOrdini` — stub, richiede DB: `fn_list_ordini_da_pushare`
-  - [ ] Query selezione ordini eleggibili — **richiede fn_list_ordini_da_pushare (team DB)**
-  - [ ] Mapping ordine → `CommessaAttivitaInput` — da implementare dopo fn DB
-- [x] `HandlerConsumi` — stub, richiede DB: `fn_list_consumi_da_pushare`
-  - [ ] Query selezione consumi eleggibili — **richiede fn_list_consumi_da_pushare (team DB)**
-  - [ ] Mapping consumo → `CommessaAttivitaInput` — da implementare dopo fn DB
-- [x] Test `test_commesse_push_orchestrator.py` — 9 test verdi (isolamento, dry_run, filtro, log, stato)
+- [x] `#1` ORDINE → ORDINE_VENDITA corretto in `HandlerOrdini.sorgente_codice`
+- [x] `#3` `uom_id: int | None = None` in `CommessaAttivitaInput`
+- [x] `#4` `tipo_doc_fiscale_id: int | None = None` + hook `_resolve_tipo_doc_fiscale_id()`
+- [x] `#5` `prezzo_da_riallineare: bool = False`
+- [x] `#6` `_extract_tipo_commessa()` / `_extract_policy_fatturazione()` da `meta` JSONB
+- [x] `#7` `priorita_operativa="NORMALE"` default in `get_or_create_commessa`
+- [x] `#8` `HandlerContratti` (CONTRATTO) e `HandlerDdt` (DDT_VENDITA) — nuovi
+- [x] `#9` `HandlerConsumi._expand_rows()` — fan-out 1→N con `ComponenteConsumabile`
+  - [ ] `_fetch_componenti()` — stub, richiede fn DB per lookup componenti utility
+- [x] `#10` `stato_approvazione="BOZZA"`, `stato_emissione="NON_EMESSA"` default
+- [x] `HandlerPreventivi` — implementato via `_process_rows()`, sorgente_codice=PREVENTIVO
+- [x] `HandlerOrdini` — implementato via `_process_rows()`, sorgente_codice=ORDINE_VENDITA
+- [x] `HandlerContratti` — implementato via `_process_rows()`, sorgente_codice=CONTRATTO
+- [x] `HandlerDdt` — implementato via `_process_rows()`, sorgente_codice=DDT_VENDITA
+- [x] `HandlerConsumi` — implementato con override `_expand_rows()`, sorgente_codice=ATTIVITA_CONSUMI
+- [x] Test `test_commesse_push_orchestrator.py` — 9 test verdi (invariati, zero regressioni)
+- [x] Test `test_commesse_source_handlers.py` — 12 test verdi (handler, _process_rows, defaults, fan-out)
 
 ---
 
@@ -1575,17 +1608,53 @@ La FASE 4.5 (rettifiche) precede le API per non esporre un ciclo prezzi incomple
 **Obiettivo:** aggiungere handler `pull_attivita_da_commessa` come primo step
 della pipeline di fatturazione, che chiama `fn_emit_attivita_fatturabili_da_commessa`.
 
-**File da modificare:** `backend/apps/vendite/services/pipeline_step_executor.py`
+**Completata 25-02-2026.**
 
-- [ ] Aggiungere al handler registry: `"pull_attivita_da_commessa": self._handle_pull_attivita_da_commessa`
-- [ ] Implementare `_handle_pull_attivita_da_commessa(...)`:
-  - [ ] Chiama `commesse_repo.emit_attivita_fatturabili(lotto_id, dry_run)`
-  - [ ] Legge anomalie dal result e le logga come segnalazioni (da definire in sviluppo)
-  - [ ] Propaga dry_run al DB
-- [ ] Aggiungere `CommesseRepository` come dipendenza iniettabile in `PipelineStepExecutor`
-- [ ] Configurazione DB: registrare step `PULL_COMMESSA` come step 0 della pipeline
-  fatturazione in `vendite.attivita_fatturabili_pipeline` — da concordare col team DB
-- [ ] Test: aggiornare `test_pipeline_step_executor.py` con test per nuovo handler
+#### 25.3.1 Modifiche a `pipeline_step_executor.py`
+
+- [x] Aggiunto `CommesseRepository` come dipendenza iniettabile in `__init__`
+- [x] Aggiunto handler registry: `"pull_attivita_da_commessa_default": self._handle_pull_attivita_da_commessa_task`
+- [x] Implementato `_handle_pull_attivita_da_commessa_task(...)`:
+  - Valida fn_name via `_validate_task_function_name`
+  - Chiama `commesse_repository.list_commesse_emittibili()` per ottenere lista commesse
+  - Gate dry_run: se True ritorna senza emissione
+  - Per ogni commessa_id chiama `commesse_repository.emit_attivita_fatturabili()`
+
+#### 25.3.2 Modifiche a `commesse_repository.py`
+
+- [x] Implementato `list_commesse_emittibili()` — chiama `vendite.fn_list_commesse_emittibili`
+  - Parametri: `competenza_mese`, `billing_account_id`, `utility_id`, `emittente_soggetto_ruolo_id`, `limit`
+  - Return: `list[int]` (estrae `commessa_id` dal resultset TABLE della fn DB)
+  - Allineato a fn DB con signature:
+    `(p_competenza_mese, p_billing_account_id, p_utility_id, p_emittente_soggetto_ruolo_id, p_limit)`
+
+#### 25.3.3 Modifiche a `pipeline_repository.py`
+
+- [x] Aggiunto entry `ALLOWED_TASK_FUNCTIONS`:
+  `"pull_attivita_da_commessa": "vendite.fn_emit_attivita_fatturabili_da_commessa"`
+
+#### 25.3.4 Test aggiunti in `test_pipeline_step_executor.py`
+
+- [x] `test_execute_step_runs_pull_attivita_da_commessa_task` — happy path, 2 commesse
+- [x] `test_pull_attivita_da_commessa_dry_run_skips_emit` — dry_run salta emit
+- [x] `test_pull_attivita_da_commessa_empty_list_no_emit` — lista vuota, nessun emit
+
+#### 25.3.5 Test aggiunti in `test_commesse_repository.py`
+
+- [x] `test_list_commesse_emittibili_returns_ids` — verifica call DB, parametri, return list[int]
+- [x] `test_list_commesse_emittibili_empty` — nessun risultato, ritorna []
+
+#### 25.3.6 Configurazione DB (completata — team DB)
+
+- [x] Registrato step `PULL_COMMESSA` come step 0 in `vendite.pipeline_steps`
+  con `task_code = "pull_attivita_da_commessa"`
+- [x] Creata `vendite.fn_list_commesse_emittibili` — fn DB STABLE, read-only
+  - Filtra per `stati_commessa.emittibile = true` + `commesse_attivita.stato_emissione = 'NON_EMESSA'`
+  - Filtro competenza su `commesse_attivita.competenza_mese`
+  - Filtri opzionali: `billing_account_id`, `utility_id`, `emittente_soggetto_ruolo_id`
+  - `p_limit` default 1000, max 10000
+
+**Suite test:** 185/185 green.
 
 ---
 
@@ -1593,32 +1662,41 @@ della pipeline di fatturazione, che chiama `fn_emit_attivita_fatturabili_da_comm
 
 **Obiettivo:** eliminare il codice mai implementato, ridurre il repository.
 
-#### 25.4.1 File da eliminare
+**Completata 25-02-2026.**
 
-- [ ] `backend/apps/vendite/services/attivita_pipeline_step_executor.py`
-      (7 handler tutti `pass` — zero logica da preservare)
-- [ ] `backend/apps/vendite/services/attivita_pipeline_runner.py`
-      (sostituito da step 0 FASE 3)
+#### 25.4.1 File eliminati
 
-#### 25.4.2 `attivita_pipeline_repository.py` — metodi da rimuovere
+- [x] `services/attivita_pipeline_step_executor.py` — 7 handler stub, 241 righe
+- [x] `services/attivita_pipeline_runner.py` — sostituito da CommessaPushOrchestrator, 203 righe
+- [x] `tests/services/test_attivita_pipeline_step_executor.py` — 8 test, 260 righe
+- [x] `tests/services/test_attivita_pipeline_runner.py` — 6 test, 195 righe
+- [x] `tests/api/test_attivita_pipeline_smoke.py` — 3 test, 145 righe
 
-- [ ] Gruppo 2 — pipeline steps: `list_attivita_pipeline_steps`,
-      `get_attivita_step_processes`, `get_attivita_pipeline_id_for_step`
-- [ ] Gruppo 3 — sorgenti: `list_sorgenti_abilitate`
-- [ ] Gruppo 4 — task registry: `get_dominio_id`, `get_task_handler_code`
-- [ ] Gruppo 5 — task policy: `get_attivita_task_policy`, `task_policy_exists`
+#### 25.4.2 File puliti (pulizia parziale)
 
-#### 25.4.3 File da tenere invariati
+- [x] `db/attivita_pipeline_repository.py` — rimossi gruppi 2/3/4/5 (8 metodi) + 3 dataclass orfane.
+      Mantenuti: gruppo 1 (lotto management, 8 metodi), gruppo 2 (task runs, 5 metodi), helpers.
+      Da 570 a 310 righe.
+- [x] `services/attivita_pipeline_service.py` — rimosso `pr_run_attivita_pipeline` + import runner.
+      Mantenuti: `fn_get_attivita_pipeline_status`, `fn_get_attivita_task_runs`.
+- [x] `api/views.py` — rimosso `ApiRunAttivitaPipeline` + `ApiRunAttivitaPipelineV1`.
+      Mantenuti: `ApiAttivitaPipelineStatus`, `ApiAttivitaTaskRuns` (+ V1).
+- [x] `api/urls_v1.py` — rimossa route `attivita_fatturabili/pipeline/run/`.
+      Mantenute: route status e task-runs.
 
-- [ ] `attivita_pipeline_repository.py` — gruppi 1 (lotto) e 6 (task runs) e helpers
-- [ ] `attivita_pipeline_error_logger.py` — riusato dallo step 0
-- [ ] `pipeline_repository.py` — pipeline fatturazione, invariato
-- [ ] `lotto_segnalazioni_service.py` — invariato
+#### 25.4.3 Test puliti
 
-#### 25.4.4 Test da aggiornare
+- [x] `test_attivita_pipeline_repository.py` — da 14 a 5 test (rimossi test gruppi 2/3/5)
+- [x] `test_attivita_pipeline_service.py` — da 6 a 5 test (rimosso test runner)
+- [x] `test_attivita_pipeline_api.py` — da 14 a 7 test (rimossi test POST run)
 
-- [ ] `test_attivita_pipeline_repository.py` — rimuovere test per gruppi eliminati 2/3/4/5
-- [ ] Verificare nessun import orfano dopo eliminazione file
+#### 25.4.4 File invariati (verificati)
+
+- [x] `attivita_pipeline_error_logger.py` — zero import deprecati
+- [x] `pipeline_repository.py` — pipeline fatturazione, indipendente
+- [x] `lotto_segnalazioni_service.py` — zero import deprecati
+
+**Suite test:** 180/180 green, zero import orfani.
 
 ---
 
@@ -1654,34 +1732,41 @@ Le funzioni DB di L4 sono già presenti (team DB). Serve il layer Python.
 
 ---
 
-### 25.6 FASE 5 — API endpoints
+### 25.6 FASE 5 — API endpoints ✅
 
 **Obiettivo:** esporre orchestratore push e commesse al frontend.
 
-**File da modificare/creare:** `backend/apps/vendite/api/views.py`, `urls.py`
+**File creati/modificati:**
+
+- `backend/apps/vendite/services/commesse_service.py` (nuovo) — 4 funzioni service
+- `backend/apps/vendite/api/views.py` — 4 coppie view (base + V1 JWT)
+- `backend/apps/vendite/api/urls_v1.py` — 4 path aggiunti
+- `backend/apps/vendite/db/commesse_repository.py` — stub `list_commessa_attivita`
+- `backend/apps/core/services/error_policies.py` — 3 policy errore `E_COMMESSA_*`
+- `backend/apps/vendite/tests/services/test_commesse_service.py` (nuovo) — 8 test
+- `backend/apps/vendite/tests/api/test_commesse_api.py` (nuovo) — 12 test
 
 #### 25.6.1 Endpoint push orchestratore
 
-- [ ] `POST /api/v1/commesse/push/` — lancia `CommessaPushOrchestrator.run()`
-  - [ ] Parametri: `source_types[]`, `dry_run` — da definire in sviluppo
-  - [ ] Response: `PushReport` serializzato
-- [ ] `GET /api/v1/commesse/push/<log_id>/` — restituisce `commesse_push_log`
-  - [ ] Serializer `PushLogSerializer` — da definire in sviluppo
+- [x] `POST /api/v1/vendite/commesse/push/run/` — lancia `CommessaPushOrchestrator.run()`
+  - Parametri body: `source_types[]`, `dry_run` (audit user via middleware JWT → GUC `app.jwt_user`)
+  - Response: `{stato, dry_run, push_log_id, durata_ms, handlers[]}`
+  - Header obbligatorio: `Idempotency-Key`
+  - Lock occupato → `stato: "SKIPPED"` (non errore, HTTP 200)
+- [x] `GET /api/v1/vendite/commesse/push/<log_id>/` — dettaglio `commesse_push_log`
 
 #### 25.6.2 Endpoint commesse
 
-- [ ] `GET /api/v1/commesse/<id>/` — dettaglio commessa + stato
-  - [ ] Serializer da definire in sviluppo
-- [ ] `GET /api/v1/commesse/<id>/attivita/` — lista `commesse_attivita`
-  - [ ] Serializer da definire in sviluppo
-- [ ] Eventuali altri endpoint (da definire in sviluppo in base a esigenze frontend)
+- [x] `GET /api/v1/vendite/commesse/<id>/stato/` — stato commessa + contatori
+  - Response: `{commessa_id, total_attivita, total_approvate, total_emesse}`
+- [x] `GET /api/v1/vendite/commesse/<id>/attivita/` — lista `commesse_attivita` (paginata)
+  - Query params: `stato_emissione`, `stato_approvazione`, `competenza_mese`, `limit` (1-200, default 50), `offset` (default 0)
+  - Chiama `vendite.fn_list_commessa_attivita` — 20 colonne, JOIN sorgenti
 
-#### 25.6.3 Endpoint da rimuovere (pipeline attività)
+#### 25.6.3 Endpoint da rimuovere (pipeline attività) ✅
 
-- [ ] Rimuovere `POST /attivita-pipeline/run/`
-      (o marcare deprecated con flag configurabile per transizione)
-- [ ] Rimuovere `GET /attivita-pipeline/<id>/status/`
-- [ ] Valutare `GET /attivita-pipeline/<id>/task-runs/` — reindirizzare o mantenere
+- [x] Rimosso `POST /attivita-pipeline/run/` — completato in FASE 4
+- [x] Mantenuti `GET .../status/` e `GET .../task-runs/` — necessari per monitoraggio
 
 ---
 
@@ -1689,36 +1774,345 @@ Le funzioni DB di L4 sono già presenti (team DB). Serve il layer Python.
 
 **Obiettivo:** suite completa verde prima del go-live.
 
-- [ ] `test_commesse_repository.py` — FASE 1
-- [ ] `test_commesse_push_orchestrator.py` — FASE 2
-- [ ] `test_commesse_source_handlers.py` — FASE 2
-- [ ] `test_commesse_rettifiche_service.py` — FASE 4.5
-- [ ] `test_pipeline_step_executor.py` aggiornato — FASE 3
-- [ ] `test_attivita_pipeline_repository.py` aggiornato — FASE 4
-- [ ] Run suite completa: `./manage-test.sh apps.vendite.tests -v 2`
-  - [ ] Zero regressioni sulla pipeline fatturazione esistente
-  - [ ] Nuovi test verdi
+- [x] `test_commesse_repository.py` — 19 test (FASE 1)
+- [x] `test_commesse_push_orchestrator.py` — 11 test (FASE 2)
+- [x] `test_commesse_source_handlers.py` — 17 test (FASE 2)
+- [ ] `test_commesse_rettifiche_service.py` — FASE 4.5 (da definire)
+- [x] `test_pipeline_step_executor.py` aggiornato — FASE 3
+- [x] `test_attivita_pipeline_repository.py` aggiornato — FASE 4
+- [x] `test_commesse_service.py` — 8 test (FASE 5)
+- [x] `test_commesse_api.py` — 13 test (FASE 5)
+- [x] `test_commesse_repository.py` — 21 test (FASE 5: +2 list_commessa_attivita)
+- [x] Run suite completa: **210/210 green**
+  - [x] Zero regressioni sulla pipeline fatturazione esistente
+  - [x] Nuovi test verdi
 
 ---
 
-### 25.8 FASE 7 — Cleanup finale
+### 25.8 FASE 7 — Cleanup finale ✅
 
-- [ ] Aggiornare header `attivita_pipeline_repository.py` ridotto (rimuovere riferimenti a gruppi eliminati)
-- [ ] Verificare nessun import orfano nei file modificati
-- [ ] Marcare `ripresa-lavori-attivita-fatturabili.md` come superato (nota in testa al file)
-- [ ] Aggiornare §20.5 (timing deprecazione) con data completamento effettiva
-- [ ] Allineare `gestione-listini.md` §13 se FASE 4.5 ha prodotto variazioni al modello rettifiche
+- [x] Header `attivita_pipeline_repository.py` — gia` pulito, nessun riferimento a gruppi eliminati
+- [x] Import orfani — zero trovati (verifica automatica su tutto il package vendite)
+- [x] `ripresa-lavori-attivita-fatturabili.md` — marcato come superato con nota in testa
+- [x] §20.5 timing deprecazione — aggiornato con data completamento 26-02-2026
+- [ ] Allineare `gestione-listini.md` §13 — skip, dipende da FASE 4.5 (rettifiche non ancora sviluppate)
 
 ---
 
 ### 25.9 Gate di uscita — go-live backend
 
-- [ ] FASE 1 completata e test verdi
-- [ ] FASE 2 completata e test verdi
-- [ ] FASE 3 step 0 integrato e testato
-- [ ] FASE 4 deprecazione eseguita — zero riferimenti a file eliminati
-- [ ] FASE 4.5 rettifiche operative — ciclo prezzi chiuso
-- [ ] FASE 5 endpoint esposti e documentati
-- [ ] FASE 6 suite completa verde (zero regressioni)
-- [ ] FASE 7 cleanup completato
+- [x] FASE 1 completata e test verdi
+- [x] FASE 2 completata e test verdi
+- [x] FASE 3 step 0 integrato e testato
+- [x] FASE 4 deprecazione eseguita — zero riferimenti a file eliminati
+- [ ] FASE 4.5 rettifiche operative — ciclo prezzi chiuso (da definire)
+- [x] FASE 5 endpoint esposti e documentati (4 endpoint, 23 test, 210/210 green)
+- [x] FASE 6 suite completa verde — 210/210 (manca solo test rettifiche, dipende da 4.5)
+- [x] FASE 7 cleanup completato — zero import orfani, doc aggiornata
 - [ ] Revisione finale con team DB: nessuna funzione DB referenziata da codice eliminato
+
+---
+
+## 26) Tracciabilita` sorgente originale e risoluzione `tipo_doc_fiscale_id` (25-02-2026)
+
+### 26.1 Problema identificato — il "buco COMMESSA"
+
+Nel modello v2, `fn_emit_attivita_fatturabili_da_commessa` scrive su AF con:
+
+```text
+sorgente_tipo_id = COMMESSA           (fisso, per idempotenza)
+sorgente_uid     = hash(segment_key)  (deterministico)
+```
+
+Questo e` semanticamente corretto: la sorgente *immediata* di AF e` la commessa.
+Ma la sorgente *business originale* (PREVENTIVO, ORDINE_VENDITA, CONTRATTO, DDT_VENDITA,
+ATTIVITA_CONSUMI) viene persa a livello AF.
+
+L'informazione esiste in `commesse_attivita.sorgente_tipo_id`, raggiungibile via
+`AF.commessa_attivita_id`, ma richiede un JOIN ogni volta.
+
+**Conseguenza critica su `tipo_doc_fiscale_id`:**
+
+Il trigger `trgfn_attivita_fatturabili_normalize` risolve `tipo_doc_fiscale_id` chiamando
+`fn_get_tipo_doc_fiscale_id(NEW.sorgente_tipo_id)`. Ma `NEW.sorgente_tipo_id` e` COMMESSA,
+non la sorgente originale. Quindi:
+
+| Scenario                                                    | Risultato                                     |
+| ----------------------------------------------------------- | --------------------------------------------- |
+| `config.sorgenti[COMMESSA].tipo_doc_fiscale_id` configurato | Funziona, ma tutti AF ricevono lo stesso tipo |
+| `config.sorgenti[COMMESSA].tipo_doc_fiscale_id` NULL        | ERRORE per tutte le righe                     |
+| Sorgenti diverse richiedono tipi doc diversi                | NON SUPPORTATO — tutto appiattito su COMMESSA |
+
+### 26.2 Opzioni valutate
+
+**Opzione A — Codice composto nella sorgente (es. `COMMESSA_PREVENTIVO`)**
+
+Creare sorgenti composte in `config.sorgenti` per ogni combinazione.
+
+- Contro: esplosione combinatoria (N sorgenti x M contesti)
+- Contro: rompe TUTTE le query/policy che filtrano su `sorgente_tipo_id = 'COMMESSA'`
+- Contro: la coppia `(sorgente_tipo_id, sorgente_uid)` perde l'idempotenza attuale
+- Contro: trigger `trgfn_prevent_deactivate_if_children` ingestibili
+
+**Scartata: troppo invasiva.**
+
+**Opzione B — Colonna `sorgente_origine_tipo_id` su AF**
+
+Aggiungere `sorgente_origine_tipo_id BIGINT FK -> config.sorgenti(id)` su
+`vendite.attivita_fatturabili`.
+
+- Pro: zero breaking change su `sorgente_tipo_id` (idempotenza invariata)
+- Pro: query dirette senza JOIN: `WHERE sorgente_origine_tipo_id = ?`
+- Pro: audit trail completo su AF
+- Pro: `fn_emit` ha gia` il dato: `commesse_attivita.sorgente_tipo_id`
+- Contro: due colonne "sorgente" — naming chiaro obbligatorio
+
+**Opzione C — Risalire via JOIN (nessun nuovo campo)**
+
+Usare la catena `AF.commessa_attivita_id -> commesse_attivita.sorgente_tipo_id`.
+
+- Pro: zero modifiche schema
+- Contro: JOIN obbligatorio ogni volta
+- Contro: trigger dovrebbe sub-SELECT su `commesse_attivita` per ogni riga
+- Contro: report/dashboard/analytics tutti forzati a joinare
+- Contro: fragilita` se la relazione non e` sempre valorizzata
+
+**Debole per un ERP di produzione.**
+
+**Opzione D — Risolvere solo `tipo_doc_fiscale_id` nelle `fn_list`**
+
+Aggiungere `tipo_doc_fiscale_id` come colonna di output nelle 5 `fn_list_*_da_pushare`,
+risolto da `config.sorgenti.tipo_doc_fiscale_id` per la sorgente originale (PREVENTIVO,
+ORDINE_VENDITA, etc.). Propagare via `commesse_attivita` fino ad AF.
+
+- Pro: risolve il problema specifico `tipo_doc_fiscale`
+- Pro: costo zero (stessa query, stessa join su `config.sorgenti`)
+- Contro: non risolve il problema strutturale della sorgente nascosta
+
+### 26.3 Decisione: Opzione B + D combinate
+
+Le due opzioni sono complementari e insieme risolvono sia il problema strutturale
+(tracciabilita`) sia quello specifico (`tipo_doc_fiscale_id`).
+
+**Opzione B — `sorgente_origine_tipo_id` su AF:**
+
+```text
+vendite.attivita_fatturabili:
+  sorgente_tipo_id            = COMMESSA        (sorgente immediata, chiave idempotenza)
+  sorgente_origine_tipo_id    = PREVENTIVO      (sorgente business originale — NUOVO)
+```
+
+**Opzione D — `tipo_doc_fiscale_id` nelle `fn_list`:**
+
+Le 5 `fn_list_*_da_pushare` gia` fanno JOIN su `config.sorgenti` per `sorgente_tipo_id`.
+Aggiungere `s.tipo_doc_fiscale_id` al SELECT ha costo zero.
+
+### 26.4 Flusso risultante
+
+```text
+fn_list_preventivi_da_pushare
+    -> sorgente_tipo_id = PREVENTIVO
+    -> tipo_doc_fiscale_id = config.sorgenti[PREVENTIVO].tipo_doc_fiscale_id
+    |
+    v
+fn_upsert_commessa_attivita
+    -> sorgente_tipo_id = PREVENTIVO (conservato)
+    -> tipo_doc_fiscale_id = FATTURA (propagato)
+    |
+    v
+fn_emit_attivita_fatturabili_da_commessa
+    -> sorgente_tipo_id = COMMESSA (idempotenza — invariato)
+    -> sorgente_origine_tipo_id = PREVENTIVO (da ca.sorgente_tipo_id — NUOVO)
+    -> tipo_doc_fiscale_id = FATTURA (da ca.tipo_doc_fiscale_id — gia` popolato)
+    |
+    v
+trgfn_attivita_fatturabili_normalize
+    -> tipo_doc_fiscale_id gia` valorizzato? -> SKIP
+    -> se NULL? -> risolve da sorgente_origine_tipo_id (safety net corretto)
+```
+
+**Nessun buco. Origine sempre tracciabile. Zero breaking change.**
+
+### 26.5 Impatto implementativo
+
+**DB — DDL:**
+
+- [x] Aggiungere `sorgente_origine_tipo_id BIGINT` a `vendite.attivita_fatturabili` (nullable)
+- [x] FK verso `config.sorgenti(id)`
+- [x] Trigger `trgfn_child_requires_active_parent` su `sorgente_origine_tipo_id`
+
+**DB — `fn_emit_attivita_fatturabili_da_commessa`:**
+
+- [x] Aggiungere `ca.sorgente_tipo_id` al SELECT nel loop
+- [x] Scrivere `sorgente_origine_tipo_id = ca.sorgente_tipo_id` nell'INSERT e nell'UPDATE
+
+**DB — 5 `fn_list_*_da_pushare`:**
+
+- [x] Aggiungere `s.tipo_doc_fiscale_id` al SELECT (join su `config.sorgenti` gia` presente)
+- [x] Funzioni coinvolte:
+  - `fn_list_preventivi_da_pushare`
+  - `fn_list_ordini_da_pushare`
+  - `fn_list_contratti_da_pushare`
+  - `fn_list_ddt_da_pushare`
+  - `fn_list_consumi_da_pushare`
+
+**DB — `trgfn_attivita_fatturabili_normalize`:**
+
+- [x] Quando `tipo_doc_fiscale_id IS NULL`, risolvere da `sorgente_origine_tipo_id`
+      (non piu` da `sorgente_tipo_id` che ora e` sempre COMMESSA)
+- [x] Il trigger resta safety net, non risoluzione primaria
+
+**Backend — `CommesseRepository`:**
+
+- [x] Aggiornare `PushableRow` con campo `tipo_doc_fiscale_id`
+- [x] Propagare in `CommessaAttivitaInput`
+
+**Backend — handler sorgenti:**
+
+- [x] Passare `tipo_doc_fiscale_id` da `PushableRow` a `upsert_attivita()`
+
+### 26.6 Motivazioni architetturali
+
+1. **DB-first coerente**: la risoluzione `tipo_doc_fiscale_id` resta nel DB
+   (`fn_list` + trigger safety net), nessuna logica in Python.
+2. **Tracciabilita` completa**: la sorgente business originale e` sempre accessibile
+   su AF senza JOIN, per query, report e audit.
+3. **Per-sorgente**: sorgenti diverse possono avere tipi doc fiscale diversi
+   (PREVENTIVO -> FATTURA, CONTRATTO -> FATTURA_PERIODICA).
+4. **Zero breaking change**: `sorgente_tipo_id / sorgente_uid` invariati,
+   idempotenza pull non toccata.
+5. **`config.sorgenti.tipo_doc_fiscale_id`**: resta il default configurabile per tipo
+   sorgente. Complementare, non sostituito.
+
+### 26.7 Checklist §26
+
+- [x] DDL `sorgente_origine_tipo_id` su AF + FK + trigger active-parent
+- [x] `fn_emit` aggiornata (SELECT + INSERT/UPDATE)
+- [x] 5 `fn_list_*_da_pushare` aggiornate con `tipo_doc_fiscale_id`
+- [x] `trgfn_attivita_fatturabili_normalize` aggiornato (safety net da `sorgente_origine_tipo_id`)
+- [x] Backend `PushableRow` + `CommessaAttivitaInput` aggiornati
+- [x] Handler sorgenti: propagazione `tipo_doc_fiscale_id`
+- [x] Test pgTAP: risoluzione `tipo_doc_fiscale_id` per-sorgente
+- [x] Test pgTAP: `sorgente_origine_tipo_id` propagato da `fn_emit`
+
+---
+
+## 27) Pulizia `config.sorgenti` — scope, trigger polimorfo, RIGA (25-02-2026)
+
+### 27.1 Modifiche DB completate
+
+1. **Colonna `scope` su `config.sorgenti`** (NOT NULL, CHECK constraint):
+   - `PUSH_COMMESSA` — PREVENTIVO, CONTRATTO, ORDINE_VENDITA, DDT_VENDITA, ATTIVITA_CONSUMI
+   - `PIPELINE_MARKER` — ATTIVITA, COMMESSA
+   - `ROW_VALIDATOR` — 5 sorgenti *_RIGA (archiviate)
+   - `POST_INVOICE` — FATTURA
+   - `DIRECT_ENTRY` — riservato per uso futuro
+
+2. **Trigger polimorfo rimosso** da `attivita_fatturabili`:
+   `trg_attivita_fatturabili_a10_guard_fonte_ins_upd` droppato.
+   Ridondante nel flusso commessa-only (`sorgente_tipo_id` = COMMESSA, FK `commessa_attivita_id`
+   copre la validazione). La funzione `script.trgfn_guard_sorgente_polimorfa()` resta disponibile.
+
+3. **5 sorgenti RIGA archiviate** (`attivo=false`, `meta.archived=true`):
+   PREVENTIVO_RIGA, CONTRATTO_RIGA, ORDINE_VENDITA_RIGA, DDT_VENDITA_RIGA, FATTURA_RIGA.
+   Branch policy corrispondente eliminata.
+
+### 27.2 Impatto backend — ottimizzazioni possibili
+
+**A) `PushableRow` + `tipo_doc_fiscale_id` (§26 — da fare):**
+
+Le 5 `fn_list_*_da_pushare` ora restituiscono `tipo_doc_fiscale_id`.
+Il backend deve allinearsi:
+
+- `_PUSHABLE_SHARED_COLS`: aggiungere `"tipo_doc_fiscale_id"`
+- `PushableRow`: aggiungere campo `tipo_doc_fiscale_id: int | None`
+- `_map_pushable_row()`: aggiungere mapping
+- `_build_attivita_input()`: usare `row.tipo_doc_fiscale_id` direttamente
+- Rimuovere lo stub `_resolve_tipo_doc_fiscale_id()` dal handler base
+  (la risoluzione avviene nel DB, il Python riceve il valore gia` calcolato)
+
+**B) Scoperta dinamica sorgenti via `scope` (opzionale, media priorita`):**
+
+Il campo `scope` consente al backend di scoprire le sorgenti pushable a runtime
+invece di mantenere mapping hardcoded:
+
+```python
+# Oggi: _SORGENTE_FN_MAP hardcoded in commesse_repository.py
+# Domani possibile:
+SELECT s.codice, s.id, s.tipo_doc_fiscale_id
+  FROM config.sorgenti s
+ WHERE s.scope = 'PUSH_COMMESSA' AND s.attivo = true;
+```
+
+Benefici:
+- Aggiungere una nuova sorgente = INSERT in `config.sorgenti` + registrare handler Python
+- `_SORGENTE_FN_MAP` validabile a startup contro `config.sorgenti`
+- Filtrare sorgenti per contesto senza conoscere i codici
+
+**C) Semplificazione validazione (gia` attiva):**
+
+- Trigger polimorfo rimosso: nessun impatto diretto sul backend (era trasparente),
+  ma riduce overhead INSERT/UPDATE su AF e semplifica debug.
+- RIGA archiviate: `attivo=false` le esclude automaticamente da qualsiasi query
+  che filtra su `sorgenti.attivo = true`. Nessuna logica di filtro da aggiungere.
+
+### 27.3 Checklist §27
+
+- [x] DDL `scope` su `config.sorgenti` + CHECK + NOT NULL
+- [x] Drop trigger `trg_attivita_fatturabili_a10_guard_fonte_ins_upd`
+- [x] Archiviazione 5 sorgenti RIGA + cleanup branch_policy
+- [x] CSV seed aggiornati (sorgenti.csv, branch_policy.csv, loadUpdateData)
+- [x] Test pgTAP: `test-sorgenti-scope-pulizia-v1.sql` (10 test)
+- [x] Backend: `PushableRow` + `tipo_doc_fiscale_id` (§27.2 A) — campo aggiunto, mapping, test verdi
+- [x] Backend: rimosso stub `_resolve_tipo_doc_fiscale_id()` — il DB risolve direttamente
+- [x] Backend: `validate_sorgente_map()` — verifica _SORGENTE_FN_MAP vs config.sorgenti (scope=PUSH_COMMESSA) + 2 test
+
+
+
+28.0   Critiche al progetto 
+
+1. Workflow engine nel DB
+
+Vero in parte. Ma il progetto ha gia' iniziato a spostare l'orchestrazione in Python — LottoPipelineRunner, pipeline_step_executor, e ora gli handler commesse (HandlerOrdini, HandlerConsumi, etc.) con il pattern collect-then-batch. Il DB fa le operazioni atomiche (fn_upsert, fn_batch_upsert, advisory locks, state transition), Python orchestra il flusso. La direzione e' giusta.
+
+Il rischio reale non e' "troppa logica nel DB" in assoluto — e' che la boundary non sia chiara. Oggi hai:
+
+DB: stato, vincoli, operazioni atomiche, guard → ok
+Python: orchestrazione, retry, handler, dispatch → ok
+Zona grigia: pr_run_lotto_pipeline (legacy SQL) fa orchestrazione che LottoPipelineRunner duplica → questa e' la parte da pulire
+Finche' la regola e' "il DB possiede lo stato e le transizioni atomiche, Python possiede il flusso", il modello tiene.
+
+2. Backend passacarte
+
+Questo era vero 6 mesi fa. Oggi meno. Gli handler commesse hanno logica sostanziale: fan-out consumi, cache commessa, errori isolati per riga, mapping input. Le view API fanno validazione, paginazione, search con throttling. Non e' un proxy.
+
+Il punto valido e': retry policy, alerting e scheduling. Oggi pgAgent schedula, ma se serve un backoff esponenziale con dead-letter queue, farlo in PL/pgSQL e' masochismo. Python ha Celery, APScheduler, strutturato logging. Per ora non servono, ma quando serviranno la scelta giusta e' metterli in Python, non nel DB.
+
+3. Event log immutabile — questa e' la critica piu' forte
+
+Hai ragione. Oggi ci sono:
+
+commesse_push_log — log push commesse
+fatturazione_lotti_task_runs — task run pipeline
+fatture_log — segnalazioni fatture
+Tre tabelle separate, con strutture diverse, senza correlazione temporale unificata. Per rispondere a "cosa e' successo al lotto X tra le 14:00 e le 15:00?" devi fare 3 query e ricostruire manualmente la timeline.
+
+Una tabella tipo:
+
+
+vendite.event_log (
+    id bigint GENERATED ALWAYS AS IDENTITY,
+    event_time timestamptz NOT NULL DEFAULT now(),
+    domain text NOT NULL,          -- 'PIPELINE', 'COMMESSE', 'SDI'
+    entity_type text NOT NULL,     -- 'LOTTO', 'FATTURA', 'COMMESSA'
+    entity_id bigint NOT NULL,
+    event_code text NOT NULL,      -- 'STEP_COMPLETED', 'PUSH_STARTED', ...
+    actor text,                    -- user o 'system'
+    payload jsonb,
+    INDEX ix_event_log_entity (entity_type, entity_id, event_time)
+)
+Append-only, nessun UPDATE/DELETE. Costa poco, risolve audit, debug e compliance. Le tabelle specifiche restano per query operative ottimizzate, l'event log le unifica per la ricostruzione storica.
+
+In sintesi: le critiche 1 e 2 sono valide come tendenze da monitorare, ma il progetto sta gia' evolvendo nella direzione giusta. La critica 3 e' un'azione concreta da pianificare — un event store unificato e' il pezzo mancante piu' impattante.
+
+Zona grigia: pr_run_lotto_pipeline (legacy SQL( questa credo sia deprecata , rimasta ma da eliminare non credi ?

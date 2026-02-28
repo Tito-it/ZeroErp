@@ -117,11 +117,11 @@ SELECT ok(
 );
 
 INSERT INTO config.sorgenti (
-  codice_interno, codice, categoria, descrizione, attivo, target_table, key_selector, meta
+  codice_interno, codice, categoria, descrizione, attivo, target_table, key_selector, scope, meta
 )
 VALUES (
   'COMMESSA', 'COMMESSA', 'DOCUMENTO', 'Commessa test pgtap guardrail', true,
-  'vendite.commesse_attivita'::regclass, 'id',
+  'vendite.commesse_attivita'::regclass, 'id', 'PIPELINE_MARKER',
   jsonb_build_object('idempotency_key','segment_key')
 )
 ON CONFLICT (codice)
@@ -161,7 +161,8 @@ SELECT vendite.fn_link_commessa_sorgente(
 );
 
 CREATE TEMP TABLE tmp_commessa_att_a AS
-SELECT vendite.fn_upsert_commessa_attivita(
+SELECT r.attivita_id AS commessa_attivita_id
+FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_a),
   p_segment_key => ('SEG-A-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_guard_refs),
@@ -191,7 +192,7 @@ SELECT vendite.fn_upsert_commessa_attivita(
   p_tipo_movimento => 'NORMALE',
   p_tipo_consumo => 'ACCONTO',
   p_meta => jsonb_build_object('case', 'GUARD_A')
-) AS commessa_attivita_id;
+) r;
 
 SELECT ok(
   (SELECT commessa_attivita_id IS NOT NULL FROM tmp_commessa_att_a),
@@ -290,7 +291,8 @@ SELECT vendite.fn_link_commessa_sorgente(
 );
 
 CREATE TEMP TABLE tmp_commessa_att_b AS
-SELECT vendite.fn_upsert_commessa_attivita(
+SELECT r.attivita_id AS commessa_attivita_id
+FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_b),
   p_segment_key => ('SEG-B-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_guard_refs),
@@ -320,7 +322,7 @@ SELECT vendite.fn_upsert_commessa_attivita(
   p_tipo_movimento => 'NORMALE',
   p_tipo_consumo => 'ACCONTO',
   p_meta => jsonb_build_object('case', 'GUARD_B')
-) AS commessa_attivita_id;
+) r;
 
 SELECT throws_ok(
   $$

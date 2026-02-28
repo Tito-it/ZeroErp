@@ -105,25 +105,6 @@ class LottoListRow(TypedDict):
     user_insert: str
 
 
-class AttivitaTaskRunRow(TypedDict):
-    id: int
-    lotto_attivita_id: int
-    pipeline_id: int | None
-    sorgente_tipo_id: int | None
-    branch_code: str
-    task_code: str
-    fase: str | None
-    tentativo: int
-    task_stato: str
-    block_scope: str
-    depends_on: list[Any]
-    started_at: str | None
-    ended_at: str | None
-    error_code: str | None
-    error_message: str | None
-    meta: dict[str, Any]
-
-
 class CommessaEmitResult(TypedDict):
     total_candidate: int
     inserted_rows: int
@@ -144,4 +125,3 @@ class CommessaPushLogRow(TypedDict):
     risultato: dict[str, Any] | None
     stato: str
     durata_ms: int | None
-    user_run: str | None

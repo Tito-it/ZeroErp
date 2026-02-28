@@ -2,20 +2,19 @@
 # ⚙️ Funzione `fn_log_commessa_push_run`
 
 ```sql
-CREATE FUNCTION fn_log_commessa_push_run(p_dry_run boolean, p_source_types text[], p_risultato jsonb, p_stato character varying, p_durata_ms integer, p_user_run text)
+CREATE FUNCTION fn_log_commessa_push_run(p_dry_run boolean, p_source_types text[], p_risultato jsonb, p_stato character varying, p_durata_ms integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_log_commessa_push_run(p_dry_run boolean DEFAULT false, p_source_types text[] DEFAULT NULL::text[], p_risultato jsonb DEFAULT '{}'::jsonb, p_stato character varying DEFAULT 'COMPLETATO'::character varying, p_durata_ms integer DEFAULT NULL::integer, p_user_run text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION vendite.fn_log_commessa_push_run(p_dry_run boolean DEFAULT false, p_source_types text[] DEFAULT NULL::text[], p_risultato jsonb DEFAULT '{}'::jsonb, p_stato character varying DEFAULT 'COMPLETATO'::character varying, p_durata_ms integer DEFAULT NULL::integer)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
 DECLARE
   v_id vendite.commesse_push_log.id%TYPE;
   v_stato vendite.commesse_push_log.stato%TYPE;
-  v_user_run vendite.commesse_push_log.user_run%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -25,7 +24,7 @@ BEGIN
   -- Regole:
   --   - stato ammesso: COMPLETATO | PARZIALE | ERRORE
   --   - durata_ms, se valorizzata, deve essere >= 0
-  --   - user_run fallback a current_user se non fornito
+  --   - user_insert gestito dal trigger audit JWT
   -- =========================================================
   v_stato := upper(COALESCE(NULLIF(btrim(p_stato), ''), ''));
   IF v_stato = '' THEN
@@ -73,23 +72,19 @@ BEGIN
     );
   END IF;
 
-  v_user_run := COALESCE(NULLIF(btrim(p_user_run), ''), current_user);
-
   INSERT INTO vendite.commesse_push_log (
     dry_run,
     source_types,
     risultato,
     stato,
-    durata_ms,
-    user_run
+    durata_ms
   )
   VALUES (
     COALESCE(p_dry_run, false),
     p_source_types,
     COALESCE(p_risultato, '{}'::jsonb),
     v_stato,
-    p_durata_ms,
-    v_user_run
+    p_durata_ms
   )
   RETURNING id INTO v_id;
 
@@ -97,8 +92,8 @@ BEGIN
 END
 $function$
 
-COMMENT ON FUNCTION vendite.fn_log_commessa_push_run(p_dry_run boolean, p_source_types text[], p_risultato jsonb, p_stato character varying, p_durata_ms integer, p_user_run text)
-IS 'Registra il run dell''orchestratore push commesse in vendite.commesse_push_log con validazioni su stato e durata.';
+COMMENT ON FUNCTION vendite.fn_log_commessa_push_run(p_dry_run boolean, p_source_types text[], p_risultato jsonb, p_stato character varying, p_durata_ms integer)
+IS 'Registra il run dell''orchestratore push commesse in vendite.commesse_push_log con validazioni su stato e durata. User tracciato da audit JWT.';
 ```
 
 ---

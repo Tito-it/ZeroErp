@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260226-02-alter-commesse-stato-commessa-id-mctit.yaml
+
+  - changeSet:
+      id: 20260226-02-alter-commesse-stato-commessa-id
+      author: mctit
+      comment: "Migra commesse.stato_commessa da VARCHAR a FK verso vendite.stati_commessa."
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: stati_commessa
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Sostituire la colonna VARCHAR stato_commessa con FK
+              --   stato_commessa_id verso vendite.stati_commessa.
+              --
+              -- Passi:
+              --   1. Aggiunge stato_commessa_id nullable
+              --   2. Popola da mapping codice -> id
+              --   3. SET NOT NULL
+              --   4. Aggiunge FK
+              --   5. Trigger active parent
+              --   6. Trigger prevent_deactivate on stati_commessa
+              --   7. Drop vecchio CHECK + colonna + indice
+              --   8. Ricrea indice sulla nuova colonna
+              -- =========================================================
+
+              -- 1) Aggiunge colonna FK nullable
+              ALTER TABLE vendite.commesse
+                ADD COLUMN stato_commessa_id bigint;
+
+              -- 2) Popola da mapping
+              UPDATE vendite.commesse c
+                 SET stato_commessa_id = sc.id
+                FROM vendite.stati_commessa sc
+               WHERE sc.codice_interno = c.stato_commessa;
+
+              -- 3) NOT NULL
+              ALTER TABLE vendite.commesse
+                ALTER COLUMN stato_commessa_id SET NOT NULL;
+
+              -- 4) Default = BOZZA (id=1)
+              ALTER TABLE vendite.commesse
+                ALTER COLUMN stato_commessa_id SET DEFAULT 1;
+
+              -- 5) FK
+              ALTER TABLE vendite.commesse
+                ADD CONSTRAINT fk_commesse_stato_commessa
+                FOREIGN KEY (stato_commessa_id)
+                REFERENCES vendite.stati_commessa(id);
+
+              -- 6) Trigger: figlio richiede padre attivo
+              CREATE TRIGGER trg_commesse_a10_stati_commessa_require_attivo_ins_upd
+                AFTER INSERT OR UPDATE OF stato_commessa_id
+                ON vendite.commesse
+                FOR EACH ROW
+                EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(
+                  'vendite', 'stati_commessa', 'attivo', 'stato_commessa_id'
+                );
+
+              -- 7) Trigger: previene disattivazione stato se usato da commesse
+              CREATE TRIGGER trg_stati_commessa_a10_commesse_block_deact_upd
+                BEFORE UPDATE OF attivo
+                ON vendite.stati_commessa
+                FOR EACH ROW
+                EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children(
+                  'vendite', 'commesse', 'stato_commessa_id', 'id'
+                );
+
+              -- 8) Drop vecchio CHECK, colonna e indice
+              ALTER TABLE vendite.commesse DROP CONSTRAINT chk_commesse_stato;
+              DROP INDEX IF EXISTS vendite.ix_commesse_stato;
+              ALTER TABLE vendite.commesse DROP COLUMN stato_commessa;
+
+              -- 9) Ricrea indice sulla nuova FK
+              CREATE INDEX ix_commesse_stato_commessa_id
+                ON vendite.commesse (stato_commessa_id);

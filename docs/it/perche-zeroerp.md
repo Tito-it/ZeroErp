@@ -226,9 +226,3 @@ deve sempre poggiare su tre principi non negoziabili:
 **Chi porta buone idee è il benvenuto.**
 **Chi le realizza violando questi principi, no.**
 
->
->  In Zero ERP la fantasia è benvenuta.
->  L’innovazione è incoraggiata,
->  ma la realizzazione concreta del progetto
->  deve sempre poggiare sui tre principi non negoziabili.
->

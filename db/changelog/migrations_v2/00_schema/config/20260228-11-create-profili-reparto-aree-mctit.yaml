@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella config.profili_reparto_aree — profilo accesso ereditato per area
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260228-11-create-profili-reparto-aree-mctit.yaml
+
+  - changeSet:
+      id: 20260228-11-create-profili-reparto-aree
+      author: mctit
+      comment: >
+        Profilo di accesso ereditato: livello per area per ogni reparto.
+        Cuore dell'ereditarieta': tutti gli operatori del reparto
+        ereditano automaticamente questi livelli.
+        Matrice (unita_organizzativa x area) -> livello_accesso.
+
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: profili_reparto_aree
+            remarks: "Profilo accesso ereditato: livello di accesso per area per ogni reparto."
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_profili_reparto_aree
+                    nullable: false
+
+              - column:
+                  name: unita_organizzativa_id
+                  type: integer
+                  remarks: "FK -> config.unita_organizzative.id — reparto."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: area_id
+                  type: integer
+                  remarks: "FK -> config.aree_funzionali.id — area funzionale."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: livello
+                  type: config.livello_accesso
+                  defaultValue: BLOCCATO
+                  remarks: "Livello di accesso ereditato dagli operatori del reparto."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp ultima modifica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente ultima modifica."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: profili_reparto_aree
+            columnNames: unita_organizzativa_id, area_id
+            constraintName: uq_profili_reparto_aree_uo_area
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: profili_reparto_aree
+            baseColumnNames: unita_organizzativa_id
+            constraintName: fk_profili_reparto_aree_unita_organizzativa
+            referencedTableSchemaName: config
+            referencedTableName: unita_organizzative
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: profili_reparto_aree
+            baseColumnNames: area_id
+            constraintName: fk_profili_reparto_aree_area
+            referencedTableSchemaName: config
+            referencedTableName: aree_funzionali
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - createIndex:
+            schemaName: config
+            tableName: profili_reparto_aree
+            indexName: ix_profili_reparto_aree_uo_id
+            columns:
+              - column:
+                  name: unita_organizzativa_id
+
+        - createIndex:
+            schemaName: config
+            tableName: profili_reparto_aree
+            indexName: ix_profili_reparto_aree_area_id
+            columns:
+              - column:
+                  name: area_id
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE config.profili_reparto_aree IS
+              'Profilo accesso ereditato: livello di accesso per area per ogni reparto.
+               ATTENZIONE: modificare un profilo impatta tutti gli operatori del reparto.
+               Matrice (unita_organizzativa x area) -> livello_accesso.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: profili_reparto_aree

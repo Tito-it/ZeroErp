@@ -19,8 +19,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from django.db import connection
+
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.services.commesse_source_handlers import BaseSourceHandler, HandlerResult
+
+_LOCK_KEY = "commesse_push_orchestrator"
 
 
 @dataclass
@@ -38,8 +42,8 @@ class PushReport:
         return {r.handler_name: r.as_dict() for r in self.handlers}
 
     def source_type_names(self) -> list[str]:
-        """Nomi dei sorgenti processati, nell'ordine di esecuzione."""
-        return [r.handler_name for r in self.handlers]
+        """Codici sorgente processati (config.sorgenti), nell'ordine di esecuzione."""
+        return [r.sorgente_codice for r in self.handlers if r.sorgente_codice]
 
 
 class CommessaPushOrchestrator:
@@ -62,13 +66,31 @@ class CommessaPushOrchestrator:
 
     # --- Helpers ---
 
+    @staticmethod
+    def _try_acquire_lock() -> bool:
+        """Tenta di acquisire un advisory lock session-level. Ritorna False se già acquisito."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_try_advisory_lock(hashtext(%s))", [_LOCK_KEY]
+            )
+            row = cursor.fetchone()
+        return bool(row and row[0])
+
+    @staticmethod
+    def _release_lock() -> None:
+        """Rilascia l'advisory lock session-level."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_advisory_unlock(hashtext(%s))", [_LOCK_KEY]
+            )
+
     def _resolve_handlers(self, source_types: list[str] | None) -> list[BaseSourceHandler]:
         """Restituisce gli handler da eseguire.
         None = tutti i registrati; altrimenti filtra per name.
         """
         if source_types is None:
             return self._handlers
-        return [h for h in self._handlers if h.name in source_types]
+        return [h for h in self._handlers if h.sorgente_codice in source_types]
 
     @staticmethod
     def _compute_stato(results: list[HandlerResult]) -> str:
@@ -93,7 +115,6 @@ class CommessaPushOrchestrator:
         *,
         source_types: list[str] | None = None,
         dry_run: bool = False,
-        user_run: str | None = None,
     ) -> PushReport:
         """Esegue il push per tutti gli handler (o per i source_types selezionati).
 
@@ -101,12 +122,37 @@ class CommessaPushOrchestrator:
             source_types — None = tutti; lista di nomi = sottoinsieme
             dry_run      — True: gli handler non scrivono, ma il log viene comunque
                            scritto con dry_run=True per audit
-            user_run     — identificativo dell'utente/scheduler che ha lanciato il run
 
         Restituisce PushReport con stato, risultati per handler e push_log_id.
+        Se un altro run è già in corso restituisce PushReport con stato SKIPPED.
         """
+        if not self._try_acquire_lock():
+            return PushReport(dry_run=dry_run, stato="SKIPPED", durata_ms=0)
+
+        try:
+            return self._run_locked(
+                source_types=source_types, dry_run=dry_run,
+            )
+        finally:
+            self._release_lock()
+
+    def _run_locked(
+        self,
+        *,
+        source_types: list[str] | None,
+        dry_run: bool,
+    ) -> PushReport:
+        """Logica di run effettiva, eseguita sotto advisory lock."""
         t0 = time.monotonic()
         results: list[HandlerResult] = []
+
+        self._repo.log_event(
+            domain="COMMESSE",
+            entity_type="TASK_RUN",
+            entity_id=0,
+            event_code="PUSH_STARTED",
+            payload={"source_types": source_types, "dry_run": dry_run},
+        )
 
         for handler in self._resolve_handlers(source_types):
             try:
@@ -114,6 +160,7 @@ class CommessaPushOrchestrator:
             except Exception as exc:
                 result = HandlerResult(
                     handler_name=handler.name,
+                    sorgente_codice=handler.sorgente_codice,
                     errors=[str(exc)],
                 )
             results.append(result)
@@ -134,8 +181,23 @@ class CommessaPushOrchestrator:
             source_types=report.source_type_names() or None,
             risultato=report.as_risultato() or None,
             durata_ms=durata_ms,
-            user_run=user_run,
         )
         report.push_log_id = push_log_id
+
+        errors_count = sum(len(r.errors) for r in results)
+        self._repo.log_event(
+            domain="COMMESSE",
+            entity_type="TASK_RUN",
+            entity_id=push_log_id,
+            event_code="PUSH_COMPLETED",
+            severity="WARN" if stato != "COMPLETATO" else "INFO",
+            payload={
+                "stato": stato,
+                "durata_ms": durata_ms,
+                "push_log_id": push_log_id,
+                "handlers_count": len(results),
+                "errors_count": errors_count,
+            },
+        )
 
         return report

@@ -6,6 +6,7 @@
 - [api_endpoint_helpers](manual/api_endpoint_helpers.md) — Centralizzare il flusso standard dei POST JSON (parse, validazione base, envelope, idempotenza).
 - [api_lookup_codici](manual/api_lookup_codici.md) — Espone una ricerca generica su tabelle di configurazione con struttura id / codice / descrizione. Permette autocompletamento e ricerca ILIKE da UI senza dover creare endpoint dedicati per ogni tabella config.
 - [api_pagination](manual/api_pagination.md) — Fornire configurazioni DRF standard per paginazione coerente su endpoint list/search.
+- [api_permessi_effettivi](manual/api_permessi_effettivi.md) — Esporre un endpoint diagnostico che restituisce i permessi effettivi risolti per un utente, iterando tutte le aree funzionali attive e mostrando il livello di accesso, le azioni consentite e lo stato del profilo reparto.
 - [api_response_envelope](manual/api_response_envelope.md) — Definire il formato uniforme delle risposte successo/errore per tutte le API.
 - [api_retry_policies](manual/api_retry_policies.md) — Uniformare gestione idempotency key e semantica retry lato API.
 - [api_routing_core](manual/api_routing_core.md) — Documentare il routing core tra path legacy e path versionato v1.
@@ -21,4 +22,9 @@
 - [value-normalizer](manual/value-normalizer.md) — Centralizzare utility riusabili di normalizzazione valori input.
 
 ## Altri contenuti
+- [emittente_fiscale_scope_mixin](manual/emittente_fiscale_scope_mixin.md) — Mixin per ViewSet e GenericAPIView che filtra automaticamente il queryset in base agli emittenti fiscali autorizzati per l'utente corrente.
 - [gen-bk-docs](manual/gen-bk-docs.md) — Automatizzare la generazione degli indici index.md (e opzionalmente index.ci.md) per docs/it/backend/<area>/, includendo una descrizione breve estratta dalla sezione **Scopo**.
+- [jwt_audit_middleware](manual/jwt_audit_middleware.md) — Middleware Django che propaga l'identita' dell'utente autenticato nella sessione PostgreSQL tramite GUC (SET LOCAL) e rifiuta anticipatamente gli utenti disabilitati sugli endpoint API.
+- [permissions_cache](manual/permissions_cache.md) — Cache Redis L2 per i permessi utente. Integra la cache per-request (L1 dict) con Redis (L2) per evitare query DB su ogni richiesta HTTP.
+- [permissions_resolver](manual/permissions_resolver.md) — Risolutore centrale dei permessi ZeroErp. Implementa la catena di risoluzione: ruolo_sistema → override utente → profilo reparto → BLOCCATO (default sicuro).
+- [zeroerp_permission](manual/zeroerp_permission.md) — Permission class DRF centrale per ZeroErp. Risolve automaticamente l'area funzionale dallo schema del model e verifica il livello di accesso tramite PermissionResolver.

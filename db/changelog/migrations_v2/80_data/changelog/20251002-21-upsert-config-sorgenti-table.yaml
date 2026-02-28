@@ -55,3 +55,4 @@ databaseChangeLog:
               - column: { name: target_table, type: STRING }
               - column: { name: key_selector, type: STRING }
               - column: { name: tipo_doc_fiscale_id, type: STRING }
+              - column: { name: scope, type: STRING }

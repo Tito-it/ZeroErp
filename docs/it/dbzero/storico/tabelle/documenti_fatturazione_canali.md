@@ -25,5 +25,11 @@
 | ix_documenti_fatturazione_canali_documenti_fatturazione_canali_ | `CREATE INDEX ix_documenti_fatturazione_canali_documenti_fatturazione_canali_ ON storico.documenti_fatturazione_canali USING btree (documenti_fatturazione_canali_id)` |
 | pk_storico_documenti_fatturazione_canali | `CREATE UNIQUE INDEX pk_storico_documenti_fatturazione_canali ON storico.documenti_fatturazione_canali USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_documenti_fatturazione_canali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_documenti_fatturazione_canali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}
