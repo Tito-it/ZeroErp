@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260228-29-create-fn-resolve-livello-oggetto-mctit.yaml
+
+  - changeSet:
+      id: 20260228-29-create-fn-resolve-livello-oggetto
+      author: mctit
+      comment: "Risolve il livello di accesso per un singolo model Django (override oggetto → area)"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_resolve_livello_oggetto(
+                p_auth_user_id   integer,
+                p_app_label      varchar(100),
+                p_model_name     varchar(100),
+                p_area_schema_db varchar(50)
+              )
+              RETURNS config.livello_accesso
+              LANGUAGE plpgsql
+              STABLE
+              AS $$
+              DECLARE
+                v_ruolo   config.ruolo_sistema;
+                v_livello config.livello_accesso;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Risolve il livello di accesso per un singolo model
+                --   Django (app_label + model_name).
+                --   Se esiste un override oggetto lo usa, altrimenti
+                --   risale alla catena area via fn_resolve_livello_area.
+                --
+                -- Catena:
+                --   1. ruolo_sistema (NULL/DISABILITATO → BLOCCATO, ADMIN → TUTTO)
+                --   2. Override utente oggetto (se presente e valido)
+                --   3. Fallback → fn_resolve_livello_area
+                -- =========================================================
+
+                -- 1. Ruolo sistema
+                v_ruolo := config.fn_get_ruolo_sistema(p_auth_user_id);
+
+                IF v_ruolo IS NULL OR v_ruolo = 'DISABILITATO' THEN
+                  RETURN 'BLOCCATO'::config.livello_accesso;
+                END IF;
+
+                IF v_ruolo = 'ADMIN' THEN
+                  RETURN 'TUTTO'::config.livello_accesso;
+                END IF;
+
+                -- 2. Override utente oggetto (OPERATIVO)
+                SELECT uoo.livello
+                  INTO v_livello
+                  FROM config.user_override_oggetti uoo
+                 WHERE uoo.auth_user_id = p_auth_user_id
+                   AND uoo.app_label    = p_app_label
+                   AND uoo.model_name   = p_model_name
+                   AND (uoo.valido_dal IS NULL OR uoo.valido_dal <= CURRENT_DATE)
+                   AND (uoo.valido_al  IS NULL OR uoo.valido_al  >= CURRENT_DATE);
+
+                IF FOUND THEN
+                  RETURN v_livello;
+                END IF;
+
+                -- 3. Fallback alla catena area
+                RETURN config.fn_resolve_livello_area(p_auth_user_id, p_area_schema_db);
+              END
+              $$;
+
+              COMMENT ON FUNCTION config.fn_resolve_livello_oggetto(integer, varchar, varchar, varchar)
+                IS 'Risolve livello accesso per model: override oggetto → catena area → BLOCCATO.';
