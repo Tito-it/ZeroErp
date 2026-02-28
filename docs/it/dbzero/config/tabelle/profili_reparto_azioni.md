@@ -30,5 +30,15 @@
 | pk_profili_reparto_azioni | `CREATE UNIQUE INDEX pk_profili_reparto_azioni ON config.profili_reparto_azioni USING btree (id)` |
 | uq_profili_reparto_azioni_uo_azione | `CREATE UNIQUE INDEX uq_profili_reparto_azioni_uo_azione ON config.profili_reparto_azioni USING btree (unita_organizzativa_id, azione_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_profili_reparto_azioni_a10_azioni_processo_require_a_10d7cb | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_id')` |
+| trg_profili_reparto_azioni_a10_azioni_processo_require_a_10d7cb | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_id')` |
+| trg_profili_reparto_azioni_a10_unita_organizzative_requi_e7995d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id')` |
+| trg_profili_reparto_azioni_a10_unita_organizzative_requi_e7995d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id')` |
+| trg_profili_reparto_azioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_profili_reparto_azioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

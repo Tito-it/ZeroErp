@@ -32,5 +32,11 @@
 | pk_user_override_oggetti | `CREATE UNIQUE INDEX pk_user_override_oggetti ON config.user_override_oggetti USING btree (id)` |
 | uq_user_override_oggetti_user_app_model | `CREATE UNIQUE INDEX uq_user_override_oggetti_user_app_model ON config.user_override_oggetti USING btree (auth_user_id, app_label, model_name)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_user_override_oggetti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_user_override_oggetti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

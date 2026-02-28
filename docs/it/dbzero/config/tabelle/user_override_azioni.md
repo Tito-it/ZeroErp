@@ -33,5 +33,13 @@
 | pk_user_override_azioni | `CREATE UNIQUE INDEX pk_user_override_azioni ON config.user_override_azioni USING btree (id)` |
 | uq_user_override_azioni_user_azione | `CREATE UNIQUE INDEX uq_user_override_azioni_user_azione ON config.user_override_azioni USING btree (auth_user_id, azione_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_user_override_azioni_a10_azioni_processo_require_att_9319b4 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_id')` |
+| trg_user_override_azioni_a10_azioni_processo_require_att_9319b4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_id')` |
+| trg_user_override_azioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_user_override_azioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

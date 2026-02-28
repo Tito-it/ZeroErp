@@ -26,5 +26,11 @@
 | ix_parameters_parameters_id_fk | `CREATE INDEX ix_parameters_parameters_id_fk ON storico.parameters USING btree (parameters_id)` |
 | pk_storico_parameters | `CREATE UNIQUE INDEX pk_storico_parameters ON storico.parameters USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_parameters_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_parameters_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

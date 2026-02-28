@@ -56,6 +56,8 @@ databaseChangeLog:
               - column: { name: user_update, type: STRING }
               - column: { name: stato_id, type: STRING }
               - column: { name: dati_societari_policy, type: STRING }
+              - column: { name: piva_obbligatoria, type: BOOLEAN }
+              - column: { name: cf_obbligatorio, type: BOOLEAN }
 
         # 3) Ri‐abilita tutti i trigger
         - sql:
