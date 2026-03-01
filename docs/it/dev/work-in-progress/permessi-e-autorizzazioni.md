@@ -160,7 +160,7 @@ A questo punto tutte le API esistenti sono protette dal sistema permessi.
 
 #### Sviluppi DB
 
-- [ ] D3.1 — Creare funzioni SQL di risoluzione permessi (spec. B.1–B.5)
+- [x] D3.1 — Creare funzioni SQL di risoluzione permessi (spec. B.1–B.5) — `20_code/config/20260228-19..31`
   - `config.fn_get_ruolo_sistema` (B.1)
   - `config.fn_resolve_livello_area` (B.2)
   - `config.fn_resolve_livello_oggetto` (B.3)
@@ -168,11 +168,11 @@ A questo punto tutte le API esistenti sono protette dal sistema permessi.
   - `config.fn_get_emittenti_scope` (B.5)
   - **Prerequisiti**: sezioni DB 1–3 completate ✅
   - **Specifiche**: sezione "Analisi refactoring", B.1–B.5
-- [ ] D3.2 — Creare funzione SQL `config.fn_get_emittenti_scope_sr_ids` (spec. B.7)
+- [x] D3.2 — Creare funzione SQL `config.fn_get_emittenti_scope_sr_ids` (spec. B.7) — `20_code/config/20260301-01`
   - Mappa `emittente_fiscale_id` → `soggetto_ruolo_id` per le query vendite
   - **Prerequisiti**: D3.1 (usa `fn_get_ruolo_sistema`), tabella `config.user_emittenti_fiscali` ✅
   - **Specifiche**: sezione "Analisi refactoring", B.7
-- [ ] D3.3 — Seed `config.azioni_processo` con nuovi codename
+- [x] D3.3 — Seed `config.azioni_processo` con nuovi codename — CSV aggiornato (id 6, 7, 8)
   - `reset_lotto_draft` — reset lotto a stato DRAFT
   - `reset_lotto_fattura_draft` — reset singola fattura lotto a DRAFT
   - `run_commesse_push` — invio commesse a sistema esterno

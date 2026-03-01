@@ -4,3 +4,6 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 3,2,approva_fattura,Approva fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
 4,2,emetti_fattura,Emetti fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
 5,7,approva_rimessa,Approva rimessa di pagamento,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+6,2,reset_lotto_draft,Reset lotto a stato DRAFT,t,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres
+7,2,reset_lotto_fattura_draft,Reset singola fattura lotto a DRAFT,t,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres
+8,2,run_commesse_push,Invio commesse a sistema esterno,f,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres
