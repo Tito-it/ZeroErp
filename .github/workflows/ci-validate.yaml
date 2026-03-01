@@ -47,6 +47,7 @@ jobs:
       DJANGO_SECRET_KEY: ci-placeholder
       DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
       DJANGO_DEBUG: "0"
+      CACHE_BACKEND: locmem
 
     steps:
       - uses: actions/checkout@v4
