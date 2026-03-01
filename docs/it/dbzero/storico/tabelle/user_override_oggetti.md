@@ -25,5 +25,11 @@
 | ix_user_override_oggetti_user_override_oggetti_id_fk | `CREATE INDEX ix_user_override_oggetti_user_override_oggetti_id_fk ON storico.user_override_oggetti USING btree (user_override_oggetti_id)` |
 | pk_storico_user_override_oggetti | `CREATE UNIQUE INDEX pk_storico_user_override_oggetti ON storico.user_override_oggetti USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_user_override_oggetti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_user_override_oggetti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

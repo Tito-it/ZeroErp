@@ -4,6 +4,7 @@
 
 ## ⚙️ Funzioni
 - [fn_clone_catasto_from_parent_by_istanza](funzioni/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
+- [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md)
 - [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
 - [fn_generate_codice](funzioni/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
 - [fn_get_catasto_source_by_istanza](funzioni/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
@@ -33,7 +34,7 @@
 - [fn_log_error_only](funzioni/fn_log_error_only.md) — (latest review 23-11-25) * **Logging “silenzioso”**: inserisce una riga in `dbops.error_log` con contesto ricco, ma **non** solleva eccezioni. * **Separazione delle responsabilità**: differenzia chiaramente i casi di **solo tracciamento** da quelli di **error handling critico** (per cui usare `fn_log_and_raise_error`).
 - [fn_norm_testo](funzioni/fn_norm_testo.md)
 - [fn_norm_via](funzioni/fn_norm_via.md)
-- [fn_subentro_cliente](funzioni/fn_subentro_cliente.md) — (latest update 09-12-25) La funzione `script.fn_subentro_cliente()` implementa **l’operazione di subentro standardizzata** su un PDP, incapsulando in un unico punto tutta la logica tecnica e commerciale che, altrimenti, sarebbe demandata al frontend.
+- [fn_subentro_cliente](funzioni/fn_subentro_cliente.md)
 - [fn_valida_codice_fiscale](funzioni/fn_valida_codice_fiscale.md) — * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo. * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere. * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 - [fn_valida_partita_iva](funzioni/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
 - [fn_validate_cf_piva_it](funzioni/fn_validate_cf_piva_it.md) — * **Centralizzazione Validazioni**: Unico punto per verificare CF e P.IVA in accordo ai formati configurati. * **Dinamicità**: I formati (alfanumerico, numerico, lunghezza) sono letti da `config.tipi_soggetto_dettaglio` e possono variare per Stato. * **Estendibilità**: Aggiunta futura di funzioni con suffissi di Stato, es. `_FR`, `_DE`, `_UK`.
