@@ -13,6 +13,7 @@
 --   config.fn_get_emittenti_scope
 --   config.fn_check_user_emittente_scope
 --   config.fn_get_override_scaduti
+--   config.fn_get_emittenti_scope_sr_ids
 --   config.trgfn_guard_emittente_scope (+ 2 trigger)
 --
 -- Elenco test:
@@ -41,11 +42,16 @@
 -- 23) Trigger su vendite.fatture esiste (BEFORE INSERT OR UPDATE)
 -- 24) Trigger su pagamenti.vendite_movimenti esiste
 -- 25) Integrazione: fn_check blocca emittente fuori scope
+-- 26) fn_get_emittenti_scope_sr_ids: OPERATIVO con whitelist → array con sr_id
+-- 27) fn_get_emittenti_scope_sr_ids: ADMIN → NULL
+-- 28) fn_get_emittenti_scope_sr_ids: OPERATIVO senza whitelist → NULL
+-- 29) fn_get_emittenti_scope_sr_ids: DISABILITATO → array vuoto
+-- 30) Seed: 3 nuovi codename azioni_processo esistono
 -- ------------------------------------------------------------
 
 BEGIN;
 
-SELECT plan(25);
+SELECT plan(30);
 
 -- ============================================================
 -- 0. Setup: raccolta riferimenti e forzatura OPERATIVO
@@ -58,8 +64,9 @@ SELECT
     af.schema_db      AS area_schema_db,
     ap.id             AS azione_id,
     ap.permission_codename,
-    ef.id             AS emittente_id,
-    -1::bigint        AS emittente_ko_id
+    ef.id                  AS emittente_id,
+    ef.soggetto_ruolo_id   AS emittente_sr_id,
+    -1::bigint             AS emittente_ko_id
 FROM anagrafiche.risorse_umane_auth_user rau
 CROSS JOIN (
     SELECT id, schema_db FROM config.aree_funzionali
@@ -70,7 +77,7 @@ CROSS JOIN (
     WHERE attivo = true ORDER BY id LIMIT 1
 ) ap
 CROSS JOIN (
-    SELECT id FROM anagrafiche.emittenti_fiscali
+    SELECT id, soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
     WHERE attivo = true ORDER BY id LIMIT 1
 ) ef
 ORDER BY rau.id
@@ -470,6 +477,87 @@ SELECT is(
     ),
     false,
     'Integrazione: fn_check blocca emittente fuori scope (catena trigger)'
+);
+
+-- ============================================================
+-- H. fn_get_emittenti_scope_sr_ids
+--    (whitelist presente da sezione E, utente OPERATIVO)
+-- ============================================================
+
+-- 26) OPERATIVO con whitelist → array contiene soggetto_ruolo_id
+SELECT ok(
+    (SELECT emittente_sr_id FROM tmp_ctx) = ANY(
+        config.fn_get_emittenti_scope_sr_ids(
+            (SELECT user_id FROM tmp_ctx)
+        )
+    ),
+    'fn_get_emittenti_scope_sr_ids: OPERATIVO con whitelist → array con sr_id'
+);
+
+-- 27) ADMIN → NULL (nessuna restrizione)
+UPDATE anagrafiche.risorse_umane_auth_user
+   SET ruolo_sistema = 'ADMIN'
+ WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+
+SELECT is(
+    config.fn_get_emittenti_scope_sr_ids(
+        (SELECT user_id FROM tmp_ctx)
+    ),
+    NULL::bigint[],
+    'fn_get_emittenti_scope_sr_ids: ADMIN → NULL'
+);
+
+UPDATE anagrafiche.risorse_umane_auth_user
+   SET ruolo_sistema = 'OPERATIVO'
+ WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+
+-- Rimuovi whitelist per test "senza whitelist"
+DELETE FROM config.user_emittenti_fiscali
+ WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+
+-- 28) OPERATIVO senza whitelist → NULL (nessuna restrizione)
+SELECT is(
+    config.fn_get_emittenti_scope_sr_ids(
+        (SELECT user_id FROM tmp_ctx)
+    ),
+    NULL::bigint[],
+    'fn_get_emittenti_scope_sr_ids: OPERATIVO senza whitelist → NULL'
+);
+
+-- 29) DISABILITATO → array vuoto (nessun accesso)
+UPDATE anagrafiche.risorse_umane_auth_user
+   SET ruolo_sistema = 'DISABILITATO'
+ WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+
+SELECT is(
+    config.fn_get_emittenti_scope_sr_ids(
+        (SELECT user_id FROM tmp_ctx)
+    ),
+    '{}'::bigint[],
+    'fn_get_emittenti_scope_sr_ids: DISABILITATO → array vuoto'
+);
+
+UPDATE anagrafiche.risorse_umane_auth_user
+   SET ruolo_sistema = 'OPERATIVO'
+ WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+
+-- ============================================================
+-- I. Seed azioni_processo — nuovi codename
+-- ============================================================
+
+-- 30) Verifica che i 3 nuovi codename esistano
+SELECT is(
+    (SELECT count(*)::integer
+       FROM config.azioni_processo
+      WHERE permission_codename IN (
+              'reset_lotto_draft',
+              'reset_lotto_fattura_draft',
+              'run_commesse_push'
+            )
+        AND attivo = true
+    ),
+    3,
+    'Seed: 3 nuovi codename azioni_processo presenti e attivi'
 );
 
 SELECT * FROM finish();
