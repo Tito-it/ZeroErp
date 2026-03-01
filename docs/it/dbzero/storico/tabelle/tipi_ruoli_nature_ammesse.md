@@ -25,5 +25,11 @@
 | ix_tipi_ruoli_nature_ammesse_tipi_ruoli_nature_ammesse_id_fk | `CREATE INDEX ix_tipi_ruoli_nature_ammesse_tipi_ruoli_nature_ammesse_id_fk ON storico.tipi_ruoli_nature_ammesse USING btree (tipi_ruoli_nature_ammesse_id)` |
 | pk_storico_tipi_ruoli_nature_ammesse | `CREATE UNIQUE INDEX pk_storico_tipi_ruoli_nature_ammesse ON storico.tipi_ruoli_nature_ammesse USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_tipi_ruoli_nature_ammesse_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_tipi_ruoli_nature_ammesse_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -14,6 +14,8 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | ruolo_sistema | USER-DEFINED | NO | 'OPERATIVO'::config.ruolo_sistema |
+| storicizza | boolean | NO | true |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -40,6 +42,10 @@
 | trg_risorse_umane_auth_user_a10_risorse_umane_require_at_5a6f0c | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'risorse_umane', 'attivo', 'risorsa_umana_id')` |
 | trg_risorse_umane_auth_user_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_risorse_umane_auth_user_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_risorse_umane_auth_user_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_risorse_umane_auth_user_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_risorse_umane_auth_user_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('risorse_umane_auth_user_id')` |
+| trg_risorse_umane_auth_user_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('risorse_umane_auth_user_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}
