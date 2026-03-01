@@ -3,19 +3,17 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Risolutore centrale permessi ZeroErp.
-# Implementa la catena di risoluzione:
-#   ruolo_sistema -> override oggetto -> override area -> profilo reparto -> BLOCCATO.
-# Ogni metodo accetta un dict `cache` opzionale per evitare query duplicate
-# nella stessa richiesta HTTP.
+# Delega la catena di risoluzione alle funzioni SQL config.fn_*
+# e mantiene cache per-request (dict) per evitare roundtrip duplicati.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable, TypeVar
 
-from django.db.models import Q
-from django.utils import timezone
+from django.db import connection
 
+T = TypeVar("T")
 
 # Mapping livello -> set di azioni CRUD consentite.
 LIVELLO_MAP: dict[str, frozenset[str]] = {
@@ -25,13 +23,16 @@ LIVELLO_MAP: dict[str, frozenset[str]] = {
 }
 
 
-def _today_filter() -> Q:
-    """Scopo: Restituisce il filtro Q per validita' temporale override."""
-    today = timezone.now().date()
-    return (
-        (Q(valido_dal__isnull=True) | Q(valido_dal__lte=today))
-        & (Q(valido_al__isnull=True) | Q(valido_al__gte=today))
-    )
+def _cached(
+    cache: dict[str, Any] | None, key: str, compute_fn: Callable[[], T]
+) -> T:
+    """Scopo: Helper cache read/write — evita boilerplate ripetuto."""
+    if cache is not None and key in cache:
+        return cache[key]
+    result = compute_fn()
+    if cache is not None:
+        cache[key] = result
+    return result
 
 
 class PermissionResolver:
@@ -45,20 +46,15 @@ class PermissionResolver:
     ) -> str | None:
         """Scopo: Restituisce il ruolo_sistema dell'utente dalla tabella ponte.
         Ritorna None se l'utente non ha un record in risorse_umane_auth_user."""
-        if cache is not None and "ruolo_sistema" in cache:
-            return cache["ruolo_sistema"]
+        def _query() -> str | None:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT config.fn_get_ruolo_sistema(%s)", [user.id]
+                )
+                row = cursor.fetchone()
+            return row[0] if row else None
 
-        from apps.anagrafiche.models import RisorseUmaneAuthUser
-
-        try:
-            bridge = RisorseUmaneAuthUser.objects.get(auth_user_id=user.id)
-            ruolo = bridge.ruolo_sistema
-        except RisorseUmaneAuthUser.DoesNotExist:
-            ruolo = None
-
-        if cache is not None:
-            cache["ruolo_sistema"] = ruolo
-        return ruolo
+        return _cached(cache, "ruolo_sistema", _query)
 
     @classmethod
     def get_livello_area(
@@ -69,23 +65,17 @@ class PermissionResolver:
         cache: dict[str, Any] | None = None,
     ) -> str:
         """Scopo: Restituisce il livello effettivo per un'area funzionale.
-        Catena: ruolo_sistema -> override utente area -> profilo reparto -> BLOCCATO."""
-        cache_key = f"area:{area_schema_db}"
-        if cache is not None and cache_key in cache:
-            return cache[cache_key]
+        Delega l'intera catena alla funzione SQL config.fn_resolve_livello_area."""
+        def _query() -> str:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT config.fn_resolve_livello_area(%s, %s)",
+                    [user.id, area_schema_db],
+                )
+                row = cursor.fetchone()
+            return row[0] if row else "BLOCCATO"
 
-        # 1. Check ruolo_sistema
-        ruolo = cls.get_ruolo_sistema(user, cache=cache)
-        if ruolo == "DISABILITATO":
-            result = "BLOCCATO"
-        elif ruolo == "ADMIN":
-            result = "TUTTO"
-        else:
-            result = cls._resolve_livello_area(user, area_schema_db, cache=cache)
-
-        if cache is not None:
-            cache[cache_key] = result
-        return result
+        return _cached(cache, f"area:{area_schema_db}", _query)
 
     @classmethod
     def get_livello_oggetto(
@@ -98,25 +88,17 @@ class PermissionResolver:
         cache: dict[str, Any] | None = None,
     ) -> str:
         """Scopo: Restituisce il livello effettivo per un singolo model.
-        Catena: override oggetto -> override area -> profilo reparto -> BLOCCATO."""
-        cache_key = f"oggetto:{app_label}.{model_name}"
-        if cache is not None and cache_key in cache:
-            return cache[cache_key]
+        Delega alla funzione SQL config.fn_resolve_livello_oggetto."""
+        def _query() -> str:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT config.fn_resolve_livello_oggetto(%s, %s, %s, %s)",
+                    [user.id, app_label, model_name, area_schema_db],
+                )
+                row = cursor.fetchone()
+            return row[0] if row else "BLOCCATO"
 
-        # Check ruolo_sistema prima di tutto
-        ruolo = cls.get_ruolo_sistema(user, cache=cache)
-        if ruolo == "DISABILITATO":
-            result = "BLOCCATO"
-        elif ruolo == "ADMIN":
-            result = "TUTTO"
-        else:
-            result = cls._resolve_livello_oggetto(
-                user, app_label, model_name, area_schema_db, cache=cache
-            )
-
-        if cache is not None:
-            cache[cache_key] = result
-        return result
+        return _cached(cache, f"oggetto:{app_label}.{model_name}", _query)
 
     @classmethod
     def check_azione(
@@ -127,23 +109,17 @@ class PermissionResolver:
         cache: dict[str, Any] | None = None,
     ) -> bool:
         """Scopo: Verifica se un'azione di processo e' abilitata.
-        Catena: ruolo_sistema -> override utente -> profilo reparto -> negata."""
-        cache_key = f"azione:{permission_codename}"
-        if cache is not None and cache_key in cache:
-            return cache[cache_key]
+        Delega alla funzione SQL config.fn_check_azione_processo."""
+        def _query() -> bool:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT config.fn_check_azione_processo(%s, %s)",
+                    [user.id, permission_codename],
+                )
+                row = cursor.fetchone()
+            return bool(row[0]) if row else False
 
-        # 1. Check ruolo_sistema
-        ruolo = cls.get_ruolo_sistema(user, cache=cache)
-        if ruolo == "DISABILITATO":
-            result = False
-        elif ruolo == "ADMIN":
-            result = True
-        else:
-            result = cls._resolve_azione(user, permission_codename, cache=cache)
-
-        if cache is not None:
-            cache[cache_key] = result
-        return result
+        return _cached(cache, f"azione:{permission_codename}", _query)
 
     @classmethod
     def get_emittenti_ids(
@@ -151,42 +127,59 @@ class PermissionResolver:
     ) -> list[int] | None:
         """Scopo: Restituisce gli ID emittenti fiscali autorizzati per l'utente.
         Restituisce None se l'utente non ha restrizioni (whitelist vuota = tutto)."""
-        if cache is not None and "emittenti_ids" in cache:
-            return cache["emittenti_ids"]
+        def _query() -> list[int] | None:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT config.fn_get_emittenti_scope(%s)", [user.id]
+                )
+                row = cursor.fetchone()
+            # fn_get_emittenti_scope ritorna bigint[] o NULL
+            if row and row[0]:
+                return list(row[0])
+            return None
 
-        from apps.config.models import UserEmittenteFiscale
-
-        ids = list(
-            UserEmittenteFiscale.objects.filter(
-                auth_user_id=user.id
-            ).values_list("emittente_fiscale_id", flat=True)
-        )
-        result: list[int] | None = ids if ids else None
-
-        if cache is not None:
-            cache["emittenti_ids"] = result
-        return result
+        return _cached(cache, "emittenti_ids", _query)
 
     @classmethod
     def get_area_schema_db(cls, app_label: str, model_name: str) -> str:
         """Scopo: Determina lo schema_db dell'area per un model.
         1. Controlla override in area_model_overrides
         2. Altrimenti usa app_label (che corrisponde allo schema)."""
-        from apps.config.models import AreaModelOverride
-
-        override = (
-            AreaModelOverride.objects.filter(
-                app_label=app_label,
-                model_name=model_name,
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT af.schema_db
+                  FROM config.area_model_overrides amo
+                  JOIN config.aree_funzionali af ON af.id = amo.area_id
+                 WHERE amo.app_label = %s AND amo.model_name = %s
+                """,
+                [app_label, model_name],
             )
-            .select_related("area")
-            .first()
-        )
+            row = cursor.fetchone()
+        return row[0] if row else app_label
 
-        if override:
-            return override.area.schema_db
+    @classmethod
+    def get_unita_organizzativa_id(
+        cls, user: Any, cache: dict[str, Any] | None = None
+    ) -> int | None:
+        """Scopo: Risale alla unita' organizzativa dell'utente
+        via bridge risorse_umane_auth_user -> risorse_umane."""
+        def _query() -> int | None:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT ru.unita_organizzativa_id
+                      FROM anagrafiche.risorse_umane_auth_user rau
+                      JOIN anagrafiche.risorse_umane ru
+                        ON ru.id = rau.risorsa_umana_id
+                     WHERE rau.auth_user_id = %s
+                    """,
+                    [user.id],
+                )
+                row = cursor.fetchone()
+            return row[0] if row else None
 
-        return app_label
+        return _cached(cache, "uo_id", _query)
 
     @classmethod
     def has_profilo_reparto_area(
@@ -198,150 +191,25 @@ class PermissionResolver:
     ) -> bool:
         """Scopo: Verifica se il reparto dell'utente ha un profilo per l'area.
         Usato per distinguere 'BLOCCATO da profilo' da 'nessun profilo configurato'."""
-        from apps.config.models import ProfiloRepartoArea
+        def _query() -> bool:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT EXISTS(
+                        SELECT 1
+                          FROM config.profili_reparto_aree pra
+                          JOIN config.aree_funzionali af ON af.id = pra.area_id
+                          JOIN anagrafiche.risorse_umane_auth_user rau
+                            ON rau.auth_user_id = %s
+                          JOIN anagrafiche.risorse_umane ru
+                            ON ru.id = rau.risorsa_umana_id
+                         WHERE ru.unita_organizzativa_id = pra.unita_organizzativa_id
+                           AND af.schema_db = %s
+                    )
+                    """,
+                    [user.id, area_schema_db],
+                )
+                row = cursor.fetchone()
+            return bool(row[0]) if row else False
 
-        uo_id = cls._get_unita_organizzativa_id(user, cache=cache)
-        if uo_id is None:
-            return False
-
-        cache_key = f"has_profilo:{area_schema_db}"
-        if cache is not None and cache_key in cache:
-            return cache[cache_key]
-
-        result = ProfiloRepartoArea.objects.filter(
-            unita_organizzativa_id=uo_id,
-            area__schema_db=area_schema_db,
-        ).exists()
-
-        if cache is not None:
-            cache[cache_key] = result
-        return result
-
-    # ── Metodi interni di risoluzione ──────────────────────
-
-    @classmethod
-    def _resolve_livello_area(
-        cls,
-        user: Any,
-        area_schema_db: str,
-        *,
-        cache: dict[str, Any] | None = None,
-    ) -> str:
-        """Scopo: Risoluzione area per utenti OPERATIVO.
-        Catena: UserOverrideArea -> ProfiloRepartoArea -> BLOCCATO."""
-        from apps.config.models import ProfiloRepartoArea, UserOverrideArea
-
-        # 1. Override utente su area
-        override = (
-            UserOverrideArea.objects.filter(
-                auth_user_id=user.id,
-                area__schema_db=area_schema_db,
-            )
-            .filter(_today_filter())
-            .first()
-        )
-        if override:
-            return override.livello
-
-        # 2. Profilo reparto
-        uo_id = cls._get_unita_organizzativa_id(user, cache=cache)
-        if uo_id is not None:
-            profilo = ProfiloRepartoArea.objects.filter(
-                unita_organizzativa_id=uo_id,
-                area__schema_db=area_schema_db,
-            ).first()
-            if profilo:
-                return profilo.livello
-
-        # 3. Default sicuro
-        return "BLOCCATO"
-
-    @classmethod
-    def _resolve_livello_oggetto(
-        cls,
-        user: Any,
-        app_label: str,
-        model_name: str,
-        area_schema_db: str,
-        *,
-        cache: dict[str, Any] | None = None,
-    ) -> str:
-        """Scopo: Risoluzione oggetto per utenti OPERATIVO.
-        Catena: UserOverrideOggetto -> get_livello_area."""
-        from apps.config.models import UserOverrideOggetto
-
-        # 1. Override utente su oggetto
-        override = (
-            UserOverrideOggetto.objects.filter(
-                auth_user_id=user.id,
-                app_label=app_label,
-                model_name=model_name,
-            )
-            .filter(_today_filter())
-            .first()
-        )
-        if override:
-            return override.livello
-
-        # 2. Risale alla catena area
-        return cls._resolve_livello_area(user, area_schema_db, cache=cache)
-
-    @classmethod
-    def _resolve_azione(
-        cls,
-        user: Any,
-        permission_codename: str,
-        *,
-        cache: dict[str, Any] | None = None,
-    ) -> bool:
-        """Scopo: Risoluzione azione per utenti OPERATIVO.
-        Catena: UserOverrideAzione -> ProfiloRepartoAzione -> negata."""
-        from apps.config.models import ProfiloRepartoAzione, UserOverrideAzione
-
-        # 1. Override utente su azione
-        override = (
-            UserOverrideAzione.objects.filter(
-                auth_user_id=user.id,
-                azione__permission_codename=permission_codename,
-            )
-            .filter(_today_filter())
-            .first()
-        )
-        if override:
-            return override.abilitata
-
-        # 2. Profilo reparto
-        uo_id = cls._get_unita_organizzativa_id(user, cache=cache)
-        if uo_id is not None:
-            profilo = ProfiloRepartoAzione.objects.filter(
-                unita_organizzativa_id=uo_id,
-                azione__permission_codename=permission_codename,
-            ).first()
-            if profilo:
-                return profilo.abilitata
-
-        # 3. Default: negata
-        return False
-
-    @classmethod
-    def _get_unita_organizzativa_id(
-        cls, user: Any, cache: dict[str, Any] | None = None
-    ) -> int | None:
-        """Scopo: Risale alla unita' organizzativa dell'utente
-        via bridge risorse_umane_auth_user -> risorse_umane."""
-        if cache is not None and "uo_id" in cache:
-            return cache["uo_id"]
-
-        from apps.anagrafiche.models import RisorseUmaneAuthUser
-
-        try:
-            bridge = RisorseUmaneAuthUser.objects.select_related(
-                "risorsa_umana"
-            ).get(auth_user_id=user.id)
-            uo_id = bridge.risorsa_umana.unita_organizzativa_id
-        except RisorseUmaneAuthUser.DoesNotExist:
-            uo_id = None
-
-        if cache is not None:
-            cache["uo_id"] = uo_id
-        return uo_id
+        return _cached(cache, f"has_profilo:{area_schema_db}", _query)

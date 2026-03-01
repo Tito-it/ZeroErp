@@ -12,6 +12,8 @@ from django.db import connection
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
+from apps.core.services.permissions_resolver import PermissionResolver
+
 
 class JwtAuditMiddleware(MiddlewareMixin):
     """Imposta le GUC ``app.jwt_user`` e ``app.current_user_id`` sulla
@@ -50,8 +52,14 @@ class JwtAuditMiddleware(MiddlewareMixin):
                 )
 
             # Scopo: Rifiuta immediatamente utenti DISABILITATO (early rejection).
+            # Inizializza la cache per-request se non esiste: sara' riusata
+            # da ZeroERPPermission._get_cache() senza query aggiuntive.
             if request.path.startswith("/api/"):
-                ruolo = self._get_ruolo_sistema_cached(request, user)
+                if not hasattr(request, "_zeroerp_perms_cache"):
+                    request._zeroerp_perms_cache = {}  # type: ignore[attr-defined]
+                ruolo = PermissionResolver.get_ruolo_sistema(
+                    user, cache=request._zeroerp_perms_cache  # type: ignore[attr-defined]
+                )
                 if ruolo == "DISABILITATO":
                     return JsonResponse(
                         {
@@ -64,26 +72,3 @@ class JwtAuditMiddleware(MiddlewareMixin):
                     )
 
         return None
-
-    @staticmethod
-    def _get_ruolo_sistema_cached(
-        request: HttpRequest, user: object
-    ) -> str | None:
-        """Scopo: Legge ruolo_sistema dalla tabella ponte, con cache sulla request."""
-        cache_attr = "_zeroerp_ruolo_sistema"
-        cached = getattr(request, cache_attr, None)
-        if cached is not None:
-            return cached
-
-        from apps.anagrafiche.models import RisorseUmaneAuthUser
-
-        try:
-            bridge = RisorseUmaneAuthUser.objects.get(
-                auth_user_id=user.id  # type: ignore[union-attr]
-            )
-            ruolo: str | None = bridge.ruolo_sistema
-        except RisorseUmaneAuthUser.DoesNotExist:
-            ruolo = None
-
-        setattr(request, cache_attr, ruolo)
-        return ruolo

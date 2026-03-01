@@ -196,7 +196,7 @@ class ApiPermessiEffettivi(APIView):
             # Risolvi permessi per target
             target_cache: dict = {}
             ruolo = PermissionResolver.get_ruolo_sistema(target_user, cache=target_cache)
-            uo_id = PermissionResolver._get_unita_organizzativa_id(
+            uo_id = PermissionResolver.get_unita_organizzativa_id(
                 target_user, cache=target_cache
             )
             emittenti_ids = PermissionResolver.get_emittenti_ids(
