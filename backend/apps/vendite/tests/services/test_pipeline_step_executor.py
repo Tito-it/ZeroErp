@@ -25,7 +25,7 @@ Indice test eseguiti:
 23) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_empty_list_no_emit
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
@@ -533,7 +533,8 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
     # --- Pull attivita da commessa (step 0) ---
 
     # Scopo: Verifica il caso `test_execute_step_runs_pull_attivita_da_commessa_task`.
-    def test_execute_step_runs_pull_attivita_da_commessa_task(self):
+    @patch("apps.vendite.services.pipeline_step_executor.transaction")
+    def test_execute_step_runs_pull_attivita_da_commessa_task(self, _mock_txn):
         processi = [{"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}}]
         executor, repo, _, _ = self._build_executor(processi)
         repo.get_task_handler_code.return_value = "pull_attivita_da_commessa_default"

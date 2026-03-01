@@ -251,28 +251,40 @@ class LottoPipelineRunner:
             meta={"process": "close_lotto_by_flag"},
         )
 
+    # Scopo: Risolve o crea il lotto in transazione autonoma.
+    # Il lotto persiste anche se la fase di esecuzione fallisce,
+    # consentendo a _mark_lotto_error di trovarlo e marcarlo ERRORE.
+    def _resolve_lotto(self, params: LottoPipelineParams) -> tuple[int, bool]:
+        """Restituisce (lotto_id, is_existing_lotto_request)."""
+        with transaction.atomic():
+            normalized_lotto_id = None if params.lotto_id in (0, None) else params.lotto_id
+            is_existing_lotto_request = normalized_lotto_id is not None
+            lotto_id = self.repository.get_or_create_lotto(
+                lotto_id=normalized_lotto_id,
+                competenza_mese=params.competenza_mese,
+                tipo_doc_fiscale_id=params.tipo_doc_fiscale_id,
+                utility_id=params.utility_id,
+                billing_account_id=params.billing_account_id,
+                emittente_soggetto_ruolo_id=params.emittente_soggetto_ruolo_id,
+                lock_batch_id=params.lock_batch_id,
+                meta=params.meta,
+                tipo_lotto=params.tipo_lotto,
+            )
+        return lotto_id, is_existing_lotto_request
+
     # Scopo: Orchestra l'intero flusso pipeline lotto: risoluzione lotto, step execution, resume/rollback e gestione errori finali.
     def run_pipeline(self, params: LottoPipelineParams) -> int:
         lotto_id: int | None = None
         correlation_id: str | None = None
         effective_tipo_lotto = params.tipo_lotto or "MASSIVO"
         try:
-            with transaction.atomic():
-                # Mantiene il comportamento SQL: lotto_id=0 equivale a creare/risolvere un lotto.
-                normalized_lotto_id = None if params.lotto_id in (0, None) else params.lotto_id
-                is_existing_lotto_request = normalized_lotto_id is not None
-                lotto_id = self.repository.get_or_create_lotto(
-                    lotto_id=normalized_lotto_id,
-                    competenza_mese=params.competenza_mese,
-                    tipo_doc_fiscale_id=params.tipo_doc_fiscale_id,
-                    utility_id=params.utility_id,
-                    billing_account_id=params.billing_account_id,
-                    emittente_soggetto_ruolo_id=params.emittente_soggetto_ruolo_id,
-                    lock_batch_id=params.lock_batch_id,
-                    meta=params.meta,
-                    tipo_lotto=params.tipo_lotto,
-                )
+            # Fase 1: risoluzione lotto in transazione autonoma.
+            # Il lotto persiste anche se la fase di esecuzione fallisce,
+            # consentendo a _mark_lotto_error_safely di trovarlo e marcarlo.
+            lotto_id, is_existing_lotto_request = self._resolve_lotto(params)
 
+            # Fase 2: esecuzione pipeline in transazione separata.
+            with transaction.atomic():
                 # Fonte autoritativa dominio: il tipo persistito sul lotto a DB; params è fallback.
                 lotto_tipo_db = self.repository.get_lotto_tipo(lotto_id)
                 effective_tipo_lotto = lotto_tipo_db or effective_tipo_lotto
@@ -435,3 +447,4 @@ class LottoPipelineRunner:
                 log_to_db=lotto_id is None,
                 cause=exc,
             )
+            raise  # unreachable: raise_error alza sempre; aiuta il type checker

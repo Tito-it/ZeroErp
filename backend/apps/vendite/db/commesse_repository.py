@@ -186,6 +186,19 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
 
     meta_raw = _decode_jsonb(_col("meta"), {})
 
+    # Guard: sorgente_uid e segment_key devono essere non-null dal DB.
+    raw_sorgente_uid = _col("sorgente_uid")
+    raw_segment_key = _col("segment_key")
+    if raw_sorgente_uid is None or raw_segment_key is None:
+        raise ValueError(
+            f"sorgente_uid o segment_key NULL dal DB: "
+            f"sorgente_uid={raw_sorgente_uid!r}, segment_key={raw_segment_key!r}"
+        )
+
+    # Guard: factor_to_base=None → default Decimal(1); Decimal(0) preservato.
+    raw_factor = _col("factor_to_base")
+    factor_to_base = raw_factor if raw_factor is not None else Decimal(1)
+
     return PushableRow(
         billing_account_id=_col("billing_account_id"),
         utility_id=_col("utility_id"),
@@ -194,8 +207,8 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         competenza_al=_col("competenza_al"),
         fatturazione_immediata=bool(_col("fatturazione_immediata")),
         sorgente_tipo_id=_col("sorgente_tipo_id"),
-        sorgente_uid=str(_col("sorgente_uid")),
-        segment_key=str(_col("segment_key")),
+        sorgente_uid=str(raw_sorgente_uid),
+        segment_key=str(raw_segment_key),
         articolo_id=_col("articolo_id"),
         istanza_utility_id=_col("istanza_utility_id"),
         data_attivita=_col("data_attivita"),
@@ -203,7 +216,7 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         quantita=_col("quantita"),
         qta_operativa=_col("qta_operativa"),
         uom_operativa_id=_col("uom_operativa_id"),
-        factor_to_base=_col("factor_to_base") or Decimal(1),
+        factor_to_base=factor_to_base,
         competenza_mese=_col("competenza_mese"),
         prezzo_snapshot=_col("prezzo_snapshot"),
         prezzo_bloccato=bool(_col("prezzo_bloccato")),

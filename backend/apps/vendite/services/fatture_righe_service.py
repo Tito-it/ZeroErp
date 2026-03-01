@@ -6,13 +6,14 @@
 # ------------------------------------------------------------
 
 
+import json
 from datetime import date
 from decimal import Decimal
 
 from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
-from apps.vendite.db.pipeline_repository import VenditePipelineRepository
+from apps.vendite.db.pipeline_repository import GroupAttivitaInput, VenditePipelineRepository
 from apps.vendite.types import GroupAttivitaKey
 
 # Servizio applicativo che porta in Python il grouping e la generazione righe fattura.
@@ -55,8 +56,11 @@ class FattureRigheService:
             function_name="vendite.fatture_righe_service.group_attivita_fatturabili",
             log_to_db=True,
         )
-        assert row.dest_billing_account_id is not None
+        return self._build_group_key(row)
 
+    # Scopo: Costruisce GroupAttivitaKey da un GroupAttivitaInput con logica competenza.
+    @staticmethod
+    def _build_group_key(row: GroupAttivitaInput) -> GroupAttivitaKey:
         use_competenza = (
             row.competenza_dal is not None
             and row.competenza_al is not None
@@ -65,7 +69,7 @@ class FattureRigheService:
                 or row.competenza_dal != row.data_attivita
             )
         )
-
+        assert row.dest_billing_account_id is not None
         return {
             "articolo_id": row.articolo_id,
             "dest_billing_account_id": int(row.dest_billing_account_id),
@@ -82,7 +86,10 @@ class FattureRigheService:
             "metodo_arrotondamento_quantita": row.metodo_arrotondamento_quantita,
         }
 
-    # Scopo: Gestisce `generate_fatture_righe` nel flusso applicativo del modulo.
+    # Scopo: Genera righe fattura per il lotto usando operazioni batch.
+    # Riduce i round-trip DB da 5N (per attivita) a 4 totali:
+    #   1. batch group inputs   2. batch header creation
+    #   3. batch max riga_nrs   4. batch INSERT + UPDATE (CTE)
     def generate_fatture_righe(self, lotto_id: int, *, dry_run: bool = False) -> int:
         ErrorManager.require(
             lotto_id is not None,
@@ -95,36 +102,115 @@ class FattureRigheService:
         )
         assert lotto_id is not None
 
-        count = 0
+        attivita_list = self.repository.list_attivita_da_fatturare(lotto_id)
+
+        # In dry_run si conta solo: nessuna creazione testata, riga o aggiornamento stato.
+        if dry_run:
+            return len(attivita_list)
+
+        if not attivita_list:
+            return 0
+
+        attivita_ids = [a.id for a in attivita_list]
+        fn = "vendite.fatture_righe_service.generate_fatture_righe"
+
         with transaction.atomic():
-            for attivita in self.repository.list_attivita_da_fatturare(lotto_id):
-                # Testata fattura aggregata via DB (fn_build_fattura_key).
-                fattura_id = self.repository.get_or_create_fattura_header(lotto_id, attivita.id)
-                group_key = self.group_attivita_fatturabili(attivita.id)
+            # 1. Batch fetch group inputs (1 round-trip).
+            group_inputs = self.repository.batch_get_group_attivita_inputs(attivita_ids)
 
-                if dry_run:
-                    count += 1
-                    continue
-
-                riga_nr = self.repository.get_next_fattura_riga_nr(fattura_id)
-                fattura_riga_id = self.repository.insert_fattura_riga(
-                    fattura_id=fattura_id,
-                    riga_nr=riga_nr,
-                    articolo_id=attivita.articolo_id,
-                    descrizione=attivita.articolo_descrizione,
-                    uom_id=group_key["uom_id"],
-                    qta=attivita.quantita,
-                    prezzo_unitario=attivita.prezzo_unitario,
-                    iva_id=group_key["iva_id"],
-                    dest_billing_account_id=group_key["dest_billing_account_id"],
-                    sorgente_tipo_id=attivita.sorgente_tipo_id,
-                    sorgente_uid=attivita.sorgente_uid,
-                    sorgente_riga=attivita.sorgente_riga,
-                    meta={"group_key": group_key},
+            # Validazione per-attivita sui group inputs.
+            group_keys: dict[int, GroupAttivitaKey] = {}
+            for aid in attivita_ids:
+                gi = group_inputs.get(aid)
+                ErrorManager.require(
+                    gi is not None,
+                    code="E_GROUP_ATTIVITA_NOT_FOUND",
+                    message="Attivita fatturabile non trovata.",
+                    detail=f"Attivita non trovata: {aid}",
+                    context={"attivita_id": aid},
+                    function_name=fn,
+                    log_to_db=True,
                 )
-                self.repository.mark_attivita_fatturata(attivita.id, fattura_riga_id)
-                count += 1
-        return count
+                assert gi is not None
+                ErrorManager.require(
+                    gi.dest_billing_account_id is not None,
+                    code="E_GROUP_ATTIVITA_INVALID_DATA",
+                    message="Dati attivita non validi per grouping.",
+                    detail=f"dest_billing_account_id mancante per attivita: {aid}",
+                    context={"attivita_id": aid},
+                    function_name=fn,
+                    log_to_db=True,
+                )
+                group_keys[aid] = self._build_group_key(gi)
+
+            # 2. Batch header creation (1 round-trip, N function calls server-side).
+            header_map = self.repository.batch_get_or_create_fattura_headers(
+                lotto_id, attivita_ids
+            )
+
+            # 3. Batch max riga_nr per fattura (1 round-trip).
+            distinct_fattura_ids = list(set(header_map.values()))
+            max_riga_nrs = self.repository.get_max_riga_nrs(distinct_fattura_ids)
+            riga_nr_counters: dict[int, int] = {
+                fid: max_riga_nrs.get(fid, 0) + 1 for fid in distinct_fattura_ids
+            }
+
+            # 4. Preparazione array paralleli per batch INSERT + UPDATE.
+            b_attivita_ids: list[int] = []
+            b_fattura_ids: list[int] = []
+            b_riga_nrs: list[int] = []
+            b_articolo_ids: list[int] = []
+            b_descrizioni: list[str | None] = []
+            b_uom_ids: list[int | None] = []
+            b_qtas: list[Decimal | None] = []
+            b_prezzi: list[Decimal | None] = []
+            b_iva_ids: list[int | None] = []
+            b_dest_ba_ids: list[int] = []
+            b_sorg_tipo_ids: list[int | None] = []
+            b_sorg_uids: list[str | None] = []
+            b_sorg_righe: list[int | None] = []
+            b_metas: list[str | None] = []
+
+            for attivita in attivita_list:
+                fid = header_map[attivita.id]
+                gk = group_keys[attivita.id]
+                riga_nr = riga_nr_counters[fid]
+                riga_nr_counters[fid] = riga_nr + 1
+
+                b_attivita_ids.append(attivita.id)
+                b_fattura_ids.append(fid)
+                b_riga_nrs.append(riga_nr)
+                b_articolo_ids.append(attivita.articolo_id)
+                b_descrizioni.append(attivita.articolo_descrizione)
+                b_uom_ids.append(gk["uom_id"])
+                b_qtas.append(attivita.quantita)
+                b_prezzi.append(attivita.prezzo_unitario)
+                b_iva_ids.append(gk["iva_id"])
+                b_dest_ba_ids.append(gk["dest_billing_account_id"])
+                b_sorg_tipo_ids.append(attivita.sorgente_tipo_id)
+                b_sorg_uids.append(attivita.sorgente_uid)
+                b_sorg_righe.append(attivita.sorgente_riga)
+                b_metas.append(json.dumps({"group_key": gk}))
+
+            # 5. Batch INSERT righe + UPDATE attivita (1 round-trip CTE).
+            self.repository.batch_insert_righe_and_mark(
+                attivita_ids=b_attivita_ids,
+                fattura_ids=b_fattura_ids,
+                riga_nrs=b_riga_nrs,
+                articolo_ids=b_articolo_ids,
+                descrizioni=b_descrizioni,
+                uom_ids=b_uom_ids,
+                qtas=b_qtas,
+                prezzi_unitari=b_prezzi,
+                iva_ids=b_iva_ids,
+                dest_billing_account_ids=b_dest_ba_ids,
+                sorgente_tipo_ids=b_sorg_tipo_ids,
+                sorgente_uids=b_sorg_uids,
+                sorgente_righe=b_sorg_righe,
+                metas=b_metas,
+            )
+
+        return len(attivita_list)
 
 
 # Scopo: Gestisce `_to_float` nel flusso applicativo del modulo.
