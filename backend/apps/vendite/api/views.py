@@ -338,6 +338,11 @@ class ApiLottiList(APIView):
             page = optional_int({"page": request.query_params.get("page", "1")}, "page")
             page_size = optional_int({"page_size": request.query_params.get("page_size", "50")}, "page_size")
 
+            # Scope emittente DB-first: superuser Django bypass; per tutti
+            # gli altri la funzione SQL risolve ruolo e whitelist.
+            user = request.user
+            auth_user_id = None if user.is_superuser else user.id
+
             data = fn_list_lotti(
                 competenza_mese=competenza_mese,
                 utility_id=utility_id,
@@ -345,6 +350,7 @@ class ApiLottiList(APIView):
                 area_geografica_id=area_geografica_id,
                 tipo_doc_fiscale_id=tipo_doc_fiscale_id,
                 emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+                auth_user_id=auth_user_id,
                 page=page,
                 page_size=page_size,
             )
@@ -376,10 +382,15 @@ class ApiLottoFattureList(APIView):
             page = optional_int({"page": request.query_params.get("page", "1")}, "page")
             page_size = optional_int({"page_size": request.query_params.get("page_size", "50")}, "page_size")
 
+            # Scope emittente DB-first.
+            user = request.user
+            auth_user_id = None if user.is_superuser else user.id
+
             data = fn_list_lotto_fatture(
                 lotto_id=lotto_id,
                 stato_esecuzione=stato_esecuzione,
                 esclusa=esclusa,
+                auth_user_id=auth_user_id,
                 sort_by=sort_by,
                 sort_dir=sort_dir,
                 page=page,

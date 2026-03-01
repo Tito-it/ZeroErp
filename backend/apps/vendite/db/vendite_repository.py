@@ -38,6 +38,7 @@ class VenditeRepository:
         area_geografica_id: int | None,
         tipo_doc_fiscale_id: int | None,
         emittente_soggetto_ruolo_id: int | None,
+        auth_user_id: int | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[LottoListRow], int]:
@@ -66,6 +67,16 @@ class VenditeRepository:
         if emittente_soggetto_ruolo_id is not None:
             conditions.append("fl.emittente_soggetto_ruolo_id = %s")
             params.append(emittente_soggetto_ruolo_id)
+
+        # Scope emittente DB-first: la funzione SQL risolve ruolo, whitelist
+        # e mappatura soggetto_ruolo internamente.
+        if auth_user_id is not None:
+            conditions.append(
+                "(config.fn_get_emittenti_scope_sr_ids(%s) IS NULL "
+                "OR fl.emittente_soggetto_ruolo_id = ANY("
+                "config.fn_get_emittenti_scope_sr_ids(%s)))"
+            )
+            params.extend([auth_user_id, auth_user_id])
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -157,6 +168,7 @@ class VenditeRepository:
         lotto_id: int,
         stato_esecuzione: str | None,
         esclusa: bool | None,
+        auth_user_id: int | None = None,
         sort_by: str,
         sort_dir: str,
         limit: int,
@@ -182,6 +194,15 @@ class VenditeRepository:
         if esclusa is not None:
             conditions.append("fllf.esclusa = %s")
             params.append(esclusa)
+
+        # Scope emittente DB-first: filtra sulla colonna della fattura.
+        if auth_user_id is not None:
+            conditions.append(
+                "(config.fn_get_emittenti_scope_sr_ids(%s) IS NULL "
+                "OR f.emittente_soggetto_ruolo_id = ANY("
+                "config.fn_get_emittenti_scope_sr_ids(%s)))"
+            )
+            params.extend([auth_user_id, auth_user_id])
 
         where_clause = "WHERE " + " AND ".join(conditions)
 
