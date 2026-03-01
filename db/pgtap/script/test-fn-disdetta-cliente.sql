@@ -1,0 +1,321 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+--
+-- Test: script.fn_disdetta_cliente(p_cliente_id, p_data_cessazione)
+--
+-- Indice test (12):
+--   T01) Precondizioni: config e anagrafiche di riferimento presenti
+--   T02) Setup: istanza + BA + cliente attivo con PDP
+--   T03) DB-08: fn_disdetta_cliente(NULL, date) -> errore parametro
+--   T04) DB-08: fn_disdetta_cliente(id, NULL) -> errore parametro
+--   T05) Extra: fn_disdetta_cliente(id_inesistente, date) -> errore non trovato
+--   T06) DB-07: data_cessazione < data_attivazione -> errore
+--   T07) DB-05: disdetta happy path -> restituisce ID cliente
+--   T08) DB-05: stato cliente = CH dopo disdetta
+--   T09) DB-05: periodo = [data_attivazione, data_cessazione) dopo disdetta
+--   T10) DB-05: PDP stato = DISP dopo disdetta
+--   T11) DB-09: BA valido_al IS NULL dopo disdetta (policy: BA resta attivo)
+--   T12) DB-06: fn_disdetta_cliente su cliente gia chiuso -> errore
+--
+-- Nota: usa soggetto/PDP esistenti dal DB e istanze fittizia=false
+--       per testare il ciclo completo incluso PDP.
+-- ------------------------------------------------------------
+
+-- =========================================================
+-- Cleanup iniziale (idempotente)
+-- =========================================================
+DO $$
+BEGIN
+    -- Abilita manutenzione per poter eliminare clienti
+    SET LOCAL zeroerp.maintenance_ruoli_delete = 'on';
+
+    DELETE FROM anagrafiche.clienti c
+    WHERE c.codice_cliente_importato LIKE 'TST-DIS-%';
+
+    DELETE FROM anagrafiche.billing_account ba
+    WHERE ba.istanza_utility_id IN (
+        SELECT iu.id FROM anagrafiche.istanze_utilities iu
+        WHERE iu.codice LIKE 'TST-DIS-%'
+    );
+
+    DELETE FROM anagrafiche.istanze_utilities iu
+    WHERE iu.codice LIKE 'TST-DIS-%';
+END;
+$$;
+
+SELECT plan(12);
+
+-- =========================================================
+-- 0) Precondizioni: recupera riferimenti esistenti dal DB
+-- =========================================================
+CREATE TEMP TABLE tmp_dis_cfg AS
+SELECT
+    (SELECT sc.id FROM config.stati_cliente sc
+     WHERE sc.codice_interno = 'AT') AS stato_at_id,
+    (SELECT sc.id FROM config.stati_cliente sc
+     WHERE sc.codice_interno = 'CH') AS stato_ch_id,
+    (SELECT sp.id FROM config.stati_pdp sp
+     WHERE sp.codice_interno = 'DISP') AS stato_pdp_disp_id,
+    (SELECT sp.id FROM config.stati_pdp sp
+     WHERE sp.codice_interno = 'ATT') AS stato_pdp_att_id,
+    (SELECT iv.id FROM config.iva iv
+     WHERE iv.codice = '22' LIMIT 1) AS iva_id;
+
+CREATE TEMP TABLE tmp_dis_pdp AS
+SELECT p.id AS pdp_id,
+       p.indirizzo_dettaglio_id,
+       p.utility_id
+FROM anagrafiche.pdp p
+JOIN config.utilities u ON u.id = p.utility_id
+WHERE u.codice_interno = 'GAS'
+  AND p.indirizzo_dettaglio_id IS NOT NULL
+  AND p.attivo IS TRUE
+LIMIT 1;
+
+CREATE TEMP TABLE tmp_dis_soggetto AS
+SELECT iu_ref.soggetto_id,
+       ba_ref.soggetto_ruolo_id
+FROM anagrafiche.billing_account ba_ref
+JOIN anagrafiche.istanze_utilities iu_ref ON iu_ref.id = ba_ref.istanza_utility_id
+WHERE ba_ref.parent_account_id IS NULL
+  AND ba_ref.utility_id IS NOT NULL
+ORDER BY ba_ref.id
+LIMIT 1;
+
+SELECT ok(
+    (SELECT stato_at_id IS NOT NULL
+        AND stato_ch_id IS NOT NULL
+        AND stato_pdp_disp_id IS NOT NULL
+        AND stato_pdp_att_id IS NOT NULL
+        AND iva_id IS NOT NULL
+     FROM tmp_dis_cfg)
+    AND (SELECT pdp_id IS NOT NULL FROM tmp_dis_pdp)
+    AND (SELECT soggetto_id IS NOT NULL
+            AND soggetto_ruolo_id IS NOT NULL
+         FROM tmp_dis_soggetto),
+    'T01 Precondizioni: stati AT/CH, stati PDP ATT/DISP, IVA, PDP GAS, soggetto presenti'
+);
+
+-- =========================================================
+-- 1) Setup: crea istanza + BA + cliente attivo con PDP
+-- =========================================================
+
+-- Data base futura per evitare conflitti con dati esistenti
+CREATE TEMP TABLE tmp_dis_base AS
+SELECT (current_date + 60)::date AS d0;
+
+-- Chiusura preventiva eventuale cliente attivo sul PDP alla data test
+CREATE TEMP TABLE tmp_dis_subentro_pre AS
+SELECT script.fn_subentro_cliente(
+    (SELECT pdp_id FROM tmp_dis_pdp),
+    (SELECT d0 FROM tmp_dis_base)
+) AS cliente_chiuso_id;
+
+-- Tabella per conservare gli ID di test
+CREATE TEMP TABLE tmp_dis_ids (
+    istanza_id bigint,
+    ba_id bigint,
+    cliente_id bigint
+);
+
+DO $$
+DECLARE
+    v_soggetto_id uuid;
+    v_soggetto_ruolo_id bigint;
+    v_utility_id integer;
+    v_pdp_id bigint;
+    v_indirizzo_id bigint;
+    v_stato_at_id integer;
+    v_iva_id integer;
+    v_d0 date;
+    v_istanza_id bigint;
+    v_ba_id bigint;
+    v_cliente_id bigint;
+BEGIN
+    SELECT soggetto_id, soggetto_ruolo_id
+      INTO v_soggetto_id, v_soggetto_ruolo_id
+      FROM tmp_dis_soggetto;
+
+    SELECT pdp_id, indirizzo_dettaglio_id, utility_id
+      INTO v_pdp_id, v_indirizzo_id, v_utility_id
+      FROM tmp_dis_pdp;
+
+    SELECT stato_at_id, iva_id
+      INTO v_stato_at_id, v_iva_id
+      FROM tmp_dis_cfg;
+
+    SELECT d0 INTO v_d0 FROM tmp_dis_base;
+
+    -- Istanza non fittizia (con indirizzo e PDP per testare sync stato PDP)
+    INSERT INTO anagrafiche.istanze_utilities (
+        soggetto_id, fittizia, codice,
+        indirizzo_dettaglio_id, pdp_id
+    ) VALUES (
+        v_soggetto_id, false, 'TST-DIS-IU-01',
+        v_indirizzo_id, v_pdp_id
+    ) RETURNING id INTO v_istanza_id;
+
+    -- Billing account
+    INSERT INTO anagrafiche.billing_account (
+        istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal
+    ) VALUES (
+        v_istanza_id, v_soggetto_ruolo_id, v_utility_id::integer, CURRENT_DATE
+    ) RETURNING id INTO v_ba_id;
+
+    -- Cliente attivo con PDP
+    INSERT INTO anagrafiche.clienti (
+        soggetto_ruolo_id, istanza_utility_id,
+        stato_cliente_id, data_attivazione,
+        billing_account_id, iva_id,
+        pdp_id, codice_cliente_importato
+    ) VALUES (
+        v_soggetto_ruolo_id, v_istanza_id,
+        v_stato_at_id, v_d0,
+        v_ba_id, v_iva_id,
+        v_pdp_id, 'TST-DIS-CLI-01'
+    ) RETURNING id INTO v_cliente_id;
+
+    INSERT INTO tmp_dis_ids (istanza_id, ba_id, cliente_id)
+    VALUES (v_istanza_id, v_ba_id, v_cliente_id);
+END;
+$$;
+
+SELECT ok(
+    (SELECT count(*) FROM tmp_dis_ids) = 1,
+    'T02 Setup: istanza + BA + cliente attivo con PDP creati'
+);
+
+-- =========================================================
+-- 2) DB-08: parametri NULL -> errore
+-- =========================================================
+SELECT throws_ok(
+    $$SELECT script.fn_disdetta_cliente(NULL::bigint, '2026-06-01'::date)$$,
+    NULL,
+    'T03 DB-08: fn_disdetta_cliente(NULL, date) -> errore parametro invalido'
+);
+
+SELECT throws_ok(
+    format(
+        'SELECT script.fn_disdetta_cliente(%s, NULL::date)',
+        (SELECT cliente_id FROM tmp_dis_ids)
+    ),
+    NULL,
+    'T04 DB-08: fn_disdetta_cliente(id, NULL) -> errore parametro invalido'
+);
+
+-- =========================================================
+-- 3) Cliente non trovato (ID inesistente)
+-- =========================================================
+SELECT throws_ok(
+    $$SELECT script.fn_disdetta_cliente(999999999::bigint, '2026-06-01'::date)$$,
+    NULL,
+    'T05 fn_disdetta_cliente(id_inesistente, date) -> errore cliente non trovato'
+);
+
+-- =========================================================
+-- 4) DB-07: data_cessazione < data_attivazione -> errore
+-- =========================================================
+SELECT throws_ok(
+    format(
+        'SELECT script.fn_disdetta_cliente(%s, %L::date)',
+        (SELECT cliente_id FROM tmp_dis_ids),
+        (SELECT (d0 - 1)::date FROM tmp_dis_base)
+    ),
+    NULL,
+    'T06 DB-07: data_cessazione < data_attivazione -> errore'
+);
+
+-- =========================================================
+-- 5) DB-05: happy path disdetta
+-- =========================================================
+SELECT is(
+    (SELECT script.fn_disdetta_cliente(
+        (SELECT cliente_id FROM tmp_dis_ids),
+        (SELECT (d0 + 10)::date FROM tmp_dis_base)
+    )),
+    (SELECT cliente_id FROM tmp_dis_ids),
+    'T07 DB-05: disdetta restituisce ID cliente'
+);
+
+-- =========================================================
+-- 6) DB-05: stato cliente = CH dopo disdetta
+-- =========================================================
+SELECT is(
+    (SELECT sc.codice_interno
+       FROM anagrafiche.clienti c
+       JOIN config.stati_cliente sc ON sc.id = c.stato_cliente_id
+      WHERE c.id = (SELECT cliente_id FROM tmp_dis_ids)),
+    'CH'::bpchar,
+    'T08 DB-05: stato cliente = CH dopo disdetta'
+);
+
+-- =========================================================
+-- 7) DB-05: periodo aggiornato [data_attivazione, data_cessazione)
+-- =========================================================
+SELECT ok(
+    (SELECT c.periodo IS NOT NULL
+        AND lower(c.periodo) = (SELECT d0 FROM tmp_dis_base)
+        AND upper(c.periodo) = (SELECT (d0 + 10)::date FROM tmp_dis_base)
+       FROM anagrafiche.clienti c
+      WHERE c.id = (SELECT cliente_id FROM tmp_dis_ids)),
+    'T09 DB-05: periodo = [data_attivazione, data_cessazione) dopo disdetta'
+);
+
+-- =========================================================
+-- 8) DB-05: PDP stato = DISP dopo disdetta
+-- =========================================================
+SELECT is(
+    (SELECT sp.codice_interno
+       FROM anagrafiche.pdp p
+       JOIN config.stati_pdp sp ON sp.id = p.stato_pdp_id
+      WHERE p.id = (SELECT pdp_id FROM tmp_dis_pdp)),
+    'DISP'::varchar,
+    'T10 DB-05: PDP stato = DISP dopo disdetta'
+);
+
+-- =========================================================
+-- 9) DB-09: BA valido_al IS NULL dopo disdetta (policy: BA resta attivo)
+-- =========================================================
+SELECT ok(
+    (SELECT ba.valido_al IS NULL
+       FROM anagrafiche.billing_account ba
+      WHERE ba.id = (SELECT ba_id FROM tmp_dis_ids)),
+    'T11 DB-09: BA valido_al IS NULL dopo disdetta (policy: BA resta attivo)'
+);
+
+-- =========================================================
+-- 10) DB-06: disdetta su cliente gia chiuso -> errore
+-- =========================================================
+SELECT throws_ok(
+    format(
+        'SELECT script.fn_disdetta_cliente(%s, %L::date)',
+        (SELECT cliente_id FROM tmp_dis_ids),
+        (SELECT (d0 + 20)::date FROM tmp_dis_base)
+    ),
+    NULL,
+    'T12 DB-06: fn_disdetta_cliente su cliente gia chiuso -> errore non attivo'
+);
+
+-- =========================================================
+-- Cleanup finale
+-- =========================================================
+DO $$
+BEGIN
+    SET LOCAL zeroerp.maintenance_ruoli_delete = 'on';
+
+    DELETE FROM anagrafiche.clienti c
+    WHERE c.codice_cliente_importato LIKE 'TST-DIS-%';
+
+    DELETE FROM anagrafiche.billing_account ba
+    WHERE ba.istanza_utility_id IN (
+        SELECT iu.id FROM anagrafiche.istanze_utilities iu
+        WHERE iu.codice LIKE 'TST-DIS-%'
+    );
+
+    DELETE FROM anagrafiche.istanze_utilities iu
+    WHERE iu.codice LIKE 'TST-DIS-%';
+END;
+$$;
+
+SELECT * FROM finish();

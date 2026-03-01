@@ -25,5 +25,11 @@
 | ix_profili_reparto_aree_profili_reparto_aree_id_fk | `CREATE INDEX ix_profili_reparto_aree_profili_reparto_aree_id_fk ON storico.profili_reparto_aree USING btree (profili_reparto_aree_id)` |
 | pk_storico_profili_reparto_aree | `CREATE UNIQUE INDEX pk_storico_profili_reparto_aree ON storico.profili_reparto_aree USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_profili_reparto_aree_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_profili_reparto_aree_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}
