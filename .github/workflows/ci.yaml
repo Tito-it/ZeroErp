@@ -15,7 +15,7 @@ concurrency:
 
 on:
   push:
-    branches: [Tito-dev,main]
+    branches: [main]
     paths:
       - db/** # migrazioni Liquibase
       - backend/** # Django backend
@@ -28,8 +28,7 @@ on:
       - docs/**
       - mkdocs.yml
       - scripts/**
-  pull_request:
-    branches: [Tito-dev,main]
+  workflow_dispatch: {} # esecuzione manuale su qualsiasi branch
 
 jobs:
   build:
