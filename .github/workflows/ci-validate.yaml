@@ -71,6 +71,25 @@ jobs:
           source backend/.venv/bin/activate
           pip install -r backend/requirements.txt
 
+      - name: Install pre-commit
+        run: pip install pre-commit
+
+      - name: Cache pre-commit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Run pre-commit (changed files only)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            pre-commit run --from-ref ${{ github.event.pull_request.base.sha }} \
+                           --to-ref ${{ github.sha }}
+          else
+            pre-commit run --from-ref ${{ github.event.before }} \
+                           --to-ref ${{ github.sha }}
+          fi
+
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
