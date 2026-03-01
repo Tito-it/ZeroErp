@@ -99,6 +99,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "search_burst": API_SEARCH_THROTTLE_RATE,
     },
+    "EXCEPTION_HANDLER": "apps.core.api.error_responses.drf_exception_handler",
 }
 
 SPECTACULAR_SETTINGS = {

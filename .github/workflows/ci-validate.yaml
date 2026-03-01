@@ -121,7 +121,7 @@ jobs:
           PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         run: |
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "CREATE ROLE zeroerp LOGIN PASSWORD 'secret';"
+            "CREATE ROLE zeroerp LOGIN CREATEDB PASSWORD 'secret';"
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "GRANT USAGE, CREATE ON SCHEMA public TO zeroerp; GRANT CREATE ON DATABASE zeroerp TO zeroerp;"
 

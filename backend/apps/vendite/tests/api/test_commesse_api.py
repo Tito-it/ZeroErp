@@ -20,6 +20,8 @@ Indice test eseguiti:
 11) VenditeCommesseApiTests.test_get_commessa_attivita_v1_requires_jwt
 12) VenditeCommesseApiTests.test_get_commessa_attivita_invalid_limit
 13) VenditeCommesseApiTests.test_get_commessa_attivita_con_filtri
+14) VenditeCommesseApiTests.test_run_commesse_push_post_permission_allowed
+15) VenditeCommesseApiTests.test_run_commesse_push_post_permission_denied
 """
 
 import json
@@ -232,3 +234,60 @@ class VenditeCommesseApiTests(SimpleTestCase):
         self.assertEqual(response.status_code, 400)
         body = response.json()["error"]
         self.assertEqual(body["code"], "E_COMMESSA_VALIDATION")
+
+    # ------------------------------------------------------------------ #
+    # POST /api/v1/vendite/commesse/push/run/ — post_permission          #
+    # ------------------------------------------------------------------ #
+
+    # Scopo: Verifica che post_permission="run_commesse_push" consenta l'accesso con azione abilitata.
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=True)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_sistema", return_value="OPERATIVO")
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views.pr_run_commesse_push")
+    def test_run_commesse_push_post_permission_allowed(
+        self, mocked_push, mock_auth, _mock_ruolo, mock_azione, _mock_load, _mock_save
+    ):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        mocked_push.return_value = {
+            "stato": "COMPLETATO", "dry_run": False,
+            "push_log_id": 10, "durata_ms": 100, "handlers": [],
+        }
+        response = self.client.post(
+            "/api/v1/vendite/commesse/push/run/",
+            data=json.dumps({"dry_run": False}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-perm-ok-1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_azione.assert_called_once()
+        self.assertEqual(mock_azione.call_args.args[1], "run_commesse_push")
+
+    # Scopo: Verifica che post_permission="run_commesse_push" neghi l'accesso con azione disabilitata.
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=False)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_sistema", return_value="OPERATIVO")
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    def test_run_commesse_push_post_permission_denied(
+        self, mock_auth, _mock_ruolo, mock_azione, _mock_load, _mock_save
+    ):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        response = self.client.post(
+            "/api/v1/vendite/commesse/push/run/",
+            data=json.dumps({"dry_run": False}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-perm-deny-1"},
+        )
+        self.assertEqual(response.status_code, 403)
+        mock_azione.assert_called_once()
+        self.assertEqual(mock_azione.call_args.args[1], "run_commesse_push")

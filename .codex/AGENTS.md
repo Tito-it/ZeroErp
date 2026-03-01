@@ -153,3 +153,27 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 - Struttura test Django per app: `apps/<schema>/tests/` con sottocartelle minime `api/` e `services/`.
 - Esempio esecuzione test Django: `./manage-test.sh apps.core.tests.api -v 2`
 - Smoke test API docs/schema: vedi `apps/core/tests/api/test_diagnostics_api.py` (endpoint `/api/docs/` e `/api/schema/`).
+
+### Regole test Django per compatibilità CI
+
+I test Django devono funzionare in CI (GitHub Actions) **senza dipendere da un DB reale accessibile**:
+
+- **Usare `unittest.TestCase`** (o `django.test.SimpleTestCase`) per test unitari con mock. **Non** usare `django.test.TestCase` a meno che il test non necessiti realmente del database.
+- **Mockare ogni accesso DB**: se il codice sotto test usa `django.db.connection` (cursor, advisory lock, query dirette), mockare quei metodi nel test. Non fare affidamento sul DB di sviluppo.
+- **Pattern consigliato** per metodi che accedono al DB (es. advisory lock, cursor raw):
+
+  ```python
+  def setUp(self):
+      patcher = patch.object(MyClass, "_metodo_che_usa_db", return_value=valore)
+      self._mock = patcher.start()
+      self.addCleanup(patcher.stop)
+  ```
+
+- **Endpoint API con `@extend_schema`**: ogni `APIView` esposta su `/api/v1/` deve avere il decoratore `@extend_schema` su ogni metodo HTTP pubblico (`get`, `post`), per evitare warning drf-spectacular in CI e generare documentazione OpenAPI corretta.
+- **Verifica locale pre-push**: eseguire `./manage-test.sh -v 2` per confermare che tutti i test passano. Per simulare l'ambiente CI (senza DB), usare:
+
+  ```bash
+  DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp DB_PASSWORD=secret \
+  DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" DJANGO_DEBUG=0 \
+  .venv/bin/python manage.py test -v 2
+  ```

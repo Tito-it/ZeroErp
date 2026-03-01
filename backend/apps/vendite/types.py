@@ -88,7 +88,7 @@ class LottoFattureRow(TypedDict):
 class LottoListRow(TypedDict):
     id: int
     codice: str
-    competenza_mese: str
+    competenza_mese: str | None
     tipo_lotto: str
     utility_id: int | None
     utility_descrizione: str | None
@@ -101,7 +101,7 @@ class LottoListRow(TypedDict):
     area_geografica_id: int | None
     area_geografica_descrizione: str | None
     emittente_soggetto_ruolo_id: int | None
-    data_insert: str
+    data_insert: str | None
     user_insert: str
 
 

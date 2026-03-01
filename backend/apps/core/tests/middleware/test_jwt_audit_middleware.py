@@ -13,6 +13,7 @@ Indice test eseguiti:
 4) test_anonymous_user_no_guc_set
 5) test_operativo_passes_through
 6) test_middleware_seeds_perms_cache
+7) test_middleware_seeds_perms_cache_from_redis
 """
 
 from unittest import TestCase
@@ -21,6 +22,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 from apps.core.middleware.jwt_audit_middleware import JwtAuditMiddleware
 
 _RESOLVER = "apps.core.middleware.jwt_audit_middleware.PermissionResolver"
+_LOAD_CACHE = "apps.core.middleware.jwt_audit_middleware.load_user_cache"
 
 
 def _mock_request(
@@ -44,9 +46,10 @@ class JwtAuditMiddlewareTests(TestCase):
         self.middleware = JwtAuditMiddleware(get_response=MagicMock())
 
     # Scopo: Verifica che SET LOCAL imposti sia jwt_user che current_user_id.
+    @patch(_LOAD_CACHE, return_value=None)
     @patch("apps.core.middleware.jwt_audit_middleware.connection")
     @patch(f"{_RESOLVER}.get_ruolo_sistema", return_value="OPERATIVO")
-    def test_set_local_jwt_user_and_current_user_id(self, _mock_ruolo, mock_conn):
+    def test_set_local_jwt_user_and_current_user_id(self, _mock_ruolo, mock_conn, _mock_load):
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -62,9 +65,10 @@ class JwtAuditMiddlewareTests(TestCase):
         self.assertIn("app.current_user_id", calls[1][0][0])
 
     # Scopo: Utente DISABILITATO su path /api/ deve ricevere 403.
+    @patch(_LOAD_CACHE, return_value=None)
     @patch("apps.core.middleware.jwt_audit_middleware.connection")
     @patch(f"{_RESOLVER}.get_ruolo_sistema", return_value="DISABILITATO")
-    def test_disabilitato_returns_403_on_api(self, _mock_ruolo, mock_conn):
+    def test_disabilitato_returns_403_on_api(self, _mock_ruolo, mock_conn, _mock_load):
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -100,9 +104,10 @@ class JwtAuditMiddlewareTests(TestCase):
         mock_conn.cursor.assert_not_called()
 
     # Scopo: Utente OPERATIVO passa senza blocco.
+    @patch(_LOAD_CACHE, return_value=None)
     @patch("apps.core.middleware.jwt_audit_middleware.connection")
     @patch(f"{_RESOLVER}.get_ruolo_sistema", return_value="OPERATIVO")
-    def test_operativo_passes_through(self, _mock_ruolo, mock_conn):
+    def test_operativo_passes_through(self, _mock_ruolo, mock_conn, _mock_load):
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -111,10 +116,11 @@ class JwtAuditMiddlewareTests(TestCase):
         result = self.middleware.process_view(request, None, (), {})
         self.assertIsNone(result)
 
-    # Scopo: Il middleware inizializza _zeroerp_perms_cache sulla request.
+    # Scopo: Il middleware inizializza _zeroerp_perms_cache sulla request (Redis miss).
+    @patch(_LOAD_CACHE, return_value=None)
     @patch("apps.core.middleware.jwt_audit_middleware.connection")
     @patch(f"{_RESOLVER}.get_ruolo_sistema", return_value="OPERATIVO")
-    def test_middleware_seeds_perms_cache(self, _mock_ruolo, mock_conn):
+    def test_middleware_seeds_perms_cache(self, _mock_ruolo, mock_conn, _mock_load):
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -124,3 +130,18 @@ class JwtAuditMiddlewareTests(TestCase):
         # La cache per-request deve essere stata creata dal middleware
         self.assertTrue(hasattr(request, "_zeroerp_perms_cache"))
         self.assertIsInstance(request._zeroerp_perms_cache, dict)
+        self.assertFalse(request._zeroerp_perms_cache_loaded_from_redis)
+
+    # Scopo: Il middleware carica cache L2 da Redis quando disponibile.
+    @patch(_LOAD_CACHE, return_value={"ruolo_sistema": "OPERATIVO"})
+    @patch("apps.core.middleware.jwt_audit_middleware.connection")
+    @patch(f"{_RESOLVER}.get_ruolo_sistema", return_value="OPERATIVO")
+    def test_middleware_seeds_perms_cache_from_redis(self, _mock_ruolo, mock_conn, _mock_load):
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        request = _mock_request()
+        self.middleware.process_view(request, None, (), {})
+        self.assertEqual(request._zeroerp_perms_cache, {"ruolo_sistema": "OPERATIVO"})
+        self.assertTrue(request._zeroerp_perms_cache_loaded_from_redis)

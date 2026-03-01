@@ -51,6 +51,19 @@ def _ok_result(name: str, created: int = 1, sorgente_codice: str = "") -> Handle
 
 class CommessePushOrchestratorTests(TestCase):
 
+    def setUp(self):
+        # Scopo: mock advisory lock per evitare connessioni DB reali nei test unitari.
+        patcher_acquire = patch.object(
+            CommessaPushOrchestrator, "_try_acquire_lock", return_value=True,
+        )
+        patcher_release = patch.object(
+            CommessaPushOrchestrator, "_release_lock",
+        )
+        self._mock_acquire = patcher_acquire.start()
+        self._mock_release = patcher_release.start()
+        self.addCleanup(patcher_acquire.stop)
+        self.addCleanup(patcher_release.stop)
+
     # Scopo: tutti gli handler riescono → stato COMPLETATO.
     def test_run_completato_tutti_handler(self):
         repo = _mock_repo()
@@ -185,8 +198,8 @@ class CommessePushOrchestratorTests(TestCase):
         self.assertIn("HandlerA", call_kwargs["risultato"])
 
     # Scopo: lock non acquisito → PushReport SKIPPED, nessun handler eseguito, nessun log.
-    @patch.object(CommessaPushOrchestrator, "_try_acquire_lock", return_value=False)
-    def test_run_skipped_quando_lock_non_acquisito(self, _mock_lock):
+    def test_run_skipped_quando_lock_non_acquisito(self):
+        self._mock_acquire.return_value = False
         repo = _mock_repo()
         h = _mock_handler("HandlerA", _ok_result("HandlerA"))
         orch = CommessaPushOrchestrator(repo, [h])
@@ -201,9 +214,7 @@ class CommessePushOrchestratorTests(TestCase):
         repo.log_push_run.assert_not_called()
 
     # Scopo: lock rilasciato dopo run (anche se handler fallisce).
-    @patch.object(CommessaPushOrchestrator, "_release_lock")
-    @patch.object(CommessaPushOrchestrator, "_try_acquire_lock", return_value=True)
-    def test_run_rilascia_lock_dopo_esecuzione(self, _mock_acquire, mock_release):
+    def test_run_rilascia_lock_dopo_esecuzione(self):
         repo = _mock_repo()
         h = MagicMock(spec=BaseSourceHandler)
         h.name = "HandlerA"
@@ -214,12 +225,10 @@ class CommessePushOrchestratorTests(TestCase):
         report = orch.run()
 
         self.assertEqual(report.stato, "ERRORE")
-        mock_release.assert_called_once()
+        self._mock_release.assert_called()
 
     # Scopo: Verifica che _run_locked emetta PUSH_STARTED e PUSH_COMPLETED su event_log.
-    @patch.object(CommessaPushOrchestrator, "_release_lock")
-    @patch.object(CommessaPushOrchestrator, "_try_acquire_lock", return_value=True)
-    def test_run_emits_push_started_and_completed_events(self, _mock_acquire, _mock_release):
+    def test_run_emits_push_started_and_completed_events(self):
         repo = _mock_repo(push_log_id=42)
         h = _mock_handler("HandlerA", _ok_result("HandlerA"))
         orch = CommessaPushOrchestrator(repo, [h])
