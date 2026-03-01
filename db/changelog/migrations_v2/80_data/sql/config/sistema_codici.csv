@@ -6,4 +6,4 @@ id,codice_interno,descrizione,prefisso,separatore,lunghezza_numero,usa_sequenza,
 3,istanze_utilities,Codice istanza (ex fornitura) automatico,IFO,-,7,t,2025-04-22 16:38:12.173131+02,titodb,2026-02-09 12:13:10.414253+01,titodb,a1b0ecc7-abb8-4557-954e-5a1b71dd1af0,anagrafiche,istanze_utilities,codice
 6,ordine,Numero ordine,ORD,"",7,t,2025-10-31 19:16:41.105172+01,titodb,2026-02-09 12:13:10.414253+01,titodb,2e8d9107-4184-4544-ab28-6f8f8b06cf07,vendite,ordini,numero
 7,ddt,Numero ddt,DDT,"",7,t,2025-10-31 19:25:09.326307+01,titodb,2026-02-09 12:13:10.414253+01,titodb,13a4876e-aee4-45e9-a6af-c07b45a57b6c,vendite,ddt,numero
-8,contratto,Numero contratto,CNT,"",7,t,2025-11-01 18:35:35.185402+01,titodb,2026-02-09 12:13:10.414253+01,titodb,dd70b7e5-10b5-4b66-8827-bcc22723a2c7,vendite,contratti,numero
+8,contratto,Numero contratto,CNT,"",7,t,2025-11-01 18:35:35.185402+01,titodb,2026-02-24 12:13:10.414253+01,titodb,dd70b7e5-10b5-4b66-8827-bcc22723a2c7,vendite,contratti,numero
