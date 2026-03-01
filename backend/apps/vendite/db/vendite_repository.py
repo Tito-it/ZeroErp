@@ -25,6 +25,23 @@ _SORT_COLUMNS: dict[str, str] = {
 
 class VenditeRepository:
 
+    # Scopo: Aggiunge la condizione WHERE per scope emittente DB-first.
+    # La funzione SQL risolve ruolo, whitelist e mappatura soggetto_ruolo.
+    @staticmethod
+    def _add_scope_emittente(
+        auth_user_id: int | None,
+        field: str,
+        conditions: list[str],
+        params: list[Any],
+    ) -> None:
+        if auth_user_id is not None:
+            conditions.append(
+                f"(config.fn_get_emittenti_scope_sr_ids(%s) IS NULL "
+                f"OR {field} = ANY("
+                f"config.fn_get_emittenti_scope_sr_ids(%s)))"
+            )
+            params.extend([auth_user_id, auth_user_id])
+
     # Scopo: Restituisce elenco lotti paginato con JOIN decodifica e filtri opzionali.
     # Obiettivo: lista generica fatturazione_lotti con decodifiche config.
     # Perimetro: solo lettura; nessun side-effect.
@@ -68,15 +85,9 @@ class VenditeRepository:
             conditions.append("fl.emittente_soggetto_ruolo_id = %s")
             params.append(emittente_soggetto_ruolo_id)
 
-        # Scope emittente DB-first: la funzione SQL risolve ruolo, whitelist
-        # e mappatura soggetto_ruolo internamente.
-        if auth_user_id is not None:
-            conditions.append(
-                "(config.fn_get_emittenti_scope_sr_ids(%s) IS NULL "
-                "OR fl.emittente_soggetto_ruolo_id = ANY("
-                "config.fn_get_emittenti_scope_sr_ids(%s)))"
-            )
-            params.extend([auth_user_id, auth_user_id])
+        self._add_scope_emittente(
+            auth_user_id, "fl.emittente_soggetto_ruolo_id", conditions, params
+        )
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -195,14 +206,9 @@ class VenditeRepository:
             conditions.append("fllf.esclusa = %s")
             params.append(esclusa)
 
-        # Scope emittente DB-first: filtra sulla colonna della fattura.
-        if auth_user_id is not None:
-            conditions.append(
-                "(config.fn_get_emittenti_scope_sr_ids(%s) IS NULL "
-                "OR f.emittente_soggetto_ruolo_id = ANY("
-                "config.fn_get_emittenti_scope_sr_ids(%s)))"
-            )
-            params.extend([auth_user_id, auth_user_id])
+        self._add_scope_emittente(
+            auth_user_id, "f.emittente_soggetto_ruolo_id", conditions, params
+        )
 
         where_clause = "WHERE " + " AND ".join(conditions)
 

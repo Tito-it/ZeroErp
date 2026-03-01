@@ -6,8 +6,7 @@ from rest_framework.request import Request
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from apps.core.api.error_responses import exception_to_error_response
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.commesse_service import (
@@ -127,11 +126,8 @@ class ApiLottoSegnalazioniSummary(APIView):
     )
     # Scopo: Restituisce via GET il riepilogo segnalazioni del lotto per uso operativo/UI.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
-        try:
-            data = fn_get_lotto_segnalazioni_summary(lotto_id=lotto_id)
-            return success_response(data)
-        except Exception as exc:
-            return exception_to_error_response(exc)
+        data = fn_get_lotto_segnalazioni_summary(lotto_id=lotto_id)
+        return success_response(data)
 
 
 class ApiLottoSegnalazioniSummaryV1(ApiLottoSegnalazioniSummary):
@@ -170,12 +166,9 @@ class ApiLottoTaskRuns(APIView):
     )
     # Scopo: Restituisce via GET i task run runtime del lotto per monitoraggio operativo.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
-        try:
-            limit = optional_int({"limit": request.query_params.get("limit", "100")}, "limit")
-            data = fn_get_lotto_task_runs(lotto_id=lotto_id, limit=limit)
-            return success_response(data)
-        except Exception as exc:
-            return exception_to_error_response(exc)
+        limit = optional_int({"limit": request.query_params.get("limit", "100")}, "limit")
+        data = fn_get_lotto_task_runs(lotto_id=lotto_id, limit=limit)
+        return success_response(data)
 
 
 class ApiLottoTaskRunsV1(ApiLottoTaskRuns):
@@ -231,6 +224,7 @@ class ApiResetLottoDraftV1(ApiResetLottoDraft):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
     area_funzionale = "vendite"
+    post_permission = "reset_lotto_draft"
 
 
 class ApiResetLottoFatturaDraft(APIView):
@@ -270,7 +264,7 @@ class ApiResetLottoFatturaDraft(APIView):
         # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
         def _handler(_payload: dict[str, object]) -> dict[str, object]:
             result = fn_reset_lotto_fattura_draft(lotto_id=lotto_id, fattura_id=fattura_id)
-            return {"data": result}
+            return result
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
@@ -279,6 +273,7 @@ class ApiResetLottoFatturaDraftV1(ApiResetLottoFatturaDraft):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
     area_funzionale = "vendite"
+    post_permission = "reset_lotto_fattura_draft"
 
 
 class ApiLottiList(APIView):
@@ -316,47 +311,41 @@ class ApiLottiList(APIView):
     )
     # Scopo: Restituisce via GET l'elenco paginato dei lotti fatturazione con filtri opzionali.
     def get(self, request: Request) -> JsonResponse:
-        try:
-            raw_competenza = request.query_params.get("competenza_mese")
-            competenza_mese = optional_iso_date({"competenza_mese": raw_competenza}, "competenza_mese")
+        raw_competenza = request.query_params.get("competenza_mese")
+        competenza_mese = optional_iso_date({"competenza_mese": raw_competenza}, "competenza_mese")
 
-            raw_utility = request.query_params.get("utility_id")
-            utility_id = optional_int({"utility_id": raw_utility}, "utility_id") if raw_utility is not None else None
+        raw_utility = request.query_params.get("utility_id")
+        utility_id = optional_int({"utility_id": raw_utility}, "utility_id") if raw_utility is not None else None
 
-            stato_lotto_raw = request.query_params.get("stato_lotto")
-            stato_lotto = stato_lotto_raw.strip() or None if stato_lotto_raw is not None else None
+        stato_lotto_raw = request.query_params.get("stato_lotto")
+        stato_lotto = stato_lotto_raw.strip() or None if stato_lotto_raw is not None else None
 
-            raw_area = request.query_params.get("area_geografica_id")
-            area_geografica_id = optional_int({"area_geografica_id": raw_area}, "area_geografica_id") if raw_area is not None else None
+        raw_area = request.query_params.get("area_geografica_id")
+        area_geografica_id = optional_int({"area_geografica_id": raw_area}, "area_geografica_id") if raw_area is not None else None
 
-            raw_tipo_doc = request.query_params.get("tipo_doc_fiscale_id")
-            tipo_doc_fiscale_id = optional_int({"tipo_doc_fiscale_id": raw_tipo_doc}, "tipo_doc_fiscale_id") if raw_tipo_doc is not None else None
+        raw_tipo_doc = request.query_params.get("tipo_doc_fiscale_id")
+        tipo_doc_fiscale_id = optional_int({"tipo_doc_fiscale_id": raw_tipo_doc}, "tipo_doc_fiscale_id") if raw_tipo_doc is not None else None
 
-            raw_emittente = request.query_params.get("emittente_soggetto_ruolo_id")
-            emittente_soggetto_ruolo_id = optional_int({"emittente_soggetto_ruolo_id": raw_emittente}, "emittente_soggetto_ruolo_id") if raw_emittente is not None else None
+        raw_emittente = request.query_params.get("emittente_soggetto_ruolo_id")
+        emittente_soggetto_ruolo_id = optional_int({"emittente_soggetto_ruolo_id": raw_emittente}, "emittente_soggetto_ruolo_id") if raw_emittente is not None else None
 
-            page = optional_int({"page": request.query_params.get("page", "1")}, "page")
-            page_size = optional_int({"page_size": request.query_params.get("page_size", "50")}, "page_size")
+        page = optional_int({"page": request.query_params.get("page", "1")}, "page")
+        page_size = optional_int({"page_size": request.query_params.get("page_size", "50")}, "page_size")
 
-            # Scope emittente DB-first: superuser Django bypass; per tutti
-            # gli altri la funzione SQL risolve ruolo e whitelist.
-            user = request.user
-            auth_user_id = None if user.is_superuser else user.id
+        auth_user_id = get_scope_user_id(request)
 
-            data = fn_list_lotti(
-                competenza_mese=competenza_mese,
-                utility_id=utility_id,
-                stato_lotto=stato_lotto,
-                area_geografica_id=area_geografica_id,
-                tipo_doc_fiscale_id=tipo_doc_fiscale_id,
-                emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
-                auth_user_id=auth_user_id,
-                page=page,
-                page_size=page_size,
-            )
-            return success_response(data)
-        except Exception as exc:
-            return exception_to_error_response(exc)
+        data = fn_list_lotti(
+            competenza_mese=competenza_mese,
+            utility_id=utility_id,
+            stato_lotto=stato_lotto,
+            area_geografica_id=area_geografica_id,
+            tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+            emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+            auth_user_id=auth_user_id,
+            page=page,
+            page_size=page_size,
+        )
+        return success_response(data)
 
 
 class ApiLottiListV1(ApiLottiList):
@@ -368,37 +357,60 @@ class ApiLottiListV1(ApiLottiList):
 class ApiLottoFattureList(APIView):
     is_search_endpoint = True
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="stato_esecuzione", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro stato esecuzione fattura."),
+            OpenApiParameter(name="esclusa", type=bool, location=OpenApiParameter.QUERY, required=False, description="Filtro fatture escluse (true/false)."),
+            OpenApiParameter(name="sort_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento (default fattura_id)."),
+            OpenApiParameter(name="sort_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc/desc (default asc)."),
+            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
+            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description="Dimensione pagina (default 50, max 200)."),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeLottoFattureListResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeLottoFattureListData",
+                        fields={
+                            "count": serializers.IntegerField(),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "results": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
     # Scopo: Restituisce via GET l'elenco paginato delle fatture di un lotto con filtri e ordinamento.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
-        try:
-            raw_stato_esecuzione = request.query_params.get("stato_esecuzione")
-            stato_esecuzione = raw_stato_esecuzione.strip() or None if raw_stato_esecuzione is not None else None
+        raw_stato_esecuzione = request.query_params.get("stato_esecuzione")
+        stato_esecuzione = raw_stato_esecuzione.strip() or None if raw_stato_esecuzione is not None else None
 
-            raw_esclusa = request.query_params.get("esclusa")
-            esclusa = optional_bool({"esclusa": raw_esclusa}, "esclusa") if raw_esclusa is not None else None
+        raw_esclusa = request.query_params.get("esclusa")
+        esclusa = optional_bool({"esclusa": raw_esclusa}, "esclusa") if raw_esclusa is not None else None
 
-            sort_by = request.query_params.get("sort_by", "fattura_id").strip() or "fattura_id"
-            sort_dir = request.query_params.get("sort_dir", "asc").strip() or "asc"
-            page = optional_int({"page": request.query_params.get("page", "1")}, "page")
-            page_size = optional_int({"page_size": request.query_params.get("page_size", "50")}, "page_size")
+        sort_by = request.query_params.get("sort_by", "fattura_id").strip() or "fattura_id"
+        sort_dir = request.query_params.get("sort_dir", "asc").strip() or "asc"
+        page = optional_int({"page": request.query_params.get("page", "1")}, "page")
+        page_size = optional_int({"page_size": request.query_params.get("page_size", "50")}, "page_size")
 
-            # Scope emittente DB-first.
-            user = request.user
-            auth_user_id = None if user.is_superuser else user.id
+        auth_user_id = get_scope_user_id(request)
 
-            data = fn_list_lotto_fatture(
-                lotto_id=lotto_id,
-                stato_esecuzione=stato_esecuzione,
-                esclusa=esclusa,
-                auth_user_id=auth_user_id,
-                sort_by=sort_by,
-                sort_dir=sort_dir,
-                page=page,
-                page_size=page_size,
-            )
-            return success_response(data)
-        except Exception as exc:
-            return exception_to_error_response(exc)
+        data = fn_list_lotto_fatture(
+            lotto_id=lotto_id,
+            stato_esecuzione=stato_esecuzione,
+            esclusa=esclusa,
+            auth_user_id=auth_user_id,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            page=page,
+            page_size=page_size,
+        )
+        return success_response(data)
 
 
 class ApiLottoFattureListV1(ApiLottoFattureList):
@@ -469,6 +481,7 @@ class ApiRunCommessePushV1(ApiRunCommessePush):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
     area_funzionale = "vendite"
+    post_permission = "run_commesse_push"
 
 
 class ApiCommessePushLog(APIView):
@@ -485,11 +498,8 @@ class ApiCommessePushLog(APIView):
     )
     # Scopo: Restituisce via GET il dettaglio di un push log commesse.
     def get(self, request: Request, push_log_id: int) -> JsonResponse:
-        try:
-            data = fn_get_commesse_push_log(push_log_id=push_log_id)
-            return success_response(data)
-        except Exception as exc:
-            return exception_to_error_response(exc)
+        data = fn_get_commesse_push_log(push_log_id=push_log_id)
+        return success_response(data)
 
 
 class ApiCommessePushLogV1(ApiCommessePushLog):
@@ -520,11 +530,8 @@ class ApiCommessaStato(APIView):
     )
     # Scopo: Restituisce via GET stato e contatori di una commessa.
     def get(self, request: Request, commessa_id: int) -> JsonResponse:
-        try:
-            data = fn_get_commessa_stato(commessa_id=commessa_id)
-            return success_response(data)
-        except Exception as exc:
-            return exception_to_error_response(exc)
+        data = fn_get_commessa_stato(commessa_id=commessa_id)
+        return success_response(data)
 
 
 class ApiCommessaStatoV1(ApiCommessaStato):
@@ -563,23 +570,20 @@ class ApiCommessaAttivita(APIView):
     )
     # Scopo: Restituisce via GET la lista paginata delle attivita di una commessa.
     def get(self, request: Request, commessa_id: int) -> JsonResponse:
-        try:
-            stato_emissione = request.query_params.get("stato_emissione") or None
-            stato_approvazione = request.query_params.get("stato_approvazione") or None
-            competenza_mese = request.query_params.get("competenza_mese") or None
-            limit = optional_int({"limit": request.query_params.get("limit", "50")}, "limit")
-            offset = optional_int({"offset": request.query_params.get("offset", "0")}, "offset")
-            data = fn_list_commessa_attivita(
-                commessa_id=commessa_id,
-                stato_emissione=stato_emissione,
-                stato_approvazione=stato_approvazione,
-                competenza_mese=competenza_mese,
-                limit=limit,
-                offset=offset,
-            )
-            return success_response(data)
-        except Exception as exc:
-            return exception_to_error_response(exc)
+        stato_emissione = request.query_params.get("stato_emissione") or None
+        stato_approvazione = request.query_params.get("stato_approvazione") or None
+        competenza_mese = request.query_params.get("competenza_mese") or None
+        limit = optional_int({"limit": request.query_params.get("limit", "50")}, "limit")
+        offset = optional_int({"offset": request.query_params.get("offset", "0")}, "offset")
+        data = fn_list_commessa_attivita(
+            commessa_id=commessa_id,
+            stato_emissione=stato_emissione,
+            stato_approvazione=stato_approvazione,
+            competenza_mese=competenza_mese,
+            limit=limit,
+            offset=offset,
+        )
+        return success_response(data)
 
 
 class ApiCommessaAttivitaV1(ApiCommessaAttivita):

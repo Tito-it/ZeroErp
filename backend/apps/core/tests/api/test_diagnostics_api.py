@@ -50,10 +50,12 @@ class CoreDiagnosticsApiTests(SimpleTestCase):
         self.assertEqual(body["code"], "E_PIPELINE_LOTTO_NOT_FOUND")
         self.assertIn("Lotto non trovato", body["detail"])
 
-    # Scopo: Verifica il caso `test_error_envelope_v1_requires_auth_without_token`.
+    # Scopo: Verifica che 401 senza JWT segua l'envelope standard del progetto.
     def test_error_envelope_v1_requires_auth_without_token(self):
         response = self.client.get("/api/v1/core/diagnostics/error-envelope/")
         self.assertEqual(response.status_code, 401)
+        body = response.json()
+        self.assertEqual(body["error"]["code"], "E_NOT_AUTHENTICATED")
 
     # Scopo: Verifica il caso `test_openapi_schema_endpoint`.
     def test_openapi_schema_endpoint(self):

@@ -8,11 +8,17 @@
 
 from __future__ import annotations
 
+import logging
+
 from django.db import connection
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
+from apps.core.services.permissions_cache import load_user_cache
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.services.request_context import get_idempotency_key, get_request_id
+
+logger = logging.getLogger(__name__)
 
 
 class JwtAuditMiddleware(MiddlewareMixin):
@@ -52,23 +58,36 @@ class JwtAuditMiddleware(MiddlewareMixin):
                 )
 
             # Scopo: Rifiuta immediatamente utenti DISABILITATO (early rejection).
-            # Inizializza la cache per-request se non esiste: sara' riusata
+            # Pre-carica cache permessi da Redis L2; sara' riusata
             # da ZeroERPPermission._get_cache() senza query aggiuntive.
             if request.path.startswith("/api/"):
                 if not hasattr(request, "_zeroerp_perms_cache"):
-                    request._zeroerp_perms_cache = {}  # type: ignore[attr-defined]
+                    redis_data = load_user_cache(user.id)
+                    request._zeroerp_perms_cache = redis_data or {}  # type: ignore[attr-defined]
+                    request._zeroerp_perms_cache_loaded_from_redis = redis_data is not None  # type: ignore[attr-defined]
                 ruolo = PermissionResolver.get_ruolo_sistema(
                     user, cache=request._zeroerp_perms_cache  # type: ignore[attr-defined]
                 )
                 if ruolo == "DISABILITATO":
-                    return JsonResponse(
-                        {
-                            "error": {
-                                "code": "E_USER_DISABILITATO",
-                                "message": "Utente disabilitato.",
-                            }
-                        },
-                        status=403,
+                    logger.warning(
+                        "security.user_disabilitato user_id=%s path=%s",
+                        user.id, request.path,
                     )
+                    payload: dict = {
+                        "error": {
+                            "code": "E_USER_DISABILITATO",
+                            "message": "Utente disabilitato.",
+                        }
+                    }
+                    meta: dict[str, str] = {}
+                    request_id = get_request_id()
+                    if request_id:
+                        meta["request_id"] = request_id
+                    idempotency_key = get_idempotency_key()
+                    if idempotency_key:
+                        meta["idempotency_key"] = idempotency_key
+                    if meta:
+                        payload["meta"] = meta
+                    return JsonResponse(payload, status=403)
 
         return None

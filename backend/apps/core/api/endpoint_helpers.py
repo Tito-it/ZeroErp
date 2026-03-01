@@ -24,6 +24,13 @@ from apps.core.services.request_context import get_idempotency_key
 logger = logging.getLogger(__name__)
 
 
+# Scopo: Restituisce l'auth_user_id per il filtro scope emittente DB-first.
+# Superuser Django bypassa il filtro (None); per gli altri si usa user.id.
+def get_scope_user_id(request: HttpRequest | Request) -> int | None:
+    user = request.user
+    return None if user.is_superuser else user.id
+
+
 # Scopo: Gestisce endpoint POST JSON con parsing, validazione, idempotency opzionale e envelope uniforme.
 def handle_post_json(
     request: HttpRequest | Request,

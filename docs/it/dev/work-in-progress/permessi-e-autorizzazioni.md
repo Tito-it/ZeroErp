@@ -180,19 +180,19 @@ A questo punto tutte le API esistenti sono protette dal sistema permessi.
 
 #### Sviluppi Backend
 
-- [ ] B3.1 — Aggiungere `post_permission` alle 3 view write vendite rimanenti
+- [x] B3.1 — Aggiungere `post_permission` alle 3 view write vendite rimanenti
   - `ApiResetLottoDraftV1` → `post_permission = "reset_lotto_draft"`
   - `ApiResetLottoFatturaDraftV1` → `post_permission = "reset_lotto_fattura_draft"`
   - `ApiRunCommessePushV1` → `post_permission = "run_commesse_push"`
   - **Prerequisiti**: D3.3 (codenames presenti nel DB)
-- [ ] B3.2 — Test unitari per i nuovi `post_permission`
+- [x] B3.2 — Test unitari per i nuovi `post_permission` (6 test: allowed + denied per ciascuna view)
   - Verificare che `ZeroERPPermission.has_permission` instradi correttamente
   - **Prerequisiti**: B3.1
 
 #### Note Fase 3
 
 - `genera_fatture_lotti` e' gia' attivo su `ApiRunLottoPipelineV1` (F2.3 ✅).
-- F2.2 (scope emittente `VenditeRepository`): codice backend completato ✅ — attende D3.2 per funzionare in produzione.
+- F2.2 (scope emittente `VenditeRepository`): completato ✅ — backend + DB funzione `fn_get_emittenti_scope_sr_ids` (D3.2) entrambi pronti.
 - F3.1/F3.2 (`Meta.permissions`): non necessarie — il sistema usa `config.azioni_processo` direttamente.
 - Pagamenti: nessuna view API esposta — azioni processo pagamenti rimandate.
 

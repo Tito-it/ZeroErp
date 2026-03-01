@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from rest_framework.permissions import BasePermission
@@ -16,6 +17,8 @@ from rest_framework.request import Request
 
 from apps.core.services.permissions_cache import load_user_cache, save_user_cache
 from apps.core.services.permissions_resolver import LIVELLO_MAP, PermissionResolver
+
+logger = logging.getLogger(__name__)
 
 
 class ZeroERPPermission(BasePermission):
@@ -74,6 +77,10 @@ class ZeroERPPermission(BasePermission):
             # Check ruolo_sistema
             ruolo = PermissionResolver.get_ruolo_sistema(user, cache=cache)
             if ruolo == "DISABILITATO":
+                logger.warning(
+                    "security.permission_denied user_id=%s reason=DISABILITATO path=%s",
+                    user.id, request.path,
+                )
                 self.message = "Utente disabilitato. Contattare l'amministratore."
                 return False
             if ruolo == "ADMIN":
@@ -91,6 +98,10 @@ class ZeroERPPermission(BasePermission):
                         user, action_perm, cache=cache
                     )
                     if not result:
+                        logger.warning(
+                            "security.permission_denied user_id=%s reason=azione_negata azione=%s path=%s",
+                            user.id, action_perm, request.path,
+                        )
                         self.message = "Non hai i permessi per questa operazione."
                     return result
 
@@ -106,6 +117,10 @@ class ZeroERPPermission(BasePermission):
                             user, method_perm, cache=cache
                         )
                         if not result:
+                            logger.warning(
+                                "security.permission_denied user_id=%s reason=azione_negata azione=%s path=%s",
+                                user.id, method_perm, request.path,
+                            )
                             self.message = "Non hai i permessi per questa operazione."
                         return result
 
@@ -116,8 +131,14 @@ class ZeroERPPermission(BasePermission):
                 required = self.METHOD_REQUIRES.get(request.method or "")
 
             if required is None:
-                # Azione sconosciuta -> permetti (safe per azioni custom non CRUD)
-                return True
+                # Fail-closed: azione sconosciuta senza *_permission -> nega.
+                logger.warning(
+                    "security.permission_denied user_id=%s reason=azione_sconosciuta "
+                    "action=%s method=%s path=%s",
+                    user.id, action, request.method, request.path,
+                )
+                self.message = "Non hai i permessi per questa operazione."
+                return False
 
             # Determina area funzionale dal model o dall'attributo della view
             area_schema_db = self._resolve_area(view, cache)
@@ -138,6 +159,11 @@ class ZeroERPPermission(BasePermission):
 
             allowed_actions = LIVELLO_MAP.get(livello, frozenset())
             if required not in allowed_actions:
+                logger.warning(
+                    "security.permission_denied user_id=%s reason=livello_insufficiente "
+                    "area=%s livello=%s required=%s path=%s",
+                    user.id, area_schema_db, livello, required, request.path,
+                )
                 self._set_deny_message(user, ruolo, area_schema_db, cache)
                 return False
             return True
