@@ -131,7 +131,7 @@
 
 ### Backend
 
-- [ ] 8.3 — Endpoint audit trail permessi (futuro) — dipende da 8.2 DB
+- [x] 8.3 — Endpoint audit trail permessi: `GET /api/v1/core/users/{user_id}/permessi-audit/`
 
 ---
 
@@ -204,7 +204,7 @@ A questo punto tutte le API esistenti sono protette dal sistema permessi.
 - [x] Sezioni 5, 6, 7 completate
 - [x] 8.2 — Audit trail permessi (DB) — ALTER 7 tabelle + automazioni storicizzazione
   - **Prerequisiti**: sezioni DB 2–3 ✅
-- [ ] 8.3 — Endpoint audit trail permessi (backend, futuro)
+- [x] 8.3 — Endpoint audit trail permessi (backend): `GET /api/v1/core/users/{user_id}/permessi-audit/`
 
 ---
 

@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.services.error_manager import ErrorManager
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.commesse_service import (
@@ -468,7 +469,20 @@ class ApiRunCommessePush(APIView):
     # Scopo: Gestisce la richiesta HTTP POST per lanciare il push commesse.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
-            source_types = payload.get("source_types") or None
+            source_types_raw = payload.get("source_types")
+            source_types: list[str] | None = None
+            if source_types_raw is not None:
+                if not isinstance(source_types_raw, list) or not all(
+                    isinstance(s, str) for s in source_types_raw
+                ):
+                    ErrorManager.raise_error(
+                        code="E_COMMESSA_VALIDATION",
+                        message="Parametri non validi.",
+                        detail="source_types deve essere una lista di stringhe o null",
+                        context={"source_types": source_types_raw},
+                        function_name="vendite.api.ApiRunCommessePush.post",
+                    )
+                source_types = source_types_raw if source_types_raw else None
             return pr_run_commesse_push(
                 source_types=source_types,
                 dry_run=optional_bool(payload, "dry_run", default=False),
