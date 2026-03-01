@@ -1,0 +1,160 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ALTER 6 tabelle permessi config: aggiunta storicizza + tx_id
+# per abilitare storicizzazione continua (audit trail permessi)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260301-12-alter-permessi-add-storicizza-txid-mctit.yaml
+
+  - changeSet:
+      id: 20260301-12-alter-permessi-add-storicizza-txid
+      author: mctit
+      comment: >
+        Aggiunge storicizza (DEFAULT true) e tx_id alle 6 tabelle permessi config.
+        Con storicizza DEFAULT true, le automazioni STORICO_PROVISION e STORICO
+        creeranno automaticamente le tabelle storico e i trigger di snapshot.
+        Il job proc_sync_storico_set_storicizza registrera' le tabelle nel registry
+        per modalita' continua (no reset storicizza dopo snapshot).
+
+      changes:
+        # --- profili_reparto_aree ---
+        - addColumn:
+            schemaName: config
+            tableName: profili_reparto_aree
+            columns:
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag storicizzazione continua per audit trail permessi."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID transazione per correlazione audit."
+
+        # --- profili_reparto_azioni ---
+        - addColumn:
+            schemaName: config
+            tableName: profili_reparto_azioni
+            columns:
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag storicizzazione continua per audit trail permessi."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID transazione per correlazione audit."
+
+        # --- user_override_aree ---
+        - addColumn:
+            schemaName: config
+            tableName: user_override_aree
+            columns:
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag storicizzazione continua per audit trail permessi."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID transazione per correlazione audit."
+
+        # --- user_override_oggetti ---
+        - addColumn:
+            schemaName: config
+            tableName: user_override_oggetti
+            columns:
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag storicizzazione continua per audit trail permessi."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID transazione per correlazione audit."
+
+        # --- user_override_azioni ---
+        - addColumn:
+            schemaName: config
+            tableName: user_override_azioni
+            columns:
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag storicizzazione continua per audit trail permessi."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID transazione per correlazione audit."
+
+        # --- user_emittenti_fiscali ---
+        - addColumn:
+            schemaName: config
+            tableName: user_emittenti_fiscali
+            columns:
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag storicizzazione continua per audit trail permessi."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID transazione per correlazione audit."
+
+      rollback:
+        - dropColumn:
+            schemaName: config
+            tableName: profili_reparto_aree
+            columns:
+              - column: { name: storicizza }
+              - column: { name: tx_id }
+        - dropColumn:
+            schemaName: config
+            tableName: profili_reparto_azioni
+            columns:
+              - column: { name: storicizza }
+              - column: { name: tx_id }
+        - dropColumn:
+            schemaName: config
+            tableName: user_override_aree
+            columns:
+              - column: { name: storicizza }
+              - column: { name: tx_id }
+        - dropColumn:
+            schemaName: config
+            tableName: user_override_oggetti
+            columns:
+              - column: { name: storicizza }
+              - column: { name: tx_id }
+        - dropColumn:
+            schemaName: config
+            tableName: user_override_azioni
+            columns:
+              - column: { name: storicizza }
+              - column: { name: tx_id }
+        - dropColumn:
+            schemaName: config
+            tableName: user_emittenti_fiscali
+            columns:
+              - column: { name: storicizza }
+              - column: { name: tx_id }

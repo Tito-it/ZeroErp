@@ -125,10 +125,13 @@
 ### DB
 
 - [x] 8.1 — Funzione `config.fn_get_override_scaduti(p_giorni_tolleranza)` — `20_code/config/20260228-28`
+- [x] 8.2 — ALTER 7 tabelle permessi: add `storicizza` + `tx_id` per audit trail — `00_schema/config/20260301-01`, `00_schema/anagrafiche/20260301-01`
+  - Tabelle storico, trigger e registry generati dalle automazioni (`STORICO_PROVISION`, `STORICO`, `TX_ID`, `proc_sync_storico_set_storicizza`)
+  - Specifica completa: `docs/it/dev/work-in-progress/proposta-8.2-audit-trail-permessi.md`
 
 ### Backend
 
-- [ ] 8.2 — Log storico modifiche profili e override (audit trail permessi) — atteso DB sezione 2, 3
+- [ ] 8.3 — Endpoint audit trail permessi (futuro) — dipende da 8.2 DB
 
 ---
 
@@ -199,8 +202,9 @@ A questo punto tutte le API esistenti sono protette dal sistema permessi.
 ### Fase 4 — Defense-in-depth, diagnostica, caching, audit
 
 - [x] Sezioni 5, 6, 7 completate
-- [ ] 8.2 — Log storico modifiche profili e override (audit trail permessi)
-  - **Prerequisiti**: D3.1 (funzioni SQL attive), sezioni DB 2–3 ✅
+- [x] 8.2 — Audit trail permessi (DB) — ALTER 7 tabelle + automazioni storicizzazione
+  - **Prerequisiti**: sezioni DB 2–3 ✅
+- [ ] 8.3 — Endpoint audit trail permessi (backend, futuro)
 
 ---
 

@@ -1,0 +1,43 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ALTER risorse_umane_auth_user: aggiunta storicizza + tx_id
+# per abilitare storicizzazione continua (audit trail ruolo_sistema)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260301-11-alter-risorse-umane-auth-user-add-storicizza-txid-mctit.yaml
+
+  - changeSet:
+      id: 20260301-11-alter-risorse-umane-auth-user-add-storicizza-txid
+      author: mctit
+      comment: >
+        Aggiunge storicizza (DEFAULT true) e tx_id alla tabella ponte
+        risorse_umane_auth_user che contiene ruolo_sistema.
+        Un cambio di ruolo_sistema (es. OPERATIVO -> DISABILITATO) e'
+        l'evento di permessi piu' critico e merita audit trail completo.
+
+      changes:
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: risorse_umane_auth_user
+            columns:
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag storicizzazione continua per audit trail ruolo_sistema."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "ID transazione per correlazione audit."
+
+      rollback:
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: risorse_umane_auth_user
+            columns:
+              - column: { name: storicizza }
+              - column: { name: tx_id }
