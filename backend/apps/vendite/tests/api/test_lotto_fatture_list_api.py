@@ -21,6 +21,8 @@ Indice test eseguiti:
 12) VenditeLottoFattureListApiTests.test_list_fatture_sort_by_invalido
 13) VenditeLottoFattureListApiTests.test_list_fatture_sort_dir_invalido
 14) VenditeLottoFattureListApiTests.test_list_fatture_senza_filtri_lista_vuota_ok
+15) VenditeLottoFattureListApiTests.test_list_fatture_scope_emittente_non_superuser
+16) VenditeLottoFattureListApiTests.test_list_fatture_scope_emittente_superuser
 """
 
 from unittest.mock import Mock, patch
@@ -193,3 +195,32 @@ class VenditeLottoFattureListApiTests(SimpleTestCase):
         self.assertEqual(kwargs["lotto_id"], _LOTTO_ID)
         self.assertEqual(kwargs["sort_by"], "fattura_id")
         self.assertEqual(kwargs["sort_dir"], "asc")
+
+    # Scopo: Utente non superuser passa auth_user_id al service.
+    @patch("apps.core.api.permissions.ZeroERPPermission.has_permission", return_value=True)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views.fn_list_lotto_fatture")
+    def test_list_fatture_scope_emittente_non_superuser(self, mocked_list, mock_auth, _mock_perm):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        mocked_list.return_value = _LIST_RESPONSE
+        self.client.get(self.url)
+        kwargs = mocked_list.call_args.kwargs
+        self.assertEqual(kwargs["auth_user_id"], 42)
+
+    # Scopo: Superuser passa auth_user_id=None (nessun filtro scope).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views.fn_list_lotto_fatture")
+    def test_list_fatture_scope_emittente_superuser(self, mocked_list, mock_auth):
+        user = Mock()
+        user.id = 1
+        user.is_superuser = True
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        mocked_list.return_value = _LIST_RESPONSE
+        self.client.get(self.url)
+        kwargs = mocked_list.call_args.kwargs
+        self.assertIsNone(kwargs["auth_user_id"])

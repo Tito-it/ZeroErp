@@ -3,6 +3,8 @@ Indice test eseguiti:
 1) VenditeResetLottoDraftApiTests.test_reset_lotto_draft_ok
 2) VenditeResetLottoDraftApiTests.test_reset_lotto_draft_requires_idempotency_key
 3) VenditeResetLottoDraftApiTests.test_reset_lotto_draft_v1_requires_jwt
+4) VenditeResetLottoDraftApiTests.test_reset_lotto_draft_post_permission_allowed
+5) VenditeResetLottoDraftApiTests.test_reset_lotto_draft_post_permission_denied
 """
 
 import json
@@ -57,3 +59,56 @@ class VenditeResetLottoDraftApiTests(SimpleTestCase):
             headers={"Idempotency-Key": "idem-reset-2"},
         )
         self.assertEqual(response.status_code, 401)
+
+    # Scopo: Verifica che post_permission="reset_lotto_draft" consenta l'accesso con azione abilitata.
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=True)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_sistema", return_value="OPERATIVO")
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views.fn_reset_lotto_draft")
+    def test_reset_lotto_draft_post_permission_allowed(
+        self, mocked_service, mock_auth, _mock_ruolo, mock_azione, _mock_load, _mock_save
+    ):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        mocked_service.return_value = {
+            "updated_lotti": 1, "updated_attivita": 0,
+            "deleted_fatture": 0, "deleted_righe": 0,
+        }
+        response = self.client.post(
+            "/api/v1/vendite/lotti/123/reset-draft/",
+            data=json.dumps({}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-perm-ok-1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_azione.assert_called_once()
+        self.assertEqual(mock_azione.call_args.args[1], "reset_lotto_draft")
+
+    # Scopo: Verifica che post_permission="reset_lotto_draft" neghi l'accesso con azione disabilitata.
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=False)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_sistema", return_value="OPERATIVO")
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    def test_reset_lotto_draft_post_permission_denied(
+        self, mock_auth, _mock_ruolo, mock_azione, _mock_load, _mock_save
+    ):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        response = self.client.post(
+            "/api/v1/vendite/lotti/123/reset-draft/",
+            data=json.dumps({}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-perm-deny-1"},
+        )
+        self.assertEqual(response.status_code, 403)
+        mock_azione.assert_called_once()
+        self.assertEqual(mock_azione.call_args.args[1], "reset_lotto_draft")

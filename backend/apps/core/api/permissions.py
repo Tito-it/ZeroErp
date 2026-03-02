@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from rest_framework.permissions import BasePermission
@@ -16,6 +17,8 @@ from rest_framework.request import Request
 
 from apps.core.services.permissions_cache import load_user_cache, save_user_cache
 from apps.core.services.permissions_resolver import LIVELLO_MAP, PermissionResolver
+
+logger = logging.getLogger(__name__)
 
 
 class ZeroERPPermission(BasePermission):
@@ -70,84 +73,102 @@ class ZeroERPPermission(BasePermission):
         # Inizializza cache per-request (pre-popolata da Redis L2 se disponibile)
         cache = self._get_cache(request)
 
-        # Check ruolo_sistema
-        ruolo = PermissionResolver.get_ruolo_sistema(user, cache=cache)
-        if ruolo == "DISABILITATO":
-            self.message = "Utente disabilitato. Contattare l'amministratore."
-            self._save_cache_to_redis(request)
-            return False
-        if ruolo == "ADMIN":
-            self._save_cache_to_redis(request)
-            return True
-
-        # Determina l'azione richiesta
-        action = getattr(view, "action", None)
-
-        # Azione custom con permesso esplicito
-        # (es. run_pipeline_permission = 'genera_fatture_lotti')
-        if action:
-            action_perm = getattr(view, f"{action}_permission", None)
-            if action_perm:
-                result = PermissionResolver.check_azione(
-                    user, action_perm, cache=cache
+        try:
+            # Check ruolo_sistema
+            ruolo = PermissionResolver.get_ruolo_sistema(user, cache=cache)
+            if ruolo == "DISABILITATO":
+                logger.warning(
+                    "security.permission_denied user_id=%s reason=DISABILITATO path=%s",
+                    user.id, request.path,
                 )
-                if not result:
-                    self.message = "Non hai i permessi per questa operazione."
-                self._save_cache_to_redis(request)
-                return result
+                self.message = "Utente disabilitato. Contattare l'amministratore."
+                return False
+            if ruolo == "ADMIN":
+                return True
 
-        # Fallback per APIView: controlla <method>_permission
-        if not action:
-            method = request.method
-            if method:
-                method_perm = getattr(
-                    view, f"{method.lower()}_permission", None
-                )
-                if method_perm:
+            # Determina l'azione richiesta
+            action = getattr(view, "action", None)
+
+            # Azione custom con permesso esplicito
+            # (es. run_pipeline_permission = 'genera_fatture_lotti')
+            if action:
+                action_perm = getattr(view, f"{action}_permission", None)
+                if action_perm:
                     result = PermissionResolver.check_azione(
-                        user, method_perm, cache=cache
+                        user, action_perm, cache=cache
                     )
                     if not result:
+                        logger.warning(
+                            "security.permission_denied user_id=%s reason=azione_negata azione=%s path=%s",
+                            user.id, action_perm, request.path,
+                        )
                         self.message = "Non hai i permessi per questa operazione."
-                    self._save_cache_to_redis(request)
                     return result
 
-        # CRUD standard: determina il tipo di accesso richiesto
-        if action:
-            required = self.ACTION_REQUIRES.get(action)
-        else:
-            required = self.METHOD_REQUIRES.get(request.method or "")
+            # Fallback per APIView: controlla <method>_permission
+            if not action:
+                method = request.method
+                if method:
+                    method_perm = getattr(
+                        view, f"{method.lower()}_permission", None
+                    )
+                    if method_perm:
+                        result = PermissionResolver.check_azione(
+                            user, method_perm, cache=cache
+                        )
+                        if not result:
+                            logger.warning(
+                                "security.permission_denied user_id=%s reason=azione_negata azione=%s path=%s",
+                                user.id, method_perm, request.path,
+                            )
+                            self.message = "Non hai i permessi per questa operazione."
+                        return result
 
-        if required is None:
-            # Azione sconosciuta -> permetti (safe per azioni custom non CRUD)
-            self._save_cache_to_redis(request)
+            # CRUD standard: determina il tipo di accesso richiesto
+            if action:
+                required = self.ACTION_REQUIRES.get(action)
+            else:
+                required = self.METHOD_REQUIRES.get(request.method or "")
+
+            if required is None:
+                # Fail-closed: azione sconosciuta senza *_permission -> nega.
+                logger.warning(
+                    "security.permission_denied user_id=%s reason=azione_sconosciuta "
+                    "action=%s method=%s path=%s",
+                    user.id, action, request.method, request.path,
+                )
+                self.message = "Non hai i permessi per questa operazione."
+                return False
+
+            # Determina area funzionale dal model o dall'attributo della view
+            area_schema_db = self._resolve_area(view, cache)
+            if area_schema_db is None:
+                # Nessun model collegato e nessun area_funzionale dichiarata
+                return True
+
+            # Risolvi livello (oggetto o area)
+            app_label, model_name = self._get_model_meta(view)
+            if app_label and model_name:
+                livello = PermissionResolver.get_livello_oggetto(
+                    user, app_label, model_name, area_schema_db, cache=cache
+                )
+            else:
+                livello = PermissionResolver.get_livello_area(
+                    user, area_schema_db, cache=cache
+                )
+
+            allowed_actions = LIVELLO_MAP.get(livello, frozenset())
+            if required not in allowed_actions:
+                logger.warning(
+                    "security.permission_denied user_id=%s reason=livello_insufficiente "
+                    "area=%s livello=%s required=%s path=%s",
+                    user.id, area_schema_db, livello, required, request.path,
+                )
+                self._set_deny_message(user, ruolo, area_schema_db, cache)
+                return False
             return True
-
-        # Determina area funzionale dal model o dall'attributo della view
-        area_schema_db = self._resolve_area(view, cache)
-        if area_schema_db is None:
-            # Nessun model collegato e nessun area_funzionale dichiarata
+        finally:
             self._save_cache_to_redis(request)
-            return True
-
-        # Risolvi livello (oggetto o area)
-        app_label, model_name = self._get_model_meta(view)
-        if app_label and model_name:
-            livello = PermissionResolver.get_livello_oggetto(
-                user, app_label, model_name, area_schema_db, cache=cache
-            )
-        else:
-            livello = PermissionResolver.get_livello_area(
-                user, area_schema_db, cache=cache
-            )
-
-        allowed_actions = LIVELLO_MAP.get(livello, frozenset())
-        if required not in allowed_actions:
-            self._set_deny_message(user, ruolo, area_schema_db, cache)
-            self._save_cache_to_redis(request)
-            return False
-        self._save_cache_to_redis(request)
-        return True
 
     # Scopo: Imposta il messaggio di errore specifico per il diniego.
     # Distingue tra reparto senza profilo e permesso negato generico.

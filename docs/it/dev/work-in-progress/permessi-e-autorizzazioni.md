@@ -125,10 +125,13 @@
 ### DB
 
 - [x] 8.1 — Funzione `config.fn_get_override_scaduti(p_giorni_tolleranza)` — `20_code/config/20260228-28`
+- [x] 8.2 — ALTER 7 tabelle permessi: add `storicizza` + `tx_id` per audit trail — `00_schema/config/20260301-01`, `00_schema/anagrafiche/20260301-01`
+  - Tabelle storico, trigger e registry generati dalle automazioni (`STORICO_PROVISION`, `STORICO`, `TX_ID`, `proc_sync_storico_set_storicizza`)
+  - Specifica completa: `docs/it/dev/work-in-progress/proposta-8.2-audit-trail-permessi.md`
 
 ### Backend
 
-- [ ] 8.2 — Log storico modifiche profili e override (audit trail permessi) — atteso DB sezione 2, 3
+- [x] 8.3 — Endpoint audit trail permessi: `GET /api/v1/core/users/{user_id}/permessi-audit/`
 
 ---
 
@@ -150,23 +153,58 @@ poi sezione **4** (`PermissionResolver`, `ZeroERPPermission`, middleware).
 **Integrazione API esistenti (vendite):**
 
 - [x] F2.1 — Aggiungere `ZeroERPPermission` a tutte le 11 view V1 vendite (`apps/vendite/api/views.py`)
-- [ ] F2.2 — Aggiungere `EmittenteFiscaleScopeMixin` alle view fatture/lotti con `emittente_field`
+- [x] F2.2 — Scope emittente applicato via SQL DB-first (`config.fn_get_emittenti_scope_sr_ids`) in `VenditeRepository` — atteso DB funzione
 - [x] F2.3 — `ApiRunLottoPipelineV1` ha `post_permission = "genera_fatture_lotti"` per check azione
-- [ ] F2.4 — Aggiungere `ZeroERPPermission` alle eventuali view di anagrafiche, catalogo, pagamenti già esposte
+- [x] F2.4 — N/A: nessuna view API esposta su anagrafiche, catalogo, pagamenti (file `views.py` vuoti)
 
 A questo punto tutte le API esistenti sono protette dal sistema permessi.
 
-### Fase 3 — Azioni di processo: `Meta.permissions` e popolamento
+### Fase 3 — Funzioni SQL, scope emittente e azioni di processo
 
-- [ ] F3.1 — Definire `Meta.permissions` custom sui model vendite (es. `genera_fatture_lotti`, `approva_fattura`, `emetti_fattura`)
-- [ ] F3.2 — Definire `Meta.permissions` custom sui model pagamenti (es. `approva_rimessa`)
-- [ ] F3.3 — Popolare `config.azioni_processo` con i codename definiti (seed o migration data)
-- [ ] F3.4 — Collegare le azioni alle view con attributo `<action>_permission` sui ViewSet (es. `run_pipeline_permission = 'genera_fatture_lotti'`)
-- [ ] F3.5 — Verificare che `ZeroERPPermission.has_permission` instradi correttamente le azioni custom vs CRUD standard
+#### Sviluppi DB
 
-### Fase 4 — Defense-in-depth, test, diagnostica
+- [x] D3.1 — Creare funzioni SQL di risoluzione permessi (spec. B.1–B.5) — `20_code/config/20260228-19..31`
+  - `config.fn_get_ruolo_sistema` (B.1)
+  - `config.fn_resolve_livello_area` (B.2)
+  - `config.fn_resolve_livello_oggetto` (B.3)
+  - `config.fn_check_azione_processo` (B.4)
+  - `config.fn_get_emittenti_scope` (B.5)
+  - **Prerequisiti**: sezioni DB 1–3 completate ✅
+  - **Specifiche**: sezione "Analisi refactoring", B.1–B.5
+- [x] D3.2 — Creare funzione SQL `config.fn_get_emittenti_scope_sr_ids` (spec. B.7) — `20_code/config/20260301-01`
+  - Mappa `emittente_fiscale_id` → `soggetto_ruolo_id` per le query vendite
+  - **Prerequisiti**: D3.1 (usa `fn_get_ruolo_sistema`), tabella `config.user_emittenti_fiscali` ✅
+  - **Specifiche**: sezione "Analisi refactoring", B.7
+- [x] D3.3 — Seed `config.azioni_processo` con nuovi codename — CSV aggiornato (id 6, 7, 8)
+  - `reset_lotto_draft` — reset lotto a stato DRAFT
+  - `reset_lotto_fattura_draft` — reset singola fattura lotto a DRAFT
+  - `run_commesse_push` — invio commesse a sistema esterno
+  - **Prerequisiti**: tabella `config.azioni_processo` ✅ (sez. 1.5)
 
-Completare sezioni **5**, **6**, **7**, **8**.
+#### Sviluppi Backend
+
+- [x] B3.1 — Aggiungere `post_permission` alle 3 view write vendite rimanenti
+  - `ApiResetLottoDraftV1` → `post_permission = "reset_lotto_draft"`
+  - `ApiResetLottoFatturaDraftV1` → `post_permission = "reset_lotto_fattura_draft"`
+  - `ApiRunCommessePushV1` → `post_permission = "run_commesse_push"`
+  - **Prerequisiti**: D3.3 (codenames presenti nel DB)
+- [x] B3.2 — Test unitari per i nuovi `post_permission` (6 test: allowed + denied per ciascuna view)
+  - Verificare che `ZeroERPPermission.has_permission` instradi correttamente
+  - **Prerequisiti**: B3.1
+
+#### Note Fase 3
+
+- `genera_fatture_lotti` e' gia' attivo su `ApiRunLottoPipelineV1` (F2.3 ✅).
+- F2.2 (scope emittente `VenditeRepository`): completato ✅ — backend + DB funzione `fn_get_emittenti_scope_sr_ids` (D3.2) entrambi pronti.
+- F3.1/F3.2 (`Meta.permissions`): non necessarie — il sistema usa `config.azioni_processo` direttamente.
+- Pagamenti: nessuna view API esposta — azioni processo pagamenti rimandate.
+
+### Fase 4 — Defense-in-depth, diagnostica, caching, audit
+
+- [x] Sezioni 5, 6, 7 completate
+- [x] 8.2 — Audit trail permessi (DB) — ALTER 7 tabelle + automazioni storicizzazione
+  - **Prerequisiti**: sezioni DB 2–3 ✅
+- [x] 8.3 — Endpoint audit trail permessi (backend): `GET /api/v1/core/users/{user_id}/permessi-audit/`
 
 ---
 
@@ -452,16 +490,63 @@ RETURN EXISTS(
 
 ---
 
+#### B.7 — `config.fn_get_emittenti_scope_sr_ids`
+
+**Scopo**: Restituisce i `soggetto_ruolo_id` degli emittenti autorizzati per un utente.
+Le tabelle vendite usano `emittente_soggetto_ruolo_id` (FK a `anagrafiche.soggetti_ruoli`),
+non `emittente_fiscale_id`, quindi serve questa mappatura aggiuntiva rispetto a `fn_get_emittenti_scope`.
+
+| Elemento    | Valore                                                               |
+| ----------- | -------------------------------------------------------------------- |
+| Schema      | `config`                                                             |
+| Nome        | `fn_get_emittenti_scope_sr_ids`                                      |
+| Parametri   | `p_auth_user_id integer`                                             |
+| Ritorno     | `bigint[]`. NULL = nessuna restrizione. Array vuoto = nessun accesso |
+| Volatilita' | STABLE                                                               |
+
+**Logica**:
+
+```sql
+-- 1. v_ruolo := config.fn_get_ruolo_sistema(p_auth_user_id)
+--    NULL / 'DISABILITATO' → return '{}'::bigint[]  (nessun accesso)
+--    'ADMIN'               → return NULL             (nessuna restrizione)
+
+-- 2. (OPERATIVO) Cerca whitelist e mappa a soggetto_ruolo_id:
+SELECT array_agg(ef.soggetto_ruolo_id)
+  INTO v_ids
+  FROM config.user_emittenti_fiscali uef
+  JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
+ WHERE uef.auth_user_id = p_auth_user_id;
+
+-- v_ids IS NULL (nessuna riga whitelist) → return NULL (nessuna restrizione)
+-- v_ids array                            → return array di soggetto_ruolo_id
+```
+
+**Tabella semantica** (allineata con `fn_get_emittenti_scope`):
+
+| Caso                           | Ritorno          | Effetto sul WHERE       |
+| ------------------------------ | ---------------- | ----------------------- |
+| ADMIN                          | NULL             | Nessun filtro           |
+| OPERATIVO senza whitelist      | NULL             | Nessun filtro           |
+| OPERATIVO con whitelist [A, B] | `{srA, srB}`     | `= ANY(array)`          |
+| DISABILITATO / senza bridge    | `'{}'::bigint[]` | Nessun match → 0 righe |
+
+**Dipendenze**: `config.fn_get_ruolo_sistema`, `config.user_emittenti_fiscali`,
+`anagrafiche.emittenti_fiscali`
+
+---
+
 ### C. Dipendenze tra funzioni SQL
 
 ```text
-fn_get_ruolo_sistema             (standalone, blocco base)
-  ├── fn_resolve_livello_area    (usa fn_get_ruolo_sistema)
+fn_get_ruolo_sistema                (standalone, blocco base)
+  ├── fn_resolve_livello_area       (usa fn_get_ruolo_sistema)
   │     └── fn_resolve_livello_oggetto  (fallback a fn_resolve_livello_area)
-  ├── fn_check_azione_processo   (usa fn_get_ruolo_sistema)
-  └── fn_check_user_emittente_scope (usa fn_get_ruolo_sistema)
+  ├── fn_check_azione_processo      (usa fn_get_ruolo_sistema)
+  ├── fn_check_user_emittente_scope (usa fn_get_ruolo_sistema)
+  └── fn_get_emittenti_scope_sr_ids (usa fn_get_ruolo_sistema + mapping soggetto_ruolo)
 
-fn_get_emittenti_scope           (standalone, query semplice)
+fn_get_emittenti_scope              (standalone, query semplice)
 ```
 
 **Ordine di creazione**: `fn_get_ruolo_sistema` per primo, poi le altre in qualsiasi ordine.

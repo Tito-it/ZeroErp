@@ -24,9 +24,10 @@ class FattureRigheServiceUnitTests(SimpleTestCase):
         def __init__(self):
             self.insert_calls = 0
             self.mark_calls = 0
+            self.batch_insert_and_mark_calls = 0
+            self.last_batch_attivita_ids = []
 
-        # Scopo: Recupera `group_attivita_input` dal contesto applicativo o dal database.
-        def get_group_attivita_input(self, attivita_id):
+        def _make_group_input(self, attivita_id):
             return GroupAttivitaInput(
                 attivita_id=attivita_id,
                 articolo_id=100,
@@ -44,6 +45,14 @@ class FattureRigheServiceUnitTests(SimpleTestCase):
                 metodo_arrotondamento_importi="HALF_UP",
                 metodo_arrotondamento_quantita="HALF_UP",
             )
+
+        # Scopo: Recupera `group_attivita_input` dal contesto applicativo o dal database.
+        def get_group_attivita_input(self, attivita_id):
+            return self._make_group_input(attivita_id)
+
+        # Scopo: Batch fetch di GroupAttivitaInput per lista di attivita_id.
+        def batch_get_group_attivita_inputs(self, attivita_ids):
+            return {aid: self._make_group_input(aid) for aid in attivita_ids}
 
         # Scopo: Restituisce elenco `attivita_da_fatturare` in base ai filtri disponibili.
         def list_attivita_da_fatturare(self, lotto_id):
@@ -65,9 +74,17 @@ class FattureRigheServiceUnitTests(SimpleTestCase):
         def get_or_create_fattura_header(self, lotto_id, attivita_id):
             return 500
 
+        # Scopo: Batch header creation per lista di attivita_id.
+        def batch_get_or_create_fattura_headers(self, lotto_id, attivita_ids):
+            return {aid: 500 for aid in attivita_ids}
+
         # Scopo: Recupera `next_fattura_riga_nr` dal contesto applicativo o dal database.
         def get_next_fattura_riga_nr(self, fattura_id):
             return 7
+
+        # Scopo: Restituisce MAX(riga_nr) per lista di fattura_id.
+        def get_max_riga_nrs(self, fattura_ids):
+            return {fid: 0 for fid in fattura_ids}
 
         # Scopo: Gestisce `insert_fattura_riga` nel flusso applicativo del modulo.
         def insert_fattura_riga(self, **kwargs):
@@ -77,6 +94,12 @@ class FattureRigheServiceUnitTests(SimpleTestCase):
         # Scopo: Gestisce `mark_attivita_fatturata` nel flusso applicativo del modulo.
         def mark_attivita_fatturata(self, attivita_id, fattura_riga_id):
             self.mark_calls += 1
+
+        # Scopo: Batch INSERT righe + UPDATE attivita in un solo round-trip.
+        def batch_insert_righe_and_mark(self, **kwargs):
+            self.batch_insert_and_mark_calls += 1
+            self.last_batch_attivita_ids = kwargs.get("attivita_ids", [])
+            return len(self.last_batch_attivita_ids)
 
     # Scopo: Verifica il caso `test_group_attivita_returns_group_key`.
     def test_group_attivita_returns_group_key(self):
@@ -117,5 +140,6 @@ class FattureRigheServiceUnitTests(SimpleTestCase):
         ):
             result = service.generate_fatture_righe(99, dry_run=False)
         self.assertEqual(result, 1)
-        self.assertEqual(repo.insert_calls, 1)
-        self.assertEqual(repo.mark_calls, 1)
+        # Batch: un singolo round-trip CTE per INSERT + UPDATE.
+        self.assertEqual(repo.batch_insert_and_mark_calls, 1)
+        self.assertEqual(repo.last_batch_attivita_ids, [11])

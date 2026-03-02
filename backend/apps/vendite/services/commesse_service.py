@@ -107,6 +107,7 @@ def fn_get_commesse_push_log(*, push_log_id: int) -> dict:
             function_name="vendite.commesse_service.fn_get_commesse_push_log",
             log_to_db=True,
         )
+    assert row is not None  # raise_error è NoReturn — aiuta il type checker
     return dict(row)
 
 
@@ -133,6 +134,7 @@ def fn_get_commessa_stato(*, commessa_id: int) -> dict:
             function_name="vendite.commesse_service.fn_get_commessa_stato",
             log_to_db=True,
         )
+    assert stato is not None  # raise_error è NoReturn — aiuta il type checker
     return {"commessa_id": commessa_id, **dict(stato)}
 
 

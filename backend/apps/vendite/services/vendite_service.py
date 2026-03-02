@@ -73,6 +73,7 @@ def fn_list_lotti(
     area_geografica_id: int | None = None,
     tipo_doc_fiscale_id: int | None = None,
     emittente_soggetto_ruolo_id: int | None = None,
+    auth_user_id: int | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, object]:
@@ -86,6 +87,7 @@ def fn_list_lotti(
         area_geografica_id=area_geografica_id,
         tipo_doc_fiscale_id=tipo_doc_fiscale_id,
         emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+        auth_user_id=auth_user_id,
         limit=page_size,
         offset=offset,
     )
@@ -101,6 +103,7 @@ def fn_list_lotto_fatture(
     lotto_id: int,
     stato_esecuzione: str | None = None,
     esclusa: bool | None = None,
+    auth_user_id: int | None = None,
     sort_by: str = "fattura_id",
     sort_dir: str = "asc",
     page: int = 1,
@@ -131,6 +134,7 @@ def fn_list_lotto_fatture(
         lotto_id=lotto_id,
         stato_esecuzione=stato_esecuzione,
         esclusa=esclusa,
+        auth_user_id=auth_user_id,
         sort_by=sort_by,
         sort_dir=sort_dir,
         limit=page_size,

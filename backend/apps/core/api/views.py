@@ -107,33 +107,30 @@ class ApiLookupCodici(APIView):
     # Scopo: Restituisce via GET l'elenco paginato dei codici/descrizioni di una tabella config
     # con ricerca ILIKE opzionale su codice e descrizione.
     def get(self, request: Request) -> JsonResponse:
-        try:
-            rel = (request.query_params.get("rel") or "").strip()
+        rel = (request.query_params.get("rel") or "").strip()
 
-            raw_search = request.query_params.get("search")
-            search = raw_search.strip() or None if raw_search is not None else None
+        raw_search = request.query_params.get("search")
+        search = raw_search.strip() or None if raw_search is not None else None
 
-            order_col = request.query_params.get("order_col", "descrizione").strip() or "descrizione"
-            order_dir = request.query_params.get("order_dir", "asc").strip() or "asc"
+        order_col = request.query_params.get("order_col", "descrizione").strip() or "descrizione"
+        order_dir = request.query_params.get("order_dir", "asc").strip() or "asc"
 
-            raw_attivo = request.query_params.get("attivo_only", "true").strip().lower()
-            attivo_only = raw_attivo not in {"0", "false", "no", "n", "off"}
+        raw_attivo = request.query_params.get("attivo_only", "true").strip().lower()
+        attivo_only = raw_attivo not in {"0", "false", "no", "n", "off"}
 
-            page = int(request.query_params.get("page", "1"))
-            page_size = int(request.query_params.get("page_size", "50"))
+        page = int(request.query_params.get("page", "1"))
+        page_size = int(request.query_params.get("page_size", "50"))
 
-            data = fn_list_lookup_codici(
-                rel=rel,
-                search=search,
-                order_col=order_col,
-                order_dir=order_dir,
-                attivo_only=attivo_only,
-                page=page,
-                page_size=page_size,
-            )
-            return success_response(data)
-        except Exception as exc:
-            return exception_to_error_response(exc)
+        data = fn_list_lookup_codici(
+            rel=rel,
+            search=search,
+            order_col=order_col,
+            order_dir=order_dir,
+            attivo_only=attivo_only,
+            page=page,
+            page_size=page_size,
+        )
+        return success_response(data)
 
 
 class ApiLookupCodiciV1(ApiLookupCodici):
@@ -168,74 +165,180 @@ class ApiPermessiEffettivi(APIView):
     # Scopo: Restituisce via GET i permessi effettivi risolti per un utente.
     # Solo ADMIN e superuser possono consultare altri utenti.
     def get(self, request: Request, user_id: int) -> JsonResponse:
-        try:
-            user = request.user
-            cache: dict = {}
+        user = request.user
+        cache: dict = {}
 
-            # Solo ADMIN/superuser possono vedere permessi di altri utenti
-            ruolo_richiedente = PermissionResolver.get_ruolo_sistema(user, cache=cache)
-            if user_id != user.id:
-                if not user.is_superuser and ruolo_richiedente != "ADMIN":
-                    raise ServiceError(
-                        code="E_PERMESSO_NEGATO",
-                        message="Non hai i permessi per questa operazione.",
-                        detail="Solo ADMIN possono consultare permessi di altri utenti.",
-                    )
-
-            # Carica l'utente target
-            User = get_user_model()
-            try:
-                target_user = User.objects.get(pk=user_id)
-            except User.DoesNotExist:
+        # Solo ADMIN/superuser possono vedere permessi di altri utenti
+        ruolo_richiedente = PermissionResolver.get_ruolo_sistema(user, cache=cache)
+        if user_id != user.id:
+            if not user.is_superuser and ruolo_richiedente != "ADMIN":
                 raise ServiceError(
-                    code="E_CORE_VALIDATION",
-                    message="Utente non trovato.",
-                    detail=f"Nessun utente con id={user_id}.",
+                    code="E_PERMESSO_NEGATO",
+                    message="Non hai i permessi per questa operazione.",
+                    detail="Solo ADMIN possono consultare permessi di altri utenti.",
                 )
 
-            # Risolvi permessi per target
-            target_cache: dict = {}
-            ruolo = PermissionResolver.get_ruolo_sistema(target_user, cache=target_cache)
-            uo_id = PermissionResolver._get_unita_organizzativa_id(
-                target_user, cache=target_cache
+        # Carica l'utente target
+        User = get_user_model()
+        try:
+            target_user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            raise ServiceError(
+                code="E_CORE_VALIDATION",
+                message="Utente non trovato.",
+                detail=f"Nessun utente con id={user_id}.",
             )
-            emittenti_ids = PermissionResolver.get_emittenti_ids(
-                target_user, cache=target_cache
+
+        # Risolvi permessi per target
+        target_cache: dict = {}
+        ruolo = PermissionResolver.get_ruolo_sistema(target_user, cache=target_cache)
+        uo_id = PermissionResolver.get_unita_organizzativa_id(
+            target_user, cache=target_cache
+        )
+        emittenti_ids = PermissionResolver.get_emittenti_ids(
+            target_user, cache=target_cache
+        )
+
+        # Itera tutte le aree funzionali attive
+        from apps.config.models import AreaFunzionale
+
+        aree_result = []
+        for area in AreaFunzionale.objects.filter(attivo=True):
+            livello = PermissionResolver.get_livello_area(
+                target_user, area.schema_db, cache=target_cache
             )
+            has_profilo = PermissionResolver.has_profilo_reparto_area(
+                target_user, area.schema_db, cache=target_cache
+            )
+            aree_result.append({
+                "codice": area.codice,
+                "schema_db": area.schema_db,
+                "descrizione": area.descrizione,
+                "livello": livello,
+                "azioni_consentite": sorted(LIVELLO_MAP.get(livello, frozenset())),
+                "has_profilo_reparto": has_profilo,
+            })
 
-            # Itera tutte le aree funzionali attive
-            from apps.config.models import AreaFunzionale
-
-            aree_result = []
-            for area in AreaFunzionale.objects.filter(attivo=True):
-                livello = PermissionResolver.get_livello_area(
-                    target_user, area.schema_db, cache=target_cache
-                )
-                has_profilo = PermissionResolver.has_profilo_reparto_area(
-                    target_user, area.schema_db, cache=target_cache
-                )
-                aree_result.append({
-                    "codice": area.codice,
-                    "schema_db": area.schema_db,
-                    "descrizione": area.descrizione,
-                    "livello": livello,
-                    "azioni_consentite": sorted(LIVELLO_MAP.get(livello, frozenset())),
-                    "has_profilo_reparto": has_profilo,
-                })
-
-            data = {
-                "user_id": target_user.id,
-                "username": target_user.get_username(),
-                "ruolo_sistema": ruolo,
-                "unita_organizzativa_id": uo_id,
-                "aree": aree_result,
-                "emittenti_ids": emittenti_ids,
-            }
-            return success_response(data)
-        except Exception as exc:
-            return exception_to_error_response(exc)
+        data = {
+            "user_id": target_user.id,
+            "username": target_user.get_username(),
+            "ruolo_sistema": ruolo,
+            "unita_organizzativa_id": uo_id,
+            "aree": aree_result,
+            "emittenti_ids": emittenti_ids,
+        }
+        return success_response(data)
 
 
 class ApiPermessiEffettiviV1(ApiPermessiEffettivi):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [ZeroERPPermission]
+
+
+class ApiPermessiAudit(APIView):
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="data_da", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro data inizio (YYYY-MM-DD)."),
+            OpenApiParameter(name="data_a", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro data fine (YYYY-MM-DD)."),
+            OpenApiParameter(name="tabella", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro singola tabella sorgente (es. user_override_aree)."),
+            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
+            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description="Dimensione pagina (default 50, max 200)."),
+        ],
+        responses={
+            200: inline_serializer(
+                name="CorePermessiAuditResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="CorePermessiAuditData",
+                        fields={
+                            "user_id": serializers.IntegerField(),
+                            "count": serializers.IntegerField(),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "events": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET la timeline audit delle modifiche ai permessi di un utente.
+    # Interroga le 7 tabelle storico permessi con filtri opzionali e paginazione.
+    # Solo ADMIN e superuser possono consultare altri utenti.
+    def get(self, request: Request, user_id: int) -> JsonResponse:
+        from apps.core.api.payload_validators import optional_int, optional_iso_date
+        from apps.core.db.permissions_audit_repository import PermissionsAuditRepository
+
+        user = request.user
+        cache: dict = {}
+
+        # Scopo: Verifica autorizzazione — stessa policy di permessi-effettivi.
+        ruolo_richiedente = PermissionResolver.get_ruolo_sistema(user, cache=cache)
+        if user_id != user.id:
+            if not user.is_superuser and ruolo_richiedente != "ADMIN":
+                raise ServiceError(
+                    code="E_PERMESSO_NEGATO",
+                    message="Non hai i permessi per questa operazione.",
+                    detail="Solo ADMIN possono consultare audit permessi di altri utenti.",
+                )
+
+        # Scopo: Verifica che l'utente target esista.
+        User = get_user_model()
+        try:
+            target_user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            raise ServiceError(
+                code="E_CORE_VALIDATION",
+                message="Utente non trovato.",
+                detail=f"Nessun utente con id={user_id}.",
+            )
+
+        # Scopo: Parse query params.
+        data_da = optional_iso_date(
+            {"data_da": request.query_params.get("data_da")}, "data_da"
+        )
+        data_a = optional_iso_date(
+            {"data_a": request.query_params.get("data_a")}, "data_a"
+        )
+        tabella = request.query_params.get("tabella")
+        if tabella:
+            tabella = tabella.strip() or None
+        if tabella and tabella not in PermissionsAuditRepository._VALID_TABLE_NAMES:
+            raise ServiceError(
+                code="E_CORE_VALIDATION",
+                message="Tabella non valida.",
+                detail=f"Tabella '{tabella}' non riconosciuta. Valori ammessi: {sorted(PermissionsAuditRepository._VALID_TABLE_NAMES)}.",
+            )
+        page = optional_int(
+            {"page": request.query_params.get("page", "1")}, "page"
+        )
+        page_size = optional_int(
+            {"page_size": request.query_params.get("page_size", "50")}, "page_size"
+        )
+        page_size = min(page_size, 200)
+
+        # Scopo: Risolve UO dell'utente target per includere tabelle reparto.
+        target_cache: dict = {}
+        uo_id = PermissionResolver.get_unita_organizzativa_id(
+            target_user, cache=target_cache
+        )
+
+        repo = PermissionsAuditRepository()
+        result = repo.list_audit_events(
+            auth_user_id=user_id,
+            uo_id=uo_id,
+            data_da=data_da,
+            data_a=data_a,
+            tabella=tabella,
+            page=page,
+            page_size=page_size,
+        )
+        result["user_id"] = user_id
+        return success_response(result)
+
+
+class ApiPermessiAuditV1(ApiPermessiAudit):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]

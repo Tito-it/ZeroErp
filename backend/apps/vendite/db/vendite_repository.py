@@ -25,6 +25,23 @@ _SORT_COLUMNS: dict[str, str] = {
 
 class VenditeRepository:
 
+    # Scopo: Aggiunge la condizione WHERE per scope emittente DB-first.
+    # La funzione SQL risolve ruolo, whitelist e mappatura soggetto_ruolo.
+    @staticmethod
+    def _add_scope_emittente(
+        auth_user_id: int | None,
+        field: str,
+        conditions: list[str],
+        params: list[Any],
+    ) -> None:
+        if auth_user_id is not None:
+            conditions.append(
+                f"(config.fn_get_emittenti_scope_sr_ids(%s) IS NULL "
+                f"OR {field} = ANY("
+                f"config.fn_get_emittenti_scope_sr_ids(%s)))"
+            )
+            params.extend([auth_user_id, auth_user_id])
+
     # Scopo: Restituisce elenco lotti paginato con JOIN decodifica e filtri opzionali.
     # Obiettivo: lista generica fatturazione_lotti con decodifiche config.
     # Perimetro: solo lettura; nessun side-effect.
@@ -38,6 +55,7 @@ class VenditeRepository:
         area_geografica_id: int | None,
         tipo_doc_fiscale_id: int | None,
         emittente_soggetto_ruolo_id: int | None,
+        auth_user_id: int | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[LottoListRow], int]:
@@ -66,6 +84,10 @@ class VenditeRepository:
         if emittente_soggetto_ruolo_id is not None:
             conditions.append("fl.emittente_soggetto_ruolo_id = %s")
             params.append(emittente_soggetto_ruolo_id)
+
+        self._add_scope_emittente(
+            auth_user_id, "fl.emittente_soggetto_ruolo_id", conditions, params
+        )
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -157,6 +179,7 @@ class VenditeRepository:
         lotto_id: int,
         stato_esecuzione: str | None,
         esclusa: bool | None,
+        auth_user_id: int | None = None,
         sort_by: str,
         sort_dir: str,
         limit: int,
@@ -182,6 +205,10 @@ class VenditeRepository:
         if esclusa is not None:
             conditions.append("fllf.esclusa = %s")
             params.append(esclusa)
+
+        self._add_scope_emittente(
+            auth_user_id, "f.emittente_soggetto_ruolo_id", conditions, params
+        )
 
         where_clause = "WHERE " + " AND ".join(conditions)
 

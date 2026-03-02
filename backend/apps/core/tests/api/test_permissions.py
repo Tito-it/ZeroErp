@@ -22,6 +22,9 @@ Indice test eseguiti:
 13) test_bloccato_senza_profilo_message
 14) test_bloccato_con_profilo_message
 15) test_azione_negata_message
+16) test_log_warning_disabilitato
+17) test_log_warning_azione_negata
+18) test_log_warning_livello_insufficiente
 """
 
 from unittest import TestCase
@@ -219,3 +222,46 @@ class ZeroERPPermissionTests(TestCase):
         view.post_permission = "genera_fatture_lotti"
         self.perm.has_permission(request, view)
         self.assertIn("permessi", self.perm.message.lower())
+
+    # Scopo: DISABILITATO logga warning di sicurezza.
+    @patch("apps.core.api.permissions.logger")
+    @patch("apps.core.api.permissions.PermissionResolver")
+    def test_log_warning_disabilitato(self, mock_resolver, mock_logger):
+        mock_resolver.get_ruolo_sistema.return_value = "DISABILITATO"
+        request = _mock_request()
+        request.path = "/api/v1/vendite/lotti/"
+        view = _mock_view(area="vendite")
+        self.perm.has_permission(request, view)
+        mock_logger.warning.assert_called_once()
+        log_msg = mock_logger.warning.call_args[0][0]
+        self.assertIn("DISABILITATO", log_msg)
+
+    # Scopo: Azione negata logga warning di sicurezza.
+    @patch("apps.core.api.permissions.logger")
+    @patch("apps.core.api.permissions.PermissionResolver")
+    def test_log_warning_azione_negata(self, mock_resolver, mock_logger):
+        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.check_azione.return_value = False
+        request = _mock_request(method="POST")
+        request.path = "/api/v1/vendite/lotti/123/reset-draft/"
+        view = _mock_view(area="vendite")
+        view.post_permission = "reset_lotto_draft"
+        self.perm.has_permission(request, view)
+        mock_logger.warning.assert_called_once()
+        log_msg = mock_logger.warning.call_args[0][0]
+        self.assertIn("azione_negata", log_msg)
+
+    # Scopo: Livello insufficiente logga warning di sicurezza.
+    @patch("apps.core.api.permissions.logger")
+    @patch("apps.core.api.permissions.PermissionResolver")
+    def test_log_warning_livello_insufficiente(self, mock_resolver, mock_logger):
+        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.get_livello_area.return_value = "LETTURA"
+        mock_resolver.get_area_schema_db.return_value = "vendite"
+        request = _mock_request(method="POST")
+        request.path = "/api/v1/vendite/lotti/"
+        view = _mock_view(area="vendite")
+        self.perm.has_permission(request, view)
+        mock_logger.warning.assert_called_once()
+        log_msg = mock_logger.warning.call_args[0][0]
+        self.assertIn("livello_insufficiente", log_msg)

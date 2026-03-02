@@ -26,7 +26,10 @@ import dataclasses
 import logging
 from abc import ABC
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any
+
+from django.db import transaction
 
 from apps.vendite.db.commesse_repository import (
     POLICY_FATTURAZIONE_DA_DOCUMENTO,
@@ -109,55 +112,60 @@ class BaseSourceHandler(ABC):
 
         for row in rows:
             try:
-                expanded = self._expand_rows(row)
-                tipo_commessa = self._extract_tipo_commessa(row)
-                policy_fatturazione = self._extract_policy_fatturazione(row)
+                # Savepoint: se fallisce la riga, rollback di get_or_create + link
+                # senza corrompere lo stato delle righe precedenti.
+                with transaction.atomic():
+                    expanded = self._expand_rows(row)
+                    tipo_commessa = self._extract_tipo_commessa(row)
+                    policy_fatturazione = self._extract_policy_fatturazione(row)
 
-                cache_key = (
-                    row.billing_account_id,
-                    row.utility_id,
-                    tipo_commessa,
-                    policy_fatturazione,
-                    row.fatturazione_immediata,
-                    row.emittente_soggetto_ruolo_id,
-                    row.competenza_dal,
-                    row.competenza_al,
-                )
-
-                if cache_key in commessa_cache:
-                    commessa_id = commessa_cache[cache_key]
-                else:
-                    commessa_id = self._repo.get_or_create_commessa(
-                        billing_account_id=row.billing_account_id,
-                        utility_id=row.utility_id,
-                        tipo_commessa=tipo_commessa,
-                        policy_fatturazione=policy_fatturazione,
-                        fatturazione_immediata=row.fatturazione_immediata,
-                        emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
-                        competenza_dal=row.competenza_dal,
-                        competenza_al=row.competenza_al,
+                    cache_key = (
+                        row.billing_account_id,
+                        row.utility_id,
+                        tipo_commessa,
+                        policy_fatturazione,
+                        row.fatturazione_immediata,
+                        row.emittente_soggetto_ruolo_id,
+                        row.competenza_dal,
+                        row.competenza_al,
                     )
-                    commessa_cache[cache_key] = commessa_id
 
-                self._repo.link_sorgente(
-                    commessa_id=commessa_id,
-                    sorgente_tipo_id=row.sorgente_tipo_id,
-                    sorgente_uid=row.sorgente_uid,
-                )
+                    if cache_key in commessa_cache:
+                        commessa_id = commessa_cache[cache_key]
+                    else:
+                        commessa_id = self._repo.get_or_create_commessa(
+                            billing_account_id=row.billing_account_id,
+                            utility_id=row.utility_id,
+                            tipo_commessa=tipo_commessa,
+                            policy_fatturazione=policy_fatturazione,
+                            fatturazione_immediata=row.fatturazione_immediata,
+                            emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
+                            competenza_dal=row.competenza_dal,
+                            competenza_al=row.competenza_al,
+                        )
+                        commessa_cache[cache_key] = commessa_id
 
-                for exp in expanded:
-                    pending_inputs.append(self._build_attivita_input(commessa_id, exp))
+                    self._repo.link_sorgente(
+                        commessa_id=commessa_id,
+                        sorgente_tipo_id=row.sorgente_tipo_id,
+                        sorgente_uid=row.sorgente_uid,
+                    )
+
+                    for exp in expanded:
+                        pending_inputs.append(self._build_attivita_input(commessa_id, exp))
 
             except Exception as exc:
                 msg = f"Errore riga segment_key={row.segment_key}: {type(exc).__name__}: {exc}"
                 logger.exception(msg)
                 result.errors.append(msg)
+                result.skipped += 1
 
         # Batch upsert in una sola chiamata DB (N round-trip → 1).
         if pending_inputs and not dry_run:
             batch = self._repo.batch_upsert_attivita(pending_inputs)
             result.created = batch.inserted
             result.updated = batch.updated
+            result.skipped += len(batch.errors)
             for err in batch.errors:
                 result.errors.append(
                     f"Errore batch segment_key={err.get('segment_key')}: {err.get('error')}"
@@ -192,7 +200,7 @@ class BaseSourceHandler(ABC):
         return CommessaAttivitaInput(
             commessa_id=commessa_id,
             segment_key=row.segment_key,
-            quantita=row.quantita or 0,
+            quantita=row.quantita if row.quantita is not None else Decimal(0),
             competenza_mese=row.competenza_mese,
             articolo_id=row.articolo_id,
             prezzo_snapshot=row.prezzo_snapshot,

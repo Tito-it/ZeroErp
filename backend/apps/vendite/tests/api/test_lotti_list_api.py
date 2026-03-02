@@ -19,6 +19,8 @@ Indice test eseguiti:
 10) VenditeLottiListApiTests.test_list_lotti_page_size_invalido
 11) VenditeLottiListApiTests.test_list_lotti_page_invalida
 12) VenditeLottiListApiTests.test_list_lotti_senza_filtri_lista_vuota_ok
+13) VenditeLottiListApiTests.test_list_lotti_scope_emittente_non_superuser
+14) VenditeLottiListApiTests.test_list_lotti_scope_emittente_superuser
 """
 
 from datetime import date
@@ -185,3 +187,32 @@ class VenditeLottiListApiTests(SimpleTestCase):
         self.assertIsNone(kwargs["area_geografica_id"])
         self.assertIsNone(kwargs["tipo_doc_fiscale_id"])
         self.assertIsNone(kwargs["emittente_soggetto_ruolo_id"])
+
+    # Scopo: Utente non superuser passa auth_user_id al service.
+    @patch("apps.core.api.permissions.ZeroERPPermission.has_permission", return_value=True)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views.fn_list_lotti")
+    def test_list_lotti_scope_emittente_non_superuser(self, mocked_list, mock_auth, _mock_perm):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        mocked_list.return_value = _LIST_RESPONSE
+        self.client.get("/api/v1/vendite/lotti/")
+        kwargs = mocked_list.call_args.kwargs
+        self.assertEqual(kwargs["auth_user_id"], 42)
+
+    # Scopo: Superuser passa auth_user_id=None (nessun filtro scope).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views.fn_list_lotti")
+    def test_list_lotti_scope_emittente_superuser(self, mocked_list, mock_auth):
+        user = Mock()
+        user.id = 1
+        user.is_superuser = True
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        mocked_list.return_value = _LIST_RESPONSE
+        self.client.get("/api/v1/vendite/lotti/")
+        kwargs = mocked_list.call_args.kwargs
+        self.assertIsNone(kwargs["auth_user_id"])

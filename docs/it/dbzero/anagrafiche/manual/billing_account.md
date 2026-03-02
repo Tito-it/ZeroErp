@@ -1,120 +1,109 @@
-## 📘 Documentazione Concettuale – Tabella `anagrafiche.billing_account`
+## Documentazione – Tabella `anagrafiche.billing_account`
+
+> Vedi anche
 >
-> 👀 **Vedi anche**
-> 
-> Guide generali:    
+> Guide generali:
 >
->  * [Generazione di un cliente](/guide/generazione-cliente)    
-> 
-> Approfondimento tabelle :   
+> * [Generazione di un cliente](/guide/generazione-cliente)
+> * [Glossario termini utility](/guide/glossario/glossario-utility)
 >
->   * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)    
->   * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)    
->   * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
->   * [config.utilities](/dbzero/config/tabelle/utilities)     
+> Approfondimento tabelle:
 >
-> Approfondimeto funzioni:    
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> * [config.utilities](/dbzero/config/tabelle/utilities)
+>
+> Approfondimento funzioni:
 >
 > * [anagrafiche.trgfn_billing_account_guard_normalize](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_normalize)
 
-> **Aggiornamenti dicembre 2025:** 
-> Per i dettagli completi, le motivazioni progettuali e tutti i vincoli formali introdotti, consulta la sezione **7** dedicata nella documentazione :
->
->👉 [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
->
+---
+
+### Scopo
+
+(latest review 01-03-26)
+
+Il **billing account** (BA) e l'account di fatturazione associato a un'istanza utility. In termini semplici: e il "contenitore" che identifica **a chi fatturare** e **con quale codice** per un determinato servizio (gas, energia, ecc.).
+
+Caratteristiche principali:
+
+* Il codice account (`codice`) puo essere generato **prima del contratto** (fase precontrattuale), quando il soggetto non e ancora ufficialmente cliente
+* Ogni BA e legato a una sola istanza e a una sola utility
+* Il BA supporta una **gerarchia padre/figlio** per aggregare la fatturazione di piu utenze
+* Il BA resta attivo anche dopo la chiusura del cliente, per consentire fatture finali e conguagli
 
 ---
 
-### 🎯 Scopo Principale    
+### Collegamenti con altre tabelle
 
-(latest review 16-01-26)
-La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici cliente** per ciascuna `utility`, consentendo:
-
-* **Generazione anticipata** del `codice (account)` in fase precontrattuale.
-* **Unicità di `codice`** grazie al vincolo `uq_billing_account_codice`.
-* **Unicità per istanza+utility**: non possono esistere due record con la stessa coppia (`istanza_utility_id`, `utility_id`).
-* **Strutture gerarchiche** dei codici tramite `parent_account_id`, utile per Modellare:
-
----
-
-La tabella `anagrafiche.billing_account` mantiene lo **storico dei codici cliente** per ciascuna `utility`, consentendo:
-
-* Generazione anticipata del `codice (account)` in fase precontrattuale
-* Gestione di più codici nel tempo tramite il campo `parent_account_id`
-* Unicità per coppia `istanza_utility_id` + `utility_id`
-
-Nota naming utility:
-
-* `anagrafiche.billing_account` usa `utility_id`;
-* `anagrafiche.pdp` usa `utility_id`.
-
-Entrambe puntano a `config.utilities.id`; il naming e' uniforme anche nelle query/join.
-
----
-
-### 🔗 Collegamenti con Altre Tabelle
-
-| Campo                | Tabella di riferimento              | Azione                                |
-| -------------------- | ----------------------------------- | ------------------------------------- |
+| Campo | Tabella di riferimento | Azione |
+| --- | --- | --- |
 | `istanza_utility_id` | `anagrafiche.istanze_utilities(id)` | ON UPDATE CASCADE, ON DELETE SET NULL |
-| `soggetto_ruolo_id`  | `anagrafiche.soggetti_ruoli(id)`    | ON UPDATE CASCADE, ON DELETE RESTRICT |
-| `utility_id`         | `config.utilities(id)`              | ON UPDATE CASCADE, ON DELETE RESTRICT |
-| `parent_account_id`  | `anagrafiche.billing_account(id)`   | ON UPDATE CASCADE, ON DELETE SET NULL |
+| `soggetto_ruolo_id` | `anagrafiche.soggetti_ruoli(id)` | ON UPDATE CASCADE, ON DELETE RESTRICT |
+| `utility_id` | `config.utilities(id)` | ON UPDATE CASCADE, ON DELETE RESTRICT |
+| `parent_account_id` | `anagrafiche.billing_account(id)` | ON UPDATE CASCADE, ON DELETE SET NULL |
+
+Nota naming: sia `anagrafiche.billing_account` sia `anagrafiche.pdp` usano `utility_id`, entrambi puntano a `config.utilities.id`. Il naming e uniforme anche nelle query/join.
 
 ---
 
-### 🚩 Regole di Validazione Condizionale
+### Regole di validazione
 
-1. **Unicità account**
-
-   * `codice` deve essere univoco (`uq_billing_account_codice`).
-2. **Unicità per istanza-utility**
-
-   * Non possono esistere due billing account per la stessa coppia (`istanza_utility_id`, `utility_id`).
-3. **Range di validità**
-
-   * Periodi di validità: valido_dal è obbligatorio se parent_account_id non è NULL; valido_al, se presente, deve essere ≥    valido_dal
+* **Unicita account**: `codice` deve essere univoco (`uq_billing_account_codice`)
+* **Unicita per istanza+utility**: non possono esistere due BA con la stessa coppia (`istanza_utility_id`, `utility_id`)
+* **Range di validita**: `valido_dal` e obbligatorio se `parent_account_id` non e NULL; `valido_al`, se presente, deve essere >= `valido_dal`
 
 ---
 
-### 💡 Vantaggi Operativi
+### Gerarchia padre/figlio
 
-* **Fatturazione precontrattuale**: codice disponibile anche prima del customer finale.
-* **Storico completo**: tracciamento di versioni e sub-account.
-* **Integrità fiscale**: raggruppamento sullo stesso `id_fiscale_univoco_cf_piva` del soggetto.
+Il BA supporta una struttura gerarchica tramite `parent_account_id`. Questa gerarchia serve per **aggregare la fatturazione** di piu utenze sullo stesso intestatario.
 
----
+#### Come funziona
 
-### 🔑 Gerarchia e Periodo di Validità
+* Se `parent_account_id IS NULL` → il BA e un account autonomo (o e esso stesso un padre)
+* Se `parent_account_id IS NOT NULL` → il BA e un figlio, e la sua fatturazione viene aggregata al padre
 
-1. **`parent_account_id`**
+#### Periodo di validita dell'associazione
 
-   * Definisce relazioni padre-figlio tra account.
-   * Se `parent_account_id IS NULL`, la fattura è emessa per l’account stesso.
-   * Se non NULL, la fattura somma i consumi di tutti i figli e li addebita al padre.
+* `valido_dal`: data inizio validita dell'associazione al padre (obbligatoria se c'e un parent)
+* `valido_al`: data fine validita; se NULL, l'associazione e ancora in corso
 
-2. **`valido_dal` / `valido_al`**
+#### Coerenza fiscale
 
-   * `valido_dal`: data inizio validità dell’associazione al parent (obbligatoria se `parent_account_id` è presente).
-   * `valido_al`: data fine validità, se NULL l’associazione è ancora in corso.
+Il `codice` del padre e dei figli deve condividere lo stesso `id_fiscale_univoco_cf_piva` del soggetto.
 
-3. **Coerenza fiscale**
+#### Guard sulla dissociazione del parent
 
-   * il `codice (account)` del padre e dei figli deve condividere lo stesso `id_fiscale_univoco_cf_piva` del soggetto.
+Non e possibile rimuovere `parent_account_id` da un BA figlio quando esistono attivita fatturabili non ancora fatturate (`vendite.attivita_fatturabili` con `fatturato = FALSE`) collegate al BA. Questo vincolo e implementato nel trigger `trgfn_billing_account_guard_normalize` e serve a prevenire la perdita di coerenza nella pipeline fatturazione: se il parent venisse rimosso a meta lavorazione, le attivita gia raggruppate sotto il padre resterebbero orfane.
 
 ---
 
-### ✅ Controlli di Coerenza
+### Tracciabilita del BA nella pipeline fatturazione
 
-* FK e vincoli CHECK assicurano la validità dei periodi (`valido_dal`, `valido_al`) e delle gerarchie.
-* Il trigger `trgfn_billing_account_gen_codice` genera `codice` se mancante.
+Quando un BA ha un parent (gerarchia), nella catena di fatturazione il BA figlio viene **risolto al padre** per la testata fattura, ma **preservato per ogni riga**. Questo consente di sapere sempre da quale utenza originale proviene ogni importo.
+
+| Tabella | Colonna | Contiene | Sempre valorizzata? |
+| --- | --- | --- | --- |
+| `vendite.attivita_fatturabili` | `billing_account_id` | BA figlio (originale, mai risolto al padre) | Si |
+| `vendite.fatture` | `billing_account_id` | BA padre (risolto da `fn_build_fattura_key`) | Si |
+| `vendite.fatture_righe` | `dest_billing_account_id` | BA figlio (preservato per tracciabilita) | Si |
+
+Flusso in dettaglio:
+
+1. `fn_build_fattura_key`: usa `COALESCE(ba.parent_account_id, a.billing_account_id)` per risolvere al padre
+2. `fn_group_attivita_fatturabili`: estrae `a.billing_account_id` (figlio) come `dest_billing_account_id`
+3. `fn_generate_fatture_righe`: inserisce `dest_billing_account_id` nelle righe fattura
+4. `trgfn_fatture_righe_guard_normalize`: fallback — se `dest_billing_account_id` e NULL, eredita da `fatture.billing_account_id`
+
+La risoluzione al padre e **incondizionata**: se `parent_account_id` e valorizzato, la fattura va al padre. Se non si vuole aggregare un figlio al padre, la soluzione e **non impostare `parent_account_id`** (non serve un flag separato).
 
 ---
 
 ### Policy fatturazione ordini
 
-Il campo `fatturazione_ordini` (default `CONFERMATO`) definisce il default
-per `ordini.fatturazione_trigger` al momento dell'inserimento ordine:
+Il campo `fatturazione_ordini` (default `CONFERMATO`) definisce il default per `ordini.fatturazione_trigger` al momento dell'inserimento ordine:
 
 | Valore | Significato |
 | --- | --- |
@@ -122,29 +111,34 @@ per `ordini.fatturazione_trigger` al momento dell'inserimento ordine:
 | `SPEDITO` | Fatturazione alla spedizione DDT (push DDT a commessa) |
 | `CONSEGNATO` | Fatturazione alla consegna DDT (push DDT a commessa) |
 
-Il valore e` ereditato automaticamente sugli ordini tramite
-`vendite.trgfn_ordini_normalize` e puo` essere sovrascritto per singolo ordine.
+Il valore e ereditato automaticamente sugli ordini tramite `vendite.trgfn_ordini_normalize` e puo essere sovrascritto per singolo ordine.
 
 ---
 
-### Note Finali
+### Trigger e funzioni coinvolte
 
-Questa tabella e` la base per la gestione avanzata dei codici di fatturazione, con meccanismi di storicizzazione e aggregazione utili in scenari di multi-utenza e subentri tipici del settore utilities.
+| Trigger | Scopo |
+| --- | --- |
+| `trgfn_billing_account_gen_codice` | Genera `codice` automaticamente se mancante |
+| `trgfn_billing_account_guard_normalize` | Guard di coerenza (validazioni, normalizzazione, protezione parent) |
+| `dbops.trgfn_tx_id_managed` | Genera `tx_id` per tracciabilita transazionale |
+| `script.trgfn_audit_data_user_generic` | Aggiorna campi audit |
+| `script.trgfn_storico_generic` | Snapshot storico su update/delete |
 
+---
 
-
-###  Diagramma ER relazioni
+### Diagramma ER
 
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%
 erDiagram
-    istanze_utilities ||--o{ billing_account : has
-    soggetti_ruoli    ||--o{ billing_account : belongs_to
-    utilities         ||--o{ billing_account : for
-    billing_account   ||--o{ billing_account : parent_of
+    istanze_utilities ||--o{ billing_account : ha
+    soggetti_ruoli    ||--o{ billing_account : appartiene_a
+    utilities         ||--o{ billing_account : per
+    billing_account   ||--o{ billing_account : padre_di
 
     istanze_utilities { bigint id PK }
-    soggetti_ruoli    { bigiint id PK }
+    soggetti_ruoli    { bigint id PK }
     utilities         { bigint id PK }
     billing_account   { bigint id PK }
 ```
@@ -152,5 +146,3 @@ erDiagram
 ---
 
 {% include-markdown "signature-core.md" %}
-
----

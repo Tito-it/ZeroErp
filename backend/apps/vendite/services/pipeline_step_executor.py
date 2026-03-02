@@ -6,7 +6,10 @@
 # ------------------------------------------------------------
 
 
+import logging
 from typing import Any
+
+from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
@@ -646,6 +649,8 @@ class PipelineStepExecutor:
         )
 
     # Scopo: Pull commesse → attivita fatturabili (step 0 pipeline fatturazione).
+    # Isola gli errori per commessa: un fallimento su una commessa non blocca le altre.
+    # In caso di errori parziali il task prosegue e logga; se tutte falliscono alza errore.
     def _handle_pull_attivita_da_commessa_task(
         self,
         *,
@@ -671,8 +676,38 @@ class PipelineStepExecutor:
         )
         if dry_run:
             return
+        # Isolamento per commessa: savepoint per ogni emit; errore loggato ma non blocca le altre.
+        logger = logging.getLogger(__name__)
+        errors: list[str] = []
         for commessa_id in commessa_ids:
-            self.commesse_repository.emit_attivita_fatturabili(
-                commessa_id,
-                dry_run=dry_run,
+            try:
+                with transaction.atomic():
+                    self.commesse_repository.emit_attivita_fatturabili(
+                        commessa_id,
+                        dry_run=dry_run,
+                    )
+            except Exception as exc:
+                msg = f"Errore emit commessa_id={commessa_id}: {type(exc).__name__}: {exc}"
+                logger.exception(msg)
+                errors.append(msg)
+                self.error_logger.log_error(
+                    scope="LOTTO",
+                    severity="C",
+                    code="E_PULL_COMMESSA",
+                    message=f"Errore emissione commessa {commessa_id}",
+                    detail=msg,
+                    lotto_id=lotto_id,
+                    stato_doc_fiscale_id=stato_doc_fiscale_id,
+                    context={"commessa_id": commessa_id, "task": task},
+                    function_name="vendite.pipeline_step_executor._handle_pull_attivita_da_commessa_task",
+                )
+        # Se tutte le commesse falliscono, il task e` fallito.
+        if errors and len(errors) == len(commessa_ids):
+            ErrorManager.raise_error(
+                code="E_PULL_COMMESSA_ALL_FAILED",
+                message="Emissione commesse fallita per tutte le commesse.",
+                detail=f"Errori: {len(errors)}/{len(commessa_ids)}",
+                context={"lotto_id": lotto_id, "errors": errors[:5]},
+                function_name="vendite.pipeline_step_executor._handle_pull_attivita_da_commessa_task",
+                log_to_db=True,
             )

@@ -1091,8 +1091,71 @@ class VenditePipelineRepository:
             metodo_arrotondamento_quantita=row[14],
         )
 
+    # Scopo: Fetch batch di GroupAttivitaInput per una lista di attivita_id.
+    # Singola query con ANY(%s) al posto di N query singole.
+    def batch_get_group_attivita_inputs(
+        self, attivita_ids: list[int]
+    ) -> dict[int, GroupAttivitaInput]:
+        if not attivita_ids:
+            return {}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    a.id,
+                    a.articolo_id,
+                    a.billing_account_id AS dest_billing_account_id,
+                    COALESCE(a.uom_id, art.uom_id) AS uom_id,
+                    a.prezzo_unitario,
+                    art.iva_id,
+                    a.competenza_dal,
+                    a.competenza_al,
+                    a.data_attivita,
+                    COALESCE(r.visibilita_componenti, 'solo_padre') AS visibilita_componenti,
+                    COALESCE(r.calcolo_qta_padre, 'fissa') AS calcolo_qta_padre,
+                    COALESCE(r.arrotondamento_importi_dec, 2) AS arrotondamento_importi_dec,
+                    COALESCE(r.arrotondamento_quantita_dec, 3) AS arrotondamento_quantita_dec,
+                    COALESCE(r.metodo_arrotondamento_importi, 'HALF_UP')
+                        AS metodo_arrotondamento_importi,
+                    COALESCE(r.metodo_arrotondamento_quantita, 'HALF_UP')
+                        AS metodo_arrotondamento_quantita
+                FROM vendite.attivita_fatturabili a
+                JOIN catalogo.articoli art
+                  ON art.id = a.articolo_id
+                LEFT JOIN vendite.articolo_regole_fatturazione r
+                  ON r.articolo_id = a.articolo_id
+                WHERE a.id = ANY(%s)
+                """,
+                [attivita_ids],
+            )
+            rows = cursor.fetchall()
+        result: dict[int, GroupAttivitaInput] = {}
+        for row in rows:
+            result[int(row[0])] = GroupAttivitaInput(
+                attivita_id=int(row[0]),
+                articolo_id=int(row[1]),
+                dest_billing_account_id=None if row[2] is None else int(row[2]),
+                uom_id=None if row[3] is None else int(row[3]),
+                prezzo_unitario=row[4],
+                iva_id=None if row[5] is None else int(row[5]),
+                competenza_dal=row[6],
+                competenza_al=row[7],
+                data_attivita=row[8],
+                visibilita_componenti=row[9],
+                calcolo_qta_padre=row[10],
+                arrotondamento_importi_dec=int(row[11]),
+                arrotondamento_quantita_dec=int(row[12]),
+                metodo_arrotondamento_importi=row[13],
+                metodo_arrotondamento_quantita=row[14],
+            )
+        return result
+
     # Scopo: Restituisce elenco `attivita_da_fatturare` in base ai filtri disponibili.
-    def list_attivita_da_fatturare(self, lotto_id: int) -> list[AttivitaDaFatturare]:
+    # Safety-net: LIMIT con default alto per evitare memory explosion su lotti massivi.
+    def list_attivita_da_fatturare(
+        self, lotto_id: int, *, limit: int = 50000
+    ) -> list[AttivitaDaFatturare]:
+        safe_limit = max(1, min(int(limit), 100000))
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -1117,10 +1180,17 @@ class VenditePipelineRepository:
                   AND a.fatturato IS FALSE
                   AND COALESCE(a.lock_in_fatturazione, false) IS TRUE
                 ORDER BY a.id
+                LIMIT %s
                 """,
-                [lotto_id],
+                [lotto_id, safe_limit],
             )
             rows = cursor.fetchall()
+        if len(rows) == safe_limit:
+            import logging
+            logging.getLogger(__name__).warning(
+                "list_attivita_da_fatturare: risultato troncato al limit=%s per lotto_id=%s",
+                safe_limit, lotto_id,
+            )
         return [
             AttivitaDaFatturare(
                 id=int(row[0]),
@@ -1137,7 +1207,9 @@ class VenditePipelineRepository:
         ]
 
     # Scopo: Restituisce elenco `fatture_by_lotto` in base ai filtri disponibili.
-    def list_fatture_by_lotto(self, lotto_id: int) -> list[int]:
+    # Safety-net: LIMIT con default alto per evitare memory explosion su lotti massivi.
+    def list_fatture_by_lotto(self, lotto_id: int, *, limit: int = 50000) -> list[int]:
+        safe_limit = max(1, min(int(limit), 100000))
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -1147,10 +1219,17 @@ class VenditePipelineRepository:
                   ON f.id = lf.fattura_id
                 WHERE lf.lotto_id = %s
                 ORDER BY f.id
+                LIMIT %s
                 """,
-                [lotto_id],
+                [lotto_id, safe_limit],
             )
             rows = cursor.fetchall()
+        if len(rows) == safe_limit:
+            import logging
+            logging.getLogger(__name__).warning(
+                "list_fatture_by_lotto: risultato troncato al limit=%s per lotto_id=%s",
+                safe_limit, lotto_id,
+            )
         return [int(row[0]) for row in rows]
 
     # Scopo: Recupera `tipo_fondo_fattura_id` dal contesto applicativo o dal database.
@@ -1380,6 +1459,27 @@ class VenditePipelineRepository:
             assert row is not None
         return int(row[0])
 
+    # Scopo: Risolve o crea le testate fattura per un batch di attivita in un solo round-trip.
+    # La funzione DB fn_get_or_create_fattura_header viene chiamata N volte server-side
+    # ma in un singolo viaggio client-server.
+    def batch_get_or_create_fattura_headers(
+        self, lotto_id: int, attivita_ids: list[int]
+    ) -> dict[int, int]:
+        if not attivita_ids:
+            return {}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    t.id AS attivita_id,
+                    vendite.fn_get_or_create_fattura_header(%s, t.id) AS fattura_id
+                FROM unnest(%s::int[]) AS t(id)
+                """,
+                [lotto_id, attivita_ids],
+            )
+            rows = cursor.fetchall()
+        return {int(row[0]): int(row[1]) for row in rows}
+
     # Scopo: Gestisce `build_fattura_key` nel flusso applicativo del modulo.
     def build_fattura_key(self, attivita_id: int) -> dict[str, object]:
         with connection.cursor() as cursor:
@@ -1442,6 +1542,24 @@ class VenditePipelineRepository:
             row = cursor.fetchone()
             assert row is not None
         return int(row[0])
+
+    # Scopo: Restituisce MAX(riga_nr) corrente per ogni fattura_id in un singolo round-trip.
+    # Usato dal batch per calcolare i riga_nr in Python senza N query singole.
+    def get_max_riga_nrs(self, fattura_ids: list[int]) -> dict[int, int]:
+        if not fattura_ids:
+            return {}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT fattura_id, COALESCE(MAX(riga_nr), 0)
+                FROM vendite.fatture_righe
+                WHERE fattura_id = ANY(%s)
+                GROUP BY fattura_id
+                """,
+                [fattura_ids],
+            )
+            rows = cursor.fetchall()
+        return {int(row[0]): int(row[1]) for row in rows}
 
     # Scopo: Gestisce `insert_fattura_riga` nel flusso applicativo del modulo.
     def insert_fattura_riga(
@@ -1516,3 +1634,100 @@ class VenditePipelineRepository:
                 """,
                 [fattura_riga_id, attivita_id],
             )
+
+    # Scopo: Inserisce batch di righe fattura e marca le attivita come fatturate in un solo round-trip.
+    # Usa CTE con unnest per INSERT + UPDATE atomico. La correlazione usa (fattura_id, riga_nr) unico.
+    def batch_insert_righe_and_mark(
+        self,
+        *,
+        attivita_ids: list[int],
+        fattura_ids: list[int],
+        riga_nrs: list[int],
+        articolo_ids: list[int],
+        descrizioni: list[str | None],
+        uom_ids: list[int | None],
+        qtas: list[Decimal | None],
+        prezzi_unitari: list[Decimal | None],
+        iva_ids: list[int | None],
+        dest_billing_account_ids: list[int],
+        sorgente_tipo_ids: list[int | None],
+        sorgente_uids: list[str | None],
+        sorgente_righe: list[int | None],
+        metas: list[str | None],
+    ) -> int:
+        if not attivita_ids:
+            return 0
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH input_data AS (
+                    SELECT *
+                    FROM unnest(
+                        %s::int[],
+                        %s::int[],
+                        %s::int[],
+                        %s::int[],
+                        %s::text[],
+                        %s::int[],
+                        %s::numeric[],
+                        %s::numeric[],
+                        %s::int[],
+                        %s::int[],
+                        %s::int[],
+                        %s::text[],
+                        %s::int[],
+                        %s::jsonb[]
+                    ) AS t(
+                        attivita_id, fattura_id, riga_nr, articolo_id,
+                        descrizione, uom_id, qta, prezzo_unitario,
+                        iva_id, dest_billing_account_id,
+                        sorgente_tipo_id, sorgente_uid, sorgente_riga, meta
+                    )
+                ),
+                inserted AS (
+                    INSERT INTO vendite.fatture_righe (
+                        fattura_id, riga_nr, articolo_id, descrizione,
+                        uom_id, qta, prezzo_unitario, iva_id,
+                        dest_billing_account_id, sorgente_tipo_id,
+                        sorgente_uid, sorgente_riga, meta
+                    )
+                    SELECT
+                        d.fattura_id, d.riga_nr, d.articolo_id, d.descrizione,
+                        d.uom_id, d.qta, d.prezzo_unitario, d.iva_id,
+                        d.dest_billing_account_id, d.sorgente_tipo_id,
+                        d.sorgente_uid, d.sorgente_riga, d.meta
+                    FROM input_data d
+                    RETURNING id, fattura_id, riga_nr
+                ),
+                correlated AS (
+                    SELECT i.id AS fattura_riga_id, d.attivita_id
+                    FROM inserted i
+                    JOIN input_data d
+                      ON d.fattura_id = i.fattura_id AND d.riga_nr = i.riga_nr
+                )
+                UPDATE vendite.attivita_fatturabili a
+                SET fattura_riga_id = c.fattura_riga_id,
+                    fatturato = TRUE,
+                    data_update = now(),
+                    user_update = current_user
+                FROM correlated c
+                WHERE a.id = c.attivita_id
+                """,
+                [
+                    attivita_ids,
+                    fattura_ids,
+                    riga_nrs,
+                    articolo_ids,
+                    descrizioni,
+                    uom_ids,
+                    qtas,
+                    prezzi_unitari,
+                    iva_ids,
+                    dest_billing_account_ids,
+                    sorgente_tipo_ids,
+                    sorgente_uids,
+                    sorgente_righe,
+                    metas,
+                ],
+            )
+            return cursor.rowcount

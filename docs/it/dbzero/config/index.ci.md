@@ -66,6 +66,7 @@
 - [fn_check_user_emittente_scope](manual/fn_check_user_emittente_scope.md)
 - [fn_get_aliquota_iva](manual/fn_get_aliquota_iva.md) — (latest review 10-02-2026)   La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA applicando l’eventuale override definito in `config.iva_stati` per lo Stato specificato.
 - [fn_get_emittenti_scope](manual/fn_get_emittenti_scope.md)
+- [fn_get_emittenti_scope_sr_ids](manual/fn_get_emittenti_scope_sr_ids.md)
 - [fn_get_override_scaduti](manual/fn_get_override_scaduti.md)
 - [fn_get_ruolo_sistema](manual/fn_get_ruolo_sistema.md)
 - [fn_get_stati_doc_fiscale](manual/fn_get_stati_doc_fiscale.md) — (latest review 24-01-2026) La funzione **`config.fn_get_stati_doc_fiscale`** restituisce gli stati validi per **LOTTO** o **FATTURA**, con eventuale filtro sulle **transizioni ammesse**.

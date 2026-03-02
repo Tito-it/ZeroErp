@@ -31,9 +31,10 @@ Le view che necessitano accesso pubblico (schema, docs, auth) dichiarano esplici
 5. Azione custom dichiarata?        → check_azione() via PermissionResolver
 6. CRUD standard:
    a. Determina required (view/add/change/delete)
-   b. Risolvi area funzionale
-   c. Risolvi livello (oggetto o area)
-   d. Verifica required ∈ LIVELLO_MAP[livello]
+   b. Azione sconosciuta (required = None)? → 403 fail-closed
+   c. Risolvi area funzionale
+   d. Risolvi livello (oggetto o area)
+   e. Verifica required ∈ LIVELLO_MAP[livello]
 ```
 
 ## Mapping azioni
@@ -87,11 +88,18 @@ La permission class imposta `self.message` con messaggi differenziati:
 |-------------------------------------|-----------------------------------------------------------------|
 | `ruolo_sistema = DISABILITATO`     | "Utente disabilitato. Contattare l'amministratore."             |
 | Azione processo negata              | "Non hai i permessi per questa operazione."                     |
+| Azione sconosciuta (fail-closed)    | "Non hai i permessi per questa operazione."                     |
 | BLOCCATO con profilo reparto        | "Non hai i permessi per questa operazione."                     |
 | BLOCCATO senza profilo reparto      | "Il reparto non ha ancora un profilo permessi configurato."     |
 
 La distinzione "senza profilo" usa `PermissionResolver.has_profilo_reparto_area()` per guidare
 l'utente verso la configurazione corretta del reparto.
+
+## Fail-closed per azioni sconosciute
+
+Azioni ViewSet non mappate in `ACTION_REQUIRES` e metodi HTTP non mappati in `METHOD_REQUIRES`
+vengono **negate per default** (fail-closed). Se una view espone un'azione custom senza dichiarare
+l'attributo `<action>_permission`, l'accesso e' negato con log di sicurezza.
 
 ## Risoluzione area funzionale
 
@@ -102,7 +110,25 @@ l'utente verso la configurazione corretta del reparto.
 ## Cache per-request
 
 La cache viene creata/letta su `request._zeroerp_perms_cache` (dict).
-Evita query duplicate quando piu' permission check avvengono nella stessa request.
+Il middleware `JwtAuditMiddleware` pre-popola questa cache da Redis (L2) se disponibile;
+`ZeroERPPermission._get_cache()` la riusa senza query aggiuntive.
+Al termine della request, la cache viene persistita su Redis per le request successive.
+
+## Security logging
+
+Ogni negazione genera un log `logger.warning("security.permission_denied ...")` con:
+
+- `user_id` — ID utente
+- `reason` — tipo di negazione (`DISABILITATO`, `azione_negata`, `livello_insufficiente`, `azione_sconosciuta`)
+- `path` — endpoint richiesto
+- campi aggiuntivi specifici per caso (es. `azione`, `area`, `livello`, `required`)
+
+## Error handling nelle view
+
+Le view API dominio **non devono** usare `try/except Exception` generici.
+Le eccezioni non gestite vengono intercettate da `ApiExceptionMiddleware`
+(`apps/core/middleware/api_exception_middleware.py`) che le converte nell'envelope
+standard del progetto. I service usano `ServiceError` per errori applicativi.
 
 ## Dipendenze
 
@@ -111,4 +137,4 @@ Evita query duplicate quando piu' permission check avvengono nella stessa reques
 
 ## Test
 
-`apps/core/tests/api/test_permissions.py` — 15 test unitari con mock del resolver.
+`apps/core/tests/api/test_permissions.py` — 18 test unitari con mock del resolver.
