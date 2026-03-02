@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/anagrafiche/20260302-02-create-trg-sync-auth-user-is-active-mctit.yaml
+
+    - changeSet:
+          id: 20260302-02-create-trg-sync-auth-user-is-active
+          author: mctit
+          runOnChange: true
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- =========================================================
+                        -- Trigger function per risorse_umane
+                        -- =========================================================
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        BEGIN
+                        -- ------------------------------------------------------------
+                        -- Trigger function: trgfn_risorse_umane_sync_auth_user_active
+                        --
+                        -- Scopo:
+                        --   Alla modifica di attivo, valido_dal o valido_al su risorse_umane,
+                        --   sincronizza auth_user.is_active tramite fn_sync_auth_user_is_active.
+                        --   Esegue solo se la risorsa ha un collegamento in risorse_umane_auth_user.
+                        --
+                        -- Evento: AFTER UPDATE OF attivo, valido_dal, valido_al
+                        -- Tabella: anagrafiche.risorse_umane
+                        -- ------------------------------------------------------------
+
+                            -- Verifica se la risorsa ha un collegamento auth_user
+                            IF EXISTS (
+                                SELECT 1
+                                  FROM anagrafiche.risorse_umane_auth_user rau
+                                 WHERE rau.risorsa_umana_id = NEW.id
+                            ) THEN
+                                PERFORM anagrafiche.fn_sync_auth_user_is_active(NEW.id);
+                            END IF;
+
+                            RETURN NULL; -- AFTER trigger, ritorno ignorato
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active()
+                        IS 'Trigger function: sincronizza auth_user.is_active al cambio stato risorsa umana.';
+
+                        -- =========================================================
+                        -- Trigger function per risorse_umane_auth_user
+                        -- =========================================================
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_active()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        BEGIN
+                        -- ------------------------------------------------------------
+                        -- Trigger function: trgfn_risorse_umane_auth_user_sync_active
+                        --
+                        -- Scopo:
+                        --   Alla modifica di attivo su risorse_umane_auth_user o
+                        --   all'inserimento di un nuovo bridge, sincronizza
+                        --   auth_user.is_active tramite fn_sync_auth_user_is_active.
+                        --
+                        -- Evento: AFTER INSERT / AFTER UPDATE OF attivo
+                        -- Tabella: anagrafiche.risorse_umane_auth_user
+                        -- ------------------------------------------------------------
+
+                            PERFORM anagrafiche.fn_sync_auth_user_is_active(NEW.risorsa_umana_id);
+                            RETURN NULL; -- AFTER trigger, ritorno ignorato
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_active()
+                        IS 'Trigger function: sincronizza auth_user.is_active al cambio stato bridge o nuovo collegamento.';
+
+                        -- =========================================================
+                        -- Trigger 1.2: risorse_umane AFTER UPDATE OF attivo, valido_dal, valido_al
+                        -- =========================================================
+                        DROP TRIGGER IF EXISTS trg_risorse_umane_z90_sync_auth_user_active_upd
+                        ON anagrafiche.risorse_umane;
+
+                        CREATE TRIGGER trg_risorse_umane_z90_sync_auth_user_active_upd
+                        AFTER UPDATE OF attivo, valido_dal, valido_al
+                        ON anagrafiche.risorse_umane
+                        FOR EACH ROW
+                        WHEN (
+                            OLD.attivo IS DISTINCT FROM NEW.attivo
+                            OR OLD.valido_dal IS DISTINCT FROM NEW.valido_dal
+                            OR OLD.valido_al IS DISTINCT FROM NEW.valido_al
+                        )
+                        EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active();
+
+                        COMMENT ON TRIGGER trg_risorse_umane_z90_sync_auth_user_active_upd
+                        ON anagrafiche.risorse_umane
+                        IS 'Sync auth_user.is_active al cambio attivo/valido_dal/valido_al sulla risorsa umana.';
+
+                        -- =========================================================
+                        -- Trigger 1.3: risorse_umane_auth_user AFTER UPDATE OF attivo
+                        -- =========================================================
+                        DROP TRIGGER IF EXISTS trg_risorse_umane_auth_user_z90_sync_auth_user_active_upd
+                        ON anagrafiche.risorse_umane_auth_user;
+
+                        CREATE TRIGGER trg_risorse_umane_auth_user_z90_sync_auth_user_active_upd
+                        AFTER UPDATE OF attivo
+                        ON anagrafiche.risorse_umane_auth_user
+                        FOR EACH ROW
+                        WHEN (OLD.attivo IS DISTINCT FROM NEW.attivo)
+                        EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_active();
+
+                        COMMENT ON TRIGGER trg_risorse_umane_auth_user_z90_sync_auth_user_active_upd
+                        ON anagrafiche.risorse_umane_auth_user
+                        IS 'Sync auth_user.is_active al cambio attivo sul bridge risorsa-utente.';
+
+                        -- =========================================================
+                        -- Trigger 1.4: risorse_umane_auth_user AFTER INSERT
+                        -- =========================================================
+                        DROP TRIGGER IF EXISTS trg_risorse_umane_auth_user_z90_sync_auth_user_active_ins
+                        ON anagrafiche.risorse_umane_auth_user;
+
+                        CREATE TRIGGER trg_risorse_umane_auth_user_z90_sync_auth_user_active_ins
+                        AFTER INSERT
+                        ON anagrafiche.risorse_umane_auth_user
+                        FOR EACH ROW
+                        EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_active();
+
+                        COMMENT ON TRIGGER trg_risorse_umane_auth_user_z90_sync_auth_user_active_ins
+                        ON anagrafiche.risorse_umane_auth_user
+                        IS 'Sync auth_user.is_active al primo collegamento risorsa-utente.';

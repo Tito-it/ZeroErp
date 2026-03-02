@@ -46,6 +46,8 @@
 | trg_risorse_umane_auth_user_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_risorse_umane_auth_user_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('risorse_umane_auth_user_id')` |
 | trg_risorse_umane_auth_user_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('risorse_umane_auth_user_id')` |
+| trg_risorse_umane_auth_user_z90_sync_auth_user_active_ins | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_active()` |
+| trg_risorse_umane_auth_user_z90_sync_auth_user_active_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_active()` |
 
 ---
 {% include-markdown "signature-core.md" %}
