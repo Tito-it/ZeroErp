@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/anagrafiche/20260302-06-create-trg-notify-cambio-reparto-mctit.yaml
+
+    - changeSet:
+          id: 20260302-06-create-trg-notify-cambio-reparto
+          author: mctit
+          runOnChange: true
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- =========================================================
+                        -- Trigger function per NOTIFY cambio reparto
+                        -- =========================================================
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_notify_cambio_reparto()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        BEGIN
+                        -- ------------------------------------------------------------
+                        -- Trigger function: trgfn_risorse_umane_notify_cambio_reparto
+                        --
+                        -- Scopo:
+                        --   Al cambio di unita_organizzativa_id su risorse_umane,
+                        --   emette NOTIFY cambio_reparto con payload JSON tramite
+                        --   fn_notify_cambio_reparto. Il listener backend intercetta
+                        --   la notifica e invalida la cache permessi dell'utente.
+                        --
+                        -- Evento: AFTER UPDATE OF unita_organizzativa_id
+                        -- Tabella: anagrafiche.risorse_umane
+                        -- ------------------------------------------------------------
+
+                            PERFORM anagrafiche.fn_notify_cambio_reparto(
+                                NEW.id,
+                                OLD.unita_organizzativa_id,
+                                NEW.unita_organizzativa_id
+                            );
+
+                            RETURN NULL; -- AFTER trigger, ritorno ignorato
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_notify_cambio_reparto()
+                        IS 'Trigger function: emette NOTIFY cambio_reparto al cambio unita organizzativa della risorsa.';
+
+                        -- =========================================================
+                        -- Trigger 2.2: risorse_umane AFTER UPDATE OF unita_organizzativa_id
+                        -- =========================================================
+                        DROP TRIGGER IF EXISTS trg_risorse_umane_z90_notify_cambio_reparto_upd
+                        ON anagrafiche.risorse_umane;
+
+                        CREATE TRIGGER trg_risorse_umane_z90_notify_cambio_reparto_upd
+                        AFTER UPDATE OF unita_organizzativa_id
+                        ON anagrafiche.risorse_umane
+                        FOR EACH ROW
+                        WHEN (OLD.unita_organizzativa_id IS DISTINCT FROM NEW.unita_organizzativa_id)
+                        EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_notify_cambio_reparto();
+
+                        COMMENT ON TRIGGER trg_risorse_umane_z90_notify_cambio_reparto_upd
+                        ON anagrafiche.risorse_umane
+                        IS 'NOTIFY cambio_reparto al cambio unita organizzativa per invalidazione cache permessi.';
