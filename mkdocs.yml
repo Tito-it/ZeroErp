@@ -134,6 +134,9 @@ nav:
                             - Messaggi di Errore: it/guide/Messaggi-di-Errore-e-Generazione-Log.md
                             - Messaggi di Audit: it/guide/messaggi-audit.md
                             - Processi e Job: it/guide/Analisi-tracciamento-processi-e-job.md
+        - Tutorial:
+                  - Framework automazione DB: it/tutorial/framework-automazione-db.md
+
         - Strumenti:
                   - Generatore Documentazione: it/dbzero/tools/gen_db_docs.md
         - Sviluppatori:
