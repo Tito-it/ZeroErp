@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LB5_HOME="/opt/liquibase5"
+LB5_HOME="/opt/liquibase"
+LB5_BIN="/opt/liquibase"
 git_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 
 # comando liquibase (primo argomento non --*)
@@ -39,9 +40,9 @@ if [[ $uses_master_v2 -eq 0 ]]; then
   done
 fi
 
-#echo "[liquibase5] git_root=$git_root"
-#echo "[liquibase5] cmd=$cmd needs_changelog=$needs_changelog uses_master_v2=$uses_master_v2"
-#echo "[liquibase5] pwd=$(pwd)"
+#echo "[liquibase] git_root=$git_root"
+#echo "[liquibase] cmd=$cmd needs_changelog=$needs_changelog uses_master_v2=$uses_master_v2"
+#echo "[liquibase] pwd=$(pwd)"
 
 
 if [[ $needs_changelog -eq 1 && $uses_master_v2 -eq 1 && -n "$git_root" ]]; then
@@ -51,14 +52,14 @@ if [[ $needs_changelog -eq 1 && $uses_master_v2 -eq 1 && -n "$git_root" ]]; then
   out="$git_root/db/changelog/migrations_v2/changelog-autogen.yaml"
 
   if [[ -f "$script" ]]; then
-    echo "[liquibase5] Genero changelog-autogen.yaml..."
+    echo "[liquibase] Genero changelog-autogen.yaml..."
     "$py" "$script" \
       --root "$root" \
       --out  "$out"  \
       --strict
   else
-    echo "[liquibase5] WARNING: gen_master_autogen.py non trovato: $script" >&2
+    echo "[liquibase] WARNING: gen_master_autogen.py non trovato: $script" >&2
   fi
 fi
 
-exec "${LB5_HOME}/liquibase" "$@"
+exec "${LB5_BIN}" "$@"

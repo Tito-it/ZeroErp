@@ -16,15 +16,15 @@
 
 In Zero ERP una **risorsa umana** e la rappresentazione di una persona che lavora per l'azienda: un dipendente, un consulente, un collaboratore. Non e un semplice record anagrafico — e l'identita operativa della persona all'interno del sistema.
 
-Questa guida spiega **come funziona il modulo risorse umane**: quali entita lo compongono, come si collegano tra loro, e come governano l'accesso al software e i permessi di ogni utente.
+Questa guida copre **due aspetti strettamente legati**: il modulo risorse umane (chi sono le persone nell'organico, come sono organizzate) e il **governo dell'accesso al software** (chi puo entrare, cosa puo fare, cosa succede quando qualcuno cambia reparto o lascia l'azienda). I due aspetti sono inseparabili perche in Zero ERP e proprio la risorsa umana a determinare se e come un utente accede al sistema.
 
 **Cosa troverai in questa guida:**
 
 * Le entita coinvolte e il loro significato nel modello
 * Come funziona il collegamento tra una risorsa umana e un utente Django
 * Il meccanismo automatico che blocca il login quando una risorsa viene disattivata o scade
-* Come vengono gestiti i permessi (profili reparto, override individuali)
-* Il ciclo di vita completo: dall'assunzione alla cessazione, passando per cambio reparto e rientro
+* Come vengono gestiti i permessi (profili reparto, override individuali) e come si propagano al cambio reparto
+* Il ciclo di vita completo: dall'assunzione alla cessazione, con i passi operativi per ogni fase
 
 ### Il collegamento a Django e opzionale
 
@@ -52,15 +52,15 @@ Non tutte le risorse umane accedono al software. Un magazziniere potrebbe non av
 
 E la persona che lavora per l'azienda. Ha una qualifica (cosa fa), un reparto (dove lavora), una finestra di validita (da quando a quando) e un flag attivo/inattivo.
 
-La risorsa e legata al soggetto tramite un **ruolo RIS_UMANA**: la stessa persona (soggetto PF) che nel sistema potrebbe essere anche cliente o fornitore, qui compare nel suo ruolo di dipendente/collaboratore.
+La risorsa e legata al soggetto tramite un **ruolo RIS_UMANA** ([R1](#r1--ruolo-corretto)): la stessa persona (soggetto PF) che nel sistema potrebbe essere anche cliente o fornitore, qui compare nel suo ruolo di dipendente/collaboratore.
 
 Campi chiave:
 
-* `soggetto_ruolo_id`: il ruolo `RIS_UMANA` della persona — punta a `anagrafiche.soggetti_ruoli` (UNIQUE: una sola risorsa per persona)
-* `soggetto_id`: la **persona** (soggetto PF) — campo denormalizzato per comodita di join. **Non** e l'azienda (che si ricava da `anagrafiche.gestori`)
+* `soggetto_ruolo_id`: il ruolo `RIS_UMANA` della persona — punta a `anagrafiche.soggetti_ruoli` (UNIQUE: una sola risorsa per persona, vedi [R5](#r5--unicita-per-persona))
+* `soggetto_id`: la **persona** (soggetto PF) — campo denormalizzato per comodita di join, deve coincidere con il soggetto del ruolo ([R2](#r2--coerenza-soggetto)). **Non** e l'azienda (che si ricava da `anagrafiche.gestori`)
 * `qualifica_id`: mansione o posizione (es. Amministratore, Dipendente, Consulente)
 * `unita_organizzativa_id`: reparto o ufficio — determina l'**ereditarieta dei permessi** (profilo reparto)
-* `valido_dal`, `valido_al`: finestra di validita
+* `valido_dal`, `valido_al`: finestra di validita ([R3](#r3--validita-temporale))
 * `attivo`: flag operativo
 
 ### Ponte verso Django (`risorse_umane_auth_user`)
@@ -85,7 +85,7 @@ Il reparto o ufficio a cui la risorsa appartiene. E il perno del sistema permess
 
 ### Soggetto gestore
 
-L'azienda che usa il sistema. Il guard `trgfn_risorse_umane_auth_user_guard_gestore` verifica che il collegamento a `auth_user` sia consentito **solo** per risorse il cui soggetto corrisponde al gestore.
+L'azienda che usa il sistema. Il guard `trgfn_risorse_umane_auth_user_guard_gestore` verifica che il collegamento a `auth_user` sia consentito **solo** per risorse il cui soggetto corrisponde al gestore ([R4](#r4--collegamento-a-django-solo-gestore)).
 
 ---
 
@@ -105,7 +105,7 @@ Se `valido_al` e valorizzato, deve essere >= `valido_dal`. Il check `chk_risorse
 
 ### R4 — Collegamento a Django (solo gestore)
 
-Il collegamento a `django.auth_user` e consentito **solo** per risorse appartenenti al **soggetto gestore**.
+Il collegamento a `django.auth_user` e consentito **solo** per risorse appartenenti al **soggetto gestore**. Questo vincolo riguarda l'appartenenza organizzativa ("fa parte della nostra azienda?"), non lo scope operativo. Per limitare su quali emittenti fiscali un utente puo operare, esiste un meccanismo separato: la whitelist `config.user_emittenti_fiscali` (vedi [Autorizzazioni e permessi](#autorizzazioni-e-permessi)).
 
 ### R5 — Unicita per persona
 
@@ -139,7 +139,7 @@ La funzione `anagrafiche.fn_sync_auth_user_is_active(p_risorsa_umana_id)` calcol
 
 1. `risorse_umane.attivo = true`
 2. `risorse_umane_auth_user.attivo = true`
-3. `CURRENT_DATE` dentro la finestra `[valido_dal, valido_al]`
+3. `CURRENT_DATE` dentro la finestra `[valido_dal, valido_al]` ([R3](#r3--validita-temporale))
 
 Se una qualsiasi condizione non e soddisfatta → `is_active = false` e il login viene bloccato.
 
@@ -185,6 +185,8 @@ Le tabelle coinvolte:
 * `config.user_override_aree`, `config.user_override_oggetti`, `config.user_override_azioni` — eccezioni individuali
 * `config.user_emittenti_fiscali` — whitelist opzionale per limitare l'operativita per emittente fiscale
 
+**Scope emittente fiscale:** in un sistema multi-emittente (piu soggetti che emettono fatture), la tabella `config.user_emittenti_fiscali` consente di restringere su quali emittenti un utente puo operare. Se l'utente non ha righe nella whitelist, puo operare su tutti gli emittenti; se ha almeno una riga, e limitato a quelli indicati. Questo scope e ortogonale ai permessi reparto: un utente puo avere accesso alla fatturazione (profilo reparto) ma essere limitato a un solo emittente (whitelist). L'enforcement avviene sia a livello API (`EmittenteFiscaleScopeMixin`) che a livello DB (trigger `fn_check_user_emittente_scope`).
+
 > Per il modello dati completo, le funzioni SQL di risoluzione e l'enforcement Django:
 > vedi [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni).
 
@@ -197,7 +199,7 @@ Le tabelle coinvolte:
 Quando una nuova persona entra nell'organico, la sequenza e:
 
 1. Creare il soggetto PF (se non esiste gia nel sistema)
-2. Assegnare il ruolo `RIS_UMANA` via `script.fn_get_or_create_soggetto_ruolo`
+2. Assegnare il ruolo `RIS_UMANA` via `script.fn_get_or_create_soggetto_ruolo` ([R1](#r1--ruolo-corretto))
 3. Inserire in `risorse_umane` con `valido_dal`, `qualifica_id`, `unita_organizzativa_id`
 4. (Opzionale) Collegare a `auth_user` via `risorse_umane_auth_user` — il trigger sync imposta `is_active` automaticamente
 
@@ -225,25 +227,36 @@ UPDATE di `risorse_umane.qualifica_id`.
 
 ### Cessazione (disattivazione)
 
-Quando una persona lascia l'organico:
+Quando una persona lascia l'organico, la sequenza e:
 
-1. UPDATE di `risorse_umane.attivo = false`
-2. Il trigger sync imposta automaticamente `auth_user.is_active = false` → login bloccato
+1. Disattivare il ponte: UPDATE `risorse_umane_auth_user.attivo = false` — il trigger sync imposta `auth_user.is_active = false` e il login viene bloccato
+2. Disattivare la risorsa: UPDATE `risorse_umane.attivo = false`
 3. Il backend invalida la cache permessi dell'utente
 
-Non serve toccare manualmente `auth_user` o il ponte: la catena e completamente automatizzata.
+**Perche questo ordine?** Il framework ATTIVO (`trgfn_prevent_deactivate_if_children`) impedisce di disattivare un genitore che ha figli ancora attivi. Poiche `risorse_umane_auth_user` e figlio di `risorse_umane`, bisogna disattivare il ponte (figlio) prima della risorsa (genitore). Tentare l'ordine inverso produce un errore.
 
-**Nota sul framework ATTIVO:** la disattivazione della risorsa e protetta dal trigger `trgfn_prevent_deactivate_if_children`. Se la risorsa ha un ponte `risorse_umane_auth_user` attivo, bisogna prima disattivare il ponte (`attivo = false`) e poi la risorsa. L'ordine corretto e sempre **figlio prima, genitore dopo**.
+Se la risorsa non ha un collegamento a `auth_user`, basta il solo passo 2.
 
 ### Rientro
 
-L'unicita e garantita dalla catena UNIQUE: `soggetti_ruoli(soggetto_id, tipo_ruolo_id)` + `risorse_umane(soggetto_ruolo_id)`. Una persona puo avere **un solo record** in `risorse_umane`.
+Il vincolo di unicita ([R5](#r5--unicita-per-persona)) garantisce un solo record per persona in `risorse_umane`. Non e possibile creare un secondo record — e non serve: per il rientro di un ex-dipendente si **riattiva il record esistente**.
 
-Per il rientro di un ex-dipendente: **riattivare il record esistente** (`attivo = true`, aggiornare `valido_dal`/`valido_al`), non creare un nuovo record. L'ordine corretto e **genitore prima, figlio dopo**: riattivare la risorsa, poi il ponte.
+La sequenza e l'inversa della cessazione:
+
+1. Riattivare la risorsa: UPDATE `risorse_umane.attivo = true`, aggiornare `valido_dal`/`valido_al`
+2. Riattivare il ponte: UPDATE `risorse_umane_auth_user.attivo = true` — il trigger sync imposta `auth_user.is_active = true` e il login viene riabilitato
+
+**Perche questo ordine?** Il framework ATTIVO (`trgfn_child_requires_active_parent`) impedisce di attivare un figlio se il genitore e inattivo. Bisogna riattivare la risorsa (genitore) prima del ponte (figlio).
 
 ---
 
-## Diagramma ER
+## Diagrammi ER
+
+Il modello e rappresentato in due diagrammi separati per facilitare la lettura.
+
+### Catena identita e accesso
+
+La catena principale: dalla persona al suo account Django, passando per il ruolo e il ponte.
 
 ```mermaid
 erDiagram
@@ -265,8 +278,6 @@ erDiagram
         bigint id PK
         bigint soggetto_ruolo_id FK
         uuid soggetto_id FK
-        int qualifica_id FK
-        int unita_organizzativa_id FK
         date valido_dal
         date valido_al
         boolean attivo
@@ -286,9 +297,23 @@ erDiagram
         boolean is_active
     }
 
-    gestori {
+    soggetti ||--o{ soggetti_ruoli : "ha ruoli"
+    soggetti_ruoli ||--|| risorse_umane : "ruolo RIS_UMANA"
+    risorse_umane ||--o| risorse_umane_auth_user : "collegamento"
+    auth_user ||--o| risorse_umane_auth_user : "collegamento"
+```
+
+### Parte organizzativa
+
+Qualifica, reparto e gestore: i dati che completano il profilo della risorsa.
+
+```mermaid
+erDiagram
+    risorse_umane {
         bigint id PK
-        bigint soggetto_ruolo_id FK
+        int qualifica_id FK
+        int unita_organizzativa_id FK
+        boolean attivo
     }
 
     qualifiche {
@@ -304,25 +329,24 @@ erDiagram
         int parent_id FK
     }
 
-    %% Identita della persona (PF)
-    soggetti ||--o{ soggetti_ruoli : "ha ruoli"
-    soggetti_ruoli ||--|| risorse_umane : "ruolo RIS_UMANA"
+    gestori {
+        bigint id PK
+        bigint soggetto_ruolo_id FK
+    }
 
-    %% Dati HR
+    soggetti_ruoli {
+        bigint id PK
+        uuid soggetto_id FK
+    }
+
     risorse_umane }o--|| qualifiche : "mansione"
     risorse_umane }o--o| unita_organizzative : "reparto"
-
-    %% Ponte verso Django
-    risorse_umane ||--o| risorse_umane_auth_user : "collegamento"
-    auth_user ||--o| risorse_umane_auth_user : "collegamento"
-
-    %% Il gestore (azienda PG) e un soggetto con ruolo diverso
     soggetti_ruoli ||--o| gestori : "ruolo GESTORE"
 ```
 
 > **Nota:** `soggetto_id` su `risorse_umane` e la persona (PF), non l'azienda.
 > L'azienda (datore) si identifica tramite `anagrafiche.gestori` — un soggetto PG con ruolo GESTORE.
-> Il guard `trgfn_risorse_umane_auth_user_guard_gestore` verifica che il collegamento a `auth_user` sia consentito solo per risorse il cui `soggetto_id` corrisponde a un gestore.
+> Il guard `trgfn_risorse_umane_auth_user_guard_gestore` ([R4](#r4--collegamento-a-django-solo-gestore)) verifica che il collegamento a `auth_user` sia consentito solo per risorse il cui `soggetto_id` corrisponde a un gestore.
 
 ---
 
