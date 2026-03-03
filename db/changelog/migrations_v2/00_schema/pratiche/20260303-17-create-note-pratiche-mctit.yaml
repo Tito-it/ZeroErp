@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella pratiche.note_pratiche — note a livello pratica
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260303-17-create-note-pratiche-mctit.yaml
+
+  - changeSet:
+      id: 20260303-17-create-note-pratiche
+      author: mctit
+      comment: >
+        Note testuali associate a una pratica. Modificabili (4 audit fields).
+        Ogni nota ha un tipo (FK a config.tipi_nota) e contenuto libero.
+      changes:
+        - createTable:
+            schemaName: pratiche
+            tableName: note_pratiche
+            remarks: "Note testuali associate a una pratica."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_pratiche_note_pratiche
+                    nullable: false
+
+              - column:
+                  name: pratica_id
+                  type: bigint
+                  remarks: "FK a pratiche.pratiche."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tipo_nota_id
+                  type: integer
+                  remarks: "FK a config.tipi_nota."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: contenuto
+                  type: text
+                  remarks: "Testo della nota."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: note_pratiche
+            baseColumnNames: pratica_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: pratiche
+            referencedColumnNames: id
+            constraintName: fk_note_pratiche_pratica
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: note_pratiche
+            baseColumnNames: tipo_nota_id
+            referencedTableSchemaName: config
+            referencedTableName: tipi_nota
+            referencedColumnNames: id
+            constraintName: fk_note_pratiche_tipo_nota
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+      rollback:
+        - dropTable:
+            schemaName: pratiche
+            tableName: note_pratiche

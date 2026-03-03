@@ -39,16 +39,23 @@ BEGIN
     ----------------------------------------------------------------
     -- Ciclo su risorse con finestra scaduta + auth_user ancora attivo
     ----------------------------------------------------------------
+    -- In ambienti CI senza schema django, non fare nulla.
+    IF to_regclass('django.auth_user') IS NULL THEN
+        RETURN 0;
+    END IF;
+
     FOR v_risorsa_id IN
-        SELECT ru.id
-          FROM anagrafiche.risorse_umane ru
-          JOIN anagrafiche.risorse_umane_auth_user rau
-            ON rau.risorsa_umana_id = ru.id
-          JOIN django.auth_user au
-            ON au.id = rau.auth_user_id
-         WHERE ru.valido_al IS NOT NULL
-           AND ru.valido_al < CURRENT_DATE
-           AND au.is_active = true
+        EXECUTE '
+            SELECT ru.id
+              FROM anagrafiche.risorse_umane ru
+              JOIN anagrafiche.risorse_umane_auth_user rau
+                ON rau.risorsa_umana_id = ru.id
+              JOIN django.auth_user au
+                ON au.id = rau.auth_user_id
+             WHERE ru.valido_al IS NOT NULL
+               AND ru.valido_al < CURRENT_DATE
+               AND au.is_active = true
+        '
     LOOP
         SELECT anagrafiche.fn_sync_auth_user_is_active(v_risorsa_id)
           INTO v_modified;

@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger function pratiche.trgfn_flussi_guard_prerequisiti
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260303-32-create-trgfn-flussi-guard-prerequisiti-mctit.yaml
+
+  - changeSet:
+      id: 20260303-32-create-trgfn-flussi-guard-prerequisiti
+      author: mctit
+      runOnChange: true
+      comment: >
+        Trigger function wrapper per guard prerequisiti.
+        BEFORE INSERT su flussi: se il flusso ha un template, verifica
+        i prerequisiti tramite fn_guard_prerequisiti_flusso.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_prerequisiti()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Wrapper trigger per guard prerequisiti.
+                --   Solo per flussi template-based (template_flusso_id NOT NULL).
+                --   I flussi manuali (NULL) bypassano il controllo.
+                -- =========================================================
+
+                IF NEW.template_flusso_id IS NOT NULL THEN
+                  PERFORM pratiche.fn_guard_prerequisiti_flusso(
+                    NEW.pratica_id,
+                    NEW.template_flusso_id
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_prerequisiti()
+                IS 'BEFORE INSERT su flussi: verifica prerequisiti per flussi template-based.';

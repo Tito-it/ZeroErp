@@ -38,9 +38,6 @@ BEGIN
   --   - in caso di failure del canale di log emette WARNING
   -- =========================================================
 
-  -- Log sempre out-of-transaction: in caso di rollback del chiamante
-  -- il record su dbops.error_log deve restare persistente.
-
   IF p_tx_id IS NULL THEN
     p_tx_id := dbops.fn_get_or_create_session_tx_id();
   END IF;
@@ -53,8 +50,9 @@ BEGIN
   LIMIT 1;
 
   IF NOT FOUND THEN
-    SELECT messaggio || ' ' || p_error_code, causa, soluzione
-      INTO v_msg, v_detail, v_hint
+    -- Fallback: recupera ANCHE id da MESSAGGIO_NON_DEFINITO
+    SELECT id, messaggio || ' ' || p_error_code, causa, soluzione
+      INTO v_id, v_msg, v_detail, v_hint
     FROM config.messaggi_errore
     WHERE codice = 'MESSAGGIO_NON_DEFINITO'
       AND lingua = v_lang
@@ -76,12 +74,20 @@ BEGIN
     NULL;
   END;
 
+  -- Se non abbiamo un messaggio_errore_id valido, non possiamo
+  -- inserire in error_log (colonna NOT NULL). Warn e return.
+  IF v_id IS NULL THEN
+    RAISE WARNING 'script.fn_log_error_only: messaggio_errore_id non trovato per code=%, log non persistito.',
+      p_error_code;
+    RETURN;
+  END IF;
+
   v_sql := format(
     'INSERT INTO dbops.error_log(occurred_at, area, function_name, messaggio_errore_id, context, tx_id)
      VALUES (now(), %L, %L, %s, %L::jsonb, %L::uuid)',
     p_area,
     p_function_name,
-    coalesce(v_id::text, 'NULL'),
+    v_id::text,
     v_ctx::text,
     p_tx_id::text
   );

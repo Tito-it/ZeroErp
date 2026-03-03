@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Ricrea config.stati_pratiche con pattern standard config
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260303-02-create-stati-pratiche-mctit.yaml
+
+  - changeSet:
+      id: 20260303-02-create-stati-pratiche
+      author: mctit
+      comment: >
+        Ricrea config.stati_pratiche con la struttura standard config:
+        codice, codice_interno, descrizione, attivo, meta, audit.
+        Stati previsti: BOZZA, APERTA, SOSPESA, CHIUSA, ANNULLATA.
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: stati_pratiche
+            remarks: "Stati del ciclo di vita della pratica."
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_stati_pratiche
+                    nullable: false
+
+              - column:
+                  name: codice
+                  type: character varying(50)
+                  remarks: "Codice univoco leggibile."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: codice_interno
+                  type: character varying(50)
+                  remarks: "Codice interno immutabile."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione per interfaccia."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag attivazione logica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estendibili."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: stati_pratiche
+            columnNames: codice
+            constraintName: uq_stati_pratiche_codice
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: stati_pratiche
+            columnNames: codice_interno
+            constraintName: uq_stati_pratiche_codice_interno
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: stati_pratiche

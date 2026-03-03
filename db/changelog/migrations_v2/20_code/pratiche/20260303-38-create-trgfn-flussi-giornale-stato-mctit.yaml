@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger function pratiche.trgfn_flussi_giornale_stato
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260303-38-create-trgfn-flussi-giornale-stato-mctit.yaml
+
+  - changeSet:
+      id: 20260303-38-create-trgfn-flussi-giornale-stato
+      author: mctit
+      runOnChange: true
+      comment: "Logga FLUSSO_STATO_CAMBIATO nel giornale su UPDATE stato flusso."
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_giornale_stato()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Registra FLUSSO_STATO_CAMBIATO nel giornale.
+                --   Trigger AFTER UPDATE OF stato_id su pratiche.flussi.
+                --
+                -- Dettaglio:
+                --   Cattura stato_precedente, stato_nuovo e esito nel jsonb.
+                -- =========================================================
+
+                INSERT INTO pratiche.giornale
+                  (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                VALUES (
+                  NEW.pratica_id,
+                  NEW.id,
+                  'FLUSSO_STATO_CAMBIATO',
+                  'SISTEMA',
+                  jsonb_build_object(
+                    'stato_precedente_id', OLD.stato_id,
+                    'stato_nuovo_id', NEW.stato_id,
+                    'esito', NEW.esito
+                  ),
+                  NEW.tx_id
+                );
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_flussi_giornale_stato()
+                IS 'AFTER UPDATE su flussi: logga FLUSSO_STATO_CAMBIATO quando stato_id cambia.';

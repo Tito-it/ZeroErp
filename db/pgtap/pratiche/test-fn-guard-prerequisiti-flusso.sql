@@ -1,0 +1,284 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+--
+-- Test: pratiche.fn_guard_prerequisiti_flusso
+--       Guard fail-fast: raise su prerequisiti non soddisfatti
+--
+-- Indice test:
+-- 0) Precondizioni (provisioning + verifica)
+-- 1) Setup tipo_prestazione, template e prerequisiti
+-- 2) Pratica di test
+-- 3) Guard con prerequisiti mancanti: throws
+-- 4) Completamento prerequisito
+-- 5) Guard con prerequisiti soddisfatti: lives
+-- 6) Cleanup
+-- ------------------------------------------------------------
+SELECT plan(4);
+-- =========================================================
+-- 0) Precondizioni: provisioning config data (idempotente)
+-- =========================================================
+INSERT INTO config.stati_pratiche (codice, codice_interno, descrizione, attivo)
+VALUES ('BOZZA', 'BOZZA', 'Bozza', true) ON CONFLICT (codice_interno) DO NOTHING;
+INSERT INTO config.stati_flussi_pratiche (codice, codice_interno, descrizione, attivo)
+VALUES ('COMPLETATO', 'COMPLETATO', 'Completato', true) ON CONFLICT (codice_interno) DO NOTHING;
+INSERT INTO config.priorita_pratiche (
+    codice,
+    codice_interno,
+    descrizione,
+    sequenza,
+    attivo
+  )
+VALUES ('NORMALE', 'NORMALE', 'Normale', 20, true) ON CONFLICT (codice_interno) DO NOTHING;
+CREATE TEMP TABLE tmp_guard_refs AS
+SELECT (
+    SELECT id
+    FROM anagrafiche.emittenti_fiscali
+    WHERE attivo = true
+    LIMIT 1
+  ) AS emittente_id,
+  (
+    SELECT id
+    FROM anagrafiche.soggetti
+    LIMIT 1
+  ) AS soggetto_id,
+  (
+    SELECT id
+    FROM config.stati_pratiche
+    WHERE codice_interno = 'BOZZA'
+      AND attivo = true
+    LIMIT 1
+  ) AS stato_bozza_id,
+  (
+    SELECT id
+    FROM config.stati_flussi_pratiche
+    WHERE codice_interno = 'COMPLETATO'
+      AND attivo = true
+    LIMIT 1
+  ) AS stato_completato_id,
+  (
+    SELECT id
+    FROM config.priorita_pratiche
+    WHERE codice_interno = 'NORMALE'
+      AND attivo = true
+    LIMIT 1
+  ) AS priorita_normale_id;
+SELECT ok(
+    (
+      SELECT emittente_id IS NOT NULL
+        AND soggetto_id IS NOT NULL
+        AND stato_bozza_id IS NOT NULL
+        AND stato_completato_id IS NOT NULL
+        AND priorita_normale_id IS NOT NULL
+      FROM tmp_guard_refs
+    ),
+    '0. Precondizioni soddisfatte'
+  );
+-- =========================================================
+-- 1) Setup
+-- =========================================================
+CREATE TEMP TABLE tmp_guard_tp AS WITH ins AS (
+  INSERT INTO pratiche.tipi_prestazione (codice, codice_interno, descrizione, attivo)
+  VALUES (
+      'TEST_GUARD_TP',
+      'TEST_GUARD_TP',
+      'Tipo prestazione test guard',
+      true
+    ) ON CONFLICT (codice_interno) DO
+  UPDATE
+  SET descrizione = EXCLUDED.descrizione
+  RETURNING id
+)
+SELECT id AS tp_id
+FROM ins;
+CREATE TEMP TABLE tmp_guard_tfa AS WITH ins AS (
+  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, attivo)
+  VALUES (
+      (
+        SELECT tp_id
+        FROM tmp_guard_tp
+      ),
+      'TF_GUARD_A',
+      'Template A guard test',
+      true
+    ) ON CONFLICT (tipo_prestazione_id, codice) DO
+  UPDATE
+  SET descrizione = EXCLUDED.descrizione
+  RETURNING id
+)
+SELECT id AS tfa_id
+FROM ins;
+CREATE TEMP TABLE tmp_guard_tfb AS WITH ins AS (
+  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, attivo)
+  VALUES (
+      (
+        SELECT tp_id
+        FROM tmp_guard_tp
+      ),
+      'TF_GUARD_B',
+      'Template B guard (prerequisito)',
+      true
+    ) ON CONFLICT (tipo_prestazione_id, codice) DO
+  UPDATE
+  SET descrizione = EXCLUDED.descrizione
+  RETURNING id
+)
+SELECT id AS tfb_id
+FROM ins;
+INSERT INTO pratiche.template_flussi_prerequisiti (template_flusso_id, prerequisito_id)
+VALUES (
+    (
+      SELECT tfa_id
+      FROM tmp_guard_tfa
+    ),
+    (
+      SELECT tfb_id
+      FROM tmp_guard_tfb
+    )
+  ) ON CONFLICT (template_flusso_id, prerequisito_id) DO NOTHING;
+-- =========================================================
+-- 2) Pratica di test
+-- =========================================================
+CREATE TEMP TABLE tmp_guard_pratica AS WITH ins AS (
+  INSERT INTO pratiche.pratiche (
+      emittente_fiscale_id,
+      tipo_prestazione_id,
+      soggetto_id,
+      stato_id,
+      priorita_id
+    )
+  VALUES (
+      (
+        SELECT emittente_id
+        FROM tmp_guard_refs
+      ),
+      (
+        SELECT tp_id
+        FROM tmp_guard_tp
+      ),
+      (
+        SELECT soggetto_id
+        FROM tmp_guard_refs
+      ),
+      (
+        SELECT stato_bozza_id
+        FROM tmp_guard_refs
+      ),
+      (
+        SELECT priorita_normale_id
+        FROM tmp_guard_refs
+      )
+    )
+  RETURNING id
+)
+SELECT id AS pratica_id
+FROM ins;
+SELECT ok(
+    (
+      SELECT pratica_id IS NOT NULL
+      FROM tmp_guard_pratica
+    ),
+    '1. Pratica di test creata'
+  );
+-- =========================================================
+-- 3) Guard con prerequisiti mancanti: throws
+-- =========================================================
+SELECT throws_ok(
+    format(
+      'SELECT pratiche.fn_guard_prerequisiti_flusso(%s, %s)',
+      (
+        SELECT pratica_id
+        FROM tmp_guard_pratica
+      ),
+      (
+        SELECT tfa_id
+        FROM tmp_guard_tfa
+      )
+    ),
+    NULL,
+    NULL,
+    '2. Guard solleva eccezione con prerequisiti mancanti'
+  );
+-- =========================================================
+-- 4) Completamento prerequisito
+-- =========================================================
+INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
+VALUES (
+    (
+      SELECT pratica_id
+      FROM tmp_guard_pratica
+    ),
+    (
+      SELECT tfb_id
+      FROM tmp_guard_tfb
+    ),
+    (
+      SELECT stato_completato_id
+      FROM tmp_guard_refs
+    )
+  );
+-- =========================================================
+-- 5) Guard con prerequisiti soddisfatti: lives
+-- =========================================================
+SELECT lives_ok(
+    format(
+      'SELECT pratiche.fn_guard_prerequisiti_flusso(%s, %s)',
+      (
+        SELECT pratica_id
+        FROM tmp_guard_pratica
+      ),
+      (
+        SELECT tfa_id
+        FROM tmp_guard_tfa
+      )
+    ),
+    '3. Guard non solleva eccezione con prerequisiti soddisfatti'
+  );
+-- =========================================================
+-- 6) Cleanup
+-- =========================================================
+-- Cleanup resiliente (gestisce orfani da run precedenti falliti)
+DELETE FROM pratiche.giornale
+WHERE pratica_id IN (
+    SELECT id
+    FROM pratiche.pratiche
+    WHERE tipo_prestazione_id = (
+        SELECT tp_id
+        FROM tmp_guard_tp
+      )
+  );
+DELETE FROM pratiche.flussi
+WHERE pratica_id IN (
+    SELECT id
+    FROM pratiche.pratiche
+    WHERE tipo_prestazione_id = (
+        SELECT tp_id
+        FROM tmp_guard_tp
+      )
+  );
+DELETE FROM pratiche.pratiche
+WHERE tipo_prestazione_id = (
+    SELECT tp_id
+    FROM tmp_guard_tp
+  );
+DELETE FROM pratiche.template_flussi_prerequisiti
+WHERE template_flusso_id IN (
+    SELECT id
+    FROM pratiche.template_flussi
+    WHERE tipo_prestazione_id = (
+        SELECT tp_id
+        FROM tmp_guard_tp
+      )
+  );
+DELETE FROM pratiche.template_flussi
+WHERE tipo_prestazione_id = (
+    SELECT tp_id
+    FROM tmp_guard_tp
+  );
+DELETE FROM pratiche.tipi_prestazione
+WHERE id = (
+    SELECT tp_id
+    FROM tmp_guard_tp
+  );
+SELECT *
+FROM finish();

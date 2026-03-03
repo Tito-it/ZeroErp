@@ -11,4 +11,4 @@ Questa guida copre:
 
 
 
-[README](../it/README.md)
+[README](./README.md)

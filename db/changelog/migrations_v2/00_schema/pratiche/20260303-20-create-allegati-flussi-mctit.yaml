@@ -1,0 +1,134 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella pratiche.allegati_flussi — allegati a livello flusso
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260303-20-create-allegati-flussi-mctit.yaml
+
+  - changeSet:
+      id: 20260303-20-create-allegati-flussi
+      author: mctit
+      comment: >
+        Allegati associati a un flusso. Immutabili (solo data_insert/user_insert).
+        Il versionamento e' gestito tramite allegato_padre_id: una nuova versione
+        punta alla precedente. Ogni allegato ha un tipo (FK a config.tipi_allegato).
+      changes:
+        - createTable:
+            schemaName: pratiche
+            tableName: allegati_flussi
+            remarks: "Allegati associati a un flusso (immutabili, versionamento via allegato_padre_id)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_pratiche_allegati_flussi
+                    nullable: false
+
+              - column:
+                  name: flusso_id
+                  type: bigint
+                  remarks: "FK a pratiche.flussi."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tipo_allegato_id
+                  type: integer
+                  remarks: "FK a config.tipi_allegato."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: nome_file
+                  type: text
+                  remarks: "Nome originale del file."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: percorso
+                  type: text
+                  remarks: "Percorso o chiave di storage del file."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: mime_type
+                  type: character varying(255)
+                  remarks: "Content-type del file (es. application/pdf)."
+
+              - column:
+                  name: dimensione
+                  type: bigint
+                  remarks: "Dimensione del file in byte."
+
+              - column:
+                  name: allegato_padre_id
+                  type: bigint
+                  remarks: "FK self-reference per versionamento (punta alla versione precedente)."
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: allegati_flussi
+            baseColumnNames: flusso_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: flussi
+            referencedColumnNames: id
+            constraintName: fk_allegati_flussi_flusso
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: allegati_flussi
+            baseColumnNames: tipo_allegato_id
+            referencedTableSchemaName: config
+            referencedTableName: tipi_allegato
+            referencedColumnNames: id
+            constraintName: fk_allegati_flussi_tipo_allegato
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: allegati_flussi
+            baseColumnNames: allegato_padre_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: allegati_flussi
+            referencedColumnNames: id
+            constraintName: fk_allegati_flussi_allegato_padre
+            onDelete: SET NULL
+            onUpdate: CASCADE
+
+      rollback:
+        - dropTable:
+            schemaName: pratiche
+            tableName: allegati_flussi

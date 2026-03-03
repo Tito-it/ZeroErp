@@ -1,0 +1,203 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella pratiche.template_flussi — template step workflow
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260303-11-create-template-flussi-mctit.yaml
+
+  - changeSet:
+      id: 20260303-11-create-template-flussi
+      author: mctit
+      comment: >
+        Template dei flussi operativi. Ogni template definisce uno step
+        del workflow di un tipo_prestazione: sequenza di esecuzione,
+        obbligatorieta', direzione (ENTRATA/USCITA/INTERNA) e handler
+        Django opzionale. handler_id NULL = step manuale.
+      changes:
+        - createTable:
+            schemaName: pratiche
+            tableName: template_flussi
+            remarks: "Template step workflow per tipo prestazione."
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_pratiche_template_flussi
+                    nullable: false
+
+              - column:
+                  name: tipo_prestazione_id
+                  type: integer
+                  remarks: "FK a pratiche.tipi_prestazione."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: handler_id
+                  type: integer
+                  remarks: "FK a pratiche.handler_flussi (NULL = step manuale)."
+
+              - column:
+                  name: codice
+                  type: character varying(50)
+                  remarks: "Codice univoco per tipo_prestazione."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione per interfaccia."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: sequenza
+                  type: integer
+                  defaultValueNumeric: 0
+                  remarks: "Ordine esecuzione nel workflow."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: obbligatorio
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Se true, il flusso deve essere completato per chiudere la pratica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: direzione
+                  type: character varying(10)
+                  defaultValue: "INTERNA"
+                  remarks: "Direzione del flusso rispetto all'esterno: ENTRATA, USCITA, INTERNA."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: pratiche
+            tableName: template_flussi
+            columnNames: tipo_prestazione_id, codice
+            constraintName: uq_pratiche_template_flussi_tipo_codice
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: template_flussi
+            baseColumnNames: tipo_prestazione_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: tipi_prestazione
+            referencedColumnNames: id
+            constraintName: fk_template_flussi_tipo_prestazione
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: template_flussi
+            baseColumnNames: handler_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: handler_flussi
+            referencedColumnNames: id
+            constraintName: fk_template_flussi_handler
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.template_flussi
+                ADD CONSTRAINT chk_template_flussi_direzione
+                CHECK (direzione IN ('ENTRATA', 'USCITA', 'INTERNA'));
+
+      rollback:
+        - dropTable:
+            schemaName: pratiche
+            tableName: template_flussi
+
+  - changeSet:
+      id: 20260303-11-02-alter-template-flussi-add-handler-params
+      author: mctit
+      comment: >
+        Aggiunge handler_params JSONB a template_flussi.
+        Parametri operativi passati all'handler Django in fase di esecuzione
+        (es. stampa_foglio, invio_sms_conferma).
+      changes:
+        - addColumn:
+            schemaName: pratiche
+            tableName: template_flussi
+            columns:
+              - column:
+                  name: handler_params
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Parametri operativi passati all'handler Django (es. stampa_foglio, invio_sms_conferma)."
+                  constraints:
+                    nullable: false
+
+      rollback:
+        - dropColumn:
+            schemaName: pratiche
+            tableName: template_flussi
+            columnName: handler_params
