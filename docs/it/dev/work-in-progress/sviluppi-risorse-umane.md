@@ -66,16 +66,20 @@ e disattivi automaticamente utenti scaduti.
 
 ### Backend
 
-- [ ] 1.7 — Management command `sync_auth_user_active`
+- [x] 1.7 — Management command `sync_auth_user_active`
   - Wrapper Django per `fn_sync_auth_user_expired()`
   - Utilizzabile da cron/systemd come alternativa a pgAgent
   - Log output: numero utenti disattivati
+  - Supporto `--dry-run` per report senza modifiche
+  - File: `apps/anagrafiche/management/commands/sync_auth_user_active.py`
+  - Repository: `apps/anagrafiche/db/anagrafiche_repository.py` (query + chiamata fn SQL)
   - **Prerequisiti**: DB 1.5
 
-- [ ] 1.8 — Invalidazione cache permessi nei trigger path
-  - Quando `fn_sync_auth_user_is_active` disattiva un utente, il backend deve invalidare la cache permessi
-  - Opzione A: signal Django post-save su `auth_user.is_active` → `invalidate_user()`
-  - Opzione B: il management command (1.7) chiama `invalidate_user()` per ogni utente modificato
+- [x] 1.8 — Invalidazione cache permessi nei trigger path
+  - **Scelta: Opzione B** — il management command (1.7) chiama `invalidate_user()` per ogni utente modificato
+  - Flusso: raccoglie `auth_user_id` coinvolti *prima* della sync SQL, poi invalida la cache per ciascuno
+  - Opzione A scartata: i trigger DB (1.2, 1.3, 1.4) modificano `auth_user` via SQL diretto — i signal Django `post_save` non scattano per modifiche dirette al DB
+  - Per il path real-time (trigger), la cache TTL (300s) garantisce eventual consistency; il pattern LISTEN/NOTIFY (sez. 2) offre invalidazione event-driven
   - **Prerequisiti**: DB 1.1 o 1.5 + backend 1.7
 
 ### Test DB
@@ -105,8 +109,10 @@ e disattivi automaticamente utenti scaduti.
 
 ### Test Backend
 
-- [ ] 1.12 — Test Django per management command `sync_auth_user_active`
+- [x] 1.12 — Test Django per management command `sync_auth_user_active`
   - Mock della funzione SQL, verifica output e invalidazione cache
+  - 6 test: sync+count, invalidazione cache, dry-run (2), zero utenti, errore DB
+  - File: `apps/anagrafiche/tests/services/test_sync_auth_user_active.py`
   - **Prerequisiti**: backend 1.7
 
 ---
@@ -147,23 +153,33 @@ ma non viene invocata automaticamente. Oggi l'invalidazione e' manuale.
 
 ### Backend
 
-- [ ] 2.3 — Listener LISTEN/NOTIFY per canale `cambio_reparto`
-  - Servizio Django (management command long-running o integrato in app startup) che ascolta il canale `cambio_reparto`
+- [x] 2.3 — Listener LISTEN/NOTIFY per canale `cambio_reparto`
+  - Management command long-running `listen_cambio_reparto` che ascolta il canale `cambio_reparto`
   - Al ricevimento del payload: chiama `invalidate_user(auth_user_id)` per l'utente spostato
+  - Connessione psycopg3 dedicata (autocommit), separata dal pool Django
+  - Riconnessione automatica con backoff esponenziale (1s → 60s max) in caso di caduta connessione
+  - Guard su payload: JSON non valido, non-dict, `auth_user_id` null — tutti gestiti senza crash
+  - Shutdown pulito su SIGINT/SIGTERM
+  - Opzione `--poll-interval` per configurare frequenza polling (default 5s)
+  - Servizio: `apps/anagrafiche/services/notify_listener.py` (`CambioRepartoListener`)
+  - Command: `apps/anagrafiche/management/commands/listen_cambio_reparto.py`
   - Vantaggio: punto unico di intercettazione — qualsiasi path che modifica `unita_organizzativa_id` (API, management command, operazione diretta DB, import bulk) ottiene invalidazione automatica senza dover ricordare di aggiungerla in ogni service method
   - Pattern riusabile: lo stesso meccanismo LISTEN/NOTIFY puo' servire per altri eventi futuri (cambio `ruolo_sistema`, disattivazione risorsa, ecc.)
   - **Prerequisiti**: DB 2.2
 
-- [ ] 2.4 — Invalidazione mirata per l'utente spostato
+- [x] 2.4 — Invalidazione mirata per l'utente spostato
   - `invalidate_user(auth_user_id)` e' sufficiente: invalida la cache dell'utente spostato, che alla prossima richiesta ricalcolera' i permessi dal nuovo profilo reparto
   - Non serve invalidare gli altri utenti del vecchio/nuovo reparto (i loro permessi non cambiano)
+  - Integrato nel metodo `_handle_notification` di `CambioRepartoListener`
   - **Prerequisiti**: 2.3
 
 ### Test Backend
 
-- [ ] 2.5 — Test Django per listener LISTEN/NOTIFY cambio reparto
+- [x] 2.5 — Test Django per listener LISTEN/NOTIFY cambio reparto
   - Mock della connessione PG e del payload NOTIFY
   - Verifica che `invalidate_user()` viene invocato con il corretto `auth_user_id`
+  - 8 test: invalidazione, skip null auth_user, JSON invalido, payload vuoto, payload non-dict, run+dispatch, riconnessione con backoff, stop
+  - File: `apps/anagrafiche/tests/services/test_notify_listener.py`
   - **Prerequisiti**: backend 2.3
 
 ---
