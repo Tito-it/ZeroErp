@@ -8,3 +8,6 @@ This guide covers:
 - An overview of the architecture and data model  
 - Details on the available APIs  
 - Usage examples and best practices  
+
+
+[README](../en/README.md)

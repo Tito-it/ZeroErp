@@ -884,16 +884,18 @@ $$;
 
 ---
 
-## 9. Diagramma ER completo
+## 9. Diagrammi ER
+
+Il modello dati e' suddiviso in tre diagrammi per leggibilita'.
+
+### 9.1 Profilo reparto — ereditarieta'
+
+Il cuore del sistema: ogni reparto (`unita_organizzative`) ha un profilo
+che definisce il livello di accesso per area e le azioni di processo abilitate.
+Tutti gli operatori del reparto ereditano questo profilo automaticamente.
 
 ```mermaid
 erDiagram
-    auth_user {
-        int id PK
-        varchar username
-        boolean is_superuser
-    }
-
     unita_organizzative {
         int id PK
         varchar codice
@@ -927,6 +929,45 @@ erDiagram
         boolean abilitata
     }
 
+    unita_organizzative ||--o{ profili_reparto_aree : "profilo accesso"
+    aree_funzionali ||--o{ profili_reparto_aree : "livello per area"
+    unita_organizzative ||--o{ profili_reparto_azioni : "azioni abilitate"
+    azioni_processo ||--o{ profili_reparto_azioni : "abilitazione"
+    aree_funzionali ||--o{ azioni_processo : "contiene"
+```
+
+### 9.2 Catena identita' e override utente
+
+Collega l'utente Django alla risorsa umana (e quindi al reparto)
+tramite il bridge `risorse_umane_auth_user`. Le tabelle di override
+permettono eccezioni individuali che sovrascrivono il profilo ereditato.
+
+```mermaid
+erDiagram
+    auth_user {
+        int id PK
+        varchar username
+        boolean is_superuser
+    }
+
+    risorse_umane_auth_user {
+        bigint id PK
+        bigint risorsa_umana_id FK
+        int auth_user_id FK
+    }
+
+    risorse_umane {
+        bigint id PK
+        bigint soggetto_ruolo_id FK
+        int qualifica_id FK
+        int unita_organizzativa_id FK
+    }
+
+    unita_organizzative {
+        int id PK
+        varchar codice
+    }
+
     user_override_aree {
         bigint id PK
         int auth_user_id FK
@@ -951,28 +992,47 @@ erDiagram
         boolean abilitata
     }
 
+    auth_user ||--|| risorse_umane_auth_user : "collegato"
+    risorse_umane ||--|| risorse_umane_auth_user : "collegata"
+    risorse_umane }o--|| unita_organizzative : "appartiene a"
+
+    auth_user ||--o{ user_override_aree : "override area"
+    auth_user ||--o{ user_override_oggetti : "override oggetto"
+    auth_user ||--o{ user_override_azioni : "override azione"
+```
+
+> **Lettura:** `auth_user` → `risorse_umane_auth_user` → `risorse_umane` →
+> `unita_organizzative` — da qui il sistema risale al profilo reparto
+> (diagramma 9.1). Se esistono override, hanno sempre priorita'.
+
+### 9.3 Scope emittente fiscale e override model
+
+Due meccanismi ortogonali: la whitelist emittenti fiscali limita
+lo **scope operativo** dell'utente, mentre `area_model_overrides`
+riassegna un model a un'area diversa dal suo schema DB.
+
+```mermaid
+erDiagram
+    auth_user {
+        int id PK
+        varchar username
+    }
+
     user_emittenti_fiscali {
         bigint id PK
         int auth_user_id FK
         bigint emittente_fiscale_id FK
     }
 
-    risorse_umane_auth_user {
-        bigint id PK
-        bigint risorsa_umana_id FK
-        int auth_user_id FK
-    }
-
-    risorse_umane {
-        bigint id PK
-        bigint soggetto_ruolo_id FK
-        int qualifica_id FK
-        int unita_organizzativa_id FK
-    }
-
     emittenti_fiscali {
         bigint id PK
         bigint soggetto_ruolo_id FK
+    }
+
+    aree_funzionali {
+        int id PK
+        varchar codice
+        varchar schema_db
     }
 
     area_model_overrides {
@@ -982,32 +1042,15 @@ erDiagram
         int area_id FK
     }
 
-    %% Profilo reparto
-    unita_organizzative ||--o{ profili_reparto_aree : "profilo accesso"
-    aree_funzionali ||--o{ profili_reparto_aree : "livello per area"
-    unita_organizzative ||--o{ profili_reparto_azioni : "azioni abilitate"
-    azioni_processo ||--o{ profili_reparto_azioni : "abilitazione"
-    aree_funzionali ||--o{ azioni_processo : "contiene"
-
-    %% Override utente
-    auth_user ||--o{ user_override_aree : "override area"
-    aree_funzionali ||--o{ user_override_aree : "su area"
-    auth_user ||--o{ user_override_oggetti : "override oggetto"
-    auth_user ||--o{ user_override_azioni : "override azione"
-    azioni_processo ||--o{ user_override_azioni : "su azione"
-
-    %% Scope emittente
     auth_user ||--o{ user_emittenti_fiscali : "scope"
     emittenti_fiscali ||--o{ user_emittenti_fiscali : "limita a"
-
-    %% Ponte utente - risorsa umana
-    auth_user ||--|| risorse_umane_auth_user : "collegato"
-    risorse_umane ||--|| risorse_umane_auth_user : "collegata"
-    risorse_umane }o--|| unita_organizzative : "appartiene a"
-
-    %% Override area model
     aree_funzionali ||--o{ area_model_overrides : "riassegna"
 ```
+
+> **Nota:** `user_emittenti_fiscali` e' una whitelist opzionale —
+> se l'utente non ha righe, puo' operare su tutti gli emittenti.
+> `area_model_overrides` e' usata raramente, solo quando un model
+> deve appartenere a un'area diversa dal suo schema.
 
 ---
 
