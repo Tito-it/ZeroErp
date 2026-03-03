@@ -1,6 +1,6 @@
 # Guida – Risorse Umane e Accessi al Software
 
-> (latest review 02-03-26)
+> (latest review 02-03-2026)
 >
 > Destinatari: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -153,11 +153,24 @@ Se una qualsiasi condizione non e soddisfatta → `is_active = false` e il login
 
 **Scadenze overnight:**
 
-I trigger reagiscono a UPDATE espliciti. Ma cosa succede se ieri sera `valido_al` e scaduto e nessuno ha fatto alcuna operazione? La funzione batch `anagrafiche.fn_sync_auth_user_expired()` viene eseguita giornalmente alle 06:00 via pgAgent (`sync_auth_user_expired_daily`). Trova tutte le risorse con finestra scaduta ancora collegate a un `auth_user` attivo e le disattiva. In alternativa al job pgAgent, il management command Django `sync_auth_user_active` offre la stessa funzionalita via cron/systemd.
+I trigger reagiscono a UPDATE espliciti. Ma cosa succede se ieri sera `valido_al` e scaduto e nessuno ha fatto alcuna operazione? La funzione batch `anagrafiche.fn_sync_auth_user_expired()` viene eseguita giornalmente alle 06:00 via pgAgent (`sync_auth_user_expired_daily`). Trova tutte le risorse con finestra scaduta ancora collegate a un `auth_user` attivo e le disattiva. In alternativa al job pgAgent, il management command Django `sync_auth_user_active` offre la stessa funzionalita via cron/systemd:
+
+```bash
+# Esecuzione diretta
+python manage.py sync_auth_user_active
+
+# Solo report, senza modifiche
+python manage.py sync_auth_user_active --dry-run
+
+# In cron (alternativa a pgAgent)
+0 6 * * * /path/to/manage.py sync_auth_user_active
+```
 
 **Invalidazione cache permessi:**
 
-Quando un utente viene disattivato (via trigger o via job), il backend invalida automaticamente la cache permessi dell'utente, in modo che il blocco sia immediato e non debba attendere la scadenza naturale della cache.
+Il management command `sync_auth_user_active` invalida automaticamente la cache permessi per ogni utente disattivato, in modo che il blocco sia immediato e non debba attendere la scadenza naturale della cache (TTL 300s).
+
+Per le disattivazioni real-time (trigger DB 1.2, 1.3, 1.4), la cache si rinnova automaticamente alla scadenza del TTL. Il listener LISTEN/NOTIFY (vedi sezione Cambio reparto) offre un pattern event-driven estendibile anche a questi scenari in futuro.
 
 ---
 
@@ -217,7 +230,9 @@ Il sistema si occupa automaticamente di aggiornare la cache. Quando `unita_organ
 {"risorsa_umana_id": 42, "old_uo_id": 1, "new_uo_id": 3, "auth_user_id": 7}
 ```
 
-Il listener backend intercetta la notifica e chiama `invalidate_user(auth_user_id)` per l'utente spostato. Il meccanismo e trasparente: qualsiasi path che modifica il reparto (API, management command, operazione diretta sul DB, import bulk) ottiene l'invalidazione automatica senza dover ricordare di aggiungerla caso per caso.
+Il listener backend (`CambioRepartoListener`, avviato tramite `python manage.py listen_cambio_reparto`) intercetta la notifica e chiama `invalidate_user(auth_user_id)` per l'utente spostato. Il meccanismo e trasparente: qualsiasi path che modifica il reparto (API, management command, operazione diretta sul DB, import bulk) ottiene l'invalidazione automatica senza dover ricordare di aggiungerla caso per caso.
+
+Il listener usa una connessione psycopg3 dedicata con riconnessione automatica (backoff esponenziale) in caso di caduta connessione PostgreSQL. Va eseguito come processo long-running (systemd, supervisor, o in foreground durante lo sviluppo).
 
 ### Cambio qualifica
 
@@ -385,7 +400,7 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 | `fn_sync_auth_user_is_active` | Chiamata dai trigger sotto | Calcola lo stato atteso e aggiorna `auth_user.is_active` se diverso |
 | `trgfn_risorse_umane_sync_auth_user_active` | AFTER UPDATE di `attivo`, `valido_dal`, `valido_al` su `risorse_umane` | Reagisce a cambio stato della risorsa |
 | `trgfn_risorse_umane_auth_user_sync_active` | AFTER INSERT / AFTER UPDATE di `attivo` su `risorse_umane_auth_user` | Reagisce a cambio stato del ponte o primo collegamento |
-| `fn_sync_auth_user_expired` | Job pgAgent giornaliero (06:00) | Disattiva in batch gli utenti con finestra scaduta |
+| `fn_sync_auth_user_expired` | Job pgAgent giornaliero (06:00) o management command `sync_auth_user_active` | Disattiva in batch gli utenti con finestra scaduta |
 
 ### Invalidazione cache al cambio reparto
 
@@ -393,6 +408,7 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 | --- | --- | --- |
 | `fn_notify_cambio_reparto` | Chiamata dal trigger sotto | Emette `NOTIFY cambio_reparto` con payload JSON |
 | `trgfn_risorse_umane_notify_cambio_reparto` | AFTER UPDATE di `unita_organizzativa_id` su `risorse_umane` (solo se cambiato) | Invoca `fn_notify_cambio_reparto` con vecchio e nuovo reparto |
+| `CambioRepartoListener` (backend) | Processo long-running (`listen_cambio_reparto`) | Ascolta `NOTIFY cambio_reparto` e chiama `invalidate_user()` |
 
 ### Guard e vincoli
 
