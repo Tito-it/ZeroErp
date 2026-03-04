@@ -1,0 +1,180 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella pratiche.regole_generazione — regole cross-pratica
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260303-13-create-regole-generazione-mctit.yaml
+
+  - changeSet:
+      id: 20260303-13-create-regole-generazione
+      author: mctit
+      comment: >
+        Regole di generazione cross-pratica. Configura quale flusso origine
+        (al completamento con un certo esito) genera automaticamente o
+        manualmente una nuova pratica di un dato tipo_prestazione,
+        eventualmente con un flusso iniziale predefinito.
+      changes:
+        - createTable:
+            schemaName: pratiche
+            tableName: regole_generazione
+            remarks: "Regole di generazione cross-pratica."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_pratiche_regole_generazione
+                    nullable: false
+
+              - column:
+                  name: template_flusso_origine_id
+                  type: integer
+                  remarks: "FK al template flusso che scatena la generazione."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tipo_prestazione_dest_id
+                  type: integer
+                  remarks: "FK al tipo pratica da generare."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: template_flusso_dest_id
+                  type: integer
+                  remarks: "FK al template flusso iniziale della pratica generata (NULL = nessun flusso auto)."
+
+              - column:
+                  name: esito_richiesto
+                  type: character varying(20)
+                  remarks: "Esito del flusso origine che attiva la generazione (NULL = qualsiasi)."
+
+              - column:
+                  name: auto
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Se true, generazione automatica al completamento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione leggibile della regola."
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: pratiche
+            tableName: regole_generazione
+            columnNames: template_flusso_origine_id, tipo_prestazione_dest_id, esito_richiesto
+            constraintName: uq_pratiche_regole_gen_origine_dest_esito
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: regole_generazione
+            baseColumnNames: template_flusso_origine_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: template_flussi
+            referencedColumnNames: id
+            constraintName: fk_regole_gen_template_origine
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: regole_generazione
+            baseColumnNames: tipo_prestazione_dest_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: tipi_prestazione
+            referencedColumnNames: id
+            constraintName: fk_regole_gen_tipo_dest
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: regole_generazione
+            baseColumnNames: template_flusso_dest_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: template_flussi
+            referencedColumnNames: id
+            constraintName: fk_regole_gen_template_dest
+            onDelete: SET NULL
+            onUpdate: CASCADE
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.regole_generazione
+                ADD CONSTRAINT chk_regole_gen_esito
+                CHECK (esito_richiesto IN ('POSITIVO', 'NEGATIVO', 'QUALSIASI'));
+
+              -- Indice parziale: una sola regola con esito NULL per coppia origine-dest
+              CREATE UNIQUE INDEX uq_pratiche_regole_gen_origine_dest_null_esito
+                ON pratiche.regole_generazione (template_flusso_origine_id, tipo_prestazione_dest_id)
+                WHERE esito_richiesto IS NULL;
+
+      rollback:
+        - dropTable:
+            schemaName: pratiche
+            tableName: regole_generazione

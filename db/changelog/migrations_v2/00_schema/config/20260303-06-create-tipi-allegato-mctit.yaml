@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella config.tipi_allegato — tipologie di allegato
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260303-06-create-tipi-allegato-mctit.yaml
+
+  - changeSet:
+      id: 20260303-06-create-tipi-allegato
+      author: mctit
+      comment: >
+        Tipologie di allegato per pratiche e flussi.
+        Valori previsti: DOCUMENTO, IMMAGINE, MODULO, CONTRATTO, FATTURA,
+        VERBALE, CERTIFICATO, ALTRO.
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: tipi_allegato
+            remarks: "Tipologie di allegato per pratiche e flussi."
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_tipi_allegato
+                    nullable: false
+
+              - column:
+                  name: codice
+                  type: character varying(50)
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: codice_interno
+                  type: character varying(50)
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: text
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: tipi_allegato
+            columnNames: codice
+            constraintName: uq_tipi_allegato_codice
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: tipi_allegato
+            columnNames: codice_interno
+            constraintName: uq_tipi_allegato_codice_interno
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: tipi_allegato

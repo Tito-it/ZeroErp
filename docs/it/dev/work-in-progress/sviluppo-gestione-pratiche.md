@@ -1,267 +1,495 @@
-# ZeroERP - Schema `pratiche` (1/3) - Catalogo e Esecuzione
+# ZeroERP — Schema `pratiche` — Motore Workflow
 
+> Revisione completa del documento di sviluppo, allineata alle convenzioni
+> e allo stato reale del sistema ZeroErp (marzo 2026).
 
-valutare utilizzo di emeittente_fiscale.
-
-
-## Modulo Gestione Pratiche / Workflow Engine
-
-### Filosofia
+## Filosofia
 
 Tutto e' una pratica. Ogni operazione in ZeroERP transita dal motore pratiche.
 Chi configura prestazioni e flussi ottiene un workflow engine con controllo sequenza rigoroso.
 Chi non configura ottiene comunque un giornale di bordo completo con tracciabilita' totale.
 
+### Allineamento con lo Sviluppo Concentrico
+
+Il modulo pratiche si colloca come **anello infrastrutturale** nel modello concentrico:
+
+- Si appoggia sugli anelli interni: `anagrafiche` (soggetti, risorse umane), `config` (stati, unita' organizzative)
+- Parla lo stesso linguaggio: audit fields, tx_id, storicizzazione, error handling centralizzato
+- Gli anelli esterni (vendite, acquisti, magazzino) potranno appoggiarsi su pratiche
+  tramite le tabelle di estensione (`ext_*`) senza rompere la coerenza del nucleo
+
 ---
 
-## Diagramma dipendenze
+## Registro Correzioni Applicate
+
+| # | Cosa | Da (originale) | A (corretto) |
+|---|------|----------------|--------------|
+| 1 | Campi audit | `created_at/updated_at/created_by/updated_by` | `data_insert/user_insert/data_update/user_update` |
+| 2 | Transaction ID | Assente | `tx_id UUID` su tabelle operative |
+| 3 | Storicizzazione | Assente | `storicizza BOOLEAN` su tabelle master |
+| 4 | `soggetto_id` | `INTEGER` | `UUID` (FK a `anagrafiche.soggetti`) |
+| 5 | `emittente_fiscale_id` | `INTEGER`, FK assente | `BIGINT`, FK esplicita |
+| 6 | `operatore_id` | `INTEGER`, non esiste | `risorsa_umana_id BIGINT` (FK a `anagrafiche.risorse_umane`) |
+| 7 | `unita_org_id` | Nome abbreviato | `unita_organizzativa_id` (FK a `config.unita_organizzative`) |
+| 8 | Stati pratica/flusso | `CHECK (stato IN (...))` | FK a tabelle `config` (`config.stati_pratiche` gia' esistente) |
+| 9 | Nome funzione | `verifica_prerequisiti` | `fn_check_prerequisiti_flusso` + `fn_guard_prerequisiti_flusso` |
+| 10 | Errori DB | `FORMAT(...)` inline | `script.fn_log_and_raise_error(...)` con codice da `config.messaggi_errore` |
+| 11 | Naming indici | `idx_*` | `ix_*` |
+| 12 | Indici FK | Creati manualmente | Delegati a `dbops.apply_fk_index_policy()` |
+| 13 | Handler Django | `handler VARCHAR(200)` (path Python) | `handler_id` FK a `pratiche.handler_flussi` (registry pattern) |
+| 14 | Naming constraint | Assente | `pk_*`, `fk_*`, `uq_*`, `chk_*` |
+| 15 | Meta JSONB | Assente | `meta JSONB NOT NULL DEFAULT '{}'::jsonb` dove utile |
+| 16 | Tipi nota/allegato | `CHECK` inline | FK a `config.tipi_nota` / `config.tipi_allegato` |
+| 17 | FK esplicite | Mancanti su soggetto/operatore/UO | Tutte dichiarate |
+| 18 | Trigger giornale | Solo menzionati | Definiti con naming completo |
+| 19 | Multi-company catalogo | Non definito | Catalogo condiviso, segregazione su `pratiche.pratiche` |
+| 20 | Protezione `attivo` | Assente | `trgfn_prevent_deactivate_if_children` su catalogo |
+
+---
+
+## Diagramma Dipendenze
 
 ```
-tipo_prestazione
+config.stati_pratiche (esistente)
+config.stati_flussi_pratiche (nuova)
+config.priorita_pratiche (nuova)
+config.tipi_nota (nuova)
+config.tipi_allegato (nuova)
+         |
+         v
+tipi_prestazione (catalogo condiviso)
     |
-    +-- template_flusso ---- template_flusso_prerequisito
+    +-- template_flussi ---- template_flussi_prerequisiti
+    |       |
+    |       +-- handler_flussi (registry)
     |
     v
-pratica -------------------- nota_pratica
-    |                        allegato_pratica
+pratiche -------------------- note_pratiche
+    |                         allegati_pratiche
     |
-    +-- flusso ------------- nota_flusso
-    |     |                  allegato_flusso
-    |     +-- flusso (padre -> figlio)
+    +-- flussi -------------- note_flussi
+    |     |                   allegati_flussi
+    |     +-- flussi (padre -> figlio)
     |
-    +-- giornale
+    +-- giornale (immutabile, alimentato da trigger)
 ```
 
 ---
 
-## 1. Catalogo - Configurazione
+## 0. Prerequisiti — Nuove Tabelle Config
 
-### 1.1 pratiche.tipo_prestazione
+> `config.stati_pratiche` esiste gia' nel sistema (id, codice, descrizione, codice_interno).
+> Verificare che contenga i codice_interno: BOZZA, APERTA, SOSPESA, CHIUSA, ANNULLATA.
 
-Catalogo dei tipi di prestazione. Macro-categorie di attivita gestibili.
+### 0.1 config.stati_flussi_pratiche
+
+Stati del flusso/step operativo.
 
 ```sql
-CREATE TABLE pratiche.tipo_prestazione (
-    id                  SERIAL PRIMARY KEY,
-    codice              VARCHAR(20) NOT NULL UNIQUE,
-    descrizione         VARCHAR(200) NOT NULL,
-    categoria           VARCHAR(50),
-    flussi_vincolanti   BOOLEAN NOT NULL DEFAULT FALSE,
-    attivo              BOOLEAN NOT NULL DEFAULT TRUE,
-    note                TEXT,
-    created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_by          VARCHAR(50) NOT NULL,
-    updated_by          VARCHAR(50) NOT NULL
+CREATE TABLE config.stati_flussi_pratiche (
+    id              INTEGER GENERATED BY DEFAULT AS IDENTITY,
+    codice          VARCHAR(30) NOT NULL,
+    descrizione     VARCHAR(200) NOT NULL,
+    codice_interno  VARCHAR(30) NOT NULL,
+    data_insert     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert     TEXT NOT NULL DEFAULT CURRENT_USER,
+    data_update     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_update     TEXT NOT NULL DEFAULT CURRENT_USER,
+
+    CONSTRAINT pk_stati_flussi_pratiche PRIMARY KEY (id),
+    CONSTRAINT uq_stati_flussi_pratiche_codice UNIQUE (codice),
+    CONSTRAINT uq_stati_flussi_pratiche_codice_interno UNIQUE (codice_interno)
 );
 ```
 
-- **categoria**: es. UTILITIES, COMMERCIALE, AMMINISTRATIVO
-- **flussi_vincolanti**: TRUE = controllo sequenza attivo, FALSE = giornale senza vincoli
+Seed: DA_ESEGUIRE, IN_CORSO, COMPLETATO, SOSPESO, ANNULLATO, ERRORE.
 
-### 1.2 pratiche.template_flusso
+### 0.2 config.priorita_pratiche
+
+Livelli di priorita' con ordinamento esplicito.
+
+```sql
+CREATE TABLE config.priorita_pratiche (
+    id              INTEGER GENERATED BY DEFAULT AS IDENTITY,
+    codice          VARCHAR(20) NOT NULL,
+    descrizione     VARCHAR(200) NOT NULL,
+    codice_interno  VARCHAR(20) NOT NULL,
+    sequenza        INTEGER NOT NULL,
+    data_insert     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert     TEXT NOT NULL DEFAULT CURRENT_USER,
+    data_update     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_update     TEXT NOT NULL DEFAULT CURRENT_USER,
+
+    CONSTRAINT pk_priorita_pratiche PRIMARY KEY (id),
+    CONSTRAINT uq_priorita_pratiche_codice UNIQUE (codice),
+    CONSTRAINT uq_priorita_pratiche_codice_interno UNIQUE (codice_interno),
+    CONSTRAINT uq_priorita_pratiche_sequenza UNIQUE (sequenza)
+);
+```
+
+Seed: BASSA (seq 10), NORMALE (seq 20), ALTA (seq 30), URGENTE (seq 40).
+
+### 0.3 config.tipi_nota
+
+Tipologie di nota, condivise tra moduli.
+
+```sql
+CREATE TABLE config.tipi_nota (
+    id              INTEGER GENERATED BY DEFAULT AS IDENTITY,
+    codice          VARCHAR(20) NOT NULL,
+    descrizione     VARCHAR(200) NOT NULL,
+    codice_interno  VARCHAR(20) NOT NULL,
+    data_insert     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert     TEXT NOT NULL DEFAULT CURRENT_USER,
+    data_update     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_update     TEXT NOT NULL DEFAULT CURRENT_USER,
+
+    CONSTRAINT pk_tipi_nota PRIMARY KEY (id),
+    CONSTRAINT uq_tipi_nota_codice UNIQUE (codice),
+    CONSTRAINT uq_tipi_nota_codice_interno UNIQUE (codice_interno)
+);
+```
+
+Seed: GENERALE, INTERNA, CLIENTE, TECNICA, LEGALE.
+
+### 0.4 config.tipi_allegato
+
+Tipologie di allegato, condivise tra moduli.
+
+```sql
+CREATE TABLE config.tipi_allegato (
+    id              INTEGER GENERATED BY DEFAULT AS IDENTITY,
+    codice          VARCHAR(30) NOT NULL,
+    descrizione     VARCHAR(200) NOT NULL,
+    codice_interno  VARCHAR(30) NOT NULL,
+    data_insert     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert     TEXT NOT NULL DEFAULT CURRENT_USER,
+    data_update     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_update     TEXT NOT NULL DEFAULT CURRENT_USER,
+
+    CONSTRAINT pk_tipi_allegato PRIMARY KEY (id),
+    CONSTRAINT uq_tipi_allegato_codice UNIQUE (codice),
+    CONSTRAINT uq_tipi_allegato_codice_interno UNIQUE (codice_interno)
+);
+```
+
+Seed: DOCUMENTO, IMMAGINE, MODULO, CONTRATTO, FATTURA, VERBALE, CERTIFICATO, ALTRO.
+
+### Trigger comuni per tutte le tabelle config sopra
+
+Ogni tabella config deve avere:
+
+- `trg_<table>_a10_lock_columns_upd` → `script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')`
+- `trg_<table>_audit_data_user_upd` → `script.trgfn_audit_data_user_generic()` (BEFORE INSERT e UPDATE)
+
+---
+
+## 1. Catalogo — Configurazione
+
+> Il catalogo e' **condiviso** tra tutti gli emittenti fiscali.
+> La segregazione multi-company avviene sulla tabella `pratiche.pratiche` tramite `emittente_fiscale_id`.
+> Se in futuro servira' un catalogo per-emittente, si aggiungera' un `emittente_fiscale_id`
+> opzionale con vincolo `UNIQUE (emittente_fiscale_id, codice)`.
+
+### 1.1 pratiche.tipi_prestazione
+
+Catalogo dei tipi di prestazione. Macro-categorie di attivita' gestibili.
+
+```sql
+CREATE TABLE pratiche.tipi_prestazione (
+    id                  INTEGER GENERATED BY DEFAULT AS IDENTITY,
+    codice              VARCHAR(20) NOT NULL,
+    descrizione         VARCHAR(200) NOT NULL,
+    categoria           VARCHAR(50),
+    flussi_vincolanti   BOOLEAN NOT NULL DEFAULT false,
+    attivo              BOOLEAN NOT NULL DEFAULT true,
+    note                TEXT,
+    data_insert         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert         TEXT NOT NULL DEFAULT CURRENT_USER,
+    data_update         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_update         TEXT NOT NULL DEFAULT CURRENT_USER,
+
+    CONSTRAINT pk_tipi_prestazione PRIMARY KEY (id),
+    CONSTRAINT uq_tipi_prestazione_codice UNIQUE (codice)
+);
+```
+
+- **categoria**: raggruppamento libero (es. UTILITIES, COMMERCIALE, AMMINISTRATIVO)
+- **flussi_vincolanti**: `true` = controllo sequenza/prerequisiti attivo, `false` = giornale senza vincoli
+
+### 1.2 pratiche.handler_flussi
+
+Registry degli handler Django per flussi automatizzati.
+Segue il pattern `implementation_key` del sistema (no path Python nel template).
+
+```sql
+CREATE TABLE pratiche.handler_flussi (
+    id              INTEGER GENERATED BY DEFAULT AS IDENTITY,
+    handler_key     VARCHAR(100) NOT NULL,
+    descrizione     VARCHAR(200) NOT NULL,
+    attivo          BOOLEAN NOT NULL DEFAULT true,
+    data_insert     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert     TEXT NOT NULL DEFAULT CURRENT_USER,
+    data_update     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_update     TEXT NOT NULL DEFAULT CURRENT_USER,
+
+    CONSTRAINT pk_handler_flussi PRIMARY KEY (id),
+    CONSTRAINT uq_handler_flussi_key UNIQUE (handler_key)
+);
+```
+
+- **handler_key**: chiave univoca usata da Django per il dispatch (es. `APPUNTAMENTO`, `SOPRALLUOGO`)
+- Django mantiene un mapping `handler_key → classe Handler` nel codice, non nel DB
+- Il DB valida solo l'esistenza della chiave
+
+### 1.3 pratiche.template_flussi
 
 Template dei flussi previsti per ogni tipo di prestazione.
 
 ```sql
-CREATE TABLE pratiche.template_flusso (
-    id                  SERIAL PRIMARY KEY,
-    tipo_prestazione_id INTEGER NOT NULL REFERENCES pratiche.tipo_prestazione(id),
+CREATE TABLE pratiche.template_flussi (
+    id                  INTEGER GENERATED BY DEFAULT AS IDENTITY,
+    tipo_prestazione_id INTEGER NOT NULL,
     codice              VARCHAR(20) NOT NULL,
     descrizione         VARCHAR(200) NOT NULL,
     sequenza            INTEGER NOT NULL,
-    obbligatorio        BOOLEAN NOT NULL DEFAULT TRUE,
+    obbligatorio        BOOLEAN NOT NULL DEFAULT true,
     sequenza_limite     INTEGER,
-    handler             VARCHAR(200),
+    handler_id          INTEGER,
     giorni_previsti     INTEGER,
-    attivo              BOOLEAN NOT NULL DEFAULT TRUE,
+    attivo              BOOLEAN NOT NULL DEFAULT true,
     note                TEXT,
-    created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_by          VARCHAR(50) NOT NULL,
-    updated_by          VARCHAR(50) NOT NULL,
-    UNIQUE (tipo_prestazione_id, codice),
-    UNIQUE (tipo_prestazione_id, sequenza)
+    data_insert         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert         TEXT NOT NULL DEFAULT CURRENT_USER,
+    data_update         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_update         TEXT NOT NULL DEFAULT CURRENT_USER,
+
+    CONSTRAINT pk_template_flussi PRIMARY KEY (id),
+    CONSTRAINT fk_template_flussi_tipi_prestazione
+        FOREIGN KEY (tipo_prestazione_id) REFERENCES pratiche.tipi_prestazione(id),
+    CONSTRAINT fk_template_flussi_handler
+        FOREIGN KEY (handler_id) REFERENCES pratiche.handler_flussi(id),
+    CONSTRAINT uq_template_flussi_tipo_codice UNIQUE (tipo_prestazione_id, codice),
+    CONSTRAINT uq_template_flussi_tipo_sequenza UNIQUE (tipo_prestazione_id, sequenza)
 );
 ```
 
 - **sequenza**: ordine logico (10, 20, 30...). Il controllo effettivo e' sui prerequisiti espliciti
 - **sequenza_limite**: oltre questo numero il flusso non e' piu' eseguibile
-- **handler**: componente Django, es. `pratiche.handlers.AppuntamentoHandler`
+- **handler_id**: NULL = step manuale (completato dall'utente), NOT NULL = step automatizzato (Django dispatch)
+- **giorni_previsti**: SLA previsto per il completamento del flusso
 
-### 1.3 pratiche.template_flusso_prerequisito
+### 1.4 pratiche.template_flussi_prerequisiti
 
 Prerequisiti espliciti tra flussi. Supporta paralleli e convergenze.
 
 ```sql
-CREATE TABLE pratiche.template_flusso_prerequisito (
-    id                      SERIAL PRIMARY KEY,
-    template_flusso_id      INTEGER NOT NULL REFERENCES pratiche.template_flusso(id),
-    prerequisito_flusso_id  INTEGER NOT NULL REFERENCES pratiche.template_flusso(id),
-    obbligatorio            BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at              TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_by              VARCHAR(50) NOT NULL,
-    UNIQUE (template_flusso_id, prerequisito_flusso_id),
-    CHECK (template_flusso_id <> prerequisito_flusso_id)
+CREATE TABLE pratiche.template_flussi_prerequisiti (
+    id                      INTEGER GENERATED BY DEFAULT AS IDENTITY,
+    template_flusso_id      INTEGER NOT NULL,
+    prerequisito_flusso_id  INTEGER NOT NULL,
+    obbligatorio            BOOLEAN NOT NULL DEFAULT true,
+    data_insert             TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert             TEXT NOT NULL DEFAULT CURRENT_USER,
+
+    CONSTRAINT pk_template_flussi_prerequisiti PRIMARY KEY (id),
+    CONSTRAINT fk_tfp_template_flusso
+        FOREIGN KEY (template_flusso_id) REFERENCES pratiche.template_flussi(id),
+    CONSTRAINT fk_tfp_prerequisito
+        FOREIGN KEY (prerequisito_flusso_id) REFERENCES pratiche.template_flussi(id),
+    CONSTRAINT uq_tfp_flusso_prerequisito UNIQUE (template_flusso_id, prerequisito_flusso_id),
+    CONSTRAINT chk_tfp_no_self_ref CHECK (template_flusso_id <> prerequisito_flusso_id)
 );
 ```
 
-- **obbligatorio**: TRUE = bloccante, FALSE = consigliato (warning senza blocco)
+- **obbligatorio**: `true` = bloccante, `false` = consigliato (warning senza blocco)
+- Solo `data_insert/user_insert`: tabella di relazione, non aggiornabile (si cancella e ricrea)
 
 ---
 
-## 2. Esecuzione - Istanze operative
+## 2. Esecuzione — Istanze Operative
 
-### 2.1 pratiche.pratica
+### 2.1 pratiche.pratiche
 
 Istanza concreta di una pratica. Testata.
 
 ```sql
-CREATE TABLE pratiche.pratica (
-    id                  SERIAL PRIMARY KEY,
-    emittente_fiscale_id          INTEGER NOT NULL,
-    tipo_prestazione_id INTEGER NOT NULL REFERENCES pratiche.tipo_prestazione(id),
-    numero              VARCHAR(30) NOT NULL,
-    anno                INTEGER NOT NULL,
-    oggetto             VARCHAR(500),
-    soggetto_id         INTEGER,
-    stato               VARCHAR(20) NOT NULL DEFAULT 'APERTA'
-                        CHECK (stato IN ('BOZZA','APERTA','SOSPESA','CHIUSA','ANNULLATA')),
-    priorita            VARCHAR(10) DEFAULT 'NORMALE'
-                        CHECK (priorita IN ('BASSA','NORMALE','ALTA','URGENTE')),
-    data_apertura       DATE NOT NULL DEFAULT CURRENT_DATE,
-    data_scadenza       DATE,
-    data_chiusura       DATE,
-    operatore_id        INTEGER,
-    unita_org_id        INTEGER,
-    pratica_padre_id    INTEGER REFERENCES pratiche.pratica(id),
-    riferimento_esterno VARCHAR(100),
-    created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_by          VARCHAR(50) NOT NULL,
-    updated_by          VARCHAR(50) NOT NULL,
-    UNIQUE (emittente_fiscale_id, anno, numero)
-);
+CREATE TABLE pratiche.pratiche (
+    id                      BIGINT GENERATED BY DEFAULT AS IDENTITY,
+    emittente_fiscale_id    BIGINT NOT NULL,
+    tipo_prestazione_id     INTEGER NOT NULL,
+    numero                  VARCHAR(30) NOT NULL,
+    anno                    INTEGER NOT NULL,
+    oggetto                 VARCHAR(500),
+    soggetto_id             UUID,
+    stato_id                INTEGER NOT NULL,
+    priorita_id             INTEGER NOT NULL,
+    data_apertura           DATE NOT NULL DEFAULT CURRENT_DATE,
+    data_scadenza           DATE,
+    data_chiusura           DATE,
+    risorsa_umana_id        BIGINT,
+    unita_organizzativa_id  INTEGER,
+    pratica_padre_id        BIGINT,
+    riferimento_esterno     VARCHAR(100),
+    meta                    JSONB NOT NULL DEFAULT '{}'::jsonb,
+    storicizza              BOOLEAN NOT NULL DEFAULT true,
+    tx_id                   UUID,
+    data_insert             TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert             TEXT NOT NULL DEFAULT CURRENT_USER,
+    data_update             TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_update             TEXT NOT NULL DEFAULT CURRENT_USER,
 
-CREATE INDEX idx_pratica_azienda ON pratiche.pratica(emittente_fiscale_id);
-CREATE INDEX idx_pratica_tipo ON pratiche.pratica(tipo_prestazione_id);
-CREATE INDEX idx_pratica_soggetto ON pratiche.pratica(soggetto_id);
-CREATE INDEX idx_pratica_stato ON pratiche.pratica(stato);
-CREATE INDEX idx_pratica_data ON pratiche.pratica(data_apertura);
-CREATE INDEX idx_pratica_padre ON pratiche.pratica(pratica_padre_id);
+    CONSTRAINT pk_pratiche PRIMARY KEY (id),
+    CONSTRAINT fk_pratiche_emittenti_fiscali
+        FOREIGN KEY (emittente_fiscale_id) REFERENCES anagrafiche.emittenti_fiscali(id),
+    CONSTRAINT fk_pratiche_tipi_prestazione
+        FOREIGN KEY (tipo_prestazione_id) REFERENCES pratiche.tipi_prestazione(id),
+    CONSTRAINT fk_pratiche_soggetti
+        FOREIGN KEY (soggetto_id) REFERENCES anagrafiche.soggetti(id),
+    CONSTRAINT fk_pratiche_stati_pratiche
+        FOREIGN KEY (stato_id) REFERENCES config.stati_pratiche(id),
+    CONSTRAINT fk_pratiche_priorita
+        FOREIGN KEY (priorita_id) REFERENCES config.priorita_pratiche(id),
+    CONSTRAINT fk_pratiche_risorse_umane
+        FOREIGN KEY (risorsa_umana_id) REFERENCES anagrafiche.risorse_umane(id),
+    CONSTRAINT fk_pratiche_unita_organizzative
+        FOREIGN KEY (unita_organizzativa_id) REFERENCES config.unita_organizzative(id),
+    CONSTRAINT fk_pratiche_pratica_padre
+        FOREIGN KEY (pratica_padre_id) REFERENCES pratiche.pratiche(id),
+    CONSTRAINT uq_pratiche_emittente_anno_numero
+        UNIQUE (emittente_fiscale_id, anno, numero)
+);
 ```
 
+- **emittente_fiscale_id**: segregazione multi-company (BIGINT, come `anagrafiche.emittenti_fiscali.id`)
+- **soggetto_id**: UUID, allineato a `anagrafiche.soggetti.id`
+- **stato_id**: FK a `config.stati_pratiche` (gia' esistente). Nessun default: il chiamante o un trigger deve impostarlo
+- **risorsa_umana_id**: operatore assegnato (BIGINT, come `anagrafiche.risorse_umane.id`)
+- **unita_organizzativa_id**: reparto assegnato (INTEGER, come `config.unita_organizzative.id`)
 - **pratica_padre_id**: per sotto-pratiche e pratiche collegate
 - **riferimento_esterno**: protocollo esterno, n. ticket, ecc.
+- **meta**: dati estensibili (JSONB, pattern standard del sistema)
+- **storicizza** / **tx_id**: pattern standard per storicizzazione e transaction tracking
 
-### 2.2 pratiche.flusso
+### 2.2 pratiche.flussi
 
-Step/fase operativo dentro una pratica. Riga.
+Step/fase operativa dentro una pratica. Riga.
 
 ```sql
-CREATE TABLE pratiche.flusso (
-    id                      SERIAL PRIMARY KEY,
-    pratica_id              INTEGER NOT NULL REFERENCES pratiche.pratica(id),
-    template_flusso_id      INTEGER REFERENCES pratiche.template_flusso(id),
+CREATE TABLE pratiche.flussi (
+    id                      BIGINT GENERATED BY DEFAULT AS IDENTITY,
+    pratica_id              BIGINT NOT NULL,
+    template_flusso_id      INTEGER,
     codice                  VARCHAR(20) NOT NULL,
     descrizione             VARCHAR(200) NOT NULL,
     sequenza                INTEGER NOT NULL,
-    stato                   VARCHAR(20) NOT NULL DEFAULT 'DA_ESEGUIRE'
-                            CHECK (stato IN ('DA_ESEGUIRE','IN_CORSO','COMPLETATO',
-                                             'SOSPESO','ANNULLATO','ERRORE')),
+    stato_id                INTEGER NOT NULL,
     esito                   VARCHAR(20)
                             CHECK (esito IN ('POSITIVO','NEGATIVO','PARZIALE')),
-    flusso_padre_id         INTEGER REFERENCES pratiche.flusso(id),
-    operatore_id            INTEGER,
-    unita_org_id            INTEGER,
+    flusso_padre_id         BIGINT,
+    risorsa_umana_id        BIGINT,
+    unita_organizzativa_id  INTEGER,
     data_prevista_inizio    DATE,
     data_prevista_fine      DATE,
-    data_inizio             TIMESTAMP,
-    data_fine               TIMESTAMP,
+    data_inizio             TIMESTAMP WITH TIME ZONE,
+    data_fine               TIMESTAMP WITH TIME ZONE,
     note_esito              TEXT,
-    created_at              TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at              TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_by              VARCHAR(50) NOT NULL,
-    updated_by              VARCHAR(50) NOT NULL,
-    UNIQUE (pratica_id, codice)
-);
+    meta                    JSONB NOT NULL DEFAULT '{}'::jsonb,
+    storicizza              BOOLEAN NOT NULL DEFAULT true,
+    tx_id                   UUID,
+    data_insert             TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert             TEXT NOT NULL DEFAULT CURRENT_USER,
+    data_update             TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_update             TEXT NOT NULL DEFAULT CURRENT_USER,
 
-CREATE INDEX idx_flusso_pratica ON pratiche.flusso(pratica_id);
-CREATE INDEX idx_flusso_stato ON pratiche.flusso(stato);
-CREATE INDEX idx_flusso_padre ON pratiche.flusso(flusso_padre_id);
-CREATE INDEX idx_flusso_operatore ON pratiche.flusso(operatore_id);
-CREATE INDEX idx_flusso_template ON pratiche.flusso(template_flusso_id);
+    CONSTRAINT pk_flussi PRIMARY KEY (id),
+    CONSTRAINT fk_flussi_pratiche
+        FOREIGN KEY (pratica_id) REFERENCES pratiche.pratiche(id),
+    CONSTRAINT fk_flussi_template
+        FOREIGN KEY (template_flusso_id) REFERENCES pratiche.template_flussi(id),
+    CONSTRAINT fk_flussi_stati
+        FOREIGN KEY (stato_id) REFERENCES config.stati_flussi_pratiche(id),
+    CONSTRAINT fk_flussi_flusso_padre
+        FOREIGN KEY (flusso_padre_id) REFERENCES pratiche.flussi(id),
+    CONSTRAINT fk_flussi_risorse_umane
+        FOREIGN KEY (risorsa_umana_id) REFERENCES anagrafiche.risorse_umane(id),
+    CONSTRAINT fk_flussi_unita_organizzative
+        FOREIGN KEY (unita_organizzativa_id) REFERENCES config.unita_organizzative(id),
+    CONSTRAINT uq_flussi_pratica_codice UNIQUE (pratica_id, codice)
+);
 ```
 
-- **flusso_padre_id**: flusso che ha generato questo. Permette albero di attivita e sotto-flussi
 - **template_flusso_id**: NULL per flussi aggiunti manualmente su pratiche libere
+- **flusso_padre_id**: flusso che ha generato questo (albero di attivita'/sotto-flussi)
+- **stato_id**: FK a `config.stati_flussi_pratiche` (nuova tabella)
+- **esito**: CHECK — set fisso e piccolo, controllato dal sistema (POSITIVO, NEGATIVO, PARZIALE)
 
+---
 
+## 3. Documentale — Note e Allegati
 
-# ZeroERP - Schema `pratiche` (2/3) - Documentale e Giornale
+### 3.1 pratiche.note_pratiche
 
-## 3. Documentale - Note e Allegati
-
-### 3.1 pratiche.nota_pratica
-
-Note associate alla testata pratica.
+Note associate alla testata pratica. Modificabili.
 
 ```sql
-CREATE TABLE pratiche.nota_pratica (
-    id               SERIAL PRIMARY KEY,
-    pratica_id       INTEGER NOT NULL REFERENCES pratiche.pratica(id),
-    tipo_nota        VARCHAR(20) NOT NULL DEFAULT 'GENERALE'
-                     CHECK (tipo_nota IN ('GENERALE','INTERNA','CLIENTE','TECNICA','LEGALE')),
+CREATE TABLE pratiche.note_pratiche (
+    id               BIGINT GENERATED BY DEFAULT AS IDENTITY,
+    pratica_id       BIGINT NOT NULL,
+    tipo_nota_id     INTEGER NOT NULL,
     oggetto          VARCHAR(200),
     testo            TEXT NOT NULL,
-    visibile_esterno BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_by       VARCHAR(50) NOT NULL,
-    updated_by       VARCHAR(50) NOT NULL
-);
+    visibile_esterno BOOLEAN NOT NULL DEFAULT false,
+    data_insert      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert      TEXT NOT NULL DEFAULT CURRENT_USER,
+    data_update      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_update      TEXT NOT NULL DEFAULT CURRENT_USER,
 
-CREATE INDEX idx_nota_pratica ON pratiche.nota_pratica(pratica_id);
+    CONSTRAINT pk_note_pratiche PRIMARY KEY (id),
+    CONSTRAINT fk_note_pratiche_pratiche
+        FOREIGN KEY (pratica_id) REFERENCES pratiche.pratiche(id),
+    CONSTRAINT fk_note_pratiche_tipi_nota
+        FOREIGN KEY (tipo_nota_id) REFERENCES config.tipi_nota(id)
+);
 ```
 
-- **tipo_nota**: GENERALE, INTERNA, CLIENTE, TECNICA, LEGALE
 - **visibile_esterno**: se visibile su portale/cliente
 
-### 3.2 pratiche.nota_flusso
+### 3.2 pratiche.note_flussi
 
-Note associate al singolo flusso/riga.
+Note associate al singolo flusso/riga. Stessa struttura.
 
 ```sql
-CREATE TABLE pratiche.nota_flusso (
-    id               SERIAL PRIMARY KEY,
-    flusso_id        INTEGER NOT NULL REFERENCES pratiche.flusso(id),
-    tipo_nota        VARCHAR(20) NOT NULL DEFAULT 'GENERALE'
-                     CHECK (tipo_nota IN ('GENERALE','INTERNA','CLIENTE','TECNICA','LEGALE')),
+CREATE TABLE pratiche.note_flussi (
+    id               BIGINT GENERATED BY DEFAULT AS IDENTITY,
+    flusso_id        BIGINT NOT NULL,
+    tipo_nota_id     INTEGER NOT NULL,
     oggetto          VARCHAR(200),
     testo            TEXT NOT NULL,
-    visibile_esterno BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_by       VARCHAR(50) NOT NULL,
-    updated_by       VARCHAR(50) NOT NULL
-);
+    visibile_esterno BOOLEAN NOT NULL DEFAULT false,
+    data_insert      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert      TEXT NOT NULL DEFAULT CURRENT_USER,
+    data_update      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_update      TEXT NOT NULL DEFAULT CURRENT_USER,
 
-CREATE INDEX idx_nota_flusso ON pratiche.nota_flusso(flusso_id);
+    CONSTRAINT pk_note_flussi PRIMARY KEY (id),
+    CONSTRAINT fk_note_flussi_flussi
+        FOREIGN KEY (flusso_id) REFERENCES pratiche.flussi(id),
+    CONSTRAINT fk_note_flussi_tipi_nota
+        FOREIGN KEY (tipo_nota_id) REFERENCES config.tipi_nota(id)
+);
 ```
 
----
+### 3.3 pratiche.allegati_pratiche
 
-### 3.3 pratiche.allegato_pratica
-
-Documenti e immagini allegati alla testata pratica. Supporta versionamento.
+Documenti e immagini allegati alla testata pratica.
+Immutabili: nuova versione = nuova riga con `allegato_padre_id`.
 
 ```sql
-CREATE TABLE pratiche.allegato_pratica (
-    id                SERIAL PRIMARY KEY,
-    pratica_id        INTEGER NOT NULL REFERENCES pratiche.pratica(id),
-    tipo_allegato     VARCHAR(20) NOT NULL
-                      CHECK (tipo_allegato IN ('DOCUMENTO','IMMAGINE','MODULO',
-                             'CONTRATTO','FATTURA','VERBALE','CERTIFICATO','ALTRO')),
+CREATE TABLE pratiche.allegati_pratiche (
+    id                BIGINT GENERATED BY DEFAULT AS IDENTITY,
+    pratica_id        BIGINT NOT NULL,
+    tipo_allegato_id  INTEGER NOT NULL,
     nome_file         VARCHAR(255) NOT NULL,
     nome_originale    VARCHAR(255) NOT NULL,
     mime_type         VARCHAR(100) NOT NULL,
@@ -270,33 +498,34 @@ CREATE TABLE pratiche.allegato_pratica (
     hash_file         VARCHAR(64),
     descrizione       VARCHAR(500),
     versione          INTEGER NOT NULL DEFAULT 1,
-    allegato_padre_id INTEGER REFERENCES pratiche.allegato_pratica(id),
-    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_by        VARCHAR(50) NOT NULL
-);
+    allegato_padre_id BIGINT,
+    data_insert       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert       TEXT NOT NULL DEFAULT CURRENT_USER,
 
-CREATE INDEX idx_allegato_pratica ON pratiche.allegato_pratica(pratica_id);
-CREATE INDEX idx_allegato_pratica_tipo ON pratiche.allegato_pratica(tipo_allegato);
-CREATE INDEX idx_allegato_pratica_hash ON pratiche.allegato_pratica(hash_file);
+    CONSTRAINT pk_allegati_pratiche PRIMARY KEY (id),
+    CONSTRAINT fk_allegati_pratiche_pratiche
+        FOREIGN KEY (pratica_id) REFERENCES pratiche.pratiche(id),
+    CONSTRAINT fk_allegati_pratiche_tipi
+        FOREIGN KEY (tipo_allegato_id) REFERENCES config.tipi_allegato(id),
+    CONSTRAINT fk_allegati_pratiche_padre
+        FOREIGN KEY (allegato_padre_id) REFERENCES pratiche.allegati_pratiche(id)
+);
 ```
 
-- **tipo_allegato**: DOCUMENTO, IMMAGINE, MODULO, CONTRATTO, FATTURA, VERBALE, CERTIFICATO, ALTRO
-- **mime_type**: es. application/pdf, image/jpeg, image/png, application/vnd.oasis...
-- **hash_file**: SHA-256 per integrita e deduplicazione storage
-- **allegato_padre_id**: versione precedente dello stesso documento (storico versioni)
+- Solo `data_insert/user_insert`: gli allegati sono immutabili
+- **hash_file**: SHA-256 per integrita' e deduplicazione storage
+- **allegato_padre_id**: versione precedente dello stesso documento
 - **percorso**: path nello storage (filesystem o object storage tipo S3/MinIO)
 
-### 3.4 pratiche.allegato_flusso
+### 3.4 pratiche.allegati_flussi
 
-Documenti e immagini allegati al singolo flusso/riga. Stessa struttura degli allegati pratica.
+Allegati al singolo flusso/riga. Stessa struttura degli allegati pratica.
 
 ```sql
-CREATE TABLE pratiche.allegato_flusso (
-    id                SERIAL PRIMARY KEY,
-    flusso_id         INTEGER NOT NULL REFERENCES pratiche.flusso(id),
-    tipo_allegato     VARCHAR(20) NOT NULL
-                      CHECK (tipo_allegato IN ('DOCUMENTO','IMMAGINE','MODULO',
-                             'CONTRATTO','FATTURA','VERBALE','CERTIFICATO','ALTRO')),
+CREATE TABLE pratiche.allegati_flussi (
+    id                BIGINT GENERATED BY DEFAULT AS IDENTITY,
+    flusso_id         BIGINT NOT NULL,
+    tipo_allegato_id  INTEGER NOT NULL,
     nome_file         VARCHAR(255) NOT NULL,
     nome_originale    VARCHAR(255) NOT NULL,
     mime_type         VARCHAR(100) NOT NULL,
@@ -305,30 +534,34 @@ CREATE TABLE pratiche.allegato_flusso (
     hash_file         VARCHAR(64),
     descrizione       VARCHAR(500),
     versione          INTEGER NOT NULL DEFAULT 1,
-    allegato_padre_id INTEGER REFERENCES pratiche.allegato_flusso(id),
-    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_by        VARCHAR(50) NOT NULL
-);
+    allegato_padre_id BIGINT,
+    data_insert       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert       TEXT NOT NULL DEFAULT CURRENT_USER,
 
-CREATE INDEX idx_allegato_flusso ON pratiche.allegato_flusso(flusso_id);
-CREATE INDEX idx_allegato_flusso_tipo ON pratiche.allegato_flusso(tipo_allegato);
-CREATE INDEX idx_allegato_flusso_hash ON pratiche.allegato_flusso(hash_file);
+    CONSTRAINT pk_allegati_flussi PRIMARY KEY (id),
+    CONSTRAINT fk_allegati_flussi_flussi
+        FOREIGN KEY (flusso_id) REFERENCES pratiche.flussi(id),
+    CONSTRAINT fk_allegati_flussi_tipi
+        FOREIGN KEY (tipo_allegato_id) REFERENCES config.tipi_allegato(id),
+    CONSTRAINT fk_allegati_flussi_padre
+        FOREIGN KEY (allegato_padre_id) REFERENCES pratiche.allegati_flussi(id)
+);
 ```
 
 ---
 
-## 4. Giornale di Bordo - Audit Trail
+## 4. Giornale di Bordo — Audit Trail
 
 ### 4.1 pratiche.giornale
 
-Log immutabile di ogni azione. Si alimenta automaticamente via trigger.
+Log immutabile di ogni azione. Alimentato automaticamente via trigger.
 Non si modifica, non si cancella.
 
 ```sql
 CREATE TABLE pratiche.giornale (
-    id              BIGSERIAL PRIMARY KEY,
-    pratica_id      INTEGER NOT NULL REFERENCES pratiche.pratica(id),
-    flusso_id       INTEGER REFERENCES pratiche.flusso(id),
+    id              BIGINT GENERATED BY DEFAULT AS IDENTITY,
+    pratica_id      BIGINT NOT NULL,
+    flusso_id       BIGINT,
     azione          VARCHAR(30) NOT NULL
                     CHECK (azione IN (
                         'PRATICA_CREATA','PRATICA_MODIFICATA','PRATICA_CHIUSA',
@@ -341,176 +574,457 @@ CREATE TABLE pratiche.giornale (
                     )),
     dettaglio       JSONB,
     descrizione     TEXT,
-    origine         VARCHAR(20) NOT NULL DEFAULT 'UTENTE'
+    origine         VARCHAR(20) NOT NULL DEFAULT 'TRIGGER'
                     CHECK (origine IN ('UTENTE','SISTEMA','ESTERNO','TRIGGER')),
     ip_address      INET,
-    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_by      VARCHAR(50) NOT NULL
-);
+    data_insert     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    user_insert     TEXT NOT NULL DEFAULT CURRENT_USER,
 
-CREATE INDEX idx_giornale_pratica ON pratiche.giornale(pratica_id);
-CREATE INDEX idx_giornale_flusso ON pratiche.giornale(flusso_id);
-CREATE INDEX idx_giornale_azione ON pratiche.giornale(azione);
-CREATE INDEX idx_giornale_data ON pratiche.giornale(created_at);
+    CONSTRAINT pk_giornale PRIMARY KEY (id),
+    CONSTRAINT fk_giornale_pratiche
+        FOREIGN KEY (pratica_id) REFERENCES pratiche.pratiche(id),
+    CONSTRAINT fk_giornale_flussi
+        FOREIGN KEY (flusso_id) REFERENCES pratiche.flussi(id)
+);
 ```
 
-- **dettaglio**: JSONB con valori precedenti/nuovi. Ricostruzione completa della storia
-- **origine**: UTENTE (operatore), SISTEMA (automatismo), ESTERNO (API), TRIGGER (DB)
-- **flusso_id**: NULL se azione su testata pratica
-- **BIGSERIAL**: per supportare volumi elevati di log
+- Solo `data_insert/user_insert`: immutabile, nessun update/delete
+- No `tx_id`/`storicizza`: questa tabella **e'** l'audit trail
+- **azione**: CHECK — enum di sistema, controllato dai trigger, non dall'utente
+- **origine**: CHECK — enum di sistema. Default 'TRIGGER' perche' la maggior parte delle entry viene dai trigger
+- **dettaglio**: JSONB con valori precedenti/nuovi per ricostruzione completa
+- **ip_address**: impostato via GUC di sessione (`SET LOCAL zeroerp.client_ip = '...'`) da Django
 
+### Indici suggeriti per il giornale
 
-# ZeroERP - Schema `pratiche` (3/3) - Funzioni e Riepilogo
-
-## 5. Funzioni DB - Controllo Sequenza
-
-### 5.1 Verifica prerequisiti
-
-Funzione centralizzata che valida se un flusso puo essere avviato.
-Controlla prerequisiti espliciti e sequenza limite.
-Se il tipo prestazione non e vincolante, passa sempre.
+Questi indici non-FK sono consigliati per le query piu' frequenti:
 
 ```sql
-CREATE OR REPLACE FUNCTION pratiche.verifica_prerequisiti(
-    p_pratica_id INTEGER,
-    p_template_flusso_id INTEGER
+-- Ricerca per data (range query su log)
+CREATE INDEX ix_giornale_data_insert ON pratiche.giornale (data_insert);
+
+-- Filtro per azione
+CREATE INDEX ix_giornale_azione ON pratiche.giornale (azione);
+```
+
+> **Nota**: gli indici FK (pratica_id, flusso_id) sono gestiti da `dbops.apply_fk_index_policy()`.
+> NON creare indici FK manualmente.
+
+---
+
+## 5. Funzioni DB
+
+### 5.1 pratiche.fn_check_prerequisiti_flusso
+
+Funzione **check** (pura): verifica se un flusso puo' essere avviato.
+Ritorna esito, messaggio e lista prerequisiti mancanti. Non fa RAISE.
+
+```sql
+CREATE OR REPLACE FUNCTION pratiche.fn_check_prerequisiti_flusso(
+    p_pratica_id         pratiche.pratiche.id%TYPE,
+    p_template_flusso_id pratiche.template_flussi.id%TYPE
 ) RETURNS TABLE (
-    esito BOOLEAN,
-    messaggio TEXT,
-    prerequisiti_mancanti TEXT[]
+    esito                   BOOLEAN,
+    messaggio               TEXT,
+    prerequisiti_mancanti   TEXT[]
 ) AS $$
 DECLARE
-    v_tipo_vincolante BOOLEAN;
-    v_mancanti TEXT[] := '{}';
-    v_flusso_sequenza INTEGER;
-    v_sequenza_limite INTEGER;
-    v_max_sequenza_completata INTEGER;
+    v_tipo_vincolante       BOOLEAN;
+    v_mancanti              TEXT[] := '{}';
+    v_flusso_sequenza       pratiche.template_flussi.sequenza%TYPE;
+    v_sequenza_limite       pratiche.template_flussi.sequenza_limite%TYPE;
+    v_max_seq_completata    INTEGER;
 BEGIN
-    -- Verifica se il tipo prestazione ha flussi vincolanti
+    -- Recupera flag flussi_vincolanti dal tipo prestazione
     SELECT tp.flussi_vincolanti
     INTO v_tipo_vincolante
-    FROM pratiche.pratica p
-    JOIN pratiche.tipo_prestazione tp ON tp.id = p.tipo_prestazione_id
+    FROM pratiche.pratiche p
+    JOIN pratiche.tipi_prestazione tp ON tp.id = p.tipo_prestazione_id
     WHERE p.id = p_pratica_id;
 
     -- Se non vincolante, passa sempre
     IF NOT v_tipo_vincolante THEN
-        RETURN QUERY SELECT TRUE, 'Flussi non vincolanti'::TEXT, '{}'::TEXT[];
+        RETURN QUERY SELECT true, 'Flussi non vincolanti'::TEXT, '{}'::TEXT[];
         RETURN;
     END IF;
 
-    -- Recupera sequenza e limite del flusso
+    -- Recupera sequenza e limite del template
     SELECT tf.sequenza, tf.sequenza_limite
     INTO v_flusso_sequenza, v_sequenza_limite
-    FROM pratiche.template_flusso tf
+    FROM pratiche.template_flussi tf
     WHERE tf.id = p_template_flusso_id;
 
-    -- Controlla prerequisito massimo (sequenza_limite)
+    -- Verifica sequenza limite
     IF v_sequenza_limite IS NOT NULL THEN
-        SELECT COALESCE(MAX(f.sequenza), 0)
-        INTO v_max_sequenza_completata
-        FROM pratiche.flusso f
+        SELECT coalesce(max(f.sequenza), 0)
+        INTO v_max_seq_completata
+        FROM pratiche.flussi f
+        JOIN config.stati_flussi_pratiche sfp ON sfp.id = f.stato_id
         WHERE f.pratica_id = p_pratica_id
-          AND f.stato = 'COMPLETATO';
+          AND sfp.codice_interno = 'COMPLETATO';
 
-        IF v_max_sequenza_completata >= v_sequenza_limite THEN
-            RETURN QUERY SELECT FALSE,
-                FORMAT('Flusso non piu eseguibile: superata sequenza limite %s',
+        IF v_max_seq_completata >= v_sequenza_limite THEN
+            RETURN QUERY SELECT false,
+                format('Flusso non piu'' eseguibile: superata sequenza limite %s',
                        v_sequenza_limite)::TEXT,
                 '{}'::TEXT[];
             RETURN;
         END IF;
     END IF;
 
-    -- Controlla prerequisiti espliciti obbligatori
-    SELECT ARRAY_AGG(tf_pre.codice)
+    -- Verifica prerequisiti obbligatori non completati
+    SELECT array_agg(tf_pre.codice)
     INTO v_mancanti
-    FROM pratiche.template_flusso_prerequisito tfp
-    JOIN pratiche.template_flusso tf_pre ON tf_pre.id = tfp.prerequisito_flusso_id
+    FROM pratiche.template_flussi_prerequisiti tfp
+    JOIN pratiche.template_flussi tf_pre ON tf_pre.id = tfp.prerequisito_flusso_id
     WHERE tfp.template_flusso_id = p_template_flusso_id
-      AND tfp.obbligatorio = TRUE
+      AND tfp.obbligatorio = true
       AND NOT EXISTS (
-          SELECT 1 FROM pratiche.flusso f
+          SELECT 1 FROM pratiche.flussi f
+          JOIN config.stati_flussi_pratiche sfp ON sfp.id = f.stato_id
           WHERE f.pratica_id = p_pratica_id
             AND f.template_flusso_id = tfp.prerequisito_flusso_id
-            AND f.stato = 'COMPLETATO'
+            AND sfp.codice_interno = 'COMPLETATO'
       );
 
-    IF v_mancanti IS NOT NULL AND ARRAY_LENGTH(v_mancanti, 1) > 0 THEN
-        RETURN QUERY SELECT FALSE,
+    IF v_mancanti IS NOT NULL AND array_length(v_mancanti, 1) > 0 THEN
+        RETURN QUERY SELECT false,
             'Prerequisiti obbligatori non completati'::TEXT,
             v_mancanti;
         RETURN;
     END IF;
 
-    RETURN QUERY SELECT TRUE, 'Tutti i prerequisiti soddisfatti'::TEXT, '{}'::TEXT[];
+    RETURN QUERY SELECT true, 'Tutti i prerequisiti soddisfatti'::TEXT, '{}'::TEXT[];
+END;
+$$ LANGUAGE plpgsql STABLE;
+```
+
+### 5.2 pratiche.fn_guard_prerequisiti_flusso
+
+Funzione **guard** (fail-fast): chiama `fn_check` e fa RAISE se non soddisfatti.
+Utilizza `script.fn_log_and_raise_error` con codice da `config.messaggi_errore`.
+
+```sql
+CREATE OR REPLACE FUNCTION pratiche.fn_guard_prerequisiti_flusso(
+    p_pratica_id         pratiche.pratiche.id%TYPE,
+    p_template_flusso_id pratiche.template_flussi.id%TYPE,
+    p_tx_id              UUID DEFAULT NULL
+) RETURNS VOID AS $$
+DECLARE
+    v_check RECORD;
+BEGIN
+    SELECT * INTO v_check
+    FROM pratiche.fn_check_prerequisiti_flusso(p_pratica_id, p_template_flusso_id);
+
+    IF NOT v_check.esito THEN
+        PERFORM script.fn_log_and_raise_error(
+            'pratiche',
+            'fn_guard_prerequisiti_flusso',
+            'PRATICHE_PREREQUISITI_NON_SODDISFATTI',
+            jsonb_build_object(
+                'pratica_id', p_pratica_id,
+                'template_flusso_id', p_template_flusso_id,
+                'prerequisiti_mancanti', v_check.prerequisiti_mancanti
+            ),
+            p_tx_id,
+            v_check.messaggio
+        );
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+> **Prerequisito**: inserire in `config.messaggi_errore` il codice `PRATICHE_PREREQUISITI_NON_SODDISFATTI`
+> con template messaggio, causa e soluzione.
+
+### 5.3 pratiche.trgfn_flussi_guard_prerequisiti
+
+Trigger function wrapper per invocare la guard da trigger.
+Attiva solo su flussi con template (non manuali).
+
+```sql
+CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_prerequisiti()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Solo per flussi con template (non manuali)
+    IF NEW.template_flusso_id IS NOT NULL THEN
+        PERFORM pratiche.fn_guard_prerequisiti_flusso(
+            NEW.pratica_id,
+            NEW.template_flusso_id,
+            NEW.tx_id
+        );
+    END IF;
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 ```
 
 ---
 
-## 6. Riepilogo Tabelle
+## 6. Trigger Previsti
 
-| #   | Tabella                      | Ruolo                       | Relazioni principali                     |
-| --- | ---------------------------- | --------------------------- | ---------------------------------------- |
-| 1   | tipo_prestazione             | Catalogo tipi pratica       | -> template_flusso                       |
-| 2   | template_flusso              | Template flussi con regole  | -> tipo_prestazione, -> prerequisiti     |
-| 3   | template_flusso_prerequisito | Prerequisiti tra flussi     | -> template_flusso (2x)                  |
-| 4   | pratica                      | Istanza operativa (testata) | -> tipo_prestazione, -> pratica padre    |
-| 5   | flusso                       | Step operativo (riga)       | -> pratica, -> template, -> flusso padre |
-| 6   | nota_pratica                 | Note su testata             | -> pratica                               |
-| 7   | nota_flusso                  | Note su flusso              | -> flusso                                |
-| 8   | allegato_pratica             | Documenti/immagini testata  | -> pratica, -> allegato padre            |
-| 9   | allegato_flusso              | Documenti/immagini flusso   | -> flusso, -> allegato padre             |
-| 10  | giornale                     | Audit trail immutabile      | -> pratica, -> flusso                    |
+> Gli indici FK sono gestiti da `dbops.apply_fk_index_policy()` in `90_end/`.
+> I trigger di audit e tx_id usano le function generiche gia' presenti nel sistema.
 
-**Totale: 10 tabelle nucleo** + funzione verifica prerequisiti
+### 6.1 Tabelle Catalogo
+
+#### pratiche.tipi_prestazione
+
+| Trigger | Timing | Evento | Funzione |
+|---------|--------|--------|----------|
+| `trg_tipi_prestazione_a10_lock_columns_upd` | BEFORE | UPDATE | `script.trgfn_lock_columns('codice', 'CODICE_NON_MODIFICABILE')` |
+| `trg_tipi_prestazione_a10_pratiche_block_deact_upd` | BEFORE | UPDATE | `dbops.trgfn_prevent_deactivate_if_children('pratiche', 'pratiche', 'tipo_prestazione_id', 'id')` |
+| `trg_tipi_prestazione_a10_template_flussi_block_deact_upd` | BEFORE | UPDATE | `dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi', 'tipo_prestazione_id', 'id')` |
+| `trg_tipi_prestazione_audit_data_user_upd` | BEFORE | INSERT, UPDATE | `script.trgfn_audit_data_user_generic()` |
+
+#### pratiche.template_flussi
+
+| Trigger | Timing | Evento | Funzione |
+|---------|--------|--------|----------|
+| `trg_template_flussi_a10_flussi_block_deact_upd` | BEFORE | UPDATE | `dbops.trgfn_prevent_deactivate_if_children('pratiche', 'flussi', 'template_flusso_id', 'id')` |
+| `trg_template_flussi_a10_tipi_prest_require_attivo_ins_upd` | AFTER | INSERT, UPDATE | `dbops.trgfn_child_requires_active_parent('pratiche', 'tipi_prestazione', 'attivo', 'tipo_prestazione_id')` |
+| `trg_template_flussi_audit_data_user_upd` | BEFORE | INSERT, UPDATE | `script.trgfn_audit_data_user_generic()` |
+
+#### pratiche.handler_flussi
+
+| Trigger | Timing | Evento | Funzione |
+|---------|--------|--------|----------|
+| `trg_handler_flussi_a10_lock_columns_upd` | BEFORE | UPDATE | `script.trgfn_lock_columns('handler_key', 'CODICE_NON_MODIFICABILE')` |
+| `trg_handler_flussi_a10_template_flussi_block_deact_upd` | BEFORE | UPDATE | `dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi', 'handler_id', 'id')` |
+| `trg_handler_flussi_audit_data_user_upd` | BEFORE | INSERT, UPDATE | `script.trgfn_audit_data_user_generic()` |
+
+### 6.2 Tabelle Operative
+
+#### pratiche.pratiche
+
+| Trigger | Timing | Evento | Funzione |
+|---------|--------|--------|----------|
+| `trg_pratiche_a10_tipi_prest_require_attivo_ins_upd` | AFTER | INSERT, UPDATE | `dbops.trgfn_child_requires_active_parent('pratiche', 'tipi_prestazione', 'attivo', 'tipo_prestazione_id')` |
+| `trg_pratiche_a10_emittenti_require_attivo_ins_upd` | AFTER | INSERT, UPDATE | `dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id')` |
+| `trg_pratiche_audit_data_user_upd` | BEFORE | INSERT, UPDATE | `script.trgfn_audit_data_user_generic()` |
+| `trg_pratiche_gen_tx_id_ins_upd` | BEFORE | INSERT, UPDATE | `dbops.trgfn_tx_id_managed()` |
+| `trg_pratiche_z90_giornale_ins` | AFTER | INSERT | `pratiche.trgfn_pratiche_giornale_ins()` |
+| `trg_pratiche_z90_giornale_stato_upd` | AFTER | UPDATE OF stato_id | `pratiche.trgfn_pratiche_giornale_stato()` |
+| `trg_pratiche_z90_giornale_assegnazione_upd` | AFTER | UPDATE OF risorsa_umana_id, unita_organizzativa_id | `pratiche.trgfn_pratiche_giornale_assegnazione()` |
+| `trg_pratiche_z90_giornale_priorita_upd` | AFTER | UPDATE OF priorita_id | `pratiche.trgfn_pratiche_giornale_priorita()` |
+| `trg_pratiche_z90_storico_upd_dlt` | BEFORE | UPDATE, DELETE | `script.trgfn_storico_generic('pratica_id')` |
+
+#### pratiche.flussi
+
+| Trigger | Timing | Evento | Funzione |
+|---------|--------|--------|----------|
+| `trg_flussi_a10_guard_prerequisiti_ins` | BEFORE | INSERT | `pratiche.trgfn_flussi_guard_prerequisiti()` |
+| `trg_flussi_audit_data_user_upd` | BEFORE | INSERT, UPDATE | `script.trgfn_audit_data_user_generic()` |
+| `trg_flussi_gen_tx_id_ins_upd` | BEFORE | INSERT, UPDATE | `dbops.trgfn_tx_id_managed()` |
+| `trg_flussi_z90_giornale_ins` | AFTER | INSERT | `pratiche.trgfn_flussi_giornale_ins()` |
+| `trg_flussi_z90_giornale_stato_upd` | AFTER | UPDATE OF stato_id | `pratiche.trgfn_flussi_giornale_stato()` |
+| `trg_flussi_z90_storico_upd_dlt` | BEFORE | UPDATE, DELETE | `script.trgfn_storico_generic('flusso_id')` |
+
+### 6.3 Tabelle Documentali
+
+#### pratiche.note_pratiche / pratiche.note_flussi
+
+| Trigger | Timing | Evento | Funzione |
+|---------|--------|--------|----------|
+| `trg_note_pratiche_audit_data_user_upd` | BEFORE | INSERT, UPDATE | `script.trgfn_audit_data_user_generic()` |
+| `trg_note_pratiche_z90_giornale_ins` | AFTER | INSERT | `pratiche.trgfn_note_pratiche_giornale()` |
+
+(Analogo per `note_flussi` con i nomi appropriati)
+
+#### pratiche.allegati_pratiche / pratiche.allegati_flussi
+
+| Trigger | Timing | Evento | Funzione |
+|---------|--------|--------|----------|
+| `trg_allegati_pratiche_z90_giornale_ins` | AFTER | INSERT | `pratiche.trgfn_allegati_pratiche_giornale()` |
+
+(Analogo per `allegati_flussi`. Nessun audit update: gli allegati sono immutabili)
 
 ---
 
-## 7. Estensioni Future (non incluse)
+## 7. Riepilogo Tabelle
 
-Tabelle specifiche per tipo di flusso, da implementare mano a mano.
-Ogni estensione avra FK verso `pratiche.flusso(id)` e vivra autonomamente.
+### Schema `config` (prerequisiti)
 
-- **pratiche.ext_appuntamento**: fascia oraria, data/ora, esito, tecnico assegnato
+| # | Tabella | Ruolo | Stato |
+|---|---------|-------|-------|
+| 0a | `stati_pratiche` | Stati pratica | **Esiste gia'** — verificare seed |
+| 0b | `stati_flussi_pratiche` | Stati flusso | Da creare |
+| 0c | `priorita_pratiche` | Livelli priorita' | Da creare |
+| 0d | `tipi_nota` | Tipi nota (condivisi) | Da creare |
+| 0e | `tipi_allegato` | Tipi allegato (condivisi) | Da creare |
+
+### Schema `pratiche` (nucleo)
+
+| # | Tabella | Ruolo | PK | Relazioni principali |
+|---|---------|-------|----|---------------------|
+| 1 | `tipi_prestazione` | Catalogo tipi pratica | INTEGER | → template_flussi |
+| 2 | `handler_flussi` | Registry handler Django | INTEGER | ← template_flussi |
+| 3 | `template_flussi` | Template flussi con regole | INTEGER | → tipi_prestazione, → handler, → prerequisiti |
+| 4 | `template_flussi_prerequisiti` | Prerequisiti tra flussi | INTEGER | → template_flussi (2x) |
+| 5 | `pratiche` | Istanza operativa (testata) | BIGINT | → tipi_prestazione, → stati, → emittenti, → soggetti |
+| 6 | `flussi` | Step operativo (riga) | BIGINT | → pratiche, → template, → stati_flussi, → flusso padre |
+| 7 | `note_pratiche` | Note su testata | BIGINT | → pratiche, → tipi_nota |
+| 8 | `note_flussi` | Note su flusso | BIGINT | → flussi, → tipi_nota |
+| 9 | `allegati_pratiche` | Documenti testata | BIGINT | → pratiche, → tipi_allegato, → allegato padre |
+| 10 | `allegati_flussi` | Documenti flusso | BIGINT | → flussi, → tipi_allegato, → allegato padre |
+| 11 | `giornale` | Audit trail immutabile | BIGINT | → pratiche, → flussi |
+
+**Totale: 5 tabelle config + 11 tabelle nucleo + 3 funzioni DB**
+
+---
+
+## 8. Estensioni Future (non incluse in questa fase)
+
+Tabelle specifiche per tipo di flusso, da implementare progressivamente.
+Ogni estensione avra' FK verso `pratiche.flussi(id)` e vivra' autonomamente.
+
+- **pratiche.ext_appuntamento**: fascia oraria, data/ora, esito, risorsa_umana assegnata
 - **pratiche.ext_preventivo**: importi, voci, stato accettazione
 - **pratiche.ext_sopralluogo**: dati tecnici, foto, misurazioni
 - **pratiche.ext_comunicazione**: canale, destinatario, contenuto, conferma ricezione
-- **pratiche.ext_spedizione**: corriere, tracking, stato consegna (per aziende commerciali)
+- **pratiche.ext_spedizione**: corriere, tracking, stato consegna
+
+Ogni `ext_*` deve:
+
+- Avere PK BIGINT e FK verso `pratiche.flussi(id)`
+- Includere audit fields standard (`data_insert/user_insert/data_update/user_update`)
+- Includere `tx_id UUID` e `storicizza BOOLEAN` dove appropriato
+- Registrare le proprie azioni nel `giornale` tramite trigger
 
 ---
 
-## 8. Note Architetturali
+## 9. Note Architetturali
 
-**Business logic nel DB.**
-La funzione `verifica_prerequisiti` centralizza il controllo nel database.
-Nessun bypass possibile, ne da interfaccia ne da API esterna.
+### Business logic nel DB
 
-**Giornale via trigger.**
-I trigger su pratica, flusso, note e allegati alimentano automaticamente
+La funzione `fn_guard_prerequisiti_flusso` centralizza il controllo nel database.
+Nessun bypass possibile, ne' da interfaccia ne' da API esterna.
+Gli errori usano `script.fn_log_and_raise_error` con codici da `config.messaggi_errore`.
+
+### Giornale via trigger
+
+I trigger su pratiche, flussi, note e allegati alimentano automaticamente
 il giornale. Django non deve preoccuparsi di loggare: il DB lo fa da solo.
+Le trigger function dedicate (`trgfn_*_giornale_*`) vanno create nello schema `pratiche`.
 
-**Handler Django.**
-Il campo `handler` nel template_flusso e il ponte verso l'applicazione.
-Django legge il template, istanzia l'handler corretto e gestisce la logica specifica.
-Il nucleo DB resta agnostico rispetto all'implementazione.
+### Handler Django (registry pattern)
 
-**Multi-company.**
-Il campo `emittente_fiscale_id` sulla pratica garantisce la segregazione dei dati.
-Le query filtrano sempre per azienda.
-Il catalogo (tipo_prestazione, template) puo essere condiviso o per azienda.
+La tabella `handler_flussi` contiene le chiavi di dispatch (`handler_key`).
+Django mantiene un mapping `handler_key → classe Handler` nel codice Python:
 
-**Versionamento allegati.**
+```python
+# Esempio (apps/pratiche/services/handler_registry.py)
+HANDLER_MAP: dict[str, type[BaseFlussoHandler]] = {
+    "APPUNTAMENTO": AppuntamentoHandler,
+    "SOPRALLUOGO":  SopralluogoHandler,
+}
+```
+
+Nessun path Python nel DB. Il DB valida solo l'esistenza della chiave.
+
+### Multi-company
+
+Il campo `emittente_fiscale_id` su `pratiche.pratiche` garantisce la segregazione dati.
+Le query filtrano sempre per emittente.
+Il catalogo (tipi_prestazione, template_flussi, handler_flussi) e' condiviso.
+
+### Transaction ID e Storicizzazione
+
+Le tabelle operative (`pratiche`, `flussi`) includono `tx_id UUID` e `storicizza BOOLEAN`,
+gestiti rispettivamente da `dbops.trgfn_tx_id_managed()` e `script.trgfn_storico_generic()`.
+Questo garantisce coerenza transazionale e audit trail storico completo.
+
+### Indici FK
+
+Tutti gli indici sulle FK sono gestiti da `dbops.apply_fk_index_policy()` nello step `90_end/`.
+NON creare indici FK manualmente. Solo gli indici non-FK (performance, giornale) vanno creati esplicitamente.
+
+### Versionamento allegati
+
 Il campo `allegato_padre_id` mantiene lo storico versioni senza sovrascrivere.
 L'hash SHA-256 previene duplicati a livello storage.
 
-**Flussi paralleli.**
+### Flussi paralleli
+
 I prerequisiti espliciti permettono rami paralleli, convergenze e flussi opzionali.
 Il numero di sequenza resta come ordine logico/visivo, non come vincolo.
 
-**Flussi che generano flussi.**
-Il campo `flusso_padre_id` nella tabella flusso permette che un flusso
-generi uno o piu sotto-flussi, assegnabili a operatori/reparti diversi.
-Di fatto un albero di attivita.
+### Flussi che generano flussi
+
+Il campo `flusso_padre_id` nella tabella flussi permette che un flusso
+generi uno o piu' sotto-flussi, assegnabili a risorse/reparti diversi.
+
+---
+
+## 10. Seed Data Previsti
+
+### config.stati_pratiche (verificare esistente)
+
+| codice | codice_interno | descrizione |
+|--------|----------------|-------------|
+| BOZZA | BOZZA | Pratica in bozza |
+| APERTA | APERTA | Pratica aperta |
+| SOSPESA | SOSPESA | Pratica sospesa |
+| CHIUSA | CHIUSA | Pratica chiusa |
+| ANNULLATA | ANNULLATA | Pratica annullata |
+
+### config.stati_flussi_pratiche
+
+| codice | codice_interno | descrizione |
+|--------|----------------|-------------|
+| DA_ESEGUIRE | DA_ESEGUIRE | Flusso da eseguire |
+| IN_CORSO | IN_CORSO | Flusso in corso |
+| COMPLETATO | COMPLETATO | Flusso completato |
+| SOSPESO | SOSPESO | Flusso sospeso |
+| ANNULLATO | ANNULLATO | Flusso annullato |
+| ERRORE | ERRORE | Flusso in errore |
+
+### config.priorita_pratiche
+
+| codice | codice_interno | sequenza | descrizione |
+|--------|----------------|----------|-------------|
+| BASSA | BASSA | 10 | Priorita' bassa |
+| NORMALE | NORMALE | 20 | Priorita' normale |
+| ALTA | ALTA | 30 | Priorita' alta |
+| URGENTE | URGENTE | 40 | Priorita' urgente |
+
+### config.tipi_nota
+
+| codice | codice_interno | descrizione |
+|--------|----------------|-------------|
+| GENERALE | GENERALE | Nota generale |
+| INTERNA | INTERNA | Nota interna |
+| CLIENTE | CLIENTE | Nota per il cliente |
+| TECNICA | TECNICA | Nota tecnica |
+| LEGALE | LEGALE | Nota legale |
+
+### config.tipi_allegato
+
+| codice | codice_interno | descrizione |
+|--------|----------------|-------------|
+| DOCUMENTO | DOCUMENTO | Documento generico |
+| IMMAGINE | IMMAGINE | Immagine |
+| MODULO | MODULO | Modulo/template |
+| CONTRATTO | CONTRATTO | Contratto |
+| FATTURA | FATTURA | Fattura |
+| VERBALE | VERBALE | Verbale |
+| CERTIFICATO | CERTIFICATO | Certificato |
+| ALTRO | ALTRO | Altro tipo |
+
+### config.messaggi_errore (da aggiungere)
+
+| codice | template | causa | soluzione |
+|--------|----------|-------|-----------|
+| PRATICHE_PREREQUISITI_NON_SODDISFATTI | `%s` | Prerequisiti obbligatori non completati | Completare i flussi prerequisito prima di procedere |
+
+### pratiche.handler_flussi (seed iniziale da definire con l'implementazione)
+
+| handler_key | descrizione |
+|-------------|-------------|
+| APPUNTAMENTO | Gestione appuntamento con soggetto |
+| SOPRALLUOGO | Sopralluogo tecnico |
+| COMUNICAZIONE | Invio comunicazione |
+
+---
+
+*Documento di sviluppo — Schema `pratiche` — Revisione allineata a ZeroERP (marzo 2026)*

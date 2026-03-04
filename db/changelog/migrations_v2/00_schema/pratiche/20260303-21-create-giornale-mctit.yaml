@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella pratiche.giornale — audit trail pratiche/flussi
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260303-21-create-giornale-mctit.yaml
+
+  - changeSet:
+      id: 20260303-21-create-giornale
+      author: mctit
+      comment: >
+        Giornale di bordo (audit trail) per pratiche e flussi. Append-only:
+        solo data_insert/user_insert, no UPDATE, no storicizzazione.
+        Registra ogni evento significativo (creazione, cambio stato,
+        assegnazione, note, allegati, generazione cross-pratica).
+        Il tx_id consente la correlazione con le transazioni cross-tabella.
+      changes:
+        - createTable:
+            schemaName: pratiche
+            tableName: giornale
+            remarks: "Giornale di bordo — audit trail pratiche e flussi (append-only)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_pratiche_giornale
+                    nullable: false
+
+              - column:
+                  name: pratica_id
+                  type: bigint
+                  remarks: "FK a pratiche.pratiche."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: flusso_id
+                  type: bigint
+                  remarks: "FK a pratiche.flussi (NULL per eventi a livello pratica)."
+
+              - column:
+                  name: azione
+                  type: character varying(50)
+                  remarks: "Tipo di evento registrato."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: origine
+                  type: character varying(20)
+                  defaultValue: "SISTEMA"
+                  remarks: "Chi ha originato l'evento: SISTEMA, UTENTE, HANDLER, SCHEDULER."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: dettaglio
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Dati strutturati dell'evento (vecchio/nuovo stato, parametri, ecc.)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Correlazione con tx_id di transazione per tracciabilita' cross-tabella."
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: giornale
+            baseColumnNames: pratica_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: pratiche
+            referencedColumnNames: id
+            constraintName: fk_giornale_pratica
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: giornale
+            baseColumnNames: flusso_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: flussi
+            referencedColumnNames: id
+            constraintName: fk_giornale_flusso
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE pratiche.giornale
+                ADD CONSTRAINT chk_giornale_azione
+                CHECK (azione IN (
+                  'PRATICA_CREATA', 'STATO_CAMBIATO', 'ASSEGNAZIONE_CAMBIATA',
+                  'PRIORITA_CAMBIATA', 'FLUSSO_CREATO', 'FLUSSO_STATO_CAMBIATO',
+                  'NOTA_AGGIUNTA', 'ALLEGATO_AGGIUNTO', 'PRATICA_GENERATA'
+                ));
+
+              ALTER TABLE pratiche.giornale
+                ADD CONSTRAINT chk_giornale_origine
+                CHECK (origine IN ('SISTEMA', 'UTENTE', 'HANDLER', 'SCHEDULER'));
+
+              CREATE INDEX ix_pratiche_giornale_data_insert
+                ON pratiche.giornale (data_insert);
+
+              CREATE INDEX ix_pratiche_giornale_azione
+                ON pratiche.giornale (azione);
+
+      rollback:
+        - dropTable:
+            schemaName: pratiche
+            tableName: giornale

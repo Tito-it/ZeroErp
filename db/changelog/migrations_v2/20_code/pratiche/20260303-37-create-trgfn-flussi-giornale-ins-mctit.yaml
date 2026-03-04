@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger function pratiche.trgfn_flussi_giornale_ins
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260303-37-create-trgfn-flussi-giornale-ins-mctit.yaml
+
+  - changeSet:
+      id: 20260303-37-create-trgfn-flussi-giornale-ins
+      author: mctit
+      runOnChange: true
+      comment: "Logga FLUSSO_CREATO nel giornale su INSERT flusso."
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_giornale_ins()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Registra FLUSSO_CREATO nel giornale.
+                --   Trigger AFTER INSERT su pratiche.flussi.
+                --
+                -- Dettaglio:
+                --   Cattura template_flusso, stato e sequenza al momento
+                --   della creazione del flusso.
+                -- =========================================================
+
+                INSERT INTO pratiche.giornale
+                  (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                VALUES (
+                  NEW.pratica_id,
+                  NEW.id,
+                  'FLUSSO_CREATO',
+                  'SISTEMA',
+                  jsonb_build_object(
+                    'template_flusso_id', NEW.template_flusso_id,
+                    'stato_id', NEW.stato_id,
+                    'sequenza', NEW.sequenza
+                  ),
+                  NEW.tx_id
+                );
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_flussi_giornale_ins()
+                IS 'AFTER INSERT su flussi: logga FLUSSO_CREATO nel giornale.';

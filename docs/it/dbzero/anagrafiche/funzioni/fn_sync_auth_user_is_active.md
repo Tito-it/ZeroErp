@@ -18,7 +18,8 @@ DECLARE
     v_valido_dal     anagrafiche.risorse_umane.valido_dal%TYPE;
     v_valido_al      anagrafiche.risorse_umane.valido_al%TYPE;
     v_should_active  boolean;
-    v_current_active django.auth_user.is_active%TYPE;
+    v_current_active boolean;
+    v_rows_updated   integer := 0;
 BEGIN
 -- ------------------------------------------------------------
 -- Funzione: anagrafiche.fn_sync_auth_user_is_active
@@ -90,19 +91,26 @@ BEGIN
     ----------------------------------------------------------------
     -- 5) Recupero stato corrente auth_user
     ----------------------------------------------------------------
-    SELECT au.is_active
-      INTO v_current_active
-      FROM django.auth_user au
-     WHERE au.id = v_auth_user_id;
+    -- In ambienti CI senza schema django, non fare nulla.
+    IF to_regclass('django.auth_user') IS NULL THEN
+        RETURN false;
+    END IF;
+
+    EXECUTE 'SELECT is_active FROM django.auth_user WHERE id = $1'
+       INTO v_current_active
+      USING v_auth_user_id;
 
     ----------------------------------------------------------------
     -- 6) Aggiorna solo se diverso
     ----------------------------------------------------------------
     IF v_current_active IS DISTINCT FROM v_should_active THEN
-        UPDATE django.auth_user
-           SET is_active = v_should_active
-         WHERE id = v_auth_user_id;
-        RETURN true;
+        EXECUTE 'UPDATE django.auth_user
+                    SET is_active = $1
+                  WHERE id = $2'
+           USING v_should_active, v_auth_user_id;
+
+        GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
+        RETURN (v_rows_updated > 0);
     END IF;
 
     RETURN false;

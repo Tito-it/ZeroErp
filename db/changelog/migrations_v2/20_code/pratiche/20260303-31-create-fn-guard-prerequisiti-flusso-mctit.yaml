@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Funzione pratiche.fn_guard_prerequisiti_flusso — fail-fast
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260303-31-create-fn-guard-prerequisiti-flusso-mctit.yaml
+
+  - changeSet:
+      id: 20260303-31-create-fn-guard-prerequisiti-flusso
+      author: mctit
+      runOnChange: true
+      comment: >
+        Guard fail-fast: verifica prerequisiti e solleva eccezione via
+        script.fn_log_and_raise_error se non soddisfatti.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.fn_guard_prerequisiti_flusso(
+                p_pratica_id         pratiche.pratiche.id%TYPE,
+                p_template_flusso_id pratiche.template_flussi.id%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_non_soddisfatti text;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Guard fail-fast (fn_guard_*): solleva errore se esistono
+                --   prerequisiti non soddisfatti per il template flusso.
+                --
+                -- Dipendenze:
+                --   - pratiche.fn_check_prerequisiti_flusso()
+                --   - script.fn_log_and_raise_error()
+                --   - config.messaggi_errore: PRATICHE_PREREQUISITI_NON_SODDISFATTI
+                -- =========================================================
+
+                -- Raccoglie i codici dei prerequisiti non soddisfatti
+                SELECT string_agg(codice, ', ')
+                  INTO v_non_soddisfatti
+                  FROM pratiche.fn_check_prerequisiti_flusso(p_pratica_id, p_template_flusso_id)
+                 WHERE NOT soddisfatto;
+
+                IF v_non_soddisfatti IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'fn_guard_prerequisiti_flusso',
+                    'PRATICHE_PREREQUISITI_NON_SODDISFATTI',
+                    jsonb_build_object(
+                      'pratica_id', p_pratica_id,
+                      'template_flusso_id', p_template_flusso_id,
+                      'prerequisiti_mancanti', v_non_soddisfatti
+                    ),
+                    NULL::uuid,
+                    v_non_soddisfatti
+                  );
+                END IF;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION pratiche.fn_guard_prerequisiti_flusso(bigint, integer)
+                IS 'Guard fail-fast: solleva eccezione se prerequisiti non soddisfatti.';

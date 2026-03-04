@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella pratiche.tipi_prestazione — catalogo tipi di prestazione
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260303-09-create-tipi-prestazione-mctit.yaml
+
+  - changeSet:
+      id: 20260303-09-create-tipi-prestazione
+      author: mctit
+      comment: >
+        Catalogo dei tipi di prestazione (es. Assistenza, Manutenzione,
+        Consulenza). Ogni pratica riferisce un tipo_prestazione che
+        determina i template flussi disponibili.
+      changes:
+        - createTable:
+            schemaName: pratiche
+            tableName: tipi_prestazione
+            remarks: "Catalogo tipi di prestazione per le pratiche."
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_pratiche_tipi_prestazione
+                    nullable: false
+
+              - column:
+                  name: codice
+                  type: character varying(50)
+                  remarks: "Codice univoco leggibile."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: codice_interno
+                  type: character varying(50)
+                  remarks: "Codice interno immutabile."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione per interfaccia."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: categoria
+                  type: character varying(50)
+                  remarks: "Classificazione libera (es. TECNICA, AMMINISTRATIVA)."
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: pratiche
+            tableName: tipi_prestazione
+            columnNames: codice
+            constraintName: uq_pratiche_tipi_prestazione_codice
+
+        - addUniqueConstraint:
+            schemaName: pratiche
+            tableName: tipi_prestazione
+            columnNames: codice_interno
+            constraintName: uq_pratiche_tipi_prestazione_codice_interno
+
+      rollback:
+        - dropTable:
+            schemaName: pratiche
+            tableName: tipi_prestazione

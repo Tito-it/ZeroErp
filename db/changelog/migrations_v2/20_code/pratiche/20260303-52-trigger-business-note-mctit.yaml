@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger business-specific su note_pratiche e note_flussi
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260303-52-trigger-business-note-mctit.yaml
+
+  - changeSet:
+      id: 20260303-52-trigger-business-note
+      author: mctit
+      runOnChange: true
+      comment: >
+        Applica trigger giornale su pratiche.note_pratiche e
+        pratiche.note_flussi (AFTER INSERT).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Trigger giornale su note
+              -- =========================================================
+
+              -- 1. note_pratiche: NOTA_AGGIUNTA su INSERT
+              DROP TRIGGER IF EXISTS trg_note_pratiche_z90_giornale_ins
+              ON pratiche.note_pratiche;
+
+              CREATE TRIGGER trg_note_pratiche_z90_giornale_ins
+              AFTER INSERT
+              ON pratiche.note_pratiche
+              FOR EACH ROW
+              EXECUTE FUNCTION pratiche.trgfn_note_pratiche_giornale();
+
+              COMMENT ON TRIGGER trg_note_pratiche_z90_giornale_ins
+              ON pratiche.note_pratiche
+              IS 'Logga NOTA_AGGIUNTA nel giornale su INSERT nota pratica.';
+
+              -- 2. note_flussi: NOTA_AGGIUNTA su INSERT
+              DROP TRIGGER IF EXISTS trg_note_flussi_z90_giornale_ins
+              ON pratiche.note_flussi;
+
+              CREATE TRIGGER trg_note_flussi_z90_giornale_ins
+              AFTER INSERT
+              ON pratiche.note_flussi
+              FOR EACH ROW
+              EXECUTE FUNCTION pratiche.trgfn_note_flussi_giornale();
+
+              COMMENT ON TRIGGER trg_note_flussi_z90_giornale_ins
+              ON pratiche.note_flussi
+              IS 'Logga NOTA_AGGIUNTA nel giornale su INSERT nota flusso.';

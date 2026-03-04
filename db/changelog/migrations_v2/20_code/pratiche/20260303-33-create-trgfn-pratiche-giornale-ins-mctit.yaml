@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger function pratiche.trgfn_pratiche_giornale_ins
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260303-33-create-trgfn-pratiche-giornale-ins-mctit.yaml
+
+  - changeSet:
+      id: 20260303-33-create-trgfn-pratiche-giornale-ins
+      author: mctit
+      runOnChange: true
+      comment: "Logga PRATICA_CREATA nel giornale su INSERT pratica."
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_ins()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Registra PRATICA_CREATA nel giornale.
+                --   Trigger AFTER INSERT su pratiche.pratiche.
+                --
+                -- Dettaglio:
+                --   Cattura tipo_prestazione, stato, priorita, soggetto
+                --   e canale di origine al momento della creazione.
+                -- =========================================================
+
+                INSERT INTO pratiche.giornale
+                  (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                VALUES (
+                  NEW.id,
+                  NULL,
+                  'PRATICA_CREATA',
+                  'SISTEMA',
+                  jsonb_build_object(
+                    'tipo_prestazione_id', NEW.tipo_prestazione_id,
+                    'stato_id', NEW.stato_id,
+                    'priorita_id', NEW.priorita_id,
+                    'soggetto_id', NEW.soggetto_id,
+                    'canale_origine_id', NEW.canale_origine_id
+                  ),
+                  NEW.tx_id
+                );
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_pratiche_giornale_ins()
+                IS 'AFTER INSERT su pratiche: logga PRATICA_CREATA nel giornale.';
