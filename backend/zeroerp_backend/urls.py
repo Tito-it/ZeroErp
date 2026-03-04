@@ -54,5 +54,6 @@ urlpatterns = [
     ),
     path("api/v1/core/", include("apps.core.api.urls_v1")),
     path("api/v1/vendite/", include("apps.vendite.api.urls_v1")),
+    path("api/v1/pratiche/", include("apps.pratiche.api.urls_v1")),
     path("", RedirectView.as_view(url="/admin/", permanent=False)),
 ]
