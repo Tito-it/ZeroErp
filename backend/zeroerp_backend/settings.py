@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     'apps.pagamenti',
     'apps.storico',
     'apps.vendite',
+    'apps.pratiche',
 ]
 
 REST_FRAMEWORK = {

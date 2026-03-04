@@ -131,6 +131,49 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Push log commesse non trovato.",
         ),
+        # ── Pratiche ──
+        "E_PRATICA_VALIDATION": ErrorPolicy(
+            code="E_PRATICA_VALIDATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri pratica non validi.",
+        ),
+        "E_PRATICA_NOT_FOUND": ErrorPolicy(
+            code="E_PRATICA_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Pratica non trovata.",
+        ),
+        "E_FLUSSO_VALIDATION": ErrorPolicy(
+            code="E_FLUSSO_VALIDATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri flusso non validi.",
+        ),
+        "E_FLUSSO_NOT_FOUND": ErrorPolicy(
+            code="E_FLUSSO_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Flusso non trovato.",
+        ),
+        "E_FLUSSO_OWNERSHIP": ErrorPolicy(
+            code="E_FLUSSO_OWNERSHIP",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Flusso non appartiene alla pratica indicata.",
+        ),
+        "E_CONFIG_MANCANTE": ErrorPolicy(
+            code="E_CONFIG_MANCANTE",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Configurazione mancante nel sistema.",
+        ),
+        "E_INVALID_ID": ErrorPolicy(
+            code="E_INVALID_ID",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="ID non valido.",
+        ),
         "E_GENERICO": ErrorPolicy(
             code="E_GENERICO",
             http_status=500,

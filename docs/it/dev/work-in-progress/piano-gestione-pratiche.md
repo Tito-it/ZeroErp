@@ -30,20 +30,20 @@ Le fasi DB qui sotto includono **solo trigger business-specific** (giornale, gua
 
 ## Riepilogo Fasi
 
-| Fase | Area | Descrizione | Prerequisiti |
-|------|------|-------------|--------------|
-| **DB-1** | DB | Tabelle config prerequisite (drop/recreate `stati_pratiche`, nuove config) | Nessuno |
-| **DB-2** | DB | Schema `pratiche` + tabelle catalogo + regole generazione + canali | DB-1 |
-| **DB-3** | DB | Tabelle operative (pratiche, flussi) | DB-1, DB-2 |
-| **DB-4** | DB | Tabelle documentali (note, allegati) + giornale | DB-3 |
-| **DB-5** | DB | Funzioni DB + trigger business-specific | DB-3, DB-4 |
-| **DB-6** | DB | Seed data e messaggi errore | DB-5 |
-| **DB-7** | DB | Test pgTAP | DB-6 |
-| **BE-1** | Backend | Setup app Django `pratiche` | DB-6 |
-| **BE-2** | Backend | Repository layer (accesso DB) | BE-1 |
-| **BE-3** | Backend | Services layer (orchestrazione + generazione + canali) | BE-2 |
-| **BE-4** | Backend | API layer (endpoints REST) | BE-3 |
-| **BE-5** | Backend | Test Django (services + API) | BE-4 |
+| Fase | Area | Descrizione | Stato |
+|------|------|-------------|-------|
+| **DB-1** | DB | Tabelle config prerequisite | FATTO |
+| **DB-2** | DB | Schema `pratiche` + tabelle catalogo + regole generazione + canali | FATTO |
+| **DB-3** | DB | Tabelle operative (pratiche, flussi) | FATTO |
+| **DB-4** | DB | Tabelle documentali (note, allegati) + giornale | FATTO |
+| **DB-5** | DB | Funzioni DB + trigger business-specific | FATTO |
+| **DB-6** | DB | Seed data e messaggi errore | FATTO |
+| **DB-7** | DB | Test pgTAP | FATTO |
+| **BE-1** | Backend | Setup app Django `pratiche` | FATTO |
+| **BE-2** | Backend | Repository layer (accesso DB) | FATTO |
+| **BE-3** | Backend | Services layer (orchestrazione + generazione + canali) | FATTO |
+| **BE-4** | Backend | API layer (endpoints REST) | FATTO |
+| **BE-5** | Backend | Test Django (services + API) | FATTO |
 
 ---
 
@@ -401,15 +401,13 @@ backend/apps/pratiche/
 │   └── urls_v1.py
 ├── db/
 │   ├── __init__.py
-│   ├── pratiche_repository.py
-│   ├── flussi_repository.py
-│   └── generazione_repository.py
+│   ├── pratiche_repository.py     # CRUD pratiche + flussi + giornale + prerequisiti + canali
+│   └── generazione_repository.py  # Regole generazione + fn_genera_pratica_da_flusso
 ├── services/
 │   ├── __init__.py
-│   ├── pratiche_service.py
-│   ├── flussi_service.py
-│   ├── generazione_service.py
-│   └── handler_registry.py
+│   ├── pratiche_service.py        # Orchestrazione pratiche + flussi + handler dispatch
+│   ├── generazione_service.py     # Orchestrazione generazione cross-pratica
+│   └── handler_registry.py        # Mapping handler_key → classe Python
 └── tests/
     ├── __init__.py
     ├── api/
@@ -417,6 +415,12 @@ backend/apps/pratiche/
     └── services/
         └── __init__.py
 ```
+
+> **Naming convention** (da AGENTS.md): i flussi NON sono un sottodominio autonomo
+> (sono le righe operative di una pratica), quindi vanno in `pratiche_repository.py`
+> e `pratiche_service.py`. Solo `generazione` ha logica orchestrata autonoma e giustifica
+> file separati. Riferimento: `apps/vendite/db/vendite_repository.py` (generico schema)
+> vs `apps/vendite/db/pipeline_repository.py` (sottodominio specializzato).
 
 #### Attivita'
 
@@ -436,7 +440,7 @@ backend/apps/pratiche/
 
 #### File e responsabilita'
 
-**`db/pratiche_repository.py`** — operazioni generiche su pratiche:
+**`db/pratiche_repository.py`** — operazioni su pratiche, flussi, giornale, prerequisiti, canali:
 
 - `list_pratiche(emittente_id, filtri)` — lista pratiche con paginazione
 - `get_pratica(pratica_id)` — dettaglio pratica
@@ -444,9 +448,6 @@ backend/apps/pratiche/
 - `update_pratica(pratica_id, data)` → UPDATE
 - `update_stato_pratica(pratica_id, stato_codice_interno)` → cambio stato
 - `get_giornale_pratica(pratica_id)` — log audit della pratica (include tx_id per tracciabilita')
-
-**`db/flussi_repository.py`** — operazioni su flussi:
-
 - `list_flussi(pratica_id)` — flussi di una pratica
 - `get_flusso(flusso_id)` — dettaglio flusso
 - `create_flusso(data)` → INSERT (il trigger DB valida prerequisiti)
@@ -477,22 +478,23 @@ backend/apps/pratiche/
 
 #### File e responsabilita'
 
-**`services/pratiche_service.py`** — facade per operazioni su pratiche:
+**`services/pratiche_service.py`** — facade per operazioni su pratiche e flussi:
 
 - `crea_pratica(emittente_id, tipo_prestazione_codice, soggetto_id, solo_interna, ...)` — crea pratica con stato iniziale
 - `aggiorna_pratica(pratica_id, data)` — aggiornamento campi
 - `cambia_stato_pratica(pratica_id, nuovo_stato)` — transizione di stato con validazione
 - `assegna_pratica(pratica_id, risorsa_umana_id, unita_organizzativa_id)` — assegnazione
 - `cerca_pratiche(emittente_id, filtri)` — ricerca con paginazione
-
-**`services/flussi_service.py`** — facade per operazioni su flussi:
-
 - `crea_flusso(pratica_id, template_flusso_id_or_codice, ...)` — crea flusso (prerequisiti validati dal DB)
 - `avvia_flusso(flusso_id)` — transizione DA_ESEGUIRE → IN_CORSO
 - `completa_flusso(flusso_id, esito, note_esito)` — transizione → COMPLETATO con esito. La generazione automatica cross-pratica e' gestita dal trigger DB.
 - `verifica_prerequisiti(pratica_id, template_flusso_id)` — check prerequisiti (per UI/preview)
 - `dispatch_handler(flusso_id)` — invoca handler Django se configurato
 - `get_canali_disponibili(template_flusso_id)` — lista canali abilitati per il flusso
+
+> Il service e' progettato come **API interna cross-dominio**: altre app Django
+> (vendite, anagrafiche, acquisti) possono importare e usare `pratiche_service`
+> per creare/gestire pratiche legate ai propri eventi di dominio.
 
 **`services/generazione_service.py`** — gestione generazione cross-pratica:
 
@@ -544,12 +546,12 @@ HANDLER_MAP: dict[str, type[BaseFlussoHandler]] = {
 | POST | `/api/v1/pratiche/{id}/stato/` | Cambia stato pratica | `pratiche_service.cambia_stato_pratica` |
 | POST | `/api/v1/pratiche/{id}/assegnazione/` | Assegna pratica | `pratiche_service.assegna_pratica` |
 | GET | `/api/v1/pratiche/{id}/giornale/` | Giornale pratica (con tx_id) | `pratiche_repository.get_giornale_pratica` |
-| GET | `/api/v1/pratiche/{id}/flussi/` | Lista flussi pratica | `flussi_service` |
-| POST | `/api/v1/pratiche/{id}/flussi/` | Crea flusso | `flussi_service.crea_flusso` |
-| GET | `/api/v1/pratiche/{id}/flussi/{flusso_id}/` | Dettaglio flusso | `flussi_service` |
-| POST | `/api/v1/pratiche/{id}/flussi/{flusso_id}/stato/` | Cambia stato flusso | `flussi_service` |
-| GET | `/api/v1/pratiche/{id}/flussi/{flusso_id}/prerequisiti/` | Check prerequisiti | `flussi_service.verifica_prerequisiti` |
-| GET | `/api/v1/pratiche/{id}/flussi/{flusso_id}/canali/` | Canali abilitati per il flusso | `flussi_service.get_canali_disponibili` |
+| GET | `/api/v1/pratiche/{id}/flussi/` | Lista flussi pratica | `pratiche_service` |
+| POST | `/api/v1/pratiche/{id}/flussi/` | Crea flusso | `pratiche_service.crea_flusso` |
+| GET | `/api/v1/pratiche/{id}/flussi/{flusso_id}/` | Dettaglio flusso | `pratiche_service` |
+| POST | `/api/v1/pratiche/{id}/flussi/{flusso_id}/stato/` | Cambia stato flusso | `pratiche_service` |
+| GET | `/api/v1/pratiche/{id}/flussi/{flusso_id}/prerequisiti/` | Check prerequisiti | `pratiche_service.verifica_prerequisiti` |
+| GET | `/api/v1/pratiche/{id}/flussi/{flusso_id}/canali/` | Canali abilitati per il flusso | `pratiche_service.get_canali_disponibili` |
 | GET | `/api/v1/pratiche/{id}/flussi/{flusso_id}/regole-generazione/` | Regole generazione applicabili | `generazione_service.get_regole_applicabili` |
 | POST | `/api/v1/pratiche/{id}/flussi/{flusso_id}/genera/` | Generazione manuale pratica | `generazione_service.genera_pratica_manuale` |
 | GET | `/api/v1/pratiche/{id}/flussi/{flusso_id}/pratiche-generate/` | Pratiche generate dal flusso | `generazione_service.get_pratiche_generate` |
@@ -583,7 +585,7 @@ backend/apps/pratiche/tests/
 ├── services/
 │   ├── __init__.py
 │   ├── test_pratiche_service.py
-│   ├── test_flussi_service.py
+│   ├── test_pratiche_service_flussi.py
 │   ├── test_generazione_service.py
 │   └── test_handler_registry.py
 └── api/
@@ -597,7 +599,7 @@ backend/apps/pratiche/tests/
 | File | Test previsti |
 |------|--------------|
 | `test_pratiche_service.py` | Creazione pratica (con solo_interna true/false), cambio stato, assegnazione, errori su dati mancanti |
-| `test_flussi_service.py` | Creazione flusso, avvio, completamento, verifica prerequisiti, dispatch handler, lista canali |
+| `test_pratiche_service_flussi.py` | Creazione flusso, avvio, completamento, verifica prerequisiti, dispatch handler, lista canali |
 | `test_generazione_service.py` | Generazione manuale OK, generazione con regola inesistente → errore, lista regole applicabili, lista pratiche generate |
 | `test_handler_registry.py` | Lookup handler_key esistente, handler_key mancante → errore |
 
