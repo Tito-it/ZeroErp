@@ -1,0 +1,6 @@
+id,codice,codice_interno,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
+1,GENERALE,GENERALE,Nota generale,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
+2,INTERNA,INTERNA,Nota interna,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
+3,CLIENTE,CLIENTE,Nota per il cliente,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
+4,TECNICA,TECNICA,Nota tecnica,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
+5,LEGALE,LEGALE,Nota legale,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED

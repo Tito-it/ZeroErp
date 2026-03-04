@@ -195,19 +195,9 @@ jobs:
           
           python scripts/apply_signatures.py
       
-      - name: Genera MkDocs CI config
+      - name: Build docs site (Zensical)
         run: |
-          
-          python scripts/gen_mkdocs_ci.py
-
-
-      - name: Build MkDocs site
-        run: |
-          
-          # documentazione standard completa 
-          #  mkdocs build --strict      
-          # documentazione solo descrittiva PER CI (esclude dll/script/db)
-          mkdocs build -f mkdocs.ci.yml 
+          python scripts/build_docs_zensical.py
 
       - name: Deploy to GitHub Pages (no artifacts)
         uses: peaceiris/actions-gh-pages@v3
@@ -215,7 +205,7 @@ jobs:
           deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
           external_repository: Tito-it/ZeroERP-Docs
           publish_branch: gh-pages
-          publish_dir: ./site
+          publish_dir: ./site-zensical
 
 #  Blocatto AWS 27 01 2026 - non più usato
 
