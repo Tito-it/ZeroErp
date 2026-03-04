@@ -53,3 +53,5 @@ urllib3==2.6.3
 virtualenv==20.36.1
 watchdog==6.0.0
 wcmatch==10.1
+deepmerge==2.0
+zensical==0.0.24

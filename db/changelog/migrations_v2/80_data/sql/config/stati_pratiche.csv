@@ -1,1 +1,6 @@
-id,codice,descrizione,codice_interno,data_insert,user_insert,data_update,user_update
+id,codice,codice_interno,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
+1,BOZZA,BOZZA,Bozza,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
+2,APERTA,APERTA,Aperta,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
+3,SOSPESA,SOSPESA,Sospesa,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
+4,CHIUSA,CHIUSA,Chiusa,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
+5,ANNULLATA,ANNULLATA,Annullata,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
