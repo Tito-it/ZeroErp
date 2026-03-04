@@ -4,7 +4,7 @@
 >
 > **Approfondimento tabelle:**
 >
-> • [vendite.fatture](dbzero/vendite/tabelle/fatture)   
+> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
 > • [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze)   
 
 ---

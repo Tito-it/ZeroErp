@@ -4,7 +4,7 @@
 >
 > Guide:
 >     
-> [Audit Logging](/guide/messagggi_audit)
+> [Audit Logging](/guide/messaggi-audit)
 >
 > Approfondimento tabelle:   
 > 
