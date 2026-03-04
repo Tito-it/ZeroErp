@@ -18,18 +18,22 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 
 ## Indice
 
-- [Filosofia](#filosofia)
-- [Sviluppo Concentrico](#sviluppo-concentrico)
-- [Architettura](#architettura)
-- [Stack Tecnologico](#stack-tecnologico)
-- [Struttura del Database](#struttura-del-database)
-- [Motore Pratiche](#motore-pratiche)
-- [Stato dello Sviluppo](#stato-dello-sviluppo)
-- [Installazione](#installazione)
-- [Struttura Repository](#struttura-repository)
-- [Roadmap](#roadmap)
-- [Documentazione](#documentazione)
-- [Licenza](#licenza)
+- [ZeroERP](#zeroerp)
+  - [Stato progetto](#stato-progetto)
+  - [Indice](#indice)
+  - [Filosofia](#filosofia)
+  - [Sviluppo Concentrico](#sviluppo-concentrico)
+  - [Architettura](#architettura)
+  - [Stack Tecnologico](#stack-tecnologico)
+  - [Struttura del Database](#struttura-del-database)
+  - [Motore Pratiche](#motore-pratiche)
+  - [Stato dello Sviluppo](#stato-dello-sviluppo)
+  - [Installazione](#installazione)
+  - [Struttura Repository](#struttura-repository)
+  - [Roadmap](#roadmap)
+  - [Documentazione](#documentazione)
+  - [Licenza](#licenza)
+  - [Autore](#autore)
 
 ---
 
@@ -86,14 +90,14 @@ Scelte architetturali:
 
 ## Stack Tecnologico
 
-| Componente | Tecnologia |
-| --- | --- |
-| Database | PostgreSQL 18 |
-| Versioning DB | Liquibase 5 |
-| Backend | Django 6.01 + DRF |
-| Linguaggio backend | Python 3.14 |
-| Frontend | Vue.js (target), in definizione |
-| Tooling docs/dev | MkDocs, pre-commit, Docker |
+| Componente         | Tecnologia                      |
+| ------------------ | ------------------------------- |
+| Database           | PostgreSQL 18                   |
+| Versioning DB      | Liquibase 5                     |
+| Backend            | Django 6.01 + DRF               |
+| Linguaggio backend | Python 3.14                     |
+| Frontend           | Vue.js (target), in definizione |
+| Tooling docs/dev   | MkDocs, pre-commit, Docker      |
 
 ---
 
@@ -137,6 +141,8 @@ Fotografia sintetica (marzo 2026):
 - Motore pratiche: in consolidamento
 - Frontend: non avviato per release pubblica
 - Documentazione: in aggiornamento continuo
+
+ [Mappa](./mappa-concentrica.md)
 
 ---
 
