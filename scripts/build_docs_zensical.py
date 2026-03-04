@@ -20,7 +20,8 @@ from pathlib import Path
 ANY_INCLUDE_RE = re.compile(r"\{\%\s*include-markdown\s+\"([^\"]+)\"\s*\%\}")
 # Scopo: processare solo include verso file markdown reali.
 INCLUDE_MD_RE = re.compile(r"\.md$", re.IGNORECASE)
-ROOT_DBZERO_LINK_RE = re.compile(r"(\]\()(/dbzero/)")
+MARKDOWN_ABS_LINK_RE = re.compile(r"\]\((/(?:dbzero|it|en)/[^)]*)\)")
+HTML_ABS_HREF_RE = re.compile(r'href="(/(?:dbzero|it|en)/[^"]*)"')
 
 
 # Scopo: risolvere il path del file incluso con fallback robusto.
@@ -84,10 +85,42 @@ def expand_includes(
         previous = current
 
 
-# Scopo: riscrivere link root assoluti /dbzero/... su /it/dbzero/... per output i18n.
-def rewrite_root_links(text: str) -> tuple[str, int]:
-    rewritten, count = ROOT_DBZERO_LINK_RE.subn(r"\1/it/dbzero/", text)
-    return rewritten, count
+# Scopo: convertire link assoluti markdown in link relativi (compatibili con GitHub Pages project site).
+def rewrite_root_links(text: str, docs_root: Path, current_file: Path) -> tuple[str, int]:
+    current_rel_dir = current_file.parent.relative_to(docs_root)
+    rewritten_count = 0
+
+    def to_relative(raw_target: str) -> str:
+        path_part = raw_target
+        suffix = ""
+        for sep in ("#", "?"):
+            if sep in path_part:
+                idx = path_part.find(sep)
+                suffix = path_part[idx:] + suffix
+                path_part = path_part[:idx]
+
+        normalized = path_part.lstrip("/")
+        if normalized.startswith("dbzero/"):
+            normalized = f"it/{normalized}"
+
+        rel_target = os.path.relpath(normalized, start=current_rel_dir.as_posix())
+        if not rel_target.startswith("."):
+            rel_target = f"./{rel_target}"
+        return f"{rel_target}{suffix}"
+
+    def repl_md(match: re.Match[str]) -> str:
+        nonlocal rewritten_count
+        rewritten_count += 1
+        return f"]({to_relative(match.group(1))})"
+
+    def repl_html(match: re.Match[str]) -> str:
+        nonlocal rewritten_count
+        rewritten_count += 1
+        return f'href="{to_relative(match.group(1))}"'
+
+    rewritten = MARKDOWN_ABS_LINK_RE.sub(repl_md, text)
+    rewritten = HTML_ABS_HREF_RE.sub(repl_html, rewritten)
+    return rewritten, rewritten_count
 
 
 # Scopo: preprocessare tutti i file markdown in una copia temporanea della cartella docs.
@@ -106,7 +139,7 @@ def preprocess_docs(src_docs: Path, dst_docs: Path) -> tuple[int, int, int, list
         expanded, include_count = expand_includes(
             text, dst_docs, md, (md.resolve(),), warnings
         )
-        rewritten, link_count = rewrite_root_links(expanded)
+        rewritten, link_count = rewrite_root_links(expanded, dst_docs, md)
         md.write_text(rewritten, encoding="utf-8")
 
         processed_files += 1

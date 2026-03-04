@@ -291,29 +291,140 @@ I conti bancari non vengono legati al soggetto "puro", ma al **ruolo**:
 
 ---
 
-## Diagramma ER
+## Diagrammi ER
+
+Il modello e suddiviso in due diagrammi per leggibilita.
+
+### Identita, natura e assegnazione ruoli
+
+La struttura centrale: il soggetto con la sua natura giuridica, la matrice di compatibilita e il collegamento ai ruoli.
 
 ```mermaid
 erDiagram
-    tipi_soggetto ||--o{ tipi_soggetto_dettaglio : dettaglio
-    tipi_soggetto_dettaglio ||--o{ soggetti : classifica
-    tipi_soggetto ||--o{ tipi_ruoli_nature_ammesse : vincola
+    tipi_soggetto {
+        integer id PK
+        text codice
+        text descrizione
+    }
 
-    soggetti ||--o{ soggetti_ruoli : ha
-    soggetti ||--o| dati_societari : ha
-    tipi_ruoli ||--o{ soggetti_ruoli : classifica
-    tipi_ruoli ||--o{ tipi_ruoli_nature_ammesse : vincola
+    tipi_soggetto_dettaglio {
+        integer id PK
+        integer tipo_soggetto_id FK
+        text codice
+        text descrizione
+    }
 
-    soggetti_ruoli ||--o| clienti : specializza
-    soggetti_ruoli ||--o| fornitori : specializza
-    soggetti_ruoli ||--o| gestori : specializza
-    soggetti_ruoli ||--o| risorse_umane : specializza
-    soggetti_ruoli ||--o| vettori : specializza
-    soggetti_ruoli ||--o| emittenti_fiscali : specializza
-    soggetti_ruoli ||--o| psp : specializza
+    soggetti {
+        uuid id PK
+        integer tipo_soggetto_dettaglio_id FK
+        text ragione_sociale
+        text codice_fiscale
+        text partita_iva
+        bigint default_contatto_id FK
+    }
 
-    soggetti_ruoli ||--o{ contatti : ha
-    soggetti_ruoli ||--o{ conti_bancari : usa
+    dati_societari {
+        bigint id PK
+        uuid soggetto_id FK
+        text forma_giuridica
+        text rea
+    }
+
+    tipi_ruoli {
+        integer id PK
+        text codice
+        text descrizione
+    }
+
+    tipi_ruoli_nature_ammesse {
+        integer id PK
+        integer tipo_soggetto_id FK
+        integer tipo_ruolo_id FK
+    }
+
+    soggetti_ruoli {
+        bigint id PK
+        uuid soggetto_id FK
+        integer tipo_ruolo_id FK
+    }
+
+    tipi_soggetto ||--o{ tipi_soggetto_dettaglio : "dettaglio natura"
+    tipi_soggetto_dettaglio ||--o{ soggetti : "classifica"
+    tipi_soggetto ||--o{ tipi_ruoli_nature_ammesse : "vincola"
+    tipi_ruoli ||--o{ tipi_ruoli_nature_ammesse : "vincola"
+
+    soggetti ||--o{ soggetti_ruoli : "ha ruoli"
+    soggetti ||--o| dati_societari : "ha dati societari"
+    tipi_ruoli ||--o{ soggetti_ruoli : "classifica"
+```
+
+### Specializzazioni e tabelle trasversali
+
+Le tabelle specializzate dei ruoli e le tabelle trasversali (contatti, conti bancari) che si agganciano a `soggetti_ruoli`.
+
+```mermaid
+erDiagram
+    soggetti_ruoli {
+        bigint id PK
+        uuid soggetto_id FK
+        integer tipo_ruolo_id FK
+    }
+
+    clienti {
+        bigint id PK
+        bigint soggetto_ruolo_id FK
+    }
+
+    fornitori {
+        bigint id PK
+        bigint soggetto_ruolo_id FK
+    }
+
+    gestori {
+        bigint id PK
+        bigint soggetto_ruolo_id FK
+    }
+
+    risorse_umane {
+        bigint id PK
+        bigint soggetto_ruolo_id FK
+    }
+
+    vettori {
+        bigint id PK
+        bigint soggetto_ruolo_id FK
+    }
+
+    emittenti_fiscali {
+        bigint id PK
+        bigint soggetto_ruolo_id FK
+    }
+
+    psp {
+        bigint id PK
+        bigint soggetto_ruolo_id FK
+    }
+
+    contatti {
+        bigint id PK
+        uuid soggetto_id FK
+        bigint soggetto_ruolo_id FK
+    }
+
+    conti_bancari {
+        bigint id PK
+        bigint soggetto_ruolo_id FK
+    }
+
+    soggetti_ruoli ||--o| clienti : "specializza"
+    soggetti_ruoli ||--o| fornitori : "specializza"
+    soggetti_ruoli ||--o| gestori : "specializza"
+    soggetti_ruoli ||--o| risorse_umane : "specializza"
+    soggetti_ruoli ||--o| vettori : "specializza"
+    soggetti_ruoli ||--o| emittenti_fiscali : "specializza"
+    soggetti_ruoli ||--o| psp : "specializza"
+    soggetti_ruoli ||--o{ contatti : "ha"
+    soggetti_ruoli ||--o{ conti_bancari : "usa"
 ```
 
 ---
