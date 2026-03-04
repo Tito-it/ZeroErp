@@ -6,7 +6,7 @@
 > * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
 > * [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
 > * [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
-> * [WIP: Modello fatturazione utilities](../../../dev/work-in-progress/modello-fatturazione-utilities-gas-ee-idrico.md)
+> * [WIP: Modello fatturazione utilities](../../../dev/work-in-progress/fatturazione-modello-utilities-gas-ee-idrico.md)
 
 ---
 

@@ -22,7 +22,7 @@ Zero ERP utilizza diverse estensioni PostgreSQL per migliorare le funzionalità 
 * **[`dblink`](/postgresql/dblink)**
   Consente connessioni e query cross-database tra diverse istanze PostgreSQL, utilizzata principalmente per attività di logging remoto e integrazioni di dati distribuiti.
 
-* **[`pgagent`](/postgresql/pgagent)**
+* **[`pgagent`](/postgresql/pgAgent)**
   Agente di schedulazione per PostgreSQL che esegue job programmati lato DB. Archivia job, schedule, step e log nello schema pgagent ed è utilizzato in Zero ERP per orchestrare tutte le attività periodiche di manutenzione del database.
 
 

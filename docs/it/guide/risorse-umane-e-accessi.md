@@ -92,22 +92,27 @@ L'azienda che usa il sistema. Il guard `trgfn_risorse_umane_auth_user_guard_gest
 ## Regole di dominio
 
 ### R1 — Ruolo corretto
+<a id="r1--ruolo-corretto"></a>
 
 Ogni risorsa umana deve riferire un `soggetto_ruolo_id` con tipo ruolo **RISORSA_UMANA**. Il trigger `trgfn_risorse_umane_guard_ruolo` lo verifica ad ogni INSERT/UPDATE.
 
 ### R2 — Coerenza soggetto
+<a id="r2--coerenza-soggetto"></a>
 
 `risorse_umane.soggetto_id` deve corrispondere al `soggetto_id` del ruolo associato.
 
 ### R3 — Validita temporale
+<a id="r3--validita-temporale"></a>
 
 Se `valido_al` e valorizzato, deve essere >= `valido_dal`. Il check `chk_risorse_umane_date` lo garantisce.
 
 ### R4 — Collegamento a Django (solo gestore)
+<a id="r4--collegamento-a-django-solo-gestore"></a>
 
 Il collegamento a `django.auth_user` e consentito **solo** per risorse appartenenti al **soggetto gestore**. Questo vincolo riguarda l'appartenenza organizzativa ("fa parte della nostra azienda?"), non lo scope operativo. Per limitare su quali emittenti fiscali un utente puo operare, esiste un meccanismo separato: la whitelist `config.user_emittenti_fiscali` (vedi [Autorizzazioni e permessi](#autorizzazioni-e-permessi)).
 
 ### R5 — Unicita per persona
+<a id="r5--unicita-per-persona"></a>
 
 La catena `soggetti_ruoli(soggetto_id, tipo_ruolo_id)` UNIQUE + `risorse_umane(soggetto_ruolo_id)` UNIQUE garantisce **un solo record per persona**. Conseguenza: per il rientro di un ex-dipendente si riattiva il record esistente, non se ne crea uno nuovo.
 
