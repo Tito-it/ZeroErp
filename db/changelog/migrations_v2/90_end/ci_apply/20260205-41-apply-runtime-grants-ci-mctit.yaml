@@ -38,7 +38,9 @@ databaseChangeLog:
                   'magazzino',
                   'pagamenti',
                   'storico',
-                  'vendite'
+                  'vendite',
+                  'script',
+                  'pratiche'
                 ];
               BEGIN
                 -- In CI il ruolo dovrebbe esistere dal bootstrap; se manca non blocchiamo la pipeline.

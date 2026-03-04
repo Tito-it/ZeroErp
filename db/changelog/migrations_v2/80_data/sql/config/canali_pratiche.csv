@@ -1,0 +1,4 @@
+id,codice,codice_interno,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
+1,WEB_CLIENTI,WEB_CLIENTI,Portale web clienti,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
+2,APP_TECNICA,APP_TECNICA,App tecnica mobile,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
+3,PORTALE_FORNITORI,PORTALE_FORNITORI,Portale fornitori,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED

@@ -1,0 +1,156 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+site_name: Zero ERP Documentation
+repo_url: https://github.com/Tito-it/ZeroErp
+repo_name: Tito-it/ZeroErp
+dev_addr: 127.0.0.1:8010
+
+docs_dir: .tmp/zensical_docs
+site_dir: site-zensical
+
+theme:
+        name: material
+        language: it # lingua di default: Italiano
+        features:
+                - navigation.tabs
+                - navigation.sections
+                - navigation.expand
+                - navigation.indexes
+plugins:
+        - include-markdown:
+                  opening_tag: "{%"
+                  closing_tag: "%}"
+        - abs-to-rel
+        - search
+        - i18n:
+                  docs_structure: folder
+
+                  languages:
+                          - locale: it
+                            name: Italiano
+                            default: true
+                            build: true
+                          - locale: en
+                            name: English
+                            build: true
+
+markdown_extensions:
+        - toc:
+                  permalink: true
+        - admonition
+        - codehilite
+        - pymdownx.superfences:
+                  custom_fences:
+                          - name: mermaid
+                            class: mermaid
+                            format: !!python/name:pymdownx.superfences.fence_code_format
+
+extra_javascript:
+        - assets/javascripts/mermaid.min.js
+        - assets/javascripts/mermaid-init.js
+
+nav:
+        - Home: it/index.md
+        - Visione e Filosofia:
+                  - Manifesto: it/manifesto.md
+                  - Sviluppo Concentrico: it/sviluppo-concentrico.md
+                  - Cos’è Zero ERP: it/introduzione.md
+                  - Perchè Zero ERP: it/perche-zeroerp.md
+        - Installazione:
+                  - Prerequisiti: it/installazione.md
+                  - Licenza: it/LICENSE.md
+        - Architettura:
+                  - it/architettura.md
+                  - Database:
+                            - Liquibase Setup & Workflow: it/liquibase-setup-workflow.md
+                            - Linee Guida SQL: it/linee-guida-sql.md
+                            - Linee Guida Trigger: it/linee-guida-trigger.md
+                            - Db PostgresSQL:
+                                      - Panoramica: it/postgresql/intro.md
+                                      - Aggiornamento versione: it/postgresql/aggiornamento-versione-postgresql.md
+                                      - Parametri personalizzati (GUC): it/postgresql/parametri-personalizzati-(GUC).md
+                                      - Estensioni:
+                                                - Utilizzate: it/postgresql/estensioni-utilizzate.md
+                                                - dblink: it/postgresql/dblink.md
+                                                - pgAgent: it/postgresql/pgAgent.md
+                                                - pgcrypto: it/postgresql/pgcrypto.md
+
+        - DB Zero:
+                  - it/dbzero/index.md
+                  - Schemi:
+                            - Acquisti: it/dbzero/acquisti/index.md
+                            - Anagrafiche: it/dbzero/anagrafiche/index.md
+                            - Catalogo: it/dbzero/catalogo/index.md
+                            - Config: it/dbzero/config/index.md
+                            - Dbops: it/dbzero/dbops/index.md
+                            - Magazzino: it/dbzero/magazzino/index.md
+                            - Maintenance: it/dbzero/maintenance/index.md
+                            - Pagamenti: it/dbzero/pagamenti/index.md
+                            - Pratiche: it/dbzero/pratiche/index.md
+                            - Public: it/dbzero/public/index.md
+                            - Storico: it/dbzero/storico/index.md
+                            - Script: it/dbzero/script/index.md
+                            - Vendite: it/dbzero/vendite/index.md
+        - Backend (Django):
+                  - it/backend/index.md
+                  - Aree:
+                            - Acquisti: it/backend/acquisti/index.md
+                            - Anagrafiche: it/backend/anagrafiche/index.md
+                            - Catalogo: it/backend/catalogo/index.md
+                            - Core: it/backend/core/index.md
+                            - Config: it/backend/config/index.md
+                            - Contabilita: it/backend/contabilita/index.md
+                            - Magazzino: it/backend/magazzino/index.md
+                            - Pagamenti: it/backend/pagamenti/index.md
+                            - Storico: it/backend/storico/index.md
+                            - Vendite: it/backend/vendite/index.md
+
+        - Guide tecniche:
+                  - Soggetti e ruoli anagrafici: it/guide/soggetti-e-ruoli-anagrafici.md
+                  - Risorse Umane e Accessi al Software: it/guide/risorse-umane-e-accessi.md
+                  - Architettura Permessi e Autorizzazioni: it/guide/architettura-permessi-e-autorizzazioni.md
+                  - Gestione delle Istanze Utility: it/guide/gestione-delle-istanze-utility.md
+                  - Generazione di un cliente: it/guide/generazione-cliente.md
+                  - Gestione degli indirizzi: it/guide/gestione-degli-indirizzi.md
+                  - Riclassificazione vie: it/guide/riclassificazione-vie.md
+                  - Gestione dei contatti: it/guide/gestione-dei-contatti.md
+                  - Gestione conti bancari: it/guide/gestione-conti-bancari.md
+                  - Fatturazione: it/guide/fatturazione.md
+                  - Gestione dei pagamenti: it/guide/gestione-dei-pagamenti.md
+                  - Implementazione Transaction ID: it/guide/tx_id_implementation_guide.md
+                  - Storicizzazione Tabelle: it/guide/storicizzazione-tabelle.md
+                  - Configurazione e gestione parametri: it/guide/configurazione-e-gestione-parametri.md
+                  - Automazione DB: it/guide/automazione-db.md
+                  - Log:
+                            - Messaggi di Errore: it/guide/Messaggi-di-Errore-e-Generazione-Log.md
+                            - Messaggi di Audit: it/guide/messaggi-audit.md
+                            - Processi e Job: it/guide/Analisi-tracciamento-processi-e-job.md
+        - Tutorial:
+                  - Framework automazione DB: it/tutorial/framework-automazione-db.md
+
+        - Strumenti:
+                  - Generatore Documentazione: it/dbzero/tools/gen_db_docs.md
+        - Sviluppatori:
+                  - API: it/dev/api.md
+                  - Backend:
+                            - Guida backend-dev: it/dev/backend/backend-dev.md
+                            - Checklist post upgrade: it/dev/backend/checklist-post-upgrade.md
+                            - Configurazione Django: it/dev/backend/configurazione-django.md
+                  - Database:
+                            - VM dbdev (PostgreSQL): it/dev/db/dbdev.md
+                  - Infrastruttura:
+                            - Proxmox: it/dev/infra/proxmox.md
+                  - Workstation:
+                            - Vm wrk1-dev (ubuntu): it/dev/workstation-dev/configurazione.md
+                  - GitHub:
+                            - Documentazione: it/dev/github/configurazione.md
+        - Glossario:
+                  - Dev&Ops: it/glossario/devops&db.md
+                  - Process Analysis: it/glossario/process-analysis.md

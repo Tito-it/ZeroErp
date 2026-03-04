@@ -27,7 +27,6 @@ plugins:
         - include-markdown:
                   opening_tag: "{%"
                   closing_tag: "%}"
-                  fail_on_missing: true
         - abs-to-rel
         - search
         - i18n:

@@ -1,0 +1,5 @@
+id,codice,codice_interno,descrizione,sequenza,attivo,meta,data_insert,user_insert,data_update,user_update
+1,BASSA,BASSA,Bassa,10,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
+2,NORMALE,NORMALE,Normale,20,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
+3,ALTA,ALTA,Alta,30,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
+4,URGENTE,URGENTE,Urgente,40,t,{},2026-03-03 00:00:00+01,SEED,2026-03-03 00:00:00+01,SEED
