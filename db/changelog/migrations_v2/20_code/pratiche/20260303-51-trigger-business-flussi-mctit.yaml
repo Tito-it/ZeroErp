@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger business-specific su pratiche.flussi
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260303-51-trigger-business-flussi-mctit.yaml
+
+  - changeSet:
+      id: 20260303-51-trigger-business-flussi
+      author: mctit
+      runOnChange: true
+      comment: >
+        Applica 4 trigger business su pratiche.flussi:
+        guard prerequisiti, giornale insert, giornale stato, generazione.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Trigger business su pratiche.flussi
+              -- =========================================================
+
+              -- 1. Guard prerequisiti BEFORE INSERT
+              DROP TRIGGER IF EXISTS trg_flussi_a10_guard_prerequisiti_ins
+              ON pratiche.flussi;
+
+              CREATE TRIGGER trg_flussi_a10_guard_prerequisiti_ins
+              BEFORE INSERT
+              ON pratiche.flussi
+              FOR EACH ROW
+              EXECUTE FUNCTION pratiche.trgfn_flussi_guard_prerequisiti();
+
+              COMMENT ON TRIGGER trg_flussi_a10_guard_prerequisiti_ins
+              ON pratiche.flussi
+              IS 'Guard: verifica prerequisiti template prima di inserire un flusso.';
+
+              -- 2. FLUSSO_CREATO su INSERT
+              DROP TRIGGER IF EXISTS trg_flussi_z90_giornale_ins
+              ON pratiche.flussi;
+
+              CREATE TRIGGER trg_flussi_z90_giornale_ins
+              AFTER INSERT
+              ON pratiche.flussi
+              FOR EACH ROW
+              EXECUTE FUNCTION pratiche.trgfn_flussi_giornale_ins();
+
+              COMMENT ON TRIGGER trg_flussi_z90_giornale_ins
+              ON pratiche.flussi
+              IS 'Logga FLUSSO_CREATO nel giornale su INSERT.';
+
+              -- 3. FLUSSO_STATO_CAMBIATO su UPDATE stato_id
+              DROP TRIGGER IF EXISTS trg_flussi_z90_giornale_stato_upd
+              ON pratiche.flussi;
+
+              CREATE TRIGGER trg_flussi_z90_giornale_stato_upd
+              AFTER UPDATE OF stato_id
+              ON pratiche.flussi
+              FOR EACH ROW
+              WHEN (OLD.stato_id IS DISTINCT FROM NEW.stato_id)
+              EXECUTE FUNCTION pratiche.trgfn_flussi_giornale_stato();
+
+              COMMENT ON TRIGGER trg_flussi_z90_giornale_stato_upd
+              ON pratiche.flussi
+              IS 'Logga FLUSSO_STATO_CAMBIATO nel giornale quando stato_id cambia.';
+
+              -- 4. Generazione cross-pratica su UPDATE stato_id
+              DROP TRIGGER IF EXISTS trg_flussi_z90_generazione_upd
+              ON pratiche.flussi;
+
+              CREATE TRIGGER trg_flussi_z90_generazione_upd
+              AFTER UPDATE OF stato_id
+              ON pratiche.flussi
+              FOR EACH ROW
+              WHEN (OLD.stato_id IS DISTINCT FROM NEW.stato_id)
+              EXECUTE FUNCTION pratiche.trgfn_flussi_generazione();
+
+              COMMENT ON TRIGGER trg_flussi_z90_generazione_upd
+              ON pratiche.flussi
+              IS 'Genera pratiche cross-pratica quando flusso cambia stato (controlla COMPLETATO internamente).';

@@ -1,248 +1,520 @@
-# 🌱 Guida alla Gestione degli Indirizzi
-Questa guida illustra l’architettura, le scelte progettuali e i componenti coinvolti nella gestione degli indirizzi in Zero ERP.
+# Guida – Gestione degli Indirizzi
 
-> (latest review 15-02-26)
+> (latest review 02-03-26)
 >
-> 👀 **Vedi anche**
+> Destinatari: sviluppatori database, backend, integratori e analisti funzionali
 >
-> * [`Guida Soggetti & Ruoli`](/guide/soggetti-e-ruoli-anagrafici)  
-> **All'interno si trova l'appendice per le funzionalità indirizzo ruolo/soggetto** 
-
----
- 
-## 1. Principi Progettuali
-
-1. **Unicità e non duplicazione**
-
-   * Il dettaglio civico [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) è unico: vincolo `UNIQUE(via_norm, civico_norm, interno, piano, palazzina)` impedisce duplicati.
-
-2. **Centralizzazione dei dati geografici**
-
-   * Stati, regioni, province, comuni, CAP, toponomastica e stradario risiedono nello schema **`config`**, con le chiavi esterne in **`anagrafiche`**.
-
-3. **Storicizzazione trasparente**
-
-   * Tutte le modifiche a `config.stradario` e `anagrafiche.indirizzi` sono salvate in **`storico.*`** con snapshot JSONB, tipi operazione (A/U/D) e transazione **tx_id**, tramite la trigger-function generica [`script.trgfn_storico_generic()`](/dbzero/script/funzioni/trgfn_storico_generic).
-
-
-4. **Fallback storico/originario**
-
-   * Le helper [`script.fn_get_snapshot_as_of()`](/dbzero/script/funzioni/fn_get_snapshot_as_of) e [`script.fn_get_record_id_as_of()`](/dbzero/script/funzioni/fn_get_record_id_as_of) permettono di leggere il JSONB di un record “as of” una data, utile per audit e rendicontazione.
-
-5. **Supporto indirizzi “liberi”**
-
-   * In importazioni o migrazioni, [`anagrafiche.indirizzi`](/dbzero/anagrafiche/tabelle/indirizzi) accetta `indirizzo_libero` senza FK, con check constraint che evita mix errati di campi.
+> Vedi anche
+>
+> * [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici)
+> * [Gestione dei contatti](/guide/gestione-dei-contatti)
+> * [Generazione di un cliente](/guide/generazione-cliente)
 
 ---
 
-## 2. Schema Tabellare
+## Introduzione
 
-### 2.1. Configurazione Geografica (`config`)
+In Zero ERP un **indirizzo** non e un semplice campo di testo: e un dato strutturato che collega una persona (o un'azienda) a un luogo fisico preciso, con geolocalizzazione, gerarchia geografica completa e storico delle modifiche.
 
-* **[config.stati](/dbzero/config/tabelle/stati)** : Stati con `iso_code2`, `iso_code3`.
-* **[config.regioni](/dbzero/config/tabelle/regioni)**, **[config.province](/dbzero/config/tabelle/province)**, **[config.comuni](/dbzero/config/tabelle/comuni)**: gerarchia geografica.
-* **[config.codici_postali](/dbzero/config/tabelle/codici_postali)**: CAP per comune.
-* **[config.toponomastica](/dbzero/config/tabelle/toponomastica)**: tipologie di toponimo (via, strada, etc.).
-* **[config.stradario_generale](/dbzero/config/tabelle/stradario_generale)**: anagrafica delle vie (toponomastica + nome.).
-* **[config.stradario](/dbzero/config/tabelle/stradario)**: stradario per via di un luogo (comune + stradario_generale).
-* **[config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)**: classi di indirizzo(residenza, posta, etc.).
+Il problema che il modulo risolve e duplice. Da un lato serve **normalizzare** gli indirizzi — evitare che "Via Roma 1" e "V. Roma, 1" diventino due record diversi. Dall'altro serve distinguere tra indirizzi che appartengono alla **persona** (residenza, domicilio fiscale — dati identitari che non cambiano al cambiare del ruolo) e indirizzi che appartengono a un **ruolo** (sede operativa del cliente, indirizzo di spedizione del fornitore — dati operativi legati a cio che la persona fa nel sistema).
 
-### 2.2. Dettaglio Civico e Associazione (`anagrafiche`)
+Questa distinzione — **indirizzo per soggetto** e **indirizzo per ruolo** — e il cuore architetturale del modulo. Le due tabelle condividono la stessa struttura e lo stesso livello di normalizzazione, ma rispondono a domande diverse:
 
-* **[anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)**: via_norm, civico_norm, interno, piano, palazzina, geoloc.
-* **[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)**: associa il **ruolo** (`soggetto_ruolo_id`) a indirizzo normalizzato (`indirizzi_dettaglio_id`) o libero (`indirizzo_libero`, `comune_id`, ecc.).
+* **Indirizzo per soggetto:** dove abita questa persona? Qual e la sede legale di questa azienda?
+* **Indirizzo per ruolo:** dove spediamo la merce a questo cliente? Qual e la sede operativa di questo fornitore?
 
-### 2.3. Storico (`storico`)
+Il sistema sa come mettere insieme i due livelli: quando un processo ha bisogno di un indirizzo (fatturazione, spedizione, comunicazione), cerca prima nel layer **ruolo** (master) e, se non trova il tipo richiesto, cade sul layer **soggetto** (fallback).
 
-* **[storico.stradario](/dbzero/storico/tabelle/stradario)**, **[storico.indirizzi](/dbzero/storico/tabelle/indirizzi)**, **[storico.indirizzi_dettaglio](/dbzero/storico/tabelle/indirizzi_dettaglio)**: snapshot JSONB con periodi di validità e tx_id.
+**Cosa troverai in questa guida:**
 
----
-
-## 3. Funzioni e Trigger Coinvolti
-
-| **Oggetto**                                                                                                           | **Tipo**         | **Descrizione**                                          |
-| --------------------------------------------------------------------------------------------------------------------- | ---------------- | -------------------------------------------------------- |
-| [script.fn_get_parameter_full(...)](/dbzero/script/funzioni/fn_get_parameter_full)                                    | helper           | Parametri e override (tenant, user, session, funzione)   |
-| [script.fn_get_default_by_param(...)](/dbzero/script/funzioni/fn_get_default_by_param)                                | helper           | Default generico da lookup table + parametro             |
-| [script.fn_get_snapshot_as_of(...)](/dbzero/script/funzioni/fn_get_snapshot_as_of)                                    | helper           | JSONB snapshot “as of” data                              |
-| [script.fn_get_record_id_as_of(...)](/dbzero/script/funzioni/fn_get_record_id_as_of)                                  | helper           | ID record “as of” data, solo storico                     |
-| [script.fn_generate_codice(tipo)](/dbzero/script/funzioni/fn_generate_codice)                                         | helper           | Genera codici progressivi da `sistema_codici`            |
-| [script.trgfn_storico_generic()](/dbzero/script/funzioni/trgfn_storico_generic)                                       | trigger function | Storicizzazione generica con JSONB snapshot              |
-| [script.trgfn_sync_stato_iso2()](/dbzero/script/funzioni/trgfn_sync_stato_iso2)                                       | trigger function | Sincronizza `stato_iso2` da `config.stati`               |
-| [script.trgfn_generate_codice_generic()](/dbzero/script/funzioni/trgfn_generate_codice_generic)                       | trigger function | Generica per `codice_<entità>`, usa `fn_generate_codice` |
-| [anagrafiche.trgfn_indirizzi_dettaglio_normalize()](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize) | trigger function | Normalizza `via_norm`, `civico_norm`                     |
+* Le entita coinvolte e il loro significato nel modello
+* Come funziona la normalizzazione e perche e importante
+* La distinzione ruolo/soggetto e la policy di risoluzione master/fallback
+* Le regole di dominio numerate (vincoli, guard, matrici)
+* Il ciclo di vita degli indirizzi con scenari concreti
+* Trigger e funzioni coinvolte
+* I diagrammi ER del modulo
 
 ---
 
-## 4. Flusso di Vita di un Indirizzo
+## Tabelle coinvolte
 
-1. **Inserimento**: normalizzazione via trigger su `indirizzi_dettaglio` o inserimento di `indirizzo_libero`.
-2. **Associazione**: `anagrafiche.indirizzi` collega il ruolo (`soggetto_ruolo_id`) a riga di dettaglio o a indirizzo libero; `anagrafiche.indirizzi_soggetti` copre il layer identitario del soggetto.
-3. **Storicizzazione**: `trgfn_storico_generic('indirizzi_id')` registra snapshot.
-4. **Lettura storica**: `fn_get_snapshot_as_of()`/`fn_get_record_id_as_of()` ricostruiscono lo stato di un record a una data.
-
----
-
-## 5. Importazioni e Indirizzi Liberi
-
-* Durante migrazioni di massa, si popola `indirizzo_libero` senza forzare FK a `indirizzi_dettaglio`.
-* Check constraints assicurano che non si mischino dati normalizzati e liberi.
-* Il flag `storicizza` (booleano) permette di disabilitare temporaneamente la storicizzazione per carichi massivi.
+* [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi) — indirizzi per ruolo (layer operativo)
+* [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti) — indirizzi per soggetto (layer identitario)
+* [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — il civico normalizzato
+* [config.stradario](/dbzero/config/tabelle/stradario) — lo stradario locale (via + comune + CAP)
+* [config.stradario_generale](/dbzero/config/tabelle/stradario_generale) — anagrafica delle vie (toponimo + nome)
+* [config.toponomastica](/dbzero/config/tabelle/toponomastica) — tipologie di toponimo (Via, Piazza, Corso...)
+* [config.stati](/dbzero/config/tabelle/stati), [config.regioni](/dbzero/config/tabelle/regioni), [config.province](/dbzero/config/tabelle/province), [config.comuni](/dbzero/config/tabelle/comuni) — gerarchia geografica
+* [config.codici_postali](/dbzero/config/tabelle/codici_postali) — CAP per comune
+* [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi) — classificazione degli indirizzi (RES, SEDELEG, FATT...)
+* [storico.indirizzi](/dbzero/storico/tabelle/indirizzi), [storico.indirizzi_dettaglio](/dbzero/storico/tabelle/indirizzi_dettaglio), [storico.stradario](/dbzero/storico/tabelle/stradario) — snapshot storici
 
 ---
 
-## 6. Riclassificazione Vie (Caso A/B)
+## Le entita e il loro significato
 
-Questa sezione descrive una **policy unica** per gestire variazioni di vie/comuni mantenendo coerenza dei dati e storicizzazione completa.
+### Indirizzo dettaglio (il civico)
 
-### ✅ Policy operativa unica
+E il livello piu basso: il singolo numero civico su una via. La tabella `anagrafiche.indirizzi_dettaglio` contiene il riferimento allo stradario, il civico, l'eventuale estensione (A, B...), la palazzina, la scala, il piano, l'interno e la geolocalizzazione puntuale.
 
-Per tutte le casistiche (rinomina parziale, rinomina totale, fusione vie, variazioni comuni) si adotta la stessa logica:
+Il campo `indirizzo_normalizzato` viene calcolato automaticamente dal trigger di normalizzazione e produce una stringa leggibile tipo "Via Roma 1, Palazzina A, Int. 3". Questo e il dato che appare nelle viste e nei documenti.
 
-1. **Creare il nuovo riferimento in configurazione**
-   * Vie: nuova riga in `config.stradario_generale` e relativo record in `config.stradario`.
-   * Comuni: nuovo riferimento in `config.comuni` (o aggiornamento coerente con le regole di dominio).
-2. **Allineare gli indirizzi coinvolti**
-   * Aggiornare **solo** le righe di `anagrafiche.indirizzi_dettaglio` interessate, puntandole al nuovo riferimento.
-3. **Rinormalizzare**
-   * I trigger di normalizzazione aggiornano `via_norm` e `indirizzo_normalizzato`.
-4. **Storico garantito**
-   * Le modifiche sono tracciate in `storico.stradario` e in `storico.indirizzi_dettaglio` (e, se rilevante, nello storico dei comuni).
+L'unicita del civico e garantita dal vincolo `uq_indirizzi_dettaglio_norm`: non possono esistere due record con la stessa combinazione (stradario, civico, estensione, palazzina, scala, piano, interno) ([R7](#r7--unicita-del-civico)).
 
-Per la riclassificazione e' prevista la procedura `maintenance.proc_bump_indirizzi_dettaglio(...)`, che abilita la manutenzione e forza la rinormalizzazione degli indirizzi collegati.
+### Indirizzo per ruolo (`anagrafiche.indirizzi`)
 
-### Esempi applicativi
+E l'indirizzo **operativo**, legato a un ruolo del soggetto (`soggetto_ruolo_id`). Esempi: l'indirizzo di spedizione di un cliente, la sede operativa di un fornitore, l'indirizzo di fatturazione.
 
-* **Rinomina totale via**: nuova via + riallineamento di tutti i civici collegati al vecchio `stradario_id`.
-* **Rinomina parziale via**: nuova via + riallineamento solo dei civici del tratto interessato.
-* **Fusione vie**: riallineamento dei civici su un unico `stradario_id`.
+I tipi di indirizzo ammessi dipendono dal tipo di ruolo: la matrice `config.tipi_ruolo_tipi_indirizzo` definisce quali tipi sono consentiti per ciascun tipo di ruolo ([R5](#r5--validazione-tipo-indirizzo-per-ruolo)).
 
-### 🧩 Nota su manutenzione toponomastica
+Vincolo di unicita: un solo indirizzo per tipo per ruolo (`UNIQUE (soggetto_ruolo_id, tipo_indirizzo_id)` — [R2](#r2--unicita-per-tipo)).
 
-La correzione di un toponimo non avviene modificando la riga in uso:  
-si crea una **nuova** voce in `config.toponomastica`, si riallineano i record di `config.stradario_generale` interessati e si lascia che la normalizzazione aggiorni `indirizzo_normalizzato`.
+### Indirizzo per soggetto (`anagrafiche.indirizzi_soggetti`)
 
-### ⚠️ Manutenzione straordinaria (riclassificazione controllata)
+E l'indirizzo **identitario**, legato direttamente al soggetto (`soggetto_id`). Esempi: la residenza di una persona fisica, la sede legale di un'azienda, il domicilio fiscale.
 
-Le seguenti procedure sono riservate a **manutenzione straordinaria** e vanno usate solo in contesti controllati:
+Questi indirizzi sono indipendenti dai ruoli: se una persona e sia cliente che fornitore, la sua residenza esiste una sola volta a livello soggetto.
 
-* [`maintenance.proc_bump_toponomastica`](/dbzero/maintenance/funzioni/proc_bump_toponomastica) — correzione toponimo con riallineamento automatico di `stradario_generale`.
-* **[`maintenance.proc_bump_indirizzi_dettaglio`](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio)** — riallineamento degli indirizzi civici dopo riclassificazione.
+I tipi ammessi dipendono dalla natura del soggetto (persona fisica, persona giuridica...): la matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo` definisce le regole ([R6](#r6--validazione-tipo-indirizzo-per-soggetto)).
+
+Vincolo di unicita: un solo indirizzo per tipo per soggetto (`UNIQUE (soggetto_id, tipo_indirizzo_id)` — [R2](#r2--unicita-per-tipo)).
+
+### Modalita normalizzata vs libera
+
+Entrambe le tabelle indirizzo (ruolo e soggetto) supportano due modalita:
+
+* **Normalizzata** (preferita): il campo `indirizzo_dettaglio_id` punta a un civico in `indirizzi_dettaglio`. Si ottiene geolocalizzazione, gerarchia completa e deduplicazione.
+* **Libera** (eccezione): il campo `indirizzo_libero` contiene testo non strutturato, con campi ausiliari (`comune_id`, `stato_id`, `locality`, `postal_box`). Utile per indirizzi esteri o importazioni da sistemi legacy.
+
+Le due modalita sono **mutualmente esclusive**: un indirizzo e normalizzato oppure libero, mai entrambi ([R1](#r1--xor-normalizzatolibero)).
+
+### Tipi indirizzo
+
+La tabella `config.tipi_indirizzi` cataloga le tipologie: RES (residenza), SEDELEG (sede legale), SEDEOP (sede operativa), FATT (fatturazione), DOMFISC (domicilio fiscale), CORR (corrispondenza), e altre.
+
+Ogni tipo puo essere associato a un layer (soggetto) o all'altro (ruolo) o a entrambi, secondo le matrici di configurazione.
+
+### Gerarchia geografica
+
+Lo stradario si appoggia a una catena di configurazione completa:
+
+```text
+config.toponomastica → config.stradario_generale → config.stradario
+                                                         ↓
+                                                   config.comuni
+                                                         ↓
+                                                   config.province
+                                                         ↓
+                                                   config.regioni
+                                                         ↓
+                                                   config.stati
+```
+
+Dallo `stradario_id` di un civico si risale all'intera gerarchia senza duplicare dati.
+
+### Viste resolved
+
+Le viste resolved centralizzano la composizione dell'indirizzo leggibile (human-readable) con tutti i campi territoriali:
+
+* [anagrafiche.vw_indirizzi_resolved_base](/dbzero/anagrafiche/views/vw_indirizzi_resolved_base) — unifica RUOLO e SOGGETTO con gerarchia geografica completa
+* [anagrafiche.vw_indirizzi_resolved_ruolo](/dbzero/anagrafiche/views/vw_indirizzi_resolved_ruolo) — solo layer RUOLO
+* [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto) — solo layer SOGGETTO
+* [anagrafiche.vw_indirizzi_resolved_all](/dbzero/anagrafiche/views/vw_indirizzi_resolved_all) — unione completa di entrambi i layer
+* [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio) — dettaglio civico con descrizione comune
+
+Le viste espongono anche la **provenienza** (`source`: `RUOLO` / `SOGGETTO`) come campo derivato, utile per audit e debug.
 
 ---
 
-*Questa guida copre l’intero ciclo di vita e le componenti software per la gestione degli indirizzi in Zero ERP: dalla tabella geografica di base, al dettaglio civico, fino alle funzioni di audit e storicizzazione.*
+## Policy di risoluzione (master/fallback)
 
-### 7. Diagramma ER
+Quando un processo ha bisogno di un indirizzo — per fatturare, per spedire, per comunicare — il sistema non chiede al chiamante di sapere se l'indirizzo sta a livello ruolo o soggetto. La risoluzione avviene automaticamente:
+
+1. **Master** — cerco nel layer **ruolo** (`anagrafiche.indirizzi`) il tipo richiesto. Se il tipo esatto non esiste, la matrice `config.tipi_ruolo_tipi_indirizzo` definisce una catena di fallback tra tipi (es. se non c'e SEDEOP, usa SEDELEG).
+2. **Fallback** — se il layer ruolo non risolve, cerco nel layer **soggetto** (`anagrafiche.indirizzi_soggetti`) con la stessa logica di fallback tra tipi.
+
+La funzione [`script.fn_get_indirizzo(p_soggetto_ruolo_id, p_tipo_codice)`](/dbzero/script/funzioni/fn_get_indirizzo) implementa questa catena e restituisce un set ricco con 26 colonne (indirizzo completo, geolocalizzazione, gerarchia geografica).
+
+Per letture dirette senza fallback:
+
+* [`script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id)`](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo) — solo layer ruolo
+* [`script.fn_get_indirizzi_by_soggetto(p_soggetto_id)`](/dbzero/script/funzioni/fn_get_indirizzi_by_soggetto) — solo layer soggetto
+* [`script.fn_get_indirizzo_by_soggetto(p_soggetto_id, p_tipo_codice)`](/dbzero/script/funzioni/fn_get_indirizzo_by_soggetto) — layer soggetto con fallback tra tipi
+
+---
+
+## Regole di dominio
+
+### R1 — XOR normalizzato/libero
+
+Un indirizzo e **normalizzato** oppure **libero**, mai entrambi. I check constraint `chk_indirizzi_xor_norm_libero` e `chk_indirizzi_soggetti_xor_norm_libero` lo garantiscono su entrambe le tabelle.
+
+### R2 — Unicita per tipo
+
+Un solo indirizzo per tipo per entita:
+
+* Layer ruolo: `UNIQUE (soggetto_ruolo_id, tipo_indirizzo_id)`
+* Layer soggetto: `UNIQUE (soggetto_id, tipo_indirizzo_id)`
+
+### R3 — Completezza indirizzo libero
+
+Se `indirizzo_dettaglio_id` e NULL (modalita libera), sono obbligatori `indirizzo_libero` e `stato_id`. Inoltre e richiesta una delle seguenti combinazioni:
+
+* `comune_id` + `codice_postale_id` (indirizzo italiano)
+* `locality` + `postal_box` con almeno uno tra `administrative_area` e `sublocality` (indirizzo internazionale)
+
+I check constraint `chk_indirizzi_free_requirements` e `chk_indirizzi_soggetti_free_requirements` lo verificano.
+
+### R4 — Protezione stradario_id
+
+Il campo `stradario_id` su `indirizzi_dettaglio` non puo essere modificato manualmente. Il guard `trgfn_indirizzi_dettaglio_protect_update` blocca l'operazione con errore `E_COLONNA_NON_MODIFICABILE`. La riclassificazione va eseguita tramite la procedura di manutenzione dedicata (vedi [Riclassificazione vie](/guide/riclassificazione-vie)).
+
+### R5 — Validazione tipo indirizzo per ruolo
+
+Il trigger `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` verifica che il `tipo_indirizzo_id` sia ammesso per il tipo di ruolo del soggetto, consultando la matrice `config.tipi_ruolo_tipi_indirizzo`.
+
+Regola: se la matrice non ha righe per quel tipo di ruolo, tutti i tipi sono ammessi (adozione progressiva). Se ha almeno una riga, sono ammessi solo quelli elencati come attivi e in periodo di validita.
+
+### R6 — Validazione tipo indirizzo per soggetto
+
+Il trigger `trgfn_indirizzi_soggetti_guard_tipo_indirizzo` verifica che il `tipo_indirizzo_id` sia ammesso per il tipo di soggetto dettaglio, consultando la matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
+
+Stessa logica di R5: senza righe nella matrice, nessuna restrizione; con righe, whitelist attiva.
+
+### R7 — Unicita del civico
+
+Il vincolo `uq_indirizzi_dettaglio_norm` su `indirizzi_dettaglio` garantisce che non esistano duplicati dello stesso civico: la combinazione (`stradario_id`, `civico`, `estensione_civico`, `palazzina`, `scala`, `piano`, `interno`) deve essere unica. I campi nullable sono normalizzati con `COALESCE(..., '')`.
+
+### R8 — Normalizzazione automatica
+
+I trigger di normalizzazione (`trgfn_indirizzi_dettaglio_normalize` e `trgfn_indirizzi_base_normalize`) calcolano automaticamente i campi derivati:
+
+* `via_norm`, `civico_norm`: forme normalizzate per confronti e deduplicazione
+* `indirizzo_normalizzato`: stringa leggibile completa
+* In modalita normalizzata, i campi fallback (comune, stato...) vengono azzerati
+* In modalita libera, lo `stato_id` di default viene impostato automaticamente
+
+---
+
+## Ciclo di vita
+
+### Inserimento di un indirizzo normalizzato
+
+La sequenza tipica per un nuovo indirizzo strutturato:
+
+1. Verificare (o creare) il civico in `anagrafiche.indirizzi_dettaglio` — il vincolo di unicita R7 impedisce duplicati: se il civico esiste gia, si usa quello esistente
+2. Inserire in `anagrafiche.indirizzi` (layer ruolo) o `anagrafiche.indirizzi_soggetti` (layer soggetto) con `indirizzo_dettaglio_id` valorizzato
+3. I trigger si occupano di: validare il tipo (R5/R6), normalizzare i campi (R8), sincronizzare la geolocalizzazione, generare `tx_id` e audit
+
+### Inserimento di un indirizzo libero (importazione)
+
+Per dati non normalizzabili (migrazioni, indirizzi esteri):
+
+1. Inserire con `indirizzo_dettaglio_id = NULL` e `indirizzo_libero` valorizzato
+2. Fornire i campi obbligatori per R3 (`stato_id` + combinazione geografica minima)
+3. Il trigger di normalizzazione azzera i campi di fallback incompatibili e imposta i default
+
+La modalita libera e pensata come **eccezione**: la normalizzazione successiva e sempre auspicabile.
+
+### Cambio residenza
+
+Quando una persona cambia residenza:
+
+1. UPDATE di `anagrafiche.indirizzi_soggetti` per il tipo `RES`, puntando al nuovo `indirizzo_dettaglio_id`
+2. Il trigger di storicizzazione salva automaticamente lo snapshot del vecchio indirizzo in `storico.indirizzi_soggetti`
+3. Se la persona ha anche un indirizzo di ruolo legato alla vecchia residenza, questo **non cambia automaticamente**: i due layer sono indipendenti. L'aggiornamento del layer ruolo e un'azione esplicita
+
+### Disattivazione di un ruolo
+
+Quando un ruolo viene disattivato (es. un cliente cessa), gli indirizzi del layer ruolo **restano nel database** come record storici. Non vengono eliminati ne disattivati — la tracciabilita e garantita dallo storico.
+
+Gli indirizzi del layer soggetto non sono toccati: la persona mantiene la sua residenza e i suoi indirizzi identitari indipendentemente dai ruoli.
+
+### Import massivo con normalizzazione successiva
+
+Per carichi massivi:
+
+1. Disabilitare temporaneamente la storicizzazione (`storicizza = false`) per evitare overhead
+2. Caricare i dati in modalita libera
+3. Normalizzare in batch: creare i civici in `indirizzi_dettaglio`, poi aggiornare `indirizzo_dettaglio_id` sugli indirizzi
+4. Riabilitare la storicizzazione
+
+### Riclassificazione vie
+
+Quando la toponomastica ufficiale cambia (rinomina, fusione, variazione comune), il campo `stradario_id` su `indirizzi_dettaglio` e protetto (R4) e non puo essere modificato direttamente. La riclassificazione avviene tramite procedure di manutenzione dedicate.
+
+Per la procedura completa: vedi [Riclassificazione vie e toponomastica](/guide/riclassificazione-vie).
+
+---
+
+## Storicizzazione
+
+Tutte le modifiche a indirizzi e civici vengono tracciate in tabelle `storico.*` con snapshot JSONB, tipi operazione (A/U/D) e `tx_id` transazionale.
+
+La storicizzazione e gestita dal trigger generico [`script.trgfn_storico_generic()`](/dbzero/script/funzioni/trgfn_storico_generic), attivo su:
+
+* `anagrafiche.indirizzi` → `storico.indirizzi`
+* `anagrafiche.indirizzi_dettaglio` → `storico.indirizzi_dettaglio`
+* `anagrafiche.indirizzi_soggetti` → `storico.indirizzi_soggetti`
+* `config.stradario` → `storico.stradario`
+
+Le helper di lettura storica:
+
+* [`script.fn_get_snapshot_as_of()`](/dbzero/script/funzioni/fn_get_snapshot_as_of) — restituisce lo snapshot JSONB di un record a una data
+* [`script.fn_get_record_id_as_of()`](/dbzero/script/funzioni/fn_get_record_id_as_of) — restituisce l'ID del record valido a una data
+
+---
+
+## Trigger e funzioni coinvolte
+
+### Normalizzazione
+
+| Funzione / Trigger | Su quale tabella | Cosa fa |
+| --- | --- | --- |
+| [`trgfn_indirizzi_dettaglio_normalize`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize) | `indirizzi_dettaglio` | Calcola `via_norm`, `civico_norm`, `indirizzo_normalizzato` |
+| [`trgfn_indirizzi_base_normalize`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize) | `indirizzi`, `indirizzi_soggetti` | Normalizza campi, azzera fallback in modalita normalizzata, imposta default |
+| [`trgfn_indirizzi_sync_geoloc`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_sync_geoloc) | `indirizzi`, `indirizzi_soggetti` | Sincronizza `geoloc` da `indirizzi_dettaglio.civic_geoloc` |
+
+### Guard e vincoli
+
+| Funzione / Trigger | Su quale tabella | Cosa fa |
+| --- | --- | --- |
+| [`trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo) | `indirizzi` | Valida tipo indirizzo contro matrice ruolo (R5) |
+| [`trgfn_indirizzi_soggetti_guard_tipo_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo) | `indirizzi_soggetti` | Valida tipo indirizzo contro matrice soggetto (R6) |
+| [`trgfn_indirizzi_dettaglio_protect_update`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_protect_update) | `indirizzi_dettaglio` | Blocca modifica manuale di `stradario_id` (R4) |
+| `trgfn_child_requires_active_parent` | `indirizzi`, `indirizzi_soggetti` | Verifica che `indirizzi_dettaglio` e `soggetti` siano attivi |
+| `trgfn_prevent_deactivate_if_children` | `indirizzi_dettaglio` | Blocca disattivazione se ci sono figli attivi |
+
+### Lettura e risoluzione
+
+| Funzione | Cosa fa |
+| --- | --- |
+| [`fn_get_indirizzo`](/dbzero/script/funzioni/fn_get_indirizzo) | Risoluzione master/fallback: ruolo → soggetto, con catena tra tipi |
+| [`fn_get_indirizzi_by_ruolo`](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo) | Tutti gli indirizzi del layer ruolo |
+| [`fn_get_indirizzi_by_soggetto`](/dbzero/script/funzioni/fn_get_indirizzi_by_soggetto) | Tutti gli indirizzi del layer soggetto |
+| [`fn_get_indirizzo_by_soggetto`](/dbzero/script/funzioni/fn_get_indirizzo_by_soggetto) | Indirizzo soggetto con fallback tra tipi |
+
+### Storicizzazione e audit
+
+| Funzione / Trigger | Cosa fa |
+| --- | --- |
+| [`trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic) | Snapshot JSONB in tabelle `storico.*` |
+| `trgfn_audit_data_user_generic` | Aggiorna `data_update`, `user_update` |
+| `trgfn_tx_id_managed` | Genera `tx_id` per tracciabilita transazionale |
+
+### Manutenzione
+
+| Procedura | Cosa fa |
+| --- | --- |
+| [`proc_bump_indirizzi_dettaglio`](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio) | Riclassificazione civici dopo cambio stradario |
+| [`proc_bump_toponomastica`](/dbzero/maintenance/funzioni/proc_bump_toponomastica) | Correzione toponimo con riallineamento stradario_generale |
+
+---
+
+## Diagrammi ER
+
+Il modello e suddiviso in tre diagrammi per leggibilita.
+
+### Gerarchia geografica (configurazione)
+
+La catena che parte dal toponimo e arriva allo stato, passando per lo stradario e i comuni.
+
 ```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%  
 erDiagram
-    stati              ||--o{ regioni             : has
-    regioni            ||--o{ province            : has
-    province           ||--o{ comuni              : has
-    comuni             ||--o{ codici_postali      : has
+    toponomastica {
+        int id PK
+        varchar descrizione
+    }
 
-    toponomastica      ||--o{ stradario_generale  : has
-    stradario_generale ||--o{ stradario           : has
+    stradario_generale {
+        int id PK
+        int toponomastica_id FK
+        text denominazione_norm
+    }
 
-    stradario          ||--o{ indirizzi_dettaglio : uses
-    indirizzi_dettaglio||--o{ indirizzi           : assigned_to
+    stradario {
+        int id PK
+        int stradario_generale_id FK
+        int comune_id FK
+        int codice_postale_id FK
+    }
 
-    comuni             ||--o{ indirizzi           : uses
-    codici_postali     ||--o{ indirizzi           : uses
-    stati              ||--o{ indirizzi           : uses
+    comuni {
+        int id PK
+        int provincia_id FK
+        varchar denominazione
+    }
 
-    indirizzi          ||--o{ storico_indirizzi   : history
-    stradario          ||--o{ storico_stradario    : history
+    province {
+        int id PK
+        int regione_id FK
+        varchar sigla
+    }
+
+    regioni {
+        int id PK
+        int stato_id FK
+        varchar denominazione
+    }
+
+    stati {
+        int id PK
+        varchar iso_code2
+    }
+
+    codici_postali {
+        int id PK
+        int comune_id FK
+        varchar cap
+    }
+
+    toponomastica ||--o{ stradario_generale : "tipo via"
+    stradario_generale ||--o{ stradario : "via locale"
+    comuni ||--o{ stradario : "di comune"
+    codici_postali ||--o{ stradario : "con CAP"
+    stati ||--o{ regioni : "ha"
+    regioni ||--o{ province : "ha"
+    province ||--o{ comuni : "ha"
+    comuni ||--o{ codici_postali : "ha"
+```
+
+### Indirizzi ruolo e soggetto (modello core)
+
+Il cuore del modulo: il civico normalizzato condiviso dai due layer (ruolo e soggetto).
+
+```mermaid
+erDiagram
+    indirizzi_dettaglio {
+        bigint id PK
+        int stradario_id FK
+        int civico
+        text indirizzo_normalizzato
+        point civic_geoloc
+    }
+
+    indirizzi {
+        bigint id PK
+        bigint soggetto_ruolo_id FK
+        int tipo_indirizzo_id FK
+        bigint indirizzo_dettaglio_id FK
+        text indirizzo_libero
+    }
+
+    indirizzi_soggetti {
+        bigint id PK
+        uuid soggetto_id FK
+        int tipo_indirizzo_id FK
+        bigint indirizzo_dettaglio_id FK
+        text indirizzo_libero
+    }
+
+    tipi_indirizzi {
+        int id PK
+        varchar codice_interno
+        varchar descrizione
+    }
+
+    soggetti_ruoli {
+        bigint id PK
+        uuid soggetto_id FK
+    }
+
+    soggetti {
+        uuid id PK
+        text ragione_sociale
+    }
+
+    stradario {
+        int id PK
+    }
+
+    stradario ||--o{ indirizzi_dettaglio : "via"
+    indirizzi_dettaglio ||--o{ indirizzi : "normalizzato"
+    indirizzi_dettaglio ||--o{ indirizzi_soggetti : "normalizzato"
+    soggetti_ruoli ||--o{ indirizzi : "per ruolo"
+    soggetti ||--o{ indirizzi_soggetti : "per soggetto"
+    tipi_indirizzi ||--o{ indirizzi : "classificato"
+    tipi_indirizzi ||--o{ indirizzi_soggetti : "classificato"
+    soggetti ||--o{ soggetti_ruoli : "ha ruoli"
+```
+
+> **Nota:** le due tabelle `indirizzi` e `indirizzi_soggetti` hanno la stessa struttura
+> ma puntano a entita diverse (`soggetto_ruolo_id` vs `soggetto_id`).
+> Entrambe possono essere normalizzate (via `indirizzi_dettaglio`) o libere.
+
+### Tabelle storico
+
+Le tabelle storico tracciano ogni modifica con snapshot JSONB.
+
+```mermaid
+erDiagram
+    indirizzi {
+        bigint id PK
+    }
+
+    indirizzi_soggetti {
+        bigint id PK
+    }
+
+    indirizzi_dettaglio {
+        bigint id PK
+    }
+
+    stradario {
+        int id PK
+    }
+
+    storico_indirizzi {
+        bigint id PK
+        jsonb snapshot
+    }
+
+    storico_indirizzi_soggetti {
+        bigint id PK
+        jsonb snapshot
+    }
+
+    storico_indirizzi_dettaglio {
+        bigint id PK
+        jsonb snapshot
+    }
+
+    storico_stradario {
+        bigint id PK
+        jsonb snapshot
+    }
+
+    indirizzi ||--o{ storico_indirizzi : "storico"
+    indirizzi_soggetti ||--o{ storico_indirizzi_soggetti : "storico"
+    indirizzi_dettaglio ||--o{ storico_indirizzi_dettaglio : "storico"
+    stradario ||--o{ storico_stradario : "storico"
 ```
 
 ---
-## 8. Appendice – Indirizzi per Ruolo e per Soggetto
 
-Questa appendice descrive la separazione tra indirizzi **per ruolo** e **per soggetto**, le motivazioni e gli oggetti tecnici introdotti per la consultazione coerente.
+## Best practice
 
-### 8.1. Motivazioni e funzionamento
-
-* **Indirizzi per ruolo (`anagrafiche.indirizzi`)**
-  - Rappresentano indirizzi operativi legati a un ruolo (cliente, fornitore, gestore, ecc.).
-  - Sono usati per documenti, processi e flussi specifici di ruolo.
-
-* **Indirizzi per soggetto (`anagrafiche.indirizzi_soggetti`)**
-  - Rappresentano indirizzi identitari del soggetto (es. residenza, sede legale primaria).
-  - Sono indipendenti dai ruoli e possono essere usati come fallback.
-
-* **Policy di risoluzione (master/fallback)**
-  - **Master**: indirizzo del ruolo (`anagrafiche.indirizzi`).
-  - **Fallback**: indirizzo del soggetto (`anagrafiche.indirizzi_soggetti`) solo quando il layer ruolo non risolve il tipo richiesto.
-  - Nei processi critici, se mancano entrambi, il comportamento atteso è fail-closed (errore bloccante).
-
-* **Regole di coerenza (indirizzi liberi)**
-  - La modalità normalizzata è sempre preferibile.
-  - Gli indirizzi liberi sono ammessi solo quando `indirizzo_dettaglio_id` è `NULL`,
-    con obbligo di `indirizzo_libero`, `stato_id` e una struttura minima:
-    **(comune + CAP)** oppure **(locality + postal_box)** con almeno uno tra
-    `administrative_area` e `sublocality`.
-
-### 8.2. Viste “resolved”
-
-Le viste resolved centralizzano la composizione dell’indirizzo human‑readable e i campi territoriali:
-
-* [`anagrafiche.vw_indirizzi_resolved_base`](/dbzero/anagrafiche/views/vw_indirizzi_resolved_base)
-* [`anagrafiche.vw_indirizzi_resolved_ruolo`](/dbzero/anagrafiche/views/vw_indirizzi_resolved_ruolo)
-* [`anagrafiche.vw_indirizzi_resolved_soggetto`](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto)
-* [`anagrafiche.vw_indirizzi_resolved_all`](/dbzero/anagrafiche/views/vw_indirizzi_resolved_all)
-* [`anagrafiche.vw_indirizzi_dettaglio`](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)
-
-Nota:
-* Le viste resolved espongono anche la provenienza (`source`: `RUOLO` / `SOGGETTO`) come campo derivato utile per audit/debug.
-
-### 8.3. Funzioni di lettura
-
-* [`script.fn_get_indirizzi_by_ruolo`](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo)
-* [`script.fn_get_indirizzo`](/dbzero/script/funzioni/fn_get_indirizzo)
-* [`script.fn_get_indirizzi_by_soggetto`](/dbzero/script/funzioni/fn_get_indirizzi_by_soggetto)
-* [`script.fn_get_indirizzo_by_soggetto`](/dbzero/script/funzioni/fn_get_indirizzo_by_soggetto)
-
-### 8.4. Diagramma logico (ruolo vs soggetto)
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    soggetti        ||--o{ indirizzi_soggetti : has
-    soggetti        ||--o{ soggetti_ruoli : has
-    soggetti_ruoli  ||--o{ indirizzi : has
-
-    indirizzi_dettaglio ||--o{ indirizzi : normalized_by
-    indirizzi_dettaglio ||--o{ indirizzi_soggetti : normalized_by
-
-    indirizzi           ||--o{ vw_indirizzi_resolved_ruolo : resolved
-    indirizzi_soggetti  ||--o{ vw_indirizzi_resolved_soggetto : resolved
-    vw_indirizzi_resolved_ruolo ||--o{ vw_indirizzi_resolved_all : union
-    vw_indirizzi_resolved_soggetto ||--o{ vw_indirizzi_resolved_all : union
-```
-
-### 8.5. Validazione pgTAP (stato punto 2.4)
-
-Il punto **2.4 - Doppio layer indirizzi (ruolo/soggetto)** e' validato da:
-
-* `db/pgtap/anagrafiche/test-indirizzi-fallback.sql`
-
-Copertura attuale (14 assert):
-
-1. Presenza Gestore di test.
-2. Presenza tipi indirizzo minimi (`RES`, `SEDELEG`).
-3. Upsert idempotente di `indirizzi_dettaglio`.
-4. Pre-condizione: assenza indirizzi ruolo `RES/SEDELEG/SEDEOP`.
-5. Guard: blocco inserimento `RES` su Gestore.
-6. Verifica post-guard: nessun `RES` inserito.
-7. Inserimento `SEDELEG` su ruolo riuscito.
-8. Fallback `fn_get_indirizzo(..., 'SEDEOP') -> SEDELEG`.
-9. Coerenza `fn_get_indirizzi_by_ruolo` con `vw_indirizzi_resolved_base` (`scope='RUOLO'`).
-10. Presenza `SEDELEG` in `fn_get_indirizzi_by_ruolo`.
-11. Coerenza `fn_get_indirizzi_by_soggetto` con `vw_indirizzi_resolved_base` (`scope='SOGGETTO'`).
-12. Dominio `source` valido in `vw_indirizzi_resolved_all` (`RUOLO`/`SOGGETTO`).
-13. `SEDELEG` di ruolo in `vw_indirizzi_resolved_all` con `source='RUOLO'`.
-14. Coerenza cardinalita: `vw_indirizzi_resolved_all = vw_indirizzi_resolved_ruolo + vw_indirizzi_resolved_soggetto`.
+* La modalita **normalizzata** e sempre preferibile. L'indirizzo libero e un'eccezione per migrazioni e casi non normalizzabili.
+* Per la lettura di indirizzi nei processi (fatturazione, spedizione), usa `fn_get_indirizzo` — gestisce automaticamente la catena master/fallback senza che il chiamante debba conoscere i due layer.
+* Per letture dirette (es. visualizzazione profilo), usa le viste resolved (`vw_indirizzi_resolved_ruolo`, `vw_indirizzi_resolved_soggetto`).
+* Non creare civici duplicati: `indirizzi_dettaglio` ha il vincolo di unicita R7. Usa un pattern upsert o verifica l'esistenza prima dell'INSERT.
+* Non modificare `stradario_id` manualmente: usa le procedure di manutenzione per la riclassificazione.
+* In import massivi, disabilita temporaneamente la storicizzazione (`storicizza = false`) e normalizza in batch dopo il caricamento.
+* I layer ruolo e soggetto sono **indipendenti**: un cambio di residenza (soggetto) non propaga automaticamente al layer ruolo. Se serve aggiornare entrambi, farlo esplicitamente.
 
 ---
+
+## Validazione pgTAP
+
+Il modulo e coperto dal test `db/pgtap/anagrafiche/test-indirizzi-fallback.sql` (14 assert) che verifica:
+
+* Policy di risoluzione con fallback tra tipi
+* Guard su tipi indirizzo (blocco RES su Gestore)
+* Coerenza tra funzioni di lettura e viste resolved
+* Correttezza del campo `source` (RUOLO/SOGGETTO) in `vw_indirizzi_resolved_all`
+* Cardinalita: `vw_indirizzi_resolved_all` = `vw_indirizzi_resolved_ruolo` + `vw_indirizzi_resolved_soggetto`
+
+---
+
 {% include-markdown "signature-core.md" %}

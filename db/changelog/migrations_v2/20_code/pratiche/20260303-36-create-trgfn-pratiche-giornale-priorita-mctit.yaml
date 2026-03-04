@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger function pratiche.trgfn_pratiche_giornale_priorita
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260303-36-create-trgfn-pratiche-giornale-priorita-mctit.yaml
+
+  - changeSet:
+      id: 20260303-36-create-trgfn-pratiche-giornale-priorita
+      author: mctit
+      runOnChange: true
+      comment: "Logga PRIORITA_CAMBIATA nel giornale su UPDATE priorita pratica."
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_priorita()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Registra PRIORITA_CAMBIATA nel giornale.
+                --   Trigger AFTER UPDATE OF priorita_id su pratiche.pratiche.
+                --
+                -- Dettaglio:
+                --   Cattura priorita precedente e nuova nel jsonb.
+                -- =========================================================
+
+                INSERT INTO pratiche.giornale
+                  (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                VALUES (
+                  NEW.id,
+                  NULL,
+                  'PRIORITA_CAMBIATA',
+                  'SISTEMA',
+                  jsonb_build_object(
+                    'priorita_precedente_id', OLD.priorita_id,
+                    'priorita_nuova_id', NEW.priorita_id
+                  ),
+                  NEW.tx_id
+                );
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_pratiche_giornale_priorita()
+                IS 'AFTER UPDATE su pratiche: logga PRIORITA_CAMBIATA quando priorita_id cambia.';

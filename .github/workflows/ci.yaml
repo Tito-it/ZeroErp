@@ -91,7 +91,7 @@ jobs:
       - name: Setup Liquibase 5 (oss)
         uses: liquibase/setup-liquibase@v2
         with:
-          version: '5.0.0'
+          version: '5.0.1'
           edition: 'oss'
 
    # Istalla il driver PostgreSQL       

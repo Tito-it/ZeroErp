@@ -34,7 +34,10 @@
 
 ## ⚙️ Funzioni
 - [fn_get_emittente_fiscale_id](funzioni/fn_get_emittente_fiscale_id.md) — (last review 23-01-2026) La funzione `anagrafiche.fn_get_emittente_fiscale_id()` risolve l’emittente fiscale associato a un `billing_account`. Se non esiste un mapping specifico, usa l’emittente **di default globale**.
+- [fn_notify_cambio_reparto](funzioni/fn_notify_cambio_reparto.md)
 - [fn_search_indirizzi_dettaglio](funzioni/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
+- [fn_sync_auth_user_expired](funzioni/fn_sync_auth_user_expired.md)
+- [fn_sync_auth_user_is_active](funzioni/fn_sync_auth_user_is_active.md)
 - [trgfn_bank_guard_ruolo_bank_branches](funzioni/trgfn_bank_guard_ruolo_bank_branches.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “bank_branches”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_billing_account_gen_codice](funzioni/trgfn_billing_account_gen_codice.md)
 - [trgfn_billing_account_guard_normalize](funzioni/trgfn_billing_account_guard_normalize.md) — (latest review 28-12-25) Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` applica le **validazioni di business** e normalizza i campi, mentre la generazione del `codice` e' demandata al sistema automatico basato su `config.sistema_codici`.
@@ -75,7 +78,10 @@
 - [trgfn_resellers_guard_ruolo_reseller](funzioni/trgfn_resellers_guard_ruolo_reseller.md)
 - [trgfn_resellers_normalize](funzioni/trgfn_resellers_normalize.md)
 - [trgfn_risorse_umane_auth_user_guard_gestore](funzioni/trgfn_risorse_umane_auth_user_guard_gestore.md)
+- [trgfn_risorse_umane_auth_user_sync_active](funzioni/trgfn_risorse_umane_auth_user_sync_active.md)
 - [trgfn_risorse_umane_guard_ruolo](funzioni/trgfn_risorse_umane_guard_ruolo.md)
+- [trgfn_risorse_umane_notify_cambio_reparto](funzioni/trgfn_risorse_umane_notify_cambio_reparto.md)
+- [trgfn_risorse_umane_sync_auth_user_active](funzioni/trgfn_risorse_umane_sync_auth_user_active.md)
 - [trgfn_sepa_mandati_guard](funzioni/trgfn_sepa_mandati_guard.md) — (latest review 29-12-25) Garantire che un mandato SEPA sia coerente quando e' in stato **ATTIVO** e normalizzare i campi di input sensibili (`umr`, `iban_snapshot`).
 - [trgfn_soggetti_conti_bancari_guard](funzioni/trgfn_soggetti_conti_bancari_guard.md) — (latest review 16-12-25) La trigger function **`anagrafiche.trgfn_soggetti_conti_bancari_guard()`** applica controlli di guardia (coerenza e ammissibilità) sui legami tra soggetti e conti bancari, con due obiettivi principali:
 - [trgfn_soggetti_gen_codice](funzioni/trgfn_soggetti_gen_codice.md)

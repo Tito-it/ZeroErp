@@ -1,0 +1,266 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella pratiche.pratiche — tabella operativa principale
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260303-15-create-pratiche-mctit.yaml
+
+  - changeSet:
+      id: 20260303-15-create-pratiche
+      author: mctit
+      comment: >
+        Tabella operativa principale del modulo gestione pratiche.
+        Ogni pratica e' legata a un tipo_prestazione, ha stato, priorita',
+        assegnazione (risorsa umana / unita' organizzativa), tracciabilita'
+        cross-pratica (flusso_origine_id) e sorgente esterna (canale_origine_id).
+        La FK flusso_origine_id e' definita nel changeSet successivo (dopo
+        creazione tabella flussi).
+      changes:
+        - createTable:
+            schemaName: pratiche
+            tableName: pratiche
+            remarks: "Pratiche operative — entita' principale del workflow."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_pratiche_pratiche
+                    nullable: false
+
+              - column:
+                  name: emittente_fiscale_id
+                  type: bigint
+                  remarks: "FK a anagrafiche.emittenti_fiscali."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tipo_prestazione_id
+                  type: integer
+                  remarks: "FK a pratiche.tipi_prestazione."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: soggetto_id
+                  type: uuid
+                  remarks: "FK a anagrafiche.soggetti (il soggetto interessato)."
+
+              - column:
+                  name: stato_id
+                  type: integer
+                  remarks: "FK a config.stati_pratiche."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: priorita_id
+                  type: integer
+                  remarks: "FK a config.priorita_pratiche."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: risorsa_umana_id
+                  type: bigint
+                  remarks: "FK a anagrafiche.risorse_umane (assegnatario)."
+
+              - column:
+                  name: unita_organizzativa_id
+                  type: integer
+                  remarks: "FK a config.unita_organizzative."
+
+              - column:
+                  name: pratica_padre_id
+                  type: bigint
+                  remarks: "FK self-reference per gerarchia pratiche."
+
+              - column:
+                  name: flusso_origine_id
+                  type: bigint
+                  remarks: "FK a pratiche.flussi — il flusso che ha generato questa pratica (FK differita)."
+
+              - column:
+                  name: canale_origine_id
+                  type: integer
+                  remarks: "FK a config.canali_pratiche — sorgente esterna (NULL = creata internamente)."
+
+              - column:
+                  name: solo_interna
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Se true, la pratica e' solo interna e non abilita canali sui flussi."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: codice
+                  type: text
+                  remarks: "Codice pratica (generato da trigger)."
+
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione libera della pratica."
+
+              - column:
+                  name: data_scadenza
+                  type: date
+                  remarks: "Scadenza prevista."
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche
+            baseColumnNames: emittente_fiscale_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: emittenti_fiscali
+            referencedColumnNames: id
+            constraintName: fk_pratiche_emittente_fiscale
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche
+            baseColumnNames: tipo_prestazione_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: tipi_prestazione
+            referencedColumnNames: id
+            constraintName: fk_pratiche_tipo_prestazione
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche
+            baseColumnNames: soggetto_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti
+            referencedColumnNames: id
+            constraintName: fk_pratiche_soggetto
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche
+            baseColumnNames: stato_id
+            referencedTableSchemaName: config
+            referencedTableName: stati_pratiche
+            referencedColumnNames: id
+            constraintName: fk_pratiche_stato
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche
+            baseColumnNames: priorita_id
+            referencedTableSchemaName: config
+            referencedTableName: priorita_pratiche
+            referencedColumnNames: id
+            constraintName: fk_pratiche_priorita
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche
+            baseColumnNames: risorsa_umana_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: risorse_umane
+            referencedColumnNames: id
+            constraintName: fk_pratiche_risorsa_umana
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche
+            baseColumnNames: unita_organizzativa_id
+            referencedTableSchemaName: config
+            referencedTableName: unita_organizzative
+            referencedColumnNames: id
+            constraintName: fk_pratiche_unita_organizzativa
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche
+            baseColumnNames: pratica_padre_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: pratiche
+            referencedColumnNames: id
+            constraintName: fk_pratiche_pratica_padre
+            onDelete: SET NULL
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche
+            baseColumnNames: canale_origine_id
+            referencedTableSchemaName: config
+            referencedTableName: canali_pratiche
+            referencedColumnNames: id
+            constraintName: fk_pratiche_canale_origine
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+      rollback:
+        - dropTable:
+            schemaName: pratiche
+            tableName: pratiche

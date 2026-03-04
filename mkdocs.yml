@@ -19,16 +19,17 @@ theme:
         name: material
         language: it # lingua di default: Italiano
         features:
+                - navigation.tabs
                 - navigation.sections
                 - navigation.expand
+                - navigation.indexes
 plugins:
-        - include-markdown
-          #base_path: docs
-          #fail_on_missing: false
-        - abs-to-rel # per i link relativi
+        - include-markdown:
+                  opening_tag: "{%"
+                  closing_tag: "%}"
+                  fail_on_missing: true
+        - abs-to-rel
         - search
-        #- mermaid2
-
         - i18n:
                   docs_structure: folder
 
@@ -50,29 +51,24 @@ markdown_extensions:
                   custom_fences:
                           - name: mermaid
                             class: mermaid
-                            format:
-                                    !!python/name:pymdownx.superfences.fence_code_format #- pymdownx.superfences
-
+                            format: !!python/name:pymdownx.superfences.fence_code_format
 
 extra_javascript:
-        #- https://unpkg.com/mermaid@11.9.0/dist/mermaid.min.js
-
         - assets/javascripts/mermaid.min.js
         - assets/javascripts/mermaid-init.js
-
-        #- assets/javascripts/custom-mermaid.js
 
 nav:
         - Home: it/index.md
         - Visione e Filosofia:
                   - Manifesto: it/manifesto.md
+                  - Sviluppo Concentrico: it/sviluppo-concentrico.md
                   - Cos’è Zero ERP: it/introduzione.md
                   - Perchè Zero ERP: it/perche-zeroerp.md
         - Installazione:
                   - Prerequisiti: it/installazione.md
                   - Licenza: it/LICENSE.md
         - Architettura:
-                  - Panoramica: it/architettura.md
+                  - it/architettura.md
                   - Database:
                             - Liquibase Setup & Workflow: it/liquibase-setup-workflow.md
                             - Linee Guida SQL: it/linee-guida-sql.md
@@ -80,7 +76,7 @@ nav:
                             - Db PostgresSQL:
                                       - Panoramica: it/postgresql/intro.md
                                       - Aggiornamento versione: it/postgresql/aggiornamento-versione-postgresql.md
-                                      - Parmetri personalizzati (GUC): it/postgresql/parametri-personalizzati-(GUC).md
+                                      - Parametri personalizzati (GUC): it/postgresql/parametri-personalizzati-(GUC).md
                                       - Estensioni:
                                                 - Utilizzate: it/postgresql/estensioni-utilizzate.md
                                                 - dblink: it/postgresql/dblink.md
@@ -88,7 +84,7 @@ nav:
                                                 - pgcrypto: it/postgresql/pgcrypto.md
 
         - DB Zero:
-                  - Panoramica: it/dbzero/index.md
+                  - it/dbzero/index.md
                   - Schemi:
                             - Acquisti: it/dbzero/acquisti/index.md
                             - Anagrafiche: it/dbzero/anagrafiche/index.md
@@ -98,12 +94,13 @@ nav:
                             - Magazzino: it/dbzero/magazzino/index.md
                             - Maintenance: it/dbzero/maintenance/index.md
                             - Pagamenti: it/dbzero/pagamenti/index.md
+                            - Pratiche: it/dbzero/pratiche/index.md
                             - Public: it/dbzero/public/index.md
                             - Storico: it/dbzero/storico/index.md
                             - Script: it/dbzero/script/index.md
                             - Vendite: it/dbzero/vendite/index.md
         - Backend (Django):
-                  - Panoramica: it/backend/index.md
+                  - it/backend/index.md
                   - Aree:
                             - Acquisti: it/backend/acquisti/index.md
                             - Anagrafiche: it/backend/anagrafiche/index.md
@@ -119,9 +116,11 @@ nav:
         - Guide tecniche:
                   - Soggetti e ruoli anagrafici: it/guide/soggetti-e-ruoli-anagrafici.md
                   - Risorse Umane e Accessi al Software: it/guide/risorse-umane-e-accessi.md
+                  - Architettura Permessi e Autorizzazioni: it/guide/architettura-permessi-e-autorizzazioni.md
                   - Gestione delle Istanze Utility: it/guide/gestione-delle-istanze-utility.md
                   - Generazione di un cliente: it/guide/generazione-cliente.md
                   - Gestione degli indirizzi: it/guide/gestione-degli-indirizzi.md
+                  - Riclassificazione vie: it/guide/riclassificazione-vie.md
                   - Gestione dei contatti: it/guide/gestione-dei-contatti.md
                   - Gestione conti bancari: it/guide/gestione-conti-bancari.md
                   - Fatturazione: it/guide/fatturazione.md
@@ -145,21 +144,14 @@ nav:
                             - Guida backend-dev: it/dev/backend/backend-dev.md
                             - Checklist post upgrade: it/dev/backend/checklist-post-upgrade.md
                             - Configurazione Django: it/dev/backend/configurazione-django.md
-                  #    - (Opz) Celery & Beat: dev/backend/backend-celery.md
-                  #    - (Opz) Produzione: dev/backend/backend-prod.md
                   - Database:
                             - VM dbdev (PostgreSQL): it/dev/db/dbdev.md
-                  #    - (Opz) Produzione: dev/db/db-prod.md
                   - Infrastruttura:
                             - Proxmox: it/dev/infra/proxmox.md
                   - Workstation:
                             - Vm wrk1-dev (ubuntu): it/dev/workstation-dev/configurazione.md
                   - GitHub:
                             - Documentazione: it/dev/github/configurazione.md
-                  #- Frontend:
-                  #    - Setup frontend-dev: dev/frontend/frontend-dev.md
-                  #    - Build & Deploy: dev/frontend/frontend-build-deploy.md
-
         - Glossario:
                   - Dev&Ops: it/glossario/devops&db.md
                   - Process Analysis: it/glossario/process-analysis.md

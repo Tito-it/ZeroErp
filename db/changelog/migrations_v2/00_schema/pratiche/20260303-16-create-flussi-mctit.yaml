@@ -1,0 +1,233 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella pratiche.flussi — flussi operativi delle pratiche
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260303-16-create-flussi-mctit.yaml
+
+  - changeSet:
+      id: 20260303-16-create-flussi
+      author: mctit
+      comment: >
+        Flussi operativi delle pratiche. Ogni flusso e' un'istanza di un
+        template_flusso (opzionale, NULL = flusso manuale). Esito e note_esito
+        registrano il risultato del completamento. Questo changeSet include
+        anche la FK differita pratiche.flusso_origine_id → flussi.id per
+        tracciabilita' cross-pratica.
+      changes:
+        - createTable:
+            schemaName: pratiche
+            tableName: flussi
+            remarks: "Flussi operativi delle pratiche."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_pratiche_flussi
+                    nullable: false
+
+              - column:
+                  name: pratica_id
+                  type: bigint
+                  remarks: "FK a pratiche.pratiche."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: template_flusso_id
+                  type: integer
+                  remarks: "FK a pratiche.template_flussi (NULL = flusso manuale)."
+
+              - column:
+                  name: stato_id
+                  type: integer
+                  remarks: "FK a config.stati_flussi_pratiche."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: flusso_padre_id
+                  type: bigint
+                  remarks: "FK self-reference per sotto-flussi."
+
+              - column:
+                  name: risorsa_umana_id
+                  type: bigint
+                  remarks: "FK a anagrafiche.risorse_umane (assegnatario del flusso)."
+
+              - column:
+                  name: unita_organizzativa_id
+                  type: integer
+                  remarks: "FK a config.unita_organizzative."
+
+              - column:
+                  name: sequenza
+                  type: integer
+                  defaultValueNumeric: 0
+                  remarks: "Ordine esecuzione nel workflow."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: esito
+                  type: character varying(20)
+                  remarks: "Esito del flusso: POSITIVO, NEGATIVO, PARZIALE, NON_APPLICABILE."
+
+              - column:
+                  name: note_esito
+                  type: text
+                  remarks: "Note libere sull'esito."
+
+              - column:
+                  name: data_scadenza
+                  type: date
+                  remarks: "Scadenza prevista per il flusso."
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: flussi
+            baseColumnNames: pratica_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: pratiche
+            referencedColumnNames: id
+            constraintName: fk_flussi_pratica
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: flussi
+            baseColumnNames: template_flusso_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: template_flussi
+            referencedColumnNames: id
+            constraintName: fk_flussi_template_flusso
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: flussi
+            baseColumnNames: stato_id
+            referencedTableSchemaName: config
+            referencedTableName: stati_flussi_pratiche
+            referencedColumnNames: id
+            constraintName: fk_flussi_stato
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: flussi
+            baseColumnNames: flusso_padre_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: flussi
+            referencedColumnNames: id
+            constraintName: fk_flussi_flusso_padre
+            onDelete: SET NULL
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: flussi
+            baseColumnNames: risorsa_umana_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: risorse_umane
+            referencedColumnNames: id
+            constraintName: fk_flussi_risorsa_umana
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: flussi
+            baseColumnNames: unita_organizzativa_id
+            referencedTableSchemaName: config
+            referencedTableName: unita_organizzative
+            referencedColumnNames: id
+            constraintName: fk_flussi_unita_organizzativa
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        # FK differita: pratiche.flusso_origine_id → flussi.id
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche
+            baseColumnNames: flusso_origine_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: flussi
+            referencedColumnNames: id
+            constraintName: fk_pratiche_flusso_origine
+            onDelete: SET NULL
+            onUpdate: CASCADE
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.flussi
+                ADD CONSTRAINT chk_flussi_esito
+                CHECK (esito IN ('POSITIVO', 'NEGATIVO', 'PARZIALE', 'NON_APPLICABILE'));
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE pratiche.pratiche
+                DROP CONSTRAINT IF EXISTS fk_pratiche_flusso_origine;
+        - dropTable:
+            schemaName: pratiche
+            tableName: flussi

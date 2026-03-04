@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger business-specific su pratiche.pratiche
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260303-50-trigger-business-pratiche-mctit.yaml
+
+  - changeSet:
+      id: 20260303-50-trigger-business-pratiche
+      author: mctit
+      runOnChange: true
+      comment: >
+        Applica 4 trigger business su pratiche.pratiche:
+        giornale insert, stato, assegnazione, priorita.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Trigger giornale su pratiche.pratiche
+              -- =========================================================
+
+              -- 1. PRATICA_CREATA su INSERT
+              DROP TRIGGER IF EXISTS trg_pratiche_z90_giornale_ins
+              ON pratiche.pratiche;
+
+              CREATE TRIGGER trg_pratiche_z90_giornale_ins
+              AFTER INSERT
+              ON pratiche.pratiche
+              FOR EACH ROW
+              EXECUTE FUNCTION pratiche.trgfn_pratiche_giornale_ins();
+
+              COMMENT ON TRIGGER trg_pratiche_z90_giornale_ins
+              ON pratiche.pratiche
+              IS 'Logga PRATICA_CREATA nel giornale su INSERT.';
+
+              -- 2. STATO_CAMBIATO su UPDATE stato_id
+              DROP TRIGGER IF EXISTS trg_pratiche_z90_giornale_stato_upd
+              ON pratiche.pratiche;
+
+              CREATE TRIGGER trg_pratiche_z90_giornale_stato_upd
+              AFTER UPDATE OF stato_id
+              ON pratiche.pratiche
+              FOR EACH ROW
+              WHEN (OLD.stato_id IS DISTINCT FROM NEW.stato_id)
+              EXECUTE FUNCTION pratiche.trgfn_pratiche_giornale_stato();
+
+              COMMENT ON TRIGGER trg_pratiche_z90_giornale_stato_upd
+              ON pratiche.pratiche
+              IS 'Logga STATO_CAMBIATO nel giornale quando stato_id cambia.';
+
+              -- 3. ASSEGNAZIONE_CAMBIATA su UPDATE risorsa/UO
+              DROP TRIGGER IF EXISTS trg_pratiche_z90_giornale_assegnazione_upd
+              ON pratiche.pratiche;
+
+              CREATE TRIGGER trg_pratiche_z90_giornale_assegnazione_upd
+              AFTER UPDATE OF risorsa_umana_id, unita_organizzativa_id
+              ON pratiche.pratiche
+              FOR EACH ROW
+              WHEN (
+                OLD.risorsa_umana_id IS DISTINCT FROM NEW.risorsa_umana_id
+                OR OLD.unita_organizzativa_id IS DISTINCT FROM NEW.unita_organizzativa_id
+              )
+              EXECUTE FUNCTION pratiche.trgfn_pratiche_giornale_assegnazione();
+
+              COMMENT ON TRIGGER trg_pratiche_z90_giornale_assegnazione_upd
+              ON pratiche.pratiche
+              IS 'Logga ASSEGNAZIONE_CAMBIATA nel giornale quando risorsa_umana_id o unita_organizzativa_id cambia.';
+
+              -- 4. PRIORITA_CAMBIATA su UPDATE priorita_id
+              DROP TRIGGER IF EXISTS trg_pratiche_z90_giornale_priorita_upd
+              ON pratiche.pratiche;
+
+              CREATE TRIGGER trg_pratiche_z90_giornale_priorita_upd
+              AFTER UPDATE OF priorita_id
+              ON pratiche.pratiche
+              FOR EACH ROW
+              WHEN (OLD.priorita_id IS DISTINCT FROM NEW.priorita_id)
+              EXECUTE FUNCTION pratiche.trgfn_pratiche_giornale_priorita();
+
+              COMMENT ON TRIGGER trg_pratiche_z90_giornale_priorita_upd
+              ON pratiche.pratiche
+              IS 'Logga PRIORITA_CAMBIATA nel giornale quando priorita_id cambia.';

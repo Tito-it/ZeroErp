@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella pratiche.handler_flussi — registry handler Django
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260303-10-create-handler-flussi-mctit.yaml
+
+  - changeSet:
+      id: 20260303-10-create-handler-flussi
+      author: mctit
+      comment: >
+        Registry degli handler flusso. Ogni handler_key mappa a una classe
+        Python nel handler_registry.py di Django. Il DB contiene solo la
+        chiave; il mapping e' nel codice applicativo.
+      changes:
+        - createTable:
+            schemaName: pratiche
+            tableName: handler_flussi
+            remarks: "Registry handler flusso — chiavi per mapping Django."
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_pratiche_handler_flussi
+                    nullable: false
+
+              - column:
+                  name: handler_key
+                  type: character varying(100)
+                  remarks: "Chiave univoca usata da Django handler_registry."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: codice
+                  type: character varying(50)
+                  remarks: "Codice univoco leggibile."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione per interfaccia."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: pratiche
+            tableName: handler_flussi
+            columnNames: handler_key
+            constraintName: uq_pratiche_handler_flussi_handler_key
+
+        - addUniqueConstraint:
+            schemaName: pratiche
+            tableName: handler_flussi
+            columnNames: codice
+            constraintName: uq_pratiche_handler_flussi_codice
+
+      rollback:
+        - dropTable:
+            schemaName: pratiche
+            tableName: handler_flussi

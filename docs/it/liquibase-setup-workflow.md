@@ -4,7 +4,7 @@
 > Tutte le attività SQL generate tramite Liquibase devono rispettare le convenzioni definite nel documento:
 > *[Linee Guida SQL](linee-guida-sql.md)*
 >
-> *Versione iniziale(solo consultazione): [liquibase-setup-and-workflow_v1](../liquibase-setup-workflow_v1.md)*
+> *Versione iniziale(solo consultazione): [liquibase-setup-and-workflow_v1](./liquibase-setup-workflow_v1.md)*
 
 ---
 

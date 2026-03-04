@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/85_pgagent/20260302-04-create-pgagent-job-sync-auth-user-expired-daily-mctit.yaml
+
+    - changeSet:
+          id: 20260302-04-create-pgagent-job-sync-auth-user-expired-daily
+          author: mctit
+          runOnChange: true
+          validCheckSums:
+              - ANY
+          comments: >
+              Crea/aggiorna un job pgAgent che esegue ogni giorno alle 06:00
+              la funzione anagrafiche.fn_sync_auth_user_expired() per disattivare
+              utenti con finestra temporale scaduta.
+          preConditions:
+              - onFail: MARK_RAN
+                onError: CONTINUE
+                sqlCheck:
+                    expectedResult: 1
+                    sql: |
+                        SELECT COUNT(*)
+                        FROM pg_extension
+                        WHERE extname = 'pgagent'
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        DO $$
+                        DECLARE
+                            v_jobid   INTEGER;
+                            v_classid INTEGER;
+                        BEGIN
+                            -- 1) Classe 'Routine Maintenance'
+                            SELECT jclid INTO v_classid
+                              FROM pgagent.pga_jobclass
+                             WHERE jclname = 'Routine Maintenance'
+                             LIMIT 1;
+
+                            IF v_classid IS NULL THEN
+                                INSERT INTO pgagent.pga_jobclass (jclname, jcldesc)
+                                VALUES ('Routine Maintenance', 'Default job class')
+                                RETURNING jclid INTO v_classid;
+                            END IF;
+
+                            -- 2) Elimina eventuale job omonimo
+                            DELETE FROM pgagent.pga_job
+                            WHERE jobname = 'sync_auth_user_expired_daily';
+
+                            -- 3) Crea il job
+                            INSERT INTO pgagent.pga_job(
+                                jobjclid, jobname, jobdesc, jobenabled
+                            ) VALUES (
+                                v_classid,
+                                'sync_auth_user_expired_daily',
+                                'Disattiva auth_user per risorse umane con finestra temporale scaduta (giornaliero ore 06:00)',
+                                true
+                            )
+                            RETURNING jobid INTO v_jobid;
+
+                            -- 4) Schedule: ogni giorno alle 06:00
+                            INSERT INTO pgagent.pga_schedule(
+                                jscjobid, jscname, jscenabled,
+                                jscminutes, jschours, jscweekdays,
+                                jscmonthdays, jscmonths, jscstart
+                            ) VALUES (
+                                v_jobid,
+                                'daily_06',
+                                true,
+                                -- minuto 0
+                                (SELECT array_agg((i = 0)::boolean)  FROM generate_series(0,59) AS g(i)),
+                                -- ora 6
+                                (SELECT array_agg((i = 6)::boolean)  FROM generate_series(0,23) AS g(i)),
+                                -- tutti i giorni della settimana
+                                array_fill(TRUE, ARRAY[7])::boolean[],
+                                -- tutti i giorni del mese
+                                array_fill(TRUE, ARRAY[32])::boolean[],
+                                -- tutti i mesi
+                                array_fill(TRUE, ARRAY[12])::boolean[],
+                                now()
+                            );
+
+                            -- 5) Step: esecuzione funzione
+                            INSERT INTO pgagent.pga_jobstep(
+                                jstjobid, jstname, jstkind, jstcode, jstdbname
+                            ) VALUES (
+                                v_jobid,
+                                'run_sync_auth_user_expired',
+                                's',
+                                $step$
+                                    SELECT anagrafiche.fn_sync_auth_user_expired();
+                                $step$,
+                                current_database()
+                            );
+                        END;
+                        $$;
+
+    - changeSet:
+          id: 20260302-90-create-pgagent-job-sync-auth-user-expired-daily
+          author: mctit
+          changes:
+              - tagDatabase:
+                    tag: 20260302-04-create-pgagent-job-sync-auth-user-expired-daily

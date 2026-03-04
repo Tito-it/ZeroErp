@@ -1,0 +1,261 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Fix: tutte le trigger function giornale ora usano
+#   coalesce(NEW.tx_id, dbops.fn_get_or_create_session_tx_id())
+# per resilienza quando il trigger standard tx_id non e' ancora applicato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260304-19-update-trgfn-giornale-tx-id-coalesce-mctit.yaml
+
+  - changeSet:
+      id: 20260304-19-update-trgfn-giornale-tx-id-coalesce
+      author: mctit
+      runOnChange: true
+      comment: >
+        Fix tx_id NULL nelle trigger function giornale: usa coalesce con
+        dbops.fn_get_or_create_session_tx_id() come fallback quando il trigger
+        standard trgfn_tx_id_managed non e' ancora applicato alla tabella.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- 1. trgfn_pratiche_giornale_ins (PRATICA_CREATA)
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_ins()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                INSERT INTO pratiche.giornale
+                  (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                VALUES (
+                  NEW.id,
+                  NULL,
+                  'PRATICA_CREATA',
+                  'SISTEMA',
+                  jsonb_build_object(
+                    'tipo_prestazione_id', NEW.tipo_prestazione_id,
+                    'stato_id', NEW.stato_id,
+                    'priorita_id', NEW.priorita_id,
+                    'soggetto_id', NEW.soggetto_id,
+                    'canale_origine_id', NEW.canale_origine_id
+                  ),
+                  coalesce(NEW.tx_id, dbops.fn_get_or_create_session_tx_id())
+                );
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_pratiche_giornale_ins()
+                IS 'AFTER INSERT su pratiche: logga PRATICA_CREATA nel giornale.';
+
+              -- =========================================================
+              -- 2. trgfn_pratiche_giornale_stato (STATO_CAMBIATO)
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_stato()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                INSERT INTO pratiche.giornale
+                  (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                VALUES (
+                  NEW.id,
+                  NULL,
+                  'STATO_CAMBIATO',
+                  'SISTEMA',
+                  jsonb_build_object(
+                    'stato_precedente_id', OLD.stato_id,
+                    'stato_nuovo_id', NEW.stato_id
+                  ),
+                  coalesce(NEW.tx_id, dbops.fn_get_or_create_session_tx_id())
+                );
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_pratiche_giornale_stato()
+                IS 'AFTER UPDATE su pratiche: logga STATO_CAMBIATO quando stato_id cambia.';
+
+              -- =========================================================
+              -- 3. trgfn_pratiche_giornale_assegnazione (ASSEGNAZIONE_CAMBIATA)
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_assegnazione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                INSERT INTO pratiche.giornale
+                  (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                VALUES (
+                  NEW.id,
+                  NULL,
+                  'ASSEGNAZIONE_CAMBIATA',
+                  'SISTEMA',
+                  jsonb_build_object(
+                    'risorsa_umana_precedente_id', OLD.risorsa_umana_id,
+                    'risorsa_umana_nuova_id', NEW.risorsa_umana_id,
+                    'unita_organizzativa_precedente_id', OLD.unita_organizzativa_id,
+                    'unita_organizzativa_nuova_id', NEW.unita_organizzativa_id
+                  ),
+                  coalesce(NEW.tx_id, dbops.fn_get_or_create_session_tx_id())
+                );
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_pratiche_giornale_assegnazione()
+                IS 'AFTER UPDATE su pratiche: logga ASSEGNAZIONE_CAMBIATA quando risorsa/UO cambia.';
+
+              -- =========================================================
+              -- 4. trgfn_pratiche_giornale_priorita (PRIORITA_CAMBIATA)
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_priorita()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                INSERT INTO pratiche.giornale
+                  (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                VALUES (
+                  NEW.id,
+                  NULL,
+                  'PRIORITA_CAMBIATA',
+                  'SISTEMA',
+                  jsonb_build_object(
+                    'priorita_precedente_id', OLD.priorita_id,
+                    'priorita_nuova_id', NEW.priorita_id
+                  ),
+                  coalesce(NEW.tx_id, dbops.fn_get_or_create_session_tx_id())
+                );
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_pratiche_giornale_priorita()
+                IS 'AFTER UPDATE su pratiche: logga PRIORITA_CAMBIATA quando priorita_id cambia.';
+
+              -- =========================================================
+              -- 5. trgfn_flussi_giornale_ins (FLUSSO_CREATO)
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_giornale_ins()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                INSERT INTO pratiche.giornale
+                  (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                VALUES (
+                  NEW.pratica_id,
+                  NEW.id,
+                  'FLUSSO_CREATO',
+                  'SISTEMA',
+                  jsonb_build_object(
+                    'template_flusso_id', NEW.template_flusso_id,
+                    'stato_id', NEW.stato_id,
+                    'sequenza', NEW.sequenza
+                  ),
+                  coalesce(NEW.tx_id, dbops.fn_get_or_create_session_tx_id())
+                );
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_flussi_giornale_ins()
+                IS 'AFTER INSERT su flussi: logga FLUSSO_CREATO nel giornale.';
+
+              -- =========================================================
+              -- 6. trgfn_flussi_giornale_stato (FLUSSO_STATO_CAMBIATO)
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_giornale_stato()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                INSERT INTO pratiche.giornale
+                  (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                VALUES (
+                  NEW.pratica_id,
+                  NEW.id,
+                  'FLUSSO_STATO_CAMBIATO',
+                  'SISTEMA',
+                  jsonb_build_object(
+                    'stato_precedente_id', OLD.stato_id,
+                    'stato_nuovo_id', NEW.stato_id,
+                    'esito', NEW.esito
+                  ),
+                  coalesce(NEW.tx_id, dbops.fn_get_or_create_session_tx_id())
+                );
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_flussi_giornale_stato()
+                IS 'AFTER UPDATE su flussi: logga FLUSSO_STATO_CAMBIATO quando stato_id cambia.';
+
+              -- =========================================================
+              -- 7. trgfn_note_pratiche_giornale (NOTA_AGGIUNTA pratica)
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_note_pratiche_giornale()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                INSERT INTO pratiche.giornale
+                  (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                VALUES (
+                  NEW.pratica_id,
+                  NULL,
+                  'NOTA_AGGIUNTA',
+                  'SISTEMA',
+                  jsonb_build_object(
+                    'nota_id', NEW.id,
+                    'tipo_nota_id', NEW.tipo_nota_id
+                  ),
+                  coalesce(NEW.tx_id, dbops.fn_get_or_create_session_tx_id())
+                );
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_note_pratiche_giornale()
+                IS 'AFTER INSERT su note_pratiche: logga NOTA_AGGIUNTA nel giornale.';
+
+              -- =========================================================
+              -- 8. trgfn_note_flussi_giornale (NOTA_AGGIUNTA flusso)
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_note_flussi_giornale()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_pratica_id pratiche.pratiche.id%TYPE;
+              BEGIN
+                SELECT f.pratica_id INTO v_pratica_id
+                  FROM pratiche.flussi f
+                 WHERE f.id = NEW.flusso_id;
+
+                INSERT INTO pratiche.giornale
+                  (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                VALUES (
+                  v_pratica_id,
+                  NEW.flusso_id,
+                  'NOTA_AGGIUNTA',
+                  'SISTEMA',
+                  jsonb_build_object(
+                    'nota_id', NEW.id,
+                    'tipo_nota_id', NEW.tipo_nota_id
+                  ),
+                  coalesce(NEW.tx_id, dbops.fn_get_or_create_session_tx_id())
+                );
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_note_flussi_giornale()
+                IS 'AFTER INSERT su note_flussi: logga NOTA_AGGIUNTA nel giornale.';
