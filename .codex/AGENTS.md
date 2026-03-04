@@ -111,6 +111,19 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
   - Note di migrazione (se applicabile)
 - Template di riferimento: `docs/it/backend/_templates/manual-standard.md`
 
+### Build docs (Zensical) - prerequisiti obbligatori
+
+- Stack docs corrente: `zensical==0.0.24` (con `deepmerge==2.0`) + tooling Python in `requirements.txt`.
+- Non usare piu` `mkdocs build` come comando primario di progetto.
+- Build docs locale/CI: `python scripts/build_docs_zensical.py`
+  - lo script preprocessa `docs/` in `.tmp/zensical_docs`
+  - espande i tag `{% include-markdown "..." %}`
+  - riscrive i link markdown root `](/dbzero/...)` in `](/it/dbzero/...)`
+  - genera config temporanea `mkdocs.zensical.yml`
+  - produce output in `site-zensical/`
+- Serve locale docs: `bash scripts/serve_docs.sh` (usa Zensical su `127.0.0.1:8010`).
+- Se nei markdown si documenta la sintassi include come esempio, evitare placeholder non reali in forma attiva (es. `"..."`) oppure metterli in blocchi codice, per non generare warning del preprocess.
+
 ## SQL Conventions
 
 - Schemas/tables/columns naming per `linee-guida-sql.md`
