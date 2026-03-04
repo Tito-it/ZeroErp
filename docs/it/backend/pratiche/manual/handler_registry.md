@@ -10,6 +10,21 @@ Il modulo vive in `apps/pratiche/services/handler_registry.py`. Il pattern e' es
 
 Un handler viene invocato da `pratiche_service.dispatch_handler` quando un flusso ha un `template_flusso_id` il cui template ha un `handler_id` configurato in `pratiche.handler_flussi`.
 
+## Input
+
+- `handler_key` (stringa) da `pratiche.handler_flussi.handler_key`.
+- Dati runtime per execute handler:
+  - `flusso_id` (int)
+  - `pratica_id` (int)
+  - `meta` (dict)
+
+## Output
+
+- `get_handler(handler_key)` restituisce:
+  - classe handler registrata (`type[BaseFlussoHandler]`) se presente
+  - `None` se non registrata
+- `execute(...)` dell'handler restituisce payload `dict[str, Any]` dominio-specifico.
+
 ## Componenti
 
 ### BaseFlussoHandler (Protocol)

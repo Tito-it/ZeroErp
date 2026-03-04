@@ -133,6 +133,27 @@ def run_zensical_build(config_file: Path) -> int:
     return proc.returncode
 
 
+# Scopo: creare una homepage root compatibile con GitHub Pages che reindirizza alla lingua default.
+def write_root_redirect(site_dir: Path, target: str = "./it/") -> None:
+    site_dir.mkdir(parents=True, exist_ok=True)
+    index_file = site_dir / "index.html"
+    html = f"""<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="refresh" content="0; url={target}">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Zero ERP Documentation</title>
+    <script>location.replace("{target}");</script>
+  </head>
+  <body>
+    <p>Redirecting to <a href="{target}">{target}</a></p>
+  </body>
+</html>
+"""
+    index_file.write_text(html, encoding="utf-8")
+
+
 # Scopo: definire e parsare gli argomenti CLI per il flow di preprocess+build.
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -184,7 +205,10 @@ def main() -> int:
     for warning in warnings:
         print(f"WARNING: {warning}")
 
-    return run_zensical_build(dst_config)
+    exit_code = run_zensical_build(dst_config)
+    if exit_code == 0:
+        write_root_redirect(Path(args.site_dir))
+    return exit_code
 
 
 if __name__ == "__main__":
