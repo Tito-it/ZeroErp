@@ -206,6 +206,7 @@ jobs:
           external_repository: Tito-it/ZeroERP-Docs
           publish_branch: gh-pages
           publish_dir: ./site-zensical
+          enable_jekyll: false
 
 #  Blocatto AWS 27 01 2026 - non più usato
 
@@ -252,6 +253,11 @@ jobs:
             id: pyver
             run: echo "version=$(cut -d. -f1-2 .python-version)" >> $GITHUB_OUTPUT
 
+          - name: Normalize image namespace
+            id: imgvars
+            run: |
+              echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
           - name: Set up Docker Buildx
             uses: docker/setup-buildx-action@v3
 
@@ -292,8 +298,8 @@ jobs:
               build-args: |
                 PYTHON_VERSION=${{ steps.pyver.outputs.version }}
               tags: |
-                ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-                ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
+                ${{ env.REGISTRY }}/${{ steps.imgvars.outputs.owner_lc }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+                ${{ env.REGISTRY }}/${{ steps.imgvars.outputs.owner_lc }}/${{ env.IMAGE_NAME }}:latest
               push: true
               cache-from: type=gha
               cache-to: type=gha,mode=max
@@ -308,8 +314,8 @@ jobs:
               # Se l'immagine locale esiste (branch/PR), ok.
               # Su main, l'immagine non è loadata: la pulliamo da GHCR.
               if ! docker image inspect zeroerp:${{ github.sha }} >/dev/null 2>&1; then
-                docker pull ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-                docker tag  ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.sha }} zeroerp:${{ github.sha }}
+                docker pull ${{ env.REGISTRY }}/${{ steps.imgvars.outputs.owner_lc }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+                docker tag  ${{ env.REGISTRY }}/${{ steps.imgvars.outputs.owner_lc }}/${{ env.IMAGE_NAME }}:${{ github.sha }} zeroerp:${{ github.sha }}
               fi
 
               docker save zeroerp:${{ github.sha }} -o image.tar

@@ -10,7 +10,13 @@ Il modulo vive in `apps/pratiche/services/pratiche_service.py`. Non e' una class
 
 Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazioni di stato alle tabelle config tramite `resolve_stato_pratica` / `resolve_stato_flusso`.
 
-## Funzioni esposte
+## Input
+
+- Parametri dominio `pratiche`: `pratica_id`, filtri ricerca, payload aggiornamento, assegnazione.
+- Parametri dominio `flussi`: `flusso_id`, `template_flusso_id`, `nuovo_stato`, `esito`.
+- Parametri di supporto: paginazione (`limit`, `offset`), `meta`/`note_esito`.
+
+## Output
 
 ### Pratiche
 

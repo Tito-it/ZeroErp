@@ -12,7 +12,12 @@ Utilizza due repository:
 - `PraticheRepository` per lettura flussi
 - `GenerazioneRepository` per regole, generazione e lookup pratiche generate
 
-## Funzioni esposte
+## Input
+
+- `flusso_id` (`int`, obbligatorio, `> 0`)
+- `regola_id` (`int`, obbligatorio per generazione manuale, `> 0`)
+
+## Output
 
 | Funzione | Input | Output | Descrizione |
 |---|---|---|---|
