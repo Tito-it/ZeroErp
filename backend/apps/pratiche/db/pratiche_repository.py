@@ -445,6 +445,24 @@ class PraticheRepository:
             return None
         return str(row[0])
 
+    # Scopo: Recupera handler_key e handler_params dal template flusso.
+    # Restituisce entrambi per il dispatch: la key per il lookup nel registry,
+    # i params per la configurazione statica passata all'handler.
+    def get_handler_info(self, template_flusso_id: int) -> tuple[str, dict[str, Any]] | None:
+        sql = """
+            SELECT hf.handler_key, tf.handler_params
+            FROM pratiche.template_flussi tf
+            JOIN pratiche.handler_flussi hf ON hf.id = tf.handler_id
+            WHERE tf.id = %s AND hf.attivo = true
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [template_flusso_id])
+            row = cursor.fetchone()
+        if not row:
+            return None
+        handler_params = row[1] if isinstance(row[1], dict) else {}
+        return str(row[0]), handler_params
+
     # -- MAPPING HELPERS -------------------------------------------------
 
     @staticmethod

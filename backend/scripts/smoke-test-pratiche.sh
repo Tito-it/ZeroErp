@@ -4,6 +4,26 @@
 # Esegue il ciclo completo: autenticazione → pratica → flusso → lifecycle
 # Uso: ./scripts/smoke-test-pratiche.sh [password]
 # ------------------------------------------------------------
+# Indice test (0..17):
+#  0) Autenticazione JWT
+#  1) Lista pratiche (con filtro emittente)
+#  2) Creazione pratica
+#  3) Dettaglio pratica
+#  4) Aggiornamento pratica (PATCH descrizione)
+#  5) Cambio stato pratica BOZZA → APERTA
+#  6) Giornale pratica
+#  7) Creazione flusso
+#  8) Lista flussi
+#  9) Dettaglio flusso
+# 10) Avvio flusso DA_ESEGUIRE → IN_CORSO
+# 11) Completamento flusso IN_CORSO → COMPLETATO
+# 12) Prerequisiti flusso
+# 13) Canali flusso
+# 14) Regole generazione
+# 15) Pratiche generate
+# 16) Giornale finale (conteggio eventi)
+# 17) Test errori attesi — pratica/flusso inesistente (404), completa senza esito (400)
+# ------------------------------------------------------------
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"

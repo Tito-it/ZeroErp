@@ -6,6 +6,14 @@ from apps.core.api.views import (
     ApiPermessiAuditV1,
     ApiPermessiEffettiviV1,
 )
+from apps.core.api.views_tracciamento import (
+    ApiAuditLogV1,
+    ApiDominiTaskV1,
+    ApiJobRunsV1,
+    ApiJobSummaryV1,
+    ApiTaskImplementationsV1,
+    ApiTaskRegistryV1,
+)
 
 urlpatterns = [
     path(
@@ -27,5 +35,36 @@ urlpatterns = [
         "users/<int:user_id>/permessi-audit/",
         ApiPermessiAuditV1.as_view(),
         name="core-v1-permessi-audit",
+    ),
+    # Tracciamento processi e job
+    path(
+        "tracciamento/audit-log/",
+        ApiAuditLogV1.as_view(),
+        name="core-v1-audit-log",
+    ),
+    path(
+        "tracciamento/domini-task/",
+        ApiDominiTaskV1.as_view(),
+        name="core-v1-domini-task",
+    ),
+    path(
+        "tracciamento/task-registry/",
+        ApiTaskRegistryV1.as_view(),
+        name="core-v1-task-registry",
+    ),
+    path(
+        "tracciamento/task-implementations/",
+        ApiTaskImplementationsV1.as_view(),
+        name="core-v1-task-implementations",
+    ),
+    path(
+        "tracciamento/job-runs/",
+        ApiJobRunsV1.as_view(),
+        name="core-v1-job-runs",
+    ),
+    path(
+        "tracciamento/job-summary/",
+        ApiJobSummaryV1.as_view(),
+        name="core-v1-job-summary",
     ),
 ]
