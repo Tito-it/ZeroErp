@@ -1,7 +1,7 @@
 # Audit Sessioni, Request Logging e Sicurezza Token
 
 **Data**: 2026-03-05
-**Stato**: WIP — piano approvato, implementazione non ancora avviata
+**Stato**: WIP — FASE 1 DB parzialmente completata (1A + 2A changeset e doc manuali creati)
 **Autore**: tid / Claude
 
 ---
@@ -79,26 +79,33 @@ Tracciare il ciclo di vita delle sessioni JWT: emissione token, refresh, scadenz
 
 | Colonna | Tipo | Note |
 |---------|------|------|
-| `id` | BIGINT PK | autoincrement |
+| `id` | BIGINT PK | autoincrement (BY DEFAULT) |
 | `auth_user_id` | INTEGER NOT NULL | FK auth_user |
 | `evento` | TEXT NOT NULL | LOGIN, REFRESH, LOGOUT, SCADENZA, REVOCA |
 | `jti` | TEXT | JWT ID (claim univoco del token) |
 | `ip_address` | INET | IP del client |
 | `user_agent` | TEXT | browser/client |
-| `request_id` | UUID | correlazione con request |
+| `request_id` | UUID | correlazione con request_log |
 | `dettaglio` | JSONB DEFAULT '{}' | dati aggiuntivi |
+| `tx_id` | UUID | transaction ID (pattern dbops, trigger `trgfn_tx_id_managed`) |
+| `cleanup_at` | TIMESTAMPTZ | retention schedulata (pattern `dbops.audit_log`) |
 | `data_insert` | TIMESTAMPTZ DEFAULT now() | |
 | `user_insert` | TEXT DEFAULT CURRENT_USER | |
 
-**Indici**: `ix_sessioni_utente_auth_user_id`, `ix_sessioni_utente_data_insert`
+**Constraint**:
+- PK: `pk_sessioni_utente`
+- CHECK: `chk_sessioni_utente_evento CHECK (evento IN ('LOGIN','REFRESH','LOGOUT','SCADENZA','REVOCA'))`
 
-**Retention**: colonna `cleanup_at` per pulizia schedulata (pattern `dbops.audit_log`)
+**Indici**: `ix_sessioni_utente_auth_user_id`, `ix_sessioni_utente_data_insert`, `ix_sessioni_utente_jti`, `ix_sessioni_utente_cleanup_at`
 
-**GRANT**: SELECT, INSERT per `zeroerp_app`
+**Trigger**: `trg_sessioni_utente_gen_tx_id_ins_upd` -> `dbops.trgfn_tx_id_managed()`
+
+**GRANT**: automatico via CI grant dinamico su schema `dbops` (SELECT, INSERT per `zeroerp_app`)
 
 **NO storicizzazione** (e' gia' un log, non serve snapshot)
+**NO data_update/user_update** (insert-only, non aggiornabile)
 
-**Changeset**: `db/changelog/migrations_v2/00_schema/dbops/YYYYMMDD-NN-create-sessioni-utente-mctit.yaml`
+**Changeset**: `db/changelog/migrations_v2/00_schema/dbops/20260305-01-create-sessioni-utente-mctit.yaml`
 
 ### 1B — Backend
 
@@ -140,30 +147,38 @@ Registrare ogni request API autenticata: utente, endpoint, metodo, status, durat
 
 | Colonna | Tipo | Note |
 |---------|------|------|
-| `id` | BIGINT PK | autoincrement |
+| `id` | BIGINT PK | autoincrement (BY DEFAULT) |
 | `auth_user_id` | INTEGER | NULL se anonimo |
 | `username` | TEXT | JWT user |
 | `request_id` | UUID | da RequestContextMiddleware |
-| `method` | TEXT NOT NULL | GET, POST, PATCH, DELETE |
+| `method` | TEXT NOT NULL | GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD |
 | `path` | TEXT NOT NULL | /api/v1/pratiche/ |
 | `query_string` | TEXT | parametri query (senza dati sensibili) |
-| `status_code` | SMALLINT | 200, 400, 500... |
-| `duration_ms` | INTEGER | tempo di risposta |
+| `status_code` | SMALLINT | 200, 400, 500... (nullable: transazione interrotta) |
+| `duration_ms` | INTEGER | tempo di risposta (nullable: transazione interrotta) |
 | `ip_address` | INET | |
 | `user_agent` | TEXT | |
 | `error_code` | TEXT | codice errore se presente (E_PRATICA_NOT_FOUND) |
 | `idempotency_key` | TEXT | per correlazione replay |
+| `tx_id` | UUID | transaction ID (pattern dbops, trigger `trgfn_tx_id_managed`) |
+| `cleanup_at` | TIMESTAMPTZ | retention schedulata (es. 90 giorni) |
 | `data_insert` | TIMESTAMPTZ DEFAULT now() | |
+| `user_insert` | TEXT DEFAULT CURRENT_USER | audit inserimento |
 
-**Indici**: `ix_request_log_auth_user_id`, `ix_request_log_data_insert`, `ix_request_log_path`
+**Constraint**:
 
-**Retention**: `cleanup_at` con pulizia schedulata (es. 90 giorni)
+- PK: `pk_request_log`
+- CHECK: `chk_request_log_method CHECK (method IN ('GET','POST','PUT','PATCH','DELETE','OPTIONS','HEAD'))`
 
-**GRANT**: SELECT, INSERT per `zeroerp_app`
+**Indici**: `ix_request_log_auth_user_id`, `ix_request_log_data_insert`, `ix_request_log_path`, `ix_request_log_request_id`, `ix_request_log_cleanup_at`
+
+**Trigger**: `trg_request_log_gen_tx_id_ins_upd` -> `dbops.trgfn_tx_id_managed()`
+
+**GRANT**: automatico via CI grant dinamico su schema `dbops` (SELECT, INSERT per `zeroerp_app`)
 
 **Volume**: alto — valutare partizionamento per mese se necessario
 
-**Changeset**: `db/changelog/migrations_v2/00_schema/dbops/YYYYMMDD-NN-create-request-log-mctit.yaml`
+**Changeset**: `db/changelog/migrations_v2/00_schema/dbops/20260305-02-create-request-log-mctit.yaml`
 
 ### 2B — Backend
 
@@ -252,14 +267,14 @@ FASE 4 (Documentazione):
 
 ### Tabella riassuntiva
 
-| # | Area | Tipo | Descrizione | Prerequisiti |
-|---|------|------|-------------|-------------|
-| 1A | Sessioni | DB | Tabella `dbops.sessioni_utente` | — |
-| 1B | Sessioni | Backend | Repository + service + auth views override | 1A |
-| 2A | Request log | DB | Tabella `dbops.request_log` | — |
-| 2B | Request log | Backend | Middleware `RequestLogMiddleware` | 2A |
-| 3A | Token blacklist | DB | `INSTALLED_APPS` + migrate | — |
-| 3B | Token blacklist | Backend | Settings rotation + integrazione disabilitazione | 3A |
+| #  | Area            | Tipo    | Descrizione                                      | Prerequisiti | Stato                        |
+|----|-----------------|---------|--------------------------------------------------|--------------|------------------------------|
+| 1A | Sessioni        | DB      | Tabella `dbops.sessioni_utente`                  | —            | DONE (changeset + doc)       |
+| 1B | Sessioni        | Backend | Repository + service + auth views override       | 1A           | --                           |
+| 2A | Request log     | DB      | Tabella `dbops.request_log`                      | —            | DONE (changeset + doc)       |
+| 2B | Request log     | Backend | Middleware `RequestLogMiddleware`                 | 2A           | --                           |
+| 3A | Token blacklist | DB      | `INSTALLED_APPS` + migrate                       | —            | --                           |
+| 3B | Token blacklist | Backend | Settings rotation + integrazione disabilitazione | 3A           | --                           |
 
 ---
 
@@ -269,8 +284,8 @@ FASE 4 (Documentazione):
 
 | File | Area |
 |------|------|
-| `db/changelog/migrations_v2/00_schema/dbops/YYYYMMDD-NN-create-sessioni-utente-mctit.yaml` | 1A |
-| `db/changelog/migrations_v2/00_schema/dbops/YYYYMMDD-NN-create-request-log-mctit.yaml` | 2A |
+| `db/changelog/migrations_v2/00_schema/dbops/20260305-01-create-sessioni-utente-mctit.yaml` | 1A |
+| `db/changelog/migrations_v2/00_schema/dbops/20260305-02-create-request-log-mctit.yaml` | 2A |
 | `backend/apps/core/db/session_audit_repository.py` | 1B |
 | `backend/apps/core/services/session_audit_service.py` | 1B |
 | `backend/apps/core/api/auth_views.py` | 1B |

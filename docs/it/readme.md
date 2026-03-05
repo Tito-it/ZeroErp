@@ -67,6 +67,7 @@ Approfondimento:
 
 - [Manifesto (IT)](./sviluppo-concentrico.md)
 - [Manifesto (EN)](../en/sviluppo-concentrico.md)
+- [Vocabolario](./sviluppo-concentrico-vocabolario.md)
 
 ---
 

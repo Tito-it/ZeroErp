@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260305-01-create-sessioni-utente-mctit.yaml
+
+  - changeSet:
+      id: 20260305-01-create-sessioni-utente
+      author: mctit
+      comment: >
+        Tabella audit sessioni JWT: login, refresh, logout, scadenza, revoca.
+        Parte del piano Audit Sessioni / Request Logging / Sicurezza Token (Area 1A).
+
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: sessioni_utente
+            remarks: "Audit sessioni JWT: traccia il ciclo di vita dei token (login, refresh, logout, scadenza, revoca)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_sessioni_utente
+                    nullable: false
+
+              - column:
+                  name: auth_user_id
+                  type: integer
+                  remarks: "FK verso auth_user.id."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: evento
+                  type: text
+                  remarks: "Tipo evento sessione: LOGIN, REFRESH, LOGOUT, SCADENZA, REVOCA."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: jti
+                  type: text
+                  remarks: "JWT ID (claim jti univoco del token)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: ip_address
+                  type: inet
+                  remarks: "IP del client."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: user_agent
+                  type: text
+                  remarks: "User-Agent del browser/client."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: request_id
+                  type: uuid
+                  remarks: "Correlazione con dbops.request_log tramite RequestContextMiddleware."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: dettaglio
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Dati aggiuntivi evento (es. motivo revoca, errore)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID (pattern dbops standard)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: cleanup_at
+                  type: timestamp with time zone
+                  remarks: "Timestamp retention per pulizia schedulata."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente inserimento."
+                  constraints:
+                    nullable: false
+
+        # -- Indici --
+        - createIndex:
+            schemaName: dbops
+            tableName: sessioni_utente
+            indexName: ix_sessioni_utente_auth_user_id
+            columns:
+              - column:
+                  name: auth_user_id
+
+        - createIndex:
+            schemaName: dbops
+            tableName: sessioni_utente
+            indexName: ix_sessioni_utente_data_insert
+            columns:
+              - column:
+                  name: data_insert
+                  descending: true
+
+        - createIndex:
+            schemaName: dbops
+            tableName: sessioni_utente
+            indexName: ix_sessioni_utente_jti
+            columns:
+              - column:
+                  name: jti
+
+        - createIndex:
+            schemaName: dbops
+            tableName: sessioni_utente
+            indexName: ix_sessioni_utente_cleanup_at
+            columns:
+              - column:
+                  name: cleanup_at
+
+        # -- CHECK constraint + trigger tx_id --
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.sessioni_utente
+              ADD CONSTRAINT chk_sessioni_utente_evento
+              CHECK (evento IN ('LOGIN','REFRESH','LOGOUT','SCADENZA','REVOCA'));
+
+
+              COMMENT ON TABLE dbops.sessioni_utente
+              IS 'Audit sessioni JWT: traccia login, refresh, logout, scadenza e revoca token.';

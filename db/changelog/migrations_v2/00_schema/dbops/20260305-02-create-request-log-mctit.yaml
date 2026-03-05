@@ -1,0 +1,201 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260305-02-create-request-log-mctit.yaml
+
+  - changeSet:
+      id: 20260305-02-create-request-log
+      author: mctit
+      comment: >
+        Tabella request log API: registra ogni request HTTP autenticata.
+        Parte del piano Audit Sessioni / Request Logging / Sicurezza Token (Area 2A).
+
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: request_log
+            remarks: "Log request API: utente, endpoint, metodo, status, durata."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_request_log
+                    nullable: false
+
+              - column:
+                  name: auth_user_id
+                  type: integer
+                  remarks: "FK auth_user.id (NULL se request anonima)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: username
+                  type: text
+                  remarks: "Username JWT (denormalizzato per query rapide)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: request_id
+                  type: uuid
+                  remarks: "UUID request da RequestContextMiddleware."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: method
+                  type: text
+                  remarks: "Metodo HTTP: GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: path
+                  type: text
+                  remarks: "Path request (es. /api/v1/pratiche/)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: query_string
+                  type: text
+                  remarks: "Parametri query (senza dati sensibili)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: status_code
+                  type: smallint
+                  remarks: "HTTP status code (nullable: transazione interrotta senza response)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: duration_ms
+                  type: integer
+                  remarks: "Durata request in millisecondi (nullable: transazione interrotta)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: ip_address
+                  type: inet
+                  remarks: "IP del client."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: user_agent
+                  type: text
+                  remarks: "User-Agent del browser/client."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: error_code
+                  type: text
+                  remarks: "Codice errore applicativo se presente (es. E_PRATICA_NOT_FOUND)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: idempotency_key
+                  type: text
+                  remarks: "Chiave idempotenza per correlazione replay."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID (pattern dbops standard)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: cleanup_at
+                  type: timestamp with time zone
+                  remarks: "Timestamp retention per pulizia schedulata."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente inserimento."
+                  constraints:
+                    nullable: false
+
+        # -- Indici --
+        - createIndex:
+            schemaName: dbops
+            tableName: request_log
+            indexName: ix_request_log_auth_user_id
+            columns:
+              - column:
+                  name: auth_user_id
+
+        - createIndex:
+            schemaName: dbops
+            tableName: request_log
+            indexName: ix_request_log_data_insert
+            columns:
+              - column:
+                  name: data_insert
+                  descending: true
+
+        - createIndex:
+            schemaName: dbops
+            tableName: request_log
+            indexName: ix_request_log_path
+            columns:
+              - column:
+                  name: path
+
+        - createIndex:
+            schemaName: dbops
+            tableName: request_log
+            indexName: ix_request_log_request_id
+            columns:
+              - column:
+                  name: request_id
+
+        - createIndex:
+            schemaName: dbops
+            tableName: request_log
+            indexName: ix_request_log_cleanup_at
+            columns:
+              - column:
+                  name: cleanup_at
+
+        # -- CHECK constraint + trigger tx_id --
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.request_log
+              ADD CONSTRAINT chk_request_log_method
+              CHECK (method IN ('GET','POST','PUT','PATCH','DELETE','OPTIONS','HEAD'));
+
+
+              COMMENT ON TABLE dbops.request_log
+              IS 'Log request API: registra utente, endpoint, metodo, status e durata per ogni request /api/*.';
