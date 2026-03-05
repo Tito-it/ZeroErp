@@ -111,7 +111,9 @@ Trent'anni di software gestionale mi hanno insegnato che la complessità non spa
 Lo Sviluppo Concentrico è una proposta pratica per far crescere sistemi ERP senza perdere integrità nel tempo: un anello alla volta, con un centro chiaro e regole condivise.
 
 ---
+- [Vocabolario](./sviluppo-concentrico-vocabolario.md)
 
+---
 *La metodologia dello Sviluppo Concentrico è stata formalizzata il 2 marzo 2026 durante la progettazione di ZeroERP, sistema ERP open-source per le aziende italiane. Nasce dalla pratica sul campo e resta aperta a miglioramenti attraverso l'uso reale.*
 
 *Michele Carlo - Autore*
