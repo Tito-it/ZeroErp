@@ -15,7 +15,16 @@ class BaseFlussoHandler(Protocol):
     """Contratto per handler flusso. Ogni handler implementa execute()."""
 
     # Scopo: Esegue la logica dell'handler per il flusso indicato.
-    def execute(self, flusso_id: int, pratica_id: int, meta: dict[str, Any]) -> dict[str, Any]: ...
+    # - flusso_id / pratica_id: identificativi istanza operativa
+    # - meta: JSONB del flusso (dati estensibili, specifici dell'istanza)
+    # - handler_params: JSONB da template_flussi (configurazione statica del template)
+    def execute(
+        self,
+        flusso_id: int,
+        pratica_id: int,
+        meta: dict[str, Any],
+        handler_params: dict[str, Any],
+    ) -> dict[str, Any]: ...
 
 
 # Mapping handler_key → classe Python.

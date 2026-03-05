@@ -3,6 +3,18 @@
 # Smoke test locale per API core (permessi, lookup, diagnostica)
 # Uso: ./scripts/smoke-test-core.sh [password]
 # ------------------------------------------------------------
+# Indice test (0..9):
+#  0) Autenticazione JWT + estrazione user_id
+#  1) Token refresh
+#  2) Permessi effettivi (utente corrente) — dettaglio aree
+#  3) Permessi effettivi utente inesistente (400)
+#  4) Audit permessi (utente corrente)
+#  5) Audit permessi con filtro tabella
+#  6) Audit permessi tabella invalida (400)
+#  7) Lookup codici — stati_pratiche, stati_flussi, priorita, canali, search, relazione invalida
+#  8) Diagnostica error envelope — generic (500), retryable (409), not_found (404)
+#  9) Health check
+# ------------------------------------------------------------
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"

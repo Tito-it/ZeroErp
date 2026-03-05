@@ -1,11 +1,59 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 from uuid import UUID
 
 from apps.core.api.request_parsers import parse_iso_date
 
 # Validator centralizzati payload API (riusabili cross-domain).
+
+
+# ------------------------------------------------------------------
+# Helper query-params GET (riusabili da qualsiasi view GET)
+# ------------------------------------------------------------------
+
+# Scopo: Normalizza parametro booleano da query string con default configurabile.
+def qp_bool(raw: str | None, default: bool = True) -> bool:
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "n", "off"}
+
+
+# Scopo: Normalizza parametro intero da query string con default configurabile.
+def qp_int(raw: str | None, default: int) -> int:
+    if raw is None:
+        return default
+    try:
+        return int(raw.strip())
+    except (ValueError, AttributeError):
+        return default
+
+
+# Scopo: Normalizza parametro stringa da query string (strip + None se vuoto).
+def qp_str(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    cleaned = raw.strip()
+    return cleaned or None
+
+
+# ------------------------------------------------------------------
+# Envelope paginato standard (riusabile da qualsiasi service)
+# ------------------------------------------------------------------
+
+# Scopo: Costruisce l'envelope paginato standard con count, page, page_size, total_pages, results.
+def paginated_envelope(
+    results: list, total_count: int, page: int, page_size: int,
+) -> dict[str, Any]:
+    total_pages = math.ceil(total_count / page_size) if page_size > 0 else 0
+    return {
+        "count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "results": results,
+    }
 
 
 # Scopo: Valida e converte il campo opzionale `int` mantenendo `None` se assente.

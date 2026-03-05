@@ -593,4 +593,268 @@ al completamento di un flusso (trigger AFTER UPDATE). La generazione manuale
 
 ---
 
+## 12. Evoluzione: Sospensione e Tempi
+
+> Stato: **analisi**. Queste tabelle non sono ancora nello schema.
+> Prerequisiti: nucleo pratiche completo (13 tabelle + 5 funzioni), seed stati con SOSPESO.
+> Documento di analisi: `docs/it/dev/work-in-progress/analisi-gestione-operativa-attivita.md`
+
+### 12.1 pratiche.sospensioni
+
+Registra i periodi di fermo di una pratica o di un singolo flusso.
+Ogni riga e' un intervallo aperto (data_fine NULL = sospensione ancora attiva).
+
+| Colonna | Tipo | Note |
+| ------- | ---- | ---- |
+| `id` | BIGINT PK | GENERATED ALWAYS AS IDENTITY |
+| `pratica_id` | BIGINT NOT NULL | FK a `pratiche.pratiche` |
+| `flusso_id` | BIGINT | FK a `pratiche.flussi` (NULL = sospensione intera pratica) |
+| `data_inizio` | TIMESTAMPTZ NOT NULL | Inizio sospensione |
+| `data_fine` | TIMESTAMPTZ | Fine sospensione (NULL = attiva) |
+| `data_riattivazione_prevista` | DATE | Per riattivazione automatica via job pgAgent |
+| `motivo` | TEXT NOT NULL | Motivazione obbligatoria |
+| `data_insert` | TIMESTAMPTZ | audit |
+| `user_insert` | TEXT | audit |
+
+**Vincoli:**
+
+- CHECK: `data_fine IS NULL OR data_fine > data_inizio`
+- CHECK: `flusso_id IS NULL OR pratica_id = (SELECT pratica_id FROM pratiche.flussi WHERE id = flusso_id)` — coerenza pratica/flusso
+- Un solo record con `data_fine IS NULL` per combinazione pratica_id + flusso_id (UNIQUE parziale)
+
+**Trigger:**
+
+- AFTER INSERT: se `flusso_id IS NULL` (sospensione pratica), tutti i flussi attivi (DA_ESEGUIRE, IN_CORSO) passano a SOSPESO automaticamente. Il giornale registra STATO_CAMBIATO per la pratica e FLUSSO_STATO_CAMBIATO per ogni flusso coinvolto.
+- AFTER UPDATE OF data_fine (riattivazione): se `flusso_id IS NULL`, i flussi precedentemente sospesi tornano allo stato che avevano prima della sospensione (salvato nel `dettaglio` JSONB del giornale). La pratica torna ad APERTA.
+
+**Job pgAgent:**
+
+- Job schedulato giornaliero: cerca sospensioni con `data_riattivazione_prevista <= CURRENT_DATE` e `data_fine IS NULL`, imposta `data_fine = NOW()`. Il trigger di riattivazione fa il resto.
+- Pattern: `fn_run_and_log` come da guida tracciamento processi.
+
+### 12.2 pratiche.formule_tempo
+
+Soglie temporali per semafori warning/critico, configurabili per tipo prestazione e/o template flusso.
+
+| Colonna | Tipo | Note |
+| ------- | ---- | ---- |
+| `id` | INTEGER PK | GENERATED ALWAYS AS IDENTITY |
+| `tipo_prestazione_id` | INTEGER NOT NULL | FK a `pratiche.tipi_prestazione` |
+| `template_flusso_id` | INTEGER | FK a `pratiche.template_flussi` (NULL = formula sulla pratica intera) |
+| `giorni_warning` | INTEGER NOT NULL | Soglia giallo (giorni rimanenti) |
+| `giorni_critico` | INTEGER NOT NULL | Soglia rosso (giorni rimanenti) |
+| `attivo` | BOOLEAN NOT NULL DEFAULT true | |
+| `descrizione` | TEXT | |
+| `meta` | JSONB NOT NULL DEFAULT '{}' | |
+| `data_insert` | TIMESTAMPTZ | audit |
+| `user_insert` | TEXT | audit |
+| `data_update` | TIMESTAMPTZ | audit |
+| `user_update` | TEXT | audit |
+
+**Vincoli:**
+
+- CHECK: `giorni_warning > giorni_critico` (warning scatta prima del critico)
+- CHECK: `giorni_warning > 0 AND giorni_critico > 0`
+- UNIQUE su `(tipo_prestazione_id, template_flusso_id)` — una formula per combinazione
+
+### 12.3 Funzione fn_calcola_tempo_netto
+
+Funzione **check** (pura, STABLE): calcola i giorni netti trascorsi per un flusso o una pratica, escludendo i periodi di sospensione.
+
+- Input: `p_pratica_id BIGINT`, `p_flusso_id BIGINT DEFAULT NULL`
+- Output: `INTEGER` (giorni netti)
+- Logica: `(data corrente - data_insert) - SUM(periodi sospensione chiusi) - (eventuale sospensione aperta)`
+
+### 12.4 Attivita' backend Django
+
+| Attivita' | Prerequisito | File coinvolti |
+| --------- | ------------ | -------------- |
+| Aggiungere `SospensioneRow` a `types.py` | DDL sospensioni | `apps/pratiche/types.py` |
+| Aggiungere `FormulaTempoRow` a `types.py` | DDL formule_tempo | `apps/pratiche/types.py` |
+| Metodo `sospendi_pratica(pratica_id, motivo, data_riattivazione)` | DDL + trigger | `apps/pratiche/services/pratiche_service.py` |
+| Metodo `riattiva_pratica(pratica_id)` | DDL + trigger | `apps/pratiche/services/pratiche_service.py` |
+| Metodo `sospendi_flusso(flusso_id, motivo, data_riattivazione)` | DDL + trigger | `apps/pratiche/services/pratiche_service.py` |
+| Metodo `riattiva_flusso(flusso_id)` | DDL + trigger | `apps/pratiche/services/pratiche_service.py` |
+| Repository: INSERT/UPDATE sospensioni, SELECT formule_tempo | DDL | `apps/pratiche/db/pratiche_repository.py` |
+| Endpoint `POST /api/v1/pratiche/{id}/sospendi/` | Service + repository | `apps/pratiche/api/views.py`, `urls_v1.py` |
+| Endpoint `POST /api/v1/pratiche/{id}/riattiva/` | Service + repository | `apps/pratiche/api/views.py`, `urls_v1.py` |
+| Endpoint `POST /api/v1/pratiche/{id}/flussi/{fid}/sospendi/` | Service + repository | `apps/pratiche/api/views.py`, `urls_v1.py` |
+| Endpoint `POST /api/v1/pratiche/{id}/flussi/{fid}/riattiva/` | Service + repository | `apps/pratiche/api/views.py`, `urls_v1.py` |
+| Test unitari service (sospendi/riattiva pratica e flusso) | Service | `apps/pratiche/tests/services/` |
+| Test unitari API (4 endpoint) | Views | `apps/pratiche/tests/api/` |
+
+**Ordine di implementazione:**
+
+1. DDL `sospensioni` + seed (Liquibase)
+2. DDL `formule_tempo` + seed (Liquibase)
+3. Trigger sospensione pratica → propagazione flussi (Liquibase `20_code/`)
+4. Trigger riattivazione → ripristino stati (Liquibase `20_code/`)
+5. Funzione `fn_calcola_tempo_netto` (Liquibase `20_code/`)
+6. Test pgTAP per sospensione/riattivazione e calcolo tempo
+7. Backend: types, repository, service, endpoint, test Django
+8. Job pgAgent riattivazione automatica
+
+---
+
+## 13. Evoluzione: Macchina a Stati Rigida
+
+> Stato: **da implementare**. Approccio scelto: guard nel DB (coerente con filosofia DB-first).
+> Prerequisiti: nucleo pratiche completo, seed stati con tutti i codici_interni.
+
+### 13.1 Problema
+
+Oggi le transizioni di stato di pratiche e flussi non sono validate ne' dal DB ne' dal service.
+Il codice `cambia_stato_flusso(flusso_id, nuovo_stato)` accetta qualsiasi stringa.
+Nulla impedisce transizioni prive di senso come COMPLETATO → DA_ESEGUIRE o ANNULLATO → IN_CORSO.
+
+### 13.2 Transizioni ammesse
+
+#### Pratica
+
+```text
+BOZZA      → APERTA, ANNULLATA
+APERTA     → SOSPESA, CHIUSA, ANNULLATA
+SOSPESA    → APERTA
+CHIUSA     → (terminale)
+ANNULLATA  → (terminale)
+```
+
+#### Flusso
+
+```text
+DA_ESEGUIRE  → IN_CORSO, ANNULLATO
+IN_CORSO     → COMPLETATO, SOSPESO, ERRORE
+SOSPESO      → IN_CORSO, DA_ESEGUIRE
+ERRORE       → (terminale)
+COMPLETATO   → (terminale)
+ANNULLATO    → (terminale)
+```
+
+> **Nota**: SOSPESO → DA_ESEGUIRE e' previsto per la riattivazione automatica (job pgAgent, sezione 12).
+> SOSPESO → IN_CORSO e' per la ripresa manuale da parte dell'operatore.
+
+### 13.3 Implementazione DB (Opzione A — scelta)
+
+Trigger function BEFORE UPDATE OF stato_id su `pratiche.pratiche` e `pratiche.flussi`.
+La matrice di transizioni e' codificata in una tabella config o direttamente nel trigger.
+
+#### Opzione tabella config (consigliata)
+
+Due tabelle config per le transizioni ammesse:
+
+**config.transizioni_stati_pratiche**
+
+| Colonna | Tipo | Note |
+| ------- | ---- | ---- |
+| `id` | INTEGER PK | GENERATED ALWAYS AS IDENTITY |
+| `stato_da_id` | INTEGER NOT NULL | FK a `config.stati_pratiche` |
+| `stato_a_id` | INTEGER NOT NULL | FK a `config.stati_pratiche` |
+| `attivo` | BOOLEAN NOT NULL DEFAULT true | Disattivabile senza deploy |
+
+- UNIQUE su `(stato_da_id, stato_a_id)`
+- CHECK: `stato_da_id <> stato_a_id`
+
+**config.transizioni_stati_flussi_pratiche**
+
+Stessa struttura, FK a `config.stati_flussi_pratiche`.
+
+#### Trigger function
+
+```sql
+-- pratiche.trgfn_pratiche_guard_transizione()
+-- Scopo: blocca transizioni di stato non ammesse per le pratiche.
+CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_transizione()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.stato_id = NEW.stato_id THEN
+        RETURN NEW;  -- nessuna transizione, niente da validare
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM config.transizioni_stati_pratiche
+        WHERE stato_da_id = OLD.stato_id
+          AND stato_a_id = NEW.stato_id
+          AND attivo = true
+    ) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'PRATICHE_TRANSIZIONE_NON_AMMESSA',
+            format('Transizione pratica non ammessa: %s → %s',
+                   OLD.stato_id, NEW.stato_id)
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$;
+```
+
+Stessa logica per `pratiche.trgfn_flussi_guard_transizione()` con la tabella flussi.
+
+#### Trigger
+
+| Nome | Timing | Tabella | Evento |
+| ---- | ------ | ------- | ------ |
+| `trg_pratiche_a10_guard_transizione_upd` | BEFORE | `pratiche.pratiche` | UPDATE OF stato_id |
+| `trg_flussi_a10_guard_transizione_upd` | BEFORE | `pratiche.flussi` | UPDATE OF stato_id |
+
+Fase `_a10_`: guard, eseguito prima dei trigger giornale (`_z90_`).
+
+### 13.4 Seed data
+
+Tabella `config.transizioni_stati_pratiche` (6 righe):
+
+| da | a |
+| -- | - |
+| BOZZA | APERTA |
+| BOZZA | ANNULLATA |
+| APERTA | SOSPESA |
+| APERTA | CHIUSA |
+| APERTA | ANNULLATA |
+| SOSPESA | APERTA |
+
+Tabella `config.transizioni_stati_flussi_pratiche` (7 righe):
+
+| da | a |
+| -- | - |
+| DA_ESEGUIRE | IN_CORSO |
+| DA_ESEGUIRE | ANNULLATO |
+| IN_CORSO | COMPLETATO |
+| IN_CORSO | SOSPESO |
+| IN_CORSO | ERRORE |
+| SOSPESO | IN_CORSO |
+| SOSPESO | DA_ESEGUIRE |
+
+### 13.5 Messaggi errore
+
+| codice | causa | soluzione |
+| ------ | ----- | --------- |
+| PRATICHE_TRANSIZIONE_NON_AMMESSA | Transizione stato pratica non consentita | Verificare la sequenza di stati corretta per la pratica |
+| FLUSSI_TRANSIZIONE_NON_AMMESSA | Transizione stato flusso non consentita | Verificare la sequenza di stati corretta per il flusso |
+
+### 13.6 Attivita' backend Django
+
+| Attivita' | Prerequisito | File coinvolti |
+| --------- | ------------ | -------------- |
+| Test pgTAP: transizioni ammesse e bloccate | DDL + trigger + seed | `db/pgtap/pratiche/` |
+| Gestione errore transizione nel middleware | Codice errore registrato | `apps/core/services/error_policies.py` |
+| Test unitari: verifica che ServiceError corretta arrivi dall'API | Middleware | `apps/pratiche/tests/api/` |
+
+### 13.7 Vantaggi dell'approccio tabella config
+
+- **Configurabile senza deploy**: aggiungere/disattivare transizioni e' un UPDATE su config
+- **Impossibile bypassare**: vale per API, service, query dirette, migration
+- **Auditabile**: le transizioni ammesse sono dati, non codice
+- **Coerente** con il pattern config del progetto (stati, priorita', tipi sono tutti in config)
+
+### 13.8 Ordine di implementazione
+
+1. DDL `config.transizioni_stati_pratiche` + `config.transizioni_stati_flussi_pratiche` (Liquibase)
+2. Seed data transizioni (Liquibase `80_data/`)
+3. Seed messaggi errore in `config.messaggi_errore` (Liquibase `80_data/`)
+4. Trigger functions guard (Liquibase `20_code/`)
+5. Trigger su pratiche e flussi (Liquibase `20_code/`)
+6. Test pgTAP: ogni transizione ammessa passa, ogni transizione vietata solleva errore
+7. Backend: error policy + test API
+
+---
+
 *Documento di sviluppo — Schema `pratiche` — ZeroERP (marzo 2026)*

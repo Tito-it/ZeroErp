@@ -4,6 +4,18 @@
 # Esegue chiamate read-only su dati esistenti + test errori attesi
 # Uso: ./scripts/smoke-test-vendite.sh [password]
 # ------------------------------------------------------------
+# Indice test (0..9):
+#  0) Autenticazione JWT
+#  1) Lista lotti — count + estrazione primo lotto_id
+#  2) Fatture del lotto (se presente)
+#  3) Segnalazioni del lotto (se presente)
+#  4) Task runs del lotto (se presente)
+#  5) Reset lotto COMPLETATO — errore atteso (400/409)
+#  6) Lista lotti con filtri — stato COMPLETATO, stato inesistente
+#  7) Commesse — stato/attivita/push log inesistenti (404/400)
+#  8) Pipeline run dry_run
+#  9) Commesse push dry_run
+# ------------------------------------------------------------
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"

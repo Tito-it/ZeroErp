@@ -322,10 +322,12 @@ def dispatch_handler(flusso_id: int) -> dict[str, Any] | None:
     if flusso["template_flusso_id"] is None:
         return None
 
-    # Lookup handler_key dal template flusso.
-    handler_key = repo.get_handler_key(flusso["template_flusso_id"])
-    if handler_key is None:
+    # Lookup handler_key e handler_params dal template flusso.
+    handler_info = repo.get_handler_info(flusso["template_flusso_id"])
+    if handler_info is None:
         return None
+
+    handler_key, handler_params = handler_info
 
     from apps.pratiche.services.handler_registry import get_handler
     handler_class = get_handler(handler_key)
@@ -337,6 +339,7 @@ def dispatch_handler(flusso_id: int) -> dict[str, Any] | None:
         flusso_id=flusso_id,
         pratica_id=flusso["pratica_id"],
         meta=flusso["meta"],
+        handler_params=handler_params,
     )
 
 

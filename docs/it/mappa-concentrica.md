@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 4 marzo 2026*
+*Ultimo aggiornamento: 5 marzo 2026*
 
 ---
 
@@ -51,11 +51,11 @@
 
 | Componente | Tipo | Stato | Descrizione |
 |---|---|---|---|
-| `core` | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling |
-| `dbops` | Schema DB | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes |
+| `core` | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling, tracciamento processi/job |
+| `dbops` | Schema DB | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes, audit_log |
 | `script` | Schema DB | Operativo | fn_log_and_raise_error, viste e funzioni riusabili |
 | `public` | Schema DB | Operativo | version_info |
-| `maintenance` | Schema DB | Operativo | Job schedulati pgAgent |
+| `maintenance` | Schema DB | Operativo | Job schedulati pgAgent, job_run_log |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -63,6 +63,7 @@
 - Middleware API (exception handling, JWT audit, request context)
 - Pattern uniformi: `handle_post_json`, paginazione, throttling, search validators
 - Automazioni DB: audit fields, tx_id, storicizzazione, lock colonne, protezione attivo
+- **Tracciamento processi e job**: API per audit log, task registry multi-dominio, job run log (6 endpoint REST, 27 test)
 - Policy indici FK automatica
 - Logging e raise errori DB (`script.fn_log_and_raise_error`)
 

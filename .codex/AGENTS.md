@@ -165,6 +165,7 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 - Percorso: `db/pgtap/`
 - Nei file di test, all'inizio inserire un indice dei test eseguiti nei commenti.
 - Nei file di test Python/Django, inserire all'inizio un breve indice dei test previsti (nome test/caso).
+- Negli smoke test bash (`backend/scripts/smoke-test-*.sh`), inserire un blocco `# Indice test (0..N):` dopo l'header, elencando ogni sezione di test.
 - Struttura test Django per app: `apps/<schema>/tests/` con sottocartelle minime `api/` e `services/`.
 - Esempio esecuzione test Django: `./manage-test.sh apps.core.tests.api -v 2`
 - Smoke test API docs/schema: vedi `apps/core/tests/api/test_diagnostics_api.py` (endpoint `/api/docs/` e `/api/schema/`).
