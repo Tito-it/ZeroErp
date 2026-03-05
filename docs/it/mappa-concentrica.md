@@ -66,6 +66,18 @@
 - Policy indici FK automatica
 - Logging e raise errori DB (`script.fn_log_and_raise_error`)
 
+### Evoluzione pianificata (WIP)
+
+Le seguenti capacita' sono in fase di progettazione (vedi [Audit-logging-sessionii-request-token.md](dev/work-in-progress/Audit-logging-sessionii-request-token.md)):
+
+| Capacita' | Componente DB | Componente Backend | Stato |
+| --- | --- | --- | --- |
+| Audit sessioni (login/refresh/logout) | `dbops.sessioni_utente` | `session_audit_service` + auth views override | Pianificato |
+| Request logging (chi chiama cosa) | `dbops.request_log` | `RequestLogMiddleware` | Pianificato |
+| Token blacklist e revoca | SimpleJWT `token_blacklist` | Settings rotation + integrazione disabilitazione | Pianificato |
+
+Queste estensioni sono non-breaking: nuove tabelle in `dbops`, nuovi middleware in `core`, override view JWT. Nessun contratto esistente viene modificato. Gli anelli esterni ne beneficiano automaticamente senza alcuna modifica al proprio codice.
+
 ### Stabilita'
 
 Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, nuovi middleware).
