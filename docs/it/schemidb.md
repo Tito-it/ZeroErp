@@ -8,7 +8,7 @@
   </thead>
   <tbody>
     <tr>
-      <td><strong><a href="dbzero/acquisti/index.md">acquisti</a></strong></td>
+      <td><strong><a href="/it/dbzero/acquisti/">acquisti</a></strong></td>
       <td>
         Processi di approvvigionamento e ciclo passivo.
         <ul>
@@ -18,7 +18,7 @@
       </td>
     </tr>
     <tr>
-      <td><strong><a href="dbzero/anagrafiche/index.md">anagrafiche</a></strong></td>
+      <td><strong><a href="/it/dbzero/anagrafiche/">anagrafiche</a></strong></td>
       <td>
         Contiene tutte le tabelle legate all'anagrafica soggetti (persone fisiche e giuridiche).
         <ul>
@@ -28,7 +28,7 @@
       </td>
     </tr>
     <tr>
-      <td><strong><a href="dbzero/catalogo/index.md">catalogo</a></strong></td>
+      <td><strong><a href="/it/dbzero/catalogo/">catalogo</a></strong></td>
       <td>
         Anagrafica articoli, attributi, UoM, listini e distinte base.
         <ul>
@@ -38,7 +38,7 @@
       </td>
     </tr>
     <tr>
-      <td><strong><a href="dbzero/config/index.md">config</a></strong></td>
+      <td><strong><a href="/it/dbzero/config/">config</a></strong></td>
       <td>
         Contiene tabelle di configurazione parametrica e lookup.
         <ul>
@@ -48,7 +48,7 @@
       </td>
     </tr>
     <tr>
-      <td><strong><a href="dbzero/contabilita/index.md">contabilita</a></strong></td>
+      <td><strong><a href="/it/dbzero/contabilita/">contabilita</a></strong></td>
       <td>
         Contabilità generale/IVA e prima nota.
         <ul>
@@ -58,7 +58,7 @@
       </td>
     </tr>
     <tr>
-      <td><strong><a href="dbzero/magazzino/index.md">magazzino</a></strong></td>
+      <td><strong><a href="/it/dbzero/magazzino/">magazzino</a></strong></td>
       <td>
         Logistica, ubicazioni e movimentazione fisica.
         <ul>
@@ -68,7 +68,7 @@
       </td>
     </tr>
     <tr>
-      <td><strong><a href="dbzero/pagamenti/index.md">pagamenti</a></strong></td>
+      <td><strong><a href="/it/dbzero/pagamenti/">pagamenti</a></strong></td>
       <td>
         Termini, metodi, scadenze e riconciliazioni.
         <ul>
@@ -78,7 +78,7 @@
       </td>
     </tr>
     <tr>
-      <td><strong><a href="dbzero/vendite/index.md">vendite</a></strong></td>
+      <td><strong><a href="/it/dbzero/vendite/">vendite</a></strong></td>
       <td>
         Ciclo attivo: preventivi, ordini, DDT, fatture e resi.
         <ul>
@@ -88,7 +88,7 @@
       </td>
     </tr>
     <tr>
-      <td><strong><a href="dbzero/script/index.md">script</a></strong></td>
+      <td><strong><a href="/it/dbzero/script/">script</a></strong></td>
       <td>
         Logica applicativa (viste e funzioni) legate ai processi ERP.
         Favorisce riuso, mantenibilità e isolamento della logica.
@@ -99,7 +99,7 @@
       </td>
     </tr>
     <tr>
-      <td><strong><a href="dbzero/dbops/index.md">dbops</a></strong></td>
+      <td><strong><a href="/it/dbzero/dbops/">dbops</a></strong></td>
       <td>
         Strumenti DB per DBA (vista/funzioni tecniche, metadata, monitoring).
         <ul>
@@ -109,7 +109,7 @@
       </td>
     </tr>
     <tr>
-      <td><strong><a href="dbzero/storico/index.md">storico</a></strong></td>
+      <td><strong><a href="/it/dbzero/storico/">storico</a></strong></td>
       <td>
         Tabelle di audit/storico con versioning temporale dei dati. 
         Tutte le tabelle che richiedono "storicizzazione" saranno replicate qui
@@ -120,7 +120,7 @@
       </td>
     </tr>
     <tr>
-      <td><strong><a href="dbzero/maintenance/index.md">maintenance</a></strong></td>
+      <td><strong><a href="/it/dbzero/maintenance/">maintenance</a></strong></td>
       <td>
         Centralizza i processi periodici e le attività di manutenzione del DB (schedulati tramite <code>pgAgent</code>).
         <ul>
@@ -149,18 +149,18 @@
 >
 >## Navigazione per schema
 >
-- [acquisti](dbzero/acquisti/index.md)
-- [anagrafiche](dbzero/anagrafiche/index.md)  
-- [catalogo](dbzero/catalogo/index.md)  
-- [config](dbzero/config/index.md)  
-- [contabilita](dbzero/contabilita/index.md)
-- [dbops](dbzero/dbops/index.md)  
-- [magazzino](dbzero/magazzino/index.md)
-- [maintenance](dbzero/maintenance/index.md)   
-- [pagamenti](dbzero/pagamenti/index.md)   
-- [script](dbzero/script/index.md)  
-- [storico](dbzero/storico/index.md) 
-- [vendite](dbzero/vendite/index.md) 
+- [acquisti](/it/dbzero/acquisti/)
+- [anagrafiche](/it/dbzero/anagrafiche/)  
+- [catalogo](/it/dbzero/catalogo/)  
+- [config](/it/dbzero/config/)  
+- [contabilita](/it/dbzero/contabilita/)
+- [dbops](/it/dbzero/dbops/)  
+- [magazzino](/it/dbzero/magazzino/)
+- [maintenance](/it/dbzero/maintenance/)   
+- [pagamenti](/it/dbzero/pagamenti/)   
+- [script](/it/dbzero/script/)  
+- [storico](/it/dbzero/storico/) 
+- [vendite](/it/dbzero/vendite/) 
 
 >
 > In ciascuna pagina di schema troverai un unico indice con le tabelle, le funzioni e le view corrispondenti.

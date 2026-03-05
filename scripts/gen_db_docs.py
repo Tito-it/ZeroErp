@@ -43,7 +43,7 @@ db_schemas = os.getenv("DB_DOC_SCHEMAS", "")
 schemas = [s.strip() for s in db_schemas.split(",") if s.strip()]
 
 # Percorsi
-DOCS_DIR = os.path.join(BASE_DIR, "docs")
+DOCS_DIR = os.getenv("DB_DOCS_OUT_DIR", "").strip() or os.path.join(BASE_DIR, "docs")
 OUT_DIR = os.path.join(DOCS_DIR, "it", "dbzero")
 
 DOCS_MODE = (os.getenv("DB_DOCS_MODE") or os.getenv("DOCS_MODE") or "").strip().lower()

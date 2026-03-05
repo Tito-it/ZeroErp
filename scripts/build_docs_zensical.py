@@ -46,6 +46,7 @@ def expand_includes(
     current_file: Path,
     stack: tuple[Path, ...],
     warnings: list[str],
+    source_texts: dict[Path, str],
 ) -> tuple[str, int]:
     expanded_count = 0
 
@@ -63,16 +64,22 @@ def expand_includes(
             chain = " -> ".join([p.as_posix() for p in (*stack, include_path)])
             warnings.append(f"{current_file.as_posix()}: include circolare ignorato: {chain}")
             return match.group(0)
-        if not include_path.exists():
+        include_text = source_texts.get(include_path)
+        if include_text is None and include_path.exists():
+            include_text = include_path.read_text(encoding="utf-8")
+        if include_text is None:
             warnings.append(
                 f"{current_file.as_posix()}: include mancante ignorato: '{target}'"
             )
             return match.group(0)
-
-        included_text = include_path.read_text(encoding="utf-8")
         expanded_count += 1
         expanded_text, nested_count = expand_includes(
-            included_text, docs_root, include_path, (*stack, include_path), warnings
+            include_text,
+            docs_root,
+            include_path,
+            (*stack, include_path),
+            warnings,
+            source_texts,
         )
         expanded_count += nested_count
         return expanded_text
@@ -100,12 +107,15 @@ def rewrite_root_links(text: str, docs_root: Path, current_file: Path) -> tuple[
                 path_part = path_part[:idx]
 
         normalized = path_part.lstrip("/")
+        wants_trailing_slash = normalized.endswith("/")
         if normalized.startswith("dbzero/"):
             normalized = f"it/{normalized}"
 
         rel_target = os.path.relpath(normalized, start=current_rel_dir.as_posix())
         if not rel_target.startswith("."):
             rel_target = f"./{rel_target}"
+        if wants_trailing_slash and not rel_target.endswith("/"):
+            rel_target = f"{rel_target}/"
         return f"{rel_target}{suffix}"
 
     def repl_md(match: re.Match[str]) -> str:
@@ -134,10 +144,14 @@ def preprocess_docs(src_docs: Path, dst_docs: Path) -> tuple[int, int, int, list
     rewritten_links = 0
     warnings: list[str] = []
 
+    source_texts: dict[Path, str] = {}
+    for md in dst_docs.rglob("*.md"):
+        source_texts[md.resolve()] = md.read_text(encoding="utf-8")
+
     for md in dst_docs.rglob("*.md"):
         text = md.read_text(encoding="utf-8")
         expanded, include_count = expand_includes(
-            text, dst_docs, md, (md.resolve(),), warnings
+            text, dst_docs, md, (md.resolve(),), warnings, source_texts
         )
         rewritten, link_count = rewrite_root_links(expanded, dst_docs, md)
         md.write_text(rewritten, encoding="utf-8")
@@ -185,6 +199,45 @@ def write_root_redirect(site_dir: Path, target: str = "./it/") -> None:
 </html>
 """
     index_file.write_text(html, encoding="utf-8")
+
+
+# Scopo: correggere link HTML verso /index.md in / per evitare 404 su site statico.
+def normalize_site_html_links(site_dir: Path) -> int:
+    changed_files = 0
+    pattern = re.compile(r'href="([^"]*?)index\.md([#?][^"]*)?"')
+    dir_like_href = re.compile(r'href="((?:\./|\.\./)[^"#?]+)([#?][^"]*)?"')
+
+    for html_file in site_dir.rglob("*.html"):
+        content = html_file.read_text(encoding="utf-8")
+
+        def repl(match: re.Match[str]) -> str:
+            base = match.group(1)
+            suffix = match.group(2) or ""
+            target = base
+            if not target.endswith("/") and not suffix:
+                target = f"{target}/"
+            return f'href="{target}{suffix if suffix else ""}"'
+
+        rewritten = pattern.sub(repl, content)
+
+        def repl_dir(match: re.Match[str]) -> str:
+            target = match.group(1)
+            suffix = match.group(2) or ""
+            if target.endswith("/"):
+                return match.group(0)
+            if target in {"./", "../", "./.", "././"}:
+                return match.group(0)
+            last = target.rsplit("/", 1)[-1]
+            if "." in last:
+                return match.group(0)
+            return f'href="{target}/{suffix}"'
+
+        rewritten = dir_like_href.sub(repl_dir, rewritten)
+        if rewritten != content:
+            html_file.write_text(rewritten, encoding="utf-8")
+            changed_files += 1
+
+    return changed_files
 
 
 # Scopo: definire e parsare gli argomenti CLI per il flow di preprocess+build.
@@ -240,7 +293,10 @@ def main() -> int:
 
     exit_code = run_zensical_build(dst_config)
     if exit_code == 0:
-        write_root_redirect(Path(args.site_dir))
+        site_dir = Path(args.site_dir)
+        changed = normalize_site_html_links(site_dir)
+        write_root_redirect(site_dir)
+        print(f"html_links_normalized_files={changed}")
     return exit_code
 
 

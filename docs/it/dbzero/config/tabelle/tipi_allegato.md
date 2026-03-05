@@ -29,5 +29,11 @@
 | uq_tipi_allegato_codice | `CREATE UNIQUE INDEX uq_tipi_allegato_codice ON config.tipi_allegato USING btree (codice)` |
 | uq_tipi_allegato_codice_interno | `CREATE UNIQUE INDEX uq_tipi_allegato_codice_interno ON config.tipi_allegato USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_tipi_allegato_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_tipi_allegato_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}
