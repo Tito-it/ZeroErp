@@ -121,7 +121,9 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
   - riscrive i link markdown root `](/dbzero/...)` in `](/it/dbzero/...)`
   - genera config temporanea `mkdocs.zensical.yml`
   - produce output in `site-zensical/`
-- Serve locale docs: `bash scripts/serve_docs.sh` (usa Zensical su `127.0.0.1:8010`).
+- Serve locale docs: `bash scripts/serve_docs.sh`.
+  - Comando unico: build + server statico su `127.0.0.1:8010`.
+  - La preview locale scrive solo in `/tmp/zeroerp-docs-preview` (non modifica file tracciati del repo).
 - Se nei markdown si documenta la sintassi include come esempio, evitare placeholder non reali in forma attiva (es. `"..."`) oppure metterli in blocchi codice, per non generare warning del preprocess.
 
 ## SQL Conventions

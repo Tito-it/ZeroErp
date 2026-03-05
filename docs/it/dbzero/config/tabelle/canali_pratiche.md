@@ -29,5 +29,11 @@
 | uq_canali_pratiche_codice | `CREATE UNIQUE INDEX uq_canali_pratiche_codice ON config.canali_pratiche USING btree (codice)` |
 | uq_canali_pratiche_codice_interno | `CREATE UNIQUE INDEX uq_canali_pratiche_codice_interno ON config.canali_pratiche USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_canali_pratiche_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_canali_pratiche_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}
