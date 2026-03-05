@@ -10,7 +10,7 @@
 >
 > Vedi anche
 >
-> * [Guida Fatturazione](guide/fatturazione) — ciclo di vita delle fatture
+> * [Guida Fatturazione](/fatturazione) — ciclo di vita delle fatture
 > * [Guida Gestione Conti Bancari](/guide/gestione-conti-bancari) — IBAN, filiali, SEPA
 > * [Guida Tracciamento Processi e Job](/guide/Analisi-tracciamento-processi-e-job) — pipeline e task run
 

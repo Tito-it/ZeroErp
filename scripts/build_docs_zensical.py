@@ -20,8 +20,8 @@ from pathlib import Path
 ANY_INCLUDE_RE = re.compile(r"\{\%\s*include-markdown\s+\"([^\"]+)\"\s*\%\}")
 # Scopo: processare solo include verso file markdown reali.
 INCLUDE_MD_RE = re.compile(r"\.md$", re.IGNORECASE)
-MARKDOWN_ABS_LINK_RE = re.compile(r"\]\((/(?:dbzero|it|en)/[^)]*)\)")
-HTML_ABS_HREF_RE = re.compile(r'href="(/(?:dbzero|it|en)/[^"]*)"')
+MARKDOWN_ABS_LINK_RE = re.compile(r"\]\((/(?!/)[^)]+)\)")
+HTML_ABS_HREF_RE = re.compile(r'href="(/(?!/)[^"]*)"')
 
 
 # Scopo: risolvere il path del file incluso con fallback robusto.
@@ -109,6 +109,8 @@ def rewrite_root_links(text: str, docs_root: Path, current_file: Path) -> tuple[
         normalized = path_part.lstrip("/")
         wants_trailing_slash = normalized.endswith("/")
         if normalized.startswith("dbzero/"):
+            normalized = f"it/{normalized}"
+        elif not (normalized.startswith("it/") or normalized.startswith("en/")):
             normalized = f"it/{normalized}"
 
         rel_target = os.path.relpath(normalized, start=current_rel_dir.as_posix())
