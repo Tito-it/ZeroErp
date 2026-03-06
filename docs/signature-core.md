@@ -1,3 +1,3 @@
 
 
-**© 2025 Zero ERP** ***• powered by Tid •***
+**© 2026 Zero ERP** ***• powered by Tid •***

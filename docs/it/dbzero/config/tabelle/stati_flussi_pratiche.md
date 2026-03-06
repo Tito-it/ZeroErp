@@ -32,6 +32,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_stati_flussi_pratiche_a10_transizioni_stati_flussi_p_4a3635 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_flussi_pratiche', 'stato_a_id', 'id')` |
+| trg_stati_flussi_pratiche_a10_transizioni_stati_flussi_p_5d4cb9 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_flussi_pratiche', 'stato_da_id', 'id')` |
 | trg_stati_flussi_pratiche_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_stati_flussi_pratiche_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

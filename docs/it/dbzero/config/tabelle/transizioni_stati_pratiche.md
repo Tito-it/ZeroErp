@@ -29,5 +29,15 @@
 | pk_transizioni_stati_pratiche | `CREATE UNIQUE INDEX pk_transizioni_stati_pratiche ON config.transizioni_stati_pratiche USING btree (id)` |
 | uq_transizioni_stati_pratiche | `CREATE UNIQUE INDEX uq_transizioni_stati_pratiche ON config.transizioni_stati_pratiche USING btree (stato_da_id, stato_a_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_transizioni_stati_pratiche_a10_stati_pratiche_requir_84ac4a | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_pratiche', 'attivo', 'stato_a_id')` |
+| trg_transizioni_stati_pratiche_a10_stati_pratiche_requir_84ac4a | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_pratiche', 'attivo', 'stato_a_id')` |
+| trg_transizioni_stati_pratiche_a10_stati_pratiche_requir_efc1b3 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_pratiche', 'attivo', 'stato_da_id')` |
+| trg_transizioni_stati_pratiche_a10_stati_pratiche_requir_efc1b3 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_pratiche', 'attivo', 'stato_da_id')` |
+| trg_transizioni_stati_pratiche_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_transizioni_stati_pratiche_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

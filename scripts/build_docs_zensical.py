@@ -266,6 +266,11 @@ def parse_args() -> argparse.Namespace:
         default="site-zensical",
         help="Output site directory for Zensical build.",
     )
+    parser.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="Solo preprocess (include + link rewrite), senza build statico zensical.",
+    )
     return parser.parse_args()
 
 
@@ -292,6 +297,10 @@ def main() -> int:
     print(f"temp_config={dst_config.as_posix()}")
     for warning in warnings:
         print(f"WARNING: {warning}")
+
+    if args.skip_build:
+        print("skip_build=true — preprocess completato, build statico saltato.")
+        return 0
 
     exit_code = run_zensical_build(dst_config)
     if exit_code == 0:
