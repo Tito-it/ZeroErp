@@ -1,0 +1,77 @@
+{% include-markdown "it/dbzero/pratiche/manual/trgfn_flussi_generazione.md" %}
+# ⚙️ Funzione `trgfn_flussi_generazione`
+
+```sql
+CREATE FUNCTION trgfn_flussi_generazione()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_generazione()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_codice_interno config.stati_flussi_pratiche.codice_interno%TYPE;
+  v_regola         RECORD;
+BEGIN
+  -- =========================================================
+  -- Scopo:
+  --   Generazione automatica cross-pratica.
+  --   Quando un flusso passa a COMPLETATO, cerca regole di
+  --   generazione con auto = true e template_flusso_origine
+  --   corrispondente, e invoca fn_genera_pratica_da_flusso
+  --   per ciascuna regola matching.
+  --
+  -- Regole:
+  --   - Controlla codice_interno dello stato nuovo
+  --   - Solo se COMPLETATO e flusso template-based
+  --   - Filtra per esito_richiesto (NULL = qualsiasi esito)
+  --   - Ignora regole non attive o con auto = false
+  -- =========================================================
+
+  -- Verifica se il nuovo stato e' COMPLETATO
+  SELECT sfp.codice_interno
+    INTO v_codice_interno
+    FROM config.stati_flussi_pratiche sfp
+   WHERE sfp.id = NEW.stato_id;
+
+  IF v_codice_interno <> 'COMPLETATO' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Solo flussi template-based
+  IF NEW.template_flusso_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- Cerca regole matching
+  FOR v_regola IN
+    SELECT rg.id
+      FROM pratiche.regole_generazione rg
+     WHERE rg.template_flusso_origine_id = NEW.template_flusso_id
+       AND rg.auto = true
+       AND rg.attivo = true
+       AND (
+         rg.esito_richiesto IS NULL
+         OR rg.esito_richiesto = NEW.esito
+       )
+  LOOP
+    -- Genera la pratica target
+    PERFORM pratiche.fn_genera_pratica_da_flusso(
+      NEW.id,
+      v_regola.id
+    );
+  END LOOP;
+
+  RETURN NEW;
+END;
+$function$
+
+COMMENT ON FUNCTION pratiche.trgfn_flussi_generazione()
+IS 'AFTER UPDATE su flussi: genera pratiche cross-pratica quando flusso diventa COMPLETATO.';
+```
+
+---
+{% include-markdown "signature-core.md" %}
