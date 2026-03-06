@@ -53,6 +53,7 @@ API_RETRY_AFTER_SECONDS = int(env("DJANGO_API_RETRY_AFTER_SECONDS", "3"))
 API_EXPOSE_TECHNICAL_DETAILS = env("DJANGO_API_EXPOSE_TECHNICAL_DETAILS", "0") == "1"
 API_SEARCH_THROTTLE_RATE = env("DJANGO_API_SEARCH_THROTTLE_RATE", "30/min")
 API_STRONG_IDEMPOTENCY_ENABLED = env("DJANGO_API_STRONG_IDEMPOTENCY_ENABLED", "0") == "1"
+REQUEST_LOG_ENABLED = env("DJANGO_REQUEST_LOG_ENABLED", "1") == "1"
 
 
 # Application definition
@@ -77,6 +78,7 @@ INSTALLED_APPS = [
     'apps.storico',
     'apps.vendite',
     'apps.pratiche',
+    'rest_framework_simplejwt.token_blacklist',
 ]
 
 REST_FRAMEWORK = {
@@ -129,6 +131,9 @@ SIMPLE_JWT = {
     # Per sviluppo: access token piu` lungo, refresh invariato a 1 giorno.
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    # Token rotation: ad ogni refresh il vecchio refresh token viene blacklistato.
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
 MIDDLEWARE = [
@@ -140,6 +145,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'apps.core.middleware.jwt_audit_middleware.JwtAuditMiddleware',
+    'apps.core.middleware.request_log_middleware.RequestLogMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]

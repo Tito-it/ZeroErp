@@ -24,9 +24,12 @@
 - [value-normalizer](manual/value-normalizer.md) — Centralizzare utility riusabili di normalizzazione valori input.
 
 ## Altri contenuti
+- [auth_views_audit](manual/auth_views_audit.md) — Override delle view SimpleJWT per registrare eventi di login e refresh nella tabella dbops.sessioni_utente.
 - [emittente_fiscale_scope_mixin](manual/emittente_fiscale_scope_mixin.md) — Mixin per ViewSet e GenericAPIView che filtra automaticamente il queryset in base agli emittenti fiscali autorizzati per l'utente corrente.
 - [gen-bk-docs](manual/gen-bk-docs.md) — Automatizzare la generazione degli indici index.md (e opzionalmente index.ci.md) per docs/it/backend/<area>/, includendo una descrizione breve estratta dalla sezione **Scopo**.
 - [jwt_audit_middleware](manual/jwt_audit_middleware.md) — Middleware Django che propaga l'identita' dell'utente autenticato nella sessione PostgreSQL tramite GUC (SET LOCAL) e rifiuta anticipatamente gli utenti disabilitati sugli endpoint API.
+- [request_log_middleware](manual/request_log_middleware.md) — Middleware che registra ogni request API in dbops.request_log con metodo, path, status, durata e utente.
+- [session_audit_service](manual/session_audit_service.md) — Service per registrare eventi di sessione JWT (login, refresh) nella tabella dbops.sessioni_utente.
 - [permissions_cache](manual/permissions_cache.md) — Cache Redis L2 per i permessi utente. Integra la cache per-request (L1 dict) con Redis (L2) per evitare query DB su ogni richiesta HTTP.
 - [permissions_resolver](manual/permissions_resolver.md) — Risolutore centrale dei permessi ZeroErp. Implementa la catena di risoluzione: ruolo_sistema → override utente → profilo reparto → BLOCCATO (default sicuro).
 - [zeroerp_permission](manual/zeroerp_permission.md) — Permission class DRF centrale per ZeroErp. Risolve automaticamente l'area funzionale dallo schema del model e verifica il livello di accesso tramite PermissionResolver.

@@ -1,7 +1,7 @@
 # Audit Sessioni, Request Logging e Sicurezza Token
 
 **Data**: 2026-03-05
-**Stato**: WIP — FASE 1 DB parzialmente completata (1A + 2A changeset e doc manuali creati)
+**Stato**: COMPLETATO — FASE 1 (DB) + FASE 2 (Backend) + FASE 3 (Test unitari) implementati il 6 marzo 2026
 **Autore**: tid / Claude
 
 ---
@@ -270,11 +270,11 @@ FASE 4 (Documentazione):
 | #  | Area            | Tipo    | Descrizione                                      | Prerequisiti | Stato                        |
 |----|-----------------|---------|--------------------------------------------------|--------------|------------------------------|
 | 1A | Sessioni        | DB      | Tabella `dbops.sessioni_utente`                  | —            | DONE (changeset + doc)       |
-| 1B | Sessioni        | Backend | Repository + service + auth views override       | 1A           | --                           |
+| 1B | Sessioni        | Backend | Repository + service + auth views override       | 1A           | DONE (7 test)                |
 | 2A | Request log     | DB      | Tabella `dbops.request_log`                      | —            | DONE (changeset + doc)       |
-| 2B | Request log     | Backend | Middleware `RequestLogMiddleware`                 | 2A           | --                           |
-| 3A | Token blacklist | DB      | `INSTALLED_APPS` + migrate                       | —            | --                           |
-| 3B | Token blacklist | Backend | Settings rotation + integrazione disabilitazione | 3A           | --                           |
+| 2B | Request log     | Backend | Middleware `RequestLogMiddleware`                 | 2A           | DONE (8 test)                |
+| 3A | Token blacklist | DB      | `INSTALLED_APPS` + migrate                       | —            | DONE (settings)              |
+| 3B | Token blacklist | Backend | Settings rotation + integrazione disabilitazione | 3A           | DONE (settings)              |
 
 ---
 
@@ -341,13 +341,13 @@ Dopo l'implementazione, i seguenti documenti e file devono essere aggiornati per
 | `backend/scripts/smoke-test-pratiche.sh` | Nessuna modifica (beneficia automaticamente del request log) |
 | `backend/scripts/smoke-test-vendite.sh` | Nessuna modifica (beneficia automaticamente del request log) |
 
-### Test unitari da creare
+### Test unitari creati (DONE)
 
-| File | Contenuto |
-|------|-----------|
-| `backend/apps/core/tests/services/test_session_audit_service.py` | Mock DB, verifica chiamate repository per login/refresh/logout |
-| `backend/apps/core/tests/api/test_auth_views.py` | Mock service, verifica che le view audit chiamino `record_login`/`record_refresh` |
-| `backend/apps/core/tests/middleware/test_request_log_middleware.py` | Mock DB, verifica INSERT con campi corretti, verifica esclusione path |
+| File | Contenuto | Test |
+|------|-----------|------|
+| `backend/apps/core/tests/services/test_session_audit_service.py` | Mock DB, verifica chiamate repository per login/refresh, IP, UA, errori silent | 7 |
+| `backend/apps/core/tests/api/test_auth_views.py` | Mock service, verifica che le view audit chiamino `record_login`/`record_refresh` | 4 |
+| `backend/apps/core/tests/middleware/test_request_log_middleware.py` | Mock DB, verifica INSERT, esclusione path, disabilitazione, errori silent | 8 |
 
 ### Documentazione backend da creare
 
