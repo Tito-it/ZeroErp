@@ -35,3 +35,22 @@ def get_request_id() -> str | None:
 # Scopo: Recupera `idempotency_key` dal contesto applicativo o dal database.
 def get_idempotency_key() -> str | None:
     return _idempotency_key_var.get()
+
+
+# --------------- HTTP request helpers ---------------
+
+from django.http import HttpRequest
+
+
+# Scopo: Estrae l'IP del client dalla request, gestendo proxy (X-Forwarded-For).
+def get_client_ip(request: HttpRequest) -> str | None:
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR")
+
+
+# Scopo: Estrae lo User-Agent dalla request, troncato a 500 caratteri.
+def get_user_agent(request: HttpRequest) -> str | None:
+    ua = request.META.get("HTTP_USER_AGENT")
+    return ua[:500] if ua else None
