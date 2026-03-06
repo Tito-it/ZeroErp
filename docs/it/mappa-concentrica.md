@@ -52,8 +52,8 @@
 
 | Componente | Tipo | Stato | Descrizione |
 |---|---|---|---|
-| `core` | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling, tracciamento processi/job |
-| `dbops` | Schema DB | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes, audit_log |
+| `core` | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling, tracciamento processi/job, audit sessioni, request log |
+| `dbops` | Schema DB | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes, audit_log, sessioni_utente, request_log |
 | `script` | Schema DB | Operativo | fn_log_and_raise_error, viste e funzioni riusabili |
 | `public` | Schema DB | Operativo | version_info |
 | `maintenance` | Schema DB | Operativo | Job schedulati pgAgent, job_run_log |
@@ -61,24 +61,27 @@
 ### Cosa fornisce agli anelli esterni
 
 - Error handling centralizzato (`ServiceError`, `ErrorManager.require`)
-- Middleware API (exception handling, JWT audit, request context)
+- Middleware API (exception handling, JWT audit, request context, request log)
 - Pattern uniformi: `handle_post_json`, paginazione, throttling, search validators
 - Automazioni DB: audit fields, tx_id, storicizzazione, lock colonne, protezione attivo
 - **Tracciamento processi e job**: API per audit log, task registry multi-dominio, job run log (6 endpoint REST, 27 test)
+- **Audit sessioni**: login/refresh JWT tracciati in `dbops.sessioni_utente` con IP, user_agent, request_id (19 test)
+- **Request logging**: ogni request `/api/*` registrata in `dbops.request_log` con metodo, path, status, durata
+- **Token blacklist**: refresh token rotation con blacklist automatica (SimpleJWT `token_blacklist`)
 - Policy indici FK automatica
 - Logging e raise errori DB (`script.fn_log_and_raise_error`)
 
-### Evoluzione pianificata (WIP)
+### Audit sessioni, request logging e token blacklist
 
-Le seguenti capacita' sono in fase di progettazione (vedi [Audit-logging-sessionii-request-token.md](dev/work-in-progress/Audit-logging-sessionii-request-token.md)):
+Implementato il 6 marzo 2026 (vedi [Audit-logging-sessionii-request-token.md](dev/work-in-progress/Audit-logging-sessionii-request-token.md)):
 
 | Capacita' | Componente DB | Componente Backend | Stato |
 | --- | --- | --- | --- |
-| Audit sessioni (login/refresh/logout) | `dbops.sessioni_utente` | `session_audit_service` + auth views override | Pianificato |
-| Request logging (chi chiama cosa) | `dbops.request_log` | `RequestLogMiddleware` | Pianificato |
-| Token blacklist e revoca | SimpleJWT `token_blacklist` | Settings rotation + integrazione disabilitazione | Pianificato |
+| Audit sessioni (login/refresh) | `dbops.sessioni_utente` | `session_audit_service` + `AuditTokenObtainPairView` / `AuditTokenRefreshView` | Operativo |
+| Request logging (chi chiama cosa) | `dbops.request_log` | `RequestLogMiddleware` | Operativo |
+| Token blacklist e revoca | SimpleJWT `token_blacklist` | Settings `ROTATE_REFRESH_TOKENS` + `BLACKLIST_AFTER_ROTATION` | Operativo |
 
-Queste estensioni sono non-breaking: nuove tabelle in `dbops`, nuovi middleware in `core`, override view JWT. Nessun contratto esistente viene modificato. Gli anelli esterni ne beneficiano automaticamente senza alcuna modifica al proprio codice.
+Estensioni non-breaking: nuove tabelle in `dbops`, nuovo middleware in `core`, override view JWT. Nessun contratto esistente modificato. Gli anelli esterni ne beneficiano automaticamente senza alcuna modifica al proprio codice.
 
 ### Stabilita'
 
@@ -235,6 +238,8 @@ Nessuna dipendenza inversa. Nessuna dipendenza laterale tra processi di anello 3
 - ~~Completamento BE-1..BE-5 per `pratiche`~~ — **FATTO** (4 marzo 2026)
 - ~~Sospensioni, calcoli tempo, macchina a stati (BE-6..BE-7)~~ — **FATTO** (6 marzo 2026)
 - `pratiche` e' consumabile dagli anelli esterni (19 endpoint REST, 90 test unitari, 18 smoke test)
+- ~~Audit sessioni, request logging, token blacklist~~ — **FATTO** (6 marzo 2026)
+- Anello 0 traccia sessioni JWT, request API e supporta revoca token (19 test unitari)
 
 ### Medio termine
 
