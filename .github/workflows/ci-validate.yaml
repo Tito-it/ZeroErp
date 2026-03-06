@@ -180,6 +180,7 @@ jobs:
         working-directory: ./backend
         run: |
           source .venv/bin/activate
+          python manage.py migrate token_blacklist --fake
           python manage.py migrate --noinput
 
       - name: Django tests
