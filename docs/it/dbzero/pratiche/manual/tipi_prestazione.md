@@ -30,8 +30,21 @@ La tabella `pratiche.tipi_prestazione` definisce il **catalogo dei tipi di prati
 | Colonna | Note |
 |---------|------|
 | `categoria` | Raggruppamento libero (nullable). Non vincolato da CHECK — flessibilita' operativa. |
+| `pre_attivazione` | BOOLEAN NOT NULL DEFAULT true. Se true, il tipo prestazione e' applicabile **prima** dell'attivazione del cliente (billing_account senza data_attivazione). |
+| `post_attivazione` | BOOLEAN NOT NULL DEFAULT true. Se true, il tipo prestazione e' applicabile **dopo** l'attivazione del cliente (billing_account con data_attivazione valorizzata). |
 | `storicizza` | Se true, le modifiche vengono tracciate in `storico.tipi_prestazione`. |
 | `tx_id` | Identificativo transazione per correlazione cross-tabella. |
+
+#### Matrice pre/post attivazione
+
+| `pre_attivazione` | `post_attivazione` | Significato                                                        |
+| ----------------- | ------------------ | ------------------------------------------------------------------ |
+| true              | true               | Universale — applicabile sempre (default).                         |
+| true              | false              | Solo pre-attivazione — esclusa dopo l'attivazione del cliente.     |
+| false             | true               | Solo post-attivazione — richiede cliente attivato.                 |
+| false             | false              | Interna — prestazione non vincolata al ciclo di vita del cliente.  |
+
+La validazione avviene nel **service Django** (non nel DB) perche' richiede lookup cross-schema su `anagrafiche.billing_account`.
 
 ---
 
