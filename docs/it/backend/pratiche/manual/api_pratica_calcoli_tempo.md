@@ -6,7 +6,7 @@ Esporre via HTTP i calcoli tempo (prestazione da/a) di una pratica.
 
 ## Contesto
 
-Endpoint di sola lettura che delega a `pratiche_service.get_calcoli_tempo`. Restituisce i record di `pratiche.calcoli_tempo` per una pratica specifica. Ogni record traccia il tempo trascorso tra due flussi (da/a), con giorni lordi, sospensione e netti calcolati dal trigger DB.
+Endpoint di sola lettura che delega a `pratiche_service.get_calcoli_tempo`. Restituisce i record di `pratiche.calcoli_tempo` per una pratica specifica, arricchiti con `stato_tempo` e `giorni_rimanenti` calcolati in tempo reale dalla funzione DB `fn_valuta_tempo_esecuzione_da_a`. Ogni record traccia il tempo trascorso tra due flussi (da/a), con giorni lordi, sospensione e netti calcolati dal trigger DB.
 
 ## Input
 
@@ -34,7 +34,9 @@ Endpoint di sola lettura che delega a `pratiche_service.get_calcoli_tempo`. Rest
         "giorni_sospensione": 1,
         "giorni_netti": 4,
         "giorni_formula": 30,
-        "sforato": false
+        "sforato": false,
+        "giorni_rimanenti": 26,
+        "stato_tempo": "OK"
       }
     ]
   }
@@ -51,12 +53,15 @@ Endpoint di sola lettura che delega a `pratiche_service.get_calcoli_tempo`. Rest
 - `data_fine_calcolo`: data completamento flusso_a. NULL se il flusso_a non e' ancora completato.
 - `giorni_lordi`, `giorni_sospensione`, `giorni_netti`: calcolati solo quando `data_fine_calcolo` e' valorizzata.
 - `sforato`: `true` se `giorni_netti > giorni_formula`.
+- `giorni_rimanenti`: giorni restanti prima dello sforamento (calcolati live da `fn_valuta_tempo_esecuzione_da_a`). NULL se non esiste formula applicabile.
+- `stato_tempo`: valutazione live del semaforo: `OK`, `WARNING`, `CRITICO`, `SFORATO`. NULL se non esiste formula applicabile.
 - Permission: area `pratiche` (lettura implicita).
 - Endpoint v1 richiede JWT.
 
 ## Dipendenze DB
 
 - `pratiche.calcoli_tempo` (SELECT con filtro pratica_id)
+- `pratiche.fn_valuta_tempo_esecuzione_da_a` (LEFT JOIN LATERAL per stato_tempo e giorni_rimanenti live)
 - `pratiche.formule_tempo` (giorni_esecuzione come riferimento formula)
 
 ## Note di migrazione

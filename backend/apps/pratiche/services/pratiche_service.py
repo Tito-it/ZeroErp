@@ -20,6 +20,7 @@ from apps.pratiche.types import (
     CalcoloTempoRow,
     CanalePraticaRow,
     FlussoRow,
+    FormulaTempoRow,
     GiornaleRow,
     PraticaRow,
     PrerequisitoCheckRow,
@@ -557,9 +558,25 @@ def get_sospensioni(pratica_id: int) -> list[SospensioneRow]:
 # -- CALCOLI TEMPO LETTURA ----------------------------------------------
 
 
-# Scopo: Restituisce i calcoli tempo di una pratica.
+# Scopo: Restituisce i calcoli tempo di una pratica con stato_tempo live.
 def get_calcoli_tempo(pratica_id: int) -> list[CalcoloTempoRow]:
     repo = PraticheRepository()
     return repo.list_calcoli_tempo(pratica_id)
+
+
+# -- FORMULE TEMPO LETTURA -------------------------------------------------
+
+
+# Scopo: Restituisce le formule tempo attive per un tipo prestazione.
+def get_formule_tempo(tipo_prestazione_id: int) -> list[FormulaTempoRow]:
+    ErrorManager.require(
+        tipo_prestazione_id > 0,
+        code="E_INVALID_ID",
+        message="tipo_prestazione_id deve essere > 0",
+    )
+    assert tipo_prestazione_id > 0
+
+    repo = PraticheRepository()
+    return repo.list_formule_tempo(tipo_prestazione_id)
 
 

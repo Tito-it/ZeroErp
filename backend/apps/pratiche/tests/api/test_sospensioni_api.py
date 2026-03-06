@@ -18,6 +18,9 @@ Indice test eseguiti:
 8) SospensioniApiTests.test_get_calcoli_tempo_pratica_ok
 9) SospensioniApiTests.test_v1_sospendi_richiede_jwt
 10) SospensioniApiTests.test_post_sospendi_pratica_con_data_riattivazione
+11) SospensioniApiTests.test_get_calcoli_tempo_con_stato_tempo
+12) SospensioniApiTests.test_get_formule_tempo_ok
+13) SospensioniApiTests.test_get_formule_tempo_senza_tipo_prestazione
 """
 
 import json
@@ -193,6 +196,54 @@ class SospensioniApiTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(len(body["data"]["results"]), 1)
+
+    # -- CALCOLI TEMPO CON STATO_TEMPO ------------------------------------
+
+    # Scopo: Verifica che GET calcoli-tempo restituisca i campi stato_tempo e giorni_rimanenti.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.get_calcoli_tempo")
+    def test_get_calcoli_tempo_con_stato_tempo(self, mock_calc, _auth):
+        mock_calc.return_value = [{
+            "id": 1, "pratica_id": 1, "flusso_da_id": 10, "flusso_a_id": 20,
+            "formula_tempo_id": 5, "data_inizio_calcolo": "2026-03-06",
+            "data_fine_calcolo": "2026-03-16", "giorni_lordi": 10,
+            "giorni_sospensione": 2, "giorni_netti": 8,
+            "giorni_formula": 15, "sforato": False,
+            "giorni_rimanenti": 7, "stato_tempo": "OK",
+        }]
+
+        response = self.client.get("/api/v1/pratiche/1/calcoli-tempo/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        result = body["data"]["results"][0]
+        self.assertEqual(result["stato_tempo"], "OK")
+        self.assertEqual(result["giorni_rimanenti"], 7)
+
+    # -- FORMULE TEMPO ---------------------------------------------------
+
+    # Scopo: Verifica GET formule tempo con tipo_prestazione_id valido.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.get_formule_tempo")
+    def test_get_formule_tempo_ok(self, mock_formule, _auth):
+        mock_formule.return_value = [{
+            "id": 1, "tipo_prestazione_id": 26,
+            "template_flusso_da_id": 5, "template_flusso_a_id": 10,
+            "giorni_esecuzione": 15, "giorni_warning": 12, "giorni_critico": 14,
+            "attivo": True, "descrizione": "Test", "meta": {},
+        }]
+
+        response = self.client.get("/api/v1/pratiche/formule-tempo/?tipo_prestazione_id=26")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(len(body["data"]["results"]), 1)
+        self.assertEqual(body["data"]["results"][0]["giorni_esecuzione"], 15)
+        mock_formule.assert_called_once_with(26)
+
+    # Scopo: Verifica errore GET formule tempo senza tipo_prestazione_id.
+    @patch(_AUTH, return_value=(Mock(), None))
+    def test_get_formule_tempo_senza_tipo_prestazione(self, _auth):
+        response = self.client.get("/api/v1/pratiche/formule-tempo/")
+        self.assertEqual(response.status_code, 400)
 
     # -- JWT PROTECTION --------------------------------------------------
 

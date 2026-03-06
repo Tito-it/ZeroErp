@@ -9,6 +9,7 @@
 from django.urls import path
 
 from apps.pratiche.api.views import (
+    ApiFormuleTempoV1,
     ApiPraticaAssegnazioneV1,
     ApiPraticaCalcoliTempoV1,
     ApiPraticaDetailV1,
@@ -31,6 +32,8 @@ from apps.pratiche.api.views import (
 )
 
 urlpatterns = [
+    # --- Formule tempo ---
+    path("formule-tempo/", ApiFormuleTempoV1.as_view(), name="pratiche-v1-formule-tempo"),
     # --- Pratiche ---
     path("", ApiPraticheListV1.as_view(), name="pratiche-v1-list"),
     path("<int:pratica_id>/", ApiPraticaDetailV1.as_view(), name="pratiche-v1-detail"),
