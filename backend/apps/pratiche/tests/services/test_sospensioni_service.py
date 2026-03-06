@@ -24,6 +24,8 @@ Indice test eseguiti:
 14) SospensioniServiceTests.test_riattiva_flusso_errore_nessuna_sospensione
 15) SospensioniServiceTests.test_get_sospensioni_ok
 16) SospensioniServiceTests.test_get_calcoli_tempo_ok
+17) SospensioniServiceTests.test_get_formule_tempo_ok
+18) SospensioniServiceTests.test_get_formule_tempo_errore_id_zero
 """
 
 from unittest.mock import patch
@@ -257,10 +259,39 @@ class SospensioniServiceTests(SimpleTestCase):
             "data_fine_calcolo": None, "giorni_lordi": None,
             "giorni_sospensione": None, "giorni_netti": None,
             "giorni_formula": 30, "sforato": None,
+            "giorni_rimanenti": 25, "stato_tempo": "OK",
         }
         repo.list_calcoli_tempo.return_value = [calcolo]
 
         items = pratiche_service.get_calcoli_tempo(1)
 
         self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["stato_tempo"], "OK")
+        self.assertEqual(items[0]["giorni_rimanenti"], 25)
         repo.list_calcoli_tempo.assert_called_once_with(1)
+
+    # -- FORMULE TEMPO LETTURA ---------------------------------------------
+
+    # Scopo: Verifica delega a repository per lista formule tempo.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_get_formule_tempo_ok(self, MockRepo):
+        repo = MockRepo.return_value
+        formula = {
+            "id": 1, "tipo_prestazione_id": 26,
+            "template_flusso_da_id": 5, "template_flusso_a_id": 10,
+            "giorni_esecuzione": 15, "giorni_warning": 12, "giorni_critico": 14,
+            "attivo": True, "descrizione": "Test", "meta": {},
+        }
+        repo.list_formule_tempo.return_value = [formula]
+
+        items = pratiche_service.get_formule_tempo(26)
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["giorni_esecuzione"], 15)
+        repo.list_formule_tempo.assert_called_once_with(26)
+
+    # Scopo: Verifica errore se tipo_prestazione_id <= 0.
+    def test_get_formule_tempo_errore_id_zero(self):
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.get_formule_tempo(0)
+        self.assertEqual(ctx.exception.code, "E_INVALID_ID")

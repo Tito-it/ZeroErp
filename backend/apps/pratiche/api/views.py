@@ -798,3 +798,45 @@ class ApiPraticaCalcoliTempoV1(ApiPraticaCalcoliTempo):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
     area_funzionale = "pratiche"
+
+
+# ================================================================== #
+# Formule tempo — lettura                                              #
+# ================================================================== #
+
+
+class ApiFormuleTempo(APIView):
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="tipo_prestazione_id", type=int, required=True, description="ID tipo prestazione (obbligatorio)."),
+        ],
+        responses={200: inline_serializer(
+            name="FormuleTempoResponse",
+            fields={
+                "data": inline_serializer(name="FormuleTempoData", fields={
+                    "results": serializers.ListField(child=serializers.DictField()),
+                }),
+            },
+        )},
+    )
+    # Scopo: Restituisce via GET le formule tempo attive per un tipo prestazione.
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        tipo_prestazione_id = optional_int({"v": qp.get("tipo_prestazione_id")}, "v")
+        ErrorManager.require(
+            tipo_prestazione_id is not None and tipo_prestazione_id > 0,
+            code="E_INVALID_ID",
+            message="tipo_prestazione_id obbligatorio e > 0",
+        )
+        assert tipo_prestazione_id is not None
+
+        items = pratiche_service.get_formule_tempo(tipo_prestazione_id)
+        return success_response({"results": items})
+
+
+class ApiFormuleTempoV1(ApiFormuleTempo):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "pratiche"

@@ -150,6 +150,8 @@ class CalcoloTempoRow(TypedDict):
     giorni_netti: int | None
     giorni_formula: int
     sforato: bool | None
+    giorni_rimanenti: int | None
+    stato_tempo: str | None
 
 
 # -- Tabella config.transizioni_stati_pratiche / flussi --
