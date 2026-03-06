@@ -37,6 +37,17 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 | `completa_flusso(flusso_id, esito, note_esito?)` | flusso_id, esito | `None` | Transizione → COMPLETATO |
 | `cambia_stato_flusso(flusso_id, nuovo_stato, ...)` | flusso_id, codice_interno, esito?, note_esito? | `None` | Transizione generica |
 
+### Sospensioni
+
+| Funzione | Input | Output | Descrizione |
+|---|---|---|---|
+| `sospendi_pratica(pratica_id, motivo, *, data_riattivazione_prevista?)` | pratica_id, motivo, data opzionale | `int` (sospensione_id) | Sospende pratica intera; trigger propaga ai flussi |
+| `riattiva_pratica(pratica_id)` | pratica_id | `None` | Riattiva pratica sospesa; trigger ripristina flussi |
+| `sospendi_flusso(pratica_id, flusso_id, motivo, *, data_riattivazione_prevista?)` | pratica_id, flusso_id, motivo, data opzionale | `int` (sospensione_id) | Sospende singolo flusso |
+| `riattiva_flusso(pratica_id, flusso_id)` | pratica_id, flusso_id | `None` | Riattiva singolo flusso sospeso |
+| `get_sospensioni(pratica_id)` | pratica_id | `list[SospensioneRow]` | Lista sospensioni pratica (tutte) |
+| `get_calcoli_tempo(pratica_id)` | pratica_id | `list[CalcoloTempoRow]` | Calcoli tempo prestazione da/a |
+
 ### Supporto
 
 | Funzione | Input | Output | Descrizione |
@@ -53,6 +64,8 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 - Esiti flusso ammessi: `POSITIVO`, `NEGATIVO`, `PARZIALE`, `NON_APPLICABILE`.
 - `dispatch_handler`: import inline di `handler_registry.get_handler` per evitare import circolari; ritorna `None` se il flusso non ha template, non ha handler_key, o l'handler non e' registrato.
 - `assegna_pratica`: noop se nessun campo di assegnazione fornito.
+- Le funzioni sospensione verificano unicita' sospensione attiva prima dell'INSERT.
+- `_verifica_flusso_pratica(repo, pratica_id, flusso_id)`: helper privato per ownership check flusso/pratica riusato da `sospendi_flusso` e `riattiva_flusso`.
 
 ## Dipendenze DB
 
@@ -64,6 +77,8 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 - `pratiche.handler_flussi` (lookup handler_key)
 - `pratiche.fn_check_prerequisiti_flusso` (verifica prerequisiti)
 - `pratiche.template_flussi_canali` + `config.canali_pratiche` (canali)
+- `pratiche.sospensioni` (CRUD sospensioni via PraticheRepository)
+- `pratiche.calcoli_tempo` (lettura via PraticheRepository)
 
 ## Note di migrazione
 

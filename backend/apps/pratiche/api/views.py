@@ -604,3 +604,197 @@ class ApiPraticaFlussoPraticheGenerateV1(ApiPraticaFlussoPraticheGenerate):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
     area_funzionale = "pratiche"
+
+
+# ================================================================== #
+# Sospensioni pratica                                                  #
+# ================================================================== #
+
+
+class ApiPraticaSospendi(APIView):
+    @extend_schema(
+        request=inline_serializer(
+            name="PraticaSospendiRequest",
+            fields={
+                "motivo": serializers.CharField(),
+                "data_riattivazione_prevista": serializers.DateField(required=False, allow_null=True),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="PraticaSospendiResponse",
+            fields={"data": inline_serializer(name="PraticaSospendiData", fields={
+                "sospensione_id": serializers.IntegerField(),
+                "status": serializers.CharField(),
+            })},
+        )},
+    )
+    # Scopo: Gestisce la richiesta HTTP POST per sospendere una pratica.
+    def post(self, request: Request, pratica_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            sospensione_id = pratiche_service.sospendi_pratica(
+                pratica_id,
+                str(payload.get("motivo", "")),
+                data_riattivazione_prevista=payload.get("data_riattivazione_prevista"),
+            )
+            return {"sospensione_id": sospensione_id, "status": "ok"}
+
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiPraticaSospendiV1(ApiPraticaSospendi):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "pratiche"
+    post_permission = "sospendi_pratica"
+
+
+class ApiPraticaRiattiva(APIView):
+    @extend_schema(
+        request=inline_serializer(
+            name="PraticaRiattivaRequest",
+            fields={},
+        ),
+        responses={200: inline_serializer(
+            name="PraticaRiattivaResponse",
+            fields={"data": inline_serializer(name="PraticaRiattivaData", fields={
+                "status": serializers.CharField(),
+            })},
+        )},
+    )
+    # Scopo: Gestisce la richiesta HTTP POST per riattivare una pratica sospesa.
+    def post(self, request: Request, pratica_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            pratiche_service.riattiva_pratica(pratica_id)
+            return {"status": "ok"}
+
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiPraticaRiattivaV1(ApiPraticaRiattiva):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "pratiche"
+    post_permission = "riattiva_pratica"
+
+
+# ================================================================== #
+# Sospensioni flusso                                                   #
+# ================================================================== #
+
+
+class ApiPraticaFlussoSospendi(APIView):
+    @extend_schema(
+        request=inline_serializer(
+            name="FlussoSospendiRequest",
+            fields={
+                "motivo": serializers.CharField(),
+                "data_riattivazione_prevista": serializers.DateField(required=False, allow_null=True),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="FlussoSospendiResponse",
+            fields={"data": inline_serializer(name="FlussoSospendiData", fields={
+                "sospensione_id": serializers.IntegerField(),
+                "status": serializers.CharField(),
+            })},
+        )},
+    )
+    # Scopo: Gestisce la richiesta HTTP POST per sospendere un singolo flusso.
+    def post(self, request: Request, pratica_id: int, flusso_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            sospensione_id = pratiche_service.sospendi_flusso(
+                pratica_id,
+                flusso_id,
+                str(payload.get("motivo", "")),
+                data_riattivazione_prevista=payload.get("data_riattivazione_prevista"),
+            )
+            return {"sospensione_id": sospensione_id, "status": "ok"}
+
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiPraticaFlussoSospendiV1(ApiPraticaFlussoSospendi):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "pratiche"
+    post_permission = "sospendi_flusso"
+
+
+class ApiPraticaFlussoRiattiva(APIView):
+    @extend_schema(
+        request=inline_serializer(
+            name="FlussoRiattivaRequest",
+            fields={},
+        ),
+        responses={200: inline_serializer(
+            name="FlussoRiattivaResponse",
+            fields={"data": inline_serializer(name="FlussoRiattivaData", fields={
+                "status": serializers.CharField(),
+            })},
+        )},
+    )
+    # Scopo: Gestisce la richiesta HTTP POST per riattivare un flusso sospeso.
+    def post(self, request: Request, pratica_id: int, flusso_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            pratiche_service.riattiva_flusso(pratica_id, flusso_id)
+            return {"status": "ok"}
+
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiPraticaFlussoRiattivaV1(ApiPraticaFlussoRiattiva):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "pratiche"
+    post_permission = "riattiva_flusso"
+
+
+# ================================================================== #
+# Sospensioni e calcoli tempo — lettura                                #
+# ================================================================== #
+
+
+class ApiPraticaSospensioni(APIView):
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PraticaSospensioniResponse",
+            fields={
+                "data": inline_serializer(name="PraticaSospensioniData", fields={
+                    "results": serializers.ListField(child=serializers.DictField()),
+                }),
+            },
+        )},
+    )
+    # Scopo: Restituisce via GET le sospensioni di una pratica.
+    def get(self, request: Request, pratica_id: int) -> JsonResponse:
+        items = pratiche_service.get_sospensioni(pratica_id)
+        return success_response({"results": items})
+
+
+class ApiPraticaSospensioniV1(ApiPraticaSospensioni):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "pratiche"
+
+
+class ApiPraticaCalcoliTempo(APIView):
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PraticaCalcoliTempoResponse",
+            fields={
+                "data": inline_serializer(name="PraticaCalcoliTempoData", fields={
+                    "results": serializers.ListField(child=serializers.DictField()),
+                }),
+            },
+        )},
+    )
+    # Scopo: Restituisce via GET i calcoli tempo di una pratica.
+    def get(self, request: Request, pratica_id: int) -> JsonResponse:
+        items = pratiche_service.get_calcoli_tempo(pratica_id)
+        return success_response({"results": items})
+
+
+class ApiPraticaCalcoliTempoV1(ApiPraticaCalcoliTempo):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [ZeroERPPermission]
+    area_funzionale = "pratiche"
