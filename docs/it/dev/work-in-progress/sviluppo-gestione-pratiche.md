@@ -1331,4 +1331,105 @@ Il progetto usa gia' una funzione standard per la generazione di codici con sequ
 
 ---
 
+## 16. Da Fare: Punti Aperti dalla Revisione della Guida Operativa
+
+> Stato: **da fare**. Emersi dalla revisione di `docs/it/guide/gestione-pratiche.md` (marzo 2026).
+
+### 16.1 Stato ERRORE — meccanismo di retry
+
+Oggi lo stato `ERRORE` sui flussi e' **terminale**: non esistono transizioni in uscita
+in `config.transizioni_stati_flussi_pratiche`. Questo significa che un flusso in errore
+non puo' essere ritentato senza intervento diretto sul DB.
+
+**Da decidere e implementare:**
+
+- Aggiungere la transizione `ERRORE → DA_ESEGUIRE` nella tabella config
+- Definire chi puo' effettuare il retry (operatore manuale? pgAgent automatico?)
+- Decidere se il retry resetta i campi di esecuzione (`data_inizio`, `data_fine`, `esito`)
+  o se mantiene lo storico nel giornale
+- Valutare se servono limiti al numero di retry (contatore tentativi)
+
+**Oggetti coinvolti:**
+
+| Tipo | Oggetto |
+| ---- | ------- |
+| Seed data | Nuova riga in `config.transizioni_stati_flussi_pratiche` |
+| Trigger | Eventuale `trgfn_flussi_guard_retry` per validazione pre-retry |
+| Backend | Endpoint API retry + service logic |
+| Test pgTAP | Estendere test transizioni flussi |
+
+### 16.2 Guard di coerenza per `flussi_vincolanti`
+
+Quando `tipi_prestazione.flussi_vincolanti = false`, il tipo prestazione funziona
+in modalita' "solo giornale": i flussi vengono registrati ma i prerequisiti
+**non devono essere imposti**. Oggi pero' nulla impedisce di configurare prerequisiti
+su un template flusso appartenente a un tipo prestazione non vincolante.
+
+**Da implementare:**
+
+- Trigger guard su `template_flussi_prerequisiti` che impedisca INSERT/UPDATE
+  se il `tipo_prestazione` del template padre ha `flussi_vincolanti = false`
+- Messaggio errore dedicato in `config.messaggi_errore`
+
+**Oggetti coinvolti:**
+
+| Tipo | Oggetto |
+| ---- | ------- |
+| Trigger function | `trgfn_template_flussi_prerequisiti_guard_vincolanti` |
+| Trigger | `trg_pratiche_template_flussi_prerequisiti_a10_guard_vincolanti_biu` |
+| Seed data | Messaggio errore |
+| Test pgTAP | Caso: INSERT prerequisito su tipo non vincolante → errore |
+
+### 16.3 Enforcement DB per `solo_interna`
+
+Il campo `pratiche.solo_interna` (BOOLEAN, default false) indica che la pratica
+e' riservata alla gestione interna e non deve essere visibile al soggetto esterno.
+Oggi l'enforcement avviene **solo a livello applicativo** (Django).
+
+**Da decidere:**
+
+- Confermare se l'enforcement resta solo applicativo (accettabile se il filtro
+  e' centralizzato nel repository/service Django)
+- Oppure aggiungere un guard DB che impedisca l'associazione di canali esterni
+  (es. `canale_origine_id` con canale di tipo "portale cliente") su pratiche `solo_interna = true`
+
+Se si sceglie il guard DB:
+
+| Tipo | Oggetto |
+| ---- | ------- |
+| Trigger function | `trgfn_pratiche_guard_solo_interna_canale` |
+| Trigger | `trg_pratiche_pratiche_a10_guard_solo_interna_canale_biu` |
+| Test pgTAP | Caso: pratica solo_interna + canale esterno → errore |
+
+### 16.4 Endpoint generazione manuale flusso
+
+Nella guida operativa e' documentato un endpoint per la generazione manuale
+di un flusso a partire da una pratica esistente:
+
+```
+POST /api/v1/pratiche/{pratica_id}/flussi/{flusso_id}/genera/
+```
+
+Questo endpoint **non e' ancora sviluppato**. Serve per i casi in cui un operatore
+vuole attivare manualmente un flusso che non e' stato generato automaticamente
+dalle regole di generazione.
+
+**Da implementare:**
+
+- Endpoint API con validazione: pratica esistente, flusso compatibile, prerequisiti soddisfatti
+- Service layer che richiami la logica di generazione esistente (`generazione_service`)
+- Registrazione nel giornale con azione dedicata
+- Permessi: verificare quale azione processo (`config.azioni_processo`) associare
+
+**Oggetti coinvolti:**
+
+| Tipo | Oggetto |
+| ---- | ------- |
+| Backend API | `POST /api/v1/pratiche/{id}/flussi/{fid}/genera/` |
+| Service | Estensione `generazione_service` o metodo dedicato |
+| Permessi | Nuova azione processo o riuso di azione esistente |
+| Test | Test API + test service |
+
+---
+
 *Documento di sviluppo — Schema `pratiche` — ZeroERP (marzo 2026)*
