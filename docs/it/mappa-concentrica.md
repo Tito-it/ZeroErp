@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 5 marzo 2026*
+*Ultimo aggiornamento: 6 marzo 2026*
 
 ---
 
@@ -22,7 +22,8 @@
                     │  │                                       │  │
                     │  │          pratiche                      │  │
                     │  │    (workflow, giornale,                │  │
-                    │  │     generazione, handler)              │  │
+                    │  │     generazione, handler,              │  │
+                    │  │     sospensioni, calcoli tempo)        │  │
                     │  │                                       │  │
                     │  │  ┌─────────────────────────────────┐  │  │
                     │  │  │  ANELLO 1 — DATI BASE           │  │  │
@@ -113,7 +114,7 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 
 | Componente | Tipo | DB | Backend | Descrizione |
 |---|---|---|---|---|
-| `pratiche` | App Django | Operativo | Operativo | Workflow engine, giornale di bordo, generazione cross-pratica, handler dispatch |
+| `pratiche` | App Django | Operativo | Operativo | Workflow engine, giornale di bordo, generazione cross-pratica, handler dispatch, sospensioni, calcoli tempo, macchina a stati rigida |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -123,6 +124,9 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 - **Generazione cross-pratica**: un flusso completato puo' generare automaticamente nuove pratiche
 - **Handler dispatch**: mapping `handler_key` → classe Python per automazione step
 - **Canali**: visibilita' dei flussi su sorgenti esterne (WEB_CLIENTI, APP_TECNICA, PORTALE_FORNITORI)
+- **Sospensioni**: fermo temporaneo pratica/flusso con propagazione automatica e riattivazione (manuale o pgAgent)
+- **Calcoli tempo**: tracking tempi netti tra coppie di flussi (formula da/a), con esclusione giorni sospensione
+- **Macchina a stati rigida**: transizioni ammesse validate da trigger DB (config-driven)
 - **API interna**: `pratiche_service` come facade per gli anelli esterni
 
 ### Perche' e' un anello separato (non anello 1)
@@ -141,8 +145,10 @@ Non e' un processo di business specifico (come vendite o acquisti). E' l'**infra
 | BE-1 Setup app | FATTO | Directory, apps.py, types.py, models.py |
 | BE-2 Repository | FATTO | pratiche_repository.py, generazione_repository.py |
 | BE-3 Services | FATTO | pratiche_service.py, generazione_service.py, handler_registry.py |
-| BE-4 API | FATTO | views.py, urls_v1.py, 13 endpoint REST |
-| BE-5 Test | FATTO | 63 test (38 service + 25 API) con mock |
+| BE-4 API | FATTO | views.py, urls_v1.py, 19 endpoint REST |
+| BE-5 Test | FATTO | 90 test (55 service + 35 API) con mock |
+| BE-6 Sospensioni + Calcoli | FATTO | Service, repository, API, 26 test unitari, 18 smoke test curl |
+| BE-7 Macchina a stati | FATTO | Transizioni validate da trigger DB (config-driven) |
 
 Documentazione backend: [docs/it/backend/pratiche/index.md](backend/pratiche/index.md)
 
@@ -227,7 +233,8 @@ Nessuna dipendenza inversa. Nessuna dipendenza laterale tra processi di anello 3
 ### Breve termine (marzo 2026)
 
 - ~~Completamento BE-1..BE-5 per `pratiche`~~ — **FATTO** (4 marzo 2026)
-- `pratiche` e' consumabile dagli anelli esterni (13 endpoint REST, 63 test)
+- ~~Sospensioni, calcoli tempo, macchina a stati (BE-6..BE-7)~~ — **FATTO** (6 marzo 2026)
+- `pratiche` e' consumabile dagli anelli esterni (19 endpoint REST, 90 test unitari, 18 smoke test)
 
 ### Medio termine
 

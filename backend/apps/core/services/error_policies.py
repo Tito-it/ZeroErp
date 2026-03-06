@@ -162,6 +162,30 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Flusso non appartiene alla pratica indicata.",
         ),
+        "E_SOSPENSIONE_NOT_FOUND": ErrorPolicy(
+            code="E_SOSPENSIONE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Sospensione non trovata o gia' chiusa.",
+        ),
+        "E_PRATICHE_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
+            code="E_PRATICHE_TRANSIZIONE_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione di stato pratica non ammessa.",
+        ),
+        "E_FLUSSI_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
+            code="E_FLUSSI_TRANSIZIONE_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione di stato flusso non ammessa.",
+        ),
+        "E_SOSPENSIONI_FLUSSO_NON_COERENTE": ErrorPolicy(
+            code="E_SOSPENSIONI_FLUSSO_NON_COERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Il flusso non appartiene alla pratica della sospensione.",
+        ),
         "E_CONFIG_MANCANTE": ErrorPolicy(
             code="E_CONFIG_MANCANTE",
             http_status=500,

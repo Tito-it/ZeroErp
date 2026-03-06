@@ -13,11 +13,13 @@ from django.db import connection
 
 from apps.core.services.error_manager import ErrorManager
 from apps.pratiche.types import (
+    CalcoloTempoRow,
     CanalePraticaRow,
     FlussoRow,
     GiornaleRow,
     PraticaRow,
     PrerequisitoCheckRow,
+    SospensioneRow,
 )
 
 
@@ -399,6 +401,116 @@ class PraticheRepository:
             for r in rows
         ]
 
+    # -- SOSPENSIONI -----------------------------------------------------
+
+    _SOSPENSIONE_COLS = """
+        id, pratica_id, flusso_id, data_inizio, data_fine,
+        data_riattivazione_prevista, motivo,
+        data_insert, user_insert, data_update, user_update
+    """
+
+    # Scopo: Inserisce una nuova sospensione per pratica (o flusso) e ritorna l'ID.
+    def create_sospensione(
+        self,
+        pratica_id: int,
+        motivo: str,
+        *,
+        flusso_id: int | None = None,
+        data_riattivazione_prevista: str | None = None,
+    ) -> int:
+        sql = """
+            INSERT INTO pratiche.sospensioni (
+                pratica_id, flusso_id, data_inizio, motivo,
+                data_riattivazione_prevista
+            ) VALUES (
+                %s, %s, NOW(), %s, %s
+            )
+            RETURNING id
+        """
+        params = [pratica_id, flusso_id, motivo, data_riattivazione_prevista]
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+            assert row is not None
+        return int(row[0])
+
+    # Scopo: Chiude la sospensione attiva impostando data_fine = NOW().
+    # Il trigger DB gestisce la riattivazione (ripristino stati flussi).
+    def chiudi_sospensione(self, sospensione_id: int) -> None:
+        sql = """
+            UPDATE pratiche.sospensioni
+            SET data_fine = NOW()
+            WHERE id = %s AND data_fine IS NULL
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [sospensione_id])
+            ErrorManager.require(
+                cursor.rowcount > 0,
+                code="E_SOSPENSIONE_NOT_FOUND",
+                message=f"Sospensione {sospensione_id} non trovata o gia' chiusa",
+            )
+
+    # Scopo: Trova la sospensione attiva (data_fine IS NULL) per una pratica intera.
+    def get_sospensione_attiva_pratica(self, pratica_id: int) -> SospensioneRow | None:
+        sql = f"""
+            SELECT {self._SOSPENSIONE_COLS}
+            FROM pratiche.sospensioni
+            WHERE pratica_id = %s AND flusso_id IS NULL AND data_fine IS NULL
+            LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pratica_id])
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return self._map_sospensione_row(row)
+
+    # Scopo: Trova la sospensione attiva per un flusso specifico.
+    def get_sospensione_attiva_flusso(self, pratica_id: int, flusso_id: int) -> SospensioneRow | None:
+        sql = f"""
+            SELECT {self._SOSPENSIONE_COLS}
+            FROM pratiche.sospensioni
+            WHERE pratica_id = %s AND flusso_id = %s AND data_fine IS NULL
+            LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pratica_id, flusso_id])
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return self._map_sospensione_row(row)
+
+    # Scopo: Restituisce le sospensioni di una pratica (tutte, ordinate per data).
+    def list_sospensioni(self, pratica_id: int) -> list[SospensioneRow]:
+        sql = f"""
+            SELECT {self._SOSPENSIONE_COLS}
+            FROM pratiche.sospensioni
+            WHERE pratica_id = %s
+            ORDER BY data_inizio DESC, id DESC
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pratica_id])
+            rows = cursor.fetchall()
+        return [self._map_sospensione_row(r) for r in rows]
+
+    # -- CALCOLI TEMPO ---------------------------------------------------
+
+    # Scopo: Restituisce i calcoli tempo di una pratica.
+    def list_calcoli_tempo(self, pratica_id: int) -> list[CalcoloTempoRow]:
+        sql = """
+            SELECT id, pratica_id, flusso_da_id, flusso_a_id,
+                   formula_tempo_id, data_inizio_calcolo, data_fine_calcolo,
+                   giorni_lordi, giorni_sospensione, giorni_netti,
+                   giorni_formula, sforato
+            FROM pratiche.calcoli_tempo
+            WHERE pratica_id = %s
+            ORDER BY data_inizio_calcolo, id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pratica_id])
+            rows = cursor.fetchall()
+        return [self._map_calcolo_tempo_row(r) for r in rows]
+
     # -- RISOLUZIONE STATO -----------------------------------------------
 
     # Scopo: Risolve l'ID di uno stato da codice_interno su una tabella config.
@@ -486,6 +598,39 @@ class PraticheRepository:
             "meta": r[15] if isinstance(r[15], dict) else {},
             "data_insert": r[16].isoformat() if r[16] is not None else "",
             "user_insert": str(r[17]),
+        }
+
+    @staticmethod
+    def _map_sospensione_row(r: tuple) -> SospensioneRow:
+        return {
+            "id": int(r[0]),
+            "pratica_id": int(r[1]),
+            "flusso_id": None if r[2] is None else int(r[2]),
+            "data_inizio": r[3].isoformat() if r[3] is not None else "",
+            "data_fine": r[4].isoformat() if r[4] is not None else None,
+            "data_riattivazione_prevista": r[5].isoformat() if r[5] is not None else None,
+            "motivo": str(r[6]),
+            "data_insert": r[7].isoformat() if r[7] is not None else "",
+            "user_insert": str(r[8]),
+            "data_update": r[9].isoformat() if r[9] is not None else None,
+            "user_update": str(r[10]) if r[10] is not None else None,
+        }
+
+    @staticmethod
+    def _map_calcolo_tempo_row(r: tuple) -> CalcoloTempoRow:
+        return {
+            "id": int(r[0]),
+            "pratica_id": int(r[1]),
+            "flusso_da_id": int(r[2]),
+            "flusso_a_id": int(r[3]),
+            "formula_tempo_id": int(r[4]),
+            "data_inizio_calcolo": r[5].isoformat() if r[5] is not None else "",
+            "data_fine_calcolo": r[6].isoformat() if r[6] is not None else None,
+            "giorni_lordi": None if r[7] is None else int(r[7]),
+            "giorni_sospensione": None if r[8] is None else int(r[8]),
+            "giorni_netti": None if r[9] is None else int(r[9]),
+            "giorni_formula": int(r[10]),
+            "sforato": None if r[11] is None else bool(r[11]),
         }
 
     @staticmethod
