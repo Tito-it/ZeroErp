@@ -5,120 +5,135 @@
 # ------------------------------------------------------------
 
 databaseChangeLog:
-    - logicalFilePath: migrations_v2/90_end/20260306-31-token-blacklist-mctit.yaml
+      - logicalFilePath: migrations_v2/90_end/20260306-31-token-blacklist-mctit.yaml
 
-    - changeSet:
-          id: 20260306-31-token-blacklist
-          author: mctit
-          comment: "Tabelle SimpleJWT token_blacklist (equivalente Django migrations 0001..0013)"
-          changes:
-              - createTable:
-                    schemaName: django
-                    tableName: token_blacklist_outstandingtoken
-                    columns:
-                        - column:
-                              name: id
-                              type: bigserial
-                              constraints:
-                                  primaryKey: true
-                                  primaryKeyName: token_blacklist_outstandingtoken_pkey
-                                  nullable: false
-                        - column:
-                              name: jti
-                              type: varchar(255)
-                              constraints:
-                                  unique: true
-                                  uniqueConstraintName: uq_outstanding_token_jti
-                                  nullable: true
-                        - column:
-                              name: token
-                              type: text
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: created_at
-                              type: timestamptz
-                              constraints:
-                                  nullable: true
-                        - column:
-                              name: expires_at
-                              type: timestamptz
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: user_id
-                              type: integer
-                              constraints:
-                                  nullable: true
+      - changeSet:
+              id: 20260306-31-token-blacklist
+              author: mctit
+              comment: "Tabelle SimpleJWT token_blacklist (equivalente Django migrations 0001..0013)"
+              changes:
+                    - createTable:
+                            schemaName: django
+                            tableName: token_blacklist_outstandingtoken
+                            columns:
+                                  - column:
+                                          name: id
+                                          type: bigserial
+                                          constraints:
+                                                primaryKey: true
+                                                primaryKeyName: token_blacklist_outstandingtoken_pkey
+                                                nullable: false
+                                  - column:
+                                          name: jti
+                                          type: varchar(255)
+                                          constraints:
+                                                unique: true
+                                                uniqueConstraintName: uq_outstanding_token_jti
+                                                nullable: true
+                                  - column:
+                                          name: token
+                                          type: text
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: created_at
+                                          type: timestamptz
+                                          constraints:
+                                                nullable: true
+                                  - column:
+                                          name: expires_at
+                                          type: timestamptz
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: user_id
+                                          type: integer
+                                          constraints:
+                                                nullable: true
 
-              - createTable:
-                    schemaName: django
-                    tableName: token_blacklist_blacklistedtoken
-                    columns:
-                        - column:
-                              name: id
-                              type: bigserial
-                              constraints:
-                                  primaryKey: true
-                                  primaryKeyName: token_blacklist_blacklistedtoken_pkey
-                                  nullable: false
-                        - column:
-                              name: blacklisted_at
-                              type: timestamptz
-                              constraints:
-                                  nullable: false
-                        - column:
-                              name: token_id
-                              type: bigint
-                              constraints:
-                                  nullable: false
-                                  unique: true
-                                  uniqueConstraintName: uq_blacklisted_token_token_id
+                    - createTable:
+                            schemaName: django
+                            tableName: token_blacklist_blacklistedtoken
+                            columns:
+                                  - column:
+                                          name: id
+                                          type: bigserial
+                                          constraints:
+                                                primaryKey: true
+                                                primaryKeyName: token_blacklist_blacklistedtoken_pkey
+                                                nullable: false
+                                  - column:
+                                          name: blacklisted_at
+                                          type: timestamptz
+                                          constraints:
+                                                nullable: false
+                                  - column:
+                                          name: token_id
+                                          type: bigint
+                                          constraints:
+                                                nullable: false
+                                                unique: true
+                                                uniqueConstraintName: uq_blacklisted_token_token_id
 
-              - addForeignKeyConstraint:
-                    baseTableSchemaName: django
-                    baseTableName: token_blacklist_blacklistedtoken
-                    baseColumnNames: token_id
-                    referencedTableSchemaName: django
-                    referencedTableName: token_blacklist_outstandingtoken
-                    referencedColumnNames: id
-                    constraintName: fk_blacklisted_token_outstanding
-                    onDelete: CASCADE
-                    onUpdate: CASCADE
+                    - addForeignKeyConstraint:
+                            baseTableSchemaName: django
+                            baseTableName: token_blacklist_blacklistedtoken
+                            baseColumnNames: token_id
+                            referencedTableSchemaName: django
+                            referencedTableName: token_blacklist_outstandingtoken
+                            referencedColumnNames: id
+                            constraintName: fk_blacklisted_token_outstanding
+                            onDelete: CASCADE
+                            onUpdate: CASCADE
 
-              - createIndex:
-                    schemaName: django
-                    tableName: token_blacklist_outstandingtoken
-                    indexName: idx_outstanding_token_jti
-                    columns:
-                        - column:
-                              name: jti
+                    - createIndex:
+                            schemaName: django
+                            tableName: token_blacklist_outstandingtoken
+                            indexName: idx_outstanding_token_jti
+                            columns:
+                                  - column:
+                                          name: jti
 
-              - createIndex:
-                    schemaName: django
-                    tableName: token_blacklist_outstandingtoken
-                    indexName: idx_outstanding_token_user_id
-                    columns:
-                        - column:
-                              name: user_id
+                    - createIndex:
+                            schemaName: django
+                            tableName: token_blacklist_outstandingtoken
+                            indexName: idx_outstanding_token_user_id
+                            columns:
+                                  - column:
+                                          name: user_id
 
-    - changeSet:
-          id: 20260306-31-02-token-blacklist-fk-auth-user
-          author: mctit
-          comment: "FK user_id -> django.auth_user con ON DELETE SET NULL (solo se auth_user esiste)"
-          preConditions:
-              - onFail: MARK_RAN
-              - tableExists:
-                    schemaName: django
-                    tableName: auth_user
-          changes:
-              - addForeignKeyConstraint:
-                    baseTableSchemaName: django
-                    baseTableName: token_blacklist_outstandingtoken
-                    baseColumnNames: user_id
-                    referencedTableSchemaName: django
-                    referencedTableName: auth_user
-                    referencedColumnNames: id
-                    constraintName: fk_outstanding_token_user
-                    onDelete: SET NULL
-                    onUpdate: CASCADE
+      - changeSet:
+              id: 20260306-31-02-token-blacklist-fk-auth-user
+              author: mctit
+              comment: "FK user_id -> django.auth_user con ON DELETE SET NULL (solo se auth_user esiste)"
+              preConditions:
+                    - onFail: MARK_RAN
+                    - tableExists:
+                            schemaName: django
+                            tableName: auth_user
+              changes:
+                    - addForeignKeyConstraint:
+                            baseTableSchemaName: django
+                            baseTableName: token_blacklist_outstandingtoken
+                            baseColumnNames: user_id
+                            referencedTableSchemaName: django
+                            referencedTableName: auth_user
+                            referencedColumnNames: id
+                            constraintName: fk_outstanding_token_user
+                            onDelete: SET NULL
+                            onUpdate: CASCADE
+
+      - changeSet:
+              id: 20260306-31-03-token-blacklist-fk-auth-user
+              author: mctit
+              comment: "GRANT CRUD all'utente applicativo sulle tabelle token_blacklist"
+              changes:
+                    - sql:
+                            sql: |
+                                  GRANT SELECT, INSERT, UPDATE, DELETE
+                                  ON django.token_blacklist_outstandingtoken,
+                                        django.token_blacklist_blacklistedtoken
+                                  TO zeroerp_app;
+                                  GRANT USAGE, SELECT
+                                  ON ALL SEQUENCES IN SCHEMA django
+                                  TO zeroerp_app;

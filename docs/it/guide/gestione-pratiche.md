@@ -27,12 +27,11 @@ Il sistema opera su due modalita':
 
 * L'architettura del modello pratica/flusso e la sua posizione nel modello concentrico
 * Come funzionano i tipi prestazione, i template flussi e i prerequisiti
-* Il ciclo di vita di pratiche e flussi con le transizioni di stato
+* La macchina a stati rigida e il ciclo di vita di pratiche e flussi
 * Il giornale di bordo immutabile e come viene alimentato
-* La generazione cross-pratica e il registry handler Django
-* Le sospensioni: come congelare e riattivare pratiche e flussi
+* Le sospensioni: come congelare e riattivare pratiche e flussi, con esempi operativi
 * Le formule tempo e i calcoli tempo: misurazione automatica delle durate e soglie di allerta
-* La macchina a stati rigida: transizioni validate dal database
+* La generazione cross-pratica e il registry handler Django
 * Gli endpoint API e la struttura backend
 
 ---
@@ -127,22 +126,6 @@ Un **tipo prestazione** e' una macro-categoria di attivita' gestibile: ONBOARDIN
 
 Il catalogo e' **condiviso** tra tutti gli emittenti fiscali. La segregazione multi-company avviene sulla tabella `pratiche.pratiche` tramite `emittente_fiscale_id`.
 
-**Differenza operativa tra le due modalita':**
-
-| Aspetto | `flussi_vincolanti = true` | `flussi_vincolanti = false` |
-| --- | --- | --- |
-| Prerequisiti | Enforced dal trigger guard (`fn_guard_prerequisiti_flusso`) | **Non verificati**: il trigger guard controlla il flag e non blocca l'INSERT |
-| Template flussi | I flussi sono creati a partire dai template configurati | I flussi possono essere creati senza `template_flusso_id` (NULL ammesso) |
-| Handler | Dispatch automatico se `handler_id` presente nel template | Stessa logica: se il flusso ha un template con handler, il dispatch funziona |
-| Formule tempo | Attive se configurate per il tipo prestazione | Stessa logica: se esistono formule, i calcoli tempo vengono generati |
-| Macchina a stati | Attiva (le transizioni sono sempre validate dal trigger) | Stessa logica: le transizioni di stato sono sempre validate |
-| Generazione cross-pratica | Attiva se regole auto configurate | Stessa logica |
-| Giornale | Sempre alimentato | Sempre alimentato |
-
-In sintesi: `flussi_vincolanti = false` disabilita **solo** il controllo prerequisiti e permette flussi senza template. Tutto il resto (macchina a stati, giornale, formule tempo, handler) funziona identicamente.
-
-> **Da definire**: il campo `flussi_vincolanti` non ha ancora un CHECK o trigger che impedisca la creazione di prerequisiti su un tipo prestazione non vincolante. E' possibile configurare prerequisiti che non verranno mai enforced. Valutare se aggiungere un guard di coerenza.
-
 ### 2. I template flussi: la configurazione del workflow
 
 Ogni tipo prestazione ha un insieme di **template flussi** che definiscono gli step operativi previsti:
@@ -178,13 +161,11 @@ Una **pratica** e' l'istanza concreta, la testata. Contiene:
 | `unita_organizzativa_id` | INTEGER | Reparto assegnato |
 | `pratica_padre_id` | BIGINT | Per sotto-pratiche (self-reference) |
 | `flusso_origine_id` | BIGINT | Tracciabilita' cross-pratica |
-| `canale_origine_id` | INTEGER | FK a `config.canali_pratiche`. Indica il canale da cui la pratica e' stata originata (es. WEB_CLIENTI, APP_TECNICA). NULL = pratica creata internamente dall'operatore |
-| `solo_interna` | BOOLEAN | Se `true`, i flussi della pratica non sono visibili su nessun canale esterno: la relazione `template_flussi_canali` viene ignorata a livello applicativo. Default `false` |
+| `canale_origine_id` | INTEGER | Sorgente esterna (NULL = interna) |
+| `solo_interna` | BOOLEAN | Se true, niente canali su flussi |
 | `codice` | TEXT | Generato da trigger |
 | `descrizione` | TEXT | Descrizione libera |
 | `data_scadenza` | DATE | Scadenza prevista |
-
-> **Da definire — `solo_interna` e canali**: attualmente `solo_interna` e' un flag informativo. Non esiste un trigger DB che impedisca l'associazione di canali ai flussi di una pratica `solo_interna = true`. L'enforcement e' previsto a livello applicativo (Django filtra i canali in base al flag). Valutare se aggiungere un guard DB per coerenza.
 
 ### 5. Il flusso: lo step operativo
 
@@ -199,115 +180,14 @@ Un **flusso** e' una fase operativa dentro una pratica. Contiene:
 * `data_fine`: timestamp di completamento del flusso (impostato dal trigger al passaggio a COMPLETATO). Usato dai calcoli tempo per determinare la durata
 * `flusso_padre_id`: per albero di sotto-flussi (self-reference)
 
-### 6. Le formule tempo: i semafori del workflow
+---
 
-Una **formula tempo** definisce quanto tempo deve passare tra il completamento di un flusso e il completamento di un altro. E' il meccanismo di controllo temporale del workflow.
-
-Ogni formula tempo collega due template flussi appartenenti allo stesso tipo prestazione:
-
-| Campo | Significato |
-| --- | --- |
-| `template_flusso_da_id` | Lo step che avvia il conteggio (es. PRESA_CARICO) |
-| `template_flusso_a_id` | Lo step che chiude il conteggio (es. SOPRALLUOGO) |
-| `giorni_esecuzione` | Tempo massimo concesso in giorni lavorativi |
-| `giorni_warning` | Soglia warning (es. 80% del tempo — sfondo giallo in UI) |
-| `giorni_critico` | Soglia critica (es. 90% del tempo — sfondo rosso in UI) |
-
-**Esempio concreto** — tipo prestazione ONBOARDING_CLIENTE con 3 step:
-
-```text
-Formula 1: PRESA_CARICO → ANALISI_DATI    (10 giorni, warning a 7, critico a 9)
-Formula 2: ANALISI_DATI → PRIMO_CONTATTO   (5 giorni, warning a 3, critico a 4)
-Formula 3: PRESA_CARICO → PRIMO_CONTATTO   (15 giorni, warning a 12, critico a 14)
-```
-
-La formula 3 misura il tempo complessivo dall'inizio alla fine. Le formule 1 e 2 misurano i singoli tratti. Si possono avere piu' formule sullo stesso tipo prestazione, anche con sovrapposizioni: ogni coppia da/a e' indipendente.
-
-Le formule sono **configurazione statica**: una volta definite per un tipo prestazione, si applicano automaticamente a tutte le pratiche di quel tipo. Il calcolo effettivo avviene nella tabella `calcoli_tempo` (vedi sezione successiva).
-
-### 7. Le sospensioni: il fermo controllato
-
-Una **sospensione** rappresenta un periodo in cui una pratica o un flusso sono fermi per cause esterne (attesa documenti, attesa risposta cliente, attesa tecnico). Durante la sospensione il conteggio dei tempi si blocca.
-
-| Campo | Significato |
-| --- | --- |
-| `pratica_id` | Pratica a cui si riferisce la sospensione |
-| `flusso_id` | NULL = sospensione sull'intera pratica, NOT NULL = sospensione su singolo flusso |
-| `data_inizio` | Inizio del fermo (impostato automaticamente a NOW()) |
-| `data_fine` | Fine del fermo (NULL = sospensione attiva, impostata a NOW() alla riattivazione) |
-| `data_riattivazione_prevista` | Data oltre la quale il job pgAgent riattiva automaticamente |
-| `motivo` | Motivazione obbligatoria (testo libero) |
-
-La distinzione tra sospensione **pratica** e sospensione **flusso** e' fondamentale:
-
-* **Sospensione pratica**: blocca tutto. Il trigger DB cambia lo stato di tutti i flussi DA_ESEGUIRE e IN_CORSO a SOSPESO. E' l'equivalente del "metti in pausa" su tutta la lavorazione
-* **Sospensione flusso**: blocca solo uno step. Gli altri flussi della stessa pratica continuano normalmente. Utile quando un singolo step e' in attesa ma il resto del lavoro puo' procedere
-
-**Vincolo di unicita'**: una pratica puo' avere al massimo una sospensione attiva (`data_fine IS NULL`) alla volta. Lo stesso vale per ogni singolo flusso. Questo vincolo e' enforced a livello DB con due **partial unique index**:
-
-```sql
--- Una sola sospensione attiva per pratica (livello pratica)
-CREATE UNIQUE INDEX uq_sospensioni_attiva_pratica
-  ON pratiche.sospensioni (pratica_id)
-  WHERE data_fine IS NULL AND flusso_id IS NULL;
-
--- Una sola sospensione attiva per flusso
-CREATE UNIQUE INDEX uq_sospensioni_attiva_flusso
-  ON pratiche.sospensioni (pratica_id, flusso_id)
-  WHERE data_fine IS NULL AND flusso_id IS NOT NULL;
-```
-
-Non si puo' sospendere qualcosa che e' gia' sospeso: il DB rifiuta l'INSERT con violazione di unicita'.
-
-### 8. I calcoli tempo: la misurazione automatica
-
-Quando un flusso viene completato, il trigger DB verifica se esiste una formula tempo in cui quel flusso e' il `template_flusso_da` o il `template_flusso_a`. Se si', crea o aggiorna un record nella tabella `calcoli_tempo`.
-
-| Campo | Significato |
-| --- | --- |
-| `flusso_da_id` | ID del flusso concreto che ha avviato il conteggio |
-| `flusso_a_id` | ID del flusso concreto che ha chiuso il conteggio |
-| `data_inizio_calcolo` | Data di completamento del flusso_da |
-| `data_fine_calcolo` | Data di completamento del flusso_a (NULL se non ancora completato) |
-| `giorni_lordi` | Giorni totali tra inizio e fine |
-| `giorni_sospensione` | Giorni in cui la pratica/flusso era sospesa |
-| `giorni_netti` | giorni_lordi - giorni_sospensione |
-| `giorni_formula` | Giorni previsti dalla formula (copiati per storicizzazione) |
-| `sforato` | `true` se giorni_netti > giorni_formula |
-
-**Esempio concreto** — pratica ONBOARDING con formula PRESA_CARICO → PRIMO_CONTATTO (15 giorni):
-
-```text
-1 marzo:  Presa in carico completata       → calcolo creato (data_inizio = 1 marzo)
-5 marzo:  Pratica sospesa (attesa documenti)
-8 marzo:  Pratica riattivata                → 3 giorni di sospensione
-12 marzo: Primo contatto completato         → calcolo aggiornato:
-                                               giorni_lordi = 11
-                                               giorni_sospensione = 3
-                                               giorni_netti = 8
-                                               giorni_formula = 15
-                                               sforato = false (8 < 15)
-```
-
-Se il primo contatto fosse stato completato il 25 marzo invece del 12:
-
-```text
-25 marzo: Primo contatto completato         → calcolo aggiornato:
-                                               giorni_lordi = 24
-                                               giorni_sospensione = 3
-                                               giorni_netti = 21
-                                               giorni_formula = 15
-                                               sforato = true (21 > 15)
-```
-
-Il flag `sforato` e' l'informazione che la UI usa per mostrare il semaforo rosso. I campi `giorni_warning` e `giorni_critico` dalla formula tempo permettono alla UI di mostrare giallo o rosso anche prima dello sforamento effettivo.
-
-### 9. La macchina a stati: il controllo rigido
+## Macchina a stati
 
 Le transizioni di stato di pratiche e flussi sono governate da due tabelle di configurazione:
 
 * `config.transizioni_stati_pratiche` — definisce le coppie (stato_da, stato_a) ammesse per le pratiche
-* `config.transizioni_stati_flussi` — definisce le coppie (stato_da, stato_a) ammesse per i flussi
+* `config.transizioni_stati_flussi_pratiche` — definisce le coppie (stato_da, stato_a) ammesse per i flussi
 
 Un trigger BEFORE UPDATE su `pratiche.pratiche` e su `pratiche.flussi` verifica che la transizione richiesta sia presente nella tabella di configurazione. Se non lo e', il trigger rifiuta l'operazione con un errore esplicito (`E_PRATICHE_TRANSIZIONE_NON_AMMESSA` o `E_FLUSSI_TRANSIZIONE_NON_AMMESSA`).
 
@@ -325,12 +205,7 @@ SOSPESA     → APERTA
 DA_ESEGUIRE → IN_CORSO, ANNULLATO, SOSPESO
 IN_CORSO    → COMPLETATO, SOSPESO, ERRORE
 SOSPESO     → IN_CORSO, DA_ESEGUIRE
-ERRORE      — terminale (nessuna transizione in uscita)
-ANNULLATO   — terminale (nessuna transizione in uscita)
-COMPLETATO  — terminale (nessuna transizione in uscita)
 ```
-
-> **Da definire**: attualmente ERRORE e' uno stato terminale senza via d'uscita. Se servira' un meccanismo di retry (ERRORE → DA_ESEGUIRE o ERRORE → IN_CORSO), sara' sufficiente un INSERT nella tabella `config.transizioni_stati_flussi_pratiche` senza deploy applicativo. Fino a quel momento, un flusso in ERRORE richiede intervento manuale (annullamento della pratica o creazione di un nuovo flusso).
 
 La transizione `DA_ESEGUIRE → SOSPESO` e' necessaria per la propagazione: quando una pratica viene sospesa, il trigger mette in SOSPESO anche i flussi DA_ESEGUIRE (oltre a quelli IN_CORSO). La transizione `SOSPESO → DA_ESEGUIRE` e' il percorso inverso: alla riattivazione, i flussi che erano DA_ESEGUIRE vengono ripristinati al loro stato originale.
 
@@ -382,7 +257,7 @@ DA_ESEGUIRE --> IN_CORSO --> COMPLETATO (con esito)
 * Da IN_CORSO puo' essere **sospeso** (SOSPESO) e poi ripreso (torna IN_CORSO)
 * Da DA_ESEGUIRE puo' passare a **SOSPESO** per propagazione da sospensione pratica
 * Da SOSPESO puo' tornare a **DA_ESEGUIRE** (se era DA_ESEGUIRE prima della sospensione) o a **IN_CORSO** (se era IN_CORSO). Il trigger di riattivazione consulta il giornale per ripristinare lo stato originale
-* Da IN_CORSO puo' andare in **ERRORE** (errore tecnico/handler). ERRORE e' **terminale**: non esistono transizioni in uscita. Il flusso resta in errore fino a intervento manuale (vedi nota sopra)
+* Da IN_CORSO puo' andare in **ERRORE** (errore tecnico/handler)
 * Da DA_ESEGUIRE puo' essere **ANNULLATO** direttamente
 * Al completamento con `auto = true`, il trigger DB puo' generare automaticamente nuove pratiche
 
@@ -399,7 +274,7 @@ Ogni riga registra:
 * **azione**: uno degli 11 eventi (PRATICA_CREATA, STATO_CAMBIATO, ASSEGNAZIONE_CAMBIATA, PRIORITA_CAMBIATA, FLUSSO_CREATO, FLUSSO_STATO_CAMBIATO, NOTA_AGGIUNTA, ALLEGATO_AGGIUNTO, PRATICA_GENERATA, SOSPENSIONE_REGISTRATA, SOSPENSIONE_CHIUSA)
 * **origine**: SISTEMA, UTENTE, HANDLER, SCHEDULER
 * **dettaglio**: JSONB con valori precedenti/nuovi per ricostruzione completa
-* **tx_id**: UUID di sessione che identifica la transazione corrente. Tutte le righe scritte nella stessa operazione (pratica, flussi, giornale) condividono lo stesso `tx_id`, permettendo di ricostruire l'intera operazione cross-tabella. Generato automaticamente dal framework `dbops` (vedi [Guida tx_id](/guide/tx_id_implementation_guide))
+* **tx_id**: correlazione con la transazione per tracciabilita' cross-tabella
 
 Django **non deve loggare**: il DB lo fa da solo tramite 12 trigger functions dedicate.
 
@@ -421,11 +296,43 @@ Questo design mantiene il CHECK sulla colonna `azione` stabile nel tempo: non se
 
 ---
 
-## Sospensioni in azione
+## Sospensioni
 
-La sospensione e' una delle operazioni piu' comuni nella gestione quotidiana delle pratiche. Ogni volta che una lavorazione si blocca per cause esterne, l'operatore sospende e il sistema congela i tempi.
+Una **sospensione** rappresenta un periodo in cui una pratica o un flusso sono fermi per cause esterne (attesa documenti, attesa risposta cliente, attesa tecnico). Durante la sospensione il conteggio dei tempi si blocca.
 
-### Esempio 1: sospensione pratica con propagazione
+| Campo | Significato |
+| --- | --- |
+| `pratica_id` | Pratica a cui si riferisce la sospensione |
+| `flusso_id` | NULL = sospensione sull'intera pratica, NOT NULL = sospensione su singolo flusso |
+| `data_inizio` | Inizio del fermo (impostato automaticamente a NOW()) |
+| `data_fine` | Fine del fermo (NULL = sospensione attiva, impostata a NOW() alla riattivazione) |
+| `data_riattivazione_prevista` | Data oltre la quale il job pgAgent riattiva automaticamente |
+| `motivo` | Motivazione obbligatoria (testo libero) |
+
+### Sospensione pratica vs sospensione flusso
+
+* **Sospensione pratica** (`flusso_id IS NULL`): blocca tutto. Il trigger DB cambia lo stato di tutti i flussi IN_CORSO e DA_ESEGUIRE a SOSPESO. E' l'equivalente del "metti in pausa" su tutta la lavorazione
+* **Sospensione flusso** (`flusso_id IS NOT NULL`): blocca solo uno step. Gli altri flussi della stessa pratica continuano normalmente. Utile quando un singolo step e' in attesa ma il resto del lavoro puo' procedere
+
+### Vincolo di unicita'
+
+Una pratica puo' avere al massimo una sospensione attiva (`data_fine IS NULL`) alla volta. Lo stesso vale per ogni singolo flusso. Questo vincolo e' enforced a livello DB con due **partial unique index**:
+
+```sql
+-- Una sola sospensione attiva per pratica (livello pratica)
+CREATE UNIQUE INDEX uq_sospensioni_attiva_pratica
+  ON pratiche.sospensioni (pratica_id)
+  WHERE data_fine IS NULL AND flusso_id IS NULL;
+
+-- Una sola sospensione attiva per flusso
+CREATE UNIQUE INDEX uq_sospensioni_attiva_flusso
+  ON pratiche.sospensioni (pratica_id, flusso_id)
+  WHERE data_fine IS NULL AND flusso_id IS NOT NULL;
+```
+
+Non si puo' sospendere qualcosa che e' gia' sospeso: il DB rifiuta l'INSERT con violazione di unicita'.
+
+### Esempio: sospensione pratica con propagazione
 
 Un'azienda gestisce un onboarding cliente. La pratica ha due flussi attivi in parallelo: VERIFICA_DATI (IN_CORSO) e PRIMO_CONTATTO (IN_CORSO). Il cliente comunica che sara' assente per due settimane.
 
@@ -467,7 +374,7 @@ Sospensione chiusa:
 
 Il giornale registra automaticamente 4 eventi: STATO_CAMBIATO per la pratica e FLUSSO_STATO_CAMBIATO per ciascun flusso toccato, sia alla sospensione che alla riattivazione.
 
-### Esempio 2: sospensione singolo flusso
+### Esempio: sospensione singolo flusso
 
 Nella stessa pratica di onboarding, il flusso SOPRALLUOGO e' stato avviato (IN_CORSO) ma il tecnico incaricato e' malato. L'operatore sospende **solo** quel flusso senza fermare il resto:
 
@@ -491,7 +398,7 @@ Sospensione creata:
 
 La pratica resta APERTA. Eventuali altri flussi nuovi possono essere creati e avviati normalmente. Solo il flusso sospeso e' bloccato.
 
-### Esempio 3: riattivazione automatica via pgAgent
+### Riattivazione automatica via pgAgent
 
 Se la sospensione ha una `data_riattivazione_prevista`, il job pgAgent controlla periodicamente (ogni ora o ogni giorno, a seconda della configurazione) se esistono sospensioni con data prevista scaduta. Se ne trova, le chiude automaticamente e ripristina gli stati.
 
@@ -499,9 +406,52 @@ Questo evita che una pratica resti dimenticata in stato SOSPESA: alla scadenza p
 
 ---
 
-## Calcoli tempo in azione
+## Formule tempo e calcoli tempo
 
-I calcoli tempo sono il cuore del monitoraggio SLA e della reportistica temporale. Funzionano in modo completamente automatico: il backend e la UI li consultano in sola lettura.
+Questa sezione copre il meccanismo di controllo temporale del workflow: la configurazione delle soglie (formule tempo) e la misurazione automatica delle durate (calcoli tempo).
+
+### Formule tempo: la configurazione
+
+Una **formula tempo** definisce quanto tempo deve passare tra il completamento di un flusso e il completamento di un altro. Ogni formula collega due template flussi appartenenti allo stesso tipo prestazione:
+
+| Campo | Significato |
+| --- | --- |
+| `template_flusso_da_id` | Lo step che avvia il conteggio (es. PRESA_CARICO) |
+| `template_flusso_a_id` | Lo step che chiude il conteggio (es. SOPRALLUOGO) |
+| `giorni_esecuzione` | Tempo massimo concesso in giorni lavorativi |
+| `giorni_warning` | Soglia warning (es. 80% del tempo — sfondo giallo in UI) |
+| `giorni_critico` | Soglia critica (es. 90% del tempo — sfondo rosso in UI) |
+
+Le formule sono **configurazione statica**: una volta definite per un tipo prestazione, si applicano automaticamente a tutte le pratiche di quel tipo.
+
+Si possono configurare piu' formule sullo stesso tipo prestazione, anche con sovrapposizioni — ogni coppia da/a e' indipendente:
+
+```text
+Formula 1: PRESA_CARICO → ANALISI         ( 5 giorni) — tempo analisi
+Formula 2: ANALISI → SOPRALLUOGO          (10 giorni) — tempo programmazione
+Formula 3: PRESA_CARICO → SOPRALLUOGO     (15 giorni) — tempo complessivo
+Formula 4: SOPRALLUOGO → RISPOSTA_CLIENTE ( 3 giorni) — tempo risposta
+```
+
+Ogni formula genera il proprio record in `calcoli_tempo`. La UI puo' mostrare tutti i semafori sulla stessa pratica, evidenziando quale tratto e' in ritardo.
+
+### Calcoli tempo: la misurazione automatica
+
+Quando un flusso viene completato, il trigger DB verifica se esiste una formula tempo in cui quel flusso e' il `template_flusso_da` o il `template_flusso_a`. Se si', crea o aggiorna un record nella tabella `calcoli_tempo`:
+
+| Campo | Significato |
+| --- | --- |
+| `flusso_da_id` | ID del flusso concreto che ha avviato il conteggio |
+| `flusso_a_id` | ID del flusso concreto che ha chiuso il conteggio |
+| `data_inizio_calcolo` | Data di completamento del flusso_da |
+| `data_fine_calcolo` | Data di completamento del flusso_a (NULL se non ancora completato) |
+| `giorni_lordi` | Giorni totali tra inizio e fine |
+| `giorni_sospensione` | Giorni in cui la pratica/flusso era sospesa |
+| `giorni_netti` | giorni_lordi - giorni_sospensione |
+| `giorni_formula` | Giorni previsti dalla formula (copiati per storicizzazione) |
+| `sforato` | `true` se giorni_netti > giorni_formula |
+
+**Quali sospensioni contano**: la funzione `fn_calcola_tempo_netto_da_a` sottrae **solo le sospensioni a livello pratica** (`flusso_id IS NULL`) che ricadono nel periodo di calcolo. Le sospensioni su singolo flusso **non** vengono considerate. Questo e' un design intenzionale: i calcoli tempo misurano la durata complessiva della pratica, e solo un fermo totale (sospensione pratica) giustifica l'esclusione dal conteggio.
 
 ### Esempio: onboarding con formula tempo e sospensione
 
@@ -554,24 +504,16 @@ La UI puo' mostrare il semaforo in tempo reale:
 
 I giorni di sospensione vengono esclusi da tutti i conteggi: un periodo di fermo non penalizza il rispetto degli SLA.
 
-**Quali sospensioni contano**: la funzione `fn_calcola_tempo_netto_da_a` sottrae **solo le sospensioni a livello pratica** (`flusso_id IS NULL`) che ricadono nel periodo di calcolo. Le sospensioni su singolo flusso **non** vengono considerate. Questo e' un design intenzionale: i calcoli tempo misurano la durata complessiva della pratica, e solo un fermo totale (sospensione pratica) giustifica l'esclusione dal conteggio.
-
-### Formule tempo multiple sulla stessa pratica
-
-E' comune configurare piu' formule sullo stesso tipo prestazione per misurare sia i tratti intermedi che il tempo complessivo:
+Se il sopralluogo fosse stato completato il 25 marzo invece del 16:
 
 ```text
-Formula 1: PRESA_CARICO → ANALISI         ( 5 giorni) — tempo analisi
-Formula 2: ANALISI → SOPRALLUOGO          (10 giorni) — tempo programmazione
-Formula 3: PRESA_CARICO → SOPRALLUOGO     (15 giorni) — tempo complessivo
-Formula 4: SOPRALLUOGO → RISPOSTA_CLIENTE ( 3 giorni) — tempo risposta
+25 marzo: Sopralluogo completato           → calcolo aggiornato:
+                                               giorni_lordi: 24
+                                               giorni_sospensione: 3
+                                               giorni_netti: 21
+                                               giorni_formula: 15
+                                               sforato: true (21 > 15)
 ```
-
-Ogni formula genera il proprio record in `calcoli_tempo`. La UI puo' mostrare tutti i semafori sulla stessa pratica, evidenziando quale tratto e' in ritardo.
-
-Per gli endpoint API di sospensioni, calcoli tempo e formule vedi la [sezione Endpoint API](#endpoint-api) nel capitolo Backend Django.
-
-**Note implementative sugli endpoint calcoli-tempo**: l'endpoint GET `/api/v1/pratiche/{id}/calcoli-tempo/` restituisce `stato_tempo` live (OK/WARNING/CRITICO/SFORATO) e `giorni_rimanenti`, calcolati via `fn_valuta_tempo_esecuzione_da_a` in LEFT JOIN LATERAL.
 
 ---
 
@@ -698,55 +640,55 @@ dispatch_handler(flusso_id)
 
 ### Trigger business-specific (non standard)
 
-I trigger standard (audit, lock codice_interno, attivo protection, tx_id, storicizzazione) sono gestiti automaticamente da `dbops.fn_run_automations()`. Qui sono elencati **solo** i trigger del dominio pratiche.
+I trigger standard (audit, lock codice_interno, attivo protection, tx_id, storicizzazione) sono gestiti automaticamente da `dbops.fn_run_automations()`. Qui sono elencati **solo** i trigger del dominio pratiche, con la relativa trigger function.
 
 #### Su `pratiche.pratiche`
 
-| Trigger | Evento | Funzione |
-| --- | --- | --- |
-| `trg_pratiche_z90_giornale_ins` | AFTER INSERT | Registra PRATICA_CREATA nel giornale |
-| `trg_pratiche_z90_giornale_stato_upd` | AFTER UPDATE OF stato_id | Registra STATO_CAMBIATO |
-| `trg_pratiche_z90_giornale_assegnazione_upd` | AFTER UPDATE OF risorsa/uo | Registra ASSEGNAZIONE_CAMBIATA |
-| `trg_pratiche_z90_giornale_priorita_upd` | AFTER UPDATE OF priorita_id | Registra PRIORITA_CAMBIATA |
+| Trigger | Funzione | Evento | Descrizione |
+| --- | --- | --- | --- |
+| `trg_pratiche_a10_valida_transizione` | `trgfn_pratiche_guard_transizione` | BEFORE UPDATE OF stato_id | Guard: verifica transizione ammessa via `config.transizioni_stati_pratiche` |
+| `trg_pratiche_z90_giornale_ins` | `trgfn_pratiche_giornale_ins` | AFTER INSERT | Registra PRATICA_CREATA nel giornale |
+| `trg_pratiche_z90_giornale_stato_upd` | `trgfn_pratiche_giornale_stato` | AFTER UPDATE OF stato_id | Registra STATO_CAMBIATO |
+| `trg_pratiche_z90_giornale_assegnazione_upd` | `trgfn_pratiche_giornale_assegnazione` | AFTER UPDATE OF risorsa/uo | Registra ASSEGNAZIONE_CAMBIATA |
+| `trg_pratiche_z90_giornale_priorita_upd` | `trgfn_pratiche_giornale_priorita` | AFTER UPDATE OF priorita_id | Registra PRIORITA_CAMBIATA |
 
 #### Su `pratiche.flussi`
 
-| Trigger | Evento | Funzione |
-| --- | --- | --- |
-| `trg_flussi_a10_guard_prerequisiti_ins` | BEFORE INSERT | Valida prerequisiti (guard) |
-| `trg_flussi_z90_giornale_ins` | AFTER INSERT | Registra FLUSSO_CREATO |
-| `trg_flussi_z90_giornale_stato_upd` | AFTER UPDATE OF stato_id | Registra FLUSSO_STATO_CAMBIATO |
-| `trg_flussi_z90_generazione_upd` | AFTER UPDATE (COMPLETATO) | Genera pratiche da regole auto |
+| Trigger | Funzione | Evento | Descrizione |
+| --- | --- | --- | --- |
+| `trg_flussi_a10_valida_transizione` | `trgfn_flussi_guard_transizione` | BEFORE UPDATE OF stato_id | Guard: verifica transizione ammessa via `config.transizioni_stati_flussi_pratiche` |
+| `trg_flussi_a10_guard_prerequisiti_ins` | `trgfn_flussi_guard_prerequisiti` | BEFORE INSERT | Guard: blocca INSERT se prerequisiti non soddisfatti |
+| `trg_flussi_z90_giornale_ins` | `trgfn_flussi_giornale_ins` | AFTER INSERT | Registra FLUSSO_CREATO |
+| `trg_flussi_z90_giornale_stato_upd` | `trgfn_flussi_giornale_stato` | AFTER UPDATE OF stato_id | Registra FLUSSO_STATO_CAMBIATO |
+| `trg_flussi_z90_generazione_upd` | `trgfn_flussi_generazione` | AFTER UPDATE (COMPLETATO) | Genera pratiche cross-pratica da regole con `auto = true` |
+| `trg_flussi_z91_calcoli_tempo_upd` | `trgfn_flussi_calcolo_tempo_completamento` | AFTER UPDATE (COMPLETATO) | Crea/aggiorna record in `calcoli_tempo` se esiste formula tempo applicabile |
 
 #### Su `pratiche.sospensioni`
 
-| Trigger | Evento | Funzione |
-| --- | --- | --- |
-| `trg_sospensioni_z90_after_ins` | AFTER INSERT | Propaga sospensione ai flussi DA_ESEGUIRE e IN_CORSO (se flusso_id IS NULL), registra nel giornale |
-| `trg_sospensioni_z90_after_upd` | AFTER UPDATE OF data_fine | Ripristina stati flussi sospesi, registra riattivazione nel giornale |
+| Trigger | Funzione | Evento | Descrizione |
+| --- | --- | --- | --- |
+| `trg_sospensioni_a10_guard_coerenza` | `trgfn_sospensioni_guard_coerenza_flusso` | BEFORE INSERT | Guard: verifica che `flusso_id` appartenga alla stessa `pratica_id` |
+| `trg_sospensioni_z90_after_ins` | `trgfn_sospensioni_propaga` + `trgfn_sospensioni_giornale` | AFTER INSERT | Propaga sospensione ai flussi DA_ESEGUIRE/IN_CORSO (se `flusso_id IS NULL`), registra SOSPENSIONE_REGISTRATA nel giornale |
+| `trg_sospensioni_z90_after_upd` | `trgfn_sospensioni_riattiva` + `trgfn_sospensioni_giornale` | AFTER UPDATE OF data_fine | Ripristina stati flussi dal giornale, registra SOSPENSIONE_CHIUSA nel giornale |
 
-#### Su `pratiche.flussi` (calcoli tempo)
+#### Su `pratiche.calcoli_tempo`
 
-| Trigger | Evento | Funzione |
-| --- | --- | --- |
-| `trg_flussi_z91_calcoli_tempo_upd` | AFTER UPDATE (COMPLETATO) | Crea/aggiorna record in `calcoli_tempo` se esiste formula tempo applicabile |
-
-#### Su `pratiche.pratiche` e `pratiche.flussi` (macchina a stati)
-
-| Trigger | Evento | Funzione |
-| --- | --- | --- |
-| `trg_pratiche_a10_valida_transizione` | BEFORE UPDATE OF stato_id | Verifica transizione ammessa in `config.transizioni_stati_pratiche` |
-| `trg_flussi_a10_valida_transizione` | BEFORE UPDATE OF stato_id | Verifica transizione ammessa in `config.transizioni_stati_flussi` |
+| Trigger | Funzione | Evento | Descrizione |
+| --- | --- | --- | --- |
+| `trg_calcoli_tempo_a10_guard_immutabili` | `trgfn_calcoli_tempo_guard_immutabili` | BEFORE UPDATE | Guard: impedisce UPDATE su colonne immutabili (pratica_id, formula_tempo_id, flusso_da_id) |
 
 #### Su note e allegati
 
-Un trigger AFTER INSERT ciascuno per registrare NOTA_AGGIUNTA e ALLEGATO_AGGIUNTO nel giornale (4 trigger in totale).
+| Trigger | Funzione | Evento | Descrizione |
+| --- | --- | --- | --- |
+| `trg_note_pratiche_z90_giornale_ins` | `trgfn_note_pratiche_giornale` | AFTER INSERT | Registra NOTA_AGGIUNTA |
+| `trg_note_flussi_z90_giornale_ins` | `trgfn_note_flussi_giornale` | AFTER INSERT | Registra NOTA_AGGIUNTA |
+| `trg_allegati_pratiche_z90_giornale_ins` | `trgfn_allegati_pratiche_giornale` | AFTER INSERT | Registra ALLEGATO_AGGIUNTO |
+| `trg_allegati_flussi_z90_giornale_ins` | `trgfn_allegati_flussi_giornale` | AFTER INSERT | Registra ALLEGATO_AGGIUNTO |
 
 ---
 
 ## Funzioni DB
-
-### Funzioni standalone
 
 | Funzione | Tipo | Scopo |
 | --- | --- | --- |
@@ -756,32 +698,7 @@ Un trigger AFTER INSERT ciascuno per registrare NOTA_AGGIUNTA e ALLEGATO_AGGIUNT
 | `fn_calcola_tempo_netto_da_a` | calcolo (STABLE) | Calcola giorni netti tra due flussi, sottraendo le sospensioni pratica-level |
 | `fn_valuta_tempo_esecuzione_da_a` | calcolo (STABLE) | Ritorna giorni_netti, giorni_esecuzione, giorni_rimanenti, stato_tempo (OK/WARNING/CRITICO/SFORATO) |
 
-### Trigger functions
-
-| Funzione | Tabella | Scopo |
-| --- | --- | --- |
-| `trgfn_pratiche_guard_transizione` | pratiche | Guard: verifica transizione ammessa via `config.transizioni_stati_pratiche` |
-| `trgfn_flussi_guard_transizione` | flussi | Guard: verifica transizione ammessa via `config.transizioni_stati_flussi_pratiche` |
-| `trgfn_flussi_guard_prerequisiti` | flussi | Guard: blocca INSERT se prerequisiti non soddisfatti |
-| `trgfn_flussi_calcolo_tempo_completamento` | flussi | Crea/aggiorna record in `calcoli_tempo` al completamento flusso |
-| `trgfn_flussi_generazione` | flussi | Genera pratiche cross-pratica da regole con `auto = true` |
-| `trgfn_sospensioni_guard_coerenza_flusso` | sospensioni | Guard: verifica che `flusso_id` appartenga alla stessa `pratica_id` |
-| `trgfn_sospensioni_propaga` | sospensioni | Propaga sospensione ai flussi DA_ESEGUIRE/IN_CORSO (se `flusso_id IS NULL`) |
-| `trgfn_sospensioni_riattiva` | sospensioni | Ripristina stati flussi dal giornale alla riattivazione |
-| `trgfn_sospensioni_giornale` | sospensioni | Registra SOSPENSIONE_REGISTRATA / SOSPENSIONE_CHIUSA nel giornale |
-| `trgfn_calcoli_tempo_guard_immutabili` | calcoli_tempo | Guard: impedisce UPDATE su colonne immutabili (pratica_id, formula_tempo_id, flusso_da_id) |
-| `trgfn_pratiche_giornale_ins` | pratiche | Registra PRATICA_CREATA |
-| `trgfn_pratiche_giornale_stato` | pratiche | Registra STATO_CAMBIATO |
-| `trgfn_pratiche_giornale_assegnazione` | pratiche | Registra ASSEGNAZIONE_CAMBIATA |
-| `trgfn_pratiche_giornale_priorita` | pratiche | Registra PRIORITA_CAMBIATA |
-| `trgfn_flussi_giornale_ins` | flussi | Registra FLUSSO_CREATO |
-| `trgfn_flussi_giornale_stato` | flussi | Registra FLUSSO_STATO_CAMBIATO |
-| `trgfn_note_pratiche_giornale` | note_pratiche | Registra NOTA_AGGIUNTA |
-| `trgfn_note_flussi_giornale` | note_flussi | Registra NOTA_AGGIUNTA |
-| `trgfn_allegati_pratiche_giornale` | allegati_pratiche | Registra ALLEGATO_AGGIUNTO |
-| `trgfn_allegati_flussi_giornale` | allegati_flussi | Registra ALLEGATO_AGGIUNTO |
-
-> Per la documentazione dettagliata di ogni funzione, vedi le pagine in `docs/it/dbzero/pratiche/manual/`.
+> Per la documentazione dettagliata di ogni funzione e trigger function, vedi le pagine in `docs/it/dbzero/pratiche/manual/`.
 
 ---
 
@@ -819,11 +736,6 @@ Tutti gli endpoint richiedono autenticazione JWT e sono sotto `/api/v1/pratiche/
 | POST | `/api/v1/pratiche/{id}/stato/` | Cambio stato pratica |
 | POST | `/api/v1/pratiche/{id}/assegnazione/` | Assegna risorsa umana / unita' organizzativa |
 | GET | `/api/v1/pratiche/{id}/giornale/` | Giornale di bordo paginato |
-| POST | `/api/v1/pratiche/{id}/sospendi/` | Sospende pratica (motivo obbligatorio) |
-| POST | `/api/v1/pratiche/{id}/riattiva/` | Riattiva pratica sospesa |
-| GET | `/api/v1/pratiche/{id}/sospensioni/` | Lista sospensioni pratica |
-| GET | `/api/v1/pratiche/{id}/calcoli-tempo/` | Calcoli tempo con stato_tempo live e giorni_rimanenti |
-| GET | `/api/v1/pratiche/formule-tempo/?tipo_prestazione_id=N` | Formule tempo attive per tipo prestazione |
 
 #### Flussi
 
@@ -835,8 +747,23 @@ Tutti gli endpoint richiedono autenticazione JWT e sono sotto `/api/v1/pratiche/
 | POST | `/api/v1/pratiche/{id}/flussi/{fid}/stato/` | Cambio stato flusso (con esito se COMPLETATO) |
 | GET | `/api/v1/pratiche/{id}/flussi/{fid}/prerequisiti/` | Prerequisiti del flusso |
 | GET | `/api/v1/pratiche/{id}/flussi/{fid}/canali/` | Canali abilitati per il flusso |
+
+#### Sospensioni pratica e flusso
+
+| Metodo | Endpoint | Descrizione |
+| --- | --- | --- |
+| POST | `/api/v1/pratiche/{id}/sospendi/` | Sospende pratica intera (motivo obbligatorio) |
+| POST | `/api/v1/pratiche/{id}/riattiva/` | Riattiva pratica sospesa |
+| GET | `/api/v1/pratiche/{id}/sospensioni/` | Lista sospensioni pratica (attive e chiuse) |
 | POST | `/api/v1/pratiche/{id}/flussi/{fid}/sospendi/` | Sospende singolo flusso |
 | POST | `/api/v1/pratiche/{id}/flussi/{fid}/riattiva/` | Riattiva singolo flusso |
+
+#### Tempi e formule
+
+| Metodo | Endpoint | Descrizione |
+| --- | --- | --- |
+| GET | `/api/v1/pratiche/formule-tempo/?tipo_prestazione_id=N` | Formule tempo attive per tipo prestazione |
+| GET | `/api/v1/pratiche/{id}/calcoli-tempo/` | Calcoli tempo con stato_tempo live e giorni_rimanenti |
 
 #### Generazione
 
