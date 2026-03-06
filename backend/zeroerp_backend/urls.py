@@ -20,7 +20,7 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import AllowAny
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from apps.core.api.auth_views import AuditTokenObtainPairView, AuditTokenRefreshView
 
 
 # Scopo: Gestisce `health_view` nel flusso applicativo del modulo.
@@ -44,12 +44,12 @@ urlpatterns = [
     ),
     path(
         "api/v1/auth/token/",
-        TokenObtainPairView.as_view(permission_classes=[AllowAny]),
+        AuditTokenObtainPairView.as_view(permission_classes=[AllowAny]),
         name="token-obtain-pair",
     ),
     path(
         "api/v1/auth/token/refresh/",
-        TokenRefreshView.as_view(permission_classes=[AllowAny]),
+        AuditTokenRefreshView.as_view(permission_classes=[AllowAny]),
         name="token-refresh",
     ),
     path("api/v1/core/", include("apps.core.api.urls_v1")),
