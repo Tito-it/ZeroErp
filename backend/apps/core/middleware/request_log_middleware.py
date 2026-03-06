@@ -17,6 +17,8 @@ from django.db import connection
 from django.http import HttpRequest, HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
+from apps.core.services.request_context import get_client_ip, get_request_id, get_user_agent
+
 logger = logging.getLogger(__name__)
 
 # Path esclusi dal logging (configurabili via settings).
@@ -73,9 +75,9 @@ class RequestLogMiddleware(MiddlewareMixin):
                 auth_user_id = user.id
                 username = str(user)
 
-            request_id = getattr(request, "request_id", None)
-            ip_address = _get_client_ip(request)
-            user_agent = request.META.get("HTTP_USER_AGENT", "")[:500] or None
+            request_id = get_request_id()
+            ip_address = get_client_ip(request)
+            user_agent = get_user_agent(request)
 
             # Estrae error_code dalla response JSON se presente
             error_code = None
@@ -109,14 +111,6 @@ class RequestLogMiddleware(MiddlewareMixin):
                 cursor.execute(sql, params)
         except Exception:
             logger.exception("request_log.insert_failed path=%s", request.path)
-
-
-# Scopo: Estrae l'IP del client dalla request, gestendo proxy.
-def _get_client_ip(request: HttpRequest) -> str | None:
-    xff = request.META.get("HTTP_X_FORWARDED_FOR")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR")
 
 
 # Scopo: Estrae il codice errore dalla response JSON se presente.

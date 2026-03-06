@@ -26,9 +26,9 @@ _SERVICE = "apps.core.api.auth_views.session_audit_service"
 
 class AuditAuthViewsTests(TestCase):
 
-    # Scopo: Verifica che login con successo chiami record_login.
+    # Scopo: Verifica che login con successo chiami record_login con user_id e jti.
     @patch(f"{_SERVICE}.record_login")
-    @patch.object(AuditTokenObtainPairView, "_extract_user_id", return_value=42)
+    @patch.object(AuditTokenObtainPairView, "_extract_claims", return_value=(42, "jti-abc"))
     @patch("rest_framework_simplejwt.views.TokenObtainPairView.post")
     def test_login_success_calls_record_login(
         self, mock_super_post, mock_extract, mock_record
@@ -47,7 +47,7 @@ class AuditAuthViewsTests(TestCase):
         mock_record.assert_called_once_with(
             user_id=42,
             request=request._request,
-            jti=None,
+            jti="jti-abc",
         )
 
     # Scopo: Verifica che login fallito non chiami record_login.
@@ -66,9 +66,9 @@ class AuditAuthViewsTests(TestCase):
         self.assertEqual(response.status_code, 401)
         mock_record.assert_not_called()
 
-    # Scopo: Verifica che refresh con successo chiami record_refresh.
+    # Scopo: Verifica che refresh con successo chiami record_refresh con user_id e jti.
     @patch(f"{_SERVICE}.record_refresh")
-    @patch.object(AuditTokenRefreshView, "_extract_user_id_from_refresh", return_value=42)
+    @patch.object(AuditTokenRefreshView, "_extract_claims", return_value=(42, "jti-xyz"))
     @patch("rest_framework_simplejwt.views.TokenRefreshView.post")
     def test_refresh_success_calls_record_refresh(
         self, mock_super_post, mock_extract, mock_record
@@ -87,7 +87,7 @@ class AuditAuthViewsTests(TestCase):
         mock_record.assert_called_once_with(
             user_id=42,
             request=request._request,
-            jti=None,
+            jti="jti-xyz",
         )
 
     # Scopo: Verifica che refresh fallito non chiami record_refresh.

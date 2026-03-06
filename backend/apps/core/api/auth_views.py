@@ -23,29 +23,26 @@ class AuditTokenObtainPairView(TokenObtainPairView):
     def post(self, request: Request, *args, **kwargs) -> Response:
         response = super().post(request, *args, **kwargs)
         if response.status_code == 200:
-            # Estrae user_id e jti dal token emesso
-            user_id = self._extract_user_id(request)
-            jti = response.data.get("access", "")
-            # Il jti reale e' nel claim del token; per ora loggiamo senza decodifica
+            user_id, jti = self._extract_claims(response)
             session_audit_service.record_login(
                 user_id=user_id,
                 request=request._request,
-                jti=None,
+                jti=jti,
             )
         return response
 
     @staticmethod
-    # Scopo: Estrae l'auth_user_id dalla request dopo autenticazione SimpleJWT.
-    def _extract_user_id(request: Request) -> int:
-        # Dopo il post() con successo, SimpleJWT valida le credenziali
-        # e mette lo user nel serializer. Usiamo il campo username dal body.
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        username = request.data.get("username", "")
+    # Scopo: Estrae user_id e jti dal refresh token nella response (no query DB extra).
+    def _extract_claims(response: Response) -> tuple[int, str | None]:
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh_str = response.data.get("refresh", "")
+        if not refresh_str:
+            return 0, None
         try:
-            return User.objects.values_list("id", flat=True).get(username=username)
-        except User.DoesNotExist:
-            return 0
+            token = RefreshToken(refresh_str)
+            return int(token.get("user_id", 0)), str(token.get("jti", ""))
+        except Exception:
+            return 0, None
 
 
 class AuditTokenRefreshView(TokenRefreshView):
@@ -55,25 +52,23 @@ class AuditTokenRefreshView(TokenRefreshView):
     def post(self, request: Request, *args, **kwargs) -> Response:
         response = super().post(request, *args, **kwargs)
         if response.status_code == 200:
-            # Nel refresh non abbiamo lo user autenticato nella request;
-            # decodifichiamo il refresh token per ottenere user_id.
-            user_id = self._extract_user_id_from_refresh(request)
+            user_id, jti = self._extract_claims(request)
             session_audit_service.record_refresh(
                 user_id=user_id,
                 request=request._request,
-                jti=None,
+                jti=jti,
             )
         return response
 
     @staticmethod
-    # Scopo: Estrae l'auth_user_id dal refresh token nel body della request.
-    def _extract_user_id_from_refresh(request: Request) -> int:
+    # Scopo: Estrae user_id e jti dal refresh token nel body della request.
+    def _extract_claims(request: Request) -> tuple[int, str | None]:
         from rest_framework_simplejwt.tokens import RefreshToken
         refresh_str = request.data.get("refresh", "")
         if not refresh_str:
-            return 0
+            return 0, None
         try:
             token = RefreshToken(refresh_str)
-            return int(token.get("user_id", 0))
+            return int(token.get("user_id", 0)), str(token.get("jti", ""))
         except Exception:
-            return 0
+            return 0, None
