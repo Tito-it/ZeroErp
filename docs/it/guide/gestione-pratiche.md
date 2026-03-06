@@ -177,6 +177,8 @@ Un **flusso** e' una fase operativa dentro una pratica. Contiene:
 * `sequenza`: ordine esecuzione nel workflow
 * `esito`: POSITIVO, NEGATIVO, PARZIALE, NON_APPLICABILE (impostato al completamento)
 * `note_esito`: note libere sull'esito
+* `meta`: JSONB con dati estensibili specifici dell'istanza (default `{}`). Usato dagli handler Django per ricevere informazioni di contesto (vedi [Contratto handler](#contratto-handler))
+* `data_fine`: timestamp di completamento del flusso (impostato dal trigger al passaggio a COMPLETATO). Usato dai calcoli tempo per determinare la durata
 * `flusso_padre_id`: per albero di sotto-flussi (self-reference)
 
 ### 6. Le formule tempo: i semafori del workflow
@@ -223,7 +225,21 @@ La distinzione tra sospensione **pratica** e sospensione **flusso** e' fondament
 * **Sospensione pratica**: blocca tutto. Il trigger DB cambia lo stato di tutti i flussi IN_CORSO a SOSPESO. E' l'equivalente del "metti in pausa" su tutta la lavorazione
 * **Sospensione flusso**: blocca solo uno step. Gli altri flussi della stessa pratica continuano normalmente. Utile quando un singolo step e' in attesa ma il resto del lavoro puo' procedere
 
-**Vincolo di unicita'**: una pratica puo' avere al massimo una sospensione attiva (`data_fine IS NULL`) alla volta. Lo stesso vale per ogni singolo flusso. Non si puo' sospendere qualcosa che e' gia' sospeso.
+**Vincolo di unicita'**: una pratica puo' avere al massimo una sospensione attiva (`data_fine IS NULL`) alla volta. Lo stesso vale per ogni singolo flusso. Questo vincolo e' enforced a livello DB con due **partial unique index**:
+
+```sql
+-- Una sola sospensione attiva per pratica (livello pratica)
+CREATE UNIQUE INDEX uq_sospensioni_attiva_pratica
+  ON pratiche.sospensioni (pratica_id)
+  WHERE data_fine IS NULL AND flusso_id IS NULL;
+
+-- Una sola sospensione attiva per flusso
+CREATE UNIQUE INDEX uq_sospensioni_attiva_flusso
+  ON pratiche.sospensioni (pratica_id, flusso_id)
+  WHERE data_fine IS NULL AND flusso_id IS NOT NULL;
+```
+
+Non si puo' sospendere qualcosa che e' gia' sospeso: il DB rifiuta l'INSERT con violazione di unicita'.
 
 ### 8. I calcoli tempo: la misurazione automatica
 
@@ -288,10 +304,12 @@ SOSPESA     → APERTA
 **Transizioni ammesse per i flussi:**
 
 ```text
-DA_ESEGUIRE → IN_CORSO, ANNULLATO
+DA_ESEGUIRE → IN_CORSO, ANNULLATO, SOSPESO
 IN_CORSO    → COMPLETATO, SOSPESO, ERRORE
-SOSPESO     → IN_CORSO
+SOSPESO     → IN_CORSO, DA_ESEGUIRE
 ```
+
+La transizione `DA_ESEGUIRE → SOSPESO` e' necessaria per la propagazione: quando una pratica viene sospesa, il trigger mette in SOSPESO anche i flussi DA_ESEGUIRE (oltre a quelli IN_CORSO). La transizione `SOSPESO → DA_ESEGUIRE` e' il percorso inverso: alla riattivazione, i flussi che erano DA_ESEGUIRE vengono ripristinati al loro stato originale.
 
 Questo approccio ha tre vantaggi rispetto a validare le transizioni nel codice applicativo:
 
@@ -324,10 +342,14 @@ BOZZA --> APERTA --> CHIUSA
 
 ```text
 DA_ESEGUIRE --> IN_CORSO --> COMPLETATO (con esito)
-    |              |
-    |              +--> SOSPESO --> IN_CORSO
+    |   ^          |
+    |   |          +--> SOSPESO --> IN_CORSO
+    |   |          |        |
+    |   +----------+--------+  (riattivazione ripristina stato originale)
     |              |
     |              +--> ERRORE
+    |
+    +--> SOSPESO (propagazione da pratica)
     |
     +--> ANNULLATO
 ```
@@ -335,11 +357,13 @@ DA_ESEGUIRE --> IN_CORSO --> COMPLETATO (con esito)
 * Un flusso nasce in stato **DA_ESEGUIRE**
 * Viene **avviato** (IN_CORSO), poi **completato** con esito obbligatorio
 * Da IN_CORSO puo' essere **sospeso** (SOSPESO) e poi ripreso (torna IN_CORSO)
+* Da DA_ESEGUIRE puo' passare a **SOSPESO** per propagazione da sospensione pratica
+* Da SOSPESO puo' tornare a **DA_ESEGUIRE** (se era DA_ESEGUIRE prima della sospensione) o a **IN_CORSO** (se era IN_CORSO). Il trigger di riattivazione consulta il giornale per ripristinare lo stato originale
 * Da IN_CORSO puo' andare in **ERRORE** (errore tecnico/handler)
 * Da DA_ESEGUIRE puo' essere **ANNULLATO** direttamente
 * Al completamento con `auto = true`, il trigger DB puo' generare automaticamente nuove pratiche
 
-> **Nota**: la macchina a stati e' implementata come **rigida** nel DB tramite la tabella `config.transizioni_stati_pratiche` / `config.transizioni_stati_flussi` e trigger di validazione. Le transizioni non ammesse vengono rifiutate dal DB. La sospensione temporanea (con data di riattivazione e job pgAgent) e' implementata: il flusso SOSPESO torna IN_CORSO alla riattivazione manuale o automatica.
+> **Nota**: la macchina a stati e' implementata come **rigida** nel DB tramite la tabella `config.transizioni_stati_pratiche` / `config.transizioni_stati_flussi_pratiche` e trigger di validazione. Le transizioni non ammesse vengono rifiutate dal DB. La sospensione temporanea (con data di riattivazione e job pgAgent) e' implementata: il flusso SOSPESO torna al suo stato precedente alla riattivazione manuale o automatica.
 
 ---
 
@@ -349,12 +373,12 @@ Il giornale (`pratiche.giornale`) e' un log **immutabile** alimentato automatica
 
 Ogni riga registra:
 
-* **azione**: uno dei 9 eventi (PRATICA_CREATA, STATO_CAMBIATO, ASSEGNAZIONE_CAMBIATA, PRIORITA_CAMBIATA, FLUSSO_CREATO, FLUSSO_STATO_CAMBIATO, NOTA_AGGIUNTA, ALLEGATO_AGGIUNTO, PRATICA_GENERATA)
+* **azione**: uno degli 11 eventi (PRATICA_CREATA, STATO_CAMBIATO, ASSEGNAZIONE_CAMBIATA, PRIORITA_CAMBIATA, FLUSSO_CREATO, FLUSSO_STATO_CAMBIATO, NOTA_AGGIUNTA, ALLEGATO_AGGIUNTO, PRATICA_GENERATA, SOSPENSIONE_REGISTRATA, SOSPENSIONE_CHIUSA)
 * **origine**: SISTEMA, UTENTE, HANDLER, SCHEDULER
 * **dettaglio**: JSONB con valori precedenti/nuovi per ricostruzione completa
 * **tx_id**: correlazione con la transazione per tracciabilita' cross-tabella
 
-Django **non deve loggare**: il DB lo fa da solo tramite 10 trigger functions dedicate.
+Django **non deve loggare**: il DB lo fa da solo tramite 12 trigger functions dedicate.
 
 ### Approccio generico delle azioni
 
@@ -393,9 +417,9 @@ L'operatore sospende la pratica con motivo "Cliente assente fino al 20 marzo"
 
 Dopo la sospensione:
   Pratica #123           stato: SOSPESA
-    Flusso #456 VERIFICA_DATI   stato: SOSPESO    (propagato dal trigger)
-    Flusso #457 PRIMO_CONTATTO  stato: SOSPESO    (propagato dal trigger)
-    Flusso #458 SOPRALLUOGO     stato: DA_ESEGUIRE (non toccato — non era IN_CORSO)
+    Flusso #456 VERIFICA_DATI   stato: SOSPESO    (era IN_CORSO, propagato dal trigger)
+    Flusso #457 PRIMO_CONTATTO  stato: SOSPESO    (era IN_CORSO, propagato dal trigger)
+    Flusso #458 SOPRALLUOGO     stato: SOSPESO    (era DA_ESEGUIRE, propagato dal trigger)
 
 Sospensione creata:
   id: 50, pratica_id: 123, flusso_id: NULL
@@ -410,9 +434,9 @@ Alla riattivazione (manuale o automatica via pgAgent il 20 marzo):
 ```text
 Dopo la riattivazione:
   Pratica #123           stato: APERTA
-    Flusso #456 VERIFICA_DATI   stato: IN_CORSO   (ripristinato dal trigger)
-    Flusso #457 PRIMO_CONTATTO  stato: IN_CORSO   (ripristinato dal trigger)
-    Flusso #458 SOPRALLUOGO     stato: DA_ESEGUIRE (invariato)
+    Flusso #456 VERIFICA_DATI   stato: IN_CORSO     (ripristinato — era IN_CORSO)
+    Flusso #457 PRIMO_CONTATTO  stato: IN_CORSO     (ripristinato — era IN_CORSO)
+    Flusso #458 SOPRALLUOGO     stato: DA_ESEGUIRE  (ripristinato — era DA_ESEGUIRE)
 
 Sospensione chiusa:
   id: 50, data_fine: 20 marzo 08:00
@@ -507,6 +531,8 @@ La UI puo' mostrare il semaforo in tempo reale:
 
 I giorni di sospensione vengono esclusi da tutti i conteggi: un periodo di fermo non penalizza il rispetto degli SLA.
 
+**Quali sospensioni contano**: la funzione `fn_calcola_tempo_netto_da_a` sottrae **solo le sospensioni a livello pratica** (`flusso_id IS NULL`) che ricadono nel periodo di calcolo. Le sospensioni su singolo flusso **non** vengono considerate. Questo e' un design intenzionale: i calcoli tempo misurano la durata complessiva della pratica, e solo un fermo totale (sospensione pratica) giustifica l'esclusione dal conteggio.
+
 ### Formule tempo multiple sulla stessa pratica
 
 E' comune configurare piu' formule sullo stesso tipo prestazione per misurare sia i tratti intermedi che il tempo complessivo:
@@ -535,6 +561,8 @@ Ogni formula genera il proprio record in `calcoli_tempo`. La UI puo' mostrare tu
 
 ## Generazione cross-pratica
 
+> Vedi anche: [Analisi Tracciamento Processi e Job](./Analisi-tracciamento-processi-e-job) per il monitoraggio dei job di generazione
+
 Le `regole_generazione` configurano la creazione automatica di nuove pratiche al completamento di un flusso:
 
 | Campo | Funzione |
@@ -547,9 +575,45 @@ Le `regole_generazione` configurano la creazione automatica di nuove pratiche al
 
 La funzione `fn_genera_pratica_da_flusso()` copia emittente, soggetto e priorita' dalla pratica sorgente. La pratica generata ha `flusso_origine_id` per tracciabilita'.
 
+**Esempio concreto** — completamento flusso con generazione automatica:
+
+```text
+Regola configurata:
+  template_flusso_origine_id = PRIMO_CONTATTO (tipo ONBOARDING_CLIENTE)
+  tipo_prestazione_dest_id   = SOPRALLUOGO_TECNICO
+  template_flusso_dest_id    = PROGRAMMAZIONE (primo step del tipo destinazione)
+  esito_richiesto            = POSITIVO
+  auto                       = true
+
+Stato iniziale:
+  Pratica #123 (ONBOARDING_CLIENTE, emittente 32, soggetto uuid-mario)
+    Flusso #457 PRIMO_CONTATTO  stato: IN_CORSO
+
+L'operatore completa il flusso #457 con esito POSITIVO:
+  UPDATE pratiche.flussi SET stato_id = 3, esito = 'POSITIVO' WHERE id = 457;
+
+Il trigger DB (trgfn_flussi_generazione):
+  1. Trova la regola con auto=true e esito_richiesto=POSITIVO
+  2. Chiama fn_genera_pratica_da_flusso()
+  3. Crea:
+     Pratica #789 (SOPRALLUOGO_TECNICO, emittente 32, soggetto uuid-mario)
+       flusso_origine_id = 457  (tracciabilita' cross-pratica)
+       stato: BOZZA
+       Flusso #890 PROGRAMMAZIONE  stato: DA_ESEGUIRE
+
+Giornale registra:
+  pratica #123: FLUSSO_STATO_CAMBIATO (flusso #457, IN_CORSO → COMPLETATO)
+  pratica #789: PRATICA_CREATA
+  pratica #789: FLUSSO_CREATO (flusso #890)
+```
+
+Se l'esito fosse stato NEGATIVO, la regola non si sarebbe attivata (`esito_richiesto = POSITIVO`).
+
 ---
 
 ## Handler Django (registry pattern)
+
+> Vedi anche: [Messaggi di Errore e Generazione Log](./Messaggi-di-Errore-e-Generazione-Log) per il sistema di error handling usato dagli handler
 
 La tabella `handler_flussi` contiene le chiavi di dispatch (`handler_key`). Django mantiene un mapping statico `handler_key -> classe Handler` nel codice Python:
 
@@ -666,14 +730,42 @@ Un trigger AFTER INSERT ciascuno per registrare NOTA_AGGIUNTA e ALLEGATO_AGGIUNT
 
 ## Funzioni DB
 
+### Funzioni standalone
+
 | Funzione | Tipo | Scopo |
 | --- | --- | --- |
 | `fn_check_prerequisiti_flusso` | check (pura) | Verifica prerequisiti, ritorna tabella con flag `soddisfatto` |
 | `fn_guard_prerequisiti_flusso` | guard (fail-fast) | RAISE se prerequisiti non soddisfatti |
 | `fn_genera_pratica_da_flusso` | operativa | Genera nuova pratica da flusso completato secondo regola |
-| `fn_calcola_giorni_sospensione` | calcolo (pura) | Calcola i giorni di sospensione in un intervallo per una pratica |
-| `fn_valida_transizione_pratica` | guard (fail-fast) | RAISE se la transizione di stato non e' nella tabella config |
-| `fn_valida_transizione_flusso` | guard (fail-fast) | RAISE se la transizione di stato non e' nella tabella config |
+| `fn_calcola_tempo_netto_da_a` | calcolo (STABLE) | Calcola giorni netti tra due flussi, sottraendo le sospensioni pratica-level |
+| `fn_valuta_tempo_esecuzione_da_a` | calcolo (STABLE) | Ritorna giorni_netti, giorni_esecuzione, giorni_rimanenti, stato_tempo (OK/WARNING/CRITICO/SFORATO) |
+
+### Trigger functions
+
+| Funzione | Tabella | Scopo |
+| --- | --- | --- |
+| `trgfn_pratiche_guard_transizione` | pratiche | Guard: verifica transizione ammessa via `config.transizioni_stati_pratiche` |
+| `trgfn_flussi_guard_transizione` | flussi | Guard: verifica transizione ammessa via `config.transizioni_stati_flussi_pratiche` |
+| `trgfn_flussi_guard_prerequisiti` | flussi | Guard: blocca INSERT se prerequisiti non soddisfatti |
+| `trgfn_flussi_calcolo_tempo_completamento` | flussi | Crea/aggiorna record in `calcoli_tempo` al completamento flusso |
+| `trgfn_flussi_generazione` | flussi | Genera pratiche cross-pratica da regole con `auto = true` |
+| `trgfn_sospensioni_guard_coerenza_flusso` | sospensioni | Guard: verifica che `flusso_id` appartenga alla stessa `pratica_id` |
+| `trgfn_sospensioni_propaga` | sospensioni | Propaga sospensione ai flussi DA_ESEGUIRE/IN_CORSO (se `flusso_id IS NULL`) |
+| `trgfn_sospensioni_riattiva` | sospensioni | Ripristina stati flussi dal giornale alla riattivazione |
+| `trgfn_sospensioni_giornale` | sospensioni | Registra SOSPENSIONE_REGISTRATA / SOSPENSIONE_CHIUSA nel giornale |
+| `trgfn_calcoli_tempo_guard_immutabili` | calcoli_tempo | Guard: impedisce UPDATE su colonne immutabili (pratica_id, formula_tempo_id, flusso_da_id) |
+| `trgfn_pratiche_giornale_ins` | pratiche | Registra PRATICA_CREATA |
+| `trgfn_pratiche_giornale_stato` | pratiche | Registra STATO_CAMBIATO |
+| `trgfn_pratiche_giornale_assegnazione` | pratiche | Registra ASSEGNAZIONE_CAMBIATA |
+| `trgfn_pratiche_giornale_priorita` | pratiche | Registra PRIORITA_CAMBIATA |
+| `trgfn_flussi_giornale_ins` | flussi | Registra FLUSSO_CREATO |
+| `trgfn_flussi_giornale_stato` | flussi | Registra FLUSSO_STATO_CAMBIATO |
+| `trgfn_note_pratiche_giornale` | note_pratiche | Registra NOTA_AGGIUNTA |
+| `trgfn_note_flussi_giornale` | note_flussi | Registra NOTA_AGGIUNTA |
+| `trgfn_allegati_pratiche_giornale` | allegati_pratiche | Registra ALLEGATO_AGGIUNTO |
+| `trgfn_allegati_flussi_giornale` | allegati_flussi | Registra ALLEGATO_AGGIUNTO |
+
+> Per la documentazione dettagliata di ogni funzione, vedi le pagine in `docs/it/dbzero/pratiche/manual/`.
 
 ---
 
@@ -780,13 +872,17 @@ pratica_id = pratiche_service.crea_pratica(
 
 ## Integrazione cross-dominio
 
+> Vedi anche: [Guida Risorse Umane e Accessi](./risorse-umane-e-accessi) per il modello `risorsa_umana_id` usato nelle assegnazioni
+
 ### Il giornale come infrastruttura trasversale
 
-Il modulo pratiche non e' solo un workflow engine autonomo: e' l'anello infrastrutturale che gli altri domini dell'ERP usano per tracciare i propri processi.
+> **Nota**: questa sezione descrive il **design architetturale** dell'integrazione cross-dominio. L'infrastruttura (`pratiche_service`, trigger DB, giornale) e' operativa, ma nessun dominio di Anello 3 (vendite, acquisti, magazzino) la consuma ancora. Gli esempi seguenti illustrano come l'integrazione funzionera' quando i domini saranno collegati.
 
-**Principio**: ogni evento significativo di dominio (nuovo cliente, nuovo ordine, modifica contratto) transita dal giornale di bordo attraverso la creazione/aggiornamento di una pratica. Il giornale cattura automaticamente il ciclo di vita via trigger DB.
+Il modulo pratiche non e' solo un workflow engine autonomo: e' l'anello infrastrutturale che gli altri domini dell'ERP useranno per tracciare i propri processi.
 
-| Evento dominio | tipo_prestazione | Cosa succede |
+**Principio**: ogni evento significativo di dominio (nuovo cliente, nuovo ordine, modifica contratto) transitera' dal giornale di bordo attraverso la creazione/aggiornamento di una pratica. Il giornale cattura automaticamente il ciclo di vita via trigger DB.
+
+| Evento dominio | tipo_prestazione | Cosa succedera' |
 | --- | --- | --- |
 | Nuovo cliente creato | ONBOARDING_CLIENTE | Pratica creata con soggetto_id, flussi configurati |
 | Nuovo ordine vendita | GESTIONE_ORDINE | Pratica creata con meta referencing l'ordine |
@@ -933,7 +1029,9 @@ Non serve toccare il nucleo pratiche: tutto avviene per configurazione.
 
 ---
 
-## Estensioni future (tabelle ext_*)
+## Estensioni future (tabelle ext_*) — Design
+
+> **Nota**: nessuna di queste tabelle esiste ancora. Questa sezione documenta il pattern architetturale previsto per quando i domini specifici richiederanno dati strutturati sui flussi.
 
 Tabelle specifiche per tipo di flusso, da implementare progressivamente. Ogni estensione avra' FK verso `pratiche.flussi(id)` e vivra' autonomamente:
 
@@ -945,32 +1043,55 @@ Tabelle specifiche per tipo di flusso, da implementare progressivamente. Ogni es
 
 ---
 
-## Evoluzioni pianificate
+## Stato di implementazione
 
-Lo stato di implementazione delle funzionalita' avanzate:
+La tabella seguente riporta lo stato reale di ogni componente. La colonna **Stato** distingue tra:
 
-| Componente | Scopo | Stato |
-| --- | --- | --- |
-| Tabella `pratiche.sospensioni` | Periodi di fermo pratica/flusso per calcolo tempi netti | **Implementato** (DB + Backend + API) |
-| Tabella `pratiche.formule_tempo` | Soglie warning/critico per semafori temporali | **Implementato** (DB) |
-| Tabella `pratiche.calcoli_tempo` | Calcolo tempi netti da/a (escludendo sospensioni) | **Implementato** (DB + Backend + API) |
-| Sospensione automatica flusso | Riattivazione con data prevista + job pgAgent | **Implementato** (DB + job pgAgent) |
-| Macchina a stati rigida | Transizioni ammesse validate da trigger DB | **Implementato** (DB trigger + tabelle config) |
-| Agenda attivita' | Vista operativa per operatore/reparto/direzione | Analisi |
+* **DB**: tabella, funzioni e trigger deployati e testati con pgTAP
+* **DB + Backend + API**: anche endpoint Django funzionante
+* **Solo DB**: logica nel database, **nessun endpoint API** — la UI/backend non puo' ancora consumare questi dati
+
+| Componente | Scopo | Stato | Note |
+| --- | --- | --- | --- |
+| Tabella `pratiche.sospensioni` | Periodi di fermo pratica/flusso | **DB + Backend + API** | Endpoint sospendi/riattiva operativi |
+| Tabella `pratiche.formule_tempo` | Soglie warning/critico per semafori | **DB + Backend + API** | Endpoint GET per tipo_prestazione |
+| Tabella `pratiche.calcoli_tempo` | Calcolo tempi netti da/a | **DB + Backend + API** | Trigger automatico + endpoint GET con stato_tempo |
+| `fn_calcola_tempo_netto_da_a` | Calcolo giorni netti | **DB + Backend + API** | Usata internamente da `fn_valuta_tempo_esecuzione_da_a` |
+| `fn_valuta_tempo_esecuzione_da_a` | Semaforo OK/WARNING/CRITICO/SFORATO | **DB + Backend + API** | Consumata dall'endpoint calcoli-tempo per il semaforo UI |
+| Riattivazione automatica | Job pgAgent per riattivazione a scadenza | **DB + job pgAgent** | |
+| Macchina a stati rigida | Transizioni validate da trigger DB | **DB** | Enforced su tutte le operazioni, non richiede backend dedicato |
+| Generazione cross-pratica | Trigger auto + fn_genera_pratica | **DB** | Trigger auto funzionante; endpoint manuale da sviluppare |
+| Handler Django registry | Dispatch automatico flussi | **Design** | Pattern infrastrutturale pronto (`BaseFlussoHandler`, `get_handler()`, dispatch nel service). Registry vuoto: gli handler concreti arrivano con i domini di Anello 3 |
+| Agenda attivita' | Vista operativa per operatore/reparto | **Analisi** | Non ancora progettata |
 
 Le funzionalita' implementate appartengono all'**anello infrastrutturale** (Anello 2) e si appoggiano sul nucleo senza modificarlo.
 
 ---
 
-## Note finali
+## Checklist operativa
 
-Questa guida e' il prerequisito per comprendere:
+### Per configurare un nuovo tipo prestazione
 
-* L'integrazione dei moduli dominio (vendite, anagrafiche) con il motore pratiche
-* La configurazione di nuovi tipi prestazione e template flussi
-* L'implementazione di handler Django per flussi automatizzati
+1. INSERT in `pratiche.tipi_prestazione` (codice, categoria, flussi_vincolanti)
+2. INSERT in `pratiche.template_flussi` per ogni step del workflow
+3. INSERT in `pratiche.template_flussi_prerequisiti` per il grafo di dipendenze
+4. (opzionale) INSERT in `pratiche.template_flussi_canali` per visibilita' esterna
+5. (opzionale) INSERT in `pratiche.handler_flussi` + registrare handler in `HANDLER_MAP` Django
+6. (opzionale) INSERT in `pratiche.regole_generazione` per generazione cross-pratica
+7. (opzionale) INSERT in `pratiche.formule_tempo` per soglie temporali tra coppie di flussi
 
-Le altre guide assumono come gia' compreso il modello pratica/flusso/giornale descritto qui.
+### Per integrare un dominio esterno
+
+1. Importare `pratiche_service` nel service del dominio
+2. Chiamare `crea_pratica()` con tipo_prestazione, soggetto, emittente
+3. Il giornale DB registra tutto automaticamente — nessun logging applicativo
+
+### Per aggiungere un nuovo handler automatizzato
+
+1. Creare classe che implementa `BaseFlussoHandler.execute()`
+2. Registrare `handler_key` in `pratiche.handler_flussi` (DB)
+3. Aggiungere mapping in `HANDLER_MAP` (Python)
+4. Associare `handler_id` al template flusso desiderato
 
 ---
 
