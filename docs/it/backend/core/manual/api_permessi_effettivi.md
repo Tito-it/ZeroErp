@@ -92,7 +92,7 @@ Campi risposta:
 - Per utenti `DISABILITATO`: tutte le aree risultano `BLOCCATO`.
 - `has_profilo_reparto = false` con `livello = BLOCCATO` indica che il reparto non ha ancora
   un profilo configurato (diverso da un profilo che imposta esplicitamente BLOCCATO).
-- `emittenti_ids = null` significa nessuna restrizione scope emittente (l'utente vede tutto).
+- `emittenti_ids = null` significa nessuna restrizione ambito emittente (l'utente vede tutto).
 
 ## Dipendenze DB
 
@@ -101,7 +101,7 @@ Campi risposta:
 - `anagrafiche.risorse_umane` — unita_organizzativa_id
 - `config.user_override_aree` — override individuali area
 - `config.profili_reparto_aree` — profili reparto ereditati
-- `config.user_emittenti_fiscali` — scope emittente fiscale
+- `config.user_emittenti_fiscali` — ambito emittente fiscale
 
 ## Codici errore
 

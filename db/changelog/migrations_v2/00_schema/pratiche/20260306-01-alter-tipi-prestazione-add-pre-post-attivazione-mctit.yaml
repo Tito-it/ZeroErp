@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ALTER pratiche.tipi_prestazione — aggiungere pre_attivazione e post_attivazione
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260306-01-alter-tipi-prestazione-add-pre-post-attivazione-mctit.yaml
+
+  - changeSet:
+      id: 20260306-01-alter-tipi-prestazione-add-pre-post-attivazione
+      author: mctit
+      comment: >
+        Aggiunge i campi pre_attivazione e post_attivazione alla tabella
+        tipi_prestazione. Indicano se il tipo di prestazione è applicabile
+        prima e/o dopo l'attivazione del cliente (billing_account).
+        Default entrambi true (universale).
+      changes:
+        - addColumn:
+            schemaName: pratiche
+            tableName: tipi_prestazione
+            columns:
+              - column:
+                  name: pre_attivazione
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Se true, il tipo prestazione è applicabile prima dell'attivazione del cliente."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: post_attivazione
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Se true, il tipo prestazione è applicabile dopo l'attivazione del cliente."
+                  constraints:
+                    nullable: false
+
+      rollback:
+        - dropColumn:
+            schemaName: pratiche
+            tableName: tipi_prestazione
+            columnName: post_attivazione
+        - dropColumn:
+            schemaName: pratiche
+            tableName: tipi_prestazione
+            columnName: pre_attivazione

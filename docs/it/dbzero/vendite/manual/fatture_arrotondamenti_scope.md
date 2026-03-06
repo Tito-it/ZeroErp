@@ -17,15 +17,15 @@
 
 (latest review 10-02-2026)  
 `vendite.fatture_arrotondamenti_scope` memorizza il **saldo tecnico** degli
-arrotondamenti per **scope di fatturazione**. Serve a produrre arrotondamenti
+arrotondamenti per **ambito di fatturazione**. Serve a produrre arrotondamenti
 deterministici e riproducibili tra fatture e note/storni, evitando
 scostamenti cumulativi nel tempo.
 
 ---
 
-### 🧱 Chiave di scope (univoca)
+### 🧱 Chiave di ambito (univoca)
 
-Lo scope e` definito dalla combinazione:
+L'ambito e` definito dalla combinazione:
 
 * `billing_account_id`
 * `utility_id`
@@ -40,7 +40,7 @@ cliente/utility/tipo documento/emittente/valuta.
 
 ### 🧾 Campi chiave (semantica)
 
-* **Saldo**: `saldo_arrotondamento` = saldo tecnico accumulato per lo scope.
+* **Saldo**: `saldo_arrotondamento` = saldo tecnico accumulato per l'ambito.
 * **Governance**: audit standard per modifiche e tracciabilita`.
 
 ---
@@ -49,7 +49,7 @@ cliente/utility/tipo documento/emittente/valuta.
 
 * Il saldo non e` un totale fiscale, ma un valore **tecnico** usato per
   determinare `arrotondamento_precedente` e `arrotondamento_attuale` in testata.
-* Lo scope e` pensato per mantenere la coerenza tra fattura e storni/NC.
+* L'ambito e` pensato per mantenere la coerenza tra fattura e storni/NC.
 * L’aggiornamento del saldo deve avvenire **in modo deterministico** tramite
   funzioni dedicate (get/set), evitando aggiornamenti manuali.
 

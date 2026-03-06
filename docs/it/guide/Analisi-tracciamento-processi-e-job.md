@@ -356,7 +356,7 @@ WHERE task_code = 'assegna_pratica';
 
 ## Rapporto tra i sistemi di logging
 
-| Sistema | Cosa traccia | Persistenza | Scope |
+| Sistema | Cosa traccia | Persistenza | Ambito |
 | --- | --- | --- | --- |
 | `dbops.audit_log` | Operazioni (successi, skip, errori) | In-transazione o dblink | Trasversale |
 | `dbops.error_log` | Errori con codice e contesto | Sempre dblink | Trasversale |

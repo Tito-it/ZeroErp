@@ -25,7 +25,7 @@
 ### 🎯 Scopo Principale
 
 (latest review 07-02-26)
-La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** del framework di automazioni. Coordina l’applicazione delle regole di sistema (Tx ID, aggiornamento audit, storico, lock colonne, gestione flag attivo, cleanup) sugli schemi e tabelle in scope.
+La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** del framework di automazioni. Coordina l’applicazione delle regole di sistema (Tx ID, aggiornamento audit, storico, lock colonne, gestione flag attivo, cleanup) sugli schemi e tabelle nell'ambito.
 
 ---
 
@@ -48,7 +48,7 @@ La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** d
 
 ### ⚙️ Flusso logico
 
-1. Determina lo **scope degli schemi**: usa `p_schemas`, oppure `automation_scope`, oppure fallback a tutti gli schemi utente.
+1. Determina l'**ambito degli schemi**: usa `p_schemas`, oppure `automation_scope`, oppure fallback a tutti gli schemi utente.
 2. Valuta se abilitare la modalità compatibile `TABLE_RULES` → esegue i moduli tabellari (TX_ID, AUDIT_UPDATE, STORICO, LOCK_COLUMNS).
 3. Esegue i moduli richiesti:
 
@@ -66,7 +66,7 @@ La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** d
 
 * **Setup iniziale**: eseguire `fn_run_automations` dopo il deploy per applicare automaticamente regole su tutte le tabelle.
 * **Verifica**: lanciare in modalità `p_dry_run = true` per controllare quali azioni verrebbero eseguite senza modificare nulla.
-* **Manutenzione**: aggiornare trigger/policy su scope limitati (es. solo schema `anagrafiche`).
+* **Manutenzione**: aggiornare trigger/policy su ambiti limitati (es. solo schema `anagrafiche`).
 
 ---
 

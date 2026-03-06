@@ -559,7 +559,7 @@ KPI minimi:
 
 ## Checklist pre-esecuzione
 
-1. Sorgenti attive e coerenti in `config.sorgenti` (scope push commessa).
+1. Sorgenti attive e coerenti in `config.sorgenti` (ambito push commessa).
 2. Funzioni commessa installate/allineate:
    * `fn_get_or_create_commessa`
    * `fn_upsert_commessa_attivita`

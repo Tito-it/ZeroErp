@@ -13,6 +13,7 @@
 - [api_routing_core](manual/api_routing_core.md) — Documentare il routing core tra path legacy e path versionato v1.
 - [api_search_validation](manual/api_search_validation.md) — Evitare query di ricerca troppo generiche che degradano performance e selettivita`.
 - [api_throttling](manual/api_throttling.md) — Limitare burst di chiamate sugli endpoint search per proteggere backend e DB.
+- [api_tracciamento](manual/api_tracciamento.md) — Espone in lettura i tre livelli di tracciamento del sistema: audit log operativo, task registry multi-dominio e log esecuzioni job pgAgent. Fornisce agli anelli esterni e alla futura UI una vista unificata sulle operazi…
 - [api_write_checklist](manual/api_write_checklist.md) — Fornire una checklist operativa pronta per nuovi endpoint write (POST/PUT/PATCH/DELETE con side effect).
 - [error-handling-api](manual/error-handling-api.md) — Definire un contratto errore uniforme per tutte le API backend Django.
 - [payload-validation-api](manual/payload-validation-api.md) — Centralizzare validazioni/coercizioni dei payload JSON API per ridurre logica duplicata nelle view dominio.

@@ -116,6 +116,34 @@ Catalogo dei tipi di prestazione. Macro-categorie di attivita' gestibili.
 
 - **categoria**: raggruppamento libero (es. UTILITIES, COMMERCIALE, AMMINISTRATIVO)
 - **flussi_vincolanti**: `true` = controllo sequenza/prerequisiti attivo, `false` = giornale senza vincoli
+- **pre_attivazione**: BOOLEAN NOT NULL DEFAULT true — la prestazione e' applicabile nella fase precedente all'attivazione del cliente/servizio
+- **post_attivazione**: BOOLEAN NOT NULL DEFAULT true — la prestazione e' applicabile nella fase successiva all'attivazione
+
+Le quattro combinazioni coprono tutti gli scenari operativi:
+
+| pre_attivazione | post_attivazione | Significato | Esempio |
+| --------------- | ---------------- | ----------- | ------- |
+| true | true | Universale, applicabile sempre | Reclamo, Richiesta informazioni |
+| true | false | Solo pre-attivazione | Sopralluogo iniziale, Preventivo |
+| false | true | Solo post-attivazione | Manutenzione, Lettura contatore |
+| false | false | Pratica interna, non legata al cliente | Audit interno, Manutenzione impianto |
+
+> **Default entrambi `true`**: tutto l'esistente funziona senza modifiche.
+
+**Regole di applicabilita' (guard lato service/API):**
+
+La validazione avviene nel service Django alla creazione della pratica, in base allo stato
+del billing_account (BA) del soggetto associato:
+
+| Combinazione | Condizione di ammissibilita' |
+| ------------ | ---------------------------- |
+| `pre_attivazione = true` | Il soggetto non ha BA attivo per l'emittente, oppure il BA ha `data_attivazione IS NULL` (cliente non ancora attivato) |
+| `post_attivazione = true` | Il soggetto ha un BA attivo per l'emittente con `data_attivazione IS NOT NULL` (cliente attivato) |
+| `false / false` | Nessun vincolo sul soggetto — la pratica e' interna, il soggetto puo' essere NULL |
+
+> Il guard e' nel service, non nel DB: la logica dipende dallo stato del BA che e' in
+> `anagrafiche.billing_account`, e un trigger cross-schema sarebbe fragile.
+> Il service deve verificare la coerenza prima dell'INSERT e restituire errore chiaro.
 
 ### 1.2 pratiche.handler_flussi
 
@@ -595,9 +623,11 @@ al completamento di un flusso (trigger AFTER UPDATE). La generazione manuale
 
 ## 12. Evoluzione: Sospensione e Tempi
 
-> Stato: **analisi**. Queste tabelle non sono ancora nello schema.
+> Stato: **da implementare**. Queste tabelle non sono ancora nello schema.
 > Prerequisiti: nucleo pratiche completo (13 tabelle + 5 funzioni), seed stati con SOSPESO.
 > Documento di analisi: `docs/it/dev/work-in-progress/analisi-gestione-operativa-attivita.md`
+>
+> Review conformita' (06-03-2026): allineato a standard progetto — vedi note sotto ogni tabella.
 
 ### 12.1 pratiche.sospensioni
 
@@ -613,19 +643,88 @@ Ogni riga e' un intervallo aperto (data_fine NULL = sospensione ancora attiva).
 | `data_fine` | TIMESTAMPTZ | Fine sospensione (NULL = attiva) |
 | `data_riattivazione_prevista` | DATE | Per riattivazione automatica via job pgAgent |
 | `motivo` | TEXT NOT NULL | Motivazione obbligatoria |
+| `storicizza` | BOOLEAN NOT NULL DEFAULT false | Pattern standard tabelle operative |
+| `tx_id` | UUID | Transaction ID — pattern standard tabelle operative |
 | `data_insert` | TIMESTAMPTZ | audit |
 | `user_insert` | TEXT | audit |
+| `data_update` | TIMESTAMPTZ | audit |
+| `user_update` | TEXT | audit |
+
+> **Note conformita':**
+>
+> - Aggiunti `data_update`/`user_update`: la tabella e' aggiornabile (riattivazione imposta `data_fine`).
+>   Con soli 2 campi audit si perdeva traccia dell'aggiornamento.
+> - Aggiunto `tx_id UUID`: coerenza con le tabelle operative del nucleo (`pratiche`, `flussi`).
+> - Aggiunto `storicizza BOOLEAN`: coerenza con il pattern del nucleo pratiche.
 
 **Vincoli:**
 
 - CHECK: `data_fine IS NULL OR data_fine > data_inizio`
-- CHECK: `flusso_id IS NULL OR pratica_id = (SELECT pratica_id FROM pratiche.flussi WHERE id = flusso_id)` — coerenza pratica/flusso
 - Un solo record con `data_fine IS NULL` per combinazione pratica_id + flusso_id (UNIQUE parziale)
 
-**Trigger:**
+**Trigger guard coerenza pratica/flusso (fase `_a10_`):**
 
-- AFTER INSERT: se `flusso_id IS NULL` (sospensione pratica), tutti i flussi attivi (DA_ESEGUIRE, IN_CORSO) passano a SOSPESO automaticamente. Il giornale registra STATO_CAMBIATO per la pratica e FLUSSO_STATO_CAMBIATO per ogni flusso coinvolto.
-- AFTER UPDATE OF data_fine (riattivazione): se `flusso_id IS NULL`, i flussi precedentemente sospesi tornano allo stato che avevano prima della sospensione (salvato nel `dettaglio` JSONB del giornale). La pratica torna ad APERTA.
+> Il vincolo originale era una CHECK con subquery
+> (`flusso_id IS NULL OR pratica_id = (SELECT pratica_id FROM pratiche.flussi WHERE id = flusso_id)`).
+> PostgreSQL **non ammette CHECK con subquery** — deve essere implementato come trigger
+> BEFORE INSERT/UPDATE.
+
+```sql
+-- pratiche.trgfn_sospensioni_guard_coerenza_flusso()
+-- Scopo: verifica che flusso_id appartenga alla stessa pratica_id della sospensione.
+CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    v_pratica_flusso BIGINT;
+BEGIN
+    IF NEW.flusso_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT pratica_id INTO v_pratica_flusso
+    FROM pratiche.flussi WHERE id = NEW.flusso_id;
+
+    IF v_pratica_flusso IS NULL OR v_pratica_flusso <> NEW.pratica_id THEN
+        PERFORM script.fn_log_and_raise_error(
+            'SOSPENSIONI_FLUSSO_NON_COERENTE',
+            format('Il flusso %s non appartiene alla pratica %s',
+                   NEW.flusso_id, NEW.pratica_id)
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$;
+```
+
+| Nome trigger | Timing | Evento | Funzione |
+| ------------ | ------ | ------ | -------- |
+| `trg_sospensioni_a10_guard_coerenza_flusso_ins_upd` | BEFORE | INSERT, UPDATE OF flusso_id | `pratiche.trgfn_sospensioni_guard_coerenza_flusso()` |
+
+**Trigger business-specific:**
+
+| Nome trigger | Timing | Evento | Funzione | Scopo |
+| ------------ | ------ | ------ | -------- | ----- |
+| `trg_sospensioni_a10_guard_coerenza_flusso_ins_upd` | BEFORE | INSERT, UPDATE OF flusso_id | `trgfn_sospensioni_guard_coerenza_flusso()` | Coerenza pratica/flusso |
+| `trg_sospensioni_z90_propaga_sospensione_ins` | AFTER | INSERT | `trgfn_sospensioni_propaga()` | Propaga sospensione ai flussi attivi |
+| `trg_sospensioni_z90_propaga_riattivazione_upd` | AFTER | UPDATE OF data_fine | `trgfn_sospensioni_riattiva()` | Ripristina stati precedenti alla riattivazione |
+| `trg_sospensioni_z90_giornale_ins` | AFTER | INSERT | `trgfn_sospensioni_giornale_ins()` | Registra SOSPENSIONE_REGISTRATA nel giornale |
+| `trg_sospensioni_z90_giornale_riattivazione_upd` | AFTER | UPDATE OF data_fine | `trgfn_sospensioni_giornale_riattivazione()` | Registra SOSPENSIONE_CHIUSA nel giornale |
+
+Dettaglio comportamento:
+
+- **AFTER INSERT**: se `flusso_id IS NULL` (sospensione pratica), tutti i flussi attivi (DA_ESEGUIRE, IN_CORSO) passano a SOSPESO automaticamente. I trigger giornale dei flussi registrano FLUSSO_STATO_CAMBIATO per ogni flusso coinvolto.
+- **AFTER UPDATE OF data_fine** (riattivazione): se `flusso_id IS NULL`, i flussi precedentemente sospesi tornano allo stato che avevano prima della sospensione (salvato nel `dettaglio` JSONB del giornale). La pratica torna ad APERTA.
+
+**Nuove azioni giornale:**
+
+> Il giornale necessita di due nuove azioni nel CHECK della colonna `azione`:
+>
+> - `SOSPENSIONE_REGISTRATA` — traccia creazione sospensione con motivo e date nel dettaglio JSONB
+> - `SOSPENSIONE_CHIUSA` — traccia chiusura sospensione con data_fine nel dettaglio JSONB
+>
+> Le azioni STATO_CAMBIATO / FLUSSO_STATO_CAMBIATO coprono gia' le transizioni di stato
+> propagate dalla sospensione, ma le nuove azioni permettono di tracciare direttamente
+> l'evento sospensione con il suo motivo e la data di riattivazione prevista.
 
 **Job pgAgent:**
 
@@ -634,15 +733,26 @@ Ogni riga e' un intervallo aperto (data_fine NULL = sospensione ancora attiva).
 
 ### 12.2 pratiche.formule_tempo
 
-Soglie temporali per semafori warning/critico, configurabili per tipo prestazione e/o template flusso.
+Soglie temporali e tempo massimo di esecuzione, configurabili per tipo prestazione
+con coppia di template flusso **da/a**. Le formule misurano il tempo impiegato
+per passare dal completamento di un flusso (flusso_da) al completamento di un altro (flusso_a),
+e servono a due scopi:
+
+- **Semafori**: segnalare warning/critico quando i giorni rimanenti alla scadenza
+  scendono sotto le soglie configurate
+- **Tempo massimo**: definire il numero di giorni previsti per transitare
+  da flusso_da COMPLETATO a flusso_a COMPLETATO. Al completamento del flusso_a
+  il trigger calcola automaticamente il tempo netto impiegato e lo confronta con `giorni_esecuzione`
 
 | Colonna | Tipo | Note |
 | ------- | ---- | ---- |
 | `id` | INTEGER PK | GENERATED ALWAYS AS IDENTITY |
 | `tipo_prestazione_id` | INTEGER NOT NULL | FK a `pratiche.tipi_prestazione` |
-| `template_flusso_id` | INTEGER | FK a `pratiche.template_flussi` (NULL = formula sulla pratica intera) |
-| `giorni_warning` | INTEGER NOT NULL | Soglia giallo (giorni rimanenti) |
-| `giorni_critico` | INTEGER NOT NULL | Soglia rosso (giorni rimanenti) |
+| `template_flusso_da_id` | INTEGER NOT NULL | FK a `pratiche.template_flussi` — flusso di partenza (il suo COMPLETATO avvia il conteggio) |
+| `template_flusso_a_id` | INTEGER NOT NULL | FK a `pratiche.template_flussi` — flusso di arrivo (il suo COMPLETATO chiude il conteggio) |
+| `giorni_esecuzione` | INTEGER NOT NULL | Tempo massimo previsto in giorni (al netto delle sospensioni) |
+| `giorni_warning` | INTEGER NOT NULL | Soglia giallo (giorni rimanenti rispetto a `giorni_esecuzione`) |
+| `giorni_critico` | INTEGER NOT NULL | Soglia rosso (giorni rimanenti rispetto a `giorni_esecuzione`) |
 | `attivo` | BOOLEAN NOT NULL DEFAULT true | |
 | `descrizione` | TEXT | |
 | `meta` | JSONB NOT NULL DEFAULT '{}' | |
@@ -653,24 +763,167 @@ Soglie temporali per semafori warning/critico, configurabili per tipo prestazion
 
 **Vincoli:**
 
+- CHECK: `giorni_esecuzione > 0`
 - CHECK: `giorni_warning > giorni_critico` (warning scatta prima del critico)
 - CHECK: `giorni_warning > 0 AND giorni_critico > 0`
-- UNIQUE su `(tipo_prestazione_id, template_flusso_id)` — una formula per combinazione
+- CHECK: `giorni_warning < giorni_esecuzione` (la soglia warning deve stare dentro il tempo massimo)
+- CHECK: `template_flusso_da_id <> template_flusso_a_id` (no self-reference: i due flussi devono essere distinti)
+- UNIQUE su `(tipo_prestazione_id, template_flusso_da_id, template_flusso_a_id)` — una formula per combinazione da/a
 
-### 12.3 Funzione fn_calcola_tempo_netto
+### 12.3 pratiche.calcoli_tempo
 
-Funzione **check** (pura, STABLE): calcola i giorni netti trascorsi per un flusso o una pratica, escludendo i periodi di sospensione.
+Tabella di calcolo persistente collegata alla testata pratica. Misura il tempo impiegato
+per transitare dal completamento di un flusso (flusso_da) al completamento di un altro (flusso_a),
+alimentata automaticamente da trigger a due fasi:
 
-- Input: `p_pratica_id BIGINT`, `p_flusso_id BIGINT DEFAULT NULL`
+- **Fase avvio**: quando il flusso_da va COMPLETATO, il trigger crea la riga con
+  `data_inizio_calcolo = data_fine` del flusso_da e snapshot di `giorni_formula`
+- **Fase completamento**: quando il flusso_a va COMPLETATO, il trigger popola
+  `data_fine_calcolo = data_fine` del flusso_a, calcola i tempi e imposta `sforato`
+
+> **Nota concettuale:** non si misura il tempo di esecuzione di un singolo flusso,
+> ma il tempo trascorso **tra** il completamento del flusso_da e il completamento del flusso_a.
+> Questo permette di tracciare performance end-to-end di sotto-processi
+> (es. "dal completamento della Verifica al completamento dell'Installazione").
+
+| Colonna | Tipo | Note |
+| ------- | ---- | ---- |
+| `id` | BIGINT PK | GENERATED ALWAYS AS IDENTITY |
+| `pratica_id` | BIGINT NOT NULL | FK a `pratiche.pratiche` (testata) — immutabile |
+| `flusso_da_id` | BIGINT NOT NULL | FK a `pratiche.flussi` — flusso di partenza (il suo COMPLETATO avvia il conteggio) — immutabile |
+| `flusso_a_id` | BIGINT NOT NULL | FK a `pratiche.flussi` — flusso di arrivo (il suo COMPLETATO chiude il conteggio) — immutabile |
+| `formula_tempo_id` | INTEGER NOT NULL | FK a `pratiche.formule_tempo` — snapshot della formula applicata — immutabile |
+| `data_inizio_calcolo` | TIMESTAMPTZ NOT NULL | `data_fine` del flusso_da (quando il flusso_da e' andato COMPLETATO) |
+| `data_fine_calcolo` | TIMESTAMPTZ | `data_fine` del flusso_a (quando il flusso_a e' andato COMPLETATO). NULL = in corso |
+| `giorni_lordi` | INTEGER | Giorni di calendario totali (`data_fine_calcolo - data_inizio_calcolo`). NULL mentre in corso |
+| `giorni_sospensione` | INTEGER | Giorni totali di sospensione della pratica nel periodo da/a. NULL mentre in corso |
+| `giorni_netti` | INTEGER | `giorni_lordi - giorni_sospensione`. NULL mentre in corso |
+| `giorni_formula` | INTEGER NOT NULL | Snapshot di `formule_tempo.giorni_esecuzione` al momento dell'avvio — immutabile |
+| `sforato` | BOOLEAN | `true` se `giorni_netti > giorni_formula`. NULL mentre in corso |
+| `tx_id` | UUID | Transaction ID |
+| `data_insert` | TIMESTAMPTZ | audit |
+| `user_insert` | TEXT | audit |
+| `data_update` | TIMESTAMPTZ | audit |
+| `user_update` | TEXT | audit |
+
+**Vincoli:**
+
+- CHECK: `data_fine_calcolo IS NULL OR data_fine_calcolo > data_inizio_calcolo`
+- CHECK: `giorni_formula > 0`
+- CHECK: `flusso_da_id <> flusso_a_id` (i due flussi devono essere distinti)
+- UNIQUE su `(pratica_id, flusso_da_id, flusso_a_id, formula_tempo_id)` — un solo calcolo per combinazione da/a
+
+**Immutabilita' dei riferimenti:**
+
+I campi `pratica_id`, `flusso_da_id`, `flusso_a_id`, `formula_tempo_id`, `giorni_formula`
+e `data_inizio_calcolo` sono immutabili dopo l'inserimento. Un trigger guard `_a10_` blocca
+UPDATE su queste colonne.
+
+| Nome trigger | Timing | Evento | Funzione | Scopo |
+| ------------ | ------ | ------ | -------- | ----- |
+| `trg_calcoli_tempo_a10_guard_immutabili_upd` | BEFORE | UPDATE OF pratica_id, flusso_da_id, flusso_a_id, formula_tempo_id, giorni_formula, data_inizio_calcolo | `trgfn_calcoli_tempo_guard_immutabili()` | Blocca modifica dei campi di riferimento |
+
+> I soli campi aggiornabili sono: `data_fine_calcolo`, `giorni_lordi`, `giorni_sospensione`,
+> `giorni_netti`, `sforato`, `tx_id` e i campi audit.
+
+### 12.4 Funzioni DB
+
+#### 12.4.1 pratiche.fn_calcola_tempo_netto_da_a
+
+Funzione **check** (pura, STABLE): calcola i giorni netti trascorsi tra due flussi di una pratica,
+escludendo i periodi di sospensione. Non misura il tempo di un singolo flusso, ma il tempo
+intercorso dal completamento del flusso_da al momento corrente (o al completamento del flusso_a).
+
+- Input: `p_pratica_id BIGINT`, `p_flusso_da_id BIGINT`, `p_flusso_a_id BIGINT`
 - Output: `INTEGER` (giorni netti)
-- Logica: `(data corrente - data_insert) - SUM(periodi sospensione chiusi) - (eventuale sospensione aperta)`
+- Logica:
+  - Recupera `data_fine` del flusso_da come punto di partenza
+  - Se il flusso_a e' gia' COMPLETATO, usa `data_fine` del flusso_a come punto di arrivo;
+    altrimenti usa `NOW()`
+  - Calcola giorni lordi = punto_arrivo - punto_partenza
+  - Sottrae i giorni di sospensione della pratica ricadenti nel periodo (da tabella `sospensioni`)
+  - Restituisce `giorni_lordi - giorni_sospensione`
 
-### 12.4 Attivita' backend Django
+#### 12.4.2 pratiche.fn_valuta_tempo_esecuzione_da_a
+
+Funzione **check** (pura, STABLE): confronta il tempo netto trascorso tra due flussi
+con la formula tempo configurata. Restituisce lo stato temporale corrente.
+
+- Input: `p_pratica_id BIGINT`, `p_flusso_da_id BIGINT`, `p_flusso_a_id BIGINT`
+- Output: `TABLE(giorni_netti INTEGER, giorni_esecuzione INTEGER, giorni_rimanenti INTEGER, stato_tempo TEXT)`
+- `stato_tempo`: `OK`, `WARNING`, `CRITICO`, `SFORATO`
+- Logica:
+  - Recupera la formula matching in `formule_tempo` per `tipo_prestazione_id` + `template_flusso_da_id` + `template_flusso_a_id`
+  - Chiama `fn_calcola_tempo_netto_da_a` per i giorni netti
+  - `giorni_rimanenti = giorni_esecuzione - giorni_netti`
+  - Se `giorni_rimanenti <= 0` → `SFORATO`
+  - Se `giorni_rimanenti <= giorni_critico` → `CRITICO`
+  - Se `giorni_rimanenti <= giorni_warning` → `WARNING`
+  - Altrimenti → `OK`
+- Se non esiste formula configurata, restituisce NULL (nessuna valutazione)
+
+#### 12.4.3 Trigger di tracciamento tempo (due fasi — modello da/a)
+
+Un unico trigger AFTER UPDATE OF stato_id su `pratiche.flussi` (WHEN NEW = COMPLETATO)
+gestisce entrambe le fasi del ciclo di vita dei calcoli tempo. Quando un flusso va COMPLETATO,
+il trigger verifica se quel flusso e' referenziato come `flusso_da` o `flusso_a`
+nelle formule configurate:
+
+| Nome trigger | Timing | Evento | Funzione | Scopo |
+| ------------ | ------ | ------ | -------- | ----- |
+| `trg_flussi_z90_calcolo_tempo_completamento_upd` | AFTER | UPDATE OF stato_id (WHEN NEW = COMPLETATO) | `trgfn_flussi_calcolo_tempo_completamento()` | Crea e/o chiude righe in `calcoli_tempo` secondo il modello da/a |
+
+**Logica della trigger function** (`trgfn_flussi_calcolo_tempo_completamento`):
+
+Il flusso appena COMPLETATO puo' essere referenziato come partenza (flusso_da) e/o
+come arrivo (flusso_a) in formule diverse. Il trigger gestisce entrambi i casi:
+
+1. **Il flusso COMPLETATO e' un flusso_da** (avvio conteggio):
+   - Cerca in `formule_tempo` tutte le formule con `template_flusso_da_id` = template del flusso appena completato
+     e `tipo_prestazione_id` = tipo della pratica, con `attivo = true`
+   - Per ogni formula trovata: cerca nella stessa pratica il flusso corrispondente al `template_flusso_a_id`
+   - Se il flusso_a esiste: INSERT in `calcoli_tempo` con `data_inizio_calcolo = data_fine` del flusso_da,
+     `giorni_formula` = snapshot di `formule_tempo.giorni_esecuzione`
+   - Se il flusso_a non esiste ancora nella pratica: nessuna azione (il calcolo partira' quando il flusso_a verra' creato — vedi nota sotto)
+
+2. **Il flusso COMPLETATO e' un flusso_a** (chiusura conteggio):
+   - Cerca la riga aperta in `calcoli_tempo` per `pratica_id` + `flusso_a_id` con `data_fine_calcolo IS NULL`
+   - Se esiste: UPDATE con `data_fine_calcolo = data_fine` del flusso_a, calcola `giorni_lordi`
+     (`data_fine_calcolo - data_inizio_calcolo`), `giorni_sospensione` (da tabella `sospensioni`
+     per il periodo da/a), `giorni_netti`, `sforato`
+   - Se non esiste riga: nessuna azione
+   - Registra nel giornale come dettaglio JSONB arricchito:
+     `{"flusso_da_id": X, "flusso_a_id": Y, "giorni_netti": N, "giorni_lordi": L, "giorni_sospensione": S, "giorni_formula": M, "sforato": true/false}`
+
+> **Nota — Ordine dei completamenti**
+>
+> Il modello da/a presuppone che il flusso_da si completi prima del flusso_a.
+> Se il flusso_a viene completato prima che esista una riga in `calcoli_tempo`
+> (perche' il flusso_da non era ancora completato), il trigger non registra nulla.
+> Quando successivamente il flusso_da sara' completato, il trigger (punto 1) creera'
+> la riga di avvio ma il flusso_a risultera' gia' COMPLETATO: in questo caso il trigger
+> deve anche chiudere immediatamente la riga calcolando i tempi dal `data_fine` del flusso_da
+> al `data_fine` del flusso_a.
+>
+> **Nota — Evoluzione futura: calcolo dinamico scadenze e segnalazioni**
+>
+> In una fase successiva si prevede di implementare:
+>
+> - Vista operativa che legge da `calcoli_tempo` le righe con `data_fine_calcolo IS NULL`
+>   e ricalcola dinamicamente `giorni_netti` e `stato_tempo` tramite `fn_valuta_tempo_esecuzione_da_a`,
+>   per alimentare la dashboard agenda attivita' (vedi `analisi-gestione-operativa-attivita.md`)
+> - Segnalazioni automatiche (notifiche/alert) quando lo stato_tempo passa da OK a WARNING
+>   o da WARNING a CRITICO, tramite job pgAgent periodico
+> - Queste funzionalita' si appoggiano interamente su `calcoli_tempo`, `formule_tempo` e
+>   sulle funzioni definite in questa sezione, senza modificarle
+
+### 12.5 Attivita' backend Django
 
 | Attivita' | Prerequisito | File coinvolti |
 | --------- | ------------ | -------------- |
 | Aggiungere `SospensioneRow` a `types.py` | DDL sospensioni | `apps/pratiche/types.py` |
 | Aggiungere `FormulaTempoRow` a `types.py` | DDL formule_tempo | `apps/pratiche/types.py` |
+| Aggiungere `CalcoloTempoRow` a `types.py` | DDL calcoli_tempo | `apps/pratiche/types.py` |
 | Metodo `sospendi_pratica(pratica_id, motivo, data_riattivazione)` | DDL + trigger | `apps/pratiche/services/pratiche_service.py` |
 | Metodo `riattiva_pratica(pratica_id)` | DDL + trigger | `apps/pratiche/services/pratiche_service.py` |
 | Metodo `sospendi_flusso(flusso_id, motivo, data_riattivazione)` | DDL + trigger | `apps/pratiche/services/pratiche_service.py` |
@@ -683,12 +936,14 @@ Funzione **check** (pura, STABLE): calcola i giorni netti trascorsi per un fluss
 | Test unitari service (sospendi/riattiva pratica e flusso) | Service | `apps/pratiche/tests/services/` |
 | Test unitari API (4 endpoint) | Views | `apps/pratiche/tests/api/` |
 
-**Ordine di implementazione:**
+#### Ordine di implementazione
+
+> Sostituito dal piano strutturato nella sezione 14. Questa lista resta come riferimento sintetico.
 
 1. DDL `sospensioni` + seed (Liquibase)
 2. DDL `formule_tempo` + seed (Liquibase)
-3. Trigger sospensione pratica → propagazione flussi (Liquibase `20_code/`)
-4. Trigger riattivazione → ripristino stati (Liquibase `20_code/`)
+3. Trigger sospensione pratica — propagazione flussi (Liquibase `20_code/`)
+4. Trigger riattivazione — ripristino stati (Liquibase `20_code/`)
 5. Funzione `fn_calcola_tempo_netto` (Liquibase `20_code/`)
 6. Test pgTAP per sospensione/riattivazione e calcolo tempo
 7. Backend: types, repository, service, endpoint, test Django
@@ -700,6 +955,8 @@ Funzione **check** (pura, STABLE): calcola i giorni netti trascorsi per un fluss
 
 > Stato: **da implementare**. Approccio scelto: guard nel DB (coerente con filosofia DB-first).
 > Prerequisiti: nucleo pratiche completo, seed stati con tutti i codici_interni.
+>
+> Review conformita' (06-03-2026): allineato a standard progetto — vedi note sotto ogni tabella.
 
 ### 13.1 Problema
 
@@ -742,7 +999,7 @@ La matrice di transizioni e' codificata in una tabella config o direttamente nel
 
 Due tabelle config per le transizioni ammesse:
 
-**config.transizioni_stati_pratiche**
+#### config.transizioni_stati_pratiche
 
 | Colonna | Tipo | Note |
 | ------- | ---- | ---- |
@@ -750,11 +1007,19 @@ Due tabelle config per le transizioni ammesse:
 | `stato_da_id` | INTEGER NOT NULL | FK a `config.stati_pratiche` |
 | `stato_a_id` | INTEGER NOT NULL | FK a `config.stati_pratiche` |
 | `attivo` | BOOLEAN NOT NULL DEFAULT true | Disattivabile senza deploy |
+| `meta` | JSONB NOT NULL DEFAULT '{}' | Pattern standard config |
+| `data_insert` | TIMESTAMPTZ | audit |
+| `user_insert` | TEXT | audit |
+| `data_update` | TIMESTAMPTZ | audit |
+| `user_update` | TEXT | audit |
 
 - UNIQUE su `(stato_da_id, stato_a_id)`
 - CHECK: `stato_da_id <> stato_a_id`
 
-**config.transizioni_stati_flussi_pratiche**
+> **Note conformita':** aggiunti audit fields (4 campi) e `meta JSONB` per coerenza
+> con il precedente `config.stati_doc_fiscale_transizioni` che ha la stessa struttura.
+
+#### config.transizioni_stati_flussi_pratiche
 
 Stessa struttura, FK a `config.stati_flussi_pratiche`.
 
@@ -763,8 +1028,12 @@ Stessa struttura, FK a `config.stati_flussi_pratiche`.
 ```sql
 -- pratiche.trgfn_pratiche_guard_transizione()
 -- Scopo: blocca transizioni di stato non ammesse per le pratiche.
+-- Risolve i codici interni degli stati per messaggi di errore leggibili.
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_transizione()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    v_codice_da config.stati_pratiche.codice_interno%TYPE;
+    v_codice_a  config.stati_pratiche.codice_interno%TYPE;
 BEGIN
     IF OLD.stato_id = NEW.stato_id THEN
         RETURN NEW;  -- nessuna transizione, niente da validare
@@ -776,10 +1045,16 @@ BEGIN
           AND stato_a_id = NEW.stato_id
           AND attivo = true
     ) THEN
+        SELECT codice_interno INTO v_codice_da
+        FROM config.stati_pratiche WHERE id = OLD.stato_id;
+
+        SELECT codice_interno INTO v_codice_a
+        FROM config.stati_pratiche WHERE id = NEW.stato_id;
+
         PERFORM script.fn_log_and_raise_error(
             'PRATICHE_TRANSIZIONE_NON_AMMESSA',
-            format('Transizione pratica non ammessa: %s → %s',
-                   OLD.stato_id, NEW.stato_id)
+            format('Transizione pratica non ammessa: %s -> %s',
+                   v_codice_da, v_codice_a)
         );
     END IF;
     RETURN NEW;
@@ -787,7 +1062,8 @@ END;
 $$;
 ```
 
-Stessa logica per `pratiche.trgfn_flussi_guard_transizione()` con la tabella flussi.
+Stessa logica per `pratiche.trgfn_flussi_guard_transizione()` con la tabella flussi
+e `config.stati_flussi_pratiche`.
 
 #### Trigger
 
@@ -829,6 +1105,7 @@ Tabella `config.transizioni_stati_flussi_pratiche` (7 righe):
 | ------ | ----- | --------- |
 | PRATICHE_TRANSIZIONE_NON_AMMESSA | Transizione stato pratica non consentita | Verificare la sequenza di stati corretta per la pratica |
 | FLUSSI_TRANSIZIONE_NON_AMMESSA | Transizione stato flusso non consentita | Verificare la sequenza di stati corretta per il flusso |
+| SOSPENSIONI_FLUSSO_NON_COERENTE | Il flusso indicato non appartiene alla pratica della sospensione | Verificare che flusso_id e pratica_id siano coerenti |
 
 ### 13.6 Attivita' backend Django
 
@@ -854,6 +1131,203 @@ Tabella `config.transizioni_stati_flussi_pratiche` (7 righe):
 5. Trigger su pratiche e flussi (Liquibase `20_code/`)
 6. Test pgTAP: ogni transizione ammessa passa, ogni transizione vietata solleva errore
 7. Backend: error policy + test API
+
+---
+
+## 14. Piano di Implementazione Strutturato
+
+> Aggiornato: 06-03-2026
+> Prerequisiti globali: nucleo pratiche completo (13 tabelle + 5 funzioni + trigger business),
+> seed stati con SOSPESO, backend app `pratiche` con service/repository/api funzionanti.
+
+### Ordine complessivo
+
+L'implementazione segue due blocchi paralleli (13 e' indipendente da 12) piu' un blocco finale condiviso.
+
+```text
+Blocco 0 (ALTER tipi_prestazione)             Blocco A (Sezione 13 — Macchina a stati)
+============================================  ============================================
+O1. ALTER tipi_prestazione (+2 boolean)       A1. DDL tabelle transizioni config
+                                              A2. Seed transizioni (80_data/)
+                                              A3. Seed messaggi errore (80_data/)
+                                              A4. Trigger functions guard
+                                              A5. Trigger su pratiche e flussi
+                                              A6. Test pgTAP transizioni
+
+Blocco B (Sezione 12 — Sospensioni e Tempi da/a)
+============================================
+B1. Aggiornare CHECK giornale (+2 azioni)
+B2. DDL tabella sospensioni
+B3. DDL tabella formule_tempo (modello da/a)
+B4. Seed messaggi errore sospensioni
+B5. Trigger guard coerenza flusso
+B6. Trigger propagazione sospensione
+B7. Trigger riattivazione
+B8. Trigger giornale sospensione
+B9. DDL tabella calcoli_tempo (modello da/a)
+B10. Trigger guard immutabili calcoli_tempo
+B11. Funzione fn_calcola_tempo_netto_da_a
+B12. Funzione fn_valuta_tempo_esecuzione_da_a
+B13. Trigger calcolo tempo completamento (unico, modello da/a)
+B14. Test pgTAP sospensione/calcoli/tempo
+B15. Job pgAgent riattivazione automatica
+
+                Blocco C (Backend Django — dopo A e B)
+                ============================================
+                C1. Types (TypedDict)
+                C2. Repository (sospensioni, formule, transizioni)
+                C3. Service (sospendi/riattiva pratica/flusso)
+                C4. Error policies
+                C5. Endpoint API
+                C6. Test unitari service
+                C7. Test unitari API
+```
+
+---
+
+### Blocco O — ALTER tipi_prestazione
+
+| Step | Tipo | Descrizione | File Liquibase | Prerequisiti |
+| ---- | ---- | ----------- | -------------- | ------------ |
+| O1 | `00_schema` | ALTER `pratiche.tipi_prestazione`: aggiungere `pre_attivazione BOOLEAN NOT NULL DEFAULT true`, `post_attivazione BOOLEAN NOT NULL DEFAULT true` | `YYYYMMDD-NN-alter-tipi_prestazione_attivazione.yaml` | Tabella `pratiche.tipi_prestazione` esistente |
+
+---
+
+### Blocco A — Macchina a Stati Rigida (DB)
+
+| Step | Tipo | Descrizione | File Liquibase | Prerequisiti |
+| ---- | ---- | ----------- | -------------- | ------------ |
+| A1 | `00_schema` | DDL `config.transizioni_stati_pratiche` + `config.transizioni_stati_flussi_pratiche` (PK INTEGER, FK, UNIQUE, CHECK, audit 4 campi, meta JSONB) | `YYYYMMDD-NN-create-transizioni_stati_pratiche.yaml` + `..._flussi_pratiche.yaml` | Tabelle `config.stati_pratiche` e `config.stati_flussi_pratiche` esistenti |
+| A2 | `80_data` | Seed transizioni pratiche (6 righe) + flussi (7 righe) | `YYYYMMDD-NN-seed-transizioni_stati_pratiche.yaml` | A1 |
+| A3 | `80_data` | Seed messaggi errore: `PRATICHE_TRANSIZIONE_NON_AMMESSA`, `FLUSSI_TRANSIZIONE_NON_AMMESSA` | `YYYYMMDD-NN-seed-messaggi_errore_transizioni.yaml` | `config.messaggi_errore` esistente |
+| A4 | `20_code` | Trigger functions: `trgfn_pratiche_guard_transizione()`, `trgfn_flussi_guard_transizione()` | `YYYYMMDD-NN-create-trgfn_guard_transizione.yaml` | A1, A3 |
+| A5 | `20_code` | Trigger: `trg_pratiche_a10_guard_transizione_upd`, `trg_flussi_a10_guard_transizione_upd` | `YYYYMMDD-NN-create-trg_guard_transizione.yaml` | A4 |
+| A6 | pgTAP | Test: ogni transizione ammessa passa, ogni transizione vietata solleva errore | `db/pgtap/pratiche/test_transizioni_stati.sql` | A1-A5 |
+
+---
+
+### Blocco B — Sospensioni e Tempi da/a (DB)
+
+| Step | Tipo | Descrizione | File Liquibase | Prerequisiti |
+| ---- | ---- | ----------- | -------------- | ------------ |
+| B1 | `20_code` | ALTER CHECK su `pratiche.giornale.azione`: aggiungere `SOSPENSIONE_REGISTRATA`, `SOSPENSIONE_CHIUSA` | `YYYYMMDD-NN-alter-giornale_azione_check.yaml` | Tabella `pratiche.giornale` esistente |
+| B2 | `00_schema` | DDL `pratiche.sospensioni` (PK BIGINT, FK, UNIQUE parziale, CHECK data_fine, audit 4 campi, tx_id, storicizza) | `YYYYMMDD-NN-create-sospensioni.yaml` | Tabelle `pratiche.pratiche` e `pratiche.flussi` esistenti |
+| B3 | `00_schema` | DDL `pratiche.formule_tempo` (PK INTEGER, FK x2 template_flusso_da/a, UNIQUE su tipo+da+a, CHECK giorni + da<>a, audit 4 campi, attivo, meta) | `YYYYMMDD-NN-create-formule_tempo.yaml` | Tabelle `pratiche.tipi_prestazione` e `pratiche.template_flussi` esistenti |
+| B4 | `80_data` | Seed messaggio errore: `SOSPENSIONI_FLUSSO_NON_COERENTE` | `YYYYMMDD-NN-seed-messaggi_errore_sospensioni.yaml` | `config.messaggi_errore` esistente |
+| B5 | `20_code` | Trigger function + trigger: `trgfn_sospensioni_guard_coerenza_flusso()` + `trg_sospensioni_a10_guard_coerenza_flusso_ins_upd` | `YYYYMMDD-NN-create-trgfn_sospensioni_guard.yaml` | B2, B4 |
+| B6 | `20_code` | Trigger function + trigger: `trgfn_sospensioni_propaga()` + `trg_sospensioni_z90_propaga_sospensione_ins` | `YYYYMMDD-NN-create-trgfn_sospensioni_propaga.yaml` | B2, Blocco A (richiede macchina a stati per transizione SOSPESO) |
+| B7 | `20_code` | Trigger function + trigger: `trgfn_sospensioni_riattiva()` + `trg_sospensioni_z90_propaga_riattivazione_upd` | `YYYYMMDD-NN-create-trgfn_sospensioni_riattiva.yaml` | B2, Blocco A |
+| B8 | `20_code` | Trigger functions giornale: `trgfn_sospensioni_giornale_ins()`, `trgfn_sospensioni_giornale_riattivazione()` + trigger | `YYYYMMDD-NN-create-trgfn_sospensioni_giornale.yaml` | B1, B2 |
+| B9 | `00_schema` | DDL `pratiche.calcoli_tempo` (PK BIGINT, FK flusso_da_id + flusso_a_id, UNIQUE su pratica+da+a+formula, CHECK da<>a, audit 4 campi, tx_id) | `YYYYMMDD-NN-create-calcoli_tempo.yaml` | B2, B3 |
+| B10 | `20_code` | Trigger guard immutabilita': `trgfn_calcoli_tempo_guard_immutabili()` + `trg_calcoli_tempo_a10_guard_immutabili_upd` — blocca UPDATE su pratica_id, flusso_da_id, flusso_a_id, formula_tempo_id, giorni_formula, data_inizio_calcolo | `YYYYMMDD-NN-create-trgfn_calcoli_tempo_guard.yaml` | B9 |
+| B11 | `20_code` | Funzione `pratiche.fn_calcola_tempo_netto_da_a(p_pratica_id, p_flusso_da_id, p_flusso_a_id)` — check pura STABLE, calcolo giorni netti tra due flussi | `YYYYMMDD-NN-create-fn_calcola_tempo_netto_da_a.yaml` | B2 |
+| B12 | `20_code` | Funzione `pratiche.fn_valuta_tempo_esecuzione_da_a(p_pratica_id, p_flusso_da_id, p_flusso_a_id)` — check pura STABLE, confronto con formula da/a | `YYYYMMDD-NN-create-fn_valuta_tempo_esecuzione_da_a.yaml` | B3, B11 |
+| B13 | `20_code` | Trigger function + trigger: `trgfn_flussi_calcolo_tempo_completamento()` + `trg_flussi_z90_calcolo_tempo_completamento_upd` — unico trigger WHEN COMPLETATO, gestisce sia avvio (flusso_da) sia chiusura (flusso_a) nel modello da/a | `YYYYMMDD-NN-create-trgfn_flussi_calcolo_tempo_completamento.yaml` | B9, B12 |
+| B14 | pgTAP | Test: sospensione pratica/flusso, riattivazione, propagazione, calcoli_tempo da/a (avvio + completamento + ordine invertito), fn_calcola_tempo_netto_da_a, fn_valuta_tempo_esecuzione_da_a, guard immutabili, giornale | `db/pgtap/pratiche/test_sospensioni.sql` | B1-B13 |
+| B15 | pgAgent | Job riattivazione automatica: cerca sospensioni con `data_riattivazione_prevista <= CURRENT_DATE` e `data_fine IS NULL` | `85_pgagent/YYYYMMDD-NN-job-riattivazione_sospensioni.yaml` | B2, B7 |
+
+> **Nota dipendenza B6/B7 da Blocco A**: la propagazione della sospensione cambia lo stato dei flussi
+> a SOSPESO. Con la macchina a stati rigida attiva, queste transizioni devono essere ammesse.
+> Implementare prima il Blocco A garantisce che i trigger di propagazione non vengano bloccati.
+
+---
+
+### Blocco C — Backend Django (dopo A e B)
+
+| Step | Descrizione | File coinvolti | Prerequisiti |
+| ---- | ----------- | -------------- | ------------ |
+| C1 | Aggiungere `SospensioneRow`, `FormulaTempoRow`, `CalcoloTempoRow`, `TransizioneStatoRow` a types | `apps/pratiche/types.py` | DDL completato (A1, B2, B3, B9) |
+| C2 | Repository: INSERT/UPDATE sospensioni, SELECT formule_tempo, SELECT calcoli_tempo, SELECT transizioni | `apps/pratiche/db/pratiche_repository.py` | C1 |
+| C3 | Service: `sospendi_pratica()`, `riattiva_pratica()`, `sospendi_flusso()`, `riattiva_flusso()` | `apps/pratiche/services/pratiche_service.py` | C2 |
+| C4 | Error policy: mappare `PRATICHE_TRANSIZIONE_NON_AMMESSA`, `FLUSSI_TRANSIZIONE_NON_AMMESSA`, `SOSPENSIONI_FLUSSO_NON_COERENTE` | `apps/core/services/error_policies.py` | A3, B4 |
+| C5 | Endpoint API: `POST .../sospendi/`, `POST .../riattiva/` (pratica e flusso) | `apps/pratiche/api/views.py`, `urls_v1.py` | C3, C4 |
+| C6 | Test unitari service: sospendi/riattiva pratica e flusso, con mock DB | `apps/pratiche/tests/services/test_sospensioni_service.py` | C3 |
+| C7 | Test unitari API: 4 endpoint sospensione/riattivazione | `apps/pratiche/tests/api/test_sospensioni_api.py` | C5 |
+
+---
+
+### Riepilogo deliverable
+
+| Ambito | Nuovi oggetti |
+| ------ | ------------- |
+| ALTER tabelle | `pratiche.tipi_prestazione` (+`pre_attivazione`, +`post_attivazione`) |
+| Tabelle config | `transizioni_stati_pratiche`, `transizioni_stati_flussi_pratiche` |
+| Tabelle pratiche | `sospensioni`, `formule_tempo` (modello da/a), `calcoli_tempo` (modello da/a) |
+| Funzioni DB | `fn_calcola_tempo_netto_da_a`, `fn_valuta_tempo_esecuzione_da_a` |
+| Trigger functions | `trgfn_pratiche_guard_transizione`, `trgfn_flussi_guard_transizione`, `trgfn_sospensioni_guard_coerenza_flusso`, `trgfn_sospensioni_propaga`, `trgfn_sospensioni_riattiva`, `trgfn_sospensioni_giornale_ins`, `trgfn_sospensioni_giornale_riattivazione`, `trgfn_calcoli_tempo_guard_immutabili`, `trgfn_flussi_calcolo_tempo_completamento` |
+| Trigger | 2 guard transizioni + 5 trigger sospensioni + 1 guard immutabili calcoli + 1 trigger calcolo tempo (unico COMPLETATO, modello da/a) |
+| Seed data | 6+7 transizioni, 3 messaggi errore |
+| Azioni giornale | +2 (`SOSPENSIONE_REGISTRATA`, `SOSPENSIONE_CHIUSA`) |
+| Test pgTAP | 2 file (transizioni + sospensioni/tempi da/a) |
+| Backend Django | types, repository, service, error policies, 4 endpoint API, test |
+| pgAgent | 1 job riattivazione automatica |
+
+---
+
+## 15. Da Approfondire: Codice Pratica con Prefisso Dominio
+
+> Stato: **da approfondire**. Concetto definito, dettagli implementativi da finalizzare.
+
+### 15.1 Problema
+
+Oggi il campo `codice` su `pratiche.pratiche` e' generato da trigger senza contesto semantico.
+Non e' possibile distinguere a colpo d'occhio se una pratica riguarda un cliente, un ordine,
+un soggetto generico o un'attivita' interna.
+
+### 15.2 Proposta: prefisso dominio a 3 caratteri
+
+Il codice pratica segue il formato: `<PREFISSO>-<ANNO>-<SEQUENZA>`
+
+Esempi:
+
+- `CLI-2026-000001` — pratica legata a un cliente
+- `SOG-2026-000042` — pratica legata a un soggetto generico
+- `ORD-2026-000003` — pratica generata da un ordine
+- `INT-2026-000010` — pratica interna (false/false)
+
+#### Prefissi candidati
+
+| Prefisso | Dominio | Quando si usa |
+| -------- | ------- | ------------- |
+| `CLI` | Cliente | Soggetto con ruolo cliente attivo |
+| `SOG` | Soggetto | Soggetto generico senza ruolo cliente |
+| `ORD` | Ordini | Pratica generata dal ciclo ordini |
+| `FOR` | Fornitori | Pratica legata a un fornitore |
+| `INT` | Interno | Pratica interna (pre/post = false/false, soggetto NULL) |
+
+> La lista dei prefissi e' indicativa. Il prefisso potrebbe derivare dalla `categoria`
+> del tipo prestazione o da un campo dedicato sul tipo prestazione stesso.
+
+### 15.3 Assegnazione automatica del prefisso
+
+Il prefisso non e' inserito manualmente dall'utente ma determinato automaticamente:
+
+- Se `soggetto_id IS NULL` → `INT`
+- Se il soggetto ha ruolo cliente attivo per l'emittente → `CLI`
+- Se il soggetto ha ruolo fornitore → `FOR`
+- Altrimenti → `SOG`
+- Se la pratica e' generata cross-dominio (es. da ordine) → prefisso del dominio origine
+
+La logica di risoluzione del prefisso potrebbe stare:
+
+- Nel trigger DB (se rimane nello schema `pratiche` + lookup su `anagrafiche`)
+- Nel service Django (se la logica cross-schema e' troppo complessa per un trigger)
+
+### 15.4 Integrazione con la numerazione esistente
+
+Il progetto usa gia' una funzione standard per la generazione di codici con sequenza
+(pattern `fn_gen_codice` / contatori). L'integrazione prevede di:
+
+- Aggiungere il prefisso come parametro alla funzione di numerazione
+- Mantenere un contatore separato per ogni combinazione `prefisso + anno`
+- Il formato finale `<PREFISSO>-<ANNO>-<SEQUENZA>` con sequenza a 6 cifre zero-padded
+
+> **Da decidere:**
+>
+> - Dove memorizzare il prefisso: campo dedicato su `tipi_prestazione` vs derivazione automatica
+> - Dove vive la logica di risoluzione: trigger DB vs service Django
+> - Se il contatore e' per prefisso+anno o per prefisso+anno+emittente
+> - Interazione con la funzione `fn_gen_codice` esistente (estensione vs nuova funzione)
 
 ---
 

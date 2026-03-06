@@ -16,7 +16,7 @@ La guida `docs/it/guide/automazione-db.md` e stata riscritta con:
 - [x] Numerazione corretta delle sezioni (1-9 + checklist)
 - [x] Separazione regole **core** e **specializzate**
 - [x] Descrizioni leggibili per non-tecnici in ogni sezione
-- [x] Relazione scope/rules esplicitata (precedenza chiara)
+- [x] Relazione ambito/rules esplicitata (precedenza chiara)
 - [x] Diagrammi Mermaid: flusso esecuzione + ER tabelle configurazione
 - [x] Sezione troubleshooting
 - [x] Checklist operativa integrata ma chiaramente separata
@@ -74,13 +74,13 @@ Non esiste un meccanismo automatico per rilevare trigger manuali che fanno la st
 
 **Priorita:** media — diventa importante quando il team cresce.
 
-### 2.4 Validazione scope vs rules al momento dell'insert
+### 2.4 Validazione ambito vs rules al momento dell'insert
 
-Attualmente e possibile inserire una regola con `target_schema='vendite'` anche se `vendite` non e nello scope. La regola semplicemente non viene applicata, ma questo puo confondere.
+Attualmente e possibile inserire una regola con `target_schema='vendite'` anche se `vendite` non rientra nell'ambito. La regola semplicemente non viene applicata, ma questo puo confondere.
 
 **Azione proposta:**
 
-- [ ] Aggiungere un trigger di validazione su `automation_rules_tbl` che emetta un WARNING (non un errore) se il `target_schema` non e presente nello scope
+- [ ] Aggiungere un trigger di validazione su `automation_rules_tbl` che emetta un WARNING (non un errore) se il `target_schema` non e presente nell'ambito
 
 **Priorita:** bassa — utile per developer experience ma non critico.
 
@@ -90,7 +90,7 @@ Attualmente e possibile inserire una regola con `target_schema='vendite'` anche 
 
 ### 3.1 Report stato automazioni
 
-Manca una view sintetica che mostri per ogni tabella nello scope quali automazioni sono attive e quali no.
+Manca una view sintetica che mostri per ogni tabella nell'ambito quali automazioni sono attive e quali no.
 
 **Proposta:**
 
@@ -119,7 +119,7 @@ Non ci sono test automatizzati che verifichino il comportamento del framework su
     - Test dry-run su tabella di laboratorio
     - Test apply + verifica trigger esistenti
     - Test idempotenza (apply due volte = stesso risultato)
-    - Test rollback scope (tabella fuori scope non viene toccata)
+    - Test rollback ambito (tabella fuori ambito non viene toccata)
 
 **Priorita:** alta — fondamentale per evitare regressioni.
 
@@ -135,5 +135,5 @@ Non ci sono test automatizzati che verifichino il comportamento del framework su
 | Checklist standalone | Bassa | Documentazione |
 | Recovery da esecuzione parziale | Bassa | Codice |
 | Dashboard audit (view) | Bassa | Codice |
-| Validazione scope vs rules | Bassa | Codice |
+| Validazione ambito vs rules | Bassa | Codice |
 | Documentazione per singolo runner | Bassa | Documentazione |

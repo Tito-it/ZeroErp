@@ -19,7 +19,7 @@ Per ogni richiesta di un utente autenticato, imposta due variabili di sessione P
 | GUC                    | Valore              | Uso                                            |
 |------------------------|---------------------|-------------------------------------------------|
 | `app.jwt_user`         | `str(user)`         | Audit trail nei trigger DB                     |
-| `app.current_user_id`  | `str(user.id)`      | Trigger guard defense-in-depth (scope emittente)|
+| `app.current_user_id`  | `str(user.id)`      | Trigger guard defense-in-depth (ambito emittente)|
 
 Entrambe usano `SET LOCAL` (valide solo per la transazione corrente).
 
@@ -98,7 +98,7 @@ process_view(request, ...)
   lo stesso controllo a livello DRF. Il middleware agisce prima, evitando che la request
   raggiunga la view.
 - `app.current_user_id` e' pensato per essere usato dai trigger guard DB
-  (`config.fn_check_user_emittente_scope`) che verificano lo scope emittente a livello di riga.
+  (`config.fn_check_user_emittente_scope`) che verificano l'ambito emittente a livello di riga.
 
 ## Test
 

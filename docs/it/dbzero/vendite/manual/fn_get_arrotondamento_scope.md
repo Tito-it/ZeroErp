@@ -13,8 +13,8 @@
 
 (latest review 10-02-2026)  
 La funzione **`vendite.fn_get_arrotondamento_scope()`** restituisce il
-**saldo tecnico** degli arrotondamenti per lo scope di fatturazione
-(BA, utility, tipo documento, emittente, valuta). Se lo scope non esiste,
+**saldo tecnico** degli arrotondamenti per l'ambito di fatturazione
+(BA, utility, tipo documento, emittente, valuta). Se l'ambito non esiste,
 ritorna `0`.
 
 ---
@@ -22,7 +22,7 @@ ritorna `0`.
 ### ✅ Regole principali
 
 * Parametri obbligatori (ID > 0).
-* Se lo scope non esiste, il saldo e` `0`.
+* Se l'ambito non esiste, il saldo e` `0`.
 
 ---
 

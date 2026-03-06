@@ -55,7 +55,7 @@ L'obiettivo e':
 
 ### ✅ Esempi
 
-**1) Seed automatico (tutte le tabelle in scope):**
+**1) Seed automatico (tutte le tabelle nell'ambito):**
 
 ```sql
 SELECT dbops.fn_seed_automazione_overlap();

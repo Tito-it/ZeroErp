@@ -37,7 +37,7 @@ La tabella **`dbops.automation_cleanup_exclusions`** contiene l’elenco delle *
 
 `dbops.fn_run_automations_cleanup`:
 
-1. Risolve le tabelle in scope.
+1. Risolve le tabelle nell'ambito.
 2. **Salta** quelle presenti in `automation_cleanup_exclusions` con `enabled=true`.
 3. Logga su `dbops.audit_log` con stato `SKIP_EXCLUDED`.
 

@@ -19,7 +19,7 @@
 
 (latest review 10-01-26)
 La funzione **`dbops.fn_run_automations_lock_columns(p_exec_mode, p_schemas, p_dry_run)`**
-automatizza la creazione (o la simulazione) dei trigger **LOCK_COLUMNS** sulle tabelle in scope,
+automatizza la creazione (o la simulazione) dei trigger **LOCK_COLUMNS** sulle tabelle nell'ambito,
 bloccando la modifica delle colonne critiche tramite `script.trgfn_lock_columns`.
 
 ---
@@ -29,15 +29,15 @@ bloccando la modifica delle colonne critiche tramite `script.trgfn_lock_columns`
 | Parametro     | Tipo    | Descrizione                                  |
 | ------------- | ------- | -------------------------------------------- |
 | `p_exec_mode` | text    | Modalita' di esecuzione (AUTO/CI/SCHEDULED). |
-| `p_schemas`   | text[]  | Schemi target (NULL = scope risolto).        |
+| `p_schemas`   | text[]  | Schemi target (NULL = ambito risolto).       |
 | `p_dry_run`   | boolean | Se true non crea trigger ma registra audit.  |
 
 ---
 
 ### ⚙️ Logica operativa
 
-1. Risolve lo scope con `dbops.fn_resolve_scope(p_schemas)`.
-2. Per ogni tabella in scope:
+1. Risolve l'ambito con `dbops.fn_resolve_scope(p_schemas)`.
+2. Per ogni tabella nell'ambito:
    * aggiunge `codice_interno` se presente;
    * aggiunge colonne extra definite in `dbops.automation_lock_columns` (enabled e compatibili con `exec_mode`).
 3. Applica la regola `LOCK_COLUMNS` da `dbops.automation_rules_tbl` per:

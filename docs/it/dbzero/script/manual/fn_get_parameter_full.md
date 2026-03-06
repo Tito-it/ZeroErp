@@ -55,11 +55,11 @@ script.fn_get_parameter_full(
 | Nome               | Tipo        | Default | Descrizione                                  |
 | ------------------ | ----------- | ------- | -------------------------------------------- |
 | `p_code`           | `text`      | —       | Codice parametro (`config.parameters.code`). |
-| `p_tenant_id`      | `integer`   | `NULL`  | Override scope tenant.                       |
-| `p_django_user_id` | `integer`   | `NULL`  | Override scope utente (Django).              |
-| `p_group_ids`      | `integer[]` | `NULL`  | Override scope gruppi (Django groups).       |
-| `p_session_key`    | `text`      | `NULL`  | Override scope sessione.                     |
-| `p_function_name`  | `text`      | `NULL`  | Override scope funzione/chiamante.           |
+| `p_tenant_id`      | `integer`   | `NULL`  | Override ambito tenant.                      |
+| `p_django_user_id` | `integer`   | `NULL`  | Override ambito utente (Django).             |
+| `p_group_ids`      | `integer[]` | `NULL`  | Override ambito gruppi (Django groups).      |
+| `p_session_key`    | `text`      | `NULL`  | Override ambito sessione.                    |
+| `p_function_name`  | `text`      | `NULL`  | Override ambito funzione/chiamante.          |
 
 ---
 
@@ -104,12 +104,12 @@ La funzione seleziona **al massimo un override** e, in caso di più match, appli
 
 ### 💡 Note Operative
 
-* **Multi‑scope reale:** supporta contemporaneamente user/group/tenant/session/function.
+* **Multi‑ambito reale:** supporta contemporaneamente user/group/tenant/session/function.
 * **Determinismo:** l’`ORDER BY` definisce una precedenza chiara anche quando più override matchano.
-* **Performance:** tipicamente usata frequentemente; utile mantenere indici adeguati su `config.parameter_overrides` (per `parameter_id` e colonne scope).
+* **Performance:** tipicamente usata frequentemente; utile mantenere indici adeguati su `config.parameter_overrides` (per `parameter_id` e colonne ambito).
 
 ---
 
-> 🧠 **“`fn_get_parameter_full` risolve in modo deterministico il valore di un parametro applicando override multi‑scope (user → group → tenant → session → function), mantenendo logging ed error handling centralizzati.”**
+> 🧠 **“`fn_get_parameter_full` risolve in modo deterministico il valore di un parametro applicando override multi‑ambito (user → group → tenant → session → function), mantenendo logging ed error handling centralizzati.”**
 
 {% include-markdown "signature-core.md" %}

@@ -12,7 +12,7 @@
 ### 🎯 Scopo Principale
 
 (latest review 07-01-26)
-* **Eseguire in modo schedulato** l’orchestrazione delle **automazioni TX_ID** (policy di transazione su tabelle in scope) incapsulando la chiamata a `dbops.fn_run_automations_tx_id(...)` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
+* **Eseguire in modo schedulato** l’orchestrazione delle **automazioni TX_ID** (policy di transazione su tabelle nell'ambito) incapsulando la chiamata a `dbops.fn_run_automations_tx_id(...)` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 
 ---
 
@@ -98,7 +98,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ### 🔗 Dipendenze
 
-* `dbops.fn_run_automations_tx_id` — orchestratore che applica/regola la policy **TX_ID** sulle tabelle in scope.
+* `dbops.fn_run_automations_tx_id` — orchestratore che applica/regola la policy **TX_ID** sulle tabelle nell'ambito.
 * `maintenance.fn_run_and_log` — esecuzione protetta con logging e advisory lock.
 * (Opzionale) funzioni di logging centralizzato (se integrate):
 

@@ -8,7 +8,7 @@
 ## 1. Obiettivo
 
 Tracciare **ogni modifica** (UPDATE/DELETE) alle tabelle che definiscono profili,
-override e scope emittente degli utenti. In un sistema ERP le modifiche ai permessi
+override e ambito emittente degli utenti. In un sistema ERP le modifiche ai permessi
 sono eventi critici: serve sapere *chi* ha cambiato *cosa*, *quando*, e qual era
 il valore precedente.
 

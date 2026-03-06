@@ -25,13 +25,13 @@ La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorn
 
 | Parametro   | Tipo   | Descrizione                           |
 | ----------- | ------ | ------------------------------------- |
-| `p_schemas` | text[] | Schemi target (NULL = scope risolto). |
+| `p_schemas` | text[] | Schemi target (NULL = ambito risolto). |
 
 ---
 
 ### ⚙️ Logica operativa (sintesi)
 
-1. Risolve lo scope tramite `dbops.fn_resolve_scope(p_schemas)`.
+1. Risolve l'ambito tramite `dbops.fn_resolve_scope(p_schemas)`.
 2. Esclude lo schema `storico`.
 3. Per ogni tabella:
    * verifica la presenza delle colonne periodo;
@@ -48,7 +48,7 @@ La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorn
 
 ### ✅ Esempi
 
-**Seed su scope risolto:**
+**Seed su ambito risolto:**
 
 ```sql
 SELECT dbops.fn_seed_automazione_overlap();

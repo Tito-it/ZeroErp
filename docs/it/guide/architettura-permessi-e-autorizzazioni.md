@@ -14,7 +14,7 @@ Definire un sistema di permessi per Zero ERP che sia:
 
 - **scalabile** — nuovi moduli e azioni senza modifiche strutturali,
 - **granulare** — controllo fino al singolo utente e singolo oggetto,
-- **scopabile** — operatività limitabile per emittente fiscale,
+- **Circoscritto** — operatività limitabile per emittente fiscale,
 - **semplice da gestire** — pochi click per configurare un operatore,
 - **coerente** — integrato con il modello soggetti/ruoli e schemi DB esistenti.
 
@@ -388,7 +388,7 @@ COMMENT ON TABLE config.user_override_azioni IS
 
 ### 4.9 Tabella `config.user_emittenti_fiscali`
 
-Scope operativo: emittenti fiscali su cui l'utente può operare.
+Ambito operativo: emittenti fiscali su cui l'utente può operare.
 
 ```sql
 CREATE TABLE config.user_emittenti_fiscali (
@@ -421,8 +421,8 @@ COMMENT ON TABLE config.user_emittenti_fiscali IS
 | Livello            | Responsabilità                                                     | Dove                            |
 | ------------------ | ------------------------------------------------------------------ | ------------------------------- |
 | **Django/DRF**     | Autenticazione, enforcement permessi sulle API, filtering queryset | Permission classes, Mixins      |
-| **DB (config.\*)** | Source of truth per profili, aree, override, scope emittente       | Tabelle config, ENUM, funzioni  |
-| **DB (trigger)**   | Defense-in-depth: vincoli di coerenza, guard su scope emittente    | Trigger sulle tabelle operative |
+| **DB (config.\*)** | Source of truth per profili, aree, override, ambito emittente      | Tabelle config, ENUM, funzioni  |
+| **DB (trigger)**   | Defense-in-depth: vincoli di coerenza, guard su ambito emittente   | Trigger sulle tabelle operative |
 
 Il flusso di una richiesta:
 
@@ -433,7 +433,7 @@ Request
       → ZeroERPActionPermission (per azioni di processo: reparto → override azione)
         → EmittenteFiscaleScopeMixin (filtra queryset per emittente)
           → View/Serializer
-            → DB Trigger (defense-in-depth su scope emittente)
+            → DB Trigger (defense-in-depth su perimetro emittente)
 ```
 
 ---
@@ -673,7 +673,7 @@ class ZeroERPPermission(BasePermission):
         return app_label
 ```
 
-### 6.3 Mixin per scope emittente fiscale
+### 6.3 Mixin per ambito emittente fiscale
 
 ```python
 # core/mixins.py
@@ -746,7 +746,7 @@ class PgSessionMiddleware:
 Il database non replica l'enforcement di Django ma aggiunge guardie
 che il backend non può garantire.
 
-### 7.1 Funzione di verifica scope emittente
+### 7.1 Funzione di verifica ambito emittente
 
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_check_user_emittente_scope(
@@ -1005,10 +1005,10 @@ erDiagram
 > `unita_organizzative` — da qui il sistema risale al profilo reparto
 > (diagramma 9.1). Se esistono override, hanno sempre priorita'.
 
-### 9.3 Scope emittente fiscale e override model
+### 9.3 Ambito emittente fiscale e override model
 
 Due meccanismi ortogonali: la whitelist emittenti fiscali limita
-lo **scope operativo** dell'utente, mentre `area_model_overrides`
+l'**ambito operativo** dell'utente, mentre `area_model_overrides`
 riassegna un model a un'area diversa dal suo schema DB.
 
 ```mermaid
@@ -1065,9 +1065,9 @@ erDiagram
 | **Override utente area**    | `config.user_override_aree`                                | Sovrascrive reparto, con validità temporale |
 | **Override utente oggetto** | `config.user_override_oggetti`                             | Sovrascrive area, per singolo model         |
 | **Override utente azione**  | `config.user_override_azioni`                              | Sovrascrive reparto, per singola azione     |
-| **Scope emittente**         | `config.user_emittenti_fiscali`                            | Whitelist opzionale                         |
+| **Ambito emittente**        | `config.user_emittenti_fiscali`                            | Whitelist opzionale                         |
 | **Enforcement API**         | `ZeroERPPermission`                                        | DRF permission class                        |
-| **Scope queryset**          | `EmittenteFiscaleScopeMixin`                               | Mixin su ViewSet                            |
+| **Ambito queryset**         | `EmittenteFiscaleScopeMixin`                               | Mixin su ViewSet                            |
 | **Defense-in-depth**        | Trigger + `fn_check_user_emittente_scope`                  | Setting sessione PG                         |
 
 ---
@@ -1096,8 +1096,8 @@ coerente con la filosofia di Zero ERP.
 
 ## 12. Evoluzioni future
 
-- **Row-Level Security (RLS):** le tabelle scope sono già pronte per alimentare policy RLS.
-- **Scope per unità organizzativa su dati:** limitare la visibilità dati per reparto.
+- **Row-Level Security (RLS):** le tabelle di ambito sono già pronte per alimentare policy RLS.
+- **Ambito per unità organizzativa su dati:** limitare la visibilità dati per reparto.
 - **Workflow permissions:** stati avanzati (es. transizione BOZZA → EMESSA) come azioni di processo.
 - **Audit trail permessi:** log storico delle modifiche ai profili e override.
 - **Dashboard permessi:** vista riepilogativa "cosa può fare questo utente" con risoluzione completa.
@@ -1118,11 +1118,11 @@ ALTER TABLE anagrafiche.risorse_umane_auth_user
     ADD COLUMN tipo_utente config.tipo_utente NOT NULL DEFAULT 'OPERATIVO';
 ```
 
-| Tipo | Comportamento | Caso d'uso |
-| --- | --- | --- |
-| `ADMIN` | Bypass completo della catena permessi | Titolare, responsabile IT |
-| `OPERATIVO` | Eredita dal reparto + override individuali. Se reparto senza profilo → BLOCCATO | Dipendente standard |
-| `DISABILITATO` | Nessun accesso, nemmeno login | Ex-dipendente, utente sospeso |
+| Tipo           | Comportamento                                                                   | Caso d'uso                    |
+| -------------- | ------------------------------------------------------------------------------- | ----------------------------- |
+| `ADMIN`        | Bypass completo della catena permessi                                           | Titolare, responsabile IT     |
+| `OPERATIVO`    | Eredita dal reparto + override individuali. Se reparto senza profilo → BLOCCATO | Dipendente standard           |
+| `DISABILITATO` | Nessun accesso, nemmeno login                                                   | Ex-dipendente, utente sospeso |
 
 La catena di risoluzione diventa:
 

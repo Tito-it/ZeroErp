@@ -43,7 +43,7 @@ il runner la include automaticamente nel trigger.
 
 `dbops.fn_run_automations_lock_columns`:
 
-1. individua le tabelle in scope;
+1. individua le tabelle nell'ambito;
 2. aggiunge `codice_interno` se presente;
 3. aggiunge le colonne definite in `automation_lock_columns` (solo se esistono fisicamente);
 4. crea **un unico trigger** per tabella con `UPDATE OF` sulle colonne effettive.

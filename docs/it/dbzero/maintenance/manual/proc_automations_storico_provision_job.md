@@ -43,7 +43,7 @@ La procedura:
 
 ### 🔎 Differenze rispetto a `proc_automations_storico_job`
 
-* **Scopo**: `storico_provision_job` si occupa del **provisioning** (setup/adeguamento) dei trigger; `storico_job` esegue l’**orchestrazione** delle regole STORICO su tabelle in scope.
+* **Scopo**: `storico_provision_job` si occupa del **provisioning** (setup/adeguamento) dei trigger; `storico_job` esegue l’**orchestrazione** delle regole STORICO su tabelle nell'ambito.
 * **Funzione chiamata**: `dbops.fn_run_automations_storico_provision(...)` vs `dbops.fn_run_automations_storico(...)`.
 * **Quando usarla**: `storico_provision_job` è indicata dopo **nuove tabelle**, **migrazioni** o **cambio regole**; `storico_job` è più adatta al **run periodico** di mantenimento.
 * **Lock**: chiavi advisory lock differenti (`automations_storico_provision` vs `automations_storico`) per evitare overlap solo tra job omonimi.
@@ -105,7 +105,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ### 🔗 Dipendenze
 
-* `dbops.fn_run_automations_storico_provision` — provisioning delle regole **STORICO** su tabelle in scope.
+* `dbops.fn_run_automations_storico_provision` — provisioning delle regole **STORICO** su tabelle nell'ambito.
 * `maintenance.fn_run_and_log` — esecuzione protetta con logging e advisory lock.
 * (Opzionale) funzioni di logging centralizzato (se integrate):
 
