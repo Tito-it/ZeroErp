@@ -127,6 +127,22 @@ Un **tipo prestazione** e' una macro-categoria di attivita' gestibile: ONBOARDIN
 
 Il catalogo e' **condiviso** tra tutti gli emittenti fiscali. La segregazione multi-company avviene sulla tabella `pratiche.pratiche` tramite `emittente_fiscale_id`.
 
+**Differenza operativa tra le due modalita':**
+
+| Aspetto | `flussi_vincolanti = true` | `flussi_vincolanti = false` |
+| --- | --- | --- |
+| Prerequisiti | Enforced dal trigger guard (`fn_guard_prerequisiti_flusso`) | **Non verificati**: il trigger guard controlla il flag e non blocca l'INSERT |
+| Template flussi | I flussi sono creati a partire dai template configurati | I flussi possono essere creati senza `template_flusso_id` (NULL ammesso) |
+| Handler | Dispatch automatico se `handler_id` presente nel template | Stessa logica: se il flusso ha un template con handler, il dispatch funziona |
+| Formule tempo | Attive se configurate per il tipo prestazione | Stessa logica: se esistono formule, i calcoli tempo vengono generati |
+| Macchina a stati | Attiva (le transizioni sono sempre validate dal trigger) | Stessa logica: le transizioni di stato sono sempre validate |
+| Generazione cross-pratica | Attiva se regole auto configurate | Stessa logica |
+| Giornale | Sempre alimentato | Sempre alimentato |
+
+In sintesi: `flussi_vincolanti = false` disabilita **solo** il controllo prerequisiti e permette flussi senza template. Tutto il resto (macchina a stati, giornale, formule tempo, handler) funziona identicamente.
+
+> **Da definire**: il campo `flussi_vincolanti` non ha ancora un CHECK o trigger che impedisca la creazione di prerequisiti su un tipo prestazione non vincolante. E' possibile configurare prerequisiti che non verranno mai enforced. Valutare se aggiungere un guard di coerenza.
+
 ### 2. I template flussi: la configurazione del workflow
 
 Ogni tipo prestazione ha un insieme di **template flussi** che definiscono gli step operativi previsti:
@@ -162,11 +178,13 @@ Una **pratica** e' l'istanza concreta, la testata. Contiene:
 | `unita_organizzativa_id` | INTEGER | Reparto assegnato |
 | `pratica_padre_id` | BIGINT | Per sotto-pratiche (self-reference) |
 | `flusso_origine_id` | BIGINT | Tracciabilita' cross-pratica |
-| `canale_origine_id` | INTEGER | Sorgente esterna (NULL = interna) |
-| `solo_interna` | BOOLEAN | Se true, niente canali su flussi |
+| `canale_origine_id` | INTEGER | FK a `config.canali_pratiche`. Indica il canale da cui la pratica e' stata originata (es. WEB_CLIENTI, APP_TECNICA). NULL = pratica creata internamente dall'operatore |
+| `solo_interna` | BOOLEAN | Se `true`, i flussi della pratica non sono visibili su nessun canale esterno: la relazione `template_flussi_canali` viene ignorata a livello applicativo. Default `false` |
 | `codice` | TEXT | Generato da trigger |
 | `descrizione` | TEXT | Descrizione libera |
 | `data_scadenza` | DATE | Scadenza prevista |
+
+> **Da definire — `solo_interna` e canali**: attualmente `solo_interna` e' un flag informativo. Non esiste un trigger DB che impedisca l'associazione di canali ai flussi di una pratica `solo_interna = true`. L'enforcement e' previsto a livello applicativo (Django filtra i canali in base al flag). Valutare se aggiungere un guard DB per coerenza.
 
 ### 5. Il flusso: lo step operativo
 
@@ -222,7 +240,7 @@ Una **sospensione** rappresenta un periodo in cui una pratica o un flusso sono f
 
 La distinzione tra sospensione **pratica** e sospensione **flusso** e' fondamentale:
 
-* **Sospensione pratica**: blocca tutto. Il trigger DB cambia lo stato di tutti i flussi IN_CORSO a SOSPESO. E' l'equivalente del "metti in pausa" su tutta la lavorazione
+* **Sospensione pratica**: blocca tutto. Il trigger DB cambia lo stato di tutti i flussi DA_ESEGUIRE e IN_CORSO a SOSPESO. E' l'equivalente del "metti in pausa" su tutta la lavorazione
 * **Sospensione flusso**: blocca solo uno step. Gli altri flussi della stessa pratica continuano normalmente. Utile quando un singolo step e' in attesa ma il resto del lavoro puo' procedere
 
 **Vincolo di unicita'**: una pratica puo' avere al massimo una sospensione attiva (`data_fine IS NULL`) alla volta. Lo stesso vale per ogni singolo flusso. Questo vincolo e' enforced a livello DB con due **partial unique index**:
@@ -307,7 +325,12 @@ SOSPESA     → APERTA
 DA_ESEGUIRE → IN_CORSO, ANNULLATO, SOSPESO
 IN_CORSO    → COMPLETATO, SOSPESO, ERRORE
 SOSPESO     → IN_CORSO, DA_ESEGUIRE
+ERRORE      — terminale (nessuna transizione in uscita)
+ANNULLATO   — terminale (nessuna transizione in uscita)
+COMPLETATO  — terminale (nessuna transizione in uscita)
 ```
+
+> **Da definire**: attualmente ERRORE e' uno stato terminale senza via d'uscita. Se servira' un meccanismo di retry (ERRORE → DA_ESEGUIRE o ERRORE → IN_CORSO), sara' sufficiente un INSERT nella tabella `config.transizioni_stati_flussi_pratiche` senza deploy applicativo. Fino a quel momento, un flusso in ERRORE richiede intervento manuale (annullamento della pratica o creazione di un nuovo flusso).
 
 La transizione `DA_ESEGUIRE → SOSPESO` e' necessaria per la propagazione: quando una pratica viene sospesa, il trigger mette in SOSPESO anche i flussi DA_ESEGUIRE (oltre a quelli IN_CORSO). La transizione `SOSPESO → DA_ESEGUIRE` e' il percorso inverso: alla riattivazione, i flussi che erano DA_ESEGUIRE vengono ripristinati al loro stato originale.
 
@@ -359,7 +382,7 @@ DA_ESEGUIRE --> IN_CORSO --> COMPLETATO (con esito)
 * Da IN_CORSO puo' essere **sospeso** (SOSPESO) e poi ripreso (torna IN_CORSO)
 * Da DA_ESEGUIRE puo' passare a **SOSPESO** per propagazione da sospensione pratica
 * Da SOSPESO puo' tornare a **DA_ESEGUIRE** (se era DA_ESEGUIRE prima della sospensione) o a **IN_CORSO** (se era IN_CORSO). Il trigger di riattivazione consulta il giornale per ripristinare lo stato originale
-* Da IN_CORSO puo' andare in **ERRORE** (errore tecnico/handler)
+* Da IN_CORSO puo' andare in **ERRORE** (errore tecnico/handler). ERRORE e' **terminale**: non esistono transizioni in uscita. Il flusso resta in errore fino a intervento manuale (vedi nota sopra)
 * Da DA_ESEGUIRE puo' essere **ANNULLATO** direttamente
 * Al completamento con `auto = true`, il trigger DB puo' generare automaticamente nuove pratiche
 
@@ -376,7 +399,7 @@ Ogni riga registra:
 * **azione**: uno degli 11 eventi (PRATICA_CREATA, STATO_CAMBIATO, ASSEGNAZIONE_CAMBIATA, PRIORITA_CAMBIATA, FLUSSO_CREATO, FLUSSO_STATO_CAMBIATO, NOTA_AGGIUNTA, ALLEGATO_AGGIUNTO, PRATICA_GENERATA, SOSPENSIONE_REGISTRATA, SOSPENSIONE_CHIUSA)
 * **origine**: SISTEMA, UTENTE, HANDLER, SCHEDULER
 * **dettaglio**: JSONB con valori precedenti/nuovi per ricostruzione completa
-* **tx_id**: correlazione con la transazione per tracciabilita' cross-tabella
+* **tx_id**: UUID di sessione che identifica la transazione corrente. Tutte le righe scritte nella stessa operazione (pratica, flussi, giornale) condividono lo stesso `tx_id`, permettendo di ricostruire l'intera operazione cross-tabella. Generato automaticamente dal framework `dbops` (vedi [Guida tx_id](/guide/tx_id_implementation_guide))
 
 Django **non deve loggare**: il DB lo fa da solo tramite 12 trigger functions dedicate.
 
@@ -546,16 +569,9 @@ Formula 4: SOPRALLUOGO → RISPOSTA_CLIENTE ( 3 giorni) — tempo risposta
 
 Ogni formula genera il proprio record in `calcoli_tempo`. La UI puo' mostrare tutti i semafori sulla stessa pratica, evidenziando quale tratto e' in ritardo.
 
-### Endpoint API sospensioni e calcoli tempo
+Per gli endpoint API di sospensioni, calcoli tempo e formule vedi la [sezione Endpoint API](#endpoint-api) nel capitolo Backend Django.
 
-| Endpoint | Metodo | Descrizione |
-| --- | --- | --- |
-| `/api/v1/pratiche/{id}/sospendi/` | POST | Sospende pratica intera |
-| `/api/v1/pratiche/{id}/riattiva/` | POST | Riattiva pratica sospesa |
-| `/api/v1/pratiche/{id}/sospensioni/` | GET | Lista sospensioni pratica (attive e chiuse) |
-| `/api/v1/pratiche/{id}/calcoli-tempo/` | GET | Calcoli tempo pratica |
-| `/api/v1/pratiche/{id}/flussi/{fid}/sospendi/` | POST | Sospende singolo flusso |
-| `/api/v1/pratiche/{id}/flussi/{fid}/riattiva/` | POST | Riattiva singolo flusso |
+**Note implementative sugli endpoint calcoli-tempo**: l'endpoint GET `/api/v1/pratiche/{id}/calcoli-tempo/` restituisce `stato_tempo` live (OK/WARNING/CRITICO/SFORATO) e `giorni_rimanenti`, calcolati via `fn_valuta_tempo_esecuzione_da_a` in LEFT JOIN LATERAL.
 
 ---
 
@@ -706,7 +722,7 @@ I trigger standard (audit, lock codice_interno, attivo protection, tx_id, storic
 
 | Trigger | Evento | Funzione |
 | --- | --- | --- |
-| `trg_sospensioni_z90_after_ins` | AFTER INSERT | Propaga sospensione ai flussi IN_CORSO (se flusso_id IS NULL), registra nel giornale |
+| `trg_sospensioni_z90_after_ins` | AFTER INSERT | Propaga sospensione ai flussi DA_ESEGUIRE e IN_CORSO (se flusso_id IS NULL), registra nel giornale |
 | `trg_sospensioni_z90_after_upd` | AFTER UPDATE OF data_fine | Ripristina stati flussi sospesi, registra riattivazione nel giornale |
 
 #### Su `pratiche.flussi` (calcoli tempo)
@@ -806,7 +822,8 @@ Tutti gli endpoint richiedono autenticazione JWT e sono sotto `/api/v1/pratiche/
 | POST | `/api/v1/pratiche/{id}/sospendi/` | Sospende pratica (motivo obbligatorio) |
 | POST | `/api/v1/pratiche/{id}/riattiva/` | Riattiva pratica sospesa |
 | GET | `/api/v1/pratiche/{id}/sospensioni/` | Lista sospensioni pratica |
-| GET | `/api/v1/pratiche/{id}/calcoli-tempo/` | Calcoli tempo pratica |
+| GET | `/api/v1/pratiche/{id}/calcoli-tempo/` | Calcoli tempo con stato_tempo live e giorni_rimanenti |
+| GET | `/api/v1/pratiche/formule-tempo/?tipo_prestazione_id=N` | Formule tempo attive per tipo prestazione |
 
 #### Flussi
 
