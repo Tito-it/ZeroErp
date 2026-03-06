@@ -10,6 +10,7 @@ from django.urls import path
 
 from apps.pratiche.api.views import (
     ApiPraticaAssegnazioneV1,
+    ApiPraticaCalcoliTempoV1,
     ApiPraticaDetailV1,
     ApiPraticaFlussiListV1,
     ApiPraticaFlussoCanaliV1,
@@ -18,8 +19,13 @@ from apps.pratiche.api.views import (
     ApiPraticaFlussoPraticheGenerateV1,
     ApiPraticaFlussoPrerequistiV1,
     ApiPraticaFlussoRegoleGenerazioneV1,
+    ApiPraticaFlussoRiattivaV1,
+    ApiPraticaFlussoSospendiV1,
     ApiPraticaFlussoStatoV1,
     ApiPraticaGiornaleV1,
+    ApiPraticaRiattivaV1,
+    ApiPraticaSospendiV1,
+    ApiPraticaSospensioniV1,
     ApiPraticaStatoV1,
     ApiPraticheListV1,
 )
@@ -31,6 +37,10 @@ urlpatterns = [
     path("<int:pratica_id>/stato/", ApiPraticaStatoV1.as_view(), name="pratiche-v1-stato"),
     path("<int:pratica_id>/assegnazione/", ApiPraticaAssegnazioneV1.as_view(), name="pratiche-v1-assegnazione"),
     path("<int:pratica_id>/giornale/", ApiPraticaGiornaleV1.as_view(), name="pratiche-v1-giornale"),
+    path("<int:pratica_id>/sospendi/", ApiPraticaSospendiV1.as_view(), name="pratiche-v1-sospendi"),
+    path("<int:pratica_id>/riattiva/", ApiPraticaRiattivaV1.as_view(), name="pratiche-v1-riattiva"),
+    path("<int:pratica_id>/sospensioni/", ApiPraticaSospensioniV1.as_view(), name="pratiche-v1-sospensioni"),
+    path("<int:pratica_id>/calcoli-tempo/", ApiPraticaCalcoliTempoV1.as_view(), name="pratiche-v1-calcoli-tempo"),
     # --- Flussi ---
     path("<int:pratica_id>/flussi/", ApiPraticaFlussiListV1.as_view(), name="pratiche-v1-flussi-list"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/", ApiPraticaFlussoDetailV1.as_view(), name="pratiche-v1-flusso-detail"),
@@ -41,4 +51,7 @@ urlpatterns = [
     path("<int:pratica_id>/flussi/<int:flusso_id>/regole-generazione/", ApiPraticaFlussoRegoleGenerazioneV1.as_view(), name="pratiche-v1-flusso-regole-generazione"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/genera/", ApiPraticaFlussoGeneraV1.as_view(), name="pratiche-v1-flusso-genera"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/pratiche-generate/", ApiPraticaFlussoPraticheGenerateV1.as_view(), name="pratiche-v1-flusso-pratiche-generate"),
+    # --- Sospensioni flusso ---
+    path("<int:pratica_id>/flussi/<int:flusso_id>/sospendi/", ApiPraticaFlussoSospendiV1.as_view(), name="pratiche-v1-flusso-sospendi"),
+    path("<int:pratica_id>/flussi/<int:flusso_id>/riattiva/", ApiPraticaFlussoRiattivaV1.as_view(), name="pratiche-v1-flusso-riattiva"),
 ]

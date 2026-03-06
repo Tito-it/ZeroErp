@@ -21,7 +21,7 @@
 ### 🎯 Scopo Principale
 
 (latest review 10-01-26)
-La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di filtro tabellare** che determina se una specifica tabella appartiene allo scope di automazione, basandosi sulle regole definite in `dbops.automation_scope`. In questo modo, le automazioni possono applicarsi solo alle tabelle consentite.
+La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di filtro tabellare** che determina se una specifica tabella appartiene all'ambito di automazione, basandosi sulle regole definite in `dbops.automation_scope`. In questo modo, le automazioni possono applicarsi solo alle tabelle consentite.
 
 ---
 
@@ -36,7 +36,7 @@ La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di f
 
 ## 📤 Valore di ritorno
 
-`boolean` – `true` se la tabella rientra nello scope secondo le regole in `automation_scope`, `false` altrimenti.
+`boolean` – `true` se la tabella rientra nell'ambito secondo le regole in `automation_scope`, `false` altrimenti.
 
 ---
 
@@ -46,8 +46,8 @@ La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di f
 2. **Tabella `automation_scope` vuota** → ritorna `true` (nessun filtro attivo).
 3. **Righe per schema specifico**:
 
-   * Se **nessuna riga per lo schema** → tutte le tabelle dello schema sono in scope.
-   * Se presente almeno una riga con `table_like='*all'` → tutte le tabelle dello schema sono in scope.
+   * Se **nessuna riga per lo schema** → tutte le tabelle dello schema rientrano nell'ambito.
+   * Se presente almeno una riga con `table_like='*all'` → tutte le tabelle dello schema rientrano nell'ambito.
    * Altrimenti → valuta se `p_table` corrisponde a `table_like` usando `LIKE`.
 4. Ritorna `true` solo se esiste almeno un match.
 
@@ -56,7 +56,7 @@ La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di f
 ## 🧩 Casi d’uso tipici
 
 * **Filtrare automazioni**: applicare trigger e policy solo su tabelle ammesse.
-* **Gestione granularità**: permettere di definire scope per schema intero (`*all`) o singole tabelle/pattern.
+* **Gestione granularità**: permettere di definire ambiti per schema intero (`*all`) o singole tabelle/pattern.
 * **Test selettivi**: limitare le automazioni a un sottoinsieme di tabelle in ambiente di sviluppo.
 
 ---

@@ -20,8 +20,9 @@ Indice test eseguiti:
 9) PraticheServiceFlussiTests.test_verifica_prerequisiti_ok
 10) PraticheServiceFlussiTests.test_dispatch_handler_ok
 11) PraticheServiceFlussiTests.test_dispatch_handler_template_none
-12) PraticheServiceFlussiTests.test_dispatch_handler_key_non_trovata
-13) PraticheServiceFlussiTests.test_get_canali_disponibili_ok
+12) PraticheServiceFlussiTests.test_dispatch_handler_info_none
+13) PraticheServiceFlussiTests.test_dispatch_handler_key_non_trovata
+14) PraticheServiceFlussiTests.test_get_canali_disponibili_ok
 """
 
 from unittest.mock import MagicMock, patch
@@ -154,7 +155,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     def test_dispatch_handler_ok(self, MockRepo, mock_get_handler):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=10)
-        repo.get_handler_key.return_value = "APPUNTAMENTO"
+        repo.get_handler_info.return_value = ("APPUNTAMENTO", {"invio_sms": True})
 
         handler_instance = MagicMock()
         handler_instance.execute.return_value = {"risultato": "ok"}
@@ -166,6 +167,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(result, {"risultato": "ok"})
         handler_instance.execute.assert_called_once_with(
             flusso_id=1, pratica_id=1, meta={"chiave": "valore"},
+            handler_params={"invio_sms": True},
         )
 
     # Scopo: Verifica dispatch con template_flusso_id None → ritorna None.
@@ -178,13 +180,24 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
         self.assertIsNone(result)
 
+    # Scopo: Verifica dispatch con handler_info None (handler non configurato/inattivo).
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_dispatch_handler_info_none(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=10)
+        repo.get_handler_info.return_value = None
+
+        result = pratiche_service.dispatch_handler(1)
+
+        self.assertIsNone(result)
+
     # Scopo: Verifica dispatch con handler_key non registrata → ritorna None.
     @patch("apps.pratiche.services.handler_registry.get_handler", return_value=None)
     @patch(f"{_SVC}.PraticheRepository")
     def test_dispatch_handler_key_non_trovata(self, MockRepo, mock_get_handler):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=10)
-        repo.get_handler_key.return_value = "HANDLER_INESISTENTE"
+        repo.get_handler_info.return_value = ("HANDLER_INESISTENTE", {})
 
         result = pratiche_service.dispatch_handler(1)
 

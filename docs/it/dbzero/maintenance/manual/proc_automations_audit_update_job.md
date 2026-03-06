@@ -98,7 +98,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ### 🔗 Dipendenze
 
-* `dbops.fn_run_automations_audit_update` — orchestratore che applica/regola la policy **AUDIT_UPDATE** sulle tabelle in scope.
+* `dbops.fn_run_automations_audit_update` — orchestratore che applica/regola la policy **AUDIT_UPDATE** sulle tabelle nell'ambito.
 * `maintenance.fn_run_and_log` — esecuzione protetta con logging e advisory lock.
 * (Opzionale) funzioni di logging centralizzato (se integrate):
 

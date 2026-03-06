@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 4 marzo 2026*
+*Ultimo aggiornamento: 6 marzo 2026*
 
 ---
 
@@ -22,7 +22,8 @@
                     │  │                                       │  │
                     │  │          pratiche                      │  │
                     │  │    (workflow, giornale,                │  │
-                    │  │     generazione, handler)              │  │
+                    │  │     generazione, handler,              │  │
+                    │  │     sospensioni, calcoli tempo)        │  │
                     │  │                                       │  │
                     │  │  ┌─────────────────────────────────┐  │  │
                     │  │  │  ANELLO 1 — DATI BASE           │  │  │
@@ -51,11 +52,11 @@
 
 | Componente | Tipo | Stato | Descrizione |
 |---|---|---|---|
-| `core` | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling |
-| `dbops` | Schema DB | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes |
+| `core` | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling, tracciamento processi/job |
+| `dbops` | Schema DB | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes, audit_log |
 | `script` | Schema DB | Operativo | fn_log_and_raise_error, viste e funzioni riusabili |
 | `public` | Schema DB | Operativo | version_info |
-| `maintenance` | Schema DB | Operativo | Job schedulati pgAgent |
+| `maintenance` | Schema DB | Operativo | Job schedulati pgAgent, job_run_log |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -63,8 +64,21 @@
 - Middleware API (exception handling, JWT audit, request context)
 - Pattern uniformi: `handle_post_json`, paginazione, throttling, search validators
 - Automazioni DB: audit fields, tx_id, storicizzazione, lock colonne, protezione attivo
+- **Tracciamento processi e job**: API per audit log, task registry multi-dominio, job run log (6 endpoint REST, 27 test)
 - Policy indici FK automatica
 - Logging e raise errori DB (`script.fn_log_and_raise_error`)
+
+### Evoluzione pianificata (WIP)
+
+Le seguenti capacita' sono in fase di progettazione (vedi [Audit-logging-sessionii-request-token.md](dev/work-in-progress/Audit-logging-sessionii-request-token.md)):
+
+| Capacita' | Componente DB | Componente Backend | Stato |
+| --- | --- | --- | --- |
+| Audit sessioni (login/refresh/logout) | `dbops.sessioni_utente` | `session_audit_service` + auth views override | Pianificato |
+| Request logging (chi chiama cosa) | `dbops.request_log` | `RequestLogMiddleware` | Pianificato |
+| Token blacklist e revoca | SimpleJWT `token_blacklist` | Settings rotation + integrazione disabilitazione | Pianificato |
+
+Queste estensioni sono non-breaking: nuove tabelle in `dbops`, nuovi middleware in `core`, override view JWT. Nessun contratto esistente viene modificato. Gli anelli esterni ne beneficiano automaticamente senza alcuna modifica al proprio codice.
 
 ### Stabilita'
 
@@ -100,7 +114,7 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 
 | Componente | Tipo | DB | Backend | Descrizione |
 |---|---|---|---|---|
-| `pratiche` | App Django | Operativo | Operativo | Workflow engine, giornale di bordo, generazione cross-pratica, handler dispatch |
+| `pratiche` | App Django | Operativo | Operativo | Workflow engine, giornale di bordo, generazione cross-pratica, handler dispatch, sospensioni, calcoli tempo, macchina a stati rigida |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -110,6 +124,9 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 - **Generazione cross-pratica**: un flusso completato puo' generare automaticamente nuove pratiche
 - **Handler dispatch**: mapping `handler_key` → classe Python per automazione step
 - **Canali**: visibilita' dei flussi su sorgenti esterne (WEB_CLIENTI, APP_TECNICA, PORTALE_FORNITORI)
+- **Sospensioni**: fermo temporaneo pratica/flusso con propagazione automatica e riattivazione (manuale o pgAgent)
+- **Calcoli tempo**: tracking tempi netti tra coppie di flussi (formula da/a), con esclusione giorni sospensione
+- **Macchina a stati rigida**: transizioni ammesse validate da trigger DB (config-driven)
 - **API interna**: `pratiche_service` come facade per gli anelli esterni
 
 ### Perche' e' un anello separato (non anello 1)
@@ -128,8 +145,10 @@ Non e' un processo di business specifico (come vendite o acquisti). E' l'**infra
 | BE-1 Setup app | FATTO | Directory, apps.py, types.py, models.py |
 | BE-2 Repository | FATTO | pratiche_repository.py, generazione_repository.py |
 | BE-3 Services | FATTO | pratiche_service.py, generazione_service.py, handler_registry.py |
-| BE-4 API | FATTO | views.py, urls_v1.py, 13 endpoint REST |
-| BE-5 Test | FATTO | 63 test (38 service + 25 API) con mock |
+| BE-4 API | FATTO | views.py, urls_v1.py, 19 endpoint REST |
+| BE-5 Test | FATTO | 90 test (55 service + 35 API) con mock |
+| BE-6 Sospensioni + Calcoli | FATTO | Service, repository, API, 26 test unitari, 18 smoke test curl |
+| BE-7 Macchina a stati | FATTO | Transizioni validate da trigger DB (config-driven) |
 
 Documentazione backend: [docs/it/backend/pratiche/index.md](backend/pratiche/index.md)
 
@@ -214,7 +233,8 @@ Nessuna dipendenza inversa. Nessuna dipendenza laterale tra processi di anello 3
 ### Breve termine (marzo 2026)
 
 - ~~Completamento BE-1..BE-5 per `pratiche`~~ — **FATTO** (4 marzo 2026)
-- `pratiche` e' consumabile dagli anelli esterni (13 endpoint REST, 63 test)
+- ~~Sospensioni, calcoli tempo, macchina a stati (BE-6..BE-7)~~ — **FATTO** (6 marzo 2026)
+- `pratiche` e' consumabile dagli anelli esterni (19 endpoint REST, 90 test unitari, 18 smoke test)
 
 ### Medio termine
 

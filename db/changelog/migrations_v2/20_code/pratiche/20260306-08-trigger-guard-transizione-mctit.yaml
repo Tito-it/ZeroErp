@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger guard transizione su pratiche.pratiche e pratiche.flussi
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260306-08-trigger-guard-transizione-mctit.yaml
+
+  - changeSet:
+      id: 20260306-08-trigger-guard-transizione
+      author: mctit
+      runOnChange: true
+      comment: >
+        Applica 2 trigger BEFORE UPDATE OF stato_id (fase _a10_ guard)
+        su pratiche.pratiche e pratiche.flussi per bloccare transizioni
+        di stato non ammesse dalla matrice config.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Guard transizione stato su pratiche.pratiche
+              -- Fase _a10_: eseguito prima dei trigger giornale (_z90_)
+              -- =========================================================
+
+              DROP TRIGGER IF EXISTS trg_pratiche_a10_guard_transizione_upd
+              ON pratiche.pratiche;
+
+              CREATE TRIGGER trg_pratiche_a10_guard_transizione_upd
+              BEFORE UPDATE OF stato_id
+              ON pratiche.pratiche
+              FOR EACH ROW
+              WHEN (OLD.stato_id IS DISTINCT FROM NEW.stato_id)
+              EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_transizione();
+
+              COMMENT ON TRIGGER trg_pratiche_a10_guard_transizione_upd
+              ON pratiche.pratiche
+              IS 'Guard: blocca transizioni di stato pratica non ammesse (config.transizioni_stati_pratiche).';
+
+              -- =========================================================
+              -- Guard transizione stato su pratiche.flussi
+              -- Fase _a10_: eseguito prima dei trigger giornale (_z90_)
+              -- =========================================================
+
+              DROP TRIGGER IF EXISTS trg_flussi_a10_guard_transizione_upd
+              ON pratiche.flussi;
+
+              CREATE TRIGGER trg_flussi_a10_guard_transizione_upd
+              BEFORE UPDATE OF stato_id
+              ON pratiche.flussi
+              FOR EACH ROW
+              WHEN (OLD.stato_id IS DISTINCT FROM NEW.stato_id)
+              EXECUTE FUNCTION pratiche.trgfn_flussi_guard_transizione();
+
+              COMMENT ON TRIGGER trg_flussi_a10_guard_transizione_upd
+              ON pratiche.flussi
+              IS 'Guard: blocca transizioni di stato flusso non ammesse (config.transizioni_stati_flussi_pratiche).';

@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella pratiche.sospensioni — periodi di fermo pratica/flusso
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/pratiche/20260306-10-create-sospensioni-mctit.yaml
+
+    - changeSet:
+          id: 20260306-10-create-sospensioni
+          author: mctit
+          comment: >
+              Registra i periodi di fermo di una pratica o di un singolo flusso.
+              Ogni riga e' un intervallo aperto (data_fine NULL = sospensione attiva).
+              Un solo record attivo per combinazione pratica_id + flusso_id (UNIQUE parziale).
+          changes:
+              - createTable:
+                    schemaName: pratiche
+                    tableName: sospensioni
+                    remarks: "Periodi di sospensione pratica/flusso."
+                    columns:
+                        - column:
+                              name: id
+                              type: bigint
+                              autoIncrement: true
+                              generationType: BY DEFAULT
+                              remarks: "PK tecnica."
+                              constraints:
+                                  primaryKey: true
+                                  primaryKeyName: pk_pratiche_sospensioni
+                                  nullable: false
+
+                        - column:
+                              name: pratica_id
+                              type: bigint
+                              remarks: "FK a pratiche.pratiche."
+                              constraints:
+                                  nullable: false
+
+                        - column:
+                              name: flusso_id
+                              type: bigint
+                              remarks: "FK a pratiche.flussi. NULL = sospensione intera pratica."
+
+                        - column:
+                              name: data_inizio
+                              type: timestamp with time zone
+                              defaultValueComputed: "now()"
+                              remarks: "Inizio sospensione."
+                              constraints:
+                                  nullable: false
+
+                        - column:
+                              name: data_fine
+                              type: timestamp with time zone
+                              remarks: "Fine sospensione. NULL = ancora attiva."
+
+                        - column:
+                              name: data_riattivazione_prevista
+                              type: date
+                              remarks: "Per riattivazione automatica via job pgAgent."
+
+                        - column:
+                              name: motivo
+                              type: text
+                              remarks: "Motivazione obbligatoria."
+                              constraints:
+                                  nullable: false
+
+                        - column:
+                              name: storicizza
+                              type: boolean
+                              defaultValueBoolean: false
+                              remarks: "Pattern standard tabelle operative."
+                              constraints:
+                                  nullable: false
+
+                        - column:
+                              name: tx_id
+                              type: uuid
+                              remarks: "Transaction ID."
+
+                        - column:
+                              name: data_insert
+                              type: timestamp with time zone
+                              defaultValueComputed: "now()"
+                              constraints:
+                                  nullable: false
+
+                        - column:
+                              name: user_insert
+                              type: text
+                              defaultValueComputed: "CURRENT_USER"
+                              constraints:
+                                  nullable: false
+
+                        - column:
+                              name: data_update
+                              type: timestamp with time zone
+                              defaultValueComputed: "now()"
+                              constraints:
+                                  nullable: false
+
+                        - column:
+                              name: user_update
+                              type: text
+                              defaultValueComputed: "CURRENT_USER"
+                              constraints:
+                                  nullable: false
+
+              - addForeignKeyConstraint:
+                    baseTableSchemaName: pratiche
+                    baseTableName: sospensioni
+                    baseColumnNames: pratica_id
+                    constraintName: fk_sospensioni_pratica
+                    referencedTableSchemaName: pratiche
+                    referencedTableName: pratiche
+                    referencedColumnNames: id
+                    onUpdate: CASCADE
+                    onDelete: NO ACTION
+
+              - addForeignKeyConstraint:
+                    baseTableSchemaName: pratiche
+                    baseTableName: sospensioni
+                    baseColumnNames: flusso_id
+                    constraintName: fk_sospensioni_flusso
+                    referencedTableSchemaName: pratiche
+                    referencedTableName: flussi
+                    referencedColumnNames: id
+                    onUpdate: CASCADE
+                    onDelete: NO ACTION
+
+              - sql:
+                    dbms: postgresql
+                    splitStatements: true
+                    sql: |
+                        ALTER TABLE pratiche.sospensioni
+                          ADD CONSTRAINT chk_sospensioni_data_fine
+                          CHECK (data_fine IS NULL OR data_fine > data_inizio);
+
+                        CREATE UNIQUE INDEX uq_sospensioni_attiva_pratica
+                          ON pratiche.sospensioni (pratica_id)
+                          WHERE data_fine IS NULL AND flusso_id IS NULL;
+
+                        CREATE UNIQUE INDEX uq_sospensioni_attiva_flusso
+                          ON pratiche.sospensioni (pratica_id, flusso_id)
+                          WHERE data_fine IS NULL AND flusso_id IS NOT NULL;
+
+          rollback:
+              - dropTable:
+                    schemaName: pratiche
+                    tableName: sospensioni

@@ -17,7 +17,7 @@
 
 Hai appena creato una nuova tabella nel database e vuoi che il framework la gestisca automaticamente: `tx_id`, audit, storicizzazione, e tutte le altre regole applicabili.
 
-Questo tutorial ti accompagna passo per passo, dalla verifica dello scope fino alla conferma che tutto funzioni.
+Questo tutorial ti accompagna passo per passo, dalla verifica dell'ambito fino alla conferma che tutto funzioni.
 
 **Tempo stimato**: 10-15 minuti per la prima volta, 2-3 minuti quando avrai familiarita.
 
@@ -45,18 +45,18 @@ La tabella ha tutte le colonne standard: `tx_id`, `attivo`, campi audit (`date_i
 
 ---
 
-## Passo 1 – Verifica che lo schema sia nello scope
+## Passo 1 – Verifica che lo schema sia nell'ambito
 
-Il framework opera solo sugli schemi e tabelle dichiarati nello **scope**. Per prima cosa verifica se lo schema della tua tabella e gia presente.
+Il framework opera solo sugli schemi e tabelle dichiarati nell'**ambito**. Per prima cosa verifica se lo schema della tua tabella e gia presente.
 
 ```sql
 SELECT * FROM dbops.automation_scope
 WHERE schema_name = 'catalogo';
 ```
 
-**Se trovi righe** (es. `('catalogo', '*all')`): lo schema e gia nello scope, la tua tabella e automaticamente inclusa. Vai al Passo 2.
+**Se trovi righe** (es. `('catalogo', '*all')`): lo schema e gia nell'ambito, la tua tabella e automaticamente inclusa. Vai al Passo 2.
 
-**Se non trovi righe**: aggiungi lo schema allo scope:
+**Se non trovi righe**: aggiungi lo schema all'ambito:
 
 ```sql
 INSERT INTO dbops.automation_scope (schema_name, table_like)
@@ -69,7 +69,7 @@ Usa `'*all'` per includere tutte le tabelle dello schema. Se vuoi limitare a un 
 
 ## Passo 2 – Verifica le regole esistenti
 
-Le regole globali (con `target_schema='*all'`) si applicano a tutte le tabelle nello scope. Nella maggior parte dei casi non serve aggiungere nuove regole.
+Le regole globali (con `target_schema='*all'`) si applicano a tutte le tabelle nell'ambito. Nella maggior parte dei casi non serve aggiungere nuove regole.
 
 ```sql
 SELECT rule_type, target_schema, target_table, enabled
@@ -133,7 +133,7 @@ Dovresti vedere righe con la tua tabella `categorie_materiali` e i trigger che v
 
 **Se vedi `SKIP_EXISTS`**: il trigger esiste gia (va bene, il framework e idempotente).
 
-**Se non vedi la tua tabella**: torna al Passo 1 e verifica lo scope.
+**Se non vedi la tua tabella**: torna al Passo 1 e verifica l'ambito.
 
 ---
 
@@ -322,7 +322,7 @@ Ogni job chiama una **procedura wrapper** nello schema `maintenance`, che a sua 
 
 #### Job giornalieri (ogni sera alle 21:00)
 
-Questi job mantengono allineati i trigger su tutte le tabelle nello scope. Se crei una nuova tabella durante il giorno e dimentichi l'apply manuale, il job serale la copre.
+Questi job mantengono allineati i trigger su tutte le tabelle nell'ambito. Se crei una nuova tabella durante il giorno e dimentichi l'apply manuale, il job serale la copre.
 
 | Funzionalita          | Job pgAgent                     | Procedura maintenance                      | Runner invocato                                                        |
 | --------------------- | ------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------- |
@@ -406,7 +406,7 @@ LIMIT 10;
 
 | Problema                               | Causa probabile                                      | Soluzione                                                    |
 | -------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------ |
-| La tabella non appare nel dry-run      | Schema non nello scope                               | Aggiungi lo schema in `automation_scope`                     |
+| La tabella non appare nel dry-run      | Schema non nell'ambito                               | Aggiungi lo schema in `automation_scope`                     |
 | Trigger non creato nonostante apply    | `SKIP_EXISTS` — esiste gia                           | Controlla `audit_log` per conferma                           |
 | Errore "column does not exist"         | Manca una colonna standard (es. `tx_id`)             | Aggiungi la colonna alla tabella                             |
 | Tabella storico non creata             | Regola STORICO_PROVISION non presente o disabilitata | Aggiungi/abilita la regola                                   |

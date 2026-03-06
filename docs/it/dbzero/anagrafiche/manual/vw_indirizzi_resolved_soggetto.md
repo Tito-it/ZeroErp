@@ -72,7 +72,7 @@ Il risultato è un record **"resolved"**, semanticamente completo e coerente con
 
 | Colonna                  | Tipo                   | Descrizione                                                |
 | ------------------------ | ---------------------- | ---------------------------------------------------------- |
-| `scope`                  | `text`                 | Costante `'SOGGETTO'`, identifica lo scope dell’indirizzo. |
+| `scope`                  | `text`                 | Costante `’SOGGETTO’`, identifica l’ambito dell’indirizzo. |
 | `indirizzo_id`           | `bigint`               | PK della tabella `anagrafiche.indirizzi_soggetti`.         |
 | `soggetto_id`            | `uuid`                 | Identificativo del soggetto.                               |
 | `soggetto_ruolo_id`      | `bigint`               | Sempre NULL per questa vista.                              |

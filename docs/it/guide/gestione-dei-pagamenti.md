@@ -267,7 +267,7 @@ Da un punto di vista tecnico:
 **Trigger principali:**
 
 * `trgfn_vendite_movimenti_sync_contabile_from_riga` — sincronizza contabile/fattura/BA dalla riga
-* `trgfn_guard_emittente_scope` — verifica lo scope emittente sulla fattura
+* `trgfn_guard_emittente_scope` — verifica l'ambito emittente sulla fattura
 * `trgfn_child_requires_active_parent` — su `centri_riscossione` e `vendite_contabili_righe`
 
 > Documentazione dettagliata: [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)

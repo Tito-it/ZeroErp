@@ -22,7 +22,7 @@
 ### 🎯 Scopo Principale
 
 (latest review 25-12-25)
-La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico (o simula) la **regola di aggiornamento audit** sulle tabelle in scope, creando – dove mancante secondo le policy – un **trigger BEFORE UPDATE** che aggiorna `data_update` e `user_update` tramite la funzione `script.trgfn_audit_data_user_generic()`.
+La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico (o simula) la **regola di aggiornamento audit** sulle tabelle nell'ambito, creando – dove mancante secondo le policy – un **trigger BEFORE UPDATE** che aggiorna `data_update` e `user_update` tramite la funzione `script.trgfn_audit_data_user_generic()`.
 
 ---
 
@@ -31,7 +31,7 @@ La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_d
 | Parametro     | Tipo    | Obbligatorio | Descrizione                                                                    |
 | ------------- | ------- | :----------: | ------------------------------------------------------------------------------ |
 | `p_exec_mode` | text    |      ✔️       | Modalità di esecuzione (es. `AUTO`, `FORCE`, `CHECK`).                         |
-| `p_schemas`   | text[]  |      ❌       | Scope di schemi. Se `NULL`, determinato da `fn_resolve_scope`.                 |
+| `p_schemas`   | text[]  |      ❌       | Ambito di schemi. Se `NULL`, determinato da `fn_resolve_scope`.                |
 | `p_dry_run`   | boolean |      ✔️       | Se `true`, non crea i trigger ma registra un evento **DRYRUN** in `audit_log`. |
 
 ---
@@ -44,8 +44,8 @@ La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_d
 
 ### ⚙️ Flusso logico
 
-1. **Scope**: calcola gli schemi effettivi con `fn_resolve_scope` (se `p_schemas` è `NULL`).
-2. **Scansione tabelle**: cicla tutte le tabelle in scope (escluse quelle fuori `fn_table_in_scope`).
+1. **Ambito**: calcola gli schemi effettivi con `fn_resolve_scope` (se `p_schemas` è `NULL`).
+2. **Scansione tabelle**: cicla tutte le tabelle nell'ambito (escluse quelle fuori `fn_table_in_scope`).
 3. **Selezione regole**: per ciascuna tabella, filtra le regole abilitate in `automation_rules_tbl` con `rule_type='AUDIT_UPDATE'`, priorità e `exec_mode` coerenti.
 4. **Risoluzione colonne**:
 
@@ -99,4 +99,4 @@ La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_d
 
 ---
 
-> 🧠 **In sintesi**: `fn_run_automations_audit_update` è il modulo che garantisce l’aggiornamento affidabile dei metadati di audit (`data_update`, `user_update`) su tutte le tabelle in scope, con possibilità di simulazione e gestione degli override.
+> 🧠 **In sintesi**: `fn_run_automations_audit_update` è il modulo che garantisce l’aggiornamento affidabile dei metadati di audit (`data_update`, `user_update`) su tutte le tabelle nell'ambito, con possibilità di simulazione e gestione degli override.

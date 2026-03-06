@@ -35,7 +35,7 @@ La funzione **`dbops.fn_run_automations_tx_id(p_exec_mode, p_schemas, p_dry_run)
 | Parametro     | Tipo    | Obbligatorio | Descrizione                                                                  |
 | ------------- | ------- | :----------: | ---------------------------------------------------------------------------- |
 | `p_exec_mode` | text    |      ✔️       | Modalità di esecuzione (`AUTO`, `FORCE`, `CHECK`).                           |
-| `p_schemas`   | text[]  |      ❌       | Scope di schemi. Se `NULL`, determinato da `fn_resolve_scope`.               |
+| `p_schemas`   | text[]  |      ❌       | Ambito di schemi. Se `NULL`, determinato da `fn_resolve_scope`.              |
 | `p_dry_run`   | boolean |      ✔️       | Se `true`, non crea trigger ma registra un evento **DRYRUN** in `audit_log`. |
 
 ---
@@ -48,8 +48,8 @@ La funzione **`dbops.fn_run_automations_tx_id(p_exec_mode, p_schemas, p_dry_run)
 
 ### ⚙️ Flusso logico
 
-1. **Scope**: calcola gli schemi effettivi con `fn_resolve_scope` (se `p_schemas` è `NULL`).
-2. **Scansione tabelle**: itera tutte le tabelle “user” in scope (`fn_table_in_scope`).
+1. **Ambito**: calcola gli schemi effettivi con `fn_resolve_scope` (se `p_schemas` è `NULL`).
+2. **Scansione tabelle**: itera tutte le tabelle “user” nell'ambito (`fn_table_in_scope`).
 3. **Selezione regole**: per ciascuna tabella, filtra le regole abilitate in `automation_rules_tbl` con `rule_type='TX_ID'`, rispettando `exec_mode`, priorità e target (schema/tabella).
 4. **Presenza colonna**: verifica che esista la colonna `tx_id uuid`.
 5. **Naming trigger**: risolve il nome con `fn_name_from_template` (default `trg_{table}_ins_upd_gen_tx_id`).
@@ -98,7 +98,7 @@ La funzione **`dbops.fn_run_automations_tx_id(p_exec_mode, p_schemas, p_dry_run)
 
 ### ✅ Benefici
 
-* **Coerenza**: applica in modo uniforme la gestione di `tx_id` su tutto lo scope.
+* **Coerenza**: applica in modo uniforme la gestione di `tx_id` su tutto l'ambito.
 * **Automazione**: riduce al minimo gli interventi manuali.
 * **Flessibilità**: supporta nomi e strategie di esistenza personalizzabili.
 

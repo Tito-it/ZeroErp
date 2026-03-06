@@ -61,7 +61,7 @@ class JwtAuditMiddleware:
     Ad ogni request con utente autenticato, esegue:
         SET LOCAL app.jwt_user = '<username>'
 
-    SET LOCAL ha scope transazione — si resetta automaticamente
+    SET LOCAL ha ambito transazione — si resetta automaticamente
     al termine della transazione, senza rischio di leak.
     """
 
@@ -97,7 +97,7 @@ dal trigger DB via GUC `app.jwt_user`, eliminando la duplicazione.
 
 ## Note
 
-- `SET LOCAL` ha scope di transazione — si resetta al COMMIT/ROLLBACK, zero rischio di leak tra request
+- `SET LOCAL` ha ambito di transazione — si resetta al COMMIT/ROLLBACK, zero rischio di leak tra request
 - Retrocompatibile al 100%: se la variabile non è impostata, `COALESCE` fallback a `CURRENT_USER`
 - Nessuna modifica ai 215 trigger: tutti referenziano la stessa funzione
 - Script, cron, psql interattivo continuano a funzionare con `CURRENT_USER`

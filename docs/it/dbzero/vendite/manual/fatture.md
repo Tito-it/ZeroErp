@@ -74,8 +74,8 @@ Obiettivi principali:
   * **Fondi fattura**: `fatture_fondi_fattura` (somma per `totale_a_pagare`).
   * **Arrotondamenti**: `arrotondamento_precedente` / `arrotondamento_attuale`.
   * **Totale a pagare**: `totale_a_pagare` (totale_doc + arrotondamenti + fondi).
-  * **Saldo scope**: l’origine del saldo tecnico e` `vendite.fatture_arrotondamenti_scope`
-    (scope: BA, utility, tipo documento, emittente, valuta).
+  * **Saldo ambito**: l’origine del saldo tecnico e` `vendite.fatture_arrotondamenti_scope`
+    (ambito: BA, utility, tipo documento, emittente, valuta).
 
 > Suggerimento: calcolare e salvare anche gli importi nelle 2 valute (valuta documento & di conto) se richiesto dal reporting.
 
@@ -130,7 +130,7 @@ WHERE f.sorgente_tipo_id = :src_tipo
 * **Totali**: ricalcolare da righe e riepiloghi IVA prima della numerazione; tracciare `arrotondamento_attuale`.
 * **Totale a pagare**: include fondi fattura e arrotondamenti, non solo imponibile+imposta.
 * **Arrotondamenti**: usare `vendite.fn_get_arrotondamento_scope()` e
-  `vendite.fn_set_arrotondamento_scope()` per gestire il saldo tecnico per scope.
+  `vendite.fn_set_arrotondamento_scope()` per gestire il saldo tecnico per ambito.
 
 ---
 

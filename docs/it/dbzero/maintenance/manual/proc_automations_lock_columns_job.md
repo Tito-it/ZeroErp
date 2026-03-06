@@ -109,7 +109,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ### 🔗 Dipendenze
 
-* `dbops.fn_run_automations_lock_columns` — orchestratore che applica/regola la policy **LOCK_COLUMNS** sulle tabelle in scope.
+* `dbops.fn_run_automations_lock_columns` — orchestratore che applica/regola la policy **LOCK_COLUMNS** sulle tabelle nell'ambito.
 * `dbops.fn_run_automations_drop_lock_trg` — cleanup dei trigger **LOCK_COLUMNS** non piu' necessari.
 * `maintenance.fn_run_and_log` — esecuzione protetta con logging e advisory lock.
 

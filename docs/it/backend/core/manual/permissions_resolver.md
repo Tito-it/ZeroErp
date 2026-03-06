@@ -135,7 +135,7 @@ Override scaduti o futuri vengono ignorati silenziosamente, facendo proseguire l
 | `config.profili_reparto_aree`        | Profili reparto ereditati (area)     |
 | `config.profili_reparto_azioni`      | Profili reparto ereditati (azione)   |
 | `config.area_model_overrides`        | Riassegnazione model a area diversa  |
-| `config.user_emittenti_fiscali`      | Scope emittente fiscale              |
+| `config.user_emittenti_fiscali`      | Ambito emittente fiscale              |
 | `config.aree_funzionali`             | Elenco aree (per endpoint diagnostico)|
 
 ## Test

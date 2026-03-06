@@ -10,7 +10,7 @@ automatico le tabelle candidate.
 
 ### ✅ Criteri di rilevazione
 
-* Tabella nello scope risolto (`dbops.fn_resolve_scope`).
+* Tabella nell'ambito risolto (`dbops.fn_resolve_scope`).
 * Presenza di colonna `utility_id`.
 * Presenza di:
   * FK diretta verso `anagrafiche.soggetti_ruoli`, oppure

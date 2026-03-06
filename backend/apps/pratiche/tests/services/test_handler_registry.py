@@ -34,7 +34,7 @@ class HandlerRegistryTests(SimpleTestCase):
     def test_get_handler_chiave_registrata(self):
         # Registra temporaneamente un handler fittizio.
         class _FakeHandler:
-            def execute(self, flusso_id, pratica_id, meta):
+            def execute(self, flusso_id, pratica_id, meta, handler_params):
                 return {}
 
         with patch.dict(HANDLER_MAP, {"FAKE_HANDLER": _FakeHandler}):

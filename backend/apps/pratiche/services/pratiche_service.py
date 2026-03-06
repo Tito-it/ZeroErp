@@ -17,10 +17,13 @@ from django.db import transaction
 from apps.core.services.error_manager import ErrorManager
 from apps.pratiche.db.pratiche_repository import PraticheRepository
 from apps.pratiche.types import (
+    CalcoloTempoRow,
     CanalePraticaRow,
+    FlussoRow,
     GiornaleRow,
     PraticaRow,
     PrerequisitoCheckRow,
+    SospensioneRow,
 )
 
 # -- PRATICHE --------------------------------------------------------
@@ -322,10 +325,12 @@ def dispatch_handler(flusso_id: int) -> dict[str, Any] | None:
     if flusso["template_flusso_id"] is None:
         return None
 
-    # Lookup handler_key dal template flusso.
-    handler_key = repo.get_handler_key(flusso["template_flusso_id"])
-    if handler_key is None:
+    # Lookup handler_key e handler_params dal template flusso.
+    handler_info = repo.get_handler_info(flusso["template_flusso_id"])
+    if handler_info is None:
         return None
+
+    handler_key, handler_params = handler_info
 
     from apps.pratiche.services.handler_registry import get_handler
     handler_class = get_handler(handler_key)
@@ -337,6 +342,7 @@ def dispatch_handler(flusso_id: int) -> dict[str, Any] | None:
         flusso_id=flusso_id,
         pratica_id=flusso["pratica_id"],
         meta=flusso["meta"],
+        handler_params=handler_params,
     )
 
 
@@ -346,5 +352,214 @@ def get_giornale(
 ) -> tuple[list[GiornaleRow], int]:
     repo = PraticheRepository()
     return repo.get_giornale_pratica(pratica_id, limit=limit, offset=offset)
+
+
+# -- SOSPENSIONI --------------------------------------------------------
+
+
+# Scopo: Sospende un'intera pratica.
+# Obiettivo: crea una riga in pratiche.sospensioni con flusso_id NULL.
+# Perimetro: valida input, cambia stato pratica a SOSPESA, INSERT sospensione.
+#   I trigger DB propagano la sospensione ai flussi attivi e registrano nel giornale.
+# Risultato: ID della sospensione creata.
+@transaction.atomic()
+def sospendi_pratica(
+    pratica_id: int,
+    motivo: str,
+    *,
+    data_riattivazione_prevista: str | None = None,
+) -> int:
+    ErrorManager.require(
+        pratica_id > 0,
+        code="E_INVALID_ID",
+        message="pratica_id deve essere > 0",
+    )
+    assert pratica_id > 0
+    ErrorManager.require(
+        bool(motivo and motivo.strip()),
+        code="E_PRATICA_VALIDATION",
+        message="motivo sospensione obbligatorio",
+    )
+
+    repo = PraticheRepository()
+
+    # Verifica che non ci sia gia' una sospensione attiva sulla pratica.
+    sosp_attiva = repo.get_sospensione_attiva_pratica(pratica_id)
+    ErrorManager.require(
+        sosp_attiva is None,
+        code="E_PRATICA_VALIDATION",
+        message=f"Pratica {pratica_id} ha gia' una sospensione attiva",
+    )
+
+    # Cambia stato pratica a SOSPESA (il trigger DB valida la transizione).
+    repo.update_stato_pratica(pratica_id, "SOSPESA")
+
+    # INSERT sospensione: il trigger DB propaga ai flussi e registra nel giornale.
+    return repo.create_sospensione(
+        pratica_id,
+        motivo,
+        data_riattivazione_prevista=data_riattivazione_prevista,
+    )
+
+
+# Scopo: Riattiva una pratica sospesa.
+# Obiettivo: chiude la sospensione attiva impostando data_fine = NOW().
+# Perimetro: valida esistenza sospensione attiva, delega chiusura al repository.
+#   Il trigger DB ripristina gli stati dei flussi, cambia stato pratica ad APERTA
+#   e registra nel giornale.
+@transaction.atomic()
+def riattiva_pratica(pratica_id: int) -> None:
+    ErrorManager.require(
+        pratica_id > 0,
+        code="E_INVALID_ID",
+        message="pratica_id deve essere > 0",
+    )
+    assert pratica_id > 0
+
+    repo = PraticheRepository()
+
+    # Cerca la sospensione attiva (flusso_id IS NULL).
+    sosp_attiva = repo.get_sospensione_attiva_pratica(pratica_id)
+    ErrorManager.require(
+        sosp_attiva is not None,
+        code="E_PRATICA_VALIDATION",
+        message=f"Pratica {pratica_id} non ha sospensione attiva",
+    )
+    assert sosp_attiva is not None
+
+    # Cambia stato pratica ad APERTA (il trigger DB valida la transizione).
+    repo.update_stato_pratica(pratica_id, "APERTA")
+
+    # Chiude la sospensione: il trigger DB riattiva i flussi e registra nel giornale.
+    repo.chiudi_sospensione(sosp_attiva["id"])
+
+
+# Scopo: Verifica che il flusso esista e appartenga alla pratica indicata.
+def _verifica_flusso_pratica(
+    repo: PraticheRepository, pratica_id: int, flusso_id: int,
+) -> FlussoRow:
+    flusso = repo.get_flusso(flusso_id)
+    ErrorManager.require(
+        flusso is not None,
+        code="E_FLUSSO_NOT_FOUND",
+        message=f"Flusso {flusso_id} non trovato",
+    )
+    assert flusso is not None
+    ErrorManager.require(
+        flusso["pratica_id"] == pratica_id,
+        code="E_FLUSSO_OWNERSHIP",
+        message=f"Flusso {flusso_id} non appartiene alla pratica {pratica_id}",
+    )
+    return flusso
+
+
+# Scopo: Sospende un singolo flusso all'interno di una pratica.
+# Obiettivo: crea una sospensione con flusso_id specifico.
+# Perimetro: valida input, verifica ownership flusso/pratica, INSERT sospensione.
+#   Il trigger DB cambia stato del flusso a SOSPESO e registra nel giornale.
+# Risultato: ID della sospensione creata.
+@transaction.atomic()
+def sospendi_flusso(
+    pratica_id: int,
+    flusso_id: int,
+    motivo: str,
+    *,
+    data_riattivazione_prevista: str | None = None,
+) -> int:
+    ErrorManager.require(
+        pratica_id > 0,
+        code="E_INVALID_ID",
+        message="pratica_id deve essere > 0",
+    )
+    assert pratica_id > 0
+    ErrorManager.require(
+        flusso_id > 0,
+        code="E_INVALID_ID",
+        message="flusso_id deve essere > 0",
+    )
+    assert flusso_id > 0
+    ErrorManager.require(
+        bool(motivo and motivo.strip()),
+        code="E_FLUSSO_VALIDATION",
+        message="motivo sospensione obbligatorio",
+    )
+
+    repo = PraticheRepository()
+    _verifica_flusso_pratica(repo, pratica_id, flusso_id)
+
+    # Verifica che non ci sia gia' una sospensione attiva sul flusso.
+    sosp_attiva = repo.get_sospensione_attiva_flusso(pratica_id, flusso_id)
+    ErrorManager.require(
+        sosp_attiva is None,
+        code="E_FLUSSO_VALIDATION",
+        message=f"Flusso {flusso_id} ha gia' una sospensione attiva",
+    )
+
+    # Cambia stato flusso a SOSPESO (il trigger DB valida la transizione).
+    repo.update_stato_flusso(flusso_id, "SOSPESO")
+
+    # INSERT sospensione con flusso_id: il trigger DB registra nel giornale.
+    return repo.create_sospensione(
+        pratica_id,
+        motivo,
+        flusso_id=flusso_id,
+        data_riattivazione_prevista=data_riattivazione_prevista,
+    )
+
+
+# Scopo: Riattiva un singolo flusso sospeso.
+# Obiettivo: chiude la sospensione attiva del flusso.
+# Perimetro: valida esistenza sospensione attiva, delega chiusura al repository.
+#   Il trigger DB ripristina lo stato del flusso e registra nel giornale.
+@transaction.atomic()
+def riattiva_flusso(pratica_id: int, flusso_id: int) -> None:
+    ErrorManager.require(
+        pratica_id > 0,
+        code="E_INVALID_ID",
+        message="pratica_id deve essere > 0",
+    )
+    assert pratica_id > 0
+    ErrorManager.require(
+        flusso_id > 0,
+        code="E_INVALID_ID",
+        message="flusso_id deve essere > 0",
+    )
+    assert flusso_id > 0
+
+    repo = PraticheRepository()
+    _verifica_flusso_pratica(repo, pratica_id, flusso_id)
+
+    # Cerca la sospensione attiva per il flusso specifico.
+    sosp_attiva = repo.get_sospensione_attiva_flusso(pratica_id, flusso_id)
+    ErrorManager.require(
+        sosp_attiva is not None,
+        code="E_FLUSSO_VALIDATION",
+        message=f"Flusso {flusso_id} non ha sospensione attiva",
+    )
+    assert sosp_attiva is not None
+
+    # Cambia stato flusso a IN_CORSO (ripresa manuale — il trigger DB valida la transizione).
+    repo.update_stato_flusso(flusso_id, "IN_CORSO")
+
+    # Chiude la sospensione: il trigger DB registra nel giornale.
+    repo.chiudi_sospensione(sosp_attiva["id"])
+
+
+# -- SOSPENSIONI LETTURA ------------------------------------------------
+
+
+# Scopo: Restituisce le sospensioni di una pratica.
+def get_sospensioni(pratica_id: int) -> list[SospensioneRow]:
+    repo = PraticheRepository()
+    return repo.list_sospensioni(pratica_id)
+
+
+# -- CALCOLI TEMPO LETTURA ----------------------------------------------
+
+
+# Scopo: Restituisce i calcoli tempo di una pratica.
+def get_calcoli_tempo(pratica_id: int) -> list[CalcoloTempoRow]:
+    repo = PraticheRepository()
+    return repo.list_calcoli_tempo(pratica_id)
 
 

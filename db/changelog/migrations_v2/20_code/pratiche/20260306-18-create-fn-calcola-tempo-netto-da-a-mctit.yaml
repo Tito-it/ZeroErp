@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Funzione pratiche.fn_calcola_tempo_netto_da_a
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/pratiche/20260306-18-create-fn-calcola-tempo-netto-da-a-mctit.yaml
+
+    - changeSet:
+          id: 20260306-18-create-fn-calcola-tempo-netto-da-a
+          author: mctit
+          runOnChange: false
+          comment: >
+              Funzione check (pura, STABLE): calcola i giorni netti trascorsi tra
+              due flussi di una pratica, escludendo i periodi di sospensione.
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION pratiche.fn_calcola_tempo_netto_da_a(
+                            p_pratica_id   BIGINT,
+                            p_flusso_da_id BIGINT,
+                            p_flusso_a_id  BIGINT
+                        )
+                        RETURNS INTEGER
+                        LANGUAGE plpgsql
+                        STABLE
+                        AS $function$
+                        -- Scopo: calcola i giorni netti tra il completamento di flusso_da e
+                        --   il completamento di flusso_a, sottraendo i giorni di sospensione.
+                        -- Input: pratica_id, flusso_da_id, flusso_a_id
+                        -- Output: giorni netti (INTEGER)
+                        -- Se flusso_a non e' ancora COMPLETATO, usa NOW() come punto di arrivo.
+                        DECLARE
+                            v_data_da   TIMESTAMPTZ;
+                            v_data_a    TIMESTAMPTZ;
+                            v_giorni_lordi    INTEGER;
+                            v_giorni_sosp     INTEGER := 0;
+                        BEGIN
+                            -- Recupera data_fine del flusso_da
+                            SELECT data_fine INTO v_data_da
+                            FROM pratiche.flussi WHERE id = p_flusso_da_id;
+
+                            IF v_data_da IS NULL THEN
+                                RETURN NULL;  -- flusso_da non ancora completato
+                            END IF;
+
+                            -- Recupera data_fine del flusso_a (se completato)
+                            SELECT data_fine INTO v_data_a
+                            FROM pratiche.flussi WHERE id = p_flusso_a_id;
+
+                            -- Se flusso_a non completato, usa NOW()
+                            v_data_a := COALESCE(v_data_a, NOW());
+
+                            -- Giorni lordi
+                            v_giorni_lordi := GREATEST(0, EXTRACT(DAY FROM v_data_a - v_data_da)::INTEGER);
+
+                            -- Giorni di sospensione nel periodo da/a
+                            -- Conta i giorni di sospensione della pratica che ricadono nel periodo
+                            SELECT COALESCE(SUM(
+                                GREATEST(0, EXTRACT(DAY FROM
+                                    LEAST(COALESCE(s.data_fine, NOW()), v_data_a)
+                                    - GREATEST(s.data_inizio, v_data_da)
+                                )::INTEGER)
+                            ), 0)
+                            INTO v_giorni_sosp
+                            FROM pratiche.sospensioni s
+                            WHERE s.pratica_id = p_pratica_id
+                              AND s.flusso_id IS NULL  -- solo sospensioni a livello pratica
+                              AND s.data_inizio < v_data_a
+                              AND COALESCE(s.data_fine, NOW()) > v_data_da;
+
+                            RETURN GREATEST(0, v_giorni_lordi - v_giorni_sosp);
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION pratiche.fn_calcola_tempo_netto_da_a(BIGINT, BIGINT, BIGINT)
+                          IS 'Check pura STABLE: giorni netti tra completamento flusso_da e flusso_a, al netto delle sospensioni.';
+
+          rollback:
+              - sql:
+                    sql: DROP FUNCTION IF EXISTS pratiche.fn_calcola_tempo_netto_da_a(BIGINT, BIGINT, BIGINT);

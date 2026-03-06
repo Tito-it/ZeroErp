@@ -313,7 +313,7 @@ Il sistema di storicizzazione si integra con il framework di automazione DB tram
 
 ### Provisioning tabelle: `fn_run_automations_storico_provision`
 
-Questa funzione scorre tutte le tabelle in scope che hanno una colonna `storicizza` e crea automaticamente la corrispondente tabella nello schema `storico`.
+Questa funzione scorre tutte le tabelle nell'ambito che hanno una colonna `storicizza` e crea automaticamente la corrispondente tabella nello schema `storico`.
 
 Da un punto di vista tecnico:
 
@@ -325,7 +325,7 @@ Da un punto di vista tecnico:
 
 **Flusso:**
 
-1. Risolve scope (esclude lo schema `storico`)
+1. Risolve l'ambito (esclude lo schema `storico`)
 2. Filtra tabelle con colonna `storicizza` (nome configurabile via override `STORICIZZA_COL`)
 3. Applica regole `STORICO_PROVISION` da `automation_rules_tbl`
 4. Per ogni tabella idonea: chiama `fn_ensure_storico_table`
@@ -362,7 +362,7 @@ Crea il trigger `BEFORE UPDATE OR DELETE` su tutte le tabelle operative che hann
 
 **Flusso:**
 
-1. Risolve scope (esclude `storico`)
+1. Risolve l'ambito (esclude `storico`)
 2. Per ogni tabella: verifica che `storico.<tabella>` esista
 3. Risolve la colonna FK (default `<tabella>_id`, override via `STORICO_FK`)
 4. Genera il nome trigger dal template (default: `trgx_z90_{table}_upd_dlt_storico`)

@@ -85,13 +85,13 @@
 ### DB
 
 - [x] 5.1 — Funzione `config.fn_check_user_emittente_scope()` — `20_code/config/20260228-24`
-- [x] 5.2 — Trigger guard su `vendite.fatture` (scope emittente) — `trgfn_guard_emittente_scope` + trigger `20260228-25/-26`
-- [x] 5.3 — Trigger guard su `pagamenti.vendite_movimenti` (scope emittente via fattura) — `20260228-27`. NB: ordini (vendite/acquisti) non hanno colonna emittente
+- [x] 5.2 — Trigger guard su `vendite.fatture` (ambito emittente) — `trgfn_guard_emittente_scope` + trigger `20260228-25/-26`
+- [x] 5.3 — Trigger guard su `pagamenti.vendite_movimenti` (ambito emittente via fattura) — `20260228-27`. NB: ordini (vendite/acquisti) non hanno colonna emittente
 
 ### Backend
 
 - [x] 5.4 — Test Django enforcement permessi (unit test `PermissionResolver`) — `apps/core/tests/services/test_permissions_resolver.py`
-- [x] 5.5 — Test Django scope emittente (unit test mixin) — `apps/core/tests/mixins/test_emittente_fiscale_scope.py`
+- [x] 5.5 — Test Django ambito emittente (unit test mixin) — `apps/core/tests/mixins/test_emittente_fiscale_scope.py`
 
 ### Test DB
 
@@ -153,13 +153,13 @@ poi sezione **4** (`PermissionResolver`, `ZeroERPPermission`, middleware).
 **Integrazione API esistenti (vendite):**
 
 - [x] F2.1 — Aggiungere `ZeroERPPermission` a tutte le 11 view V1 vendite (`apps/vendite/api/views.py`)
-- [x] F2.2 — Scope emittente applicato via SQL DB-first (`config.fn_get_emittenti_scope_sr_ids`) in `VenditeRepository` — atteso DB funzione
+- [x] F2.2 — Ambito emittente applicato via SQL DB-first (`config.fn_get_emittenti_scope_sr_ids`) in `VenditeRepository` — atteso DB funzione
 - [x] F2.3 — `ApiRunLottoPipelineV1` ha `post_permission = "genera_fatture_lotti"` per check azione
 - [x] F2.4 — N/A: nessuna view API esposta su anagrafiche, catalogo, pagamenti (file `views.py` vuoti)
 
 A questo punto tutte le API esistenti sono protette dal sistema permessi.
 
-### Fase 3 — Funzioni SQL, scope emittente e azioni di processo
+### Fase 3 — Funzioni SQL, ambito emittente e azioni di processo
 
 #### Sviluppi DB
 
@@ -195,7 +195,7 @@ A questo punto tutte le API esistenti sono protette dal sistema permessi.
 #### Note Fase 3
 
 - `genera_fatture_lotti` e' gia' attivo su `ApiRunLottoPipelineV1` (F2.3 ✅).
-- F2.2 (scope emittente `VenditeRepository`): completato ✅ — backend + DB funzione `fn_get_emittenti_scope_sr_ids` (D3.2) entrambi pronti.
+- F2.2 (ambito emittente `VenditeRepository`): completato ✅ — backend + DB funzione `fn_get_emittenti_scope_sr_ids` (D3.2) entrambi pronti.
 - F3.1/F3.2 (`Meta.permissions`): non necessarie — il sistema usa `config.azioni_processo` direttamente.
 - Pagamenti: nessuna view API esposta — azioni processo pagamenti rimandate.
 

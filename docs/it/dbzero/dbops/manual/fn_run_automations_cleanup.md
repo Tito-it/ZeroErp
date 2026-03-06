@@ -45,8 +45,8 @@ Applica in modo coerente due regole dichiarative:
 
 ### ⚙️ Flusso logico
 
-1. Risolve lo **scope** (`dbops.fn_resolve_scope`).
-2. Scorre le tabelle in scope (`dbops.fn_table_in_scope`).
+1. Risolve l'**ambito** (`dbops.fn_resolve_scope`).
+2. Scorre le tabelle nell'ambito (`dbops.fn_table_in_scope`).
 3. Esclude le tabelle presenti in `dbops.automation_cleanup_exclusions`.
 4. Applica le regole `CLEANUP_AT` e `CLEANUP_PURGE` compatibili con schema/tabella.
 5. Registra l’esito in `dbops.audit_log` tramite `fn_audit_log_once`.

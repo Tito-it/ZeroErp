@@ -1,0 +1,206 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test unitari API sospensione/riattivazione pratiche e flussi.
+#        Mock services, compatibile CI senza database reale.
+# ------------------------------------------------------------
+
+"""
+Indice test eseguiti:
+1) SospensioniApiTests.test_post_sospendi_pratica_ok
+2) SospensioniApiTests.test_post_sospendi_pratica_errore_motivo_mancante
+3) SospensioniApiTests.test_post_riattiva_pratica_ok
+4) SospensioniApiTests.test_post_sospendi_flusso_ok
+5) SospensioniApiTests.test_post_sospendi_flusso_errore_motivo_mancante
+6) SospensioniApiTests.test_post_riattiva_flusso_ok
+7) SospensioniApiTests.test_get_sospensioni_pratica_ok
+8) SospensioniApiTests.test_get_calcoli_tempo_pratica_ok
+9) SospensioniApiTests.test_v1_sospendi_richiede_jwt
+10) SospensioniApiTests.test_post_sospendi_pratica_con_data_riattivazione
+"""
+
+import json
+from unittest.mock import Mock, patch
+
+from django.test import Client, SimpleTestCase
+
+from apps.core.services.service_errors import ServiceError
+
+_AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
+_VIEWS = "apps.pratiche.api.views"
+
+
+class SospensioniApiTests(SimpleTestCase):
+
+    # Scopo: Prepara il contesto comune del test.
+    def setUp(self) -> None:
+        self.client = Client()
+
+    # -- SOSPENDI PRATICA ------------------------------------------------
+
+    # Scopo: Verifica POST sospensione pratica con esito positivo.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.sospendi_pratica")
+    def test_post_sospendi_pratica_ok(self, mock_sospendi, _auth):
+        mock_sospendi.return_value = 100
+
+        response = self.client.post(
+            "/api/v1/pratiche/1/sospendi/",
+            data=json.dumps({"motivo": "Attesa documenti"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["data"]["sospensione_id"], 100)
+        self.assertEqual(body["data"]["status"], "ok")
+        mock_sospendi.assert_called_once_with(
+            1, "Attesa documenti",
+            data_riattivazione_prevista=None,
+        )
+
+    # Scopo: Verifica errore senza motivo (il service valida e rifiuta).
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.sospendi_pratica",
+           side_effect=ServiceError(code="E_PRATICA_VALIDATION", message="motivo obbligatorio"))
+    def test_post_sospendi_pratica_errore_motivo_mancante(self, _mock, _auth):
+        response = self.client.post(
+            "/api/v1/pratiche/1/sospendi/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    # Scopo: Verifica POST sospensione pratica con data_riattivazione_prevista.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.sospendi_pratica")
+    def test_post_sospendi_pratica_con_data_riattivazione(self, mock_sospendi, _auth):
+        mock_sospendi.return_value = 101
+
+        response = self.client.post(
+            "/api/v1/pratiche/1/sospendi/",
+            data=json.dumps({
+                "motivo": "Attesa tecnico",
+                "data_riattivazione_prevista": "2026-03-15",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["data"]["sospensione_id"], 101)
+        mock_sospendi.assert_called_once_with(
+            1, "Attesa tecnico",
+            data_riattivazione_prevista="2026-03-15",
+        )
+
+    # -- RIATTIVA PRATICA ------------------------------------------------
+
+    # Scopo: Verifica POST riattivazione pratica con esito positivo.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.riattiva_pratica")
+    def test_post_riattiva_pratica_ok(self, mock_riattiva, _auth):
+        response = self.client.post(
+            "/api/v1/pratiche/1/riattiva/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["data"]["status"], "ok")
+        mock_riattiva.assert_called_once_with(1)
+
+    # -- SOSPENDI FLUSSO -------------------------------------------------
+
+    # Scopo: Verifica POST sospensione flusso con esito positivo.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.sospendi_flusso")
+    def test_post_sospendi_flusso_ok(self, mock_sospendi, _auth):
+        mock_sospendi.return_value = 200
+
+        response = self.client.post(
+            "/api/v1/pratiche/1/flussi/10/sospendi/",
+            data=json.dumps({"motivo": "Attesa tecnico"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["data"]["sospensione_id"], 200)
+        mock_sospendi.assert_called_once_with(
+            1, 10, "Attesa tecnico",
+            data_riattivazione_prevista=None,
+        )
+
+    # Scopo: Verifica errore sospensione flusso senza motivo (il service valida e rifiuta).
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.sospendi_flusso",
+           side_effect=ServiceError(code="E_FLUSSO_VALIDATION", message="motivo obbligatorio"))
+    def test_post_sospendi_flusso_errore_motivo_mancante(self, _mock, _auth):
+        response = self.client.post(
+            "/api/v1/pratiche/1/flussi/10/sospendi/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    # -- RIATTIVA FLUSSO -------------------------------------------------
+
+    # Scopo: Verifica POST riattivazione flusso con esito positivo.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.riattiva_flusso")
+    def test_post_riattiva_flusso_ok(self, mock_riattiva, _auth):
+        response = self.client.post(
+            "/api/v1/pratiche/1/flussi/10/riattiva/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["data"]["status"], "ok")
+        mock_riattiva.assert_called_once_with(1, 10)
+
+    # -- LETTURA SOSPENSIONI / CALCOLI TEMPO -----------------------------
+
+    # Scopo: Verifica GET lista sospensioni pratica.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.get_sospensioni")
+    def test_get_sospensioni_pratica_ok(self, mock_sosp, _auth):
+        mock_sosp.return_value = [{
+            "id": 1, "pratica_id": 1, "flusso_id": None,
+            "data_inizio": "2026-03-06T10:00:00+00:00", "data_fine": None,
+            "data_riattivazione_prevista": None, "motivo": "Test",
+            "data_insert": "2026-03-06", "user_insert": "test",
+            "data_update": None, "user_update": None,
+        }]
+
+        response = self.client.get("/api/v1/pratiche/1/sospensioni/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(len(body["data"]["results"]), 1)
+
+    # Scopo: Verifica GET lista calcoli tempo pratica.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.get_calcoli_tempo")
+    def test_get_calcoli_tempo_pratica_ok(self, mock_calc, _auth):
+        mock_calc.return_value = [{
+            "id": 1, "pratica_id": 1, "flusso_da_id": 10, "flusso_a_id": 20,
+            "formula_tempo_id": 5, "data_inizio_calcolo": "2026-03-06",
+            "data_fine_calcolo": None, "giorni_lordi": None,
+            "giorni_sospensione": None, "giorni_netti": None,
+            "giorni_formula": 30, "sforato": None,
+        }]
+
+        response = self.client.get("/api/v1/pratiche/1/calcoli-tempo/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(len(body["data"]["results"]), 1)
+
+    # -- JWT PROTECTION --------------------------------------------------
+
+    # Scopo: Verifica che endpoint V1 sospendi richieda autenticazione JWT.
+    def test_v1_sospendi_richiede_jwt(self):
+        response = self.client.post(
+            "/api/v1/pratiche/1/sospendi/",
+            data=json.dumps({"motivo": "test"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)

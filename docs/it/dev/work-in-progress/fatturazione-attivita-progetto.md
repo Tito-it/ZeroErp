@@ -526,14 +526,14 @@ Questa regola rende il raggruppamento deterministico e permette casi semplificat
 
 ---
 
-### 7.1) Arrotondamenti per scope
+### 7.1) Arrotondamenti per ambito
 
 Per garantire arrotondamenti **deterministici** e coerenti tra fattura e storni,
-introduciamo uno **scope tecnico** separato dalla testata.
+introduciamo un **ambito tecnico** separato dalla testata.
 
 **Tabella:** `vendite.fatture_arrotondamenti_scope`
 
-**Chiave scope (univoca):**
+**Chiave ambito (univoca):**
 
 * `billing_account_id`
 * `utility_id`

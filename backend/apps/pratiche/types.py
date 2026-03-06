@@ -104,6 +104,63 @@ class RegolaGenerazioneRow(TypedDict):
     meta: dict[str, Any]
 
 
+# -- Tabella pratiche.sospensioni --
+
+class SospensioneRow(TypedDict):
+    id: int
+    pratica_id: int
+    flusso_id: int | None
+    data_inizio: str
+    data_fine: str | None
+    data_riattivazione_prevista: str | None
+    motivo: str
+    data_insert: str
+    user_insert: str
+    data_update: str | None
+    user_update: str | None
+
+
+# -- Tabella pratiche.formule_tempo --
+
+class FormulaTempoRow(TypedDict):
+    id: int
+    tipo_prestazione_id: int
+    template_flusso_da_id: int
+    template_flusso_a_id: int
+    giorni_esecuzione: int
+    giorni_warning: int
+    giorni_critico: int
+    attivo: bool
+    descrizione: str | None
+    meta: dict[str, Any]
+
+
+# -- Tabella pratiche.calcoli_tempo --
+
+class CalcoloTempoRow(TypedDict):
+    id: int
+    pratica_id: int
+    flusso_da_id: int
+    flusso_a_id: int
+    formula_tempo_id: int
+    data_inizio_calcolo: str
+    data_fine_calcolo: str | None
+    giorni_lordi: int | None
+    giorni_sospensione: int | None
+    giorni_netti: int | None
+    giorni_formula: int
+    sforato: bool | None
+
+
+# -- Tabella config.transizioni_stati_pratiche / flussi --
+
+class TransizioneStatoRow(TypedDict):
+    id: int
+    stato_da_id: int
+    stato_a_id: int
+    attivo: bool
+
+
 # -- Tabella config.canali_pratiche (usata nei flussi) --
 
 class CanalePraticaRow(TypedDict):

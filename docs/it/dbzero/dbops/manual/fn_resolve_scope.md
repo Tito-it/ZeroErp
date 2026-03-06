@@ -19,7 +19,7 @@
 
 ### 🎯 Scopo Principale
 (latest review 10-01-26)
-La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista effettiva di schemi da considerare come *scope* per l’esecuzione delle automazioni. Serve a normalizzare e centralizzare la logica di determinazione dello scope operativo, evitando duplicazioni e incoerenze.
+La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista effettiva di schemi da considerare come *ambito* per l’esecuzione delle automazioni. Serve a normalizzare e centralizzare la logica di determinazione dell’ambito operativo, evitando duplicazioni e incoerenze.
 
 ---
 
@@ -33,7 +33,7 @@ La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista 
 
 ### 📤 Valore di ritorno
 
-`text[]` – Array di schemi effettivamente in scope, già puliti e normalizzati.
+`text[]` – Array di schemi effettivamente nell'ambito, già puliti e normalizzati.
 
 ---
 
@@ -48,7 +48,7 @@ La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista 
 ### 🧩 Casi d’uso tipici
 
 * **Automazioni batch**: risolvere quali schemi analizzare in base a input espliciti o configurazioni centrali.
-* **Test/Dev vs Prod**: gestire scope diversi (es. su ambienti di test si può limitare lo scope a schemi specifici).
+* **Test/Dev vs Prod**: gestire ambiti diversi (es. su ambienti di test si può limitare l'ambito a schemi specifici).
 * **Fallback universale**: garantire che in assenza di configurazioni esplicite, venga comunque restituito un insieme sensato di schemi.
 
 ---
@@ -78,7 +78,7 @@ La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista 
 
 ### ✅ Benefici
 
-* **Centralizzazione**: logica di determinazione scope in un solo punto.
+* **Centralizzazione**: logica di determinazione ambito in un solo punto.
 * **Robustezza**: fallback garantiti in assenza di configurazioni.
 * **Flessibilità**: supporta input espliciti, configurazioni persistenti e fallback automatici.
 

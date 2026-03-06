@@ -73,7 +73,7 @@ Il risultato è un record **"resolved"**, pronto per il consumo applicativo.
 
 | Colonna                  | Tipo                   | Descrizione                                             |
 | ------------------------ | ---------------------- | ------------------------------------------------------- |
-| `scope`                  | `text`                 | Costante `'RUOLO'`, identifica lo scope dell’indirizzo. |
+| `scope`                  | `text`                 | Costante `’RUOLO’`, identifica l’ambito dell’indirizzo. |
 | `indirizzo_id`           | `bigint`               | PK della tabella `anagrafiche.indirizzi`.               |
 | `soggetto_id`            | `uuid`                 | Soggetto a cui appartiene il ruolo.                     |
 | `soggetto_ruolo_id`      | `bigint`               | Identificativo del ruolo.                               |

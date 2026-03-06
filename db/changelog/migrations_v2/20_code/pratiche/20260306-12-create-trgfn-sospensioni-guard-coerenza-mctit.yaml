@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger function + trigger: guard coerenza flusso/pratica su sospensioni
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/pratiche/20260306-12-create-trgfn-sospensioni-guard-coerenza-mctit.yaml
+
+    - changeSet:
+          id: 20260306-12-create-trgfn-sospensioni-guard-coerenza
+          author: mctit
+          runOnChange: true
+          comment: >
+              Trigger function + trigger BEFORE INSERT/UPDATE OF flusso_id:
+              verifica che flusso_id appartenga alla stessa pratica_id della sospensione.
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        -- Scopo: verifica che flusso_id appartenga alla stessa pratica_id della sospensione.
+                        -- Se flusso_id IS NULL (sospensione pratica intera), nessun controllo.
+                        DECLARE
+                            v_pratica_flusso pratiche.flussi.pratica_id%TYPE;
+                        BEGIN
+                            IF NEW.flusso_id IS NULL THEN
+                                RETURN NEW;
+                            END IF;
+
+                            SELECT pratica_id INTO v_pratica_flusso
+                            FROM pratiche.flussi WHERE id = NEW.flusso_id;
+
+                            IF v_pratica_flusso IS NULL OR v_pratica_flusso <> NEW.pratica_id THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'pratiche',
+                                    'pratiche.trgfn_sospensioni_guard_coerenza_flusso',
+                                    'SOSPENSIONI_FLUSSO_NON_COERENTE',
+                                    jsonb_build_object(
+                                        'flusso_id', NEW.flusso_id,
+                                        'pratica_id', NEW.pratica_id
+                                    ),
+                                    NULL::uuid,
+                                    concat('Il flusso ', NEW.flusso_id, ' non appartiene alla pratica ', NEW.pratica_id)
+                                );
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()
+                          IS 'Guard: verifica coerenza flusso_id/pratica_id su sospensioni.';
+
+                        -- Trigger
+                        DROP TRIGGER IF EXISTS trg_sospensioni_a10_guard_coerenza_flusso_ins_upd
+                        ON pratiche.sospensioni;
+
+                        CREATE TRIGGER trg_sospensioni_a10_guard_coerenza_flusso_ins_upd
+                        BEFORE INSERT OR UPDATE OF flusso_id
+                        ON pratiche.sospensioni
+                        FOR EACH ROW
+                        EXECUTE FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso();
+
+                        COMMENT ON TRIGGER trg_sospensioni_a10_guard_coerenza_flusso_ins_upd
+                        ON pratiche.sospensioni
+                        IS 'Guard: coerenza flusso_id/pratica_id su sospensioni.';
+
+          rollback:
+              - sql:
+                    sql: |
+                        DROP TRIGGER IF EXISTS trg_sospensioni_a10_guard_coerenza_flusso_ins_upd ON pratiche.sospensioni;
+                        DROP FUNCTION IF EXISTS pratiche.trgfn_sospensioni_guard_coerenza_flusso();

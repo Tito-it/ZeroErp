@@ -12,7 +12,7 @@
 
 ---
 
-La tabella **`config.user_emittenti_fiscali`** definisce lo **scope operativo** di un utente: su quali emittenti fiscali può operare.
+La tabella **`config.user_emittenti_fiscali`** definisce l'**ambito operativo** di un utente: su quali emittenti fiscali può operare.
 
 Implementa una **whitelist opzionale**: se l'utente non ha righe in questa tabella, può operare su tutti gli emittenti; se ha almeno una riga, è limitato a quelli elencati.
 
@@ -59,4 +59,4 @@ Il trigger DB è un **defense-in-depth**: garantisce che nessun bypass applicati
 
 ---
 
-> 🧠 **"`config.user_emittenti_fiscali` è il pilastro dello scope multi-azienda: whitelist opzionale con enforcement sia Django che DB."**
+> 🧠 **"`config.user_emittenti_fiscali` è il pilastro dell'ambito multi-azienda: whitelist opzionale con enforcement sia Django che DB."**
