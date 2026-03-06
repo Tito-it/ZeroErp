@@ -218,7 +218,7 @@ La catena COALESCE finale garantisce che `NEW.tx_id` non sia mai NULL, con `uuid
 
 Il sistema tx_id si appoggia a una combinazione di parametri di sessione (GUC) e parametri applicativi persistenti.
 
-### GUC di sessione (scope: connessione corrente)
+### GUC di sessione (ambito: connessione corrente)
 
 | GUC | Tipo | Descrizione |
 | --- | --- | --- |
@@ -254,8 +254,8 @@ Da un punto di vista tecnico:
 
 **Flusso logico:**
 
-1. **Scope**: risolve gli schemi target con `dbops.fn_resolve_scope`
-2. **Scansione tabelle**: itera tutte le tabelle fisiche (`relkind='r'`) in scope, filtrate da `fn_table_in_scope`
+1. **Ambito**: risolve gli schemi target con `dbops.fn_resolve_scope`
+2. **Scansione tabelle**: itera tutte le tabelle fisiche (`relkind='r'`) nell'ambito, filtrate da `fn_table_in_scope`
 3. **Selezione regole**: per ciascuna tabella, filtra in `automation_rules_tbl` le regole con `rule_type='TX_ID'`, rispettando `enabled`, `exec_mode`, `priority` e pattern di match su schema/tabella
 4. **Pre-condizione**: verifica che la tabella abbia una colonna `tx_id` di tipo `uuid` (non crea colonne, solo trigger)
 5. **Naming**: genera il nome trigger dal template (default: `trg_{table}_gen_tx_id_ins_upd`) tramite `fn_name_from_template`

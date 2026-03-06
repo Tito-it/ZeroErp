@@ -23,7 +23,7 @@
 ### 🎯 Scopo Principale
 
 (latest review 26-12-25)
-La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas, p_dry_run)`** automatizza il **provisioning delle tabelle nello schema `storico`** per tutte le tabelle applicative che adottano la colonna di storicizzazione (es. `storicizza`). Per ogni tabella in scope, verifica prerequisiti e demanda la creazione/adeguamento dell’omologa tabella storico a `fn_ensure_storico_table` (con eventuale indice GIN opzionale).
+La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas, p_dry_run)`** automatizza il **provisioning delle tabelle nello schema `storico`** per tutte le tabelle applicative che adottano la colonna di storicizzazione (es. `storicizza`). Per ogni tabella nell'ambito, verifica prerequisiti e demanda la creazione/adeguamento dell’omologa tabella storico a `fn_ensure_storico_table` (con eventuale indice GIN opzionale).
 
 ---
 
@@ -39,14 +39,14 @@ La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas
 
 ### 📤 Valore di ritorno
 
-`void` – orchestration pura: cicla le tabelle in scope e delega le operazioni all’helper `fn_ensure_storico_table`.
+`void` – orchestration pura: cicla le tabelle nell'ambito e delega le operazioni all’helper `fn_ensure_storico_table`.
 
 ---
 
 ### ⚙️ Flusso logico
 
-1. **Scope**: determina gli schemi target tramite `fn_resolve_scope(p_schemas)`; esclude sempre lo schema `storico`.
-2. **Enumerazione tabelle**: scorre tutte le tabelle "user" in scope filtrate da `fn_table_in_scope`.
+1. **Ambito**: determina gli schemi target tramite `fn_resolve_scope(p_schemas)`; esclude sempre lo schema `storico`.
+2. **Enumerazione tabelle**: scorre tutte le tabelle "user" nell'ambito filtrate da `fn_table_in_scope`.
 3. **Selezione regole**: per ciascuna tabella applica le regole abilitate in `automation_rules_tbl` con `rule_type='STORICO_PROVISION'`, in base a `exec_mode`, `target_schema` e `target_table` (supporto wildcard con `fn_schema_match`).
 4. **Parametri regola**: legge da `params` l’opzione `create_gin_index` (boolean) per abilitare la creazione dell’indice GIN sul JSON di storico (se previsto dall’helper).
 5. **Prerequisito flag**: risolve il nome della colonna storicizzazione con `fn_get_override_col(..., 'STORICIZZA_COL', 'storicizza')` e verifica esistenza con `fn_col_exists`.

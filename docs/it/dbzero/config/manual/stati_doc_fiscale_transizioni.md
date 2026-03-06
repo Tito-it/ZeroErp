@@ -22,7 +22,7 @@ documento, con validita` separata per **lotti** e **fatture**.
 
 * **Transizione**: `stato_from_id` → `stato_to_id`.
 * **Ammissibilita`**: `ammesso` (TRUE/FALSE).
-* **Scope**:
+* **Ambito**:
   * `solo_lotto` → transizione valida solo per i lotti;
   * `solo_fattura` → transizione valida solo per le fatture.
 * **Governance**: `meta`, audit.

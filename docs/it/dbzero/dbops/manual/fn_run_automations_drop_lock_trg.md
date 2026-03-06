@@ -28,15 +28,15 @@ elimina i trigger **LOCK_COLUMNS** obsoleti, quando **non esistono colonne da bl
 | Parametro     | Tipo    | Descrizione                                  |
 | ------------- | ------- | -------------------------------------------- |
 | `p_exec_mode` | text    | Modalita' di esecuzione (AUTO/CI/SCHEDULED). |
-| `p_schemas`   | text[]  | Schemi target (NULL = scope risolto).        |
+| `p_schemas`   | text[]  | Schemi target (NULL = ambito risolto).       |
 | `p_dry_run`   | boolean | Se true non esegue DDL ma registra audit.    |
 
 ---
 
 ### ⚙️ Logica operativa
 
-1. Risolve lo scope con `dbops.fn_resolve_scope(p_schemas)`.
-2. Per ogni tabella in scope:
+1. Risolve l'ambito con `dbops.fn_resolve_scope(p_schemas)`.
+2. Per ogni tabella nell'ambito:
    * verifica `codice_interno` (se presente => lock implicito);
    * verifica colonne extra attive in `dbops.automation_lock_columns`.
 3. Se **non** esistono colonne da bloccare, rimuove i trigger

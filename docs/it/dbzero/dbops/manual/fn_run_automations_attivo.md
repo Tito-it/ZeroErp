@@ -40,7 +40,7 @@ Non viene applicata alcuna cascata automatica.
 La funzione considera:
 
 * Vincoli **FK (`pg_constraint.contype = 'f'`)**
-* Con **padre e figlio entrambi nello scope** degli schemi
+* Con **padre e figlio entrambi nell'ambito** degli schemi
 * Non esclusi tramite `dbops.automation_fk_exclusions`
 * Escludendo sempre lo schema `storico`
 
@@ -60,7 +60,7 @@ La funzione considera:
 
 ### ⚙️ Flusso logico
 
-1. Risolve lo **scope degli schemi** (`dbops.fn_resolve_scope`).
+1. Risolve l'**ambito degli schemi** (`dbops.fn_resolve_scope`).
 2. Recupera le **regole ATTIVO abilitate** da `automation_rules_tbl`.
 3. Per ogni **FK compatibile**:
 

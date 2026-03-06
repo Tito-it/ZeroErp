@@ -31,7 +31,7 @@ La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_ru
 | Parametro     | Tipo    | Obbligatorio | Descrizione                                                               |
 | ------------- | ------- | :----------: | ------------------------------------------------------------------------- |
 | `p_exec_mode` | text    |      ✔️       | Modalità di esecuzione delle regole (`AUTO`, `FORCE`, `CHECK`).           |
-| `p_schemas`   | text[]  |      ❌       | Schemi in scope. Se `NULL`, risolti da `fn_resolve_scope`.                |
+| `p_schemas`   | text[]  |      ❌       | Schemi nell'ambito. Se `NULL`, risolti da `fn_resolve_scope`.             |
 | `p_dry_run`   | boolean |      ✔️       | Se `true`, non crea trigger ma registra eventi **DRYRUN** in `audit_log`. |
 
 ---
@@ -44,8 +44,8 @@ La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_ru
 
 ### ⚙️ Flusso logico
 
-1. **Scope**: determina gli schemi effettivi con `fn_resolve_scope`; esclude sempre lo schema `storico`.
-2. **Scansione tabelle**: per ogni tabella in scope e in `fn_table_in_scope`, verifica che esista la **tabella omologa** nello schema `storico`.
+1. **Ambito**: determina gli schemi effettivi con `fn_resolve_scope`; esclude sempre lo schema `storico`.
+2. **Scansione tabelle**: per ogni tabella nell'ambito e in `fn_table_in_scope`, verifica che esista la **tabella omologa** nello schema `storico`.
 3. **Regole**: seleziona da `automation_rules_tbl` le regole abilitate con `rule_type='STORICO'`, rispettando `exec_mode`, priorità e target (schema/tabella).
 4. **Risoluzione FK storico**: calcola il nome della FK verso lo storico con `fn_get_override_col(...,'STORICO_FK', '{table}_id')`.
 5. **Naming trigger**: usa `name_template` (default: `trg_z90_{table}_storico_upd_dlt`) tramite `fn_name_from_template`.

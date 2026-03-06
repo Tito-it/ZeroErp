@@ -53,7 +53,7 @@ SET myapp.user_language = 'en';
 
 ### ⚖️ Tipologie di GUC
 
-| Tipo di GUC           | Prefisso | Stabilità              | Scope                                   |
+| Tipo di GUC           | Prefisso | Stabilità              | Ambito                                  |
 | --------------------- | -------- | ---------------------- | --------------------------------------- |
 | **Di sistema**        | `myapp.` | Persistente (conf/db)  | Cluster, Database, Role, Session        |
 | **Di infrastruttura** | `dbops.` | Temporanee (GUC local) | Solo within-session (es. `dbops.tx_id`) |
@@ -94,7 +94,7 @@ SET myapp.user_language = 'en';
 
 | Caratteristica       | GUC (`myapp.*`, `dbops.*`)                        | Tabelle (`config.parameters` + overrides)                  |
 | -------------------- | ------------------------------------------------- | ---------------------------------------------------------- |
-| **Scope**            | Cluster/DB/Role/Session                           | Record-level (tenant, utente, funzione, sessione)          |
+| **Ambito**           | Cluster/DB/Role/Session                           | Record-level (tenant, utente, funzione, sessione)          |
 | **Versioning/Audit** | No (solo DDL o conf file)                         | Sì (Liquibase, trigger di audit, date_insert, ecc.)        |
 | **Dinamico**         | Sì (SET/ALTER in sessione)                        | Sì (modificabile in runtime con query)                     |
 | **Use case**         | Configurazioni DB-centriche (lingua, connessioni) | Configurazioni business-centriche (feature-flag, timeouts) |
@@ -108,7 +108,7 @@ SET myapp.user_language = 'en';
 
   * `nome parametro`
   * `default`
-  * `scope` (cluster/db/role/session)
+  * `ambito` (cluster/db/role/session)
   * `descrizione`
   * `schema/funzione che lo usa`
 

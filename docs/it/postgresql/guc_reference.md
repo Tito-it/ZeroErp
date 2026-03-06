@@ -11,7 +11,7 @@
 
 ### 📋 Tabella di riferimento
 
-| GUC                                       | Default | Scope    | Descrizione                                                                          | Usata da                                    |
+| GUC                                       | Default | Ambito   | Descrizione                                                                          | Usata da                                    |
 | ----------------------------------------- | ------- | -------- | ------------------------------------------------------------------------------------ | ------------------------------------------- |
 | `myapp.dblink_log_connection`             | n/d     | sistema  | Connessione per logging remoto via dblink.                                           | `dblink` / logging remoto                   |
 | `myapp.user_language`                     | n/d     | sistema  | Lingua di default per funzioni applicative.                                          | funzioni applicative                        |

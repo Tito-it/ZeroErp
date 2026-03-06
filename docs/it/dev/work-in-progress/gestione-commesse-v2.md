@@ -1276,7 +1276,7 @@ Il push commessa NON ha step sequenziali cross-handler. I singoli handler:
 - Internamente eseguono solo: `read → validate → fn_db() → commit`.
 - La logica business (normalizza, valida, upsert idempotente) vive nelle **funzioni DB**,
   non nel runner Python.
-- L'isolamento errori è semplice (`try/except` per handler) — non serve error scope
+- L'isolamento errori è semplice (`try/except` per handler) — non serve ambito errore
   BRANCH/GLOBAL come nella pipeline AF.
 
 **Differenza strutturale determinante:**
@@ -1287,7 +1287,7 @@ Il push commessa NON ha step sequenziali cross-handler. I singoli handler:
 | Step sequenziali    | Sì, con dipendenze              | No — handler indipendenti                |
 | Idempotenza         | Gestita dal runner              | Garantita dal DB (`sorgente_uid` unique) |
 | Concorrenza         | Lock di lotto                   | `pg_try_advisory_lock` — nessuna tabella |
-| Errore in un branch | Blocca o continua per scope     | Un handler fallisce, gli altri girano    |
+| Errore in un branch | Blocca o continua per ambito    | Un handler fallisce, gli altri girano    |
 | Estendibilità       | Nuovo handler-code nel registry | Idem — identico pattern                  |
 
 ### 23.2 Motivazione della scelta: orchestratore
@@ -1310,7 +1310,7 @@ Aggiungere `HandlerTicket` in futuro = registrare un handler nel registry.
 Non serve toccare la struttura dell'orchestratore — esattamente come per una pipeline.
 
 **5. Evita il debito tecnico della pipeline AF.**
-La pipeline AF aveva complessità (lotto, branch, task run, error scope) che non è mai
+La pipeline AF aveva complessità (lotto, branch, task run, ambito errore) che non è mai
 stata implementata perché eccessiva per il problema reale. Non si ripete lo stesso errore.
 
 ### 23.3 Struttura orchestratore (Python)

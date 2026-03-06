@@ -229,7 +229,7 @@ Per questo motivo Zero ERP adotta un **routing esplicito**: ogni errore applicat
 
 ### Routing attuale (vendite)
 
-| Scope | Target log di dominio | Descrizione |
+| Ambito | Target log di dominio | Descrizione |
 | --- | --- | --- |
 | `LOTTO` | `vendite.fatturazione_lotti_log` | Avanzamento fasi pipeline, esito complessivo lotto |
 | `FATTURA` | `vendite.fatture_log` | Errori specifici sul singolo documento |

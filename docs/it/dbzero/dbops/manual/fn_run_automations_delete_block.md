@@ -28,15 +28,15 @@ applica (o simula) i trigger **DELETE_BLOCK** sulle tabelle configurate in
 | Parametro     | Tipo    | Descrizione                                  |
 | ------------- | ------- | -------------------------------------------- |
 | `p_exec_mode` | text    | Modalita' di esecuzione (AUTO/CI/SCHEDULED). |
-| `p_schemas`   | text[]  | Schemi target (NULL = scope risolto).        |
+| `p_schemas`   | text[]  | Schemi target (NULL = ambito risolto).       |
 | `p_dry_run`   | boolean | Se true non crea trigger ma registra audit.  |
 
 ---
 
 ### ⚙️ Logica operativa
 
-1. Risolve lo scope con `dbops.fn_resolve_scope(p_schemas)`.
-2. Legge le righe **enabled** in `dbops.automation_delete_block` nello scope.
+1. Risolve l'ambito con `dbops.fn_resolve_scope(p_schemas)`.
+2. Legge le righe **enabled** in `dbops.automation_delete_block` nell'ambito.
 3. Se la tabella non esiste, registra un audit (dry‑run) e salta.
 4. Se il trigger esiste già, non crea nulla.
 5. Se `p_dry_run=true`, registra un audit; altrimenti richiama

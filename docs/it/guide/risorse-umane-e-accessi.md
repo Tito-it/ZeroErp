@@ -109,7 +109,7 @@ Se `valido_al` e valorizzato, deve essere >= `valido_dal`. Il check `chk_risorse
 ### R4 — Collegamento a Django (solo gestore)
 <a id="r4--collegamento-a-django-solo-gestore"></a>
 
-Il collegamento a `django.auth_user` e consentito **solo** per risorse appartenenti al **soggetto gestore**. Questo vincolo riguarda l'appartenenza organizzativa ("fa parte della nostra azienda?"), non lo scope operativo. Per limitare su quali emittenti fiscali un utente puo operare, esiste un meccanismo separato: la whitelist `config.user_emittenti_fiscali` (vedi [Autorizzazioni e permessi](#autorizzazioni-e-permessi)).
+Il collegamento a `django.auth_user` e consentito **solo** per risorse appartenenti al **soggetto gestore**. Questo vincolo riguarda l'appartenenza organizzativa ("fa parte della nostra azienda?"), non l'ambito operativo. Per limitare su quali emittenti fiscali un utente puo operare, esiste un meccanismo separato: la whitelist `config.user_emittenti_fiscali` (vedi [Autorizzazioni e permessi](#autorizzazioni-e-permessi)).
 
 ### R5 — Unicita per persona
 <a id="r5--unicita-per-persona"></a>
@@ -203,7 +203,7 @@ Le tabelle coinvolte:
 * `config.user_override_aree`, `config.user_override_oggetti`, `config.user_override_azioni` — eccezioni individuali
 * `config.user_emittenti_fiscali` — whitelist opzionale per limitare l'operativita per emittente fiscale
 
-**Scope emittente fiscale:** in un sistema multi-emittente (piu soggetti che emettono fatture), la tabella `config.user_emittenti_fiscali` consente di restringere su quali emittenti un utente puo operare. Se l'utente non ha righe nella whitelist, puo operare su tutti gli emittenti; se ha almeno una riga, e limitato a quelli indicati. Questo scope e ortogonale ai permessi reparto: un utente puo avere accesso alla fatturazione (profilo reparto) ma essere limitato a un solo emittente (whitelist). L'enforcement avviene sia a livello API (`EmittenteFiscaleScopeMixin`) che a livello DB (trigger `fn_check_user_emittente_scope`).
+**Ambito emittente fiscale:** in un sistema multi-emittente (piu soggetti che emettono fatture), la tabella `config.user_emittenti_fiscali` consente di restringere su quali emittenti un utente puo operare. Se l'utente non ha righe nella whitelist, puo operare su tutti gli emittenti; se ha almeno una riga, e limitato a quelli indicati. Questo ambito e ortogonale ai permessi reparto: un utente puo avere accesso alla fatturazione (profilo reparto) ma essere limitato a un solo emittente (whitelist). L'enforcement avviene sia a livello API (`EmittenteFiscaleScopeMixin`) che a livello DB (trigger `fn_check_user_emittente_scope`).
 
 > Per il modello dati completo, le funzioni SQL di risoluzione e l'enforcement Django:
 > vedi [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni).
@@ -377,7 +377,7 @@ La risorsa umana e l'**identita dell'operatore** nel sistema. Quando un utente a
 In pratica:
 
 * Il middleware `jwt_audit_middleware` propaga `auth_user_id` come `app.current_user_id` nella sessione PostgreSQL
-* I trigger defense-in-depth (es. scope emittente fiscale) usano `current_setting('app.current_user_id')` per verificare le autorizzazioni a livello DB
+* I trigger defense-in-depth (es. ambito emittente fiscale) usano `current_setting('app.current_user_id')` per verificare le autorizzazioni a livello DB
 * L'`auth_user_id` che esegue le pipeline fatturazione, i push commesse e i lotti e lo stesso che arriva dalla catena risorsa → ponte → utente
 
 > Per i dettagli su audit e defense-in-depth: vedi [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni).

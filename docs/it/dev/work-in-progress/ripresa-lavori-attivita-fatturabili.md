@@ -72,7 +72,7 @@ Riferimento base:
 1. Endpoint run pipeline attivita.
 2. Endpoint stato/segnalazioni pipeline attivita.
 3. Endpoint task-runs pipeline attivita.
-4. DTO/UI contract con stato per branch e blocco per scope.
+4. DTO/UI contract con stato per branch e blocco per ambito.
 
 #### E) Mancanze test
 
@@ -82,7 +82,7 @@ Riferimento base:
    - task-runs attivita
 2. Django services:
    - run ok
-   - errore branch A non blocca branch B (scope BRANCH)
+   - errore branch A non blocca branch B (ambito BRANCH)
    - errore global blocca run
 3. Django API:
    - run/status/task-runs
@@ -313,12 +313,12 @@ Le where testuali su `codice/descrizione` restano fuori dalle funzioni core di p
 3. Effetto:
    - mapping runtime centralizzato (`PENDING|RUNNING|COMPLETED|ERRORE`) e riduzione drift tra dominio lotti e dominio attivita.
 
-## 5.6 Decisioni sorgenti e scope operativo (22-02-2026)
+## 5.6 Decisioni sorgenti e ambito operativo (22-02-2026)
 
 Decisione confermata: avanzare prima sul dominio `attivita_fatturabili` e
-gestire l'upstream in fasi successive, con scope sorgenti controllato.
+gestire l'upstream in fasi successive, con ambito sorgenti controllato.
 
-### Sorgenti in scope (fase corrente)
+### Sorgenti nell'ambito (fase corrente)
 
 1. `PREVENTIVO`
 2. `CONTRATTO`
@@ -359,7 +359,7 @@ Introdotta matrice esplicita `sorgente -> branch/policy` per evitare mapping har
 2. Funzione di risoluzione:
    - `vendite.fn_resolve_attivita_sorgente_branch_policy(p_sorgente_tipo_id, p_require_abilitata)`
 3. Seed iniziale:
-   - sorgenti in scope abilitate (`PREVENTIVO`, `CONTRATTO`, `ORDINE_VENDITA`, `ATTIVITA`, `ATTIVITA_CONSUMI`);
+   - sorgenti nell'ambito abilitate (`PREVENTIVO`, `CONTRATTO`, `ORDINE_VENDITA`, `ATTIVITA`, `ATTIVITA_CONSUMI`);
    - sorgenti posticipate marcate `abilitata=false` (`*_RIGA`, `DDT*`, `FATTURA*`).
 4. Registry task dominio `ATTIVITA_FATTURABILI` seedato in `dbops`:
    - `acquisisci_preventivi`
@@ -525,13 +525,13 @@ Nota:
 
 Definito profilo idempotente `GO_LIVE_INITIAL` su matrice sorgenti:
 
-1. in scope abilitate:
+1. nell'ambito abilitate:
    - `ATTIVITA`
    - `PREVENTIVO`
    - `CONTRATTO`
    - `ORDINE_VENDITA`
    - `ATTIVITA_CONSUMI`
-2. fuori scope iniziale (`abilitata=false`):
+2. fuori ambito iniziale (`abilitata=false`):
    - tutte le `*_RIGA`
    - `DDT_VENDITA` / `DDT_VENDITA_RIGA`
    - `FATTURA` / `FATTURA_RIGA`
@@ -589,7 +589,7 @@ Nota convenzioni URL: snake_case e prefisso `/api/v1/vendite/` coerenti con gli 
 
 Regole API:
 - nessun mapping hardcoded sorgente->branch lato Python: usare solo resolver DB;
-- error envelope uniforme e tracciabile (code, scope, severity, context).
+- error envelope uniforme e tracciabile (code, ambito, severity, context).
 
 Acceptance BE-2:
 - endpoint run/status/task-runs disponibili e coerenti con dati DB runtime;
@@ -612,7 +612,7 @@ Acceptance BE-3:
 - suite backend verde;
 - nessuna regressione su pipeline lotto esistente.
 
-### 9.4 Attivita` esplicitamente fuori scope backend immediato
+### 9.4 Attivita` esplicitamente fuori ambito backend immediato
 
 1. Reintroduzione `DDT_VENDITA*`.
 2. Reintroduzione `FATTURA*` come input standard.

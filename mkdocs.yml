@@ -113,6 +113,7 @@ nav:
                             - Vendite: it/backend/vendite/index.md
 
         - Guide tecniche:
+                  - Gestione pratiche: it/guide/gestione-pratiche.md
                   - Soggetti e ruoli anagrafici: it/guide/soggetti-e-ruoli-anagrafici.md
                   - Risorse Umane e Accessi al Software: it/guide/risorse-umane-e-accessi.md
                   - Architettura Permessi e Autorizzazioni: it/guide/architettura-permessi-e-autorizzazioni.md

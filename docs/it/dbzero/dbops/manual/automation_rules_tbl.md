@@ -110,7 +110,7 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 
 * Scopo schemi: da `p_schemas` o tabella `dbops.automation_scope` (se presente), altrimenti tutti gli schemi *user* escluso `storico`.
 * Per **TX_ID / AUDIT_UPDATE / STORICO**: loop per tabelle che matchano la regola (schema + table/pattern), valutano pre‑requisiti (colonne, storico presente), costruiscono nome via template, verificano esistenza secondo `existence_strategy`, **creano il trigger** se mancante (o **DRYRUN** se `p_dry_run=true`).
-* Per **ATTIVO**: loop su **tutte** le FK nello scope (indipendentemente da `confdeltype`), filtra con `automation_fk_exclusions`, risolve colonne `attivo` su parent/child via overrides, poi applica:
+* Per **ATTIVO**: loop su **tutte** le FK nell'ambito (indipendentemente da `confdeltype`), filtra con `automation_fk_exclusions`, risolve colonne `attivo` su parent/child via overrides, poi applica:
 
   * **BLOCK** sul padre: impedisce `attivo=true -> false` se esistono figli **attivi** (o figli in generale se la colonna `attivo` sul figlio non esiste).
   * **REQUIRE** sul figlio: impedisce insert/update verso un padre non attivo. Se il figlio ha `attivo`, il controllo vale solo quando `attivo=true`.
@@ -146,7 +146,7 @@ VALUES (
 
 ### 🔍 Troubleshooting
 
-* Nessun trigger creato? Controlla: `enabled=true`, *scope* schemi corretto, `exec_mode` compatibile, `existence_strategy`, e pre‑requisiti (colonne/ storico/ FK).
+* Nessun trigger creato? Controlla: `enabled=true`, *ambito* schemi corretto, `exec_mode` compatibile, `existence_strategy`, e pre‑requisiti (colonne/ storico/ FK).
 * Conflitti di naming? Verifica la lunghezza (63 char) e l’univocità del template in combinazione con schema/tabella/FK.
 * Debug rapido: guarda `dbops.audit_log` (filtra per `function_name='run_automations'` e `status IN ('DRYRUN','ERROR')`).
 

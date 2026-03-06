@@ -56,7 +56,7 @@ La scelta non e arbitraria. I due meccanismi coprono esigenze diverse.
 
 | Aspetto | Parametri tabellari | GUC |
 | --- | --- | --- |
-| **Scope** | Per record: utente, gruppo, tenant, sessione, funzione | Per cluster, database, ruolo o sessione |
+| **Ambito** | Per record: utente, gruppo, tenant, sessione, funzione | Per cluster, database, ruolo o sessione |
 | **Audit** | Si (campi audit, storicizzazione, `tx_id`) | No |
 | **Override multi-livello** | Si (gerarchia a 5 livelli + default) | Limitato (database → ruolo → sessione) |
 | **Modifica runtime** | Si (INSERT/UPDATE nelle tabelle) | Si (`SET`, `ALTER DATABASE`) |
@@ -99,7 +99,7 @@ La tabella `parameter_overrides` permette di sovrascrivere il valore di default 
 
 Il modello e integrato direttamente con il sistema utenti di Django: le colonne `django_user_id` e `django_group_id` sono FK verso `auth_user` e `auth_group`. Questo significa che un override puo essere associato a un utente specifico o a un gruppo di utenti senza logica intermedia.
 
-Il vincolo CHECK `chk_overrides_has_scope` garantisce che ogni override abbia almeno uno scope definito — non possono esistere override "vuoti" senza contesto.
+Il vincolo CHECK `chk_overrides_has_scope` garantisce che ogni override abbia almeno un ambito definito — non possono esistere override "vuoti" senza contesto.
 
 Da un punto di vista tecnico:
 
@@ -117,7 +117,7 @@ Da un punto di vista tecnico:
 | `storicizza` | BOOLEAN | si | Flag storicizzazione (default: true) |
 | Campi audit | — | — | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id` |
 
-**Vincolo UNIQUE:** `(parameter_id, tenant_id, django_user_id, django_group_id, session_key, function_name)` — un solo override per combinazione completa di scope.
+**Vincolo UNIQUE:** `(parameter_id, tenant_id, django_user_id, django_group_id, session_key, function_name)` — un solo override per combinazione completa di ambito.
 
 **Indici dedicati:**
 
@@ -135,7 +135,7 @@ La funzione `fn_get_parameter_full` e il punto d'ingresso unico per leggere il v
 
 La gerarchia di priorita (dalla piu alta alla piu bassa) e:
 
-| Priorita | Scope | Descrizione |
+| Priorita | Ambito | Descrizione |
 | :---: | --- | --- |
 | 1 | **Utente Django** | Override per `django_user_id` |
 | 2 | **Gruppo Django** | Override per `django_group_id` |
@@ -169,7 +169,7 @@ I GUC (Grand Unified Configuration) di PostgreSQL sono parametri configurabili a
 
 ### Convenzioni di naming
 
-| Prefisso | Stabilita | Scope tipico | Uso |
+| Prefisso | Stabilita | Ambito tipico | Uso |
 | --- | --- | --- | --- |
 | `myapp.*` | Persistente (conf/db) | Cluster, database, ruolo, sessione | Parametri applicativi |
 | `dbops.*` | Temporaneo (locale) | Solo sessione | Variabili di transazione |

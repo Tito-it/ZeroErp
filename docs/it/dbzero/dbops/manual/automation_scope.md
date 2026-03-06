@@ -28,7 +28,7 @@ Definire **l’elenco degli schemi** su cui gli orchestratori di automazione dev
 
 ---
 
-### 🔎 Precedenza dello *scope*
+### 🔎 Precedenza dell'*ambito*
 
 1. **Parametro** `p_schemas` passato alla funzione → *ha priorità massima* (ignora la tabella).
 2. **Tabella** `dbops.automation_scope` (se esiste e contiene righe).
@@ -48,7 +48,7 @@ Definire **l’elenco degli schemi** su cui gli orchestratori di automazione dev
 
 ### ✍️ Esempi
 
-**Impostare lo scope a 4 schemi core**
+**Impostare l'ambito a 4 schemi core**
 
 ```sql
 INSERT INTO dbops.automation_scope(schema_name, note)
@@ -58,7 +58,7 @@ VALUES ('anagrafiche','core anagrafiche'),
        ('config','configurazioni di sistema');
 ```
 
-**Usare uno scope “temporaneo” senza toccare la tabella**
+**Usare un ambito “temporaneo” senza toccare la tabella**
 
 ```sql
 SELECT dbops.fn_run_automations('CI', ARRAY['lab'], true, ARRAY['TX_ID']);
@@ -69,8 +69,8 @@ SELECT dbops.fn_run_automations('CI', ARRAY['lab'], true, ARRAY['TX_ID']);
 ### 🔍 Troubleshooting
 
 * Nessun effetto? Controlla se `automation_scope` è popolata e i nomi schema sono corretti (minuscoli se non quotati).
-* Ricorda che `p_schemas` **sovrascrive** lo scope tabellare.
-* Se lo scope è vuoto, la funzione può ricadere sul fallback (tutti gli schemi user, escluso `storico`).
+* Ricorda che `p_schemas` **sovrascrive** l'ambito tabellare.
+* Se l'ambito è vuoto, la funzione può ricadere sul fallback (tutti gli schemi user, escluso `storico`).
 
 ---
 
@@ -90,8 +90,8 @@ SELECT dbops.fn_run_automations('CI', ARRAY['lab'], true, ARRAY['TX_ID']);
 ### 🧠 Best practice
 
 * Mantieni la lista **minima** necessaria all’ambiente.
-* Evita di inserire `storico` nello scope a meno di motivazioni specifiche.
-* Versiona le modifiche allo scope con changeSet dedicati per tracciabilità.
+* Evita di inserire `storico` nell'ambito a meno di motivazioni specifiche.
+* Versiona le modifiche all'ambito con changeSet dedicati per tracciabilità.
 
 ---
 

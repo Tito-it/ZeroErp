@@ -369,7 +369,7 @@ db.call_fn("vendite.fn_log_commessa_push_run",
 
 Tutte le funzioni usano `script.fn_log_and_raise_error` con:
 
-* Scope `COMMESSE`
+* Ambito `COMMESSE`
 * Severity `C` (critico) per guard violations
 * Context JSONB strutturato per diagnostica
 

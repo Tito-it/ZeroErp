@@ -13,7 +13,7 @@
 
 (latest review 10-02-2026)  
 La funzione **`vendite.fn_set_arrotondamento_scope()`** imposta (upsert)
-il **saldo tecnico** degli arrotondamenti per lo scope di fatturazione.
+il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione.
 
 ---
 
@@ -21,7 +21,7 @@ il **saldo tecnico** degli arrotondamenti per lo scope di fatturazione.
 
 * Parametri obbligatori (ID > 0).
 * `p_saldo` obbligatorio.
-* Se lo scope non esiste, viene creato.
+* Se l'ambito non esiste, viene creato.
 * Ritorna il saldo impostato.
 
 ---

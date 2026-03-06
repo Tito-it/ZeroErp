@@ -22,7 +22,7 @@ Il **framework di automazione DB** risolve questo problema: invece di scrivere t
 **Cosa troverai in questa guida:**
 
 * Il concetto di base: come il framework trasforma regole dichiarative in trigger
-* L'architettura: scope, rules, orchestratori e audit
+* L'architettura: ambito, rules, orchestratori e audit
 * Le regole disponibili, divise in **core** (usate su ogni tabella) e **specializzate** (per casi specifici)
 * La configurazione pratica e gli esempi SQL
 * La governance degli indici FK
@@ -33,7 +33,7 @@ Il **framework di automazione DB** risolve questo problema: invece di scrivere t
 
 Se hai appena creato una tabella e vuoi che il framework la gestisca:
 
-1. **Verifica lo scope**: la tabella e in uno schema gia presente in `automation_scope`? Se si, il framework la vede gia. Se no, aggiungi lo schema allo scope.
+1. **Verifica l'ambito**: la tabella e in uno schema gia presente in `automation_scope`? Se si, il framework la vede gia. Se no, aggiungi lo schema all'ambito.
 2. **Verifica le rules**: esistono regole con `target_schema='*all'`? Se si, la tabella e gia coperta per TX_ID, AUDIT, STORICO ecc. Se serve una regola specifica (es. LOCK_COLUMNS), aggiungila.
 3. **Esegui il runner**: prima in dry-run (`p_dry_run=true`), poi in apply (`p_dry_run=false`). Verifica i trigger generati.
 
@@ -45,16 +45,16 @@ Per la procedura dettagliata passo-passo, vedi il [Tutorial – Aggiungere una t
 
 Il framework e composto da quattro livelli che collaborano tra loro. Ognuno ha un ruolo preciso.
 
-### 1.1 Scope (dove applicare)
+### 1.1 Ambito (dove applicare)
 
-Lo **scope** definisce il perimetro: su quali schemi e tabelle il framework opera. E configurato nella tabella `dbops.automation_scope`.
+L'**ambito** definisce il perimetro: su quali schemi e tabelle il framework opera. E configurato nella tabella `dbops.automation_scope`.
 
 Ogni riga indica uno schema e un pattern di tabelle. Il sentinel `'*all'` significa "tutte le tabelle dello schema".
 
-Il runner usa due funzioni per risolvere lo scope:
+Il runner usa due funzioni per risolvere l'ambito:
 
 * `fn_resolve_scope(p_schemas)` — se il parametro e NULL o vuoto, legge `automation_scope`; se anche quello e vuoto, usa tutti gli schemi utente **escluso `storico`**
-* `fn_table_in_scope(schema, table)` — verifica se una singola tabella rientra nello scope
+* `fn_table_in_scope(schema, table)` — verifica se una singola tabella rientra nell'ambito
 
 ### 1.2 Rules (cosa applicare)
 
@@ -63,7 +63,7 @@ Le **regole** (`dbops.automation_rules_tbl`) dichiarano quale automazione applic
 | Campo                | Significato                                                                |
 | -------------------- | -------------------------------------------------------------------------- |
 | `rule_type`          | Tipo di automazione (TX_ID, AUDIT_UPDATE, STORICO, ecc.)                   |
-| `target_schema`      | Schema target — `'*all'` per tutti gli schemi nello scope                  |
+| `target_schema`      | Schema target — `'*all'` per tutti gli schemi nell'ambito                  |
 | `target_table`       | Pattern LIKE per le tabelle (es. `foo_%`) oppure NULL per tutte            |
 | `name_template`      | Template per il nome del trigger/oggetto generato                          |
 | `existence_strategy` | Come verificare se l'oggetto esiste gia: `BY_NAME`, `BY_FUNCTION` o `BOTH` |
@@ -71,7 +71,7 @@ Le **regole** (`dbops.automation_rules_tbl`) dichiarano quale automazione applic
 | `exec_mode`          | Quando eseguire: `AUTO`, `CI`, `SCHEDULED`                                 |
 | `enabled`            | Flag per attivare/disattivare la regola                                    |
 
-**Precedenza scope/rules**: una regola con `target_schema='*all'` si applica **solo** alle tabelle che rientrano nello scope risolto. Se lo scope include solo `anagrafiche` e `vendite`, la regola `*all` tocchera solo quei due schemi. Lo scope delimita dove, le rules definiscono cosa.
+**Precedenza ambito/rules**: una regola con `target_schema='*all'` si applica **solo** alle tabelle che rientrano nell'ambito risolto. Se l'ambito include solo `anagrafiche` e `vendite`, la regola `*all` tocchera solo quei due schemi. L'ambito delimita dove, le rules definiscono cosa.
 
 ### 1.3 Overrides e exclusions (eccezioni)
 
@@ -84,7 +84,7 @@ Non tutte le tabelle seguono le convenzioni standard. Le tabelle di override per
 
 ### 1.4 Orchestratori (chi esegue)
 
-Gli **orchestratori** sono funzioni SQL che leggono rules e scope, risolvono le tabelle target e creano i trigger. Ogni area ha il proprio orchestratore:
+Gli **orchestratori** sono funzioni SQL che leggono rules e ambito, risolvono le tabelle target e creano i trigger. Ogni area ha il proprio orchestratore:
 
 | Orchestratore                                                                               | Regola gestita                                     |
 | ------------------------------------------------------------------------------------------- | -------------------------------------------------- |
@@ -306,7 +306,7 @@ Le regole si inseriscono in `dbops.automation_rules_tbl`. Usa `target_schema='*a
 * Per STORICO, preferisci il template **senza** `{op}` (trigger unico UPDATE+DELETE)
 * Se mantieni un template con `{op}`, passa `'upd_dlt'` all'helper di naming
 
-### 5.2 Configurare lo scope
+### 5.2 Configurare l'ambito
 
 Inserisci righe in `dbops.automation_scope`:
 
@@ -567,7 +567,7 @@ Se hai un trigger manuale che fa la stessa cosa (es. audit) e il framework ne cr
 
 Verifica in ordine:
 
-1. La tabella e nello scope? → controlla `automation_scope` o passa lo schema nel parametro `p_schemas`
+1. La tabella e nell'ambito? → controlla `automation_scope` o passa lo schema nel parametro `p_schemas`
 2. La regola e abilitata? → controlla `enabled = true` in `automation_rules_tbl`
 3. Il trigger esiste gia? → il runner lo salta con `SKIP_EXISTS`
 4. La tabella ha le colonne necessarie? → es. `tx_id` per TX_ID, `attivo` per ATTIVO
@@ -639,7 +639,7 @@ Questa checklist e pensata per essere usata prima, durante e dopo il rollout del
 
 - [ ] **DB corretto**: `SELECT lower(current_database());` deve restituire `zero` o `zeroerp`
 - [ ] **Permessi**: l'utente ha `CREATE TRIGGER` sugli schemi target
-- [ ] **Scope**: definito uno tra `p_schemas`, `dbops.automation_scope` oppure fallback accettato
+- [ ] **Ambito**: definito uno tra `p_schemas`, `dbops.automation_scope` oppure fallback accettato
 - [ ] **Contesto Liquibase**: conferma che in CI non passi `--contexts=test` (solo locale)
 - [ ] **Estensioni**: se vuoi audit out-of-tx → `dblink` installata e GUC configurato
 
@@ -739,7 +739,7 @@ Questa checklist e pensata per essere usata prima, durante e dopo il rollout del
 | Tabella                                                                                            | Schema | Scopo                          |
 | -------------------------------------------------------------------------------------------------- | ------ | ------------------------------ |
 | [automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)                                 | dbops  | Regole di automazione          |
-| [automation_scope](/dbzero/dbops/tabelle/automation_scope)                                         | dbops  | Scope schemi/tabelle           |
+| [automation_scope](/dbzero/dbops/tabelle/automation_scope)                                         | dbops  | Ambito schemi/tabelle          |
 | [automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)                       | dbops  | Override colonne non standard  |
 | [automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)                         | dbops  | Esclusioni FK per ATTIVO       |
 | [automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns)                           | dbops  | Colonne extra per LOCK_COLUMNS |

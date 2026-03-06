@@ -77,7 +77,7 @@ La GUC viene impostata dal middleware Django sulla connessione PostgreSQL:
 cursor.execute("SELECT set_config('app.jwt_user', %s, true)", [str(request.user)])
 ```
 
-* `set_config(..., true)` = scope transazione, si resetta automaticamente alla fine della transazione.
+* `set_config(..., true)` = ambito transazione, si resetta automaticamente alla fine della transazione.
 * Se il middleware non e` attivo (es. script, cron), la GUC non esiste e il fallback a `CURRENT_USER` garantisce il funzionamento.
 
 ---

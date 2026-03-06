@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger functions + trigger: giornale sospensioni
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/pratiche/20260306-15-create-trgfn-sospensioni-giornale-mctit.yaml
+
+    - changeSet:
+          id: 20260306-15-create-trgfn-sospensioni-giornale
+          author: mctit
+          runOnChange: false
+          comment: >
+              Due trigger functions per registrare nel giornale:
+              - SOSPENSIONE_REGISTRATA su INSERT
+              - SOSPENSIONE_CHIUSA su UPDATE OF data_fine (riattivazione)
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- =========================================================
+                        -- 1. SOSPENSIONE_REGISTRATA su INSERT
+                        -- =========================================================
+                        CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_giornale_ins()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        -- Scopo: registra SOSPENSIONE_REGISTRATA nel giornale con motivo e date.
+                        BEGIN
+                            INSERT INTO pratiche.giornale (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                            VALUES (
+                                NEW.pratica_id,
+                                NEW.flusso_id,
+                                'SOSPENSIONE_REGISTRATA',
+                                'SISTEMA',
+                                jsonb_build_object(
+                                    'sospensione_id', NEW.id,
+                                    'motivo', NEW.motivo,
+                                    'data_inizio', NEW.data_inizio,
+                                    'data_riattivazione_prevista', NEW.data_riattivazione_prevista,
+                                    'livello', CASE WHEN NEW.flusso_id IS NULL THEN 'PRATICA' ELSE 'FLUSSO' END
+                                ),
+                                COALESCE(NEW.tx_id, gen_random_uuid())
+                            );
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION pratiche.trgfn_sospensioni_giornale_ins()
+                          IS 'AFTER INSERT su sospensioni: registra SOSPENSIONE_REGISTRATA nel giornale.';
+
+                        -- =========================================================
+                        -- 2. SOSPENSIONE_CHIUSA su UPDATE OF data_fine
+                        -- =========================================================
+                        CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_giornale_riattivazione()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        -- Scopo: registra SOSPENSIONE_CHIUSA nel giornale con data_fine.
+                        BEGIN
+                            INSERT INTO pratiche.giornale (pratica_id, flusso_id, azione, origine, dettaglio, tx_id)
+                            VALUES (
+                                NEW.pratica_id,
+                                NEW.flusso_id,
+                                'SOSPENSIONE_CHIUSA',
+                                'SISTEMA',
+                                jsonb_build_object(
+                                    'sospensione_id', NEW.id,
+                                    'data_inizio', NEW.data_inizio,
+                                    'data_fine', NEW.data_fine,
+                                    'motivo', NEW.motivo,
+                                    'livello', CASE WHEN NEW.flusso_id IS NULL THEN 'PRATICA' ELSE 'FLUSSO' END
+                                ),
+                                COALESCE(NEW.tx_id, gen_random_uuid())
+                            );
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION pratiche.trgfn_sospensioni_giornale_riattivazione()
+                          IS 'AFTER UPDATE OF data_fine su sospensioni: registra SOSPENSIONE_CHIUSA nel giornale.';
+
+                        -- =========================================================
+                        -- Trigger
+                        -- =========================================================
+                        DROP TRIGGER IF EXISTS trg_sospensioni_z90_giornale_ins
+                        ON pratiche.sospensioni;
+
+                        CREATE TRIGGER trg_sospensioni_z90_giornale_ins
+                        AFTER INSERT
+                        ON pratiche.sospensioni
+                        FOR EACH ROW
+                        EXECUTE FUNCTION pratiche.trgfn_sospensioni_giornale_ins();
+
+                        COMMENT ON TRIGGER trg_sospensioni_z90_giornale_ins
+                        ON pratiche.sospensioni
+                        IS 'Registra SOSPENSIONE_REGISTRATA nel giornale su INSERT.';
+
+                        DROP TRIGGER IF EXISTS trg_sospensioni_z90_giornale_riattivazione_upd
+                        ON pratiche.sospensioni;
+
+                        CREATE TRIGGER trg_sospensioni_z90_giornale_riattivazione_upd
+                        AFTER UPDATE OF data_fine
+                        ON pratiche.sospensioni
+                        FOR EACH ROW
+                        WHEN (OLD.data_fine IS NULL AND NEW.data_fine IS NOT NULL)
+                        EXECUTE FUNCTION pratiche.trgfn_sospensioni_giornale_riattivazione();
+
+                        COMMENT ON TRIGGER trg_sospensioni_z90_giornale_riattivazione_upd
+                        ON pratiche.sospensioni
+                        IS 'Registra SOSPENSIONE_CHIUSA nel giornale alla riattivazione.';
+
+          rollback:
+              - sql:
+                    sql: |
+                        DROP TRIGGER IF EXISTS trg_sospensioni_z90_giornale_riattivazione_upd ON pratiche.sospensioni;
+                        DROP TRIGGER IF EXISTS trg_sospensioni_z90_giornale_ins ON pratiche.sospensioni;
+                        DROP FUNCTION IF EXISTS pratiche.trgfn_sospensioni_giornale_riattivazione();
+                        DROP FUNCTION IF EXISTS pratiche.trgfn_sospensioni_giornale_ins();

@@ -17,7 +17,7 @@
 
 (latest review 28-02-2026)
 La trigger function **`config.trgfn_guard_emittente_scope`** implementa il
-defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha scope
+defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità
 sull'emittente fiscale della riga.
 
 ---
