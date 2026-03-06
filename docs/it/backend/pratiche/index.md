@@ -5,6 +5,7 @@
 - [api_flusso_canali](manual/api_flusso_canali.md) — Esporre via HTTP i canali abilitati per il template del flusso.
 - [api_flusso_detail](manual/api_flusso_detail.md) — Esporre via HTTP il dettaglio di un flusso con verifica ownership pratica.
 - [api_flusso_prerequisiti](manual/api_flusso_prerequisiti.md) — Esporre via HTTP i prerequisiti di un template flusso con flag soddisfatto per preview/UI.
+- [api_formule_tempo](manual/api_formule_tempo.md) — Esporre via HTTP le formule tempo attive per un tipo prestazione (soglie semaforo UI).
 - [api_flusso_riattiva](manual/api_flusso_riattiva.md) — Esporre via HTTP la riattivazione di un singolo flusso sospeso.
 - [api_flusso_sospendi](manual/api_flusso_sospendi.md) — Esporre via HTTP la sospensione di un singolo flusso all'interno di una pratica.
 - [api_flusso_stato](manual/api_flusso_stato.md) — Esporre via HTTP le transizioni di stato di un flusso: avvio (IN_CORSO), completamento (COMPLETATO con esito) e transizioni generiche (SOSPESO, ANNULLATO, ecc.).

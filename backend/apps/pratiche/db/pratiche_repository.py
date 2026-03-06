@@ -16,6 +16,7 @@ from apps.pratiche.types import (
     CalcoloTempoRow,
     CanalePraticaRow,
     FlussoRow,
+    FormulaTempoRow,
     GiornaleRow,
     PraticaRow,
     PrerequisitoCheckRow,
@@ -495,21 +496,45 @@ class PraticheRepository:
 
     # -- CALCOLI TEMPO ---------------------------------------------------
 
-    # Scopo: Restituisce i calcoli tempo di una pratica.
+    # Scopo: Restituisce i calcoli tempo di una pratica arricchiti con stato_tempo live.
+    # Usa LEFT JOIN LATERAL su fn_valuta_tempo_esecuzione_da_a per calcolare
+    # giorni_rimanenti e stato_tempo (OK/WARNING/CRITICO/SFORATO) in tempo reale.
     def list_calcoli_tempo(self, pratica_id: int) -> list[CalcoloTempoRow]:
         sql = """
-            SELECT id, pratica_id, flusso_da_id, flusso_a_id,
-                   formula_tempo_id, data_inizio_calcolo, data_fine_calcolo,
-                   giorni_lordi, giorni_sospensione, giorni_netti,
-                   giorni_formula, sforato
-            FROM pratiche.calcoli_tempo
-            WHERE pratica_id = %s
-            ORDER BY data_inizio_calcolo, id
+            SELECT ct.id, ct.pratica_id, ct.flusso_da_id, ct.flusso_a_id,
+                   ct.formula_tempo_id, ct.data_inizio_calcolo, ct.data_fine_calcolo,
+                   ct.giorni_lordi, ct.giorni_sospensione, ct.giorni_netti,
+                   ct.giorni_formula, ct.sforato,
+                   v.giorni_rimanenti, v.stato_tempo
+            FROM pratiche.calcoli_tempo ct
+            LEFT JOIN LATERAL pratiche.fn_valuta_tempo_esecuzione_da_a(
+                ct.pratica_id, ct.flusso_da_id, ct.flusso_a_id
+            ) v ON true
+            WHERE ct.pratica_id = %s
+            ORDER BY ct.data_inizio_calcolo, ct.id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             rows = cursor.fetchall()
         return [self._map_calcolo_tempo_row(r) for r in rows]
+
+    # -- FORMULE TEMPO -----------------------------------------------------
+
+    # Scopo: Restituisce le formule tempo attive per un tipo prestazione.
+    def list_formule_tempo(self, tipo_prestazione_id: int) -> list[FormulaTempoRow]:
+        sql = """
+            SELECT ft.id, ft.tipo_prestazione_id,
+                   ft.template_flusso_da_id, ft.template_flusso_a_id,
+                   ft.giorni_esecuzione, ft.giorni_warning, ft.giorni_critico,
+                   ft.attivo, ft.descrizione, ft.meta
+            FROM pratiche.formule_tempo ft
+            WHERE ft.tipo_prestazione_id = %s AND ft.attivo = true
+            ORDER BY ft.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [tipo_prestazione_id])
+            rows = cursor.fetchall()
+        return [self._map_formula_tempo_row(r) for r in rows]
 
     # -- RISOLUZIONE STATO -----------------------------------------------
 
@@ -631,6 +656,23 @@ class PraticheRepository:
             "giorni_netti": None if r[9] is None else int(r[9]),
             "giorni_formula": int(r[10]),
             "sforato": None if r[11] is None else bool(r[11]),
+            "giorni_rimanenti": None if r[12] is None else int(r[12]),
+            "stato_tempo": None if r[13] is None else str(r[13]),
+        }
+
+    @staticmethod
+    def _map_formula_tempo_row(r: tuple) -> FormulaTempoRow:
+        return {
+            "id": int(r[0]),
+            "tipo_prestazione_id": int(r[1]),
+            "template_flusso_da_id": int(r[2]),
+            "template_flusso_a_id": int(r[3]),
+            "giorni_esecuzione": int(r[4]),
+            "giorni_warning": int(r[5]),
+            "giorni_critico": int(r[6]),
+            "attivo": bool(r[7]),
+            "descrizione": str(r[8]) if r[8] is not None else None,
+            "meta": r[9] if isinstance(r[9], dict) else {},
         }
 
     @staticmethod
