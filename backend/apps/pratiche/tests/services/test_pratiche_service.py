@@ -9,20 +9,19 @@
 """
 Indice test eseguiti:
 1) PraticheServiceTests.test_crea_pratica_ok
-2) PraticheServiceTests.test_crea_pratica_solo_interna
-3) PraticheServiceTests.test_crea_pratica_errore_emittente_zero
-4) PraticheServiceTests.test_crea_pratica_errore_tipo_prestazione_zero
-5) PraticheServiceTests.test_crea_pratica_errore_priorita_zero
-6) PraticheServiceTests.test_aggiorna_pratica_ok
-7) PraticheServiceTests.test_aggiorna_pratica_non_trovata
-8) PraticheServiceTests.test_aggiorna_pratica_errore_id_zero
-9) PraticheServiceTests.test_cambia_stato_pratica_ok
-10) PraticheServiceTests.test_cambia_stato_pratica_errore_id_zero
-11) PraticheServiceTests.test_cambia_stato_pratica_errore_stato_vuoto
-12) PraticheServiceTests.test_assegna_pratica_ok
-13) PraticheServiceTests.test_assegna_pratica_nessun_dato
-14) PraticheServiceTests.test_cerca_pratiche_ok
-15) PraticheServiceTests.test_get_giornale_ok
+2) PraticheServiceTests.test_crea_pratica_errore_emittente_zero
+3) PraticheServiceTests.test_crea_pratica_errore_tipo_prestazione_zero
+4) PraticheServiceTests.test_crea_pratica_errore_priorita_zero
+5) PraticheServiceTests.test_aggiorna_pratica_ok
+6) PraticheServiceTests.test_aggiorna_pratica_non_trovata
+7) PraticheServiceTests.test_aggiorna_pratica_errore_id_zero
+8) PraticheServiceTests.test_cambia_stato_pratica_ok
+9) PraticheServiceTests.test_cambia_stato_pratica_errore_id_zero
+10) PraticheServiceTests.test_cambia_stato_pratica_errore_stato_vuoto
+11) PraticheServiceTests.test_assegna_pratica_ok
+12) PraticheServiceTests.test_assegna_pratica_nessun_dato
+13) PraticheServiceTests.test_cerca_pratiche_ok
+14) PraticheServiceTests.test_get_giornale_ok
 """
 
 from unittest.mock import MagicMock, patch
@@ -51,7 +50,6 @@ def _mock_pratica_row(pratica_id: int = 1) -> dict:
         "pratica_padre_id": None,
         "flusso_origine_id": None,
         "canale_origine_id": None,
-        "solo_interna": False,
         "codice": "P-001",
         "descrizione": "Test pratica",
         "data_scadenza": None,
@@ -87,23 +85,6 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertEqual(result, 42)
         repo.resolve_stato_pratica.assert_called_once_with("BOZZA")
         repo.create_pratica.assert_called_once()
-
-    # Scopo: Verifica creazione pratica con solo_interna=True.
-    @patch(f"{_SVC}.PraticheRepository")
-    def test_crea_pratica_solo_interna(self, MockRepo):
-        repo = MockRepo.return_value
-        repo.resolve_stato_pratica.return_value = 1
-        repo.create_pratica.return_value = 43
-
-        result = pratiche_service.crea_pratica(
-            emittente_fiscale_id=10,
-            tipo_prestazione_id=5,
-            priorita_id=2,
-            solo_interna=True,
-        )
-        self.assertEqual(result, 43)
-        call_data = repo.create_pratica.call_args[0][0]
-        self.assertTrue(call_data["solo_interna"])
 
     # Scopo: Verifica errore se emittente_fiscale_id <= 0.
     def test_crea_pratica_errore_emittente_zero(self):

@@ -5,6 +5,7 @@ Indice test eseguiti:
 3) ApiExceptionMiddlewareTests.test_api_http404_keeps_default_django_handling
 4) ApiExceptionMiddlewareTests.test_non_api_runtime_error_is_not_intercepted
 5) ApiExceptionMiddlewareTests.test_middleware_can_be_disabled_by_setting
+6) ApiExceptionMiddlewareTests.test_api_value_error_returns_400
 """
 
 from django.http import Http404
@@ -38,10 +39,16 @@ def _web_runtime_error_view(request):
     raise RuntimeError("boom-web")
 
 
+# Scopo: Simula un ValueError da query param malformato (es. page=abc).
+def _api_value_error_view(request):
+    raise ValueError("page_invalid")
+
+
 urlpatterns = [
     path("api/test/runtime-error/", _api_runtime_error_view),
     path("api/test/service-error/", _api_service_error_view),
     path("api/test/not-found/", _api_not_found_view),
+    path("api/test/value-error/", _api_value_error_view),
     path("web/test/runtime-error/", _web_runtime_error_view),
 ]
 
@@ -80,6 +87,14 @@ class ApiExceptionMiddlewareTests(SimpleTestCase):
         response = self.client.get("/web/test/runtime-error/")
         self.assertEqual(response.status_code, 500)
         self.assertIn("text/html", response["Content-Type"])
+
+    # Scopo: Verifica che ValueError da input malformato restituisca 400 (non 500).
+    def test_api_value_error_returns_400(self):
+        response = self.client.get("/api/test/value-error/")
+        self.assertEqual(response.status_code, 400)
+        body = response.json()["error"]
+        self.assertEqual(body["code"], "E_VALIDATION_INPUT")
+        self.assertEqual(body["ui_action"], "highlight_form_fields")
 
     # Scopo: Verifica il caso `test_middleware_can_be_disabled_by_setting`.
     @override_settings(API_EXCEPTION_MIDDLEWARE_ENABLED=False)
