@@ -55,6 +55,16 @@ class ErrorTranslator:
                 )
             )
 
+        # Input non valido (query param malformati, parsing fallito): 400.
+        if isinstance(exc, (ValueError, TypeError)):
+            message = str(exc) or "Input non valido."
+            return ErrorTranslator._apply_policy(ApiError(
+                code="E_VALIDATION_INPUT",
+                message=message,
+                detail=message,
+                retryable=False,
+            ))
+
         # Errori DB: prova a estrarre dettaglio tecnico (DETAIL/HINT/sqlstate).
         if isinstance(exc, DatabaseError):
             return ErrorTranslator._apply_policy(ErrorTranslator._from_database_error(exc))

@@ -1,6 +1,6 @@
 # Guida – Gestione Pratiche e Workflow
 
-> (latest review 06-03-26)
+> (latest review 07-03-26)
 >
 > Destinatari: sviluppatori database, backend e analisti funzionali
 >
@@ -122,9 +122,10 @@ pratiche -------------------- note_pratiche
 Un **tipo prestazione** e' una macro-categoria di attivita' gestibile: ONBOARDING_CLIENTE, GESTIONE_ORDINE, RECLAMO, REVISIONE_CONTRATTO.
 
 * **categoria**: raggruppamento libero (es. UTILITIES, COMMERCIALE, AMMINISTRATIVO)
-* **flussi_vincolanti**: `true` = controllo sequenza/prerequisiti attivo, `false` = giornale senza vincoli
 
 Il catalogo e' **condiviso** tra tutti gli emittenti fiscali. La segregazione multi-company avviene sulla tabella `pratiche.pratiche` tramite `emittente_fiscale_id`.
+
+> Un tipo prestazione e' vincolante o libero non tramite un flag, ma tramite la configurazione dei prerequisiti. Se non esistono righe in `template_flussi_prerequisiti` per un tipo prestazione, i flussi si creano liberamente in qualsiasi ordine. La presenza di prerequisiti obbligatori e' il meccanismo che rende il workflow sequenziale.
 
 ### 2. I template flussi: la configurazione del workflow
 
@@ -161,8 +162,7 @@ Una **pratica** e' l'istanza concreta, la testata. Contiene:
 | `unita_organizzativa_id` | INTEGER | Reparto assegnato |
 | `pratica_padre_id` | BIGINT | Per sotto-pratiche (self-reference) |
 | `flusso_origine_id` | BIGINT | Tracciabilita' cross-pratica |
-| `canale_origine_id` | INTEGER | Sorgente esterna (NULL = interna) |
-| `solo_interna` | BOOLEAN | Se true, niente canali su flussi |
+| `canale_origine_id` | INTEGER | Sorgente esterna, informativo (NULL = creata internamente) |
 | `codice` | TEXT | Generato da trigger |
 | `descrizione` | TEXT | Descrizione libera |
 | `data_scadenza` | DATE | Scadenza prevista |
@@ -179,6 +179,14 @@ Un **flusso** e' una fase operativa dentro una pratica. Contiene:
 * `meta`: JSONB con dati estensibili specifici dell'istanza (default `{}`). Usato dagli handler Django per ricevere informazioni di contesto (vedi [Contratto handler](#contratto-handler))
 * `data_fine`: timestamp di completamento del flusso (impostato dal trigger al passaggio a COMPLETATO). Usato dai calcoli tempo per determinare la durata
 * `flusso_padre_id`: per albero di sotto-flussi (self-reference)
+
+### Canali e visibilita' esterna
+
+La visibilita' di un flusso verso l'esterno si configura interamente sul template, non sull'istanza pratica:
+
+* **`template_flussi.direzione`** (ENTRATA, USCITA, INTERNA): descrive il verso del flusso rispetto al canale
+* **`template_flussi_canali`** (M:N): associa i canali abilitati a ciascun template flusso. Un flusso senza associazioni e' de facto interno
+* **`canale_origine_id`** sulla pratica: campo informativo che registra da quale ingresso e' arrivata la richiesta (NULL = creata internamente). Usato per reportistica, non come vincolo operativo
 
 ---
 
@@ -205,9 +213,12 @@ SOSPESA     → APERTA
 DA_ESEGUIRE → IN_CORSO, ANNULLATO, SOSPESO
 IN_CORSO    → COMPLETATO, SOSPESO, ERRORE
 SOSPESO     → IN_CORSO, DA_ESEGUIRE
+ERRORE      → IN_CORSO (retry), ANNULLATO (abbandono)
 ```
 
 La transizione `DA_ESEGUIRE → SOSPESO` e' necessaria per la propagazione: quando una pratica viene sospesa, il trigger mette in SOSPESO anche i flussi DA_ESEGUIRE (oltre a quelli IN_CORSO). La transizione `SOSPESO → DA_ESEGUIRE` e' il percorso inverso: alla riattivazione, i flussi che erano DA_ESEGUIRE vengono ripristinati al loro stato originale.
+
+> **ERRORE** e' prodotto esclusivamente da handler automatici (mai da operatori). Non blocca la pratica: gli altri flussi continuano normalmente. La risoluzione richiede intervento esplicito: retry (→ IN_CORSO) o abbandono (→ ANNULLATO).
 
 Questo approccio ha tre vantaggi rispetto a validare le transizioni nel codice applicativo:
 
@@ -245,7 +256,9 @@ DA_ESEGUIRE --> IN_CORSO --> COMPLETATO (con esito)
     |   |          |        |
     |   +----------+--------+  (riattivazione ripristina stato originale)
     |              |
-    |              +--> ERRORE
+    |              +--> ERRORE --> IN_CORSO  (retry)
+    |                        |
+    |                        +--> ANNULLATO (abbandono)
     |
     +--> SOSPESO (propagazione da pratica)
     |
@@ -257,7 +270,7 @@ DA_ESEGUIRE --> IN_CORSO --> COMPLETATO (con esito)
 * Da IN_CORSO puo' essere **sospeso** (SOSPESO) e poi ripreso (torna IN_CORSO)
 * Da DA_ESEGUIRE puo' passare a **SOSPESO** per propagazione da sospensione pratica
 * Da SOSPESO puo' tornare a **DA_ESEGUIRE** (se era DA_ESEGUIRE prima della sospensione) o a **IN_CORSO** (se era IN_CORSO). Il trigger di riattivazione consulta il giornale per ripristinare lo stato originale
-* Da IN_CORSO puo' andare in **ERRORE** (errore tecnico/handler)
+* Da IN_CORSO puo' andare in **ERRORE** (errore tecnico/handler). ERRORE non blocca la pratica: gli altri flussi continuano. Da ERRORE si puo' fare **retry** (→ IN_CORSO) o **abbandonare** il flusso (→ ANNULLATO)
 * Da DA_ESEGUIRE puo' essere **ANNULLATO** direttamente
 * Al completamento con `auto = true`, il trigger DB puo' generare automaticamente nuove pratiche
 
@@ -695,7 +708,7 @@ I trigger standard (audit, lock codice_interno, attivo protection, tx_id, storic
 | `fn_check_prerequisiti_flusso` | check (pura) | Verifica prerequisiti, ritorna tabella con flag `soddisfatto` |
 | `fn_guard_prerequisiti_flusso` | guard (fail-fast) | RAISE se prerequisiti non soddisfatti |
 | `fn_genera_pratica_da_flusso` | operativa | Genera nuova pratica da flusso completato secondo regola |
-| `fn_calcola_tempo_netto_da_a` | calcolo (STABLE) | Calcola giorni netti tra due flussi, sottraendo le sospensioni pratica-level |
+| `fn_calcola_tempo_netto_da_a` | calcolo (STABLE) | Calcola giorni netti tra due flussi, sottraendo solo le sospensioni pratica-level (`flusso_id IS NULL`) |
 | `fn_valuta_tempo_esecuzione_da_a` | calcolo (STABLE) | Ritorna giorni_netti, giorni_esecuzione, giorni_rimanenti, stato_tempo (OK/WARNING/CRITICO/SFORATO) |
 
 > Per la documentazione dettagliata di ogni funzione e trigger function, vedi le pagine in `docs/it/dbzero/pratiche/manual/`.
@@ -904,8 +917,8 @@ Inserire seed data nelle tabelle catalogo:
 
 ```sql
 -- Tipo prestazione
-INSERT INTO pratiche.tipi_prestazione (codice, descrizione, categoria, flussi_vincolanti)
-VALUES ('RECLAMO', 'Gestione reclamo cliente', 'COMMERCIALE', true);
+INSERT INTO pratiche.tipi_prestazione (codice, descrizione, categoria)
+VALUES ('RECLAMO', 'Gestione reclamo cliente', 'COMMERCIALE');
 
 -- Template flussi (3 step con sequenza)
 INSERT INTO pratiche.template_flussi
@@ -1016,7 +1029,7 @@ Le funzionalita' implementate appartengono all'**anello infrastrutturale** (Anel
 
 ### Per configurare un nuovo tipo prestazione
 
-1. INSERT in `pratiche.tipi_prestazione` (codice, categoria, flussi_vincolanti)
+1. INSERT in `pratiche.tipi_prestazione` (codice, categoria)
 2. INSERT in `pratiche.template_flussi` per ogni step del workflow
 3. INSERT in `pratiche.template_flussi_prerequisiti` per il grafo di dipendenze
 4. (opzionale) INSERT in `pratiche.template_flussi_canali` per visibilita' esterna

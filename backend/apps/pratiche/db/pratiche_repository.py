@@ -38,7 +38,6 @@ class PraticheRepository:
         stato_codice_interno: str | None = None,
         tipo_prestazione_id: int | None = None,
         soggetto_id: str | None = None,
-        solo_interna: bool | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[PraticaRow], int]:
@@ -57,9 +56,6 @@ class PraticheRepository:
         if soggetto_id is not None:
             conditions.append("p.soggetto_id = %s")
             params.append(soggetto_id)
-        if solo_interna is not None:
-            conditions.append("p.solo_interna = %s")
-            params.append(solo_interna)
 
         where_clause = "WHERE " + " AND ".join(conditions)
 
@@ -80,7 +76,7 @@ class PraticheRepository:
                 p.soggetto_id, p.stato_id, p.priorita_id,
                 p.risorsa_umana_id, p.unita_organizzativa_id,
                 p.pratica_padre_id, p.flusso_origine_id,
-                p.canale_origine_id, p.solo_interna,
+                p.canale_origine_id,
                 p.codice, p.descrizione, p.data_scadenza,
                 p.meta, p.data_insert, p.user_insert
             FROM pratiche.pratiche p
@@ -109,7 +105,7 @@ class PraticheRepository:
                 p.soggetto_id, p.stato_id, p.priorita_id,
                 p.risorsa_umana_id, p.unita_organizzativa_id,
                 p.pratica_padre_id, p.flusso_origine_id,
-                p.canale_origine_id, p.solo_interna,
+                p.canale_origine_id,
                 p.codice, p.descrizione, p.data_scadenza,
                 p.meta, p.data_insert, p.user_insert
             FROM pratiche.pratiche p
@@ -130,9 +126,9 @@ class PraticheRepository:
                 emittente_fiscale_id, tipo_prestazione_id, soggetto_id,
                 stato_id, priorita_id, risorsa_umana_id,
                 unita_organizzativa_id, canale_origine_id,
-                solo_interna, descrizione, data_scadenza, meta
+                descrizione, data_scadenza, meta
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
             )
             RETURNING id
         """
@@ -145,7 +141,6 @@ class PraticheRepository:
             data.get("risorsa_umana_id"),
             data.get("unita_organizzativa_id"),
             data.get("canale_origine_id"),
-            data.get("solo_interna", False),
             data.get("descrizione"),
             data.get("data_scadenza"),
             json.dumps(data.get("meta", {})),
@@ -616,13 +611,12 @@ class PraticheRepository:
             "pratica_padre_id": None if r[8] is None else int(r[8]),
             "flusso_origine_id": None if r[9] is None else int(r[9]),
             "canale_origine_id": None if r[10] is None else int(r[10]),
-            "solo_interna": bool(r[11]),
-            "codice": r[12],
-            "descrizione": r[13],
-            "data_scadenza": r[14].isoformat() if r[14] is not None else None,
-            "meta": r[15] if isinstance(r[15], dict) else {},
-            "data_insert": r[16].isoformat() if r[16] is not None else "",
-            "user_insert": str(r[17]),
+            "codice": r[11],
+            "descrizione": r[12],
+            "data_scadenza": r[13].isoformat() if r[13] is not None else None,
+            "meta": r[14] if isinstance(r[14], dict) else {},
+            "data_insert": r[15].isoformat() if r[15] is not None else "",
+            "user_insert": str(r[16]),
         }
 
     @staticmethod

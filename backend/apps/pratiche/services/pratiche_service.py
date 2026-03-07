@@ -44,7 +44,6 @@ def crea_pratica(
     risorsa_umana_id: int | None = None,
     unita_organizzativa_id: int | None = None,
     canale_origine_id: int | None = None,
-    solo_interna: bool = False,
     descrizione: str | None = None,
     data_scadenza: str | None = None,
     meta: dict[str, Any] | None = None,
@@ -80,7 +79,6 @@ def crea_pratica(
         "risorsa_umana_id": risorsa_umana_id,
         "unita_organizzativa_id": unita_organizzativa_id,
         "canale_origine_id": canale_origine_id,
-        "solo_interna": solo_interna,
         "descrizione": descrizione,
         "data_scadenza": data_scadenza,
         "meta": meta or {},
@@ -161,7 +159,6 @@ def cerca_pratiche(
     stato_codice_interno: str | None = None,
     tipo_prestazione_id: int | None = None,
     soggetto_id: str | None = None,
-    solo_interna: bool | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[PraticaRow], int]:
@@ -171,7 +168,6 @@ def cerca_pratiche(
         stato_codice_interno=stato_codice_interno,
         tipo_prestazione_id=tipo_prestazione_id,
         soggetto_id=soggetto_id,
-        solo_interna=solo_interna,
         limit=limit,
         offset=offset,
     )

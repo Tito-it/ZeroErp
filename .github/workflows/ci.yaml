@@ -321,10 +321,10 @@ jobs:
               docker save zeroerp:${{ github.sha }} -o image.tar
 
           - name: Scan image for vulnerabilities (Trivy)
-            uses: aquasecurity/trivy-action@0.34.0
+            uses: aquasecurity/trivy-action@0.34.2
             with:
               input: image.tar
-              version: v0.68.1
+              version: v0.69.3
               format: table
               exit-code: 1
               ignore-unfixed: true

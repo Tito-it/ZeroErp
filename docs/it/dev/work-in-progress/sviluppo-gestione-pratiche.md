@@ -115,7 +115,6 @@ da `dbops.fn_run_automations()` — non servono migrazioni manuali.
 Catalogo dei tipi di prestazione. Macro-categorie di attivita' gestibili.
 
 - **categoria**: raggruppamento libero (es. UTILITIES, COMMERCIALE, AMMINISTRATIVO)
-- **flussi_vincolanti**: `true` = controllo sequenza/prerequisiti attivo, `false` = giornale senza vincoli
 - **pre_attivazione**: BOOLEAN NOT NULL DEFAULT true — la prestazione e' applicabile nella fase precedente all'attivazione del cliente/servizio
 - **post_attivazione**: BOOLEAN NOT NULL DEFAULT true — la prestazione e' applicabile nella fase successiva all'attivazione
 
@@ -208,8 +207,7 @@ Istanza concreta di una pratica. Testata.
 - **unita_organizzativa_id**: INTEGER — reparto assegnato (FK a `config.unita_organizzative`)
 - **pratica_padre_id**: BIGINT — per sotto-pratiche e pratiche collegate (self-reference)
 - **flusso_origine_id**: BIGINT — tracciabilita' cross-pratica: il flusso che ha generato questa pratica (FK differita a `pratiche.flussi`)
-- **canale_origine_id**: INTEGER — FK a `config.canali_pratiche`: sorgente esterna (NULL = creata internamente)
-- **solo_interna**: BOOLEAN NOT NULL DEFAULT false — se true, la pratica non abilita configurazione canali sui flussi
+- **canale_origine_id**: INTEGER — FK a `config.canali_pratiche`: sorgente esterna, informativo per reportistica (NULL = creata internamente)
 - **codice**: TEXT — codice pratica (generato da trigger)
 - **descrizione**: TEXT — descrizione libera
 - **data_scadenza**: DATE
@@ -979,10 +977,10 @@ ANNULLATA  → (terminale)
 #### Flusso
 
 ```text
-DA_ESEGUIRE  → IN_CORSO, ANNULLATO
+DA_ESEGUIRE  → IN_CORSO, ANNULLATO, SOSPESO
 IN_CORSO     → COMPLETATO, SOSPESO, ERRORE
 SOSPESO      → IN_CORSO, DA_ESEGUIRE
-ERRORE       → (terminale)
+ERRORE       → IN_CORSO (retry), ANNULLATO (abbandono)
 COMPLETATO   → (terminale)
 ANNULLATO    → (terminale)
 ```
@@ -1093,11 +1091,14 @@ Tabella `config.transizioni_stati_flussi_pratiche` (7 righe):
 | -- | - |
 | DA_ESEGUIRE | IN_CORSO |
 | DA_ESEGUIRE | ANNULLATO |
+| DA_ESEGUIRE | SOSPESO |
 | IN_CORSO | COMPLETATO |
 | IN_CORSO | SOSPESO |
 | IN_CORSO | ERRORE |
 | SOSPESO | IN_CORSO |
 | SOSPESO | DA_ESEGUIRE |
+| ERRORE | IN_CORSO |
+| ERRORE | ANNULLATO |
 
 ### 13.5 Messaggi errore
 
@@ -1333,73 +1334,83 @@ Il progetto usa gia' una funzione standard per la generazione di codici con sequ
 
 ## 16. Da Fare: Punti Aperti dalla Revisione della Guida Operativa
 
-> Stato: **da fare**. Emersi dalla revisione di `docs/it/guide/gestione-pratiche.md` (marzo 2026).
+> Stato: **FATTO** (07-03-2026). Decisioni prese e implementate. Emersi dalla revisione di `docs/it/guide/gestione-pratiche.md`.
 
-### 16.1 Stato ERRORE — meccanismo di retry
+### 16.1 Stato ERRORE — non terminale, con recovery
 
-Oggi lo stato `ERRORE` sui flussi e' **terminale**: non esistono transizioni in uscita
-in `config.transizioni_stati_flussi_pratiche`. Questo significa che un flusso in errore
-non puo' essere ritentato senza intervento diretto sul DB.
+**Decisione**: ERRORE e' uno stato **di attesa intervento**, non terminale.
+E' prodotto esclusivamente da handler automatici (mai da operatori).
+Non blocca la pratica: gli altri flussi continuano normalmente.
 
-**Da decidere e implementare:**
+Servono due transizioni in uscita:
 
-- Aggiungere la transizione `ERRORE → DA_ESEGUIRE` nella tabella config
-- Definire chi puo' effettuare il retry (operatore manuale? pgAgent automatico?)
-- Decidere se il retry resetta i campi di esecuzione (`data_inizio`, `data_fine`, `esito`)
-  o se mantiene lo storico nel giornale
-- Valutare se servono limiti al numero di retry (contatore tentativi)
+| Transizione | Semantica |
+| --- | --- |
+| `ERRORE → IN_CORSO` | Retry: l'operatore o un job riprende il flusso dopo aver risolto la causa |
+| `ERRORE → ANNULLATO` | Abbandono: il flusso viene scartato, la pratica prosegue |
 
-**Oggetti coinvolti:**
+**Implementato:**
 
-| Tipo | Oggetto |
-| ---- | ------- |
-| Seed data | Nuova riga in `config.transizioni_stati_flussi_pratiche` |
-| Trigger | Eventuale `trgfn_flussi_guard_retry` per validazione pre-retry |
-| Backend | Endpoint API retry + service logic |
-| Test pgTAP | Estendere test transizioni flussi |
+| Tipo | Oggetto | Stato |
+| ---- | ------- | ----- |
+| Seed data | 2 righe in `config.transizioni_stati_flussi_pratiche` (CSV) | FATTO |
+| Guida | Macchina a stati + ciclo di vita flusso | FATTO |
+| Test pgTAP | Estendere test transizioni flussi | Da fare |
 
-### 16.2 Guard di coerenza per `flussi_vincolanti`
+### 16.2 `flussi_vincolanti` — rimosso dal modello
 
-Quando `tipi_prestazione.flussi_vincolanti = false`, il tipo prestazione funziona
-in modalita' "solo giornale": i flussi vengono registrati ma i prerequisiti
-**non devono essere imposti**. Oggi pero' nulla impedisce di configurare prerequisiti
-su un template flusso appartenente a un tipo prestazione non vincolante.
+**Decisione**: il campo `flussi_vincolanti` su `tipi_prestazione` **non viene implementato**.
+Il concetto "workflow vincolante vs libero" e' gia' espresso interamente dalla configurazione
+dei prerequisiti:
 
-**Da implementare:**
+| Configurazione | Comportamento risultante |
+| --- | --- |
+| Tipo prestazione senza righe in `template_flussi_prerequisiti` | De facto libero: i flussi si creano in qualsiasi ordine |
+| Tipo prestazione con prerequisiti obbligatori | Vincolante: il guard blocca se i prerequisiti non sono soddisfatti |
+| Tipo prestazione con prerequisiti non obbligatori | Advisory: warning senza blocco |
 
-- Trigger guard su `template_flussi_prerequisiti` che impedisca INSERT/UPDATE
-  se il `tipo_prestazione` del template padre ha `flussi_vincolanti = false`
-- Messaggio errore dedicato in `config.messaggi_errore`
+Un flag separato sarebbe ridondante e non aggiunge potere espressivo.
+Il guard prerequisiti (`trgfn_flussi_guard_prerequisiti`) scatta solo per flussi template-based
+con prerequisiti configurati — se non ce ne sono, il workflow e' di fatto libero.
 
-**Oggetti coinvolti:**
+**FATTO**: menzioni rimosse dalla guida (catalogo, esempio SQL, checklist).
+Nessuna migrazione DB necessaria (il campo non esiste).
 
-| Tipo | Oggetto |
-| ---- | ------- |
-| Trigger function | `trgfn_template_flussi_prerequisiti_guard_vincolanti` |
-| Trigger | `trg_pratiche_template_flussi_prerequisiti_a10_guard_vincolanti_biu` |
-| Seed data | Messaggio errore |
-| Test pgTAP | Caso: INSERT prerequisito su tipo non vincolante → errore |
+### 16.3 `solo_interna` — rimosso dal modello
 
-### 16.3 Enforcement DB per `solo_interna`
+**Decisione**: il campo `pratiche.solo_interna` viene **rimosso** dal DB.
 
-Il campo `pratiche.solo_interna` (BOOLEAN, default false) indica che la pratica
-e' riservata alla gestione interna e non deve essere visibile al soggetto esterno.
-Oggi l'enforcement avviene **solo a livello applicativo** (Django).
+La visibilita' di un flusso verso l'esterno si configura interamente sul template,
+non sull'istanza pratica:
 
-**Da decidere:**
+- `template_flussi.direzione` (ENTRATA/USCITA/INTERNA) descrive il verso rispetto al canale
+- `template_flussi_canali` (M:N) abilita i canali per ogni template flusso
+- Un flusso senza associazioni in `template_flussi_canali` e' de facto interno
 
-- Confermare se l'enforcement resta solo applicativo (accettabile se il filtro
-  e' centralizzato nel repository/service Django)
-- Oppure aggiungere un guard DB che impedisca l'associazione di canali esterni
-  (es. `canale_origine_id` con canale di tipo "portale cliente") su pratiche `solo_interna = true`
+`canale_origine_id` sulla pratica resta come campo informativo: registra da quale
+ingresso e' arrivata la richiesta (NULL = creata internamente).
 
-Se si sceglie il guard DB:
+**Implementato:**
 
-| Tipo | Oggetto |
-| ---- | ------- |
-| Trigger function | `trgfn_pratiche_guard_solo_interna_canale` |
-| Trigger | `trg_pratiche_pratiche_a10_guard_solo_interna_canale_biu` |
-| Test pgTAP | Caso: pratica solo_interna + canale esterno → errore |
+| Tipo | Oggetto | Stato |
+| ---- | ------- | ----- |
+| Changeset | `migrations_v2/00_schema/pratiche/` | FATTO — `ALTER TABLE pratiche.pratiche DROP COLUMN solo_interna` |
+| Guida | Tabella campi pratica + sezione Canali | FATTO |
+| Backend | Vedi sezione 16.5 | FATTO |
+
+**Discovery per canale** (funzionalita' futura):
+
+```sql
+-- Tipi prestazione che accettano richieste da un canale specifico
+SELECT DISTINCT tp.*
+FROM pratiche.tipi_prestazione tp
+JOIN pratiche.template_flussi tf ON tf.tipo_prestazione_id = tp.id
+JOIN pratiche.template_flussi_canali tfc ON tfc.template_flusso_id = tf.id
+WHERE tfc.canale_id = :canale_id AND tf.direzione = 'ENTRATA';
+```
+
+Endpoint da aggiungere in fase successiva:
+`GET /api/v1/pratiche/tipi-prestazione/?canale_id=N&direzione=ENTRATA`
 
 ### 16.4 Endpoint generazione manuale flusso
 
@@ -1429,6 +1440,34 @@ dalle regole di generazione.
 | Service | Estensione `generazione_service` o metodo dedicato |
 | Permessi | Nuova azione processo o riuso di azione esistente |
 | Test | Test API + test service |
+
+### 16.5 Backend — rimozione `solo_interna` da tutti i layer
+
+**FATTO.** La colonna `pratiche.pratiche.solo_interna` rimossa dal DB (changeset creato)
+e da tutti i layer backend.
+
+**File modificati:**
+
+| File | Modifiche |
+| ---- | --------- |
+| `apps/pratiche/types.py` | Rimuovere campo `solo_interna: bool` da `PraticaRow` |
+| `apps/pratiche/services/pratiche_service.py` | Rimuovere parametro `solo_interna` da `crea_pratica()` e dalla dict passata al repository. Rimuovere parametro `solo_interna` da `cerca_pratiche()` e dal passaggio a `repo.list_pratiche()` |
+| `apps/pratiche/db/pratiche_repository.py` | Rimuovere parametro `solo_interna` da `list_pratiche()` e relativo filtro WHERE. Rimuovere `p.solo_interna` dalle SELECT in `list_pratiche()`, `get_pratica()`. Rimuovere `solo_interna` dalla INSERT in `create_pratica()` (colonna, placeholder, parametro). Aggiornare `_map_pratica_row()`: rimuovere `"solo_interna": bool(r[11])` e scalare gli indici successivi (da r[12]→r[11], r[13]→r[12], ecc.) |
+| `apps/pratiche/db/generazione_repository.py` | Rimuovere `p.solo_interna` dalla SELECT in `get_pratiche_generate_da_flusso()` (il mapper e' condiviso con `PraticheRepository._map_pratica_row`) |
+| `apps/pratiche/api/views.py` | Rimuovere `OpenApiParameter(name="solo_interna")` dalla lista GET. Rimuovere parsing `solo_interna_raw` dal metodo `get()`. Rimuovere passaggio `solo_interna=...` alla chiamata `cerca_pratiche()`. Rimuovere `"solo_interna": serializers.BooleanField(...)` dalla request POST. Rimuovere passaggio `solo_interna=...` alla chiamata `crea_pratica()` |
+| `apps/pratiche/tests/services/test_pratiche_service.py` | Rimuovere `"solo_interna": False` dal dict mock in `test_crea_pratica`. Rimuovere intero test `test_crea_pratica_solo_interna` e aggiornare l'indice test nel commento iniziale |
+| `apps/pratiche/tests/api/test_pratiche_api.py` | Rimuovere `"solo_interna": False` dal dict mock |
+| `scripts/smoke-test-pratiche.sh` | Rimuovere `"solo_interna": true` dal payload JSON |
+| `scripts/smoke-test-sospensioni.sh` | Rimuovere `"solo_interna": true` dal payload JSON |
+
+**Attenzione:** il mapper `_map_pratica_row` mappa le colonne per posizione (indice).
+Dopo la rimozione di `solo_interna` (che era all'indice 11), tutti gli indici successivi
+scalano di 1:
+
+```text
+Prima:  r[10]=canale_origine_id, r[11]=solo_interna, r[12]=codice, r[13]=descrizione, ...
+Dopo:   r[10]=canale_origine_id, r[11]=codice, r[12]=descrizione, r[13]=data_scadenza, ...
+```
 
 ---
 

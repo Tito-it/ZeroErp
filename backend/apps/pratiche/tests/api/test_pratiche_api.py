@@ -46,7 +46,6 @@ def _mock_pratica_row(pratica_id: int = 1) -> dict:
         "pratica_padre_id": None,
         "flusso_origine_id": None,
         "canale_origine_id": None,
-        "solo_interna": False,
         "codice": "P-001",
         "descrizione": "Test",
         "data_scadenza": None,

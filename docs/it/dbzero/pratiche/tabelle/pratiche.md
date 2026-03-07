@@ -15,7 +15,6 @@
 | pratica_padre_id | bigint | YES |  |
 | flusso_origine_id | bigint | YES |  |
 | canale_origine_id | integer | YES |  |
-| solo_interna | boolean | NO | false |
 | codice | text | YES |  |
 | descrizione | text | YES |  |
 | data_scadenza | date | YES |  |

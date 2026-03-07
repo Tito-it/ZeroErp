@@ -23,7 +23,6 @@ class PraticaRow(TypedDict):
     pratica_padre_id: int | None
     flusso_origine_id: int | None
     canale_origine_id: int | None
-    solo_interna: bool
     codice: str | None
     descrizione: str | None
     data_scadenza: str | None

@@ -169,8 +169,7 @@ UNIQUE: `(template_flusso_id, canale_id)` — no duplicati.
 | `unita_organizzativa_id` | INTEGER | `config.unita_organizzative(id)` |
 | `pratica_padre_id` | BIGINT | `pratiche.pratiche(id)` — gerarchia pratica |
 | `flusso_origine_id` | BIGINT | `pratiche.flussi(id)` — tracciabilita' cross-pratica: il flusso che ha generato questa pratica |
-| `canale_origine_id` | INTEGER | FK → `config.canali_pratiche(id)` — da quale sorgente esterna e' arrivata la richiesta (NULL = creata internamente) |
-| `solo_interna` | BOOLEAN NOT NULL DEFAULT false | Se true, la pratica e' solo interna e non abilita configurazione canali sui flussi |
+| `canale_origine_id` | INTEGER | FK → `config.canali_pratiche(id)` — sorgente esterna, informativo per reportistica (NULL = creata internamente) |
 | `codice` | TEXT | Codice pratica (generato da trigger) |
 | `descrizione` | TEXT | — |
 | `data_scadenza` | DATE | — |
@@ -373,7 +372,7 @@ Indici espliciti (non-FK): `ix_giornale_data_insert` (BTREE), `ix_giornale_azion
 | `test_trigger_giornale_flussi.sql` | Test: creazione flusso → entry giornale, cambio stato flusso → entry |
 | `test_trigger_guard_flussi.sql` | Test: insert flusso con prerequisiti mancanti → errore, insert con prerequisiti OK → successo |
 | `test_generazione_cross_pratica.sql` | Test: completamento flusso con regola auto=true → pratica generata con `flusso_origine_id` corretto, regola auto=false → nessuna generazione automatica |
-| `test_canali_flussi.sql` | Test: collegamento template_flussi ↔ canali, verifica UNIQUE constraint, filtro solo_interna |
+| `test_canali_flussi.sql` | Test: collegamento template_flussi ↔ canali, verifica UNIQUE constraint |
 
 ---
 
@@ -480,7 +479,7 @@ backend/apps/pratiche/
 
 **`services/pratiche_service.py`** — facade per operazioni su pratiche e flussi:
 
-- `crea_pratica(emittente_id, tipo_prestazione_codice, soggetto_id, solo_interna, ...)` — crea pratica con stato iniziale
+- `crea_pratica(emittente_id, tipo_prestazione_codice, soggetto_id, ...)` — crea pratica con stato iniziale
 - `aggiorna_pratica(pratica_id, data)` — aggiornamento campi
 - `cambia_stato_pratica(pratica_id, nuovo_stato)` — transizione di stato con validazione
 - `assegna_pratica(pratica_id, risorsa_umana_id, unita_organizzativa_id)` — assegnazione
@@ -598,7 +597,7 @@ backend/apps/pratiche/tests/
 
 | File | Test previsti |
 |------|--------------|
-| `test_pratiche_service.py` | Creazione pratica (con solo_interna true/false), cambio stato, assegnazione, errori su dati mancanti |
+| `test_pratiche_service.py` | Creazione pratica, cambio stato, assegnazione, errori su dati mancanti |
 | `test_pratiche_service_flussi.py` | Creazione flusso, avvio, completamento, verifica prerequisiti, dispatch handler, lista canali |
 | `test_generazione_service.py` | Generazione manuale OK, generazione con regola inesistente → errore, lista regole applicabili, lista pratiche generate |
 | `test_handler_registry.py` | Lookup handler_key esistente, handler_key mancante → errore |
