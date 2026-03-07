@@ -192,6 +192,12 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Configurazione mancante nel sistema.",
         ),
+        "E_VALIDATION_INPUT": ErrorPolicy(
+            code="E_VALIDATION_INPUT",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametro di input non valido.",
+        ),
         "E_INVALID_ID": ErrorPolicy(
             code="E_INVALID_ID",
             http_status=400,

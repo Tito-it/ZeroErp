@@ -161,8 +161,7 @@ do_curl POST "/api/v1/pratiche/" "{
     \"emittente_fiscale_id\": $EMITTENTE_FISCALE_ID,
     \"tipo_prestazione_id\": $TIPO_PRESTAZIONE_ID,
     \"priorita_id\": $PRIORITA_ID,
-    \"descrizione\": \"Smoke sospensioni $(date +%Y%m%d-%H%M%S)\",
-    \"solo_interna\": true
+    \"descrizione\": \"Smoke sospensioni $(date +%Y%m%d-%H%M%S)\"
 }"
 check "POST crea pratica" 200 ".data.pratica_id" || true
 PRATICA_ID="$EXTRACTED"

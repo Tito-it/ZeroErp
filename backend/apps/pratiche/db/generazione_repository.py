@@ -59,7 +59,7 @@ class GenerazioneRepository:
                 p.soggetto_id, p.stato_id, p.priorita_id,
                 p.risorsa_umana_id, p.unita_organizzativa_id,
                 p.pratica_padre_id, p.flusso_origine_id,
-                p.canale_origine_id, p.solo_interna,
+                p.canale_origine_id,
                 p.codice, p.descrizione, p.data_scadenza,
                 p.meta, p.data_insert, p.user_insert
             FROM pratiche.pratiche p

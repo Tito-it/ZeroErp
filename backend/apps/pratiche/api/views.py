@@ -57,7 +57,6 @@ class ApiPraticheList(APIView):
             OpenApiParameter(name="stato", type=str, required=False, description="Filtro codice_interno stato pratica."),
             OpenApiParameter(name="tipo_prestazione_id", type=int, required=False, description="Filtro tipo prestazione."),
             OpenApiParameter(name="soggetto_id", type=str, required=False, description="Filtro UUID soggetto."),
-            OpenApiParameter(name="solo_interna", type=bool, required=False, description="Filtro flag solo_interna."),
             OpenApiParameter(name="limit", type=int, required=False, description="Righe per pagina (default 50, max 200)."),
             OpenApiParameter(name="offset", type=int, required=False, description="Offset paginazione (default 0)."),
         ],
@@ -85,10 +84,6 @@ class ApiPraticheList(APIView):
         stato = qp.get("stato") or None
         tipo_prestazione_id = optional_int({"v": qp.get("tipo_prestazione_id")}, "v")
         soggetto_id = qp.get("soggetto_id") or None
-        solo_interna_raw = qp.get("solo_interna")
-        solo_interna = None
-        if solo_interna_raw is not None:
-            solo_interna = solo_interna_raw.lower() in ("true", "1")
         limit = optional_int({"v": qp.get("limit", "50")}, "v") or 50
         offset = optional_int({"v": qp.get("offset", "0")}, "v") or 0
 
@@ -97,7 +92,6 @@ class ApiPraticheList(APIView):
             stato_codice_interno=stato,
             tipo_prestazione_id=tipo_prestazione_id,
             soggetto_id=soggetto_id,
-            solo_interna=solo_interna,
             limit=limit,
             offset=offset,
         )
@@ -114,7 +108,6 @@ class ApiPraticheList(APIView):
                 "risorsa_umana_id": serializers.IntegerField(required=False, allow_null=True),
                 "unita_organizzativa_id": serializers.IntegerField(required=False, allow_null=True),
                 "canale_origine_id": serializers.IntegerField(required=False, allow_null=True),
-                "solo_interna": serializers.BooleanField(required=False),
                 "descrizione": serializers.CharField(required=False, allow_null=True),
                 "data_scadenza": serializers.DateField(required=False, allow_null=True),
                 "meta": serializers.DictField(required=False),
@@ -139,7 +132,6 @@ class ApiPraticheList(APIView):
                 risorsa_umana_id=optional_int(payload, "risorsa_umana_id"),
                 unita_organizzativa_id=optional_int(payload, "unita_organizzativa_id"),
                 canale_origine_id=optional_int(payload, "canale_origine_id"),
-                solo_interna=bool(payload.get("solo_interna", False)),
                 descrizione=payload.get("descrizione"),
                 data_scadenza=payload.get("data_scadenza"),
                 meta=payload.get("meta"),
