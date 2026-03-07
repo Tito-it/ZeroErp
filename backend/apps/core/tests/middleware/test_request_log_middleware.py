@@ -69,6 +69,17 @@ class RequestLogMiddlewareTests(TestCase):
 
     def setUp(self) -> None:
         self.middleware = RequestLogMiddleware(get_response=MagicMock())
+        # Forza abilitazione: il middleware deve essere attivo per i suoi test,
+        # anche se CI usa DJANGO_REQUEST_LOG_ENABLED=0.
+        patcher = patch(
+            "apps.core.middleware.request_log_middleware.settings"
+        )
+        self._mock_settings = patcher.start()
+        self._mock_settings.REQUEST_LOG_ENABLED = True
+        self._mock_settings.REQUEST_LOG_EXCLUDE_PATHS = (
+            "/health", "/api/docs/", "/api/schema/", "/static/", "/media/",
+        )
+        self.addCleanup(patcher.stop)
 
     # Scopo: Verifica che una request API venga loggata con INSERT.
     @patch(_GET_UA, return_value="TestBrowser/1.0")
@@ -114,10 +125,9 @@ class RequestLogMiddlewareTests(TestCase):
         self.assertFalse(hasattr(request, "_request_log_start"))
 
     # Scopo: Verifica che il middleware non loggi quando disabilitato via settings.
-    @patch("apps.core.middleware.request_log_middleware.settings")
     @patch(_CONNECTION)
-    def test_disabled_via_setting(self, mock_conn, mock_settings):
-        mock_settings.REQUEST_LOG_ENABLED = False
+    def test_disabled_via_setting(self, mock_conn):
+        self._mock_settings.REQUEST_LOG_ENABLED = False
         request = _mock_request()
         response = _mock_response()
 
