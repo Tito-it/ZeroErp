@@ -1,0 +1,26 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Rimozione colonna solo_interna da pratiche.pratiche
+# La visibilita' esterna si gestisce tramite template_flussi.direzione
+# e template_flussi_canali (M:N), non su istanza pratica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260307-01-alter-pratiche-drop-solo-interna-mctit.yaml
+
+  - changeSet:
+      id: 20260307-01-alter-pratiche-drop-solo-interna
+      author: mctit
+      failOnError: true
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: pratiche
+            tableName: pratiche
+            columnName: solo_interna
+      changes:
+        - dropColumn:
+            schemaName: pratiche
+            tableName: pratiche
+            columnName: solo_interna
