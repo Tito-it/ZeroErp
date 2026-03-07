@@ -187,6 +187,8 @@ jobs:
 
       - name: Django tests
         working-directory: ./backend
+        env:
+          DJANGO_REQUEST_LOG_ENABLED: "0"
         run: |
           source .venv/bin/activate
           python manage.py test
