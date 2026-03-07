@@ -11,27 +11,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from django.http import HttpRequest
-
 from apps.core.db.session_audit_repository import SessionAuditRepository
-from apps.core.services.request_context import get_request_id
+from apps.core.services.request_context import get_client_ip, get_request_id, get_user_agent
 
 logger = logging.getLogger(__name__)
-
-
-# Scopo: Estrae l'IP del client dalla request, gestendo proxy (X-Forwarded-For).
-def _get_client_ip(request: HttpRequest) -> str | None:
-    xff = request.META.get("HTTP_X_FORWARDED_FOR")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR")
-
-
-# Scopo: Estrae lo User-Agent dalla request.
-def _get_user_agent(request: HttpRequest) -> str | None:
-    ua = request.META.get("HTTP_USER_AGENT")
-    # Tronca a 500 caratteri per evitare inserimenti anomali.
-    return ua[:500] if ua else None
 
 
 # Scopo: Registra un evento LOGIN nella tabella sessioni_utente.
@@ -86,8 +69,8 @@ def _log_event(
             auth_user_id=auth_user_id,
             evento=evento,
             jti=jti,
-            ip_address=_get_client_ip(request),
-            user_agent=_get_user_agent(request),
+            ip_address=get_client_ip(request),
+            user_agent=get_user_agent(request),
             request_id=get_request_id(),
             dettaglio=dettaglio,
         )

@@ -24,6 +24,9 @@ from unittest.mock import MagicMock, patch
 from apps.core.middleware.request_log_middleware import RequestLogMiddleware, _extract_error_code
 
 _CONNECTION = "apps.core.middleware.request_log_middleware.connection"
+_GET_REQ_ID = "apps.core.middleware.request_log_middleware.get_request_id"
+_GET_IP = "apps.core.middleware.request_log_middleware.get_client_ip"
+_GET_UA = "apps.core.middleware.request_log_middleware.get_user_agent"
 
 
 def _mock_request(
@@ -31,20 +34,16 @@ def _mock_request(
     method: str = "GET",
     user_id: int | None = 1,
     authenticated: bool = True,
-    ip: str = "192.168.1.1",
-    user_agent: str = "TestBrowser/1.0",
-    request_id: str | None = "req-abc-123",
 ) -> MagicMock:
     """Scopo: Crea un mock HttpRequest con attributi realistici."""
     request = MagicMock(spec=[])
     request.path = path
     request.method = method
     request.META = {
-        "REMOTE_ADDR": ip,
-        "HTTP_USER_AGENT": user_agent,
+        "REMOTE_ADDR": "192.168.1.1",
+        "HTTP_USER_AGENT": "TestBrowser/1.0",
         "QUERY_STRING": "page=1",
     }
-    request.request_id = request_id
     if authenticated and user_id is not None:
         user = MagicMock()
         user.id = user_id
@@ -70,10 +69,24 @@ class RequestLogMiddlewareTests(TestCase):
 
     def setUp(self) -> None:
         self.middleware = RequestLogMiddleware(get_response=MagicMock())
+        # Forza abilitazione: il middleware deve essere attivo per i suoi test,
+        # anche se CI usa DJANGO_REQUEST_LOG_ENABLED=0.
+        patcher = patch(
+            "apps.core.middleware.request_log_middleware.settings"
+        )
+        self._mock_settings = patcher.start()
+        self._mock_settings.REQUEST_LOG_ENABLED = True
+        self._mock_settings.REQUEST_LOG_EXCLUDE_PATHS = (
+            "/health", "/api/docs/", "/api/schema/", "/static/", "/media/",
+        )
+        self.addCleanup(patcher.stop)
 
     # Scopo: Verifica che una request API venga loggata con INSERT.
+    @patch(_GET_UA, return_value="TestBrowser/1.0")
+    @patch(_GET_IP, return_value="192.168.1.1")
+    @patch(_GET_REQ_ID, return_value="req-abc-123")
     @patch(_CONNECTION)
-    def test_api_request_logged(self, mock_conn):
+    def test_api_request_logged(self, mock_conn, _rid, _ip, _ua):
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -112,10 +125,9 @@ class RequestLogMiddlewareTests(TestCase):
         self.assertFalse(hasattr(request, "_request_log_start"))
 
     # Scopo: Verifica che il middleware non loggi quando disabilitato via settings.
-    @patch("apps.core.middleware.request_log_middleware.settings")
     @patch(_CONNECTION)
-    def test_disabled_via_setting(self, mock_conn, mock_settings):
-        mock_settings.REQUEST_LOG_ENABLED = False
+    def test_disabled_via_setting(self, mock_conn):
+        self._mock_settings.REQUEST_LOG_ENABLED = False
         request = _mock_request()
         response = _mock_response()
 
@@ -123,8 +135,11 @@ class RequestLogMiddlewareTests(TestCase):
         self.assertFalse(hasattr(request, "_request_log_start"))
 
     # Scopo: Verifica che la durata venga calcolata e passata come intero.
+    @patch(_GET_UA, return_value="TestBrowser/1.0")
+    @patch(_GET_IP, return_value="192.168.1.1")
+    @patch(_GET_REQ_ID, return_value="req-abc-123")
     @patch(_CONNECTION)
-    def test_duration_calculated(self, mock_conn):
+    def test_duration_calculated(self, mock_conn, _rid, _ip, _ua):
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -142,8 +157,11 @@ class RequestLogMiddlewareTests(TestCase):
         self.assertGreaterEqual(duration_ms, 0)
 
     # Scopo: Verifica che utente anonimo venga loggato con auth_user_id NULL.
+    @patch(_GET_UA, return_value=None)
+    @patch(_GET_IP, return_value="192.168.1.1")
+    @patch(_GET_REQ_ID, return_value=None)
     @patch(_CONNECTION)
-    def test_anonymous_user_logged_with_null_user(self, mock_conn):
+    def test_anonymous_user_logged_with_null_user(self, mock_conn, _rid, _ip, _ua):
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -171,8 +189,11 @@ class RequestLogMiddlewareTests(TestCase):
         self.assertEqual(code, "E_INVALID_ID")
 
     # Scopo: Verifica che errori DB vengano gestiti silenziosamente.
+    @patch(_GET_UA, return_value="TestBrowser/1.0")
+    @patch(_GET_IP, return_value="192.168.1.1")
+    @patch(_GET_REQ_ID, return_value=None)
     @patch(_CONNECTION)
-    def test_db_error_silent(self, mock_conn):
+    def test_db_error_silent(self, mock_conn, _rid, _ip, _ua):
         mock_cursor = MagicMock()
         mock_cursor.execute.side_effect = RuntimeError("DB down")
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)

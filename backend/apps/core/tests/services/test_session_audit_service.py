@@ -21,6 +21,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from apps.core.services import session_audit_service
+from apps.core.services.request_context import get_client_ip, get_user_agent
 
 _REPO = "apps.core.services.session_audit_service.SessionAuditRepository"
 _GET_REQ_ID = "apps.core.services.session_audit_service.get_request_id"
@@ -100,20 +101,20 @@ class SessionAuditServiceTests(TestCase):
     # Scopo: Verifica che l'IP venga estratto da X-Forwarded-For.
     def test_get_client_ip_from_xff(self):
         request = _mock_request(xff="10.0.0.1, 10.0.0.2")
-        ip = session_audit_service._get_client_ip(request)
+        ip = get_client_ip(request)
         self.assertEqual(ip, "10.0.0.1")
 
     # Scopo: Verifica fallback su REMOTE_ADDR.
     def test_get_client_ip_from_remote_addr(self):
         request = _mock_request(ip="172.16.0.1")
-        ip = session_audit_service._get_client_ip(request)
+        ip = get_client_ip(request)
         self.assertEqual(ip, "172.16.0.1")
 
     # Scopo: Verifica troncamento User-Agent a 500 caratteri.
     def test_get_user_agent_truncated(self):
         long_ua = "A" * 600
         request = _mock_request(user_agent=long_ua)
-        ua = session_audit_service._get_user_agent(request)
+        ua = get_user_agent(request)
         self.assertEqual(len(ua), 500)
 
     # Scopo: Verifica che errori DB vengano gestiti silenziosamente (no eccezione).

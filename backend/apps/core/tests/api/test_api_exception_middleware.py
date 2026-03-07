@@ -46,7 +46,7 @@ urlpatterns = [
 ]
 
 
-@override_settings(ROOT_URLCONF=__name__)
+@override_settings(ROOT_URLCONF=__name__, REQUEST_LOG_ENABLED=False)
 class ApiExceptionMiddlewareTests(SimpleTestCase):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
