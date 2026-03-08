@@ -14,16 +14,16 @@
                     ┌─────────────────────────────────────────────┐
                     │           ANELLO 3 — PROCESSI               │
                     │                                             │
-                    │   vendite    acquisti    magazzino           │
+                    │   vendite    acquisti    magazzino          │
                     │   pagamenti  contabilita                    │
                     │                                             │
                     │  ┌───────────────────────────────────────┐  │
                     │  │    ANELLO 2 — ORCHESTRAZIONE          │  │
                     │  │                                       │  │
-                    │  │          pratiche                      │  │
-                    │  │    (workflow, giornale,                │  │
-                    │  │     generazione, handler,              │  │
-                    │  │     sospensioni, calcoli tempo)        │  │
+                    │  │          pratiche                     │  │
+                    │  │    (workflow, giornale,               │  │
+                    │  │     generazione, handler,             │  │
+                    │  │     sospensioni, calcoli tempo)       │  │
                     │  │                                       │  │
                     │  │  ┌─────────────────────────────────┐  │  │
                     │  │  │  ANELLO 1 — DATI BASE           │  │  │
@@ -34,7 +34,7 @@
                     │  │  │  │  ANELLO 0 — NUCLEO        │  │  │  │
                     │  │  │  │                           │  │  │  │
                     │  │  │  │  core (infrastruttura)    │  │  │  │
-                    │  │  │  │  dbops, script             │  │  │  │
+                    │  │  │  │  dbops, script            │  │  │  │
                     │  │  │  │                           │  │  │  │
                     │  │  │  └───────────────────────────┘  │  │  │
                     │  │  └─────────────────────────────────┘  │  │
@@ -50,13 +50,13 @@
 
 > Il protocollo operativo del sistema. Si tocca solo per correggere limiti reali.
 
-| Componente | Tipo | Stato | Descrizione |
-|---|---|---|---|
-| `core` | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling, tracciamento processi/job, audit sessioni, request log |
-| `dbops` | Schema DB | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes, audit_log, sessioni_utente, request_log |
-| `script` | Schema DB | Operativo | fn_log_and_raise_error, viste e funzioni riusabili |
-| `public` | Schema DB | Operativo | version_info |
-| `maintenance` | Schema DB | Operativo | Job schedulati pgAgent, job_run_log |
+| Componente    | Tipo       | Stato     | Descrizione                                                                                                                              |
+| ------------- | ---------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `core`        | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling, tracciamento processi/job, audit sessioni, request log |
+| `dbops`       | Schema DB  | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes, audit_log, sessioni_utente, request_log                  |
+| `script`      | Schema DB  | Operativo | fn_log_and_raise_error, viste e funzioni riusabili                                                                                       |
+| `public`      | Schema DB  | Operativo | version_info                                                                                                                             |
+| `maintenance` | Schema DB  | Operativo | Job schedulati pgAgent, job_run_log                                                                                                      |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -75,11 +75,11 @@
 
 Implementato il 6 marzo 2026 (vedi [Audit-logging-sessionii-request-token.md](dev/work-in-progress/Audit-logging-sessionii-request-token.md)):
 
-| Capacita' | Componente DB | Componente Backend | Stato |
-| --- | --- | --- | --- |
-| Audit sessioni (login/refresh) | `dbops.sessioni_utente` | `session_audit_service` + `AuditTokenObtainPairView` / `AuditTokenRefreshView` | Operativo |
-| Request logging (chi chiama cosa) | `dbops.request_log` | `RequestLogMiddleware` | Operativo |
-| Token blacklist e revoca | SimpleJWT `token_blacklist` | Settings `ROTATE_REFRESH_TOKENS` + `BLACKLIST_AFTER_ROTATION` | Operativo |
+| Capacita'                         | Componente DB               | Componente Backend                                                             | Stato     |
+| --------------------------------- | --------------------------- | ------------------------------------------------------------------------------ | --------- |
+| Audit sessioni (login/refresh)    | `dbops.sessioni_utente`     | `session_audit_service` + `AuditTokenObtainPairView` / `AuditTokenRefreshView` | Operativo |
+| Request logging (chi chiama cosa) | `dbops.request_log`         | `RequestLogMiddleware`                                                         | Operativo |
+| Token blacklist e revoca          | SimpleJWT `token_blacklist` | Settings `ROTATE_REFRESH_TOKENS` + `BLACKLIST_AFTER_ROTATION`                  | Operativo |
 
 Estensioni non-breaking: nuove tabelle in `dbops`, nuovo middleware in `core`, override view JWT. Nessun contratto esistente modificato. Gli anelli esterni ne beneficiano automaticamente senza alcuna modifica al proprio codice.
 
@@ -93,17 +93,27 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 
 > Entita' di riferimento condivise da tutti i processi. Vocabolario comune del sistema.
 
-| Componente | Tipo | DB | Backend | Descrizione |
-|---|---|---|---|---|
-| `config` | App Django | Operativo | Operativo | Stati, nazioni, UO, termini pagamento, priorita', canali |
-| `anagrafiche` | App Django | Operativo | Operativo | Soggetti, indirizzi, contatti, risorse umane, emittenti fiscali |
-| `catalogo` | App Django | Operativo | Operativo | Articoli, UoM, listini, distinte base |
+| Componente    | Tipo       | DB        | Backend   | Descrizione                                                                            |
+| ------------- | ---------- | --------- | --------- | -------------------------------------------------------------------------------------- |
+| `config`      | App Django | Operativo | Operativo | Stati, nazioni, UO, termini pagamento, priorita', canali; policy operative trasversali |
+| `anagrafiche` | App Django | Operativo | Operativo | Soggetti, indirizzi, contatti, risorse umane, emittenti fiscali                        |
+| `catalogo`    | App Django | Operativo | Operativo | Articoli, UoM, listini, distinte base                                                  |
 
 ### Cosa fornisce agli anelli esterni
 
 - Entita' master referenziate via FK: soggetti, emittenti, risorse umane
 - Tabelle config condivise: stati (doc fiscale, pratiche, flussi), priorita', canali
 - Lookup e decodifiche centralizzate
+- **Policy operative trasversali**: configurazioni che governano il comportamento del sistema su piu' domini e non appartengono a nessun dominio specifico (es. `user_emittenti_fiscali` — ambito operativo per emittente)
+
+### Regola di posizionamento in `config`
+
+`config` e' l'unico schema di Anello 1 con natura cross-schema. Ospita due categorie distinte:
+
+1. **Cataloghi condivisi**: dati di riferimento statici usati come vocabolario comune (stati, priorita', canali, UO, termini pagamento)
+2. **Policy operative trasversali**: configurazioni che descrivono regole di governo applicabili a piu' processi, quando non esiste uno schema di dominio piu' appropriato
+
+Una tabella appartiene alla seconda categoria se: (a) non descrive un'entita' di business ma una regola di visibilita' o operativita', e (b) la regola vale trasversalmente su piu' schemi di Anello 3. In assenza di uno schema dedicato, `config` e' la collocazione meno artificiale — non `dbops` (infrastruttura tecnica) ne' `anagrafiche` (entita' anagrafiche).
 
 ### Stabilita'
 
@@ -115,8 +125,8 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 
 > Motore trasversale che gli anelli esterni usano per tracciare, orchestrare e automatizzare.
 
-| Componente | Tipo | DB | Backend | Descrizione |
-|---|---|---|---|---|
+| Componente | Tipo       | DB        | Backend   | Descrizione                                                                                                                          |
+| ---------- | ---------- | --------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `pratiche` | App Django | Operativo | Operativo | Workflow engine, giornale di bordo, generazione cross-pratica, handler dispatch, sospensioni, calcoli tempo, macchina a stati rigida |
 
 ### Cosa fornisce agli anelli esterni
@@ -142,16 +152,16 @@ Non e' un processo di business specifico (come vendite o acquisti). E' l'**infra
 
 ### Stato sviluppo dettagliato
 
-| Fase | Stato | Riferimento |
-|---|---|---|
-| DB-1..DB-7 | FATTO | Tabelle, funzioni, trigger, seed, test pgTAP |
-| BE-1 Setup app | FATTO | Directory, apps.py, types.py, models.py |
-| BE-2 Repository | FATTO | pratiche_repository.py, generazione_repository.py |
-| BE-3 Services | FATTO | pratiche_service.py, generazione_service.py, handler_registry.py |
-| BE-4 API | FATTO | views.py, urls_v1.py, 19 endpoint REST |
-| BE-5 Test | FATTO | 90 test (55 service + 35 API) con mock |
-| BE-6 Sospensioni + Calcoli | FATTO | Service, repository, API, 26 test unitari, 18 smoke test curl |
-| BE-7 Macchina a stati | FATTO | Transizioni validate da trigger DB (config-driven) |
+| Fase                       | Stato | Riferimento                                                      |
+| -------------------------- | ----- | ---------------------------------------------------------------- |
+| DB-1..DB-7                 | FATTO | Tabelle, funzioni, trigger, seed, test pgTAP                     |
+| BE-1 Setup app             | FATTO | Directory, apps.py, types.py, models.py                          |
+| BE-2 Repository            | FATTO | pratiche_repository.py, generazione_repository.py                |
+| BE-3 Services              | FATTO | pratiche_service.py, generazione_service.py, handler_registry.py |
+| BE-4 API                   | FATTO | views.py, urls_v1.py, 19 endpoint REST                           |
+| BE-5 Test                  | FATTO | 90 test (55 service + 35 API) con mock                           |
+| BE-6 Sospensioni + Calcoli | FATTO | Service, repository, API, 26 test unitari, 18 smoke test curl    |
+| BE-7 Macchina a stati      | FATTO | Transizioni validate da trigger DB (config-driven)               |
 
 Documentazione backend: [docs/it/backend/pratiche/index.md](backend/pratiche/index.md)
 
@@ -163,14 +173,14 @@ Piano esecutivo: [piano-gestione-pratiche.md](dev/work-in-progress/piano-gestion
 
 > Cicli di business che usano anelli interni. Ogni processo e' autonomo ma condivide vocabolario e infrastruttura.
 
-| Componente | Tipo | DB | Backend | Descrizione |
-|---|---|---|---|---|
-| `vendite` | App Django | Operativo | Operativo | Ciclo attivo: preventivi, ordini, DDT, fatture, pipeline fatturazione, lotti, commesse |
-| `acquisti` | App Django | Operativo | Stub | Ciclo passivo: richieste offerta, ordini, DDT, fatture |
-| `magazzino` | App Django | Operativo | Stub | Movimenti, giacenze, lotti, seriali |
-| `pagamenti` | App Django | Operativo | Stub | Scadenze, riconciliazioni |
-| `contabilita` | App Django | Operativo | Stub | Piano conti, registrazioni, partite |
-| `storico` | App Django | Operativo | Stub | Audit temporale, storicizzazione |
+| Componente    | Tipo       | DB        | Backend   | Descrizione                                                                            |
+| ------------- | ---------- | --------- | --------- | -------------------------------------------------------------------------------------- |
+| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi, ordini, DDT, fatture, pipeline fatturazione, lotti, commesse |
+| `acquisti`    | App Django | Operativo | Stub      | Ciclo passivo: richieste offerta, ordini, DDT, fatture                                 |
+| `magazzino`   | App Django | Operativo | Stub      | Movimenti, giacenze, lotti, seriali                                                    |
+| `pagamenti`   | App Django | Operativo | Stub      | Scadenze, riconciliazioni                                                              |
+| `contabilita` | App Django | Operativo | Stub      | Piano conti, registrazioni, partite                                                    |
+| `storico`     | App Django | Operativo | Stub      | Audit temporale, storicizzazione                                                       |
 
 ### Dipendenze verso anelli interni
 
@@ -198,16 +208,16 @@ I processi **massivi** (lotto fatturazione, import batch) mantengono la propria 
 
 ### Stato sviluppo vendite (app leader)
 
-| Area | Stato |
-|---|---|
-| Pipeline fatturazione | Operativo |
-| Lotti massivi/giornalieri | Operativo |
-| Registry task DB multi-dominio | Operativo |
-| Dispatch task con implementation_key | Operativo |
-| Runtime task tracing | Operativo |
-| Builder XML SDI | In corso (payload pronto, generazione XML da fare) |
-| Persistenza esito SDI | Da fare |
-| Commesse (push, orchestrator, handlers) | Operativo |
+| Area                                    | Stato                                              |
+| --------------------------------------- | -------------------------------------------------- |
+| Pipeline fatturazione                   | Operativo                                          |
+| Lotti massivi/giornalieri               | Operativo                                          |
+| Registry task DB multi-dominio          | Operativo                                          |
+| Dispatch task con implementation_key    | Operativo                                          |
+| Runtime task tracing                    | Operativo                                          |
+| Builder XML SDI                         | In corso (payload pronto, generazione XML da fare) |
+| Persistenza esito SDI                   | Da fare                                            |
+| Commesse (push, orchestrator, handlers) | Operativo                                          |
 
 ---
 
@@ -228,6 +238,8 @@ contabilita      usa     usa       -        -     (futuro)      -
 ```
 
 Nessuna dipendenza inversa. Nessuna dipendenza laterale tra processi di anello 3.
+
+Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — vendite usa `core` e `config` senza passare per `pratiche`. Questo non viola la direzione delle dipendenze, sempre dall'esterno verso l'interno: descrive semplicemente come certi tipi di informazione attraversano il tronco (la linfa, nella metafora del vocabolario).
 
 ---
 
