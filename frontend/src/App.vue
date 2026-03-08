@@ -1,12 +1,10 @@
 <script setup>
-import Button from 'primevue/button'
+import Toast from 'primevue/toast'
+import ConfirmDialog from 'primevue/confirmdialog'
 </script>
 
 <template>
-  <div style="padding: 2rem">
-    <h1>ZeroERP</h1>
-    <Button label="Funziona!" icon="pi pi-check" />
-  </div>
+  <Toast />
+  <ConfirmDialog />
+  <router-view />
 </template>
-
-<style scoped></style>

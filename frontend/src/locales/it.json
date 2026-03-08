@@ -24,7 +24,8 @@
     "acquisti": "Acquisti",
     "magazzino": "Magazzino",
     "pagamenti": "Pagamenti",
-    "contabilita": "Contabilità"
+    "contabilita": "Contabilità",
+    "collapse": "Comprimi"
   },
   "auth": {
     "username": "Username",
@@ -38,7 +39,17 @@
     "save_error": "Errore durante il salvataggio",
     "delete_success": "Eliminazione completata",
     "delete_error": "Errore durante l'eliminazione",
-    "generic_error": "Si è verificato un errore"
+    "generic_error": "Si è verificato un errore",
+    "network_error": "Impossibile contattare il server. Verificare la connessione.",
+    "timeout_error": "Il server non ha risposto in tempo. Riprovare."
+  },
+  "pagination": {
+    "page_of": "Pagina {page} di {total}",
+    "go_to_page": "Vai alla pagina",
+    "rows_per_page": "Righe per pagina"
+  },
+  "home": {
+    "welcome": "Benvenuto in ZeroERP"
   },
   "confirm": {
     "delete_title": "Conferma eliminazione",
