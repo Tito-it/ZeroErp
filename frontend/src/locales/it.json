@@ -1,0 +1,47 @@
+{
+  "common": {
+    "save": "Salva",
+    "cancel": "Annulla",
+    "new": "Nuovo",
+    "edit": "Modifica",
+    "delete": "Elimina",
+    "view": "Visualizza",
+    "search": "Cerca",
+    "confirm": "Conferma",
+    "yes": "Sì",
+    "no": "No",
+    "loading": "Caricamento...",
+    "no_results": "Nessun risultato trovato",
+    "required_field": "Campo obbligatorio"
+  },
+  "nav": {
+    "home": "Home",
+    "config": "Configurazione",
+    "anagrafiche": "Anagrafiche",
+    "catalogo": "Catalogo",
+    "pratiche": "Pratiche",
+    "vendite": "Vendite",
+    "acquisti": "Acquisti",
+    "magazzino": "Magazzino",
+    "pagamenti": "Pagamenti",
+    "contabilita": "Contabilità"
+  },
+  "auth": {
+    "username": "Username",
+    "password": "Password",
+    "login": "Accedi",
+    "logout": "Esci",
+    "login_error": "Credenziali non valide"
+  },
+  "notifications": {
+    "save_success": "Salvataggio completato",
+    "save_error": "Errore durante il salvataggio",
+    "delete_success": "Eliminazione completata",
+    "delete_error": "Errore durante l'eliminazione",
+    "generic_error": "Si è verificato un errore"
+  },
+  "confirm": {
+    "delete_title": "Conferma eliminazione",
+    "delete_message": "Sei sicuro di voler eliminare {name}? L'operazione non può essere annullata."
+  }
+}

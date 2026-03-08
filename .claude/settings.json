@@ -6,7 +6,8 @@
       "Bash(grep -l \"idempotency\\\\|claim_or_replay\" /home/tid/software/ZeroErp/backend/apps/vendite/tests/api/*.py)",
       "Bash(python3 scripts/gen_master_autogen.py)",
       "Bash(./manage-test.sh apps.core.tests.services.test_permissions_resolver -v 2)",
-      "Bash(scripts/testpgtap.sh db/pgtap/script/test-permessi-fn-check-emittente-scope.sql)"
+      "Bash(scripts/testpgtap.sh db/pgtap/script/test-permessi-fn-check-emittente-scope.sql)",
+      "Bash(wc -l /home/tid/apps/ZeroErp/backend/apps/*/api/views.py)"
     ]
   }
 }

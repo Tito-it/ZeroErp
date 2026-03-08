@@ -20,8 +20,9 @@ Tutti i componenti adottati provengono da ecosistemi maturi, ampiamente supporta
 | **PostgreSQL**  | 18+       | PostgreSQL License |
 | **Liquibase**   | 5.x (OSS) | Apache License 2.0 |
 | **Vue 3**       | 3.x       | MIT License        |
-| **Node / Vite** | 18+/5.x   | MIT License        |
-| **MkDocs**      | latest    | BSD License        |
+| **PrimeVue**    | 4.x       | MIT License        |
+| **Node / Vite** | 24+/7.x   | MIT License        |
+| **Zensical**    | latest    | MIT License        |
 | **Docker CE**   | latest    | Apache 2.0 / MIT   |
 
 Tutti i componenti sono impiegati in conformità con le rispettive licenze.

@@ -1,0 +1,47 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "new": "New",
+    "edit": "Edit",
+    "delete": "Delete",
+    "view": "View",
+    "search": "Search",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "loading": "Loading...",
+    "no_results": "No results found",
+    "required_field": "Required field"
+  },
+  "nav": {
+    "home": "Home",
+    "config": "Configuration",
+    "anagrafiche": "Master Data",
+    "catalogo": "Catalogue",
+    "pratiche": "Cases",
+    "vendite": "Sales",
+    "acquisti": "Purchases",
+    "magazzino": "Warehouse",
+    "pagamenti": "Payments",
+    "contabilita": "Accounting"
+  },
+  "auth": {
+    "username": "Username",
+    "password": "Password",
+    "login": "Login",
+    "logout": "Logout",
+    "login_error": "Invalid credentials"
+  },
+  "notifications": {
+    "save_success": "Saved successfully",
+    "save_error": "Error while saving",
+    "delete_success": "Deleted successfully",
+    "delete_error": "Error while deleting",
+    "generic_error": "An error occurred"
+  },
+  "confirm": {
+    "delete_title": "Confirm deletion",
+    "delete_message": "Are you sure you want to delete {name}? This action cannot be undone."
+  }
+}
