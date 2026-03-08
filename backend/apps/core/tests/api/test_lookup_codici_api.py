@@ -21,6 +21,8 @@ Indice test eseguiti:
 12) CoreLookupCodiciApiTests.test_lookup_order_col_invalido
 13) CoreLookupCodiciApiTests.test_lookup_order_dir_invalido
 14) CoreLookupCodiciApiTests.test_lookup_lista_vuota_ok
+15) CoreLookupCodiciApiTests.test_lookup_page_non_numerica
+16) CoreLookupCodiciApiTests.test_lookup_page_size_non_numerica
 """
 
 from unittest.mock import Mock, patch
@@ -177,3 +179,19 @@ class CoreLookupCodiciApiTests(SimpleTestCase):
         kwargs = mocked_list.call_args.kwargs
         self.assertEqual(kwargs["search"], "xyz")
         self.assertIsNone(kwargs.get("__nonexistent__"))
+
+    # Scopo: Verifica che page=abc (non numerico) restituisce 400.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_lookup_page_non_numerica(self, _mock_auth):
+        response = self.client.get(_URL + "?rel=config.stati_sdi&page=abc")
+        self.assertEqual(response.status_code, 400)
+        body = response.json()["error"]
+        self.assertEqual(body["code"], "E_VALIDATION_INPUT")
+
+    # Scopo: Verifica che page_size=abc (non numerico) restituisce 400.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_lookup_page_size_non_numerica(self, _mock_auth):
+        response = self.client.get(_URL + "?rel=config.stati_sdi&page_size=abc")
+        self.assertEqual(response.status_code, 400)
+        body = response.json()["error"]
+        self.assertEqual(body["code"], "E_VALIDATION_INPUT")

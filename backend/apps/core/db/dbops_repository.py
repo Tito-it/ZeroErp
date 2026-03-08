@@ -75,6 +75,11 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
 )
 
 
+# Cap massimo righe sorgente per la CTE lookup. Il dataset atteso è molto più piccolo
+# (tabelle config con poche decine/centinaia di record); il cap è una guardia di sicurezza.
+LOOKUP_MAX_SOURCE_ROWS = 10_000
+
+
 class DbopsRepository:
     """Repository per funzioni generiche dbops (lookup codici, utility)."""
 
@@ -108,7 +113,7 @@ class DbopsRepository:
 
         with connection.cursor() as cursor:
             # Wrappa fn_get_lookup_codici in una CTE con filtro ILIKE e paginazione esterna.
-            # Il limit interno è alto (10000) perché il filtro viene applicato sul risultato.
+            # Il limit interno (LOOKUP_MAX_SOURCE_ROWS) è una guardia; il filtro è applicato sul risultato.
             cursor.execute(
                 """
                 WITH base AS (
@@ -118,7 +123,7 @@ class DbopsRepository:
                                %s,
                                %s,
                                %s,
-                               10000,
+                               %s,
                                0
                            )
                 )
@@ -140,6 +145,7 @@ class DbopsRepository:
                     order_col,
                     order_dir,
                     attivo_only,
+                    LOOKUP_MAX_SOURCE_ROWS,
                     search_pattern,
                     search_pattern,
                     search_pattern,
