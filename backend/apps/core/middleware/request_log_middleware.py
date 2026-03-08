@@ -17,7 +17,12 @@ from django.db import connection
 from django.http import HttpRequest, HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
-from apps.core.services.request_context import get_client_ip, get_request_id, get_user_agent
+from apps.core.services.request_context import (
+    get_client_ip,
+    get_idempotency_key,
+    get_request_id,
+    get_user_agent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +83,7 @@ class RequestLogMiddleware(MiddlewareMixin):
             request_id = get_request_id()
             ip_address = get_client_ip(request)
             user_agent = get_user_agent(request)
+            idempotency_key = get_idempotency_key()
 
             # Estrae error_code dalla response JSON se presente
             error_code = None
@@ -88,11 +94,11 @@ class RequestLogMiddleware(MiddlewareMixin):
                 INSERT INTO dbops.request_log
                     (auth_user_id, username, request_id, method, path,
                      query_string, status_code, duration_ms, ip_address,
-                     user_agent, error_code)
+                     user_agent, error_code, idempotency_key)
                 VALUES
                     (%s, %s, %s::uuid, %s, %s,
                      %s, %s, %s, %s::inet,
-                     %s, %s)
+                     %s, %s, %s)
             """
             params = [
                 auth_user_id,
@@ -106,6 +112,7 @@ class RequestLogMiddleware(MiddlewareMixin):
                 ip_address,
                 user_agent,
                 error_code,
+                idempotency_key,
             ]
             with connection.cursor() as cursor:
                 cursor.execute(sql, params)

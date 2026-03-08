@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(do echo \"=== $f ===\")",
+      "Read(//home/tid/software/ZeroErp/**)",
+      "Bash(grep -l \"idempotency\\\\|claim_or_replay\" /home/tid/software/ZeroErp/backend/apps/vendite/tests/api/*.py)",
+      "Bash(python3 scripts/gen_master_autogen.py)",
+      "Bash(./manage-test.sh apps.core.tests.services.test_permissions_resolver -v 2)",
+      "Bash(scripts/testpgtap.sh db/pgtap/script/test-permessi-fn-check-emittente-scope.sql)"
+    ]
+  }
+}

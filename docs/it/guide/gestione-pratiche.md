@@ -57,29 +57,29 @@ Anello 3: vendite, acquisti, magazzino (operazioni)
 
 **Configurazione (schema `config`):**
 
-* `config.stati_pratiche` — stati del ciclo di vita pratica (BOZZA, APERTA, SOSPESA, CHIUSA, ANNULLATA)
-* `config.stati_flussi_pratiche` — stati del flusso (DA_ESEGUIRE, IN_CORSO, COMPLETATO, SOSPESO, ANNULLATO, ERRORE)
-* `config.priorita_pratiche` — livelli di priorita' con ordinamento (BASSA, NORMALE, ALTA, URGENTE)
-* `config.tipi_nota` — tipologie di nota (GENERALE, INTERNA, CLIENTE, TECNICA, LEGALE)
-* `config.tipi_allegato` — tipologie di allegato (DOCUMENTO, IMMAGINE, MODULO, CONTRATTO, ...)
-* `config.canali_pratiche` — canali di visibilita' (WEB_CLIENTI, APP_TECNICA, PORTALE_FORNITORI)
+* [`config.stati_pratiche`](/dbzero/config/tabelle/stati_pratiche) — stati del ciclo di vita pratica (BOZZA, APERTA, SOSPESA, CHIUSA, ANNULLATA)
+* [`config.stati_flussi_pratiche`](/dbzero/config/tabelle/stati_flussi_pratiche) — stati del flusso (DA_ESEGUIRE, IN_CORSO, COMPLETATO, SOSPESO, ANNULLATO, ERRORE)
+* [`config.priorita_pratiche`](/dbzero/config/tabelle/priorita_pratiche) — livelli di priorita' con ordinamento (BASSA, NORMALE, ALTA, URGENTE)
+* [`config.tipi_nota`](/dbzero/config/tabelle/tipi_nota) — tipologie di nota (GENERALE, INTERNA, CLIENTE, TECNICA, LEGALE)
+* [`config.tipi_allegato`](/dbzero/config/tabelle/tipi_allegato) — tipologie di allegato (DOCUMENTO, IMMAGINE, MODULO, CONTRATTO, ...)
+* [`config.canali_pratiche`](/dbzero/config/tabelle/canali_pratiche) — canali di visibilita' (WEB_CLIENTI, APP_TECNICA, PORTALE_FORNITORI)
 
 **Nucleo (schema `pratiche`):**
 
-* `pratiche.tipi_prestazione` — catalogo dei tipi di pratica
-* `pratiche.handler_flussi` — registry handler Django per dispatch automatico
-* `pratiche.template_flussi` — template dei flussi per ogni tipo prestazione
-* `pratiche.template_flussi_prerequisiti` — prerequisiti espliciti tra flussi
-* `pratiche.template_flussi_canali` — relazione M:N tra template flussi e canali
-* `pratiche.regole_generazione` — regole generazione cross-pratica
-* `pratiche.pratiche` — istanza operativa (testata)
-* `pratiche.flussi` — step operativo (riga)
-* `pratiche.note_pratiche` / `pratiche.note_flussi` — note su testata/flusso
-* `pratiche.allegati_pratiche` / `pratiche.allegati_flussi` — documenti su testata/flusso
-* `pratiche.giornale` — audit trail immutabile
-* `pratiche.sospensioni` — periodi di fermo pratica/flusso
-* `pratiche.formule_tempo` — configurazione tempi attesi tra coppie di flussi
-* `pratiche.calcoli_tempo` — tracciamento tempi netti (calcolati da trigger)
+* [`pratiche.tipi_prestazione`](/dbzero/pratiche/tabelle/tipi_prestazione) — catalogo dei tipi di pratica
+* [`pratiche.handler_flussi`](/dbzero/pratiche/tabelle/handler_flussi) — registry handler Django per dispatch automatico
+* [`pratiche.template_flussi`](/dbzero/pratiche/tabelle/template_flussi) — template dei flussi per ogni tipo prestazione
+* [`pratiche.template_flussi_prerequisiti`](/dbzero/pratiche/tabelle/template_flussi_prerequisiti) — prerequisiti espliciti tra flussi
+* [`pratiche.template_flussi_canali`](/dbzero/pratiche/tabelle/template_flussi_canali) — relazione M:N tra template flussi e canali
+* [`pratiche.regole_generazione`](/dbzero/pratiche/tabelle/regole_generazione) — regole generazione cross-pratica
+* [`pratiche.pratiche`](/dbzero/pratiche/tabelle/pratiche) — istanza operativa (testata)
+* [`pratiche.flussi`](/dbzero/pratiche/tabelle/flussi) — step operativo (riga)
+* [`pratiche.note_pratiche`](/dbzero/pratiche/tabelle/note_pratiche) / [`pratiche.note_flussi`](/dbzero/pratiche/tabelle/note_flussi) — note su testata/flusso
+* [`pratiche.allegati_pratiche`](/dbzero/pratiche/tabelle/allegati_pratiche) / [`pratiche.allegati_flussi`](/dbzero/pratiche/tabelle/allegati_flussi) — documenti su testata/flusso
+* [`pratiche.giornale`](/dbzero/pratiche/tabelle/giornale) — audit trail immutabile
+* [`pratiche.sospensioni`](/dbzero/pratiche/tabelle/sospensioni) — periodi di fermo pratica/flusso
+* [`pratiche.formule_tempo`](/dbzero/pratiche/tabelle/formule_tempo) — configurazione tempi attesi tra coppie di flussi
+* [`pratiche.calcoli_tempo`](/dbzero/pratiche/tabelle/calcoli_tempo) — tracciamento tempi netti (calcolati da trigger)
 
 ---
 
@@ -139,13 +139,13 @@ Ogni tipo prestazione ha un insieme di **template flussi** che definiscono gli s
 
 ### 3. I prerequisiti: il grafo del workflow
 
-La tabella `template_flussi_prerequisiti` definisce le dipendenze tra flussi:
+La tabella [`template_flussi_prerequisiti`](/dbzero/pratiche/tabelle/template_flussi_prerequisiti) definisce le dipendenze tra flussi:
 
 * Supporta rami **paralleli**, **convergenze** e flussi **opzionali**
 * **obbligatorio**: `true` = bloccante, `false` = consigliato (warning senza blocco)
 * CHECK: nessun self-reference (`template_flusso_id <> prerequisito_flusso_id`)
 
-La funzione DB `fn_check_prerequisiti_flusso()` verifica se un flusso puo' essere avviato. La guard `fn_guard_prerequisiti_flusso()` blocca l'INSERT se i prerequisiti non sono soddisfatti.
+La funzione DB [`fn_check_prerequisiti_flusso()`](/dbzero/pratiche/funzioni/fn_check_prerequisiti_flusso) verifica se un flusso puo' essere avviato. La guard [`fn_guard_prerequisiti_flusso()`](/dbzero/pratiche/funzioni/fn_guard_prerequisiti_flusso) blocca l'INSERT se i prerequisiti non sono soddisfatti.
 
 ### 4. La pratica: l'istanza operativa
 
@@ -194,8 +194,8 @@ La visibilita' di un flusso verso l'esterno si configura interamente sul templat
 
 Le transizioni di stato di pratiche e flussi sono governate da due tabelle di configurazione:
 
-* `config.transizioni_stati_pratiche` — definisce le coppie (stato_da, stato_a) ammesse per le pratiche
-* `config.transizioni_stati_flussi_pratiche` — definisce le coppie (stato_da, stato_a) ammesse per i flussi
+* [`config.transizioni_stati_pratiche`](/dbzero/config/tabelle/transizioni_stati_pratiche) — definisce le coppie (stato_da, stato_a) ammesse per le pratiche
+* [`config.transizioni_stati_flussi_pratiche`](/dbzero/config/tabelle/transizioni_stati_flussi_pratiche) — definisce le coppie (stato_da, stato_a) ammesse per i flussi
 
 Un trigger BEFORE UPDATE su `pratiche.pratiche` e su `pratiche.flussi` verifica che la transizione richiesta sia presente nella tabella di configurazione. Se non lo e', il trigger rifiuta l'operazione con un errore esplicito (`E_PRATICHE_TRANSIZIONE_NON_AMMESSA` o `E_FLUSSI_TRANSIZIONE_NON_AMMESSA`).
 
@@ -280,7 +280,7 @@ DA_ESEGUIRE --> IN_CORSO --> COMPLETATO (con esito)
 
 ## Il giornale di bordo
 
-Il giornale (`pratiche.giornale`) e' un log **immutabile** alimentato automaticamente via trigger. Non si modifica, non si cancella.
+Il giornale ([`pratiche.giornale`](/dbzero/pratiche/tabelle/giornale)) e' un log **immutabile** alimentato automaticamente via trigger. Non si modifica, non si cancella.
 
 Ogni riga registra:
 
@@ -464,7 +464,7 @@ Quando un flusso viene completato, il trigger DB verifica se esiste una formula 
 | `giorni_formula` | Giorni previsti dalla formula (copiati per storicizzazione) |
 | `sforato` | `true` se giorni_netti > giorni_formula |
 
-**Quali sospensioni contano**: la funzione `fn_calcola_tempo_netto_da_a` sottrae **solo le sospensioni a livello pratica** (`flusso_id IS NULL`) che ricadono nel periodo di calcolo. Le sospensioni su singolo flusso **non** vengono considerate. Questo e' un design intenzionale: i calcoli tempo misurano la durata complessiva della pratica, e solo un fermo totale (sospensione pratica) giustifica l'esclusione dal conteggio.
+**Quali sospensioni contano**: la funzione [`fn_calcola_tempo_netto_da_a`](/dbzero/pratiche/funzioni/fn_calcola_tempo_netto_da_a) sottrae **solo le sospensioni a livello pratica** (`flusso_id IS NULL`) che ricadono nel periodo di calcolo. Le sospensioni su singolo flusso **non** vengono considerate. Questo e' un design intenzionale: i calcoli tempo misurano la durata complessiva della pratica, e solo un fermo totale (sospensione pratica) giustifica l'esclusione dal conteggio.
 
 ### Esempio: onboarding con formula tempo e sospensione
 
@@ -534,7 +534,7 @@ Se il sopralluogo fosse stato completato il 25 marzo invece del 16:
 
 > Vedi anche: [Analisi Tracciamento Processi e Job](./Analisi-tracciamento-processi-e-job) per il monitoraggio dei job di generazione
 
-Le `regole_generazione` configurano la creazione automatica di nuove pratiche al completamento di un flusso:
+Le [`regole_generazione`](/dbzero/pratiche/tabelle/regole_generazione) configurano la creazione automatica di nuove pratiche al completamento di un flusso:
 
 | Campo | Funzione |
 | --- | --- |
@@ -544,7 +544,7 @@ Le `regole_generazione` configurano la creazione automatica di nuove pratiche al
 | `esito_richiesto` | POSITIVO, NEGATIVO, QUALSIASI |
 | `auto` | Se true, generazione automatica al completamento (trigger DB) |
 
-La funzione `fn_genera_pratica_da_flusso()` copia emittente, soggetto e priorita' dalla pratica sorgente. La pratica generata ha `flusso_origine_id` per tracciabilita'.
+La funzione [`fn_genera_pratica_da_flusso()`](/dbzero/pratiche/funzioni/fn_genera_pratica_da_flusso) copia emittente, soggetto e priorita' dalla pratica sorgente. La pratica generata ha `flusso_origine_id` per tracciabilita'.
 
 **Esempio concreto** — completamento flusso con generazione automatica:
 
@@ -586,7 +586,7 @@ Se l'esito fosse stato NEGATIVO, la regola non si sarebbe attivata (`esito_richi
 
 > Vedi anche: [Messaggi di Errore e Generazione Log](./Messaggi-di-Errore-e-Generazione-Log) per il sistema di error handling usato dagli handler
 
-La tabella `handler_flussi` contiene le chiavi di dispatch (`handler_key`). Django mantiene un mapping statico `handler_key -> classe Handler` nel codice Python:
+La tabella [`handler_flussi`](/dbzero/pratiche/tabelle/handler_flussi) contiene le chiavi di dispatch (`handler_key`). Django mantiene un mapping statico `handler_key -> classe Handler` nel codice Python:
 
 ```python
 # apps/pratiche/services/handler_registry.py
@@ -653,51 +653,51 @@ dispatch_handler(flusso_id)
 
 ### Trigger business-specific (non standard)
 
-I trigger standard (audit, lock codice_interno, attivo protection, tx_id, storicizzazione) sono gestiti automaticamente da `dbops.fn_run_automations()`. Qui sono elencati **solo** i trigger del dominio pratiche, con la relativa trigger function.
+I trigger standard (audit, lock codice_interno, attivo protection, tx_id, storicizzazione) sono gestiti automaticamente da [`dbops.fn_run_automations()`](/dbzero/dbops/funzioni/fn_run_automations). Qui sono elencati **solo** i trigger del dominio pratiche, con la relativa trigger function.
 
 #### Su `pratiche.pratiche`
 
 | Trigger | Funzione | Evento | Descrizione |
 | --- | --- | --- | --- |
-| `trg_pratiche_a10_valida_transizione` | `trgfn_pratiche_guard_transizione` | BEFORE UPDATE OF stato_id | Guard: verifica transizione ammessa via `config.transizioni_stati_pratiche` |
-| `trg_pratiche_z90_giornale_ins` | `trgfn_pratiche_giornale_ins` | AFTER INSERT | Registra PRATICA_CREATA nel giornale |
-| `trg_pratiche_z90_giornale_stato_upd` | `trgfn_pratiche_giornale_stato` | AFTER UPDATE OF stato_id | Registra STATO_CAMBIATO |
-| `trg_pratiche_z90_giornale_assegnazione_upd` | `trgfn_pratiche_giornale_assegnazione` | AFTER UPDATE OF risorsa/uo | Registra ASSEGNAZIONE_CAMBIATA |
-| `trg_pratiche_z90_giornale_priorita_upd` | `trgfn_pratiche_giornale_priorita` | AFTER UPDATE OF priorita_id | Registra PRIORITA_CAMBIATA |
+| `trg_pratiche_a10_valida_transizione` | [`trgfn_pratiche_guard_transizione`](/dbzero/pratiche/funzioni/trgfn_pratiche_guard_transizione) | BEFORE UPDATE OF stato_id | Guard: verifica transizione ammessa via [`config.transizioni_stati_pratiche`](/dbzero/config/tabelle/transizioni_stati_pratiche) |
+| `trg_pratiche_z90_giornale_ins` | [`trgfn_pratiche_giornale_ins`](/dbzero/pratiche/funzioni/trgfn_pratiche_giornale_ins) | AFTER INSERT | Registra PRATICA_CREATA nel giornale |
+| `trg_pratiche_z90_giornale_stato_upd` | [`trgfn_pratiche_giornale_stato`](/dbzero/pratiche/funzioni/trgfn_pratiche_giornale_stato) | AFTER UPDATE OF stato_id | Registra STATO_CAMBIATO |
+| `trg_pratiche_z90_giornale_assegnazione_upd` | [`trgfn_pratiche_giornale_assegnazione`](/dbzero/pratiche/funzioni/trgfn_pratiche_giornale_assegnazione) | AFTER UPDATE OF risorsa/uo | Registra ASSEGNAZIONE_CAMBIATA |
+| `trg_pratiche_z90_giornale_priorita_upd` | [`trgfn_pratiche_giornale_priorita`](/dbzero/pratiche/funzioni/trgfn_pratiche_giornale_priorita) | AFTER UPDATE OF priorita_id | Registra PRIORITA_CAMBIATA |
 
 #### Su `pratiche.flussi`
 
 | Trigger | Funzione | Evento | Descrizione |
 | --- | --- | --- | --- |
-| `trg_flussi_a10_valida_transizione` | `trgfn_flussi_guard_transizione` | BEFORE UPDATE OF stato_id | Guard: verifica transizione ammessa via `config.transizioni_stati_flussi_pratiche` |
-| `trg_flussi_a10_guard_prerequisiti_ins` | `trgfn_flussi_guard_prerequisiti` | BEFORE INSERT | Guard: blocca INSERT se prerequisiti non soddisfatti |
-| `trg_flussi_z90_giornale_ins` | `trgfn_flussi_giornale_ins` | AFTER INSERT | Registra FLUSSO_CREATO |
-| `trg_flussi_z90_giornale_stato_upd` | `trgfn_flussi_giornale_stato` | AFTER UPDATE OF stato_id | Registra FLUSSO_STATO_CAMBIATO |
-| `trg_flussi_z90_generazione_upd` | `trgfn_flussi_generazione` | AFTER UPDATE (COMPLETATO) | Genera pratiche cross-pratica da regole con `auto = true` |
-| `trg_flussi_z91_calcoli_tempo_upd` | `trgfn_flussi_calcolo_tempo_completamento` | AFTER UPDATE (COMPLETATO) | Crea/aggiorna record in `calcoli_tempo` se esiste formula tempo applicabile |
+| `trg_flussi_a10_valida_transizione` | [`trgfn_flussi_guard_transizione`](/dbzero/pratiche/funzioni/trgfn_flussi_guard_transizione) | BEFORE UPDATE OF stato_id | Guard: verifica transizione ammessa via [`config.transizioni_stati_flussi_pratiche`](/dbzero/config/tabelle/transizioni_stati_flussi_pratiche) |
+| `trg_flussi_a10_guard_prerequisiti_ins` | [`trgfn_flussi_guard_prerequisiti`](/dbzero/pratiche/funzioni/trgfn_flussi_guard_prerequisiti) | BEFORE INSERT | Guard: blocca INSERT se prerequisiti non soddisfatti |
+| `trg_flussi_z90_giornale_ins` | [`trgfn_flussi_giornale_ins`](/dbzero/pratiche/funzioni/trgfn_flussi_giornale_ins) | AFTER INSERT | Registra FLUSSO_CREATO |
+| `trg_flussi_z90_giornale_stato_upd` | [`trgfn_flussi_giornale_stato`](/dbzero/pratiche/funzioni/trgfn_flussi_giornale_stato) | AFTER UPDATE OF stato_id | Registra FLUSSO_STATO_CAMBIATO |
+| `trg_flussi_z90_generazione_upd` | [`trgfn_flussi_generazione`](/dbzero/pratiche/funzioni/trgfn_flussi_generazione) | AFTER UPDATE (COMPLETATO) | Genera pratiche cross-pratica da regole con `auto = true` |
+| `trg_flussi_z91_calcoli_tempo_upd` | [`trgfn_flussi_calcolo_tempo_completamento`](/dbzero/pratiche/funzioni/trgfn_flussi_calcolo_tempo_completamento) | AFTER UPDATE (COMPLETATO) | Crea/aggiorna record in [`calcoli_tempo`](/dbzero/pratiche/tabelle/calcoli_tempo) se esiste formula tempo applicabile |
 
 #### Su `pratiche.sospensioni`
 
 | Trigger | Funzione | Evento | Descrizione |
 | --- | --- | --- | --- |
-| `trg_sospensioni_a10_guard_coerenza` | `trgfn_sospensioni_guard_coerenza_flusso` | BEFORE INSERT | Guard: verifica che `flusso_id` appartenga alla stessa `pratica_id` |
-| `trg_sospensioni_z90_after_ins` | `trgfn_sospensioni_propaga` + `trgfn_sospensioni_giornale` | AFTER INSERT | Propaga sospensione ai flussi DA_ESEGUIRE/IN_CORSO (se `flusso_id IS NULL`), registra SOSPENSIONE_REGISTRATA nel giornale |
-| `trg_sospensioni_z90_after_upd` | `trgfn_sospensioni_riattiva` + `trgfn_sospensioni_giornale` | AFTER UPDATE OF data_fine | Ripristina stati flussi dal giornale, registra SOSPENSIONE_CHIUSA nel giornale |
+| `trg_sospensioni_a10_guard_coerenza` | [`trgfn_sospensioni_guard_coerenza_flusso`](/dbzero/pratiche/funzioni/trgfn_sospensioni_guard_coerenza_flusso) | BEFORE INSERT | Guard: verifica che `flusso_id` appartenga alla stessa `pratica_id` |
+| `trg_sospensioni_z90_after_ins` | [`trgfn_sospensioni_propaga`](/dbzero/pratiche/funzioni/trgfn_sospensioni_propaga) + [`trgfn_sospensioni_giornale`](/dbzero/pratiche/funzioni/trgfn_sospensioni_giornale_ins) | AFTER INSERT | Propaga sospensione ai flussi DA_ESEGUIRE/IN_CORSO (se `flusso_id IS NULL`), registra SOSPENSIONE_REGISTRATA nel giornale |
+| `trg_sospensioni_z90_after_upd` | [`trgfn_sospensioni_riattiva`](/dbzero/pratiche/funzioni/trgfn_sospensioni_riattiva) + [`trgfn_sospensioni_giornale`](/dbzero/pratiche/funzioni/trgfn_sospensioni_giornale_riattivazione) | AFTER UPDATE OF data_fine | Ripristina stati flussi dal giornale, registra SOSPENSIONE_CHIUSA nel giornale |
 
 #### Su `pratiche.calcoli_tempo`
 
 | Trigger | Funzione | Evento | Descrizione |
 | --- | --- | --- | --- |
-| `trg_calcoli_tempo_a10_guard_immutabili` | `trgfn_calcoli_tempo_guard_immutabili` | BEFORE UPDATE | Guard: impedisce UPDATE su colonne immutabili (pratica_id, formula_tempo_id, flusso_da_id) |
+| `trg_calcoli_tempo_a10_guard_immutabili` | [`trgfn_calcoli_tempo_guard_immutabili`](/dbzero/pratiche/funzioni/trgfn_calcoli_tempo_guard_immutabili) | BEFORE UPDATE | Guard: impedisce UPDATE su colonne immutabili (pratica_id, formula_tempo_id, flusso_da_id) |
 
 #### Su note e allegati
 
 | Trigger | Funzione | Evento | Descrizione |
 | --- | --- | --- | --- |
-| `trg_note_pratiche_z90_giornale_ins` | `trgfn_note_pratiche_giornale` | AFTER INSERT | Registra NOTA_AGGIUNTA |
-| `trg_note_flussi_z90_giornale_ins` | `trgfn_note_flussi_giornale` | AFTER INSERT | Registra NOTA_AGGIUNTA |
-| `trg_allegati_pratiche_z90_giornale_ins` | `trgfn_allegati_pratiche_giornale` | AFTER INSERT | Registra ALLEGATO_AGGIUNTO |
-| `trg_allegati_flussi_z90_giornale_ins` | `trgfn_allegati_flussi_giornale` | AFTER INSERT | Registra ALLEGATO_AGGIUNTO |
+| `trg_note_pratiche_z90_giornale_ins` | [`trgfn_note_pratiche_giornale`](/dbzero/pratiche/funzioni/trgfn_note_pratiche_giornale) | AFTER INSERT | Registra NOTA_AGGIUNTA |
+| `trg_note_flussi_z90_giornale_ins` | [`trgfn_note_flussi_giornale`](/dbzero/pratiche/funzioni/trgfn_note_flussi_giornale) | AFTER INSERT | Registra NOTA_AGGIUNTA |
+| `trg_allegati_pratiche_z90_giornale_ins` | [`trgfn_allegati_pratiche_giornale`](/dbzero/pratiche/funzioni/trgfn_allegati_pratiche_giornale) | AFTER INSERT | Registra ALLEGATO_AGGIUNTO |
+| `trg_allegati_flussi_z90_giornale_ins` | [`trgfn_allegati_flussi_giornale`](/dbzero/pratiche/funzioni/trgfn_allegati_flussi_giornale) | AFTER INSERT | Registra ALLEGATO_AGGIUNTO |
 
 ---
 
@@ -705,11 +705,11 @@ I trigger standard (audit, lock codice_interno, attivo protection, tx_id, storic
 
 | Funzione | Tipo | Scopo |
 | --- | --- | --- |
-| `fn_check_prerequisiti_flusso` | check (pura) | Verifica prerequisiti, ritorna tabella con flag `soddisfatto` |
-| `fn_guard_prerequisiti_flusso` | guard (fail-fast) | RAISE se prerequisiti non soddisfatti |
-| `fn_genera_pratica_da_flusso` | operativa | Genera nuova pratica da flusso completato secondo regola |
-| `fn_calcola_tempo_netto_da_a` | calcolo (STABLE) | Calcola giorni netti tra due flussi, sottraendo solo le sospensioni pratica-level (`flusso_id IS NULL`) |
-| `fn_valuta_tempo_esecuzione_da_a` | calcolo (STABLE) | Ritorna giorni_netti, giorni_esecuzione, giorni_rimanenti, stato_tempo (OK/WARNING/CRITICO/SFORATO) |
+| [`fn_check_prerequisiti_flusso`](/dbzero/pratiche/funzioni/fn_check_prerequisiti_flusso) | check (pura) | Verifica prerequisiti, ritorna tabella con flag `soddisfatto` |
+| [`fn_guard_prerequisiti_flusso`](/dbzero/pratiche/funzioni/fn_guard_prerequisiti_flusso) | guard (fail-fast) | RAISE se prerequisiti non soddisfatti |
+| [`fn_genera_pratica_da_flusso`](/dbzero/pratiche/funzioni/fn_genera_pratica_da_flusso) | operativa | Genera nuova pratica da flusso completato secondo regola |
+| [`fn_calcola_tempo_netto_da_a`](/dbzero/pratiche/funzioni/fn_calcola_tempo_netto_da_a) | calcolo (STABLE) | Calcola giorni netti tra due flussi, sottraendo solo le sospensioni pratica-level (`flusso_id IS NULL`) |
+| [`fn_valuta_tempo_esecuzione_da_a`](/dbzero/pratiche/funzioni/fn_valuta_tempo_esecuzione_da_a) | calcolo (STABLE) | Ritorna giorni_netti, giorni_esecuzione, giorni_rimanenti, stato_tempo (OK/WARNING/CRITICO/SFORATO) |
 
 > Per la documentazione dettagliata di ogni funzione e trigger function, vedi le pagine in `docs/it/dbzero/pratiche/manual/`.
 

@@ -1,4 +1,4 @@
-## Documentazione Concettuale – Funzione `config.fn_resolve_livello_oggetto`
+## Documentazione Concettuale – Funzione `script.fn_resolve_livello_oggetto`
 
 > **Vedi anche**
 >
@@ -9,15 +9,15 @@
 >
 > **Funzioni correlate:**
 >
-> * [config.fn_resolve_livello_area](/dbzero/config/funzioni/fn_resolve_livello_area)
-> * [config.fn_get_ruolo_sistema](/dbzero/config/funzioni/fn_get_ruolo_sistema)
+> * [script.fn_resolve_livello_area](/dbzero/script/funzioni/fn_resolve_livello_area)
+> * [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
 
 ---
 
 ### Scopo Principale
 
-(latest review 28-02-2026)
-La funzione **`config.fn_resolve_livello_oggetto`** risolve il livello di accesso
+(latest review 08-03-2026)
+La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso
 per un singolo model Django (`app_label` + `model_name`).
 
 Se esiste un override oggetto lo usa; altrimenti risale alla catena area
@@ -29,10 +29,10 @@ via `fn_resolve_livello_area`.
 
 | Parametro | Tipo | Descrizione |
 | --------- | ---- | ----------- |
-| `p_auth_user_id` | integer | ID dell'utente Django. |
-| `p_app_label` | varchar(100) | App Django (es. `'vendite'`). |
-| `p_model_name` | varchar(100) | Nome model Django (es. `'fatture'`). |
-| `p_area_schema_db` | varchar(50) | Schema DB dell'area, usato per fallback. |
+| `p_auth_user_id` | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID dell'utente Django. |
+| `p_app_label` | `config.user_override_oggetti.app_label%TYPE` | App Django (es. `'vendite'`). |
+| `p_model_name` | `config.user_override_oggetti.model_name%TYPE` | Nome model Django (es. `'fatture'`). |
+| `p_area_schema_db` | `config.aree_funzionali.schema_db%TYPE` | Schema DB dell'area, usato per fallback. |
 
 ---
 
@@ -63,7 +63,7 @@ Ritorna `config.livello_accesso` (ENUM): `TUTTO`, `LETTURA` o `BLOCCATO`.
 ### Esempio d'uso
 
 ```sql
-SELECT config.fn_resolve_livello_oggetto(42, 'vendite', 'fatture', 'vendite');
+SELECT script.fn_resolve_livello_oggetto(42, 'vendite', 'fatture', 'vendite');
 -- Ritorna: 'TUTTO'::config.livello_accesso
 ```
 

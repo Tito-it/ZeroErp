@@ -84,7 +84,7 @@
 
 ### DB
 
-- [x] 5.1 — Funzione `config.fn_check_user_emittente_scope()` — `20_code/config/20260228-24`
+- [x] 5.1 — Funzione `script.fn_check_user_emittente_scope()` — originale `20_code/config/20260228-24`, spostata `20_code/script/20260308-05`
 - [x] 5.2 — Trigger guard su `vendite.fatture` (ambito emittente) — `trgfn_guard_emittente_scope` + trigger `20260228-25/-26`
 - [x] 5.3 — Trigger guard su `pagamenti.vendite_movimenti` (ambito emittente via fattura) — `20260228-27`. NB: ordini (vendite/acquisti) non hanno colonna emittente
 
@@ -124,7 +124,7 @@
 
 ### DB
 
-- [x] 8.1 — Funzione `config.fn_get_override_scaduti(p_giorni_tolleranza)` — `20_code/config/20260228-28`
+- [x] 8.1 — Funzione `script.fn_get_override_scaduti(p_giorni_tolleranza)` — originale `20_code/config/20260228-28`, spostata `20_code/script/20260308-08`
 - [x] 8.2 — ALTER 7 tabelle permessi: add `storicizza` + `tx_id` per audit trail — `00_schema/config/20260301-01`, `00_schema/anagrafiche/20260301-01`
   - Tabelle storico, trigger e registry generati dalle automazioni (`STORICO_PROVISION`, `STORICO`, `TX_ID`, `proc_sync_storico_set_storicizza`)
   - Specifica completa: `docs/it/dev/work-in-progress/proposta-8.2-audit-trail-permessi.md`
@@ -153,7 +153,7 @@ poi sezione **4** (`PermissionResolver`, `ZeroERPPermission`, middleware).
 **Integrazione API esistenti (vendite):**
 
 - [x] F2.1 — Aggiungere `ZeroERPPermission` a tutte le 11 view V1 vendite (`apps/vendite/api/views.py`)
-- [x] F2.2 — Ambito emittente applicato via SQL DB-first (`config.fn_get_emittenti_scope_sr_ids`) in `VenditeRepository` — atteso DB funzione
+- [x] F2.2 — Ambito emittente applicato via SQL DB-first (`script.fn_get_emittenti_scope_sr_ids`) in `VenditeRepository` — atteso DB funzione
 - [x] F2.3 — `ApiRunLottoPipelineV1` ha `post_permission = "genera_fatture_lotti"` per check azione
 - [x] F2.4 — N/A: nessuna view API esposta su anagrafiche, catalogo, pagamenti (file `views.py` vuoti)
 
@@ -163,15 +163,15 @@ A questo punto tutte le API esistenti sono protette dal sistema permessi.
 
 #### Sviluppi DB
 
-- [x] D3.1 — Creare funzioni SQL di risoluzione permessi (spec. B.1–B.5) — `20_code/config/20260228-19..31`
-  - `config.fn_get_ruolo_sistema` (B.1)
-  - `config.fn_resolve_livello_area` (B.2)
-  - `config.fn_resolve_livello_oggetto` (B.3)
-  - `config.fn_check_azione_processo` (B.4)
-  - `config.fn_get_emittenti_scope` (B.5)
+- [x] D3.1 — Creare funzioni SQL di risoluzione permessi (spec. B.1–B.5) — originale `20_code/config/20260228-19..31`, spostate `20_code/script/20260308-01..09`
+  - `script.fn_get_ruolo_sistema` (B.1)
+  - `script.fn_resolve_livello_area` (B.2)
+  - `script.fn_resolve_livello_oggetto` (B.3)
+  - `script.fn_check_azione_processo` (B.4)
+  - `script.fn_get_emittenti_scope` (B.5)
   - **Prerequisiti**: sezioni DB 1–3 completate ✅
   - **Specifiche**: sezione "Analisi refactoring", B.1–B.5
-- [x] D3.2 — Creare funzione SQL `config.fn_get_emittenti_scope_sr_ids` (spec. B.7) — `20_code/config/20260301-01`
+- [x] D3.2 — Creare funzione SQL `script.fn_get_emittenti_scope_sr_ids` (spec. B.7) — originale `20_code/config/20260301-01`, spostata `20_code/script/20260308-07`
   - Mappa `emittente_fiscale_id` → `soggetto_ruolo_id` per le query vendite
   - **Prerequisiti**: D3.1 (usa `fn_get_ruolo_sistema`), tabella `config.user_emittenti_fiscali` ✅
   - **Specifiche**: sezione "Analisi refactoring", B.7
@@ -259,7 +259,12 @@ Ogni exit path di `ZeroERPPermission.has_permission()` chiama `_save_cache_to_re
 
 ### B. Funzioni SQL proposte — specifiche per team DB
 
-Le funzioni seguono le convenzioni del progetto: schema `config`, prefisso `fn_`, parametri `p_`,
+**NOTA (08-03-2026):** Tutte le 9 funzioni di risoluzione permessi sono state spostate
+da schema `config` a schema `script` (funzioni riusabili cross-dominio).
+Le specifiche sotto riportano lo schema originale `config` per contesto storico;
+lo schema attuale e' `script`. Vedi migrations `20260308-01..12`.
+
+Le funzioni seguono le convenzioni del progetto: schema `script` (ex `config`), prefisso `fn_`, parametri `p_`,
 variabili locali `v_`, errori via `script.fn_log_and_raise_error()`, COMMENT ON FUNCTION obbligatorio.
 
 #### B.1 — `config.fn_get_ruolo_sistema`
@@ -507,7 +512,7 @@ non `emittente_fiscale_id`, quindi serve questa mappatura aggiuntiva rispetto a 
 **Logica**:
 
 ```sql
--- 1. v_ruolo := config.fn_get_ruolo_sistema(p_auth_user_id)
+-- 1. v_ruolo := script.fn_get_ruolo_sistema(p_auth_user_id)
 --    NULL / 'DISABILITATO' → return '{}'::bigint[]  (nessun accesso)
 --    'ADMIN'               → return NULL             (nessuna restrizione)
 
@@ -531,7 +536,7 @@ SELECT array_agg(ef.soggetto_ruolo_id)
 | OPERATIVO con whitelist [A, B] | `{srA, srB}`     | `= ANY(array)`          |
 | DISABILITATO / senza bridge    | `'{}'::bigint[]` | Nessun match → 0 righe |
 
-**Dipendenze**: `config.fn_get_ruolo_sistema`, `config.user_emittenti_fiscali`,
+**Dipendenze**: `script.fn_get_ruolo_sistema`, `config.user_emittenti_fiscali`,
 `anagrafiche.emittenti_fiscali`
 
 ---

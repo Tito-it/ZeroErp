@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260308-01-create-fn-get-ruolo-sistema-mctit.yaml
+
+  - changeSet:
+      id: 20260308-01-create-fn-get-ruolo-sistema
+      author: mctit
+      comment: "Sposta fn_get_ruolo_sistema da config a script (schema corretto per funzioni riusabili cross-dominio)"
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_ruolo_sistema(
+                p_auth_user_id anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE
+              )
+              RETURNS config.ruolo_sistema
+              LANGUAGE plpgsql
+              STABLE
+              AS $$
+              DECLARE
+                v_ruolo anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Restituisce il ruolo_sistema di un utente dalla tabella
+                --   ponte anagrafiche.risorse_umane_auth_user.
+                --   NULL se l'utente non ha record ponte.
+                --
+                -- Blocco base riusato da tutte le funzioni di risoluzione
+                -- permessi (fn_resolve_livello_area, fn_check_azione_processo,
+                -- fn_check_user_emittente_scope).
+                -- =========================================================
+
+                SELECT rau.ruolo_sistema
+                  INTO v_ruolo
+                  FROM anagrafiche.risorse_umane_auth_user rau
+                 WHERE rau.auth_user_id = p_auth_user_id;
+
+                RETURN v_ruolo;
+              END
+              $$;
+
+              COMMENT ON FUNCTION script.fn_get_ruolo_sistema(integer)
+                IS 'Restituisce il ruolo_sistema di un utente (NULL se nessun record ponte).';

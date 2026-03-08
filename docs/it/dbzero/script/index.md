@@ -3,6 +3,8 @@
 ## 📚 Tabelle
 
 ## ⚙️ Funzioni
+- [fn_check_azione_processo](funzioni/fn_check_azione_processo.md)
+- [fn_check_user_emittente_scope](funzioni/fn_check_user_emittente_scope.md)
 - [fn_clone_catasto_from_parent_by_istanza](funzioni/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md)
 - [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
@@ -12,6 +14,8 @@
 - [fn_get_contatto_default](funzioni/fn_get_contatto_default.md) — principale (latest review 03-12-25) La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
 - [fn_get_conto_bancario_predefinito](funzioni/fn_get_conto_bancario_predefinito.md) — (latest review 01-12-25) * **Incapsulare la logica di selezione del conto**   Fornisce un punto di accesso unico per ottenere “il conto da usare ora” dato un `soggetto_ruolo_id` e un `uso`, senza dover ripetere join e ordinamenti sulle tabelle sorgenti.
 - [fn_get_default_by_param](funzioni/fn_get_default_by_param.md) — (latest update 21-12-25) Recuperare in modo dinamico un valore (tipicamente una **PK**) da una tabella qualsiasi, basandosi su un **codice parametro**.
+- [fn_get_emittenti_scope](funzioni/fn_get_emittenti_scope.md)
+- [fn_get_emittenti_scope_sr_ids](funzioni/fn_get_emittenti_scope_sr_ids.md)
 - [fn_get_indirizzi_by_ruolo](funzioni/fn_get_indirizzi_by_ruolo.md) — (latest review 15-02-26) Restituisce tutti gli **indirizzi** associati a uno specifico `soggetto_ruolo`, producendo per ciascuno:
 - [fn_get_indirizzi_by_soggetto](funzioni/fn_get_indirizzi_by_soggetto.md) — (latest review 15-02-26) Restituisce tutti gli **indirizzi** associati direttamente a un **soggetto** (`anagrafiche.indirizzi_soggetti`), utilizzando come sorgente la vista `anagrafiche.vw_indirizzi_resolved_soggetto` per ottenere un output **uniforme e human-readable**.
 - [fn_get_indirizzo](funzioni/fn_get_indirizzo.md) — *(latest review 01-12-25)* La funzione **`script.fn_get_indirizzo`** restituisce **uno o più indirizzi tecnici** associati a un determinato **`soggetto_ruolo`**, filtrando per **tipo di indirizzo** identificato dal **codice interno** (`config.tipi_indirizzi.codice_interno`).
@@ -20,8 +24,10 @@
 - [fn_get_messaggio](funzioni/fn_get_messaggio.md) — * **Centralizzare i testi**   Conservare tutti i messaggi (errori, avvisi, info) in tabella, evitando hard‑coding in trigger, procedure o sorgenti SQL. * **Internazionalizzazione avanzata**   Selezionare dinamicamente la lingua di output in base a:
 - [fn_get_note](funzioni/fn_get_note.md) — (latest review 14-01-26) `script.fn_get_note` e' una funzione generica che **normalizza la lettura delle note** da una tabella `*.note` partizionata.   Restituisce sempre lo stesso set di colonne con **stile** e **lingua** risolti da `config.note_stili` e `config.lingue`.
 - [fn_get_or_create_soggetto_ruolo](funzioni/fn_get_or_create_soggetto_ruolo.md) — (latest review 09-12-25) La funzione **`script.fn_get_or_create_soggetto_ruolo`** è una **factory di dominio** per garantire l’esistenza di un legame tra:
+- [fn_get_override_scaduti](funzioni/fn_get_override_scaduti.md)
 - [fn_get_parameter_full](funzioni/fn_get_parameter_full.md) — (latest update 21-12-25) * **Ricerca safe del parametro**   Verifica l’esistenza del parametro in `config.parameters` e recupera `id` + `default_value`.
 - [fn_get_record_id_as_of](funzioni/fn_get_record_id_as_of.md) — * **Recupero rapido dell’ID in uno snapshot**: ottenere solo l’identificativo del record (`id`) valido alla data/ora specificata, senza dover deserializzare tutto il JSON. * **Ottimizzazione delle query**: operazione leggera nel caso serva solo l’ID, utile per controlli o join condizionali su storico.
+- [fn_get_ruolo_sistema](funzioni/fn_get_ruolo_sistema.md)
 - [fn_get_snapshot_as_of](funzioni/fn_get_snapshot_as_of.md) — (latest review 02-02-26) * **Recupero storico/flessibile**: ottenere lo stato di un record in un preciso istante, combinando storicizzazione e serializzazione diretta. * **Robustezza**: ogni errore di query viene tracciato con contesto completo, e l'esecuzione viene interrotta per evitare inconsistenze.
 - [fn_get_stato_cliente_by_istanza](funzioni/fn_get_stato_cliente_by_istanza.md) — Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, restituendo:
 - [fn_get_stradario](funzioni/fn_get_stradario.md) — * **Ricerca locale per comune**   Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
@@ -34,6 +40,8 @@
 - [fn_log_error_only](funzioni/fn_log_error_only.md) — (latest review 23-11-25) * **Logging “silenzioso”**: inserisce una riga in `dbops.error_log` con contesto ricco, ma **non** solleva eccezioni. * **Separazione delle responsabilità**: differenzia chiaramente i casi di **solo tracciamento** da quelli di **error handling critico** (per cui usare `fn_log_and_raise_error`).
 - [fn_norm_testo](funzioni/fn_norm_testo.md)
 - [fn_norm_via](funzioni/fn_norm_via.md)
+- [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md)
+- [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md)
 - [fn_subentro_cliente](funzioni/fn_subentro_cliente.md)
 - [fn_valida_codice_fiscale](funzioni/fn_valida_codice_fiscale.md) — * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo. * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere. * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 - [fn_valida_partita_iva](funzioni/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
@@ -42,6 +50,7 @@
 - [trgfn_audit_data_user_generic](funzioni/trgfn_audit_data_user_generic.md) — * **Audit automatico su INSERT e UPDATE**   Assicura che ogni inserimento e modifica sia registrato con timestamp (`data_update`) e utente reale (`user_update` / `user_insert`). * **Centralizzare la logica di audit**   Un'unica trigger function per tutte le tabelle, evitando duplicazione di logica. * **Tracciare l'utente reale (JWT)**   Utilizza la GUC `app.jwt_user` impostata dal middleware Django per registrare   l'utente che ha effettuato la chiamata API, non il ruolo DB della connessione.
 - [trgfn_config_sistema_codici_sync_gen_codice](funzioni/trgfn_config_sistema_codici_sync_gen_codice.md) — La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati** trigger e trigger function per la **generazione automatica dei codici/numero** in base a `config.sistema_codici`.
 - [trgfn_delete_block_by_guc](funzioni/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
+- [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md)
 - [trgfn_guard_sorgente_polimorfa](funzioni/trgfn_guard_sorgente_polimorfa.md) — `script.trgfn_guard_sorgente_polimorfa()` fornisce un **controllo unificato e riusabile** sulla **coerenza dei riferimenti di sorgente** (origine dati) per tabelle applicative che adottano il pattern:
 - [trgfn_guard_utility_tipo_ruolo_by_cols](funzioni/trgfn_guard_utility_tipo_ruolo_by_cols.md) — La funzione **`script.trgfn_guard_utility_tipo_ruolo_by_cols()`** e` una trigger function generica che applica il controllo utility/ruolo su tabelle con colonne configurabili.
 - [trgfn_lock_columns](funzioni/trgfn_lock_columns.md) — -  Trigger function generica per **bloccare modifiche non autorizzate** su colonne specificate, integrando:

@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Risolutore centrale permessi ZeroErp.
-# Delega la catena di risoluzione alle funzioni SQL config.fn_*
+# Delega la catena di risoluzione alle funzioni SQL script.fn_*
 # e mantiene cache per-request (dict) per evitare roundtrip duplicati.
 # ------------------------------------------------------------
 
@@ -49,7 +49,7 @@ class PermissionResolver:
         def _query() -> str | None:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT config.fn_get_ruolo_sistema(%s)", [user.id]
+                    "SELECT script.fn_get_ruolo_sistema(%s)", [user.id]
                 )
                 row = cursor.fetchone()
             return row[0] if row else None
@@ -65,11 +65,11 @@ class PermissionResolver:
         cache: dict[str, Any] | None = None,
     ) -> str:
         """Scopo: Restituisce il livello effettivo per un'area funzionale.
-        Delega l'intera catena alla funzione SQL config.fn_resolve_livello_area."""
+        Delega l'intera catena alla funzione SQL script.fn_resolve_livello_area."""
         def _query() -> str:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT config.fn_resolve_livello_area(%s, %s)",
+                    "SELECT script.fn_resolve_livello_area(%s, %s)",
                     [user.id, area_schema_db],
                 )
                 row = cursor.fetchone()
@@ -88,11 +88,11 @@ class PermissionResolver:
         cache: dict[str, Any] | None = None,
     ) -> str:
         """Scopo: Restituisce il livello effettivo per un singolo model.
-        Delega alla funzione SQL config.fn_resolve_livello_oggetto."""
+        Delega alla funzione SQL script.fn_resolve_livello_oggetto."""
         def _query() -> str:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT config.fn_resolve_livello_oggetto(%s, %s, %s, %s)",
+                    "SELECT script.fn_resolve_livello_oggetto(%s, %s, %s, %s)",
                     [user.id, app_label, model_name, area_schema_db],
                 )
                 row = cursor.fetchone()
@@ -109,11 +109,11 @@ class PermissionResolver:
         cache: dict[str, Any] | None = None,
     ) -> bool:
         """Scopo: Verifica se un'azione di processo e' abilitata.
-        Delega alla funzione SQL config.fn_check_azione_processo."""
+        Delega alla funzione SQL script.fn_check_azione_processo."""
         def _query() -> bool:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT config.fn_check_azione_processo(%s, %s)",
+                    "SELECT script.fn_check_azione_processo(%s, %s)",
                     [user.id, permission_codename],
                 )
                 row = cursor.fetchone()
@@ -130,7 +130,7 @@ class PermissionResolver:
         def _query() -> list[int] | None:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT config.fn_get_emittenti_scope(%s)", [user.id]
+                    "SELECT script.fn_get_emittenti_scope(%s)", [user.id]
                 )
                 row = cursor.fetchone()
             # fn_get_emittenti_scope ritorna bigint[] o NULL

@@ -1,4 +1,4 @@
-{% include-markdown "it/dbzero/config/manual/fn_get_ruolo_sistema.md" %}
+{% include-markdown "it/dbzero/script/manual/fn_get_ruolo_sistema.md" %}
 # ⚙️ Funzione `fn_get_ruolo_sistema`
 
 ```sql
@@ -8,13 +8,13 @@ CREATE FUNCTION fn_get_ruolo_sistema(p_auth_user_id integer)
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION config.fn_get_ruolo_sistema(p_auth_user_id integer)
+CREATE OR REPLACE FUNCTION script.fn_get_ruolo_sistema(p_auth_user_id integer)
  RETURNS config.ruolo_sistema
  LANGUAGE plpgsql
  STABLE
 AS $function$
 DECLARE
-  v_ruolo config.ruolo_sistema;
+  v_ruolo anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -36,7 +36,7 @@ BEGIN
 END
 $function$
 
-COMMENT ON FUNCTION config.fn_get_ruolo_sistema(p_auth_user_id integer)
+COMMENT ON FUNCTION script.fn_get_ruolo_sistema(p_auth_user_id integer)
 IS 'Restituisce il ruolo_sistema di un utente (NULL se nessun record ponte).';
 ```
 

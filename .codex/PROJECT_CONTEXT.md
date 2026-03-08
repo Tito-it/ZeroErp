@@ -87,7 +87,7 @@ ZeroErp/
 | `contabilita` | Piano conti, registrazioni, partite |
 | `storico` | Audit temporale (storicizzazione tabelle) |
 | `dbops` | Strumenti DBA, registry task, FK policy |
-| `script` | Viste e funzioni applicative riusabili |
+| `script` | Viste e funzioni applicative riusabili (incl. risoluzione permessi) |
 | `maintenance` | Job schedulati (pgAgent) |
 | `public` | Oggetti pubblici (version_info) |
 
@@ -147,9 +147,10 @@ def nome_metodo(self, ...):
 # Scopo: obiettivo, perimetro e risultato atteso dettagliati
 ```
 
-## Stato Attuale del Progetto (febbraio 2026)
+## Stato Attuale del Progetto (marzo 2026)
 
 ### Completato ✅
+- Refactor permessi (08-03-2026): 9 funzioni risoluzione permessi spostate da `config` a `script` — migrations `20260308-01..12`, Python backend + pgTAP test + doc aggiornati
 - Pipeline fatturazione: `vendite.fatturazione_pipeline` + runner Django (`LottoPipelineRunner`)
 - Lotti massivi e giornalieri con stati (DRAFT→EMESSA→DEFINITIVA)
 - Registry task DB multi-dominio (`dbops.domini_task`, `pipeline_task_registry`, `pipeline_task_registry_impl`)

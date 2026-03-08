@@ -1,4 +1,4 @@
-## Documentazione Concettuale – Trigger Function `config.trgfn_guard_emittente_scope`
+## Documentazione Concettuale – Trigger Function `script.trgfn_guard_emittente_scope`
 
 > **Vedi anche**
 >
@@ -9,14 +9,14 @@
 >
 > **Funzioni correlate:**
 >
-> * [config.fn_check_user_emittente_scope](/dbzero/config/funzioni/fn_check_user_emittente_scope)
+> * [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope)
 
 ---
 
 ### Scopo Principale
 
-(latest review 28-02-2026)
-La trigger function **`config.trgfn_guard_emittente_scope`** implementa il
+(latest review 08-03-2026)
+La trigger function **`script.trgfn_guard_emittente_scope`** implementa il
 defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità
 sull'emittente fiscale della riga.
 
@@ -52,7 +52,7 @@ sull'emittente fiscale della riga.
 3. Su `UPDATE`, se il valore colonna non e cambiato → **skip**.
 4. Risolve `emittente_fiscale_id` in base alla modalita.
    Se non risolvibile → **skip** (dati non ancora linkati).
-5. Chiama `config.fn_check_user_emittente_scope()`.
+5. Chiama `script.fn_check_user_emittente_scope()`.
    Se `false` → errore via `script.fn_log_and_raise_error` con codice `E_SCOPE_EMITTENTE`.
 
 ---
@@ -64,13 +64,13 @@ sull'emittente fiscale della riga.
 CREATE TRIGGER trg_fatture_a10_guard_emittente_scope_ins_upd
   BEFORE INSERT OR UPDATE ON vendite.fatture
   FOR EACH ROW
-  EXECUTE FUNCTION config.trgfn_guard_emittente_scope('soggetto_ruolo', 'emittente_soggetto_ruolo_id');
+  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('soggetto_ruolo', 'emittente_soggetto_ruolo_id');
 
 -- Su pagamenti.vendite_movimenti
 CREATE TRIGGER trg_vendite_movimenti_a10_guard_emittente_scope_ins_upd
   BEFORE INSERT OR UPDATE ON pagamenti.vendite_movimenti
   FOR EACH ROW
-  EXECUTE FUNCTION config.trgfn_guard_emittente_scope('fattura', 'fattura_id');
+  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'fattura_id');
 ```
 
 ---

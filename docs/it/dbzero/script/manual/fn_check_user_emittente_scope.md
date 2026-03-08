@@ -1,4 +1,4 @@
-## Documentazione Concettuale – Funzione `config.fn_check_user_emittente_scope`
+## Documentazione Concettuale – Funzione `script.fn_check_user_emittente_scope`
 
 > **Vedi anche**
 >
@@ -9,16 +9,16 @@
 >
 > **Funzioni correlate:**
 >
-> * [config.fn_get_ruolo_sistema](/dbzero/config/funzioni/fn_get_ruolo_sistema)
-> * [config.fn_get_emittenti_scope](/dbzero/config/funzioni/fn_get_emittenti_scope)
-> * [config.trgfn_guard_emittente_scope](/dbzero/config/funzioni/trgfn_guard_emittente_scope)
+> * [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
+> * [script.fn_get_emittenti_scope](/dbzero/script/funzioni/fn_get_emittenti_scope)
+> * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope)
 
 ---
 
 ### Scopo Principale
 
-(latest review 28-02-2026)
-La funzione **`config.fn_check_user_emittente_scope`** verifica se un utente ha
+(latest review 08-03-2026)
+La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha
 accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth
 su tabelle operative (fatture, pagamenti).
 
@@ -30,8 +30,8 @@ Funzione `fn_check_*`: puro boolean, no RAISE.
 
 | Parametro | Tipo | Descrizione |
 | --------- | ---- | ----------- |
-| `p_auth_user_id` | integer | ID utente Django (o `NULL` per job batch). |
-| `p_emittente_fiscale_id` | bigint | ID emittente fiscale da verificare. |
+| `p_auth_user_id` | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID utente Django (o `NULL` per job batch). |
+| `p_emittente_fiscale_id` | `anagrafiche.emittenti_fiscali.id%TYPE` | ID emittente fiscale da verificare. |
 
 ---
 
@@ -62,15 +62,15 @@ Ritorna `boolean`.
 
 ```sql
 -- Job batch (nessun utente)
-SELECT config.fn_check_user_emittente_scope(NULL, 1);
+SELECT script.fn_check_user_emittente_scope(NULL, 1);
 -- Ritorna: true
 
 -- ADMIN
-SELECT config.fn_check_user_emittente_scope(42, 1);
+SELECT script.fn_check_user_emittente_scope(42, 1);
 -- Ritorna: true (se ruolo = ADMIN)
 
 -- OPERATIVO con whitelist
-SELECT config.fn_check_user_emittente_scope(42, 99);
+SELECT script.fn_check_user_emittente_scope(42, 99);
 -- Ritorna: false (se 99 non e nella whitelist)
 ```
 

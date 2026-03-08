@@ -7,7 +7,7 @@
 --       vendite.fatture e pagamenti.vendite_movimenti.
 --
 -- Elenco test:
---  1) Trigger function config.trgfn_guard_emittente_scope esiste
+--  1) Trigger function script.trgfn_guard_emittente_scope esiste
 --  2) Trigger su vendite.fatture esiste (a10_guard_emittente_scope)
 --  3) Trigger su vendite.fatture è BEFORE INSERT
 --  4) Trigger su vendite.fatture è BEFORE UPDATE
@@ -28,10 +28,10 @@ SELECT ok(
         SELECT 1
         FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = 'config'
+        WHERE n.nspname = 'script'
           AND p.proname = 'trgfn_guard_emittente_scope'
     ),
-    'Trigger function config.trgfn_guard_emittente_scope esiste'
+    'Trigger function script.trgfn_guard_emittente_scope esiste'
 );
 
 -- ============================================================
@@ -142,7 +142,7 @@ SELECT set_config('app.current_user_id',
 -- Verifica che fn_check blocchi emittente_ko
 -- (è la stessa funzione chiamata dal trigger)
 SELECT is(
-    config.fn_check_user_emittente_scope(
+    script.fn_check_user_emittente_scope(
         (SELECT user_id FROM tmp_guard_ctx),
         (SELECT emittente_ko_id FROM tmp_guard_ctx)
     ),

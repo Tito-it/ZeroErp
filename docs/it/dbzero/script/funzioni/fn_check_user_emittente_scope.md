@@ -1,4 +1,4 @@
-{% include-markdown "it/dbzero/config/manual/fn_check_user_emittente_scope.md" %}
+{% include-markdown "it/dbzero/script/manual/fn_check_user_emittente_scope.md" %}
 # ⚙️ Funzione `fn_check_user_emittente_scope`
 
 ```sql
@@ -8,13 +8,13 @@ CREATE FUNCTION fn_check_user_emittente_scope(p_auth_user_id integer, p_emittent
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION config.fn_check_user_emittente_scope(p_auth_user_id integer, p_emittente_fiscale_id bigint)
+CREATE OR REPLACE FUNCTION script.fn_check_user_emittente_scope(p_auth_user_id integer, p_emittente_fiscale_id bigint)
  RETURNS boolean
  LANGUAGE plpgsql
  STABLE
 AS $function$
 DECLARE
-  v_ruolo     config.ruolo_sistema;
+  v_ruolo     anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
   v_cnt       integer;
 BEGIN
   -- =========================================================
@@ -37,7 +37,7 @@ BEGIN
   END IF;
 
   -- 2. Ruolo sistema
-  v_ruolo := config.fn_get_ruolo_sistema(p_auth_user_id);
+  v_ruolo := script.fn_get_ruolo_sistema(p_auth_user_id);
 
   IF v_ruolo = 'ADMIN' THEN
     RETURN true;
@@ -63,7 +63,7 @@ BEGIN
 END
 $function$
 
-COMMENT ON FUNCTION config.fn_check_user_emittente_scope(p_auth_user_id integer, p_emittente_fiscale_id bigint)
+COMMENT ON FUNCTION script.fn_check_user_emittente_scope(p_auth_user_id integer, p_emittente_fiscale_id bigint)
 IS 'Verifica accesso utente a emittente fiscale: NULL user/ADMIN/whitelist vuota → true.';
 ```
 

@@ -36,9 +36,9 @@ class VenditeRepository:
     ) -> None:
         if auth_user_id is not None:
             conditions.append(
-                f"(config.fn_get_emittenti_scope_sr_ids(%s) IS NULL "
+                f"(script.fn_get_emittenti_scope_sr_ids(%s) IS NULL "
                 f"OR {field} = ANY("
-                f"config.fn_get_emittenti_scope_sr_ids(%s)))"
+                f"script.fn_get_emittenti_scope_sr_ids(%s)))"
             )
             params.extend([auth_user_id, auth_user_id])
 
