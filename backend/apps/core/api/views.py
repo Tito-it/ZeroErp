@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.core.api.error_responses import exception_to_error_response
+from apps.core.api.payload_validators import qp_int_strict
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
 from apps.core.services.lookup_service import fn_list_lookup_codici
@@ -118,8 +119,8 @@ class ApiLookupCodici(APIView):
         raw_attivo = request.query_params.get("attivo_only", "true").strip().lower()
         attivo_only = raw_attivo not in {"0", "false", "no", "n", "off"}
 
-        page = int(request.query_params.get("page", "1"))
-        page_size = int(request.query_params.get("page_size", "50"))
+        page = qp_int_strict(request.query_params.get("page"), "page", 1)
+        page_size = qp_int_strict(request.query_params.get("page_size"), "page_size", 50)
 
         data = fn_list_lookup_codici(
             rel=rel,
