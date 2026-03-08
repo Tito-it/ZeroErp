@@ -1,0 +1,26 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: var(--p-font-family);
+  background: var(--app-content-bg);
+  color: var(--p-text-color);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  height: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}

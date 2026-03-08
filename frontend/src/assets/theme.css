@@ -1,0 +1,70 @@
+/*
+ * ZeroERP — Variabili tema applicazione
+ *
+ * Questo file definisce TUTTE le variabili CSS custom dell'app.
+ * Per personalizzare l'aspetto visivo, modificare SOLO questo file.
+ * I componenti usano queste variabili — non contengono colori hardcoded.
+ *
+ * Le variabili --p-* sono di PrimeVue (tema Aura) e vengono usate come base.
+ * Le variabili --app-* sono custom di ZeroERP e sovrascrivono/estendono PrimeVue.
+ */
+
+:root {
+
+  /* ===== Sidebar ===== */
+  --app-sidebar-width: 220px;
+  --app-sidebar-width-collapsed: 60px;
+  --app-sidebar-bg: var(--p-surface-900);
+  --app-sidebar-border: var(--p-surface-700);
+  --app-sidebar-item-color: var(--p-text-muted-color);
+  --app-sidebar-item-hover-bg: var(--p-surface-800);
+  --app-sidebar-item-hover-color: var(--p-text-color);
+  --app-sidebar-item-active-bg: var(--p-primary-color);
+  --app-sidebar-item-active-color: var(--p-primary-contrast-color);
+  --app-sidebar-item-radius: 6px;
+  --app-sidebar-item-gap: 2px;
+
+  /* ===== Topbar ===== */
+  --app-topbar-height: 48px;
+  --app-topbar-bg: var(--p-surface-800);
+  --app-topbar-border: var(--p-surface-700);
+  --app-topbar-breadcrumb-color: var(--p-text-muted-color);
+  --app-topbar-breadcrumb-active-color: var(--p-text-color);
+
+  /* ===== Area contenuto ===== */
+  --app-content-bg: var(--p-surface-950);
+  --app-content-padding: 1.25rem;
+
+  /* ===== Card dominio (home) ===== */
+  --app-card-bg: var(--p-surface-800);
+  --app-card-border: var(--p-surface-700);
+  --app-card-hover-bg: var(--p-surface-700);
+  --app-card-hover-border: var(--p-primary-color);
+  --app-card-icon-color: var(--p-primary-color);
+  --app-card-radius: 8px;
+
+  /* ===== Logo ===== */
+  --app-logo-bg: var(--p-primary-color);
+  --app-logo-color: var(--p-primary-contrast-color);
+  --app-logo-size: 32px;
+  --app-logo-radius: 8px;
+
+  /* ===== Login ===== */
+  --app-login-card-bg: var(--p-surface-900);
+  --app-login-card-border: var(--p-surface-700);
+  --app-login-card-radius: 12px;
+  --app-login-error-bg: color-mix(in srgb, var(--p-red-500) 15%, transparent);
+  --app-login-error-color: var(--p-red-400);
+
+  /* ===== Drawer ===== */
+  --app-drawer-footer-border: var(--p-surface-700);
+
+  /* ===== Transizioni ===== */
+  --app-transition-fast: 0.15s;
+  --app-transition-normal: 0.2s;
+
+  /* ===== Tipografia app ===== */
+  --app-font-size-sm: 0.85rem;
+  --app-font-size-base: 0.875rem;
+  --app-font-size-lg: 1.1rem;
+}

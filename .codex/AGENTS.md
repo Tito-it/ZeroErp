@@ -83,6 +83,23 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 - Per nuove API lista/search applicare la policy `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md` e usare gli helper core (`apps/core/api/pagination.py`, `apps/core/api/search_validators.py`).
 - Per endpoint search impostare `is_search_endpoint = True` per attivare throttling DRF (`apps/core/api/throttling.py`).
 
+## Frontend (Vue)
+
+- Codice frontend in `frontend/`
+- **Documento di riferimento obbligatorio**: `docs/it/frontend/frontend-standards.md` — leggere PRIMA di qualsiasi intervento sul frontend
+- Stack: Vue 3.5, Vite 7, PrimeVue 4.5, Pinia 3, Vue Router 5, vue-i18n 10, Axios
+- Runtime: Node.js 24 LTS (gestito via nvm)
+- Dipendenze: `frontend/package.json`
+- Non aggiungere dipendenze npm senza conferma dell'utente
+- Filosofia: **zero logica business nel frontend** — solo presentazione, validazione UX e orchestrazione chiamate API
+- Struttura cartelle allineata ai domini DB (es. `src/vendite/`, `src/anagrafiche/`)
+- Moduli condivisi in `src/core/` — mai duplicare configurazioni, costanti o liste tra componenti
+- La navigazione (domini, icone, rotte sidebar) e' centralizzata in `src/core/navigation.js`
+- Le costanti UI (larghezze drawer, durata toast, paginazione) sono in `src/core/constants.js`
+- Sicurezza: route guard su tutte le rotte (default protette), token refresh automatico, no `window.location` per redirect
+- Multilingua: ogni testo visibile all'utente usa `$t()` — mai stringhe hardcoded nei componenti
+- Build: `./node_modules/.bin/vite build` (richiede nvm per caricare Node)
+
 ## Liquibase v2 Workflow
 
 - New work only in `db/changelog/migrations_v2/`
