@@ -1,4 +1,4 @@
-{% include-markdown "it/dbzero/config/manual/fn_get_emittenti_scope_sr_ids.md" %}
+{% include-markdown "it/dbzero/script/manual/fn_get_emittenti_scope_sr_ids.md" %}
 # ⚙️ Funzione `fn_get_emittenti_scope_sr_ids`
 
 ```sql
@@ -8,13 +8,13 @@ CREATE FUNCTION fn_get_emittenti_scope_sr_ids(p_auth_user_id integer)
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION config.fn_get_emittenti_scope_sr_ids(p_auth_user_id integer)
+CREATE OR REPLACE FUNCTION script.fn_get_emittenti_scope_sr_ids(p_auth_user_id integer)
  RETURNS bigint[]
  LANGUAGE plpgsql
  STABLE
 AS $function$
 DECLARE
-  v_ruolo config.ruolo_sistema;
+  v_ruolo anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
   v_ids   bigint[];
 BEGIN
   -- =========================================================
@@ -31,7 +31,7 @@ BEGIN
   -- =========================================================
 
   -- 1. Ruolo sistema
-  v_ruolo := config.fn_get_ruolo_sistema(p_auth_user_id);
+  v_ruolo := script.fn_get_ruolo_sistema(p_auth_user_id);
 
   IF v_ruolo IS NULL OR v_ruolo = 'DISABILITATO' THEN
     RETURN '{}'::bigint[];  -- nessun accesso
@@ -55,7 +55,7 @@ BEGIN
 END
 $function$
 
-COMMENT ON FUNCTION config.fn_get_emittenti_scope_sr_ids(p_auth_user_id integer)
+COMMENT ON FUNCTION script.fn_get_emittenti_scope_sr_ids(p_auth_user_id integer)
 IS 'Mappa emittenti autorizzati a soggetto_ruolo_id per query vendite (NULL = nessuna restrizione).';
 ```
 

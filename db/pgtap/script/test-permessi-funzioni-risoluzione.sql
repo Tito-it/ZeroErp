@@ -6,15 +6,15 @@
 --       defense-in-depth guard emittente scope.
 --
 -- Funzioni testate:
---   config.fn_get_ruolo_sistema
---   config.fn_resolve_livello_area
---   config.fn_resolve_livello_oggetto
---   config.fn_check_azione_processo
---   config.fn_get_emittenti_scope
---   config.fn_check_user_emittente_scope
---   config.fn_get_override_scaduti
---   config.fn_get_emittenti_scope_sr_ids
---   config.trgfn_guard_emittente_scope (+ 2 trigger)
+--   script.fn_get_ruolo_sistema
+--   script.fn_resolve_livello_area
+--   script.fn_resolve_livello_oggetto
+--   script.fn_check_azione_processo
+--   script.fn_get_emittenti_scope
+--   script.fn_check_user_emittente_scope
+--   script.fn_get_override_scaduti
+--   script.fn_get_emittenti_scope_sr_ids
+--   script.trgfn_guard_emittente_scope (+ 2 trigger)
 --
 -- Elenco test:
 --  1) fn_get_ruolo_sistema: utente OPERATIVO → 'OPERATIVO'
@@ -107,7 +107,7 @@ DELETE FROM config.user_emittenti_fiscali
 
 -- 1) Utente OPERATIVO
 SELECT is(
-    config.fn_get_ruolo_sistema(
+    script.fn_get_ruolo_sistema(
         (SELECT user_id FROM tmp_ctx)
     ),
     'OPERATIVO'::config.ruolo_sistema,
@@ -116,7 +116,7 @@ SELECT is(
 
 -- 2) Utente inesistente → NULL
 SELECT is(
-    config.fn_get_ruolo_sistema(99999999),
+    script.fn_get_ruolo_sistema(99999999),
     NULL::config.ruolo_sistema,
     'fn_get_ruolo_sistema: utente inesistente → NULL'
 );
@@ -127,7 +127,7 @@ SELECT is(
 
 -- 3) OPERATIVO senza override/profilo → BLOCCATO (default)
 SELECT is(
-    config.fn_resolve_livello_area(
+    script.fn_resolve_livello_area(
         (SELECT user_id FROM tmp_ctx),
         (SELECT area_schema_db FROM tmp_ctx)
     ),
@@ -141,7 +141,7 @@ UPDATE anagrafiche.risorse_umane_auth_user
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
 
 SELECT is(
-    config.fn_resolve_livello_area(
+    script.fn_resolve_livello_area(
         (SELECT user_id FROM tmp_ctx),
         (SELECT area_schema_db FROM tmp_ctx)
     ),
@@ -161,7 +161,7 @@ SELECT user_id, area_id, 'LETTURA'::config.livello_accesso,
 FROM tmp_ctx;
 
 SELECT is(
-    config.fn_resolve_livello_area(
+    script.fn_resolve_livello_area(
         (SELECT user_id FROM tmp_ctx),
         (SELECT area_schema_db FROM tmp_ctx)
     ),
@@ -177,7 +177,7 @@ UPDATE config.user_override_aree
    AND area_id = (SELECT area_id FROM tmp_ctx);
 
 SELECT is(
-    config.fn_resolve_livello_area(
+    script.fn_resolve_livello_area(
         (SELECT user_id FROM tmp_ctx),
         (SELECT area_schema_db FROM tmp_ctx)
     ),
@@ -195,7 +195,7 @@ DELETE FROM config.user_override_aree
 
 -- 7) OPERATIVO senza override → BLOCCATO (fallback area = BLOCCATO)
 SELECT is(
-    config.fn_resolve_livello_oggetto(
+    script.fn_resolve_livello_oggetto(
         (SELECT user_id FROM tmp_ctx),
         'vendite', 'fatture',
         (SELECT area_schema_db FROM tmp_ctx)
@@ -212,7 +212,7 @@ SELECT user_id, 'vendite', 'fatture', 'LETTURA'::config.livello_accesso,
 FROM tmp_ctx;
 
 SELECT is(
-    config.fn_resolve_livello_oggetto(
+    script.fn_resolve_livello_oggetto(
         (SELECT user_id FROM tmp_ctx),
         'vendite', 'fatture',
         (SELECT area_schema_db FROM tmp_ctx)
@@ -232,7 +232,7 @@ SELECT user_id, area_id, 'TUTTO'::config.livello_accesso,
 FROM tmp_ctx;
 
 SELECT is(
-    config.fn_resolve_livello_oggetto(
+    script.fn_resolve_livello_oggetto(
         (SELECT user_id FROM tmp_ctx),
         'vendite', 'fatture',
         (SELECT area_schema_db FROM tmp_ctx)
@@ -250,7 +250,7 @@ DELETE FROM config.user_override_aree
 
 -- 10) OPERATIVO senza override/profilo → false (default)
 SELECT is(
-    config.fn_check_azione_processo(
+    script.fn_check_azione_processo(
         (SELECT user_id FROM tmp_ctx),
         (SELECT permission_codename FROM tmp_ctx)
     ),
@@ -264,7 +264,7 @@ UPDATE anagrafiche.risorse_umane_auth_user
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
 
 SELECT is(
-    config.fn_check_azione_processo(
+    script.fn_check_azione_processo(
         (SELECT user_id FROM tmp_ctx),
         (SELECT permission_codename FROM tmp_ctx)
     ),
@@ -284,7 +284,7 @@ SELECT user_id, azione_id, true,
 FROM tmp_ctx;
 
 SELECT is(
-    config.fn_check_azione_processo(
+    script.fn_check_azione_processo(
         (SELECT user_id FROM tmp_ctx),
         (SELECT permission_codename FROM tmp_ctx)
     ),
@@ -301,7 +301,7 @@ DELETE FROM config.user_override_azioni
 
 -- 13) fn_get_emittenti_scope: senza whitelist → NULL
 SELECT is(
-    config.fn_get_emittenti_scope(
+    script.fn_get_emittenti_scope(
         (SELECT user_id FROM tmp_ctx)
     ),
     NULL::bigint[],
@@ -310,7 +310,7 @@ SELECT is(
 
 -- 14) fn_check NULL user → true (batch job)
 SELECT is(
-    config.fn_check_user_emittente_scope(
+    script.fn_check_user_emittente_scope(
         NULL,
         (SELECT emittente_id FROM tmp_ctx)
     ),
@@ -324,7 +324,7 @@ UPDATE anagrafiche.risorse_umane_auth_user
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
 
 SELECT is(
-    config.fn_check_user_emittente_scope(
+    script.fn_check_user_emittente_scope(
         (SELECT user_id FROM tmp_ctx),
         (SELECT emittente_id FROM tmp_ctx)
     ),
@@ -338,7 +338,7 @@ UPDATE anagrafiche.risorse_umane_auth_user
 
 -- 16) OPERATIVO senza whitelist → true (nessuna restrizione)
 SELECT is(
-    config.fn_check_user_emittente_scope(
+    script.fn_check_user_emittente_scope(
         (SELECT user_id FROM tmp_ctx),
         (SELECT emittente_id FROM tmp_ctx)
     ),
@@ -355,7 +355,7 @@ FROM tmp_ctx;
 
 -- 17) Emittente in whitelist → true
 SELECT is(
-    config.fn_check_user_emittente_scope(
+    script.fn_check_user_emittente_scope(
         (SELECT user_id FROM tmp_ctx),
         (SELECT emittente_id FROM tmp_ctx)
     ),
@@ -365,7 +365,7 @@ SELECT is(
 
 -- 18) Emittente fuori whitelist → false
 SELECT is(
-    config.fn_check_user_emittente_scope(
+    script.fn_check_user_emittente_scope(
         (SELECT user_id FROM tmp_ctx),
         (SELECT emittente_ko_id FROM tmp_ctx)
     ),
@@ -376,7 +376,7 @@ SELECT is(
 -- 19) fn_get_emittenti_scope: array contiene emittente
 SELECT ok(
     (SELECT emittente_id FROM tmp_ctx) = ANY(
-        config.fn_get_emittenti_scope(
+        script.fn_get_emittenti_scope(
             (SELECT user_id FROM tmp_ctx)
         )
     ),
@@ -398,7 +398,7 @@ FROM tmp_ctx;
 -- 20) Tolleranza 0 → trova override scaduto
 SELECT ok(
     EXISTS (
-        SELECT 1 FROM config.fn_get_override_scaduti(0)
+        SELECT 1 FROM script.fn_get_override_scaduti(0)
         WHERE auth_user_id = (SELECT user_id FROM tmp_ctx)
           AND tipo_override = 'user_override_aree'
     ),
@@ -408,7 +408,7 @@ SELECT ok(
 -- 21) Tolleranza 30 → non trova (scaduto solo da 10 giorni)
 SELECT ok(
     NOT EXISTS (
-        SELECT 1 FROM config.fn_get_override_scaduti(30)
+        SELECT 1 FROM script.fn_get_override_scaduti(30)
         WHERE auth_user_id = (SELECT user_id FROM tmp_ctx)
           AND tipo_override = 'user_override_aree'
     ),
@@ -425,10 +425,10 @@ SELECT ok(
         SELECT 1
         FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = 'config'
+        WHERE n.nspname = 'script'
           AND p.proname = 'trgfn_guard_emittente_scope'
     ),
-    'Trigger function config.trgfn_guard_emittente_scope esiste'
+    'Trigger function script.trgfn_guard_emittente_scope esiste'
 );
 
 -- 23) Trigger su vendite.fatture esiste (BEFORE INSERT OR UPDATE)
@@ -471,7 +471,7 @@ SELECT set_config('app.current_user_id',
     (SELECT user_id::text FROM tmp_ctx), true);
 
 SELECT is(
-    config.fn_check_user_emittente_scope(
+    script.fn_check_user_emittente_scope(
         (SELECT user_id FROM tmp_ctx),
         (SELECT emittente_ko_id FROM tmp_ctx)
     ),
@@ -487,7 +487,7 @@ SELECT is(
 -- 26) OPERATIVO con whitelist → array contiene soggetto_ruolo_id
 SELECT ok(
     (SELECT emittente_sr_id FROM tmp_ctx) = ANY(
-        config.fn_get_emittenti_scope_sr_ids(
+        script.fn_get_emittenti_scope_sr_ids(
             (SELECT user_id FROM tmp_ctx)
         )
     ),
@@ -500,7 +500,7 @@ UPDATE anagrafiche.risorse_umane_auth_user
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
 
 SELECT is(
-    config.fn_get_emittenti_scope_sr_ids(
+    script.fn_get_emittenti_scope_sr_ids(
         (SELECT user_id FROM tmp_ctx)
     ),
     NULL::bigint[],
@@ -517,7 +517,7 @@ DELETE FROM config.user_emittenti_fiscali
 
 -- 28) OPERATIVO senza whitelist → NULL (nessuna restrizione)
 SELECT is(
-    config.fn_get_emittenti_scope_sr_ids(
+    script.fn_get_emittenti_scope_sr_ids(
         (SELECT user_id FROM tmp_ctx)
     ),
     NULL::bigint[],
@@ -530,7 +530,7 @@ UPDATE anagrafiche.risorse_umane_auth_user
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
 
 SELECT is(
-    config.fn_get_emittenti_scope_sr_ids(
+    script.fn_get_emittenti_scope_sr_ids(
         (SELECT user_id FROM tmp_ctx)
     ),
     '{}'::bigint[],

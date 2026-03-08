@@ -70,18 +70,9 @@
 - [valute](manual/valute.md) — * **Definizione delle valute**   Elenco centralizzato di tutte le valute supportate, con codici interni e standard ISO 4217. * **Supporto ai moduli finanziari**   Garantisce alle aree di fatturazione, contabilità e reporting uniformità nella rappresentazione e conversione delle valute. * **Tracciabilità e auditing**   Memorizza informazioni di inserimento e aggiornamento per mantenere la storicità delle modifiche.
 
 ## ⚙️ Funzioni (manuale)
-- [fn_check_azione_processo](manual/fn_check_azione_processo.md)
-- [fn_check_user_emittente_scope](manual/fn_check_user_emittente_scope.md)
 - [fn_get_aliquota_iva](manual/fn_get_aliquota_iva.md) — (latest review 10-02-2026)   La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA applicando l’eventuale override definito in `config.iva_stati` per lo Stato specificato.
-- [fn_get_emittenti_scope](manual/fn_get_emittenti_scope.md)
-- [fn_get_emittenti_scope_sr_ids](manual/fn_get_emittenti_scope_sr_ids.md)
-- [fn_get_override_scaduti](manual/fn_get_override_scaduti.md)
-- [fn_get_ruolo_sistema](manual/fn_get_ruolo_sistema.md)
 - [fn_get_stati_doc_fiscale](manual/fn_get_stati_doc_fiscale.md) — (latest review 24-01-2026) La funzione **`config.fn_get_stati_doc_fiscale`** restituisce gli stati validi per **LOTTO** o **FATTURA**, con eventuale filtro sulle **transizioni ammesse**.
-- [fn_resolve_livello_area](manual/fn_resolve_livello_area.md)
-- [fn_resolve_livello_oggetto](manual/fn_resolve_livello_oggetto.md)
 - [trgfn_comuni_protect_update](manual/trgfn_comuni_protect_update.md) — (latest review 29-12-25) Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
-- [trgfn_guard_emittente_scope](manual/trgfn_guard_emittente_scope.md)
 - [trgfn_iva_guard_conti_iva](manual/trgfn_iva_guard_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_iva_stati_normalize](manual/trgfn_iva_stati_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.iva_stati` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_regioni_normalize](manual/trgfn_regioni_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.regioni` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.

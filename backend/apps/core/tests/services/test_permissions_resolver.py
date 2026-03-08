@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Test unitari PermissionResolver — verifica integrazione
-#        con le funzioni SQL config.fn_* e comportamento cache.
+#        con le funzioni SQL script.fn_* e comportamento cache.
 # ------------------------------------------------------------
 
 """
@@ -76,7 +76,7 @@ def _setup_cursor(mock_conn: MagicMock, fetchone_value: tuple | None) -> MagicMo
 
 
 class PermissionResolverRuoloSistemaTests(TestCase):
-    """Test per get_ruolo_sistema — delegata a config.fn_get_ruolo_sistema."""
+    """Test per get_ruolo_sistema — delegata a script.fn_get_ruolo_sistema."""
 
     # Scopo: Ruolo OPERATIVO restituito correttamente.
     @patch(_CONN)
@@ -86,7 +86,7 @@ class PermissionResolverRuoloSistemaTests(TestCase):
         result = PermissionResolver.get_ruolo_sistema(user)
         self.assertEqual(result, "OPERATIVO")
         cursor.execute.assert_called_once_with(
-            "SELECT config.fn_get_ruolo_sistema(%s)", [1]
+            "SELECT script.fn_get_ruolo_sistema(%s)", [1]
         )
 
     # Scopo: Ruolo ADMIN restituito correttamente.
@@ -122,7 +122,7 @@ class PermissionResolverRuoloSistemaTests(TestCase):
 
 
 class PermissionResolverLivelloAreaTests(TestCase):
-    """Test per get_livello_area — delegata a config.fn_resolve_livello_area."""
+    """Test per get_livello_area — delegata a script.fn_resolve_livello_area."""
 
     # Scopo: Livello TUTTO concede tutte le azioni CRUD.
     @patch(_CONN)
@@ -164,7 +164,7 @@ class PermissionResolverLivelloAreaTests(TestCase):
         cursor = _setup_cursor(mock_conn, ("TUTTO",))
         PermissionResolver.get_livello_area(_mock_user(42), "contabilita")
         cursor.execute.assert_called_once_with(
-            "SELECT config.fn_resolve_livello_area(%s, %s)",
+            "SELECT script.fn_resolve_livello_area(%s, %s)",
             [42, "contabilita"],
         )
 
@@ -173,7 +173,7 @@ class PermissionResolverLivelloAreaTests(TestCase):
 
 
 class PermissionResolverLivelloOggettoTests(TestCase):
-    """Test per get_livello_oggetto — delegata a config.fn_resolve_livello_oggetto."""
+    """Test per get_livello_oggetto — delegata a script.fn_resolve_livello_oggetto."""
 
     # Scopo: Livello oggetto restituito correttamente.
     @patch(_CONN)
@@ -201,7 +201,7 @@ class PermissionResolverLivelloOggettoTests(TestCase):
             _mock_user(7), "vendite", "fattura", "vendite"
         )
         cursor.execute.assert_called_once_with(
-            "SELECT config.fn_resolve_livello_oggetto(%s, %s, %s, %s)",
+            "SELECT script.fn_resolve_livello_oggetto(%s, %s, %s, %s)",
             [7, "vendite", "fattura", "vendite"],
         )
 
@@ -210,7 +210,7 @@ class PermissionResolverLivelloOggettoTests(TestCase):
 
 
 class PermissionResolverAzioneTests(TestCase):
-    """Test per check_azione — delegata a config.fn_check_azione_processo."""
+    """Test per check_azione — delegata a script.fn_check_azione_processo."""
 
     # Scopo: Azione abilitata restituisce True.
     @patch(_CONN)
@@ -239,7 +239,7 @@ class PermissionResolverAzioneTests(TestCase):
         cursor = _setup_cursor(mock_conn, (True,))
         PermissionResolver.check_azione(_mock_user(5), "reset_lotto")
         cursor.execute.assert_called_once_with(
-            "SELECT config.fn_check_azione_processo(%s, %s)",
+            "SELECT script.fn_check_azione_processo(%s, %s)",
             [5, "reset_lotto"],
         )
 
@@ -248,7 +248,7 @@ class PermissionResolverAzioneTests(TestCase):
 
 
 class PermissionResolverEmittentiTests(TestCase):
-    """Test per get_emittenti_ids — delegata a config.fn_get_emittenti_scope."""
+    """Test per get_emittenti_ids — delegata a script.fn_get_emittenti_scope."""
 
     # Scopo: fn ritorna NULL -> None (nessuna restrizione).
     @patch(_CONN)
@@ -277,7 +277,7 @@ class PermissionResolverEmittentiTests(TestCase):
         cursor = _setup_cursor(mock_conn, (None,))
         PermissionResolver.get_emittenti_ids(_mock_user(99))
         cursor.execute.assert_called_once_with(
-            "SELECT config.fn_get_emittenti_scope(%s)", [99]
+            "SELECT script.fn_get_emittenti_scope(%s)", [99]
         )
 
 

@@ -1,4 +1,4 @@
-## Documentazione Concettuale – Funzione `config.fn_get_emittenti_scope`
+## Documentazione Concettuale – Funzione `script.fn_get_emittenti_scope`
 
 > **Vedi anche**
 >
@@ -9,14 +9,14 @@
 >
 > **Funzioni correlate:**
 >
-> * [config.fn_check_user_emittente_scope](/dbzero/config/funzioni/fn_check_user_emittente_scope)
+> * [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope)
 
 ---
 
 ### Scopo Principale
 
-(latest review 28-02-2026)
-La funzione **`config.fn_get_emittenti_scope`** restituisce l'array di ID emittenti
+(latest review 08-03-2026)
+La funzione **`script.fn_get_emittenti_scope`** restituisce l'array di ID emittenti
 fiscali autorizzati per un utente, letti dalla whitelist `config.user_emittenti_fiscali`.
 
 ---
@@ -25,7 +25,7 @@ fiscali autorizzati per un utente, letti dalla whitelist `config.user_emittenti_
 
 | Parametro | Tipo | Descrizione |
 | --------- | ---- | ----------- |
-| `p_auth_user_id` | integer | ID dell'utente Django. |
+| `p_auth_user_id` | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID dell'utente Django. |
 
 ---
 
@@ -51,11 +51,11 @@ Ritorna `bigint[]`:
 
 ```sql
 -- Utente con whitelist
-SELECT config.fn_get_emittenti_scope(42);
+SELECT script.fn_get_emittenti_scope(42);
 -- Ritorna: '{1,3}'::bigint[]
 
 -- Utente senza whitelist
-SELECT config.fn_get_emittenti_scope(99);
+SELECT script.fn_get_emittenti_scope(99);
 -- Ritorna: NULL (nessuna restrizione)
 ```
 

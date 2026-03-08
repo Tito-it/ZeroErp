@@ -1,4 +1,4 @@
-{% include-markdown "it/dbzero/config/manual/fn_resolve_livello_oggetto.md" %}
+{% include-markdown "it/dbzero/script/manual/fn_resolve_livello_oggetto.md" %}
 # ⚙️ Funzione `fn_resolve_livello_oggetto`
 
 ```sql
@@ -8,14 +8,14 @@ CREATE FUNCTION fn_resolve_livello_oggetto(p_auth_user_id integer, p_app_label c
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION config.fn_resolve_livello_oggetto(p_auth_user_id integer, p_app_label character varying, p_model_name character varying, p_area_schema_db character varying)
+CREATE OR REPLACE FUNCTION script.fn_resolve_livello_oggetto(p_auth_user_id integer, p_app_label character varying, p_model_name character varying, p_area_schema_db character varying)
  RETURNS config.livello_accesso
  LANGUAGE plpgsql
  STABLE
 AS $function$
 DECLARE
-  v_ruolo   config.ruolo_sistema;
-  v_livello config.livello_accesso;
+  v_ruolo   anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
+  v_livello config.user_override_oggetti.livello%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -31,7 +31,7 @@ BEGIN
   -- =========================================================
 
   -- 1. Ruolo sistema
-  v_ruolo := config.fn_get_ruolo_sistema(p_auth_user_id);
+  v_ruolo := script.fn_get_ruolo_sistema(p_auth_user_id);
 
   IF v_ruolo IS NULL OR v_ruolo = 'DISABILITATO' THEN
     RETURN 'BLOCCATO'::config.livello_accesso;
@@ -56,11 +56,11 @@ BEGIN
   END IF;
 
   -- 3. Fallback alla catena area
-  RETURN config.fn_resolve_livello_area(p_auth_user_id, p_area_schema_db);
+  RETURN script.fn_resolve_livello_area(p_auth_user_id, p_area_schema_db);
 END
 $function$
 
-COMMENT ON FUNCTION config.fn_resolve_livello_oggetto(p_auth_user_id integer, p_app_label character varying, p_model_name character varying, p_area_schema_db character varying)
+COMMENT ON FUNCTION script.fn_resolve_livello_oggetto(p_auth_user_id integer, p_app_label character varying, p_model_name character varying, p_area_schema_db character varying)
 IS 'Risolve livello accesso per model: override oggetto → catena area → BLOCCATO.';
 ```
 

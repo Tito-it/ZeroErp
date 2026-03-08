@@ -1,4 +1,4 @@
-## Documentazione Concettuale – Funzione `config.fn_get_override_scaduti`
+## Documentazione Concettuale – Funzione `script.fn_get_override_scaduti`
 
 > **Vedi anche**
 >
@@ -12,8 +12,8 @@
 
 ### Scopo Principale
 
-(latest review 28-02-2026)
-La funzione **`config.fn_get_override_scaduti`** restituisce tutti gli override
+(latest review 08-03-2026)
+La funzione **`script.fn_get_override_scaduti`** restituisce tutti gli override
 utente la cui data `valido_al` e scaduta. Unisce le 3 tabelle override
 (aree, oggetti, azioni) in un unico risultato.
 
@@ -58,10 +58,10 @@ Ordinamento: `giorni_scaduto DESC`, `tipo_override`, `auth_user_id`.
 
 ```sql
 -- Tutti gli override scaduti
-SELECT * FROM config.fn_get_override_scaduti(0);
+SELECT * FROM script.fn_get_override_scaduti(0);
 
 -- Override scaduti da piu di 7 giorni
-SELECT * FROM config.fn_get_override_scaduti(7);
+SELECT * FROM script.fn_get_override_scaduti(7);
 ```
 
 ---

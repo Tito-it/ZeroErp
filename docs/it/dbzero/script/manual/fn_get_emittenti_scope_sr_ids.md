@@ -1,4 +1,4 @@
-## Documentazione Concettuale – Funzione `config.fn_get_emittenti_scope_sr_ids`
+## Documentazione Concettuale – Funzione `script.fn_get_emittenti_scope_sr_ids`
 
 > **Vedi anche**
 >
@@ -10,15 +10,15 @@
 >
 > **Funzioni correlate:**
 >
-> * [config.fn_get_ruolo_sistema](/dbzero/config/funzioni/fn_get_ruolo_sistema)
-> * [config.fn_get_emittenti_scope](/dbzero/config/funzioni/fn_get_emittenti_scope)
+> * [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
+> * [script.fn_get_emittenti_scope](/dbzero/script/funzioni/fn_get_emittenti_scope)
 
 ---
 
 ### Scopo Principale
 
-(latest review 01-03-2026)
-La funzione **`config.fn_get_emittenti_scope_sr_ids`** restituisce i `soggetto_ruolo_id`
+(latest review 08-03-2026)
+La funzione **`script.fn_get_emittenti_scope_sr_ids`** restituisce i `soggetto_ruolo_id`
 degli emittenti fiscali autorizzati per un utente.
 
 Le tabelle vendite usano `emittente_soggetto_ruolo_id` (FK a `anagrafiche.soggetti_ruoli`),
@@ -31,7 +31,7 @@ non `emittente_fiscale_id`, quindi serve questa mappatura aggiuntiva rispetto a
 
 | Parametro | Tipo | Descrizione |
 | --------- | ---- | ----------- |
-| `p_auth_user_id` | integer | ID dell'utente Django. |
+| `p_auth_user_id` | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID dell'utente Django. |
 
 ---
 
@@ -62,9 +62,9 @@ Ritorna `bigint[]`:
 
 ```sql
 -- Nella clausola WHERE di una query vendite:
-WHERE (config.fn_get_emittenti_scope_sr_ids(42) IS NULL
+WHERE (script.fn_get_emittenti_scope_sr_ids(42) IS NULL
    OR fl.emittente_soggetto_ruolo_id = ANY(
-      config.fn_get_emittenti_scope_sr_ids(42)))
+      script.fn_get_emittenti_scope_sr_ids(42)))
 ```
 
 ---

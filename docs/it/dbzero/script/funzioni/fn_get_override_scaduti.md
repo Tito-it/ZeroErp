@@ -1,4 +1,4 @@
-{% include-markdown "it/dbzero/config/manual/fn_get_override_scaduti.md" %}
+{% include-markdown "it/dbzero/script/manual/fn_get_override_scaduti.md" %}
 # ⚙️ Funzione `fn_get_override_scaduti`
 
 ```sql
@@ -8,7 +8,7 @@ CREATE FUNCTION fn_get_override_scaduti(p_giorni_tolleranza integer)
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION config.fn_get_override_scaduti(p_giorni_tolleranza integer DEFAULT 0)
+CREATE OR REPLACE FUNCTION script.fn_get_override_scaduti(p_giorni_tolleranza integer DEFAULT 0)
  RETURNS TABLE(tipo_override text, override_id bigint, auth_user_id integer, dettaglio text, valido_al date, giorni_scaduto integer)
  LANGUAGE plpgsql
  STABLE
@@ -25,8 +25,8 @@ BEGIN
   --     di N giorni (default 0 = tutti gli scaduti).
   --
   -- Uso tipico:
-  --   SELECT * FROM config.fn_get_override_scaduti(0);
-  --   SELECT * FROM config.fn_get_override_scaduti(7);
+  --   SELECT * FROM script.fn_get_override_scaduti(0);
+  --   SELECT * FROM script.fn_get_override_scaduti(7);
   -- =========================================================
 
   RETURN QUERY
@@ -82,7 +82,7 @@ BEGIN
 END
 $function$
 
-COMMENT ON FUNCTION config.fn_get_override_scaduti(p_giorni_tolleranza integer)
+COMMENT ON FUNCTION script.fn_get_override_scaduti(p_giorni_tolleranza integer)
 IS 'Restituisce override utente scaduti (valido_al < oggi) per segnalazione/pulizia.';
 ```
 

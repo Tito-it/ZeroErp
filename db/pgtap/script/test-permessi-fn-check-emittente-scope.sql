@@ -3,9 +3,9 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: funzioni scope emittente e ruolo sistema
---       config.fn_get_ruolo_sistema,
---       config.fn_get_emittenti_scope,
---       config.fn_check_user_emittente_scope
+--       script.fn_get_ruolo_sistema,
+--       script.fn_get_emittenti_scope,
+--       script.fn_check_user_emittente_scope
 --
 -- Elenco test:
 --  1) Riferimento risorse_umane_auth_user presente
@@ -44,6 +44,10 @@ UPDATE anagrafiche.risorse_umane_auth_user
    SET ruolo_sistema = 'OPERATIVO'
  WHERE auth_user_id = (SELECT user_id FROM tmp_refs_scope);
 
+-- Pulisce eventuali whitelist pre-esistenti per l'utente di test
+DELETE FROM config.user_emittenti_fiscali
+ WHERE auth_user_id = (SELECT user_id FROM tmp_refs_scope);
+
 CREATE TEMP TABLE tmp_emittenti AS
 SELECT
     ef.id       AS emittente_id_1,
@@ -77,7 +81,7 @@ SELECT ok(
 
 -- 4) Utente esistente → ruolo non NULL
 SELECT ok(
-    config.fn_get_ruolo_sistema(
+    script.fn_get_ruolo_sistema(
         (SELECT user_id FROM tmp_refs_scope)
     ) IS NOT NULL,
     'fn_get_ruolo_sistema: utente esistente ritorna ruolo non NULL'
@@ -85,7 +89,7 @@ SELECT ok(
 
 -- 5) Utente inesistente → NULL
 SELECT is(
-    config.fn_get_ruolo_sistema(99999999),
+    script.fn_get_ruolo_sistema(99999999),
     NULL::config.ruolo_sistema,
     'fn_get_ruolo_sistema: utente inesistente ritorna NULL'
 );
@@ -96,7 +100,7 @@ SELECT is(
 
 -- 6) NULL user_id → true (batch job)
 SELECT is(
-    config.fn_check_user_emittente_scope(
+    script.fn_check_user_emittente_scope(
         NULL,
         (SELECT emittente_id_1 FROM tmp_emittenti)
     ),
@@ -110,7 +114,7 @@ UPDATE anagrafiche.risorse_umane_auth_user
  WHERE auth_user_id = (SELECT user_id FROM tmp_refs_scope);
 
 SELECT is(
-    config.fn_check_user_emittente_scope(
+    script.fn_check_user_emittente_scope(
         (SELECT user_id FROM tmp_refs_scope),
         (SELECT emittente_id_1 FROM tmp_emittenti)
     ),
@@ -125,7 +129,7 @@ UPDATE anagrafiche.risorse_umane_auth_user
 
 -- 8) OPERATIVO senza whitelist → true (nessuna restrizione)
 SELECT is(
-    config.fn_check_user_emittente_scope(
+    script.fn_check_user_emittente_scope(
         (SELECT user_id FROM tmp_refs_scope),
         (SELECT emittente_id_1 FROM tmp_emittenti)
     ),
@@ -139,7 +143,7 @@ SELECT is(
 
 -- 9) Senza whitelist → NULL
 SELECT is(
-    config.fn_get_emittenti_scope(
+    script.fn_get_emittenti_scope(
         (SELECT user_id FROM tmp_refs_scope)
     ),
     NULL::bigint[],
@@ -165,7 +169,7 @@ SELECT lives_ok(
 
 -- 11) Emittente_1 in whitelist → true
 SELECT is(
-    config.fn_check_user_emittente_scope(
+    script.fn_check_user_emittente_scope(
         (SELECT user_id FROM tmp_refs_scope),
         (SELECT emittente_id_1 FROM tmp_emittenti)
     ),
@@ -175,7 +179,7 @@ SELECT is(
 
 -- 12) Emittente_2 NON in whitelist → false
 SELECT is(
-    config.fn_check_user_emittente_scope(
+    script.fn_check_user_emittente_scope(
         (SELECT user_id FROM tmp_refs_scope),
         (SELECT emittente_id_2 FROM tmp_emittenti)
     ),
@@ -186,7 +190,7 @@ SELECT is(
 -- 13) fn_get_emittenti_scope: array contenente emittente_1
 SELECT ok(
     (SELECT emittente_id_1 FROM tmp_emittenti) = ANY(
-        config.fn_get_emittenti_scope(
+        script.fn_get_emittenti_scope(
             (SELECT user_id FROM tmp_refs_scope)
         )
     ),

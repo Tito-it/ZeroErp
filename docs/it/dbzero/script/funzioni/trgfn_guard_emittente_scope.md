@@ -1,4 +1,4 @@
-{% include-markdown "it/dbzero/config/manual/trgfn_guard_emittente_scope.md" %}
+{% include-markdown "it/dbzero/script/manual/trgfn_guard_emittente_scope.md" %}
 # ⚙️ Funzione `trgfn_guard_emittente_scope`
 
 ```sql
@@ -8,13 +8,13 @@ CREATE FUNCTION trgfn_guard_emittente_scope()
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION config.trgfn_guard_emittente_scope()
+CREATE OR REPLACE FUNCTION script.trgfn_guard_emittente_scope()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_auth_user_id         integer;
-  v_emittente_fiscale_id bigint;
+  v_auth_user_id         anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE;
+  v_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE;
   v_col_value            bigint;
   v_mode                 text := TG_ARGV[0];
   v_col_name             text := TG_ARGV[1];
@@ -76,7 +76,7 @@ BEGIN
   END IF;
 
   -- 4. Verifica scope
-  IF NOT config.fn_check_user_emittente_scope(
+  IF NOT script.fn_check_user_emittente_scope(
            v_auth_user_id, v_emittente_fiscale_id) THEN
     PERFORM script.fn_log_and_raise_error(
       TG_TABLE_SCHEMA::text,
@@ -101,7 +101,7 @@ BEGIN
 END
 $function$
 
-COMMENT ON FUNCTION config.trgfn_guard_emittente_scope()
+COMMENT ON FUNCTION script.trgfn_guard_emittente_scope()
 IS 'Defense-in-depth: blocca INSERT/UPDATE se utente non ha scope su emittente fiscale.';
 ```
 

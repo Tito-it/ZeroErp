@@ -1,4 +1,4 @@
-## Documentazione Concettuale – Funzione `config.fn_get_ruolo_sistema`
+## Documentazione Concettuale – Funzione `script.fn_get_ruolo_sistema`
 
 > **Vedi anche**
 >
@@ -10,8 +10,8 @@
 
 ### Scopo Principale
 
-(latest review 28-02-2026)
-La funzione **`config.fn_get_ruolo_sistema`** restituisce il `ruolo_sistema`
+(latest review 08-03-2026)
+La funzione **`script.fn_get_ruolo_sistema`** restituisce il `ruolo_sistema`
 (`ADMIN`, `OPERATIVO`, `DISABILITATO`) di un utente dalla tabella ponte
 `anagrafiche.risorse_umane_auth_user`.
 
@@ -23,7 +23,7 @@ Ritorna `NULL` se l'utente non ha record ponte (utente non mappato a risorsa uma
 
 | Parametro | Tipo | Descrizione |
 | --------- | ---- | ----------- |
-| `p_auth_user_id` | integer | ID dell'utente Django (`auth_user.id`). |
+| `p_auth_user_id` | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID dell'utente Django (`auth_user.id`). |
 
 ---
 
@@ -46,7 +46,7 @@ Ritorna `config.ruolo_sistema` (ENUM) oppure `NULL`.
 ### Esempio d'uso
 
 ```sql
-SELECT config.fn_get_ruolo_sistema(42);
+SELECT script.fn_get_ruolo_sistema(42);
 -- Ritorna: 'OPERATIVO'::config.ruolo_sistema (o NULL se non mappato)
 ```
 

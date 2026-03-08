@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260308-04-create-fn-check-azione-processo-mctit.yaml
+
+  - changeSet:
+      id: 20260308-04-create-fn-check-azione-processo
+      author: mctit
+      comment: "Sposta fn_check_azione_processo da config a script (schema corretto per funzioni riusabili cross-dominio)"
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_azione_processo(
+                p_auth_user_id        anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE,
+                p_permission_codename config.azioni_processo.permission_codename%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS $$
+              DECLARE
+                v_ruolo     anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
+                v_abilitata config.user_override_azioni.abilitata%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Verifica se un'azione di processo e' abilitata per
+                --   un utente. Funzione fn_check_*: puro boolean, no raise.
+                --
+                -- Catena:
+                --   1. ruolo_sistema (NULL/DISABILITATO → false, ADMIN → true)
+                --   2. Override utente azione (se presente e valido)
+                --   3. Profilo reparto azione (ereditato dall'UO)
+                --   4. Default → false (negata)
+                -- =========================================================
+
+                -- 1. Ruolo sistema
+                v_ruolo := script.fn_get_ruolo_sistema(p_auth_user_id);
+
+                IF v_ruolo IS NULL OR v_ruolo = 'DISABILITATO' THEN
+                  RETURN false;
+                END IF;
+
+                IF v_ruolo = 'ADMIN' THEN
+                  RETURN true;
+                END IF;
+
+                -- 2. Override utente azione (OPERATIVO)
+                SELECT uoa.abilitata
+                  INTO v_abilitata
+                  FROM config.user_override_azioni uoa
+                  JOIN config.azioni_processo ap ON ap.id = uoa.azione_id
+                 WHERE uoa.auth_user_id = p_auth_user_id
+                   AND ap.permission_codename = p_permission_codename
+                   AND (uoa.valido_dal IS NULL OR uoa.valido_dal <= CURRENT_DATE)
+                   AND (uoa.valido_al  IS NULL OR uoa.valido_al  >= CURRENT_DATE);
+
+                IF FOUND THEN
+                  RETURN v_abilitata;
+                END IF;
+
+                -- 3. Profilo reparto azione
+                SELECT pra.abilitata
+                  INTO v_abilitata
+                  FROM config.profili_reparto_azioni pra
+                  JOIN config.azioni_processo ap ON ap.id = pra.azione_id
+                  JOIN anagrafiche.risorse_umane_auth_user rau
+                    ON rau.auth_user_id = p_auth_user_id
+                  JOIN anagrafiche.risorse_umane ru
+                    ON ru.id = rau.risorsa_umana_id
+                 WHERE ru.unita_organizzativa_id = pra.unita_organizzativa_id
+                   AND ap.permission_codename = p_permission_codename;
+
+                IF FOUND THEN
+                  RETURN v_abilitata;
+                END IF;
+
+                -- 4. Default sicuro
+                RETURN false;
+              END
+              $$;
+
+              COMMENT ON FUNCTION script.fn_check_azione_processo(integer, varchar)
+                IS 'Verifica se azione e'' abilitata: override utente → profilo reparto → negata.';

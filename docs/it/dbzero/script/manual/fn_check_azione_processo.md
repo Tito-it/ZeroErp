@@ -1,4 +1,4 @@
-## Documentazione Concettuale – Funzione `config.fn_check_azione_processo`
+## Documentazione Concettuale – Funzione `script.fn_check_azione_processo`
 
 > **Vedi anche**
 >
@@ -10,14 +10,14 @@
 >
 > **Funzioni correlate:**
 >
-> * [config.fn_get_ruolo_sistema](/dbzero/config/funzioni/fn_get_ruolo_sistema)
+> * [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
 
 ---
 
 ### Scopo Principale
 
-(latest review 28-02-2026)
-La funzione **`config.fn_check_azione_processo`** verifica se un'azione di processo
+(latest review 08-03-2026)
+La funzione **`script.fn_check_azione_processo`** verifica se un'azione di processo
 (identificata da `permission_codename`) e abilitata per un utente.
 
 Funzione `fn_check_*`: puro boolean, no RAISE.
@@ -28,8 +28,8 @@ Funzione `fn_check_*`: puro boolean, no RAISE.
 
 | Parametro | Tipo | Descrizione |
 | --------- | ---- | ----------- |
-| `p_auth_user_id` | integer | ID dell'utente Django. |
-| `p_permission_codename` | varchar(100) | Codice azione (es. `'can_emit_invoice'`). |
+| `p_auth_user_id` | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID dell'utente Django. |
+| `p_permission_codename` | `config.azioni_processo.permission_codename%TYPE` | Codice azione (es. `'can_emit_invoice'`). |
 
 ---
 
@@ -60,7 +60,7 @@ Ritorna `boolean`: `true` se l'azione e abilitata, `false` altrimenti.
 ### Esempio d'uso
 
 ```sql
-SELECT config.fn_check_azione_processo(42, 'can_emit_invoice');
+SELECT script.fn_check_azione_processo(42, 'can_emit_invoice');
 -- Ritorna: true/false
 ```
 

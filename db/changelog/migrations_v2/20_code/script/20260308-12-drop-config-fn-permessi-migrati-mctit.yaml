@@ -1,0 +1,40 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260308-12-drop-config-fn-permessi-migrati-mctit.yaml
+
+  - changeSet:
+      id: 20260308-12-drop-config-fn-permessi-migrati
+      author: mctit
+      comment: "Drop le 9 vecchie funzioni permessi da config (migrate a script)"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Rimuove le 9 funzioni di risoluzione permessi dallo
+              --   schema config, dopo la migrazione a script.
+              --   Drop dipendenti prima del building block.
+              -- =========================================================
+
+              -- Trigger function (dipende da fn_check_user_emittente_scope)
+              DROP FUNCTION IF EXISTS config.trgfn_guard_emittente_scope();
+
+              -- Funzioni che dipendono da fn_get_ruolo_sistema
+              DROP FUNCTION IF EXISTS config.fn_resolve_livello_oggetto(integer, varchar, varchar, varchar);
+              DROP FUNCTION IF EXISTS config.fn_resolve_livello_area(integer, varchar);
+              DROP FUNCTION IF EXISTS config.fn_check_azione_processo(integer, varchar);
+              DROP FUNCTION IF EXISTS config.fn_check_user_emittente_scope(integer, bigint);
+              DROP FUNCTION IF EXISTS config.fn_get_emittenti_scope_sr_ids(integer);
+
+              -- Funzioni standalone
+              DROP FUNCTION IF EXISTS config.fn_get_emittenti_scope(integer);
+              DROP FUNCTION IF EXISTS config.fn_get_override_scaduti(integer);
+
+              -- Building block (droppato per ultimo)
+              DROP FUNCTION IF EXISTS config.fn_get_ruolo_sistema(integer);

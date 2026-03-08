@@ -329,11 +329,11 @@ WHERE uef.auth_user_id = 42;
 
 ## 5. Separazione delle responsabilita'
 
-| Livello            | Responsabilita'                                                    | Dove                            |
-| ------------------ | ------------------------------------------------------------------ | ------------------------------- |
-| **Django/DRF**     | Autenticazione, enforcement permessi sulle API, filtering queryset | Permission classes, Mixins      |
-| **DB (config.\*)** | Source of truth per profili, aree, override, ambito emittente      | Tabelle config, ENUM, funzioni  |
-| **DB (trigger)**   | Defense-in-depth: vincoli di coerenza, guard su ambito emittente   | Trigger sulle tabelle operative |
+| Livello                | Responsabilita'                                                    | Dove                                  |
+| ---------------------- | ------------------------------------------------------------------ | ------------------------------------- |
+| **Django/DRF**         | Autenticazione, enforcement permessi sulle API, filtering queryset | Permission classes, Mixins            |
+| **DB (config/script)** | Source of truth per profili, aree, override, ambito emittente      | Tabelle config, ENUM, funzioni script |
+| **DB (trigger)**       | Defense-in-depth: vincoli di coerenza, guard su ambito emittente   | Trigger sulle tabelle operative       |
 
 Il flusso di una richiesta:
 
@@ -666,9 +666,9 @@ che il backend non puo' garantire.
 
 ### 7.1 Funzione di verifica ambito emittente
 
-> Struttura completa: [fn_check_user_emittente_scope](/dbzero/config/funzioni/fn_check_user_emittente_scope)
+> Struttura completa: [fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope)
 
-La funzione `config.fn_check_user_emittente_scope(p_auth_user_id, p_emittente_id)`
+La funzione `script.fn_check_user_emittente_scope(p_auth_user_id, p_emittente_id)`
 verifica se un utente e' autorizzato a operare su un dato emittente fiscale.
 Segue la logica whitelist: se l'utente non ha righe in `user_emittenti_fiscali`,
 restituisce `TRUE` (nessun vincolo); altrimenti verifica che l'emittente sia
@@ -678,12 +678,12 @@ nella lista.
 
 ```sql
 -- Verifica se l'utente 42 puo' operare sull'emittente 3
-SELECT config.fn_check_user_emittente_scope(42, 3);
+SELECT script.fn_check_user_emittente_scope(42, 3);
 ```
 
 ### 7.2 Trigger guard per ambito emittente
 
-> Struttura completa: [trgfn_guard_emittente_scope](/dbzero/config/funzioni/trgfn_guard_emittente_scope)
+> Struttura completa: [trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope)
 
 I trigger guard sulle tabelle operative (es. fatture, ordini) utilizzano
 la funzione di verifica per impedire operazioni su emittenti non autorizzati.
@@ -696,7 +696,7 @@ nell'ambito.
 ```
 1. Utente 42 (limitato agli emittenti 1, 3) tenta INSERT su fattura con emittente 5
 2. Il middleware Django ha gia' impostato: SET app.current_user_id = '42'
-3. Il trigger BEFORE INSERT legge la GUC e chiama fn_check_user_emittente_scope(42, 5)
+3. Il trigger BEFORE INSERT legge la GUC e chiama script.fn_check_user_emittente_scope(42, 5)
 4. La funzione restituisce FALSE -> il trigger blocca con RAISE EXCEPTION
 5. Risultato: operazione negata anche se il backend avesse un bug
 ```
@@ -707,21 +707,21 @@ Per scenari in cui il DB deve risolvere i permessi autonomamente (trigger guard,
 funzioni di validazione), esistono funzioni SQL che replicano la catena di
 risoluzione:
 
-> [fn_resolve_livello_area](/dbzero/config/funzioni/fn_resolve_livello_area) — risolve il livello effettivo di un utente su un'area (override area -> profilo reparto -> BLOCCATO)
+> [fn_resolve_livello_area](/dbzero/script/funzioni/fn_resolve_livello_area) — risolve il livello effettivo di un utente su un'area (override area -> profilo reparto -> BLOCCATO)
 
-> [fn_resolve_livello_oggetto](/dbzero/config/funzioni/fn_resolve_livello_oggetto) — risolve il livello per un singolo model (override oggetto -> override area -> profilo reparto)
+> [fn_resolve_livello_oggetto](/dbzero/script/funzioni/fn_resolve_livello_oggetto) — risolve il livello per un singolo model (override oggetto -> override area -> profilo reparto)
 
-> [fn_check_azione_processo](/dbzero/config/funzioni/fn_check_azione_processo) — verifica se un'azione di processo e' abilitata per un utente
+> [fn_check_azione_processo](/dbzero/script/funzioni/fn_check_azione_processo) — verifica se un'azione di processo e' abilitata per un utente
 
 **Esempio — verifica permessi da SQL:**
 
 ```sql
 -- Quale livello ha l'utente 42 sull'area vendite?
-SELECT config.fn_resolve_livello_area(42, 'vendite');
+SELECT script.fn_resolve_livello_area(42, 'vendite');
 -- Risultato: 'TUTTO', 'LETTURA' o 'BLOCCATO'
 
 -- Puo' l'utente 42 approvare fatture?
-SELECT config.fn_check_azione_processo(42, 'approva_fattura');
+SELECT script.fn_check_azione_processo(42, 'approva_fattura');
 -- Risultato: TRUE o FALSE
 ```
 
@@ -995,7 +995,7 @@ erDiagram
 | **Ambito emittente**        | `config.user_emittenti_fiscali`                            | Whitelist opzionale                         |
 | **Enforcement API**         | `ZeroERPPermission`                                        | DRF permission class                        |
 | **Ambito queryset**         | `EmittenteFiscaleScopeMixin`                               | Mixin su ViewSet                            |
-| **Defense-in-depth**        | Trigger + `fn_check_user_emittente_scope`                  | Setting sessione PG                         |
+| **Defense-in-depth**        | Trigger + `script.fn_check_user_emittente_scope`           | Setting sessione PG                         |
 
 ---
 

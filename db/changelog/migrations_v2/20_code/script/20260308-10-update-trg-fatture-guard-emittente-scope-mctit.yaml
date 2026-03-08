@@ -1,0 +1,27 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260308-10-update-trg-fatture-guard-emittente-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260308-10-update-trg-fatture-guard-emittente-scope
+      author: mctit
+      comment: "Rebind trigger fatture guard emittente: config.trgfn → script.trgfn"
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_a10_guard_emittente_scope_ins_upd
+                ON vendite.fatture;
+
+              CREATE TRIGGER trg_fatture_a10_guard_emittente_scope_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.fatture
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_guard_emittente_scope(
+                  'soggetto_ruolo', 'emittente_soggetto_ruolo_id'
+                );

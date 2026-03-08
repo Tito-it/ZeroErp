@@ -1,4 +1,4 @@
-{% include-markdown "it/dbzero/config/manual/fn_check_azione_processo.md" %}
+{% include-markdown "it/dbzero/script/manual/fn_check_azione_processo.md" %}
 # ⚙️ Funzione `fn_check_azione_processo`
 
 ```sql
@@ -8,14 +8,14 @@ CREATE FUNCTION fn_check_azione_processo(p_auth_user_id integer, p_permission_co
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION config.fn_check_azione_processo(p_auth_user_id integer, p_permission_codename character varying)
+CREATE OR REPLACE FUNCTION script.fn_check_azione_processo(p_auth_user_id integer, p_permission_codename character varying)
  RETURNS boolean
  LANGUAGE plpgsql
  STABLE
 AS $function$
 DECLARE
-  v_ruolo     config.ruolo_sistema;
-  v_abilitata boolean;
+  v_ruolo     anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
+  v_abilitata config.user_override_azioni.abilitata%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -30,7 +30,7 @@ BEGIN
   -- =========================================================
 
   -- 1. Ruolo sistema
-  v_ruolo := config.fn_get_ruolo_sistema(p_auth_user_id);
+  v_ruolo := script.fn_get_ruolo_sistema(p_auth_user_id);
 
   IF v_ruolo IS NULL OR v_ruolo = 'DISABILITATO' THEN
     RETURN false;
@@ -75,7 +75,7 @@ BEGIN
 END
 $function$
 
-COMMENT ON FUNCTION config.fn_check_azione_processo(p_auth_user_id integer, p_permission_codename character varying)
+COMMENT ON FUNCTION script.fn_check_azione_processo(p_auth_user_id integer, p_permission_codename character varying)
 IS 'Verifica se azione e'' abilitata: override utente → profilo reparto → negata.';
 ```
 

@@ -98,7 +98,7 @@ process_view(request, ...)
   lo stesso controllo a livello DRF. Il middleware agisce prima, evitando che la request
   raggiunga la view.
 - `app.current_user_id` e' pensato per essere usato dai trigger guard DB
-  (`config.fn_check_user_emittente_scope`) che verificano l'ambito emittente a livello di riga.
+  (`script.fn_check_user_emittente_scope`) che verificano l'ambito emittente a livello di riga.
 
 ## Test
 
