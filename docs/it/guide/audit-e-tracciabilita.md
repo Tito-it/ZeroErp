@@ -60,7 +60,7 @@ Ogni tabella operativa del sistema include quattro campi di audit:
 | `data_update` | TIMESTAMPTZ | Timestamp dell'ultimo aggiornamento             |
 | `user_update` | TEXT        | Utente che ha effettuato l'ultimo aggiornamento |
 
-I trigger `trgfn_audit_data_user_generic` popolano questi campi automaticamente
+I trigger [`trgfn_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_audit_data_user_generic) popolano questi campi automaticamente
 su ogni INSERT e UPDATE. Il valore di `user_insert` / `user_update` non è
 l'utente di sistema PostgreSQL ma **l'utente applicativo JWT reale**, reso
 disponibile tramite il GUC `app.jwt_user` impostato dal middleware Django
@@ -72,7 +72,7 @@ a `docs/it/dev/work-in-progress/brief-db-audit-jwt-user.md`.
 ### 2.3 Transaction ID
 
 Ogni INSERT e UPDATE su tabelle operative genera un `tx_id UUID`, assegnato dal
-trigger `trgfn_tx_id_managed`. Il `tx_id` vale per l'intera transazione PostgreSQL:
+trigger [`trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed). Il `tx_id` vale per l'intera transazione PostgreSQL:
 due record modificati nella stessa transazione condividono lo stesso `tx_id`.
 
 Questo permette di raggruppare tutte le scritture avvenute in un'unica operazione
@@ -82,7 +82,7 @@ il primo flusso e la prima voce di giornale.
 ### 2.4 Storicizzazione
 
 Le tabelle operative con `storicizza = true` vengono fotografate dal trigger
-`trgfn_storico_generic` ad ogni UPDATE e DELETE. Ogni snapshot finisce in
+[`trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic) ad ogni UPDATE e DELETE. Ogni snapshot finisce in
 `storico.<nome_tabella>` con il valore completo del record prima della modifica.
 
 La storicizzazione è l'ultimo livello di difesa: anche se un record viene
@@ -91,7 +91,7 @@ aggiornato più volte, la storia completa di ogni versione è recuperabile.
 ### 2.5 Giornale di bordo (modulo pratiche)
 
 Il modulo pratiche introduce un ulteriore meccanismo di audit specifico per
-il ciclo di vita delle pratiche: la tabella `pratiche.giornale`. È un log
+il ciclo di vita delle pratiche: la tabella [`pratiche.giornale`](/dbzero/pratiche/tabelle/giornale). È un log
 append-only alimentato da trigger dedicati che registra ogni evento semantico
 (pratica creata, stato cambiato, flusso completato, nota aggiunta).
 
@@ -111,7 +111,7 @@ o rinnovato un token, da dove, e quando quella sessione è terminata**.
 
 ### 3.2 Ciclo di vita tracciato
 
-La tabella `dbops.sessioni_utente` registra ogni evento significativo
+La tabella [`dbops.sessioni_utente`](/dbzero/dbops/tabelle/sessioni_utente) registra ogni evento significativo
 del ciclo di vita JWT:
 
 | Evento     | Quando si genera                                           |
@@ -157,18 +157,19 @@ endpoint, quando, con quale esito e in quanto tempo**.
 
 ### 4.2 Dati registrati
 
-La tabella `dbops.request_log` registra per ogni request API:
+La tabella [`dbops.request_log`](/dbzero/dbops/tabelle/request_log) registra per ogni request API:
 
-| Dato          | Descrizione                                          |
-| ------------- | ---------------------------------------------------- |
-| Utente        | `auth_user_id` e `username` dal token JWT            |
-| Endpoint      | `method` + `path`                                    |
-| Parametri     | `query_string` (solo parametri URL, mai body)        |
-| Esito         | `status_code` HTTP                                   |
-| Performance   | `duration_ms` — tempo di risposta in millisecondi    |
-| Contesto rete | `ip_address`, `user_agent`                           |
-| Correlazione  | `request_id` UUID — condiviso con sessioni_utente    |
-| Errore        | `error_code` — codice errore applicativo se presente |
+| Dato            | Descrizione                                                       |
+| --------------- | ----------------------------------------------------------------- |
+| Utente          | `auth_user_id` e `username` dal token JWT                         |
+| Endpoint        | `method` + `path`                                                 |
+| Parametri       | `query_string` (solo parametri URL, mai body)                     |
+| Esito           | `status_code` HTTP                                                |
+| Performance     | `duration_ms` — tempo di risposta in millisecondi                 |
+| Contesto rete   | `ip_address`, `user_agent`                                        |
+| Correlazione    | `request_id` UUID — condiviso con sessioni_utente                 |
+| Errore          | `error_code` — codice errore applicativo se presente              |
+| Idempotenza     | `idempotency_key` — chiave idempotenza dalla request, se presente |
 
 Il body della request e della response non viene mai loggato: riduce
 il volume e previene la registrazione accidentale di dati sensibili.
@@ -248,16 +249,18 @@ ORDER BY data_update DESC
 LIMIT 5;
 ```
 
-**Passo 3 — Risalire alla request HTTP tramite tx_id**
+**Passo 3 — Risalire alla request HTTP**
 
-Il `tx_id` è propagato nel giornale e nelle tabelle operative nella stessa
-transazione. Se il sistema ha loggato il `tx_id` nel request log (fase
-futura), la correlazione è diretta. Oggi la correlazione avviene tramite
-la finestra temporale: `data_update` del record combacia con `data_insert`
-del request log per quell'utente in quel momento.
+Oggi la correlazione tra la request HTTP e la scrittura DB avviene per
+**finestra temporale**: il `data_update` del record operativo combacia
+con il `data_insert` del request log per lo stesso utente nello stesso
+istante. Il `tx_id` presente nel `request_log` è quello della propria
+INSERT di log (generato dal trigger [`trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)), non quello
+della transazione operativa — quindi non è utilizzabile per correlazione
+diretta.
 
 ```sql
--- Request dell'utente nel minuto della modifica
+-- Request dell'utente nella finestra temporale della modifica
 SELECT *
 FROM dbops.request_log
 WHERE username = :user_update
@@ -265,15 +268,19 @@ WHERE username = :user_update
                       AND :data_update + interval '5s';
 ```
 
+In futuro la correlazione diventerà diretta: il `request_id` verrà
+propagato come GUC PostgreSQL nelle tabelle operative (vedi sezione 8).
+
 **Passo 4 — Verificare la sessione attiva in quel momento**
 
 ```sql
 -- Sessione JWT attiva al momento della modifica
-SELECT *
-FROM dbops.sessioni_utente
-WHERE user_insert = :user_update
-  AND data_insert <= :data_update
-ORDER BY data_insert DESC
+SELECT su.*
+FROM dbops.sessioni_utente su
+JOIN auth_user au ON au.id = su.auth_user_id
+WHERE au.username = :user_update
+  AND su.data_insert <= :data_update
+ORDER BY su.data_insert DESC
 LIMIT 1;
 ```
 
@@ -284,17 +291,29 @@ LIMIT 1;
 Un modulo che si appoggia sull'Anello 0 ottiene la tracciabilità completa
 senza scrivere codice di logging:
 
-| Capacità                                    | Chi la fornisce                                  | Configurazione richiesta          |
-| ------------------------------------------- | ------------------------------------------------ | --------------------------------- |
-| Campi `user_insert/update` con utente reale | `trgfn_audit_data_user_generic` + GUC middleware | Nessuna                           |
-| `tx_id` su ogni scrittura                   | `trgfn_tx_id_managed`                            | Nessuna                           |
-| Snapshot storico ad ogni modifica           | `trgfn_storico_generic` + `storicizza=true`      | `storicizza = true` sulla tabella |
-| Log di ogni request API                     | `RequestLogMiddleware`                           | Nessuna (middleware globale)      |
-| Log login/refresh JWT                       | `AuditTokenObtainPairView/RefreshView`           | Nessuna (view globale)            |
+| Capacità                                    | Chi la fornisce                                                                                                | Configurazione richiesta          |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Campi `user_insert/update` con utente reale | [`trgfn_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_audit_data_user_generic) + `JwtAuditMiddleware` | Nessuna                           |
+| `tx_id` su ogni scrittura                   | [`trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)                                            | Nessuna                           |
+| Snapshot storico ad ogni modifica           | [`trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic) + `storicizza=true`                   | `storicizza = true` sulla tabella |
+| Log di ogni request API                     | `RequestLogMiddleware`                                                                                         | Nessuna (middleware globale)      |
+| Log login/refresh JWT                       | `AuditTokenObtainPairView/RefreshView`                                                                         | Nessuna (view globale)            |
 
 L'unica cosa che un modulo deve fornire autonomamente è il **giornale di dominio**
-(come `pratiche.giornale`) quando vuole tracciare eventi semantici specifici
+(come [`pratiche.giornale`](/dbzero/pratiche/tabelle/giornale)) quando vuole tracciare eventi semantici specifici
 oltre al semplice "quando è stato toccato il record".
+
+### Nota: `dbops.audit_log`
+
+La tabella [`dbops.audit_log`](/dbzero/dbops/tabelle/audit_log) non fa parte dei tre strati di tracciabilità
+descritti in questa guida: è il **log di sistema delle automazioni DB**.
+Tutte le funzioni del framework di automazione (`fn_run_automations_*`)
+registrano il proprio esito — regola applicata, tabella, righe modificate,
+errori — tramite [`fn_audit_log_once()`](/dbzero/dbops/funzioni/fn_audit_log_once). È lo strumento per verificare
+che il cleanup, la storicizzazione, i lock e le altre automazioni
+infrastrutturali funzionino correttamente.
+
+Retention: 30 giorni (regola CLEANUP_AT default, id=11).
 
 ---
 
@@ -303,25 +322,34 @@ oltre al semplice "quando è stato toccato il record".
 ### Retention configurabile
 
 Entrambe le tabelle di audit condividono il campo `cleanup_at TIMESTAMPTZ`
-che indica quando il record può essere rimosso. Il valore viene impostato
-all'inserimento in base alla policy configurata per ciascuna tabella.
+che indica quando il record può essere rimosso. Il valore non viene
+impostato all'inserimento ma calcolato in batch dal framework di
+automazione [`fn_apply_cleanup_at()`](/dbzero/dbops/funzioni/fn_apply_cleanup_at), che applica un TTL configurato
+in [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl) a partire dalla colonna `data_insert`.
 
-| Tabella                 | Retention default | Note             |
-| ----------------------- | ----------------- | ---------------- |
-| `dbops.sessioni_utente` | 365 giorni        | Audit compliance |
-| `dbops.request_log`     | 90 giorni         | Volume elevato   |
+| Tabella                 | Retention  | Regola override      | Note             |
+| ----------------------- | ---------- | -------------------- | ---------------- |
+| `dbops.sessioni_utente` | 180 giorni | id=13, priorità 190  | Audit compliance |
+| `dbops.request_log`     | 90 giorni  | id=14, priorità 190  | Volume elevato   |
 
-### Job pgAgent
+Le altre tabelle con `cleanup_at` (es. `error_log`, `audit_log`,
+`idempotency_keys`) usano il TTL default di 30 giorni (regola id=11).
 
-Un job schedulato giornaliero esegue la pulizia:
+### Framework cleanup automatico
 
-```sql
-DELETE FROM dbops.sessioni_utente WHERE cleanup_at < NOW();
-DELETE FROM dbops.request_log     WHERE cleanup_at < NOW();
-```
+La manutenzione è gestita dal framework generico di automazione tramite
+due regole in [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl):
 
-Il job segue il pattern `fn_run_and_log` — il suo esito è tracciato
-in `maintenance.job_run_log` come tutti i job pgAgent del sistema.
+1. **`CLEANUP_AT`** (id=11, default 30gg; override id=13/14 per le tabelle
+   audit): calcola `cleanup_at = data_insert + TTL` per ogni riga con
+   `cleanup_at IS NULL`
+2. **`CLEANUP_PURGE`** (id=12): elimina in batch (5000 righe) i record
+   con `cleanup_at <= now()`
+
+Entrambe sono orchestrate da [`dbops.fn_run_automations_cleanup()`](/dbzero/dbops/funzioni/fn_run_automations_cleanup),
+invocata dal job pgAgent `automations_cleanup_weekly` (domenica 23:00 UTC)
+tramite `maintenance.proc_automations_cleanup_job()`. L'esito è tracciato
+in [`dbops.audit_log`](/dbzero/dbops/tabelle/audit_log).
 
 ### Token blacklist
 
@@ -333,21 +361,26 @@ pgAgent come script shell.
 
 ## 8. Evoluzione futura
 
-Le seguenti funzionalità sono pianificate ma non ancora implementate:
+### Completato
 
-- **Propagazione `request_id` → `tx_id`**: oggi la correlazione tra
-  request HTTP e scrittura DB avviene per finestra temporale. In futuro
-  il `request_id` verrà propagato come GUC PostgreSQL e scritto
-  nelle tabelle operative, rendendo la correlazione diretta e inequivocabile.
+- **Audit trail permessi**: le 7 tabelle che definiscono profili reparto,
+  override utente e ruolo sistema hanno `storicizza = true` e trigger
+  [`trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed) attivi. Ogni modifica (UPDATE/DELETE) viene
+  fotografata in `storico.<tabella>`.
+
+### Pianificato
+
+- **Propagazione `request_id` come GUC**: oggi la correlazione tra
+  request HTTP e scrittura DB avviene per finestra temporale (vedi
+  sezione 5.2, passo 3). In futuro il `request_id` verrà propagato
+  come GUC PostgreSQL (`SET LOCAL app.request_id = ...`) e scritto
+  nelle tabelle operative, rendendo la correlazione diretta.
 
 - **API di consultazione**: endpoint `GET /api/v1/core/users/{id}/sessioni/`
   e `GET /api/v1/core/request-log/` per ADMIN, con filtri per data/path/status.
 
 - **Dashboard anomalie**: vista operativa che segnala pattern inusuali —
   login da IP multipli, volume request anomalo, token revocati riutilizzati.
-
-- **Audit trail permessi**: log delle modifiche ai profili reparto e override
-  individuali, per tracciare chi ha concesso o revocato accessi e quando.
 
 ---
 

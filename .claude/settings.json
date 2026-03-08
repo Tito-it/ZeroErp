@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(do echo \"=== $f ===\")",
+      "Read(//home/tid/software/ZeroErp/**)",
+      "Bash(grep -l \"idempotency\\\\|claim_or_replay\" /home/tid/software/ZeroErp/backend/apps/vendite/tests/api/*.py)"
+    ]
+  }
+}
