@@ -48,8 +48,12 @@
     "go_to_page": "Go to page",
     "rows_per_page": "Rows per page"
   },
+  "actions": {
+    "new": "New"
+  },
   "home": {
-    "welcome": "Welcome to ZeroERP"
+    "welcome_user": "Welcome, {name}",
+    "welcome_fallback": "user"
   },
   "confirm": {
     "delete_title": "Confirm deletion",

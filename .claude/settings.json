@@ -15,7 +15,12 @@
       "Bash(npx vite build)",
       "Bash(./node_modules/.bin/vite build)",
       "Read(//opt/**)",
-      "Read(//home/tid/**)"
+      "Read(//home/tid/**)",
+      "Bash(source ~/.nvm/nvm.sh)",
+      "Bash(nvm use 24)"
+    ],
+    "additionalDirectories": [
+      "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"
     ]
   }
 }

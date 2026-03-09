@@ -44,8 +44,8 @@
   --app-card-radius: 8px;
 
   /* ===== Logo ===== */
-  --app-logo-bg: var(--p-primary-color);
-  --app-logo-color: var(--p-primary-contrast-color);
+  --app-logo-bg: #4ade80;
+  --app-logo-color: #1e3a5f;
   --app-logo-size: 32px;
   --app-logo-radius: 8px;
 
@@ -55,6 +55,14 @@
   --app-login-card-radius: 12px;
   --app-login-error-bg: color-mix(in srgb, var(--p-red-500) 15%, transparent);
   --app-login-error-color: var(--p-red-400);
+
+  /* ===== Toolbar (barra secondaria sotto topbar) ===== */
+  --app-toolbar-height: 40px;
+  --app-toolbar-bg: var(--p-surface-900);
+  --app-toolbar-border: var(--p-surface-700);
+  --app-toolbar-tab-hover-bg: var(--p-surface-800);
+  --app-toolbar-tab-active-bg: var(--p-primary-color);
+  --app-toolbar-tab-active-color: var(--p-primary-contrast-color);
 
   /* ===== Drawer ===== */
   --app-drawer-footer-border: var(--p-surface-700);
@@ -67,4 +75,8 @@
   --app-font-size-sm: 0.85rem;
   --app-font-size-base: 0.875rem;
   --app-font-size-lg: 1.1rem;
+
+  /* ===== Breakpoint (documentazione — usare valori fissi nei @media) ===== */
+  /* Tablet landscape / desktop compatto: 1024px */
+  /* Tablet portrait: 768px */
 }
