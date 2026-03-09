@@ -25,10 +25,10 @@ function handleLogout() {
 </script>
 
 <template>
-  <aside class="app-sidebar" :class="{ collapsed: ui.sidebarCollapsed }">
+  <aside class="app-sidebar" :class="{ collapsed: ui.effectiveSidebarCollapsed }">
     <div class="sidebar-header">
       <span class="sidebar-logo">Z</span>
-      <span v-if="!ui.sidebarCollapsed" class="sidebar-title">ZeroERP</span>
+      <span v-if="!ui.effectiveSidebarCollapsed" class="sidebar-title">ZeroERP</span>
     </div>
 
     <nav class="sidebar-nav">
@@ -38,10 +38,10 @@ function handleLogout() {
         :to="item.to"
         class="sidebar-item"
         :class="{ active: activePath === item.to }"
-        v-tooltip.right="ui.sidebarCollapsed ? t(`nav.${item.key}`) : null"
+        v-tooltip.right="ui.effectiveSidebarCollapsed ? t(`nav.${item.key}`) : null"
       >
         <i :class="item.icon"></i>
-        <span v-if="!ui.sidebarCollapsed">{{ t(`nav.${item.key}`) }}</span>
+        <span v-if="!ui.effectiveSidebarCollapsed">{{ t(`nav.${item.key}`) }}</span>
       </router-link>
     </nav>
 
@@ -49,15 +49,15 @@ function handleLogout() {
       <div
         class="sidebar-user"
         @click="handleLogout"
-        v-tooltip.right="ui.sidebarCollapsed ? t('auth.logout') : null"
+        v-tooltip.right="ui.effectiveSidebarCollapsed ? t('auth.logout') : null"
       >
         <i class="pi pi-sign-out"></i>
-        <span v-if="!ui.sidebarCollapsed">{{ t('auth.logout') }}</span>
+        <span v-if="!ui.effectiveSidebarCollapsed">{{ t('auth.logout') }}</span>
       </div>
 
-      <div class="sidebar-toggle" @click="ui.toggleSidebar()">
+      <div v-if="!ui.isTablet" class="sidebar-toggle" @click="ui.toggleSidebar()">
         <i :class="ui.sidebarCollapsed ? 'pi pi-angle-right' : 'pi pi-angle-left'"></i>
-        <span v-if="!ui.sidebarCollapsed">{{ t('nav.collapse') }}</span>
+        <span v-if="!ui.effectiveSidebarCollapsed">{{ t('nav.collapse') }}</span>
       </div>
     </div>
   </aside>
@@ -68,11 +68,12 @@ function handleLogout() {
   width: var(--app-sidebar-width);
   min-width: var(--app-sidebar-width);
   height: 100vh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--app-sidebar-bg);
   border-right: 1px solid var(--app-sidebar-border);
-  overflow-y: auto;
+  overflow: hidden;
   transition: width var(--app-transition-normal), min-width var(--app-transition-normal);
 }
 
@@ -121,6 +122,8 @@ function handleLogout() {
   flex-direction: column;
   gap: var(--app-sidebar-item-gap);
   padding: 0.5rem;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .sidebar-item {

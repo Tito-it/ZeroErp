@@ -1,6 +1,7 @@
 <script setup>
 import AppSidebar from './AppSidebar.vue'
 import AppTopbar from './AppTopbar.vue'
+import AppToolbar from './AppToolbar.vue'
 </script>
 
 <template>
@@ -8,6 +9,7 @@ import AppTopbar from './AppTopbar.vue'
     <AppSidebar />
     <div class="app-main">
       <AppTopbar />
+      <AppToolbar />
       <main class="app-content">
         <router-view />
       </main>
@@ -19,6 +21,7 @@ import AppTopbar from './AppTopbar.vue'
 .app-layout {
   display: flex;
   height: 100vh;
+  min-height: 600px;
   overflow: hidden;
 }
 

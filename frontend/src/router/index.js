@@ -45,6 +45,11 @@ router.beforeEach((to) => {
   if (to.name === 'login' && auth.isAuthenticated) {
     return { name: 'home' }
   }
+
+  // Carica profilo utente se autenticato ma non ancora caricato
+  if (auth.isAuthenticated && !auth.user) {
+    auth.fetchProfile()
+  }
 })
 
 export default router

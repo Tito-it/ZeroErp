@@ -2,53 +2,61 @@
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { computed } from 'vue'
-import Button from 'primevue/button'
-
-const { t } = useI18n()
+import { useAuthStore } from '../../stores/auth'
+const { t, locale } = useI18n()
 const route = useRoute()
+const auth = useAuthStore()
 
-const breadcrumb = computed(() => {
+const areaTitle = computed(() => {
   const meta = route.meta
-  const items = []
+  const parts = []
 
   if (meta.domain) {
-    items.push(t(`nav.${meta.domain}`))
+    parts.push(t(`nav.${meta.domain}`))
   }
   if (meta.section) {
-    items.push(meta.section)
+    parts.push(meta.section)
   }
 
-  return items
+  return parts.join(' / ')
 })
 
-const showNewButton = computed(() => !!route.meta.allowNew)
+const companyName = computed(() => {
+  return auth.user?.emittente?.descrizione || ''
+})
+
+const formattedDate = computed(() => {
+  const now = new Date()
+  return now.toLocaleDateString(locale.value === 'it' ? 'it-IT' : 'en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  })
+})
 </script>
 
 <template>
   <header class="app-topbar">
-    <div class="topbar-breadcrumb">
-      <span v-for="(item, index) in breadcrumb" :key="index">
-        <span v-if="index > 0" class="breadcrumb-separator">/</span>
-        <span :class="{ 'breadcrumb-last': index === breadcrumb.length - 1 }">{{ item }}</span>
-      </span>
+    <div class="topbar-left">
+      <i class="pi pi-building"></i>
+      <span v-if="companyName" class="topbar-company">{{ companyName }}</span>
     </div>
 
-    <div class="topbar-actions">
-      <Button
-        v-if="showNewButton"
-        :label="t('common.new')"
-        icon="pi pi-plus"
-        size="small"
-      />
+    <div class="topbar-center">
+      <span class="topbar-area-title">{{ areaTitle }}</span>
+    </div>
+
+    <div class="topbar-right">
+      <span class="topbar-date">{{ formattedDate }}</span>
     </div>
   </header>
 </template>
 
 <style scoped>
 .app-topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   height: var(--app-topbar-height);
   min-height: var(--app-topbar-height);
   padding: 0 var(--app-content-padding);
@@ -56,26 +64,65 @@ const showNewButton = computed(() => !!route.meta.allowNew)
   border-bottom: 1px solid var(--app-topbar-border);
 }
 
-.topbar-breadcrumb {
+.topbar-left {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
+  font-size: var(--app-font-size-sm);
+  color: var(--app-topbar-breadcrumb-color);
+}
+
+.topbar-left i {
+  font-size: 0.9rem;
+}
+
+.topbar-company {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.topbar-area-title {
   font-size: var(--app-font-size-base);
-  color: var(--app-topbar-breadcrumb-color);
-}
-
-.breadcrumb-separator {
-  color: var(--app-topbar-breadcrumb-color);
-}
-
-.breadcrumb-last {
-  color: var(--app-topbar-breadcrumb-active-color);
   font-weight: 500;
+  color: var(--app-topbar-breadcrumb-active-color);
+  white-space: nowrap;
 }
 
-.topbar-actions {
+.topbar-right {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: flex-end;
+  font-size: var(--app-font-size-sm);
+  color: var(--app-topbar-breadcrumb-color);
+}
+
+.topbar-date {
+  white-space: nowrap;
+}
+
+/* Tablet landscape */
+@media (max-width: 1024px) {
+  .topbar-company {
+    display: none;
+  }
+}
+
+/* Tablet portrait */
+@media (max-width: 768px) {
+  .app-topbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .topbar-left {
+    display: none;
+  }
 }
 </style>
