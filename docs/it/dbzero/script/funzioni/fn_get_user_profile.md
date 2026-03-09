@@ -1,0 +1,273 @@
+{% include-markdown "it/dbzero/script/manual/fn_get_user_profile.md" %}
+# ⚙️ Funzione `fn_get_user_profile`
+
+```sql
+CREATE FUNCTION fn_get_user_profile(p_auth_user_id integer)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+DECLARE
+  v_result           jsonb;
+  -- Blocco utente
+  v_utente           jsonb;
+  -- Blocco risorse_umane
+  v_rau_id           anagrafiche.risorse_umane_auth_user.id%TYPE;
+  v_ruolo_sistema    anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
+  v_risorsa_umana_id anagrafiche.risorse_umane.id%TYPE;
+  v_soggetto_ruolo_id anagrafiche.risorse_umane.soggetto_ruolo_id%TYPE;
+  v_qualifica_id     anagrafiche.risorse_umane.qualifica_id%TYPE;
+  v_uo_id            anagrafiche.risorse_umane.unita_organizzativa_id%TYPE;
+  v_valido_dal       anagrafiche.risorse_umane.valido_dal%TYPE;
+  v_valido_al        anagrafiche.risorse_umane.valido_al%TYPE;
+  v_ru_attivo        anagrafiche.risorse_umane.attivo%TYPE;
+  v_risorse_umane    jsonb;
+  -- Blocco soggetto
+  v_soggetto         jsonb;
+  -- Blocco emittente
+  v_emittente        jsonb;
+  -- Variabili emittente lookup
+  v_uef_id           config.user_emittenti_fiscali.id%TYPE;
+  v_ef_id            anagrafiche.emittenti_fiscali.id%TYPE;
+  v_ef_uid           anagrafiche.emittenti_fiscali.uid%TYPE;
+  v_ef_codice        anagrafiche.emittenti_fiscali.codice%TYPE;
+  v_ef_descrizione   anagrafiche.emittenti_fiscali.descrizione%TYPE;
+  v_ef_sr_id         anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+  v_ef_regime        anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE;
+  v_ef_valuta_id     anagrafiche.emittenti_fiscali.valuta_id%TYPE;
+  -- Qualifica e UO risolti
+  v_qualifica_codice          config.qualifiche.codice%TYPE;
+  v_qualifica_codice_interno  config.qualifiche.codice_interno%TYPE;
+  v_qualifica_descrizione     config.qualifiche.descrizione%TYPE;
+  v_uo_codice                 config.unita_organizzative.codice%TYPE;
+  v_uo_codice_interno         config.unita_organizzative.codice_interno%TYPE;
+  v_uo_descrizione            config.unita_organizzative.descrizione%TYPE;
+  -- Record soggetto da fn_get_soggetto_dati_by_ruolo
+  v_sogg_rec                  record;
+BEGIN
+  -- =========================================================
+  -- Scopo:
+  --   Dato un auth_user_id, restituisce un JSONB con il profilo
+  --   completo dell'utente: dati auth_user, risorse umane
+  --   (qualifica, UO), soggetto anagrafico con dati societari,
+  --   e emittente fiscale associato (se presente).
+  --
+  --   Utilizza fn_get_soggetto_dati_by_ruolo per i blocchi
+  --   soggetto e emittente, garantendo un output uniforme.
+  --
+  -- Parametri:
+  --   p_auth_user_id: ID dell'utente Django (auth_user.id)
+  --
+  -- Restituisce:
+  --   JSONB con chiavi: utente, ruolo_sistema, risorse_umane,
+  --   soggetto, emittente (null se non associato).
+  -- =========================================================
+
+  -- Guard: parametro obbligatorio e valido
+  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+    RAISE EXCEPTION 'p_auth_user_id obbligatorio e > 0 (ricevuto: %)',
+      COALESCE(p_auth_user_id::text, 'NULL')
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  -- -------------------------------------------------------
+  -- 1. Blocco utente da auth_user
+  -- -------------------------------------------------------
+  SELECT jsonb_build_object(
+    'auth_user_id', au.id,
+    'username',     au.username,
+    'first_name',   au.first_name,
+    'last_name',    au.last_name,
+    'email',        au.email
+  )
+  INTO v_utente
+  FROM auth_user au
+  WHERE au.id = p_auth_user_id;
+
+  IF v_utente IS NULL THEN
+    RAISE EXCEPTION 'auth_user con id=% non trovato', p_auth_user_id
+      USING ERRCODE = 'no_data_found';
+  END IF;
+
+  -- -------------------------------------------------------
+  -- 2. Risolvere risorse_umane_auth_user -> risorse_umane
+  -- -------------------------------------------------------
+  SELECT rau.id,
+         rau.ruolo_sistema,
+         rau.risorsa_umana_id
+    INTO v_rau_id,
+         v_ruolo_sistema,
+         v_risorsa_umana_id
+    FROM anagrafiche.risorse_umane_auth_user rau
+   WHERE rau.auth_user_id = p_auth_user_id;
+
+  IF v_rau_id IS NULL THEN
+    RAISE EXCEPTION 'Nessun record risorse_umane_auth_user per auth_user_id=%', p_auth_user_id
+      USING ERRCODE = 'no_data_found';
+  END IF;
+
+  -- Dati risorsa umana + qualifica + UO
+  SELECT ru.soggetto_ruolo_id,
+         ru.qualifica_id,
+         ru.unita_organizzativa_id,
+         ru.valido_dal,
+         ru.valido_al,
+         ru.attivo,
+         q.codice,
+         q.codice_interno,
+         q.descrizione,
+         uo.codice,
+         uo.codice_interno,
+         uo.descrizione
+    INTO v_soggetto_ruolo_id,
+         v_qualifica_id,
+         v_uo_id,
+         v_valido_dal,
+         v_valido_al,
+         v_ru_attivo,
+         v_qualifica_codice,
+         v_qualifica_codice_interno,
+         v_qualifica_descrizione,
+         v_uo_codice,
+         v_uo_codice_interno,
+         v_uo_descrizione
+    FROM anagrafiche.risorse_umane ru
+    LEFT JOIN config.qualifiche q          ON q.id  = ru.qualifica_id
+    LEFT JOIN config.unita_organizzative uo ON uo.id = ru.unita_organizzativa_id
+   WHERE ru.id = v_risorsa_umana_id;
+
+  IF v_soggetto_ruolo_id IS NULL THEN
+    RAISE EXCEPTION 'Nessun record risorse_umane per id=%', v_risorsa_umana_id
+      USING ERRCODE = 'no_data_found';
+  END IF;
+
+  v_risorse_umane := jsonb_build_object(
+    'risorsa_umana_id',                v_risorsa_umana_id,
+    'risorse_umane_auth_user_id',      v_rau_id,
+    'soggetto_ruolo_id',               v_soggetto_ruolo_id,
+    'qualifica_id',                    v_qualifica_id,
+    'qualifica_codice',                v_qualifica_codice,
+    'qualifica_codice_interno',        v_qualifica_codice_interno,
+    'qualifica_descrizione',           v_qualifica_descrizione,
+    'unita_organizzativa_id',          v_uo_id,
+    'unita_organizzativa_codice',      v_uo_codice,
+    'unita_organizzativa_codice_interno', v_uo_codice_interno,
+    'unita_organizzativa_descrizione', v_uo_descrizione,
+    'valido_dal',                      v_valido_dal,
+    'valido_al',                       v_valido_al,
+    'attivo',                          v_ru_attivo
+  );
+
+  -- -------------------------------------------------------
+  -- 3. Blocco soggetto tramite fn_get_soggetto_dati_by_ruolo
+  -- -------------------------------------------------------
+  SELECT row_to_json(t.*)::jsonb
+    INTO v_soggetto
+    FROM script.fn_get_soggetto_dati_by_ruolo(v_soggetto_ruolo_id) t;
+
+  -- -------------------------------------------------------
+  -- 4. Risolvere emittente fiscale
+  --    Strategia: primo dalla whitelist user_emittenti_fiscali
+  --    (ordine id, primo attivo). Se whitelist vuota e c'e'
+  --    un unico emittente attivo, usa quello come fallback.
+  -- -------------------------------------------------------
+  v_emittente := NULL;
+
+  -- 4a. Whitelist: primo emittente attivo associato all'utente
+  SELECT uef.id,
+         ef.id,
+         ef.uid,
+         ef.codice,
+         ef.descrizione,
+         ef.soggetto_ruolo_id,
+         ef.regime_fiscale_rf,
+         ef.valuta_id
+    INTO v_uef_id,
+         v_ef_id,
+         v_ef_uid,
+         v_ef_codice,
+         v_ef_descrizione,
+         v_ef_sr_id,
+         v_ef_regime,
+         v_ef_valuta_id
+    FROM config.user_emittenti_fiscali uef
+    JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
+   WHERE uef.auth_user_id = p_auth_user_id
+     AND ef.attivo = true
+   ORDER BY uef.id
+   LIMIT 1;
+
+  -- 4b. Fallback: emittente unico attivo (se whitelist vuota)
+  IF v_ef_id IS NULL THEN
+    SELECT ef.id,
+           ef.uid,
+           ef.codice,
+           ef.descrizione,
+           ef.soggetto_ruolo_id,
+           ef.regime_fiscale_rf,
+           ef.valuta_id
+      INTO v_ef_id,
+           v_ef_uid,
+           v_ef_codice,
+           v_ef_descrizione,
+           v_ef_sr_id,
+           v_ef_regime,
+           v_ef_valuta_id
+      FROM anagrafiche.emittenti_fiscali ef
+     WHERE ef.attivo = true
+    HAVING COUNT(*) = 1;
+    -- Se count > 1, nessun record viene restituito (corretto: ambiguo)
+
+    v_uef_id := NULL;  -- nessun record whitelist in questo caso
+  END IF;
+
+  -- 4c. Se emittente trovato, comporre il blocco
+  IF v_ef_id IS NOT NULL THEN
+    DECLARE
+      v_ef_soggetto jsonb;
+    BEGIN
+      -- Dati soggetto dell'emittente
+      SELECT row_to_json(t.*)::jsonb
+        INTO v_ef_soggetto
+        FROM script.fn_get_soggetto_dati_by_ruolo(v_ef_sr_id) t;
+
+      -- Comporre blocco emittente: campi emittente + campi soggetto
+      v_emittente := jsonb_build_object(
+        'emittente_fiscale_id',    v_ef_id,
+        'emittente_fiscale_uid',   v_ef_uid,
+        'emittente_codice',        v_ef_codice,
+        'emittente_descrizione',   v_ef_descrizione,
+        'user_emittente_fiscale_id', v_uef_id,
+        'regime_fiscale_rf',       v_ef_regime,
+        'valuta_id',               v_ef_valuta_id
+      ) || COALESCE(v_ef_soggetto, '{}'::jsonb);
+    END;
+  END IF;
+
+  -- -------------------------------------------------------
+  -- 5. Comporre risultato finale
+  -- -------------------------------------------------------
+  v_result := jsonb_build_object(
+    'utente',         v_utente,
+    'ruolo_sistema',  v_ruolo_sistema,
+    'risorse_umane',  v_risorse_umane,
+    'soggetto',       v_soggetto,
+    'emittente',      v_emittente
+  );
+
+  RETURN v_result;
+END
+$function$
+
+COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
+IS 'Profilo utente completo: JSONB con blocchi utente, ruolo_sistema, risorse_umane (qualifica, UO), soggetto (dati anagrafici + societari), emittente fiscale (se associato). Dipende da fn_get_soggetto_dati_by_ruolo.';
+```
+
+---
+{% include-markdown "signature-core.md" %}
