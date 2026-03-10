@@ -2,6 +2,7 @@
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
 import { DOMAINS } from '../navigation'
+import SessioniAttivePanel from '../components/SessioniAttivePanel.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -10,6 +11,8 @@ const auth = useAuthStore()
 <template>
   <div class="home-view">
     <h2>{{ t('home.welcome_user', { name: auth.displayName || t('home.welcome_fallback') }) }}</h2>
+
+    <SessioniAttivePanel />
 
     <div class="domain-grid">
       <router-link
@@ -28,12 +31,11 @@ const auth = useAuthStore()
 <style scoped>
 .home-view {
   max-width: 900px;
-  margin: 0 auto;
+  margin: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  height: 100%;
+  min-height: 100%;
 }
 
 .home-view h2 {

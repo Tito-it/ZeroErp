@@ -175,6 +175,7 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 
 - Ask before running DB migrations locally
 - Avoid destructive commands without explicit approval
+- **Bug di dati in sviluppo**: prima di sviluppare fix software per correggere dati errati, chiedere all'utente se è più veloce correggere/cancellare i dati manualmente. I fix software per problemi di dati creano strati di codice inutili che poi vanno rimossi.
 
 ## Test (pgtap)
 

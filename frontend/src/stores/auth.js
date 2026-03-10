@@ -10,18 +10,23 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshToken = ref(localStorage.getItem(REFRESH_KEY) || null)
 
   // Profilo utente caricato dall'endpoint /me/
-  // Struttura attesa: { username, first_name, last_name, emittente: { id, codice, descrizione } }
+  // Struttura JSONB: { utente, ruolo_sistema, risorse_umane, soggetto, emittente }
   const user = ref(null)
 
   const isAuthenticated = computed(() => !!accessToken.value)
 
+  // Nome visualizzato: priorità soggetto.nome > utente.first_name > username
   const displayName = computed(() => {
     if (!user.value) return ''
-    const { first_name, last_name, username } = user.value
-    if (first_name || last_name) {
-      return [first_name, last_name].filter(Boolean).join(' ')
+    const soggetto = user.value.soggetto
+    if (soggetto?.nome) {
+      return [soggetto.nome, soggetto.cognome].filter(Boolean).join(' ')
     }
-    return username || ''
+    const utente = user.value.utente
+    if (utente?.first_name || utente?.last_name) {
+      return [utente.first_name, utente.last_name].filter(Boolean).join(' ')
+    }
+    return utente?.username || ''
   })
 
   function setTokens(access, refresh) {
@@ -42,9 +47,10 @@ export const useAuthStore = defineStore('auth', () => {
   async function fetchProfile() {
     try {
       const response = await api.get('/core/me/')
+      console.log('[fetchProfile] response.data:', JSON.stringify(response.data))
       user.value = response.data.data
-    } catch {
-      // Endpoint non ancora disponibile — nessun errore visibile
+    } catch (err) {
+      console.error('[fetchProfile] Errore caricamento profilo:', err.response?.status, err.response?.data || err.message)
     }
   }
 
@@ -68,7 +74,15 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  function logout() {
+  async function logout() {
+    // Invalida la sessione lato server prima di pulire i token
+    if (refreshToken.value) {
+      try {
+        await api.post('/auth/logout/', { refresh: refreshToken.value })
+      } catch {
+        // Se il logout server fallisce, procedi comunque con la pulizia locale
+      }
+    }
     clearTokens()
   }
 

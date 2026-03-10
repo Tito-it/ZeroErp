@@ -55,6 +55,27 @@
     "welcome_user": "Benvenuto, {name}",
     "welcome_fallback": "utente"
   },
+  "profile": {
+    "role_admin": "Amministratore",
+    "role_operativo": "Operativo",
+    "no_company": "Nessuna emittente associata"
+  },
+  "sessions": {
+    "other_active": "Altre sessioni attive ({count})",
+    "device": "Dispositivo",
+    "ip_address": "Indirizzo IP",
+    "last_access": "Ultimo accesso",
+    "action": "Azione",
+    "revoke": "Revoca",
+    "revoke_confirm_title": "Conferma revoca sessione",
+    "revoke_confirm_message": "Vuoi revocare la sessione da {device} ({ip})?",
+    "revoke_success": "Sessione revocata",
+    "now": "Adesso",
+    "minutes_ago": "{n} min fa",
+    "hours_ago": "{n} ore fa",
+    "yesterday": "Ieri",
+    "days_ago": "{n} giorni fa"
+  },
   "confirm": {
     "delete_title": "Conferma eliminazione",
     "delete_message": "Sei sicuro di voler eliminare {name}? L'operazione non può essere annullata."
