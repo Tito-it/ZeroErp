@@ -1,0 +1,179 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025-2026 Tid (Michele Carlo Titini)
+#
+# Aggiornamento fn_search_soggetti_universale:
+# - Rimosso p_comune_id (soggetti.comune_id = comune nascita, non indirizzo operativo).
+# - Rimosso comune_id e comune_descrizione dall'output.
+# - Il filtro per indirizzo/comune e' gestito nel livello 2 (fn_get_search_detail).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260310-05-update-fn-search-soggetti-universale-mctit.yaml
+
+  - changeSet:
+      id: 20260310-05-update-fn-search-soggetti-universale
+      author: mctit
+      comment: "Rimosso p_comune_id (comune nascita, non operativo). Rimosso comune_id/comune_descrizione dall'output. Filtro indirizzo delegato al livello 2."
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              CREATE OR REPLACE FUNCTION script.fn_search_soggetti_universale(
+                p_search_term    text,
+                p_tipo_ruolo_id  config.tipi_ruoli.id%TYPE,
+                p_emittente_ids  integer[]                   DEFAULT NULL,
+                p_limit          integer                     DEFAULT 50,
+                p_offset         integer                     DEFAULT 0
+              )
+              RETURNS TABLE (
+                total_count               bigint,
+                soggetto_id               anagrafiche.soggetti.id%TYPE,
+                soggetto_ruolo_id         anagrafiche.soggetti_ruoli.id%TYPE,
+                tipo_ruolo_id             config.tipi_ruoli.id%TYPE,
+                soggetto_codice           anagrafiche.soggetti.codice%TYPE,
+                ragione_sociale_completa  anagrafiche.soggetti.ragione_sociale_completa%TYPE,
+                id_fiscale_univoco        anagrafiche.soggetti.id_fiscale_univoco_cf_piva%TYPE,
+                utility_list              text
+              )
+              LANGUAGE plpgsql
+              STABLE
+              PARALLEL SAFE
+              AS $function$
+              DECLARE
+                -- Variabili di lavoro (non riflettono colonne)
+                v_search_pattern  text;
+                v_limit           integer := LEAST(COALESCE(p_limit, 50), 200);
+                v_offset          integer := GREATEST(COALESCE(p_offset, 0), 0);
+                c_hard_cap        constant integer := 10000;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Ricerca universale soggetti per tipo ruolo (livello 1).
+                --   Cerca su ragione_sociale_completa e
+                --   id_fiscale_univoco_cf_piva con ILIKE (pg_trgm GIN).
+                --   Ritorna una riga per soggetto con utility aggregate
+                --   (solo per clienti). Hard cap 10.000 righe filtrate.
+                --
+                -- Parametri:
+                --   p_search_term:   testo di ricerca (minimo 3 caratteri)
+                --   p_tipo_ruolo_id: ID tipo ruolo (obbligatorio, > 0)
+                --   p_emittente_ids: filtro opzionale per scope emittente
+                --   p_limit:         righe per pagina (default 50, max 200)
+                --   p_offset:        offset paginazione (default 0)
+                --
+                -- Restituisce:
+                --   Set di righe con total_count (window), dati soggetto
+                --   e utility_list aggregata. Ordinamento per
+                --   ragione_sociale_completa, soggetto_ruolo_id.
+                --
+                -- Nota:
+                --   Filtro per comune/indirizzo non presente nel livello 1
+                --   (soggetti.comune_id = comune nascita, non operativo).
+                --   Il filtro per indirizzo e' nel livello 2
+                --   (fn_get_search_detail) dove si risolve per ruolo.
+                -- =========================================================
+
+                -- Guard: tipo ruolo obbligatorio e valido
+                IF p_tipo_ruolo_id IS NULL OR p_tipo_ruolo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.fn_search_soggetti_universale',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object(
+                      'parametro', 'p_tipo_ruolo_id',
+                      'valore', p_tipo_ruolo_id
+                    ),
+                    NULL::uuid,
+                    'p_tipo_ruolo_id obbligatorio e > 0'
+                  );
+                END IF;
+
+                -- Guard: termine ricerca minimo 3 caratteri
+                IF p_search_term IS NULL OR length(btrim(p_search_term)) < 3 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.fn_search_soggetti_universale',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object(
+                      'parametro', 'p_search_term',
+                      'valore', p_search_term,
+                      'minimo_caratteri', 3
+                    ),
+                    NULL::uuid,
+                    'p_search_term obbligatorio (minimo 3 caratteri)'
+                  );
+                END IF;
+
+                -- Prepara pattern ILIKE
+                v_search_pattern := '%' || btrim(p_search_term) || '%';
+
+                RETURN QUERY
+                WITH filtered AS (
+                  -- CTE 1: soggetti con ruolo richiesto e match sul termine
+                  -- Hard cap per protezione performance
+                  SELECT
+                    s.id                             AS soggetto_id,
+                    sr.id                            AS soggetto_ruolo_id,
+                    sr.tipo_ruolo_id                 AS tipo_ruolo_id,
+                    s.codice                         AS soggetto_codice,
+                    s.ragione_sociale_completa       AS ragione_sociale_completa,
+                    s.id_fiscale_univoco_cf_piva     AS id_fiscale_univoco
+                  FROM anagrafiche.soggetti_ruoli sr
+                    JOIN anagrafiche.soggetti s
+                      ON s.id = sr.soggetto_id
+                  WHERE sr.tipo_ruolo_id = p_tipo_ruolo_id
+                    AND s.attivo = true
+                    AND (
+                      s.ragione_sociale_completa ILIKE v_search_pattern
+                      OR s.id_fiscale_univoco_cf_piva ILIKE v_search_pattern
+                    )
+                    -- Filtro scope emittente (da implementare se necessario)
+                  LIMIT c_hard_cap
+                ),
+                with_utility AS (
+                  -- CTE 2: aggrega utility (codice_interno) per i soggetti trovati
+                  -- LEFT JOIN leggero, produce NULL per ruoli non-cliente
+                  SELECT
+                    f.*,
+                    string_agg(DISTINCT u.codice_interno, ', ' ORDER BY u.codice_interno)
+                      AS utility_list
+                  FROM filtered f
+                    LEFT JOIN anagrafiche.clienti cl
+                      ON cl.soggetto_ruolo_id = f.soggetto_ruolo_id
+                    LEFT JOIN config.utilities u
+                      ON u.id = cl.utility_id
+                  GROUP BY
+                    f.soggetto_id, f.soggetto_ruolo_id, f.tipo_ruolo_id,
+                    f.soggetto_codice, f.ragione_sociale_completa,
+                    f.id_fiscale_univoco
+                ),
+                paged AS (
+                  -- CTE 3: paginazione con conteggio totale via window function
+                  SELECT
+                    COUNT(*) OVER()  AS total_count,
+                    wu.*
+                  FROM with_utility wu
+                  ORDER BY wu.ragione_sociale_completa, wu.soggetto_ruolo_id
+                  LIMIT v_limit
+                  OFFSET v_offset
+                )
+                SELECT
+                  p.total_count,
+                  p.soggetto_id,
+                  p.soggetto_ruolo_id,
+                  p.tipo_ruolo_id,
+                  p.soggetto_codice,
+                  p.ragione_sociale_completa,
+                  p.id_fiscale_univoco,
+                  p.utility_list
+                FROM paged p;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_search_soggetti_universale(text, integer, integer[], integer, integer)
+                IS 'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa e id_fiscale_univoco_cf_piva con ILIKE (pg_trgm). p_tipo_ruolo_id obbligatorio. Paginazione LIMIT/OFFSET + COUNT(*) OVER(). Hard cap 10.000 righe filtrate. Ritorna una riga per soggetto con utility aggregate. Filtro indirizzo/comune delegato al livello 2.';
