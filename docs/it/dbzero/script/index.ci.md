@@ -25,6 +25,7 @@
 - [fn_get_parameter_full](manual/fn_get_parameter_full.md) — (latest update 21-12-25) * **Ricerca safe del parametro**   Verifica l’esistenza del parametro in `config.parameters` e recupera `id` + `default_value`.
 - [fn_get_record_id_as_of](manual/fn_get_record_id_as_of.md) — * **Recupero rapido dell’ID in uno snapshot**: ottenere solo l’identificativo del record (`id`) valido alla data/ora specificata, senza dover deserializzare tutto il JSON. * **Ottimizzazione delle query**: operazione leggera nel caso serva solo l’ID, utile per controlli o join condizionali su storico.
 - [fn_get_ruolo_sistema](manual/fn_get_ruolo_sistema.md)
+- [fn_get_search_detail](manual/fn_get_search_detail.md)
 - [fn_get_snapshot_as_of](manual/fn_get_snapshot_as_of.md) — (latest review 02-02-26) * **Recupero storico/flessibile**: ottenere lo stato di un record in un preciso istante, combinando storicizzazione e serializzazione diretta. * **Robustezza**: ogni errore di query viene tracciato con contesto completo, e l'esecuzione viene interrotta per evitare inconsistenze.
 - [fn_get_soggetto_dati_by_ruolo](manual/fn_get_soggetto_dati_by_ruolo.md)
 - [fn_get_stato_cliente_by_istanza](manual/fn_get_stato_cliente_by_istanza.md) — Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, restituendo:
@@ -37,6 +38,7 @@
 - [fn_log_error_only](manual/fn_log_error_only.md) — (latest review 23-11-25) * **Logging “silenzioso”**: inserisce una riga in `dbops.error_log` con contesto ricco, ma **non** solleva eccezioni. * **Separazione delle responsabilità**: differenzia chiaramente i casi di **solo tracciamento** da quelli di **error handling critico** (per cui usare `fn_log_and_raise_error`).
 - [fn_resolve_livello_area](manual/fn_resolve_livello_area.md)
 - [fn_resolve_livello_oggetto](manual/fn_resolve_livello_oggetto.md)
+- [fn_search_soggetti_universale](manual/fn_search_soggetti_universale.md)
 - [fn_subentro_cliente](manual/fn_subentro_cliente.md)
 - [fn_valida_codice_fiscale](manual/fn_valida_codice_fiscale.md) — * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo. * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere. * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 - [fn_valida_partita_iva](manual/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
