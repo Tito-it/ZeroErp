@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_notify_cambio_reparto.md" %}
 # ⚙️ Funzione `fn_notify_cambio_reparto`
 
 ```sql

@@ -28,7 +28,7 @@ Questa guida copre **due aspetti strettamente legati**: il modulo risorse umane 
 
 ### Il collegamento a Django e opzionale
 
-Non tutte le risorse umane accedono al software. Un magazziniere potrebbe non avere un account, mentre il responsabile amministrativo si. Il collegamento a `auth_user` e un passo esplicito e separato dalla creazione della risorsa — e consentito solo per risorse appartenenti al soggetto gestore (l'azienda che usa il sistema).
+Non tutte le risorse umane accedono al software. Un magazziniere potrebbe non avere un account, mentre il responsabile amministrativo si. Il collegamento a `auth_user` e un passo esplicito e separato dalla creazione della risorsa — e consentito solo per soggetti **persona fisica pura** (con codice fiscale e senza partita IVA).
 
 ---
 
@@ -85,7 +85,7 @@ Il reparto o ufficio a cui la risorsa appartiene. E il perno del sistema permess
 
 ### Soggetto gestore
 
-L'azienda che usa il sistema. Il guard `trgfn_risorse_umane_auth_user_guard_gestore` verifica che il collegamento a `auth_user` sia consentito **solo** per risorse il cui soggetto corrisponde al gestore ([R4](#r4--collegamento-a-django-solo-gestore)).
+L'azienda che usa il sistema (singleton). Il gestore e il soggetto PG con ruolo GESTORE — identifica il datore di lavoro. Il guard sull'accesso al software **non** verifica l'appartenenza al gestore (sarebbe impossibile: RIS_UMANA e solo PF, GESTORE e solo PG), ma verifica che il soggetto sia una **persona fisica pura** ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)). Il vincolo emittente fiscale (su quali emittenti l'utente puo operare) e verificato al login lato Django.
 
 ---
 
@@ -106,10 +106,15 @@ Ogni risorsa umana deve riferire un `soggetto_ruolo_id` con tipo ruolo **RISORSA
 
 Se `valido_al` e valorizzato, deve essere >= `valido_dal`. Il check `chk_risorse_umane_date` lo garantisce.
 
-### R4 — Collegamento a Django (solo gestore)
-<a id="r4--collegamento-a-django-solo-gestore"></a>
+### R4 — Collegamento a Django (solo persona fisica pura)
+<a id="r4--collegamento-a-django-solo-persona-fisica-pura"></a>
 
-Il collegamento a `django.auth_user` e consentito **solo** per risorse appartenenti al **soggetto gestore**. Questo vincolo riguarda l'appartenenza organizzativa ("fa parte della nostra azienda?"), non l'ambito operativo. Per limitare su quali emittenti fiscali un utente puo operare, esiste un meccanismo separato: la whitelist `config.user_emittenti_fiscali` (vedi [Autorizzazioni e permessi](#autorizzazioni-e-permessi)).
+Il collegamento a `django.auth_user` e consentito **solo** per soggetti **persona fisica pura**. Il guard [`trgfn_risorse_umane_auth_user_guard_persona_fisica`](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_auth_user_guard_persona_fisica) verifica due condizioni strutturali:
+
+1. **`partita_iva IS NULL`** — un soggetto con P.IVA (anche se ha CF) e un professionista o ditta individuale, non un dipendente
+2. **`codice_fiscale IS NOT NULL`** — la persona deve essere identificata fiscalmente
+
+Il vincolo emittente fiscale ("su quali emittenti l'utente puo operare?") **non** e verificato a livello DB ma al login lato Django (auth view), perche `user_emittenti_fiscali` richiede un `auth_user_id` che esiste solo dopo la creazione del ponte. Per limitare l'operativita per emittente, esiste la whitelist `config.user_emittenti_fiscali` (vedi [Autorizzazioni e permessi](#autorizzazioni-e-permessi)).
 
 ### R5 — Unicita per persona
 <a id="r5--unicita-per-persona"></a>
@@ -366,7 +371,7 @@ erDiagram
 
 > **Nota:** `soggetto_id` su `risorse_umane` e la persona (PF), non l'azienda.
 > L'azienda (datore) si identifica tramite `anagrafiche.gestori` — un soggetto PG con ruolo GESTORE.
-> Il guard `trgfn_risorse_umane_auth_user_guard_gestore` ([R4](#r4--collegamento-a-django-solo-gestore)) verifica che il collegamento a `auth_user` sia consentito solo per risorse il cui `soggetto_id` corrisponde a un gestore.
+> Il guard `trgfn_risorse_umane_auth_user_guard_persona_fisica` ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)) verifica che il collegamento a `auth_user` sia consentito solo per soggetti persona fisica pura (CF obbligatorio, P.IVA vietata).
 
 ---
 
@@ -420,7 +425,7 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 | Funzione / Trigger | Quando scatta | Cosa fa |
 | --- | --- | --- |
 | `trgfn_risorse_umane_guard_ruolo` | BEFORE INSERT/UPDATE su `risorse_umane` | Verifica che il ruolo sia RIS_UMANA |
-| `trgfn_risorse_umane_auth_user_guard_gestore` | BEFORE INSERT/UPDATE su `risorse_umane_auth_user` | Verifica che la risorsa appartenga al gestore |
+| `trgfn_risorse_umane_auth_user_guard_persona_fisica` | BEFORE INSERT/UPDATE su `risorse_umane_auth_user` | Verifica che il soggetto sia persona fisica pura (CF obbligatorio, P.IVA vietata) |
 | `trgfn_prevent_deactivate_if_children` | BEFORE UPDATE su `risorse_umane` | Blocca disattivazione se il ponte e ancora attivo |
 | `trgfn_child_requires_active_parent` | AFTER INSERT/UPDATE su `risorse_umane` e `risorse_umane_auth_user` | Verifica che i genitori (qualifiche, soggetti, unita org.) siano attivi |
 

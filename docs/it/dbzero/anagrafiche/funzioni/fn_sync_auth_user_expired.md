@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_sync_auth_user_expired.md" %}
 # ⚙️ Funzione `fn_sync_auth_user_expired`
 
 ```sql

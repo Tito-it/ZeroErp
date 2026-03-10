@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_risorse_umane_notify_cambio_reparto.md" %}
 # ⚙️ Funzione `trgfn_risorse_umane_notify_cambio_reparto`
 
 ```sql

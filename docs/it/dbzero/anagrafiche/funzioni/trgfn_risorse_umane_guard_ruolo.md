@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_risorse_umane_guard_ruolo.md" %}
 # ⚙️ Funzione `trgfn_risorse_umane_guard_ruolo`
 
 ```sql

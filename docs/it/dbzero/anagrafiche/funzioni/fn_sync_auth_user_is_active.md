@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_sync_auth_user_is_active.md" %}
 # ⚙️ Funzione `fn_sync_auth_user_is_active`
 
 ```sql
