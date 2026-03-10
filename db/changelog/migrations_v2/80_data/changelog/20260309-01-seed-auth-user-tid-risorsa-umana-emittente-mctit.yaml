@@ -15,7 +15,7 @@ databaseChangeLog:
       author: mctit
       comment: "Crea la catena risorsa umana per auth_user.id=1 (tid) e lo associa a emittente_fiscale id=32"
       runOnChange: false
-      failOnError: true
+      failOnError: false
       preConditions:
         - onFail: MARK_RAN
         - and:
