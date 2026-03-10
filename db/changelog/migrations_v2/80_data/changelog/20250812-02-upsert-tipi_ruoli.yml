@@ -44,6 +44,7 @@ databaseChangeLog:
                   type: STRING
                   defaultValue: "NOW()"
               - column: { name: user_update, type: STRING }
+              - column: { name: ricerca_visibile, type: BOOLEAN }
 
   - changeSet:
       id: 20250812-90-upsert-tipi_ruoli
