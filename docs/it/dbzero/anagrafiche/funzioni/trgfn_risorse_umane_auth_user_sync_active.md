@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_risorse_umane_auth_user_sync_active.md" %}
 # ⚙️ Funzione `trgfn_risorse_umane_auth_user_sync_active`
 
 ```sql

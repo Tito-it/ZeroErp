@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_resellers_guard_ruolo_reseller.md" %}
 # ⚙️ Funzione `trgfn_resellers_guard_ruolo_reseller`
 
 ```sql

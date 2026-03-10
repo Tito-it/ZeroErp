@@ -87,7 +87,7 @@ BEGIN
     'email',        au.email
   )
   INTO v_utente
-  FROM auth_user au
+  FROM django.auth_user au
   WHERE au.id = p_auth_user_id;
 
   IF v_utente IS NULL THEN
