@@ -18,8 +18,8 @@ const activePath = computed(() => {
   return '/' + path.split('/')[1]
 })
 
-function handleLogout() {
-  auth.logout()
+async function handleLogout() {
+  await auth.logout()
   router.push({ name: 'login' })
 }
 </script>
@@ -46,6 +46,13 @@ function handleLogout() {
     </nav>
 
     <div class="sidebar-footer">
+      <div class="sidebar-toggle" @click="ui.toggleSidebar()"
+        v-tooltip.right="ui.effectiveSidebarCollapsed ? t('nav.collapse') : null"
+      >
+        <i :class="ui.effectiveSidebarCollapsed ? 'pi pi-angle-right' : 'pi pi-angle-left'"></i>
+        <span v-if="!ui.effectiveSidebarCollapsed">{{ t('nav.collapse') }}</span>
+      </div>
+
       <div
         class="sidebar-user"
         @click="handleLogout"
@@ -53,11 +60,6 @@ function handleLogout() {
       >
         <i class="pi pi-sign-out"></i>
         <span v-if="!ui.effectiveSidebarCollapsed">{{ t('auth.logout') }}</span>
-      </div>
-
-      <div v-if="!ui.isTablet" class="sidebar-toggle" @click="ui.toggleSidebar()">
-        <i :class="ui.sidebarCollapsed ? 'pi pi-angle-right' : 'pi pi-angle-left'"></i>
-        <span v-if="!ui.effectiveSidebarCollapsed">{{ t('nav.collapse') }}</span>
       </div>
     </div>
   </aside>
@@ -67,7 +69,7 @@ function handleLogout() {
 .app-sidebar {
   width: var(--app-sidebar-width);
   min-width: var(--app-sidebar-width);
-  height: 100vh;
+  height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;

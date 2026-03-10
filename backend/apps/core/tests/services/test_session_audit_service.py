@@ -15,6 +15,8 @@ Indice test eseguiti:
 5) SessionAuditServiceTests.test_get_client_ip_from_remote_addr
 6) SessionAuditServiceTests.test_get_user_agent_truncated
 7) SessionAuditServiceTests.test_record_login_db_error_silent
+8) SessionAuditServiceTests.test_record_logout_calls_repository
+9) SessionAuditServiceTests.test_record_revoca_calls_repository
 """
 
 from unittest import TestCase
@@ -127,3 +129,41 @@ class SessionAuditServiceTests(TestCase):
 
         # Non deve sollevare eccezioni
         session_audit_service.record_login(user_id=1, request=request)
+
+    # Scopo: Verifica che record_logout chiami il repository con evento LOGOUT.
+    @patch(_GET_REQ_ID, return_value=None)
+    @patch(_REPO)
+    def test_record_logout_calls_repository(self, MockRepo, _mock_req_id):
+        repo = MockRepo.return_value
+        request = _mock_request()
+
+        session_audit_service.record_logout(user_id=3, request=request, jti="jti-logout")
+
+        repo.log_session_event.assert_called_once_with(
+            auth_user_id=3,
+            evento="LOGOUT",
+            jti="jti-logout",
+            ip_address="192.168.1.1",
+            user_agent="TestBrowser/1.0",
+            request_id=None,
+            dettaglio=None,
+        )
+
+    # Scopo: Verifica che record_revoca chiami il repository con evento REVOCA.
+    @patch(_GET_REQ_ID, return_value=None)
+    @patch(_REPO)
+    def test_record_revoca_calls_repository(self, MockRepo, _mock_req_id):
+        repo = MockRepo.return_value
+        request = _mock_request()
+
+        session_audit_service.record_revoca(user_id=4, request=request, jti="jti-revoca")
+
+        repo.log_session_event.assert_called_once_with(
+            auth_user_id=4,
+            evento="REVOCA",
+            jti="jti-revoca",
+            ip_address="192.168.1.1",
+            user_agent="TestBrowser/1.0",
+            request_id=None,
+            dettaglio=None,
+        )

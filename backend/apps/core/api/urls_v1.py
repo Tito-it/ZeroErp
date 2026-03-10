@@ -1,5 +1,7 @@
 from django.urls import path
 
+from apps.core.api.me_view import UserProfileView
+from apps.core.api.sessioni_view import SessioneRevocaView, SessioniAttiveListView
 from apps.core.api.views import (
     ApiDiagnosticsErrorEnvelopeV1,
     ApiLookupCodiciV1,
@@ -16,6 +18,21 @@ from apps.core.api.views_tracciamento import (
 )
 
 urlpatterns = [
+    path(
+        "me/",
+        UserProfileView.as_view(),
+        name="core-v1-user-profile",
+    ),
+    path(
+        "me/sessioni/",
+        SessioniAttiveListView.as_view(),
+        name="core-v1-sessioni-attive",
+    ),
+    path(
+        "me/sessioni/<str:jti>/revoca/",
+        SessioneRevocaView.as_view(),
+        name="core-v1-sessione-revoca",
+    ),
     path(
         "diagnostics/error-envelope/",
         ApiDiagnosticsErrorEnvelopeV1.as_view(),

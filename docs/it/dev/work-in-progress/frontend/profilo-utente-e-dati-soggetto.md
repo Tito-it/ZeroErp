@@ -1,9 +1,11 @@
-# Profilo Utente e Dati Soggetto — Piano di Implementazione (WIP)
+# Profilo Utente e Dati Soggetto — Piano di Implementazione (COMPLETATO)
 
 > Documento di lavoro per l'implementazione dell'esposizione dei dati soggetto
 > (utente e ditta/emittente fiscale) nel frontend Vue.
 >
 > Data inizio: 2026-03-09
+> Data completamento: 2026-03-10
+> Stato: **COMPLETATO** — tutte le fasi implementate e testate funzionalmente
 
 ---
 
@@ -345,14 +347,21 @@ def get_user_profile(self, auth_user_id: int) -> dict:
 
 **Step di sviluppo Fase 3**:
 
-| Step | Azione                                                            | Stato       |
-| ---- | ----------------------------------------------------------------- | ----------- |
-| 3.1  | Aggiungere metodo `get_user_profile()` nel repository core        | **Da fare** |
-| 3.2  | Creare `me_view.py` con `UserProfileView`                         | **Da fare** |
-| 3.3  | Aggiungere `@extend_schema` con response schema JSONB documentato | **Da fare** |
-| 3.4  | Registrare rotta in `urls_v1.py`                                  | **Da fare** |
-| 3.5  | Scrivere test Django (mock DB, verifica struttura risposta)       | **Da fare** |
-| 3.6  | Smoke test manuale con curl/httpie                                | **Da fare** |
+| Step | Azione                                                            | Stato          |
+| ---- | ----------------------------------------------------------------- | -------------- |
+| 3.1  | Aggiungere metodo `get_user_profile()` nel repository core        | **Completato** |
+| 3.2  | Creare `me_view.py` con `UserProfileView`                         | **Completato** |
+| 3.3  | Aggiungere `@extend_schema` con response schema JSONB documentato | **Completato** |
+| 3.4  | Registrare rotta in `urls_v1.py`                                  | **Completato** |
+| 3.5  | Scrivere test Django (mock DB, verifica struttura risposta)       | **Completato** |
+| 3.6  | Smoke test manuale con curl/httpie                                | **Completato** |
+
+**File creati/modificati Fase 3**:
+
+- `backend/apps/core/db/core_repository.py` — **Nuovo** — metodo `get_user_profile(auth_user_id)`
+- `backend/apps/core/api/me_view.py` — **Nuovo** — `UserProfileView(APIView)` con `@extend_schema`
+- `backend/apps/core/api/urls_v1.py` — **Modificato** — aggiunta rotta `me/`
+- `backend/apps/core/tests/api/test_me_view.py` — **Nuovo** — 5 test (3 view + 2 repository)
 
 ---
 
@@ -448,14 +457,14 @@ user: {
 
 **Step di sviluppo Fase 4**:
 
-| Step | Azione                                                           | Stato       |
-| ---- | ---------------------------------------------------------------- | ----------- |
-| 4.1  | Aggiornare `fetchProfile()` nello store auth per chiamare `/me/` | **Da fare** |
-| 4.2  | Mappare risposta JSONB nello stato del store                     | **Da fare** |
-| 4.3  | Mostrare nome utente e ragione_sociale emittente nella topbar    | **Da fare** |
-| 4.4  | Aggiungere chiavi i18n (`it.json`, `en.json`)                    | **Da fare** |
-| 4.5  | Verificare che il fallback (emittente null) non rompa la UI      | **Da fare** |
-| 4.6  | Test manuale end-to-end (login -> profilo visibile)              | **Da fare** |
+| Step | Azione                                                           | Stato          |
+| ---- | ---------------------------------------------------------------- | -------------- |
+| 4.1  | Aggiornare `fetchProfile()` nello store auth per chiamare `/me/` | **Completato** |
+| 4.2  | Mappare risposta JSONB nello stato del store                     | **Completato** |
+| 4.3  | Mostrare nome utente e ragione_sociale emittente nella topbar    | **Completato** |
+| 4.4  | Aggiungere chiavi i18n (`it.json`, `en.json`)                    | **Completato** |
+| 4.5  | Verificare che il fallback (emittente null) non rompa la UI      | **Completato** |
+| 4.6  | Test manuale end-to-end (login -> profilo visibile)              | **Completato** |
 
 ---
 
@@ -464,9 +473,9 @@ user: {
 | #   | Domanda                                                 | Opzioni                                                                 | Decisione                                                             |
 | --- | ------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | 1   | Output `fn_get_user_profile`: JSONB o record composito? | JSONB (flessibile, facile da estendere) vs RECORD (tipizzato, validato) | **JSONB** — scelto per flessibilita' e facilita' di estensione futura |
-| 2   | Emittente multipli: quale mostrare?                     | Primo attivo dalla whitelist / emittente selezionabile / tutti          | **Da decidere**                                                       |
-| 3   | Caching frontend del profilo                            | Salvare in localStorage? Refresh a ogni login?                          | **Da decidere**                                                       |
-| 4   | Mostrare pannello profilo utente?                       | Solo topbar/sidebar o anche pagina dedicata `/profilo`?                 | **Da decidere**                                                       |
+| 2   | Emittente multipli: quale mostrare?                     | Primo attivo dalla whitelist / emittente selezionabile / tutti          | **Primo attivo dalla whitelist** — fallback: se nessuna riga in whitelist e un solo emittente attivo, usa quello; se multipli senza whitelist → null |
+| 3   | Caching frontend del profilo                            | Salvare in localStorage? Refresh a ogni login?                          | **Solo in-memory Pinia** — token in localStorage, profilo solo nello state Pinia. Ri-caricato al login e al navigation guard se assente |
+| 4   | Mostrare pannello profilo utente?                       | Solo topbar/sidebar o anche pagina dedicata `/profilo`?                 | **Solo topbar/sidebar** — emittente in AppTopbar, nome utente in HomeView. Nessuna pagina dedicata per ora |
 
 ---
 
@@ -481,16 +490,16 @@ user: {
   Step 2.1 → 2.8
     |
     v
-[Fase 3] Endpoint /api/v1/core/me/ (Backend) — dipende da Fase 2
+[Fase 3] Endpoint /api/v1/core/me/ (Backend)              ✅ COMPLETATA
   Step 3.1 → 3.6
     |
     v
-[Fase 4] Store + UI (Frontend) — dipende da Fase 3
+[Fase 4] Store + UI profilo (Frontend)                    ✅ COMPLETATA
   Step 4.1 → 4.6
 ```
 
 Le fasi sono sequenziali: ogni livello dipende dal precedente.
-Totale: **25 step** (5 + 8 + 6 + 6). Fasi DB completate: **13/25**.
+Totale: **25 step** (5 + 8 + 6 + 6). Completati: **25/25** — tutte le fasi completate e testate.
 
 ---
 
@@ -516,6 +525,11 @@ Totale: **25 step** (5 + 8 + 6 + 6). Fasi DB completate: **13/25**.
 quelle sospette. Funzionalita' tipica di sicurezza ERP: l'utente verifica se ci sono
 sessioni non riconosciute (accessi non autorizzati) e puo' disconnetterle.
 
+Il backend identifica la sessione corrente confrontando il JTI del token della request
+e la **esclude** dalla lista restituita dall'API. L'endpoint `GET /me/sessioni/` restituisce
+quindi solo le **altre** sessioni attive. Il pannello nella HomeView e' visibile solo se la
+lista non e' vuota (almeno 1 sessione diversa dalla corrente). Ogni riga ha pulsante "Revoca".
+
 #### 5.1 Infrastruttura gia' presente
 
 | Elemento                                    | Stato | Dove                                                          |
@@ -526,153 +540,429 @@ sessioni non riconosciute (accessi non autorizzati) e puo' disconnetterle.
 | Token blacklist SimpleJWT                   | OK    | `ROTATE_REFRESH_TOKENS=True`, `BLACKLIST_AFTER_ROTATION=True` |
 | Correlazione `request_id` con `request_log` | OK    | Join per timeline completa                                    |
 | Indici per query per utente e cronologiche  | OK    | `ix_sessioni_utente_auth_user_id`, `ix_sessioni_utente_jti`   |
+| `REFRESH_TOKEN_LIFETIME = 1 day`            | OK    | `zeroerp_backend/settings.py` — definisce il TTL sessione     |
 
 #### 5.2 Cosa manca
 
 | Elemento                                               | Note                                                                                 |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
 | Determinazione "sessione attiva"                       | Serve logica: LOGIN/REFRESH senza successivo LOGOUT/REVOCA/SCADENZA, entro TTL token |
-| `record_logout()` e `record_revoca()`                  | Funzioni definite nel service ma non richiamate da nessun endpoint                   |
+| `record_logout()` e `record_revoca()`                  | Funzioni da aggiungere al service — non richiamate da nessun endpoint                |
 | Endpoint `POST /api/v1/auth/logout/`                   | Blacklista token corrente + registra evento LOGOUT                                   |
 | Endpoint `GET /api/v1/core/me/sessioni/`               | Lista sessioni attive per utente corrente                                            |
-| Endpoint `POST /api/v1/core/me/sessioni/{jti}/revoca/` | Revoca sessione specifica (blacklist + evento REVOCA)                                |
-| Vista DB o funzione per sessioni attive                | Query aggregata con stato derivato                                                   |
-| UI frontend pannello sessioni                          | Dialog/pagina con lista sessioni e azione revoca                                     |
+| Endpoint `POST /api/v1/core/me/sessioni/<jti>/revoca/` | Revoca sessione specifica (blacklist + evento REVOCA)                                |
+| Query sessioni attive nel repository                   | CTE aggregata con stato derivato (no vista DB — logica nel repository Python)        |
+| UI frontend pannello sessioni nella HomeView           | Pannello condizionale: visibile solo se ci sono sessioni diverse dalla corrente      |
 
-#### 5.3 DB: Vista `dbops.vw_sessioni_utente_attive`
+#### 5.3 Decisioni architetturali Fase 5
 
-**Scopo**: esporre le sessioni considerate "attive" per un utente. Una sessione e' attiva
-se l'ultimo evento per quel `jti` e' LOGIN o REFRESH e il token non e' scaduto.
+| #   | Domanda                                 | Decisione                                                                                        |
+| --- | --------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 5   | TTL sessione attiva                     | **Allineato a `REFRESH_TOKEN_LIFETIME` (1 giorno)** — la query filtra `data_insert > now() - interval '1 day'` |
+| 6   | Parsing User-Agent                      | **Lato frontend (JS)** — il backend restituisce il raw user_agent, il frontend fa parsing leggero per mostrare browser/OS |
+| 7   | Batch "disconnetti tutte le altre"      | **Fase successiva** — per ora solo revoca singola sessione                                       |
+| 8   | Vista DB vs query nel repository        | **Query nel repository** — nessun sviluppo DB richiesto; la CTE vive nel metodo Python           |
+| 9   | Dove mostrare le sessioni               | **HomeView** — pannello visibile solo se l'API restituisce 1+ sessioni (la corrente e' gia' esclusa dal backend) |
 
-**Logica**:
-```sql
--- Per ogni jti, trovare l'ultimo evento
--- Se ultimo evento IN ('LOGIN', 'REFRESH') AND data_insert > now() - refresh_ttl
--- => sessione attiva
-WITH ranked AS (
-    SELECT *,
-           ROW_NUMBER() OVER (PARTITION BY jti ORDER BY data_insert DESC) AS rn
-      FROM dbops.sessioni_utente
-     WHERE jti IS NOT NULL
-)
-SELECT auth_user_id, jti, evento, ip_address, user_agent, data_insert
-  FROM ranked
- WHERE rn = 1
-   AND evento IN ('LOGIN', 'REFRESH')
-   AND data_insert > now() - INTERVAL '1 day';  -- allineato a REFRESH_TOKEN_LIFETIME
+#### 5.4 Backend: Repository — Query sessioni attive e revoca
+
+**File**: `backend/apps/core/db/session_audit_repository.py` (modifica)
+
+**Metodo `list_sessioni_attive(auth_user_id)`**:
+
+```python
+# Scopo: Recupera le sessioni attive per un utente.
+# Una sessione e' attiva se l'ultimo evento per quel jti e' LOGIN o REFRESH
+# e il timestamp e' entro il TTL del refresh token (1 giorno).
+def list_sessioni_attive(self, auth_user_id: int) -> list[dict[str, Any]]:
+    sql = """
+        WITH ranked AS (
+            SELECT jti, evento, ip_address, user_agent, data_insert,
+                   ROW_NUMBER() OVER (PARTITION BY jti ORDER BY data_insert DESC) AS rn
+              FROM dbops.sessioni_utente
+             WHERE auth_user_id = %s
+               AND jti IS NOT NULL
+        ),
+        primo_login AS (
+            SELECT jti, MIN(data_insert) AS data_inizio
+              FROM dbops.sessioni_utente
+             WHERE auth_user_id = %s
+               AND jti IS NOT NULL
+               AND evento = 'LOGIN'
+          GROUP BY jti
+        )
+        SELECT r.jti,
+               r.evento       AS ultimo_evento,
+               r.ip_address::text,
+               r.user_agent,
+               pl.data_inizio,
+               r.data_insert  AS data_ultimo_evento
+          FROM ranked r
+          LEFT JOIN primo_login pl ON pl.jti = r.jti
+         WHERE r.rn = 1
+           AND r.evento IN ('LOGIN', 'REFRESH')
+           AND r.data_insert > now() - INTERVAL '1 day'
+      ORDER BY r.data_insert DESC
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(sql, [auth_user_id, auth_user_id])
+        columns = [col[0] for col in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
 ```
 
-**Colonne esposte**:
+**Nessun nuovo metodo per la revoca**: la revoca usa `log_session_event()` gia' esistente
+per inserire l'evento REVOCA, piu' blacklist SimpleJWT gestita nel service/view.
 
-| Colonna              | Tipo        | Note                                                 |
-| -------------------- | ----------- | ---------------------------------------------------- |
-| `auth_user_id`       | INTEGER     | Utente proprietario                                  |
-| `jti`                | TEXT        | Identificativo sessione (JWT ID)                     |
-| `ultimo_evento`      | TEXT        | LOGIN o REFRESH                                      |
-| `ip_address`         | INET        | IP ultimo evento                                     |
-| `user_agent`         | TEXT        | Browser/device ultimo evento                         |
-| `data_inizio`        | TIMESTAMPTZ | Primo LOGIN per quel jti                             |
-| `data_ultimo_evento` | TIMESTAMPTZ | Ultimo LOGIN/REFRESH                                 |
-| `is_current`         | BOOLEAN     | Utile nel frontend per evidenziare "questa sessione" |
+#### 5.5 Backend: Service — Logout e revoca
 
-#### 5.4 Backend: API sessioni
+**File**: `backend/apps/core/services/session_audit_service.py` (modifica)
 
-**Endpoint `POST /api/v1/auth/logout/`**:
-- Blacklista il refresh token corrente (SimpleJWT `token.blacklist()`)
-- Registra evento LOGOUT in `sessioni_utente`
-- Restituisce 204 No Content
+Aggiungere due funzioni:
 
-**Endpoint `GET /api/v1/core/me/sessioni/`**:
-- Query su `vw_sessioni_utente_attive` filtrata per `request.user.id`
-- Aggiunge flag `is_current` confrontando il JTI del token della request
-- Restituisce lista sessioni con IP, User-Agent, data
+```python
+# Scopo: Registra un evento LOGOUT nella tabella sessioni_utente.
+# Chiamato dall'endpoint di logout dopo blacklist del token.
+def record_logout(
+    user_id: int,
+    request: HttpRequest,
+    *,
+    jti: str | None = None,
+    dettaglio: dict[str, Any] | None = None,
+) -> None:
+    _log_event(
+        auth_user_id=user_id,
+        evento="LOGOUT",
+        request=request,
+        jti=jti,
+        dettaglio=dettaglio,
+    )
 
-**Endpoint `POST /api/v1/core/me/sessioni/{jti}/revoca/`**:
-- Verifica che il JTI appartenga all'utente corrente (guard)
-- NON permettere revoca della sessione corrente (usare logout per quello)
-- Blacklista il token via `OutstandingToken` + `BlacklistedToken`
-- Registra evento REVOCA in `sessioni_utente`
-- Restituisce 204 No Content
+# Scopo: Registra un evento REVOCA nella tabella sessioni_utente.
+# Chiamato quando l'utente revoca una sessione remota.
+def record_revoca(
+    user_id: int,
+    request: HttpRequest,
+    *,
+    jti: str | None = None,
+    dettaglio: dict[str, Any] | None = None,
+) -> None:
+    _log_event(
+        auth_user_id=user_id,
+        evento="REVOCA",
+        request=request,
+        jti=jti,
+        dettaglio=dettaglio,
+    )
+```
 
-| File                                                  | Azione                                                                  |
-| ----------------------------------------------------- | ----------------------------------------------------------------------- |
-| `backend/apps/core/api/logout_view.py`                | **Nuovo** — `LogoutView(APIView)`                                       |
-| `backend/apps/core/api/sessioni_view.py`              | **Nuovo** — `SessioniAttivaListView`, `SessioneRevocaView`              |
-| `backend/apps/core/api/urls_v1.py`                    | **Modifica** — aggiungere rotte                                         |
-| `backend/apps/core/services/session_audit_service.py` | **Modifica** — aggiungere `record_logout()`, `record_revoca()`          |
-| `backend/apps/core/db/session_audit_repository.py`    | **Modifica** — aggiungere `list_sessioni_attive()`, `revoca_sessione()` |
+#### 5.6 Backend: API Views
 
-#### 5.5 Frontend: Pannello Sessioni
+**File nuovi**:
 
-**Componente**: `frontend/src/core/components/SessioniAttiveDialog.vue`
+| File                                         | Classe                                          | Endpoint                                        |
+| -------------------------------------------- | ----------------------------------------------- | ----------------------------------------------- |
+| `backend/apps/core/api/logout_view.py`       | `LogoutView(APIView)`                           | `POST /api/v1/auth/logout/`                     |
+| `backend/apps/core/api/sessioni_view.py`     | `SessioniAttiveListView(APIView)`               | `GET /api/v1/core/me/sessioni/`                 |
+| `backend/apps/core/api/sessioni_view.py`     | `SessioneRevocaView(APIView)`                   | `POST /api/v1/core/me/sessioni/<jti>/revoca/`   |
 
-**UI proposta** (Dialog PrimeVue):
-- Titolo: "Sessioni attive" (`$t('sessions.active_sessions')`)
-- Tabella con colonne:
-  - Dispositivo/Browser (parsing User-Agent)
-  - Indirizzo IP
-  - Ultimo accesso (data relativa: "2 ore fa", "ieri")
-  - Stato: badge "Sessione corrente" (evidenziata) oppure pulsante "Disconnetti"
-- Azione "Disconnetti" chiama `POST /me/sessioni/{jti}/revoca/`
-- Azione "Disconnetti tutte le altre" (batch revoca) — opzionale
-- Accessibile da: menu utente in sidebar/topbar o pagina `/profilo`
+**Dettaglio `LogoutView`**:
 
-**Esempio UI**:
+```python
+class LogoutView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [ZeroERPPermission]
+
+    # Scopo: Blacklista il refresh token corrente e registra evento LOGOUT.
+    @extend_schema(summary="Logout utente", responses={204: None})
+    def post(self, request: Request):
+        refresh_token = request.data.get("refresh")
+        if not refresh_token:
+            raise ServiceError(
+                code="E_LOGOUT_NO_TOKEN",
+                message="Refresh token richiesto per il logout.",
+            )
+        token = RefreshToken(refresh_token)
+        jti = str(token.get("jti", ""))
+        token.blacklist()
+        session_audit_service.record_logout(
+            user_id=request.user.id,
+            request=request._request,
+            jti=jti,
+        )
+        return Response(status=204)
+```
+
+**Dettaglio `SessioniAttiveListView`**:
+
+```python
+class SessioniAttiveListView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [ZeroERPPermission]
+
+    # Scopo: Lista le sessioni attive dell'utente corrente, escludendo quella corrente.
+    # Il frontend mostra il pannello solo se la lista non e' vuota.
+    @extend_schema(summary="Lista altre sessioni attive utente", responses={200: ...})
+    def get(self, request: Request):
+        repo = SessionAuditRepository()
+        sessioni = repo.list_sessioni_attive(request.user.id)
+        # Escludere la sessione corrente — il frontend mostra solo le altre
+        current_jti = self._get_current_jti(request)
+        altre = [s for s in sessioni if s["jti"] != current_jti]
+        return success_response({"sessioni": altre, "count": len(altre)})
+
+    @staticmethod
+    def _get_current_jti(request: Request) -> str | None:
+        # Il JTI e' nel payload del token JWT di accesso
+        auth = request.auth  # token payload dict in SimpleJWT
+        return str(auth.get("jti", "")) if auth else None
+```
+
+**Dettaglio `SessioneRevocaView`**:
+
+```python
+class SessioneRevocaView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [ZeroERPPermission]
+
+    # Scopo: Revoca una sessione specifica (non la corrente) — blacklist + evento REVOCA.
+    @extend_schema(summary="Revoca sessione specifica", responses={204: None})
+    def post(self, request: Request, jti: str):
+        # Guard: non revocare la sessione corrente
+        current_jti = request.auth.get("jti", "") if request.auth else ""
+        if jti == str(current_jti):
+            raise ServiceError(
+                code="E_SESSIONE_REVOCA_CORRENTE",
+                message="Non puoi revocare la sessione corrente. Usa il logout.",
+            )
+        # Blacklist via OutstandingToken di SimpleJWT
+        from rest_framework_simplejwt.token_blacklist.models import (
+            BlacklistedToken, OutstandingToken,
+        )
+        try:
+            outstanding = OutstandingToken.objects.get(jti=jti, user_id=request.user.id)
+            BlacklistedToken.objects.get_or_create(token=outstanding)
+        except OutstandingToken.DoesNotExist:
+            raise ServiceError(
+                code="E_SESSIONE_NOT_FOUND",
+                message="Sessione non trovata o gia' revocata.",
+            )
+        # Registra evento REVOCA
+        session_audit_service.record_revoca(
+            user_id=request.user.id,
+            request=request._request,
+            jti=jti,
+        )
+        return Response(status=204)
+```
+
+**Rotte**:
+
+```python
+# In zeroerp_backend/urls.py — aggiungere sotto le rotte auth esistenti:
+path("api/v1/auth/logout/", LogoutView.as_view(), name="auth-logout"),
+
+# In apps/core/api/urls_v1.py — aggiungere:
+path("me/sessioni/", SessioniAttiveListView.as_view(), name="core-v1-sessioni-attive"),
+path("me/sessioni/<str:jti>/revoca/", SessioneRevocaView.as_view(), name="core-v1-sessione-revoca"),
+```
+
+#### 5.7 Backend: Error policies
+
+**File**: `backend/apps/core/services/error_policies.py` (modifica)
+
+```python
+"E_LOGOUT_NO_TOKEN": ErrorPolicy(
+    code="E_LOGOUT_NO_TOKEN",
+    http_status=400,
+    ui_action="show_error_banner",
+    user_message="Token di refresh richiesto per il logout.",
+),
+"E_SESSIONE_NOT_FOUND": ErrorPolicy(
+    code="E_SESSIONE_NOT_FOUND",
+    http_status=404,
+    ui_action="show_error_banner",
+    user_message="Sessione non trovata o gia' revocata.",
+),
+"E_SESSIONE_REVOCA_CORRENTE": ErrorPolicy(
+    code="E_SESSIONE_REVOCA_CORRENTE",
+    http_status=400,
+    ui_action="show_error_banner",
+    user_message="Non puoi revocare la sessione corrente. Usa il logout.",
+),
+```
+
+#### 5.8 Backend: Test Django (CI-compatible, mock DB)
+
+**File**: `backend/apps/core/tests/api/test_sessioni_view.py` (nuovo)
+
+| # | Test                                                           | Cosa verifica                                              |
+|---|----------------------------------------------------------------|------------------------------------------------------------|
+| 1 | `LogoutViewTests.test_logout_success`                          | POST con refresh token → 204 + blacklist + evento LOGOUT   |
+| 2 | `LogoutViewTests.test_logout_no_token`                         | POST senza token → 400 E_LOGOUT_NO_TOKEN                   |
+| 3 | `LogoutViewTests.test_logout_chiude_sessione`                  | record_logout chiamato con evento LOGOUT → CTE esclude jti |
+| 4 | `LogoutViewTests.test_logout_token_invalido_idempotente`       | POST con token malformato/scaduto → 204 idempotente        |
+| 5 | `SessioniAttiveListViewTests.test_list_sessioni_success`       | GET → 200 con lista sessioni (esclusa corrente)            |
+| 6 | `SessioniAttiveListViewTests.test_list_sessioni_empty`         | GET con nessuna sessione → 200 con lista vuota             |
+| 7 | `SessioneRevocaViewTests.test_revoca_success`                  | POST con jti valido → 204 + blacklist + evento REVOCA      |
+| 8 | `SessioneRevocaViewTests.test_revoca_sessione_corrente`        | POST con jti corrente → 400 E_SESSIONE_REVOCA_CORRENTE     |
+| 9 | `SessioneRevocaViewTests.test_revoca_sessione_not_found`       | POST con jti inesistente → 404 E_SESSIONE_NOT_FOUND        |
+| 10| `SessionAuditRepositoryTests.test_list_sessioni_attive`        | Mock cursor → verifica struttura dizionari restituiti       |
+
+**File**: `backend/apps/core/tests/services/test_session_audit_service.py` (nuovo)
+
+| # | Test                                                          | Cosa verifica                                              |
+|---|---------------------------------------------------------------|------------------------------------------------------------|
+| 10 | `SessionAuditServiceTests.test_record_logout`                | record_logout() chiama _log_event con evento="LOGOUT"      |
+| 11 | `SessionAuditServiceTests.test_record_revoca`                | record_revoca() chiama _log_event con evento="REVOCA"      |
+
+#### 5.9 Frontend: Pannello sessioni in HomeView
+
+**Componente**: `frontend/src/core/components/SessioniAttivePanel.vue` (nuovo)
+
+**Comportamento**:
+- Al mount della HomeView, chiama `GET /api/v1/core/me/sessioni/`
+- L'API restituisce solo le sessioni **diverse** dalla corrente (gia' filtrate dal backend)
+- Se la lista e' **vuota** → **pannello nascosto** (nessun'altra sessione attiva)
+- Se la lista ha **1+ elementi** → pannello visibile, ogni riga con pulsante "Revoca"
+
 ```
 +--------------------------------------------------------------+
-| Sessioni attive                                         [X]  |
+| Altre sessioni attive (2)                                    |
 +--------------------------------------------------------------+
-| Dispositivo       | IP           | Ultimo accesso | Azione |
-| ----------------- | ------------ | -------------- | ------ |
-| Chrome / Linux    | 192.168.1.10 | Adesso         | (tu)   |
-| Firefox / Windows | 10.0.0.55    | 3 ore fa       | [Rev]  |
-| Safari / macOS    | 85.12.34.56  | ieri           | [Rev]  |
-+--------------------------------------------------------------+
-| [Disconnetti tutte le altre sessioni]                        |
+| Dispositivo       | IP           | Ultimo accesso | Azione   |
+| Firefox / Windows | 10.0.0.55    | 3 ore fa       | [Revoca] |
+| Safari / macOS    | 85.12.34.56  | ieri           | [Revoca] |
 +--------------------------------------------------------------+
 ```
+
+**Dettagli UI (PrimeVue)**:
+- Componente `DataTable` con colonne: Dispositivo, IP, Ultimo accesso, Azione
+- Parsing User-Agent lato frontend: estrazione browser + OS dal raw user_agent (regex semplice, no librerie esterne)
+- Data relativa: calcolo JS (`Intl.RelativeTimeFormat` o helper semplice)
+- Pulsante "Revoca" su ogni riga (PrimeVue `Button`, severity="danger", size="small")
+- Conferma revoca: `ConfirmDialog` PrimeVue prima di chiamare l'API
+- Toast di successo dopo revoca + ricarica lista
+
+**Store auth.js** (modifica):
+- `logout()`: cambia da solo `clearTokens()` a `POST /api/v1/auth/logout/` + `clearTokens()`
+- Nessun metodo sessioni nello store auth — la logica sessioni vive nel componente `SessioniAttivePanel.vue` con chiamate API dirette (scope limitato a HomeView)
+
+**Chiavi i18n** (`it.json` / `en.json`):
+
+```json
+"sessions": {
+  "other_active_sessions": "Altre sessioni attive",
+  "device": "Dispositivo",
+  "ip_address": "Indirizzo IP",
+  "last_access": "Ultimo accesso",
+  "action": "Azione",
+  "revoke": "Revoca",
+  "revoke_confirm_title": "Conferma revoca sessione",
+  "revoke_confirm_message": "Vuoi revocare la sessione da {device} ({ip})?",
+  "revoke_success": "Sessione revocata",
+  "now": "Adesso",
+  "minutes_ago": "{n} min fa",
+  "hours_ago": "{n} ore fa",
+  "yesterday": "Ieri",
+  "days_ago": "{n} giorni fa"
+}
+```
+
+#### 5.10 Smoke test e documentazione
+
+**Smoke test**: `backend/scripts/tests/smoke-test-core.sh` — sezioni aggiunte:
+
+- Test #10: lista sessioni `GET /api/v1/core/me/sessioni/` → 200
+- Test #11: logout `POST /api/v1/auth/logout/` → 204 (secondo login dedicato)
+- Test #12: logout idempotente (token gia' blacklistato) → 204
+- (revoca non testabile facilmente in smoke test — richiede setup JTI)
+
+**Documentazione backend**: `docs/it/backend/core/manual/`
+- `api_logout.md` — endpoint logout
+- `api_sessioni_attive.md` — endpoint lista sessioni + revoca
 
 ---
 
-## Decisioni Aperte
+#### Step di sviluppo Fase 5
 
-| #   | Domanda                                                 | Opzioni                                                                 | Decisione       |
-| --- | ------------------------------------------------------- | ----------------------------------------------------------------------- | --------------- |
-| 1   | Output `fn_get_user_profile`: JSONB o record composito? | JSONB (flessibile, facile da estendere) vs RECORD (tipizzato, validato) | **Da decidere** |
-| 2   | Emittente multipli: quale mostrare?                     | Primo attivo dalla whitelist / emittente selezionabile / tutti          | **Da decidere** |
-| 3   | Caching frontend del profilo                            | Salvare in localStorage? Refresh a ogni login?                          | **Da decidere** |
-| 4   | Mostrare pannello profilo utente?                       | Solo topbar/sidebar o anche pagina dedicata `/profilo`?                 | **Da decidere** |
-| 5   | TTL sessione attiva nella vista DB                      | Allineare a `REFRESH_TOKEN_LIFETIME` (1 giorno) o parametrizzare?       | **Da decidere** |
-| 6   | Parsing User-Agent                                      | Lato backend (libreria Python) o lato frontend (JS)?                    | **Da decidere** |
-| 7   | Batch "disconnetti tutte le altre"                      | Implementare subito o in fase successiva?                               | **Da decidere** |
+| Step | Azione                                                                     | Stato       |
+| ---- | -------------------------------------------------------------------------- | ----------- |
+| 5.1  | Aggiungere `record_logout()` e `record_revoca()` al session_audit_service | **Completato** |
+| 5.2  | Aggiungere `list_sessioni_attive()` al session_audit_repository            | **Completato** |
+| 5.3  | Aggiungere error policies (E_LOGOUT_NO_TOKEN, E_SESSIONE_*)               | **Completato** |
+| 5.4  | Creare `logout_view.py` con `LogoutView`                                  | **Completato** |
+| 5.5  | Creare `sessioni_view.py` con `SessioniAttiveListView` + `SessioneRevocaView` | **Completato** |
+| 5.6  | Registrare rotte (urls.py + urls_v1.py)                                   | **Completato** |
+| 5.7  | Scrivere test Django — 19 test (10 view + 9 service)                      | **Completato** |
+| 5.8  | Aggiungere `logout()` con API call nello store auth.js                    | **Completato** |
+| 5.9  | Creare `SessioniAttivePanel.vue` e integrarlo in HomeView                 | **Completato** |
+| 5.10 | Aggiungere chiavi i18n (`it.json`, `en.json`)                             | **Completato** |
+| 5.11 | Aggiornare smoke test                                                     | **Completato** |
+| 5.12 | Scrivere documentazione backend (manual/)                                 | **Completato** |
+
+**File coinvolti Fase 5**:
+
+| File                                                         | Azione       |
+| ------------------------------------------------------------ | ------------ |
+| `backend/apps/core/services/session_audit_service.py`        | **Modifica** |
+| `backend/apps/core/db/session_audit_repository.py`           | **Modifica** |
+| `backend/apps/core/services/error_policies.py`               | **Modifica** |
+| `backend/apps/core/api/logout_view.py`                       | **Nuovo**    |
+| `backend/apps/core/api/sessioni_view.py`                     | **Nuovo**    |
+| `backend/apps/core/api/urls_v1.py`                           | **Modifica** |
+| `backend/zeroerp_backend/urls.py`                            | **Modifica** |
+| `backend/apps/core/tests/api/test_sessioni_view.py`          | **Nuovo**    |
+| `backend/apps/core/tests/services/test_session_audit_service.py` | **Nuovo** |
+| `frontend/src/stores/auth.js`                                | **Modifica** |
+| `frontend/src/core/components/SessioniAttivePanel.vue`       | **Nuovo**    |
+| `frontend/src/core/views/HomeView.vue`                       | **Modifica** |
+| `frontend/src/locales/it.json`                               | **Modifica** |
+| `frontend/src/locales/en.json`                               | **Modifica** |
+| `backend/scripts/tests/smoke-test-core.sh`                   | **Modifica** |
+| `docs/it/backend/core/manual/api_logout.md`                  | **Nuovo**    |
+| `docs/it/backend/core/manual/api_sessioni_attive.md`         | **Nuovo**    |
+
+---
+
+## Decisioni (tutte chiuse)
+
+| #   | Domanda                                                 | Opzioni                                                                 | Decisione                                                             |
+| --- | ------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| 1   | Output `fn_get_user_profile`: JSONB o record composito? | JSONB (flessibile, facile da estendere) vs RECORD (tipizzato, validato) | **JSONB** — scelto per flessibilita' e facilita' di estensione futura |
+| 2   | Emittente multipli: quale mostrare?                     | Primo attivo dalla whitelist / emittente selezionabile / tutti          | **Primo attivo dalla whitelist** — fallback: se nessuna riga in whitelist e un solo emittente attivo, usa quello; se multipli senza whitelist → null |
+| 3   | Caching frontend del profilo                            | Salvare in localStorage? Refresh a ogni login?                          | **Solo in-memory Pinia** — token in localStorage, profilo solo nello state Pinia. Ri-caricato al login e al navigation guard se assente |
+| 4   | Mostrare pannello profilo utente?                       | Solo topbar/sidebar o anche pagina dedicata `/profilo`?                 | **Solo topbar/sidebar** — emittente in AppTopbar, nome utente in HomeView. Nessuna pagina dedicata per ora |
+| 5   | TTL sessione attiva                                     | Allineare a `REFRESH_TOKEN_LIFETIME` (1 giorno) o parametrizzare?       | **1 giorno** — allineato a REFRESH_TOKEN_LIFETIME                     |
+| 6   | Parsing User-Agent                                      | Lato backend (libreria Python) o lato frontend (JS)?                    | **Frontend (JS)** — regex semplice, no dipendenze extra               |
+| 7   | Batch "disconnetti tutte le altre"                      | Implementare subito o in fase successiva?                               | **Fase successiva** — per ora solo revoca singola                     |
 
 ---
 
 ## Sequenza di Sviluppo
 
 ```
-[Fase 1] fn_get_soggetto_dati_by_ruolo (DB)
+[Fase 1] fn_get_soggetto_dati_by_ruolo (DB)              ✅ COMPLETATA
+  Step 1.1 → 1.5
     |
     v
-[Fase 2] fn_get_user_profile (DB) — dipende da Fase 1
+[Fase 2] fn_get_user_profile (DB) — dipende da Fase 1    ✅ COMPLETATA
+  Step 2.1 → 2.8
     |
     v
-[Fase 3] Endpoint /api/v1/core/me/ (Backend) — dipende da Fase 2
+[Fase 3] Endpoint /api/v1/core/me/ (Backend)              ✅ COMPLETATA
+  Step 3.1 → 3.6
     |
     v
-[Fase 4] Store + UI profilo (Frontend) — dipende da Fase 3
+[Fase 4] Store + UI profilo (Frontend)                    ✅ COMPLETATA
+  Step 4.1 → 4.6
     |
     v
-[Fase 5] Sessioni attive (DB + Backend + Frontend) — indipendente da Fasi 1-4
-          ma logicamente collegata (pannello accessibile da UI profilo)
-    5a. Vista DB vw_sessioni_utente_attive
-    5b. Endpoint logout + API sessioni
-    5c. Frontend: SessioniAttiveDialog
+[Fase 5] Sessioni attive (Backend + Frontend)             ✅ COMPLETATA
+  Step 5.1 → 5.12
 ```
 
-La Fase 5 e' **indipendente** dalle Fasi 1-4 e puo' essere sviluppata in parallelo.
-L'unico punto di contatto e' l'UI: il pannello sessioni sara' accessibile dal
-menu utente (topbar/sidebar) introdotto nella Fase 4.
+Le fasi sono sequenziali: ogni livello dipende dal precedente.
+Totale: **37 step** (5 + 8 + 6 + 6 + 12). Completati: **37/37** — tutte le fasi completate e testate funzionalmente.
 
 ---
 
@@ -684,3 +974,6 @@ menu utente (topbar/sidebar) introdotto nella Fase 4.
 - Permission resolver: `backend/apps/core/services/permissions_resolver.py`
 - Store auth frontend: `frontend/src/stores/auth.js`
 - Frontend standards: `docs/it/frontend/frontend-standards.md`
+- Audit sessioni e request logging: `docs/it/dev/work-in-progress/Audit-logging-sessionii-request-token.md`
+- Schema tabella sessioni: `docs/it/dbzero/dbops/tabelle/sessioni_utente.md`
+- Doc manuale sessioni: `docs/it/dbzero/dbops/manual/sessioni_utente.md`

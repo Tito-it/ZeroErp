@@ -210,6 +210,13 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Errore non gestito.",
         ),
+        # ── Profilo utente ──
+        "E_CORE_PROFILE_NOT_FOUND": ErrorPolicy(
+            code="E_CORE_PROFILE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Profilo utente non trovato.",
+        ),
         # ── Permessi e autorizzazioni ──
         "E_USER_DISABILITATO": ErrorPolicy(
             code="E_USER_DISABILITATO",
@@ -228,6 +235,25 @@ class ErrorPolicyRegistry:
             http_status=403,
             ui_action="show_error_banner",
             user_message="Il reparto non ha ancora un profilo permessi configurato.",
+        ),
+        # ── Sessioni utente ──
+        "E_LOGOUT_NO_TOKEN": ErrorPolicy(
+            code="E_LOGOUT_NO_TOKEN",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Token di refresh richiesto per il logout.",
+        ),
+        "E_SESSIONE_NOT_FOUND": ErrorPolicy(
+            code="E_SESSIONE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Sessione non trovata o gia' revocata.",
+        ),
+        "E_SESSIONE_REVOCA_CORRENTE": ErrorPolicy(
+            code="E_SESSIONE_REVOCA_CORRENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Non puoi revocare la sessione corrente. Usa il logout.",
         ),
     }
 

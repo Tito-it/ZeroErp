@@ -5,14 +5,17 @@ const SIDEBAR_KEY = 'sidebar_collapsed'
 const TABLET_BREAKPOINT = 1024
 
 export const useUiStore = defineStore('ui', () => {
-  const sidebarCollapsed = ref(localStorage.getItem(SIDEBAR_KEY) === 'true')
+  const storedValue = localStorage.getItem(SIDEBAR_KEY)
   const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280)
 
   const isTablet = computed(() => windowWidth.value <= TABLET_BREAKPOINT)
 
-  // Su tablet la sidebar è sempre collassata
+  // Se non c'è preferenza salvata e siamo su tablet, parte collassata
+  const sidebarCollapsed = ref(storedValue !== null ? storedValue === 'true' : isTablet.value)
+
+  // Su tablet la sidebar parte collassata, ma l'utente può espanderla
   const effectiveSidebarCollapsed = computed(() => {
-    return isTablet.value || sidebarCollapsed.value
+    return sidebarCollapsed.value
   })
 
   function toggleSidebar() {
@@ -21,7 +24,12 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   function updateWindowWidth() {
+    const wasTablet = isTablet.value
     windowWidth.value = window.innerWidth
+    // Collassa automaticamente quando si entra in modalità tablet
+    if (!wasTablet && isTablet.value) {
+      sidebarCollapsed.value = true
+    }
   }
 
   // Listener resize

@@ -17,7 +17,24 @@
       "Read(//opt/**)",
       "Read(//home/tid/**)",
       "Bash(source ~/.nvm/nvm.sh)",
-      "Bash(nvm use 24)"
+      "Bash(nvm use 24)",
+      "Bash(source /home/tid/apps/ZeroErp/backend/.venv/bin/activate)",
+      "Bash(python -m django test apps.core.tests.api.test_sessioni_view apps.core.tests.services.test_session_audit_service --verbosity 2 --settings=zeroerp_backend.settings)",
+      "Bash(python -m unittest apps.core.tests.api.test_sessioni_view apps.core.tests.services.test_session_audit_service -v)",
+      "Bash(source ../.env)",
+      "Bash(python -m unittest apps.core.tests.api.test_sessioni_view -v)",
+      "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings python -m unittest apps.core.tests.api.test_sessioni_view -v)",
+      "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings python -m unittest apps.core.tests.api.test_me_view -v)",
+      "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings python -c \"import django; django.setup\\(\\); import unittest; loader = unittest.TestLoader\\(\\); suite = loader.loadTestsFromName\\(''apps.core.tests.api.test_me_view''\\); runner = unittest.TextTestRunner\\(verbosity=2\\); runner.run\\(suite\\)\")",
+      "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings python -c \"import django; django.setup\\(\\); import unittest; loader = unittest.TestLoader\\(\\); suite = loader.loadTestsFromName\\(''apps.core.tests.api.test_sessioni_view''\\); runner = unittest.TextTestRunner\\(verbosity=2\\); runner.run\\(suite\\)\")",
+      "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings python -c \"import django; django.setup\\(\\); import unittest; loader = unittest.TestLoader\\(\\); suite = loader.loadTestsFromName\\(''apps.core.tests.services.test_session_audit_service''\\); runner = unittest.TextTestRunner\\(verbosity=2\\); runner.run\\(suite\\)\")",
+      "Bash(bash scripts/tests/smoke-test-core.sh)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://backend-dev:8000/health)",
+      "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings python -c \"import django; django.setup\\(\\); import unittest; loader = unittest.TestLoader\\(\\); suite = loader.loadTestsFromName\\(''apps.core.tests.api.test_sessioni_view''\\); runner = unittest.TextTestRunner\\(verbosity=2\\); result = runner.run\\(suite\\); exit\\(0 if result.wasSuccessful\\(\\) else 1\\)\")",
+      "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings python -c \"import django; django.setup\\(\\); import unittest; loader = unittest.TestLoader\\(\\); suite = loader.loadTestsFromName\\(''apps.core.tests.services.test_session_audit_service''\\); runner = unittest.TextTestRunner\\(verbosity=2\\); result = runner.run\\(suite\\); exit\\(0 if result.wasSuccessful\\(\\) else 1\\)\")",
+      "Bash(python -m django test apps.core.tests.api.test_sessioni_view -v 2 --settings=zeroerp_backend.settings)",
+      "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings DB_NAME=test DB_USER=test DB_PASSWORD=test DB_HOST=localhost DB_PORT=5432 SECRET_KEY=test-secret-key python -m unittest apps.core.tests.api.test_sessioni_view -v)",
+      "Bash(curl -s http://localhost:8000/api/v1/auth/token/ -H \"Content-Type: application/json\" -d '{\"\"username\"\":\"\"tid\"\",\"\"password\"\":\"\"tid\"\"}')"
     ],
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"

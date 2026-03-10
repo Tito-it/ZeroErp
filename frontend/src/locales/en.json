@@ -55,6 +55,27 @@
     "welcome_user": "Welcome, {name}",
     "welcome_fallback": "user"
   },
+  "profile": {
+    "role_admin": "Administrator",
+    "role_operativo": "Operative",
+    "no_company": "No issuer associated"
+  },
+  "sessions": {
+    "other_active": "Other active sessions ({count})",
+    "device": "Device",
+    "ip_address": "IP Address",
+    "last_access": "Last access",
+    "action": "Action",
+    "revoke": "Revoke",
+    "revoke_confirm_title": "Confirm session revocation",
+    "revoke_confirm_message": "Do you want to revoke the session from {device} ({ip})?",
+    "revoke_success": "Session revoked",
+    "now": "Now",
+    "minutes_ago": "{n} min ago",
+    "hours_ago": "{n} hours ago",
+    "yesterday": "Yesterday",
+    "days_ago": "{n} days ago"
+  },
   "confirm": {
     "delete_title": "Confirm deletion",
     "delete_message": "Are you sure you want to delete {name}? This action cannot be undone."

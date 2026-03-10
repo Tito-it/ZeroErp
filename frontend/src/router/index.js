@@ -31,7 +31,7 @@ const router = createRouter({
 })
 
 // Navigation guard — protegge tutte le rotte non pubbliche
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
 
   if (!to.meta.public && !auth.isAuthenticated) {
@@ -48,7 +48,7 @@ router.beforeEach((to) => {
 
   // Carica profilo utente se autenticato ma non ancora caricato
   if (auth.isAuthenticated && !auth.user) {
-    auth.fetchProfile()
+    await auth.fetchProfile()
   }
 })
 

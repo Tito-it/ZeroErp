@@ -22,7 +22,8 @@ const areaTitle = computed(() => {
 })
 
 const companyName = computed(() => {
-  return auth.user?.emittente?.descrizione || ''
+  const em = auth.user?.emittente
+  return em?.ragione_sociale_completa || em?.emittente_descrizione || ''
 })
 
 const formattedDate = computed(() => {
@@ -108,21 +109,10 @@ const formattedDate = computed(() => {
   white-space: nowrap;
 }
 
-/* Tablet landscape */
-@media (max-width: 1024px) {
-  .topbar-company {
-    display: none;
-  }
-}
-
-/* Tablet portrait */
+/* Tablet — il nome azienda si tronca con ellipsis, non sparisce */
 @media (max-width: 768px) {
-  .app-topbar {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .topbar-left {
-    display: none;
+  .topbar-company {
+    max-width: 120px;
   }
 }
 </style>

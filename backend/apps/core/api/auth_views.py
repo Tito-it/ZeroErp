@@ -32,7 +32,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
         return response
 
     @staticmethod
-    # Scopo: Estrae user_id e jti dal refresh token nella response (no query DB extra).
+    # Scopo: Estrae user_id e sid dal refresh token nella response (no query DB extra).
     def _extract_claims(response: Response) -> tuple[int, str | None]:
         from rest_framework_simplejwt.tokens import RefreshToken
         refresh_str = response.data.get("refresh", "")
@@ -40,7 +40,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             return 0, None
         try:
             token = RefreshToken(refresh_str)
-            return int(token.get("user_id", 0)), str(token.get("jti", ""))
+            return int(token.get("user_id", 0)), str(token.get("sid", ""))
         except Exception:
             return 0, None
 
@@ -61,7 +61,7 @@ class AuditTokenRefreshView(TokenRefreshView):
         return response
 
     @staticmethod
-    # Scopo: Estrae user_id e jti dal refresh token nel body della request.
+    # Scopo: Estrae user_id e sid dal refresh token nel body della request.
     def _extract_claims(request: Request) -> tuple[int, str | None]:
         from rest_framework_simplejwt.tokens import RefreshToken
         refresh_str = request.data.get("refresh", "")
@@ -69,6 +69,6 @@ class AuditTokenRefreshView(TokenRefreshView):
             return 0, None
         try:
             token = RefreshToken(refresh_str)
-            return int(token.get("user_id", 0)), str(token.get("jti", ""))
+            return int(token.get("user_id", 0)), str(token.get("sid", ""))
         except Exception:
             return 0, None
