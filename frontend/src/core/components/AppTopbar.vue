@@ -1,11 +1,19 @@
 <script setup>
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { computed } from 'vue'
+import Button from 'primevue/button'
+import Chip from 'primevue/chip'
 import { useAuthStore } from '../../stores/auth'
+import { useContextStore } from '../../stores/context'
+import SearchDrawer from './SearchDrawer.vue'
+
 const { t, locale } = useI18n()
 const route = useRoute()
 const auth = useAuthStore()
+const context = useContextStore()
+
+const searchDrawerVisible = ref(false)
 
 const areaTitle = computed(() => {
   const meta = route.meta
@@ -48,9 +56,36 @@ const formattedDate = computed(() => {
     </div>
 
     <div class="topbar-right">
+      <!-- Chip contesto globale -->
+      <Chip
+        v-if="context.hasContext"
+        :label="context.contextLabel"
+        removable
+        class="context-chip"
+        @remove="context.clearContext()"
+      >
+        <template #default>
+          <i :class="context.contextIcon" class="context-chip-icon" />
+          <span class="context-chip-label">{{ context.contextLabel }}</span>
+        </template>
+      </Chip>
+
+      <!-- Pulsante ricerca universale -->
+      <Button
+        icon="pi pi-search"
+        text
+        rounded
+        size="small"
+        v-tooltip.bottom="t('context.tooltip_search')"
+        class="topbar-search-btn"
+        @click="searchDrawerVisible = true"
+      />
+
       <span class="topbar-date">{{ formattedDate }}</span>
     </div>
   </header>
+
+  <SearchDrawer v-model:visible="searchDrawerVisible" />
 </template>
 
 <style scoped>
@@ -101,6 +136,7 @@ const formattedDate = computed(() => {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 0.5rem;
   font-size: var(--app-font-size-sm);
   color: var(--app-topbar-breadcrumb-color);
 }
@@ -109,9 +145,39 @@ const formattedDate = computed(() => {
   white-space: nowrap;
 }
 
+.topbar-search-btn {
+  color: var(--app-topbar-breadcrumb-color);
+}
+
+.topbar-search-btn:hover {
+  color: var(--app-topbar-breadcrumb-active-color);
+}
+
+/* Chip contesto globale */
+.context-chip {
+  cursor: default;
+  font-size: var(--app-font-size-sm);
+}
+
+.context-chip-icon {
+  margin-right: 0.35rem;
+  font-size: 0.8rem;
+}
+
+.context-chip-label {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Tablet — il nome azienda si tronca con ellipsis, non sparisce */
 @media (max-width: 768px) {
   .topbar-company {
+    max-width: 120px;
+  }
+
+  .context-chip-label {
     max-width: 120px;
   }
 }

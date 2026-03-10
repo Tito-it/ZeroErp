@@ -36,7 +36,20 @@
       "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings DB_NAME=test DB_USER=test DB_PASSWORD=test DB_HOST=localhost DB_PORT=5432 SECRET_KEY=test-secret-key python -m unittest apps.core.tests.api.test_sessioni_view -v)",
       "Bash(curl -s http://localhost:8000/api/v1/auth/token/ -H \"Content-Type: application/json\" -d '{\"\"username\"\":\"\"tid\"\",\"\"password\"\":\"\"tid\"\"}')",
       "Bash(find /home/tid/software/ZeroErp/docs/it/dbzero/anagrafiche -name *vw_* -o -name *vista*)",
-      "Bash(grep -l \"fn_log_and_raise_error\\\\|fn_log_error_only\" /home/tid/software/ZeroErp/db/changelog/migrations_v2/20_code/pratiche/*.yaml)"
+      "Bash(grep -l \"fn_log_and_raise_error\\\\|fn_log_error_only\" /home/tid/software/ZeroErp/db/changelog/migrations_v2/20_code/pratiche/*.yaml)",
+      "Bash(find /home/tid/apps/ZeroErp/db/changelog -name *tipi* -o -name *ruoli*)",
+      "Bash(grep -r tipi_ruoli /home/tid/apps/ZeroErp/backend/apps/*/api --include=*.py)",
+      "Bash(.venv/bin/python manage.py test apps.core.tests.api.test_search_view -v 2)",
+      "Bash(DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp DB_PASSWORD=secret DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS=\"localhost,127.0.0.1\" DJANGO_DEBUG=0 python -m pytest apps/core/tests/api/test_search_view.py -v --no-header)",
+      "Bash(DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp DB_PASSWORD=secret DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS=\"localhost,127.0.0.1\" DJANGO_DEBUG=0 python -m django test apps.core.tests.api.test_search_view -v 2)",
+      "Bash(DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp DB_PASSWORD=secret DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS=\"localhost,127.0.0.1\" DJANGO_DEBUG=0 ./manage-test.sh apps.core.tests.api.test_search_view -v 2)",
+      "Bash(DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp DB_PASSWORD=secret DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS=\"localhost,127.0.0.1\" DJANGO_DEBUG=0 ./manage-test.sh apps.core.tests.api.test_search_view.LookupComuniApiTests.test_lookup_comuni_ok -v 2)",
+      "Bash(curl -s -w \"\\\\nHTTP_CODE: %{http_code}\\\\n\" \"http://localhost:8000/api/v1/core/lookup/comuni/?q=cor\" -H \"Content-Type: application/json\")",
+      "Bash(python -c \":*)",
+      "Bash(grep -l \"DB_NAME\" *.sh .env*)",
+      "Bash(source ../env.sh)",
+      "Bash(.venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)",
+      "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings .venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)"
     ],
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"

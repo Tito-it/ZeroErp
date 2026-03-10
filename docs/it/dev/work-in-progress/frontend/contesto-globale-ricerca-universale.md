@@ -82,8 +82,8 @@ da un'icona nella topbar in ogni schermata. Si apre come drawer da destra (640px
 
 ### Componenti del drawer
 
-- **Selettore tipo ruolo** — dropdown con solo i tipi ruolo abilitati per l'utente
-  corrente (filtrati in base ai permessi). Il parametro `p_tipo_ruolo_id` e' **obbligatorio**.
+- **Selettore tipo ruolo** — dropdown con solo i tipi ruolo con `ricerca_visibile = true`
+  in `config.tipi_ruoli`. Il parametro `p_tipo_ruolo_id` e' **obbligatorio**.
 - **Campo di ricerca** — cerca su `ragione_sociale_completa` e `id_fiscale_univoco_cf_piva`.
   La ricerca parte dopo almeno 3 caratteri. Debounce 300ms.
 - **Filtro comune** — AutoComplete su `config.comuni`. Appare come filtro secondario
@@ -149,6 +149,28 @@ Lo stato "pre-contrattuale" (PR) corrisponde a un cliente in fase di attivazione
 ### Altri tipi ruolo
 
 Stato = "-" (non applicabile nella prima iterazione).
+
+---
+
+## Tipi ruolo visibili nella ricerca
+
+La colonna `ricerca_visibile` (BOOLEAN, DEFAULT false) su `config.tipi_ruoli` determina
+quali tipi appaiono nel dropdown della ricerca universale. Il frontend carica la lista
+via lookup API filtrando per `ricerca_visibile = true`.
+
+| id | codice | Descrizione | `ricerca_visibile` | Motivazione |
+|---|---|---|---|---|
+| 1 | CLIENTE | Cliente | **true** | Operativo — ricerca quotidiana |
+| 2 | FORNITORE | Fornitore | **true** | Operativo — ricerca quotidiana |
+| 3 | GESTORE | Gestore | **false** | Strutturale — configurazione sistema |
+| 4 | VENDITORE | Venditore | **true** | Operativo — agenti/venditori |
+| 5 | DISTRIB | Distributore | **true** | Operativo — ricerca distributori |
+| 7 | EMITT_FISC | Emittente fiscale | **false** | Strutturale — configurazione sistema |
+| 8 | RESELLER | Reseller | **true** | Operativo — ricerca reseller |
+| 9 | VETTORE | Vettore | **true** | Operativo — ricerca vettori |
+| 11 | BANK | Istituti di credito | **true** | Operativo — ricerca banche |
+| 14 | RIS_UMANA | Risorsa umana | **false** | Strutturale — gestione interna |
+| 15 | PSP | Payment service provider | **false** | Strutturale — configurazione pagamenti |
 
 ---
 
@@ -311,6 +333,7 @@ In futuro si potra' propagare nell'URL (`?ctx=tipo_ruolo:soggetto_id`) per link 
 | Scope emittente (`EmittenteFiscaleScopeMixin`) | OK | `apps/core/mixins.py` |
 | `DRAWER_WIDTH.STANDARD` (640px) | OK | `frontend/src/core/constants.js` |
 | Estensione `pg_trgm` su PostgreSQL | **Da verificare** | Database |
+| Colonna `ricerca_visibile` su `config.tipi_ruoli` | **Da fare** | Changeset Liquibase |
 
 ---
 
@@ -320,6 +343,7 @@ In futuro si potra' propagare nell'URL (`?ctx=tipo_ruolo:soggetto_id`) per link 
 
 | Step | Descrizione | Stato | Dipende da |
 | --- | --- | --- | --- |
+| 1.0 | Aggiungere colonna `ricerca_visibile BOOLEAN DEFAULT false` su `config.tipi_ruoli`. UPDATE a `true` per: CLIENTE, FORNITORE, VENDITORE, DISTRIB, RESELLER, VETTORE, BANK. Changeset Liquibase + aggiornare seed CSV | **Da fare** | -- |
 | 1.1 | Verificare/abilitare estensione `pg_trgm` su PostgreSQL | **Da fare** | -- |
 | 1.2 | Creare indice GIN trigram su `soggetti.ragione_sociale_completa` e `soggetti.id_fiscale_univoco_cf_piva` per performance ILIKE | **Da fare** | 1.1 |
 | 1.3 | Creare `script.fn_search_soggetti_universale(p_search_term, p_tipo_ruolo_id, p_comune_id, p_emittente_ids, p_limit, p_offset)` — `p_tipo_ruolo_id` obbligatorio. Cerca su `ragione_sociale_completa` e `id_fiscale_univoco_cf_piva` con ILIKE. Paginazione LIMIT/OFFSET + `COUNT(*) OVER()` + hard cap 10.000. Ritorna: `total_count`, `soggetto_id`, `soggetto_ruolo_id`, `tipo_ruolo_id`, `comune_id`, `soggetto_codice`, `ragione_sociale_completa`, `id_fiscale_univoco`, `comune_descrizione`, `utility_list`. Una riga per soggetto, nessun JOIN su tabelle ruolo specifiche. LEFT JOIN leggero su `clienti` + `utilities` solo per aggregare `utility_list` (string_agg) | **Da fare** | 1.1, 1.2 |
@@ -332,31 +356,31 @@ In futuro si potra' propagare nell'URL (`?ctx=tipo_ruolo:soggetto_id`) per link 
 
 | Step | Descrizione | Stato | Dipende da |
 | --- | --- | --- | --- |
-| 2.1 | Creare `SearchRepository` in `apps/core/db/search_repository.py` — `search_soggetti()` chiama `fn_search_soggetti_universale`, `get_search_detail()` chiama `fn_get_search_detail` | **Da fare** | 1.3, 1.4 |
-| 2.2 | Creare `SearchUniversaleView(APIView)` in `apps/core/api/search_view.py` — `GET /api/v1/core/search/` con params: `q` (min 3), `tipo_ruolo_id` (obbligatorio), `comune_id` (opzionale), `page`, `page_size`. Il backend filtra `tipo_ruolo_id` in base ai permessi dell'utente. Applica scope emittente via `PermissionResolver`. `@extend_schema`. `is_search_endpoint = True` per throttling. Response: `{count, page, page_size, results: [...]}` | **Da fare** | 2.1 |
-| 2.3 | Creare `SearchDetailView(APIView)` in `apps/core/api/search_view.py` — `GET /api/v1/core/search/<uuid:soggetto_id>/detail/?tipo_ruolo_id=N` — dettaglio per row expansion (livello 2). Verifica scope emittente e permessi tipo ruolo | **Da fare** | 2.1 |
-| 2.4 | Registrare rotte in `apps/core/api/urls_v1.py` | **Da fare** | 2.2, 2.3 |
-| 2.5 | Aggiungere error policies: `E_SEARCH_NO_RESULTS` (opzionale) | **Da fare** | -- |
-| 2.6 | Test unitari (mock DB): ricerca success, risultati vuoti, term troppo corto, tipo ruolo obbligatorio, filtro comune, paginazione, scope emittente, dettaglio success/not_found | **Da fare** | 2.2, 2.3 |
-| 2.7 | Aggiungere sezione a smoke test `smoke-test-core.sh` | **Da fare** | 2.2 |
-| 2.8 | Documentazione `docs/it/backend/core/manual/api_search_universale.md` | **Da fare** | 2.2, 2.3 |
+| 2.1 | Creare `SearchRepository` in `apps/core/db/search_repository.py` — `search_soggetti()` chiama `fn_search_soggetti_universale`, `get_search_detail()` chiama `fn_get_search_detail`, `is_tipo_ruolo_visibile()` verifica flag | **Completato** | 1.3, 1.4 |
+| 2.2 | Creare `SearchUniversaleView(APIView)` in `apps/core/api/search_view.py` — `GET /api/v1/core/search/` con params: `q` (min 3), `tipo_ruolo_id` (obbligatorio, validato contro `ricerca_visibile=true`), `comune_id` (opzionale), `page`, `page_size`. Applica scope emittente via `PermissionResolver`. `@extend_schema`. `is_search_endpoint = True` per throttling. Response: `{count, page, page_size, results: [...]}` | **Completato** | 2.1 |
+| 2.3 | Creare `SearchDetailView(APIView)` in `apps/core/api/search_view.py` — `GET /api/v1/core/search/<uuid:soggetto_id>/detail/?tipo_ruolo_id=N` — dettaglio per row expansion (livello 2). Verifica `ricerca_visibile` | **Completato** | 2.1 |
+| 2.4 | Registrare rotte in `apps/core/api/urls_v1.py` | **Completato** | 2.2, 2.3 |
+| 2.5 | Aggiungere error policies: `E_SEARCH_VALIDATION` (400), `E_SEARCH_NOT_FOUND` (404) | **Completato** | -- |
+| 2.6 | Test unitari (mock DB): 16 test — ricerca success, risultati vuoti, term troppo corto, tipo ruolo obbligatorio/non visibile, filtro comune, paginazione, scope emittente, dettaglio success/not_found, JWT required | **Completato** | 2.2, 2.3 |
+| 2.7 | Aggiungere sezione a smoke test `smoke-test-core.sh` (sezioni 14-17) | **Completato** | 2.2 |
+| 2.8 | Documentazione `docs/it/backend/core/manual/api_search_universale.md` | **Completato** | 2.2, 2.3 |
 
 ### Fase 3 — Frontend: Store contesto globale
 
 | Step | Descrizione | Stato | Dipende da |
 | --- | --- | --- | --- |
-| 3.1 | Creare `stores/context.js` — Pinia store con: `tipo_ruolo_id`, `soggetto_id`, `soggetto_ruolo_id`, `label`, `meta`, computed `hasContext`, `contextLabel`, `contextIcon`, actions `setContext()`, `clearContext()`. In-memory, non persistito | **Da fare** | -- |
-| 3.2 | Aggiungere chiavi i18n (`it.json`, `en.json`) per search, context, tipi ruolo, colonne | **Da fare** | -- |
+| 3.1 | Creare `stores/context.js` — Pinia store con: `tipo_ruolo_id`, `soggetto_id`, `soggetto_ruolo_id`, `label`, `meta`, computed `hasContext`, `contextLabel`, `contextIcon`, actions `setContext()`, `clearContext()`. In-memory, non persistito | **Completato** | -- |
+| 3.2 | Aggiungere chiavi i18n (`it.json`, `en.json`) per search, context, tipi ruolo, colonne | **Completato** | -- |
 
 ### Fase 4 — Frontend: Drawer ricerca universale
 
 | Step | Descrizione | Stato | Dipende da |
 | --- | --- | --- | --- |
-| 4.1 | Creare `SearchDrawer.vue` — drawer 640px con: dropdown tipo ruolo (solo abilitati per utente), input ricerca (debounce 300ms, min 3 char), AutoComplete comune, DataTable risultati livello 1 (Codice, Ragione Sociale, CF/P.IVA, Comune, Utility list), paginazione, row expansion livello 2 con componente dinamico per tipo ruolo | **Da fare** | 2.2, 3.1, 3.2 |
-| 4.2 | Creare componenti dettaglio row expansion per tipo ruolo: `ClienteDetail.vue` (tabella interna multi-istanza con utility, indirizzo, stato), `FornitoreDetail.vue`, `GenericDetail.vue` (base per altri tipi) | **Da fare** | 2.3 |
-| 4.3 | Creare `getDetailComponent(tipo_ruolo_codice)` — mappa tipo ruolo al componente corretto | **Da fare** | 4.2 |
-| 4.4 | Aggiungere icona ricerca in `AppTopbar.vue` — click apre SearchDrawer | **Da fare** | 4.1 |
-| 4.5 | Aggiungere chip contesto in `AppTopbar.vue` — visibile quando `hasContext`, mostra icona tipo + label + pulsante [x] per `clearContext()`. Colore variabile per tipo | **Da fare** | 3.1 |
+| 4.1 | Creare `SearchDrawer.vue` — drawer 640px con: dropdown tipo ruolo (caricato da lookup `config.tipi_ruoli` filtrato `ricerca_visibile=true`), input ricerca (debounce 300ms, min 3 char), AutoComplete comune, DataTable risultati livello 1 (Codice, Ragione Sociale, CF/P.IVA, Comune, Utility list), paginazione, row expansion livello 2 con componente dinamico per tipo ruolo | **Completato** | 2.2, 3.1, 3.2 |
+| 4.2 | Creare componenti dettaglio row expansion per tipo ruolo: `ClienteDetail.vue` (tabella interna multi-istanza con utility, indirizzo, stato), `FornitoreDetail.vue`, `GenericDetail.vue` (base per altri tipi) | **Completato** | 2.3 |
+| 4.3 | Creare `getDetailComponent(tipo_ruolo_codice)` — mappa tipo ruolo al componente corretto | **Completato** | 4.2 |
+| 4.4 | Aggiungere icona ricerca in `AppTopbar.vue` — click apre SearchDrawer | **Completato** | 4.1 |
+| 4.5 | Aggiungere chip contesto in `AppTopbar.vue` — visibile quando `hasContext`, mostra icona tipo + label + pulsante [x] per `clearContext()`. Colore variabile per tipo | **Completato** | 3.1 |
 
 ### Fase 5 — Frontend: Integrazione contesto nelle liste (futuro)
 
@@ -393,7 +417,7 @@ Fase 5 si implementa progressivamente man mano che le liste vengono create.
 | 4 | Dettaglio riga: pop-up o inline? | **Row expansion** (inline) — l'utente resta nella lista, puo' confrontare piu' righe |
 | 5 | Ricerca su quali campi | **`ragione_sociale_completa`** + **`id_fiscale_univoco_cf_piva`** (colonna unica COALESCE) |
 | 6 | Filtro secondario | **Comune** — AutoComplete su `config.comuni`, parametro `comune_id` al backend |
-| 7 | Tipi disponibili nel dropdown | **Solo tipi ruolo abilitati per l'utente** — filtrati in base ai permessi, no "Tutti" |
+| 7 | Tipi disponibili nel dropdown | **Solo tipi ruolo con `ricerca_visibile = true`** — flag su `config.tipi_ruoli`, no permessi per utente |
 | 8 | Tipo ruolo obbligatorio | **Si'** — `p_tipo_ruolo_id` obbligatorio. La funzione cerca sempre per un tipo specifico |
 | 9 | Stato nel dettaglio | **Per clienti**: `config.stati_cliente` (AT, PR, SF, SC, CH, ecc.). **Fornitori**: attivo/inattivo. **Altri**: "-" |
 | 10 | Persistenza contesto | **Solo in-memory Pinia** — non persistito tra sessioni. Futuro: propagazione URL |
@@ -403,6 +427,7 @@ Fase 5 si implementa progressivamente man mano che le liste vengono create.
 | 14 | Paginazione DB | **LIMIT/OFFSET + COUNT(*) OVER() + hard cap 10.000** — un solo round-trip, offset pagination |
 | 15 | Strategia ricerca DB | **ILIKE + pg_trgm + indice GIN** — no tsvector (non serve ranking/stemming per nomi e CF/P.IVA) |
 | 16 | ID restituiti nel livello 1 | **`soggetto_id`, `soggetto_ruolo_id`, `tipo_ruolo_id`, `comune_id`** — nessun ID specifico per tabella ruolo (cliente_id, fornitore_id, ecc.) |
+| 17 | Filtro tipi ruolo | **Flag `ricerca_visibile` su `config.tipi_ruoli`** — Si: CLIENTE, FORNITORE, VENDITORE, DISTRIB, RESELLER, VETTORE, BANK. No: GESTORE, EMITT_FISC, RIS_UMANA, PSP |
 
 ---
 
@@ -422,6 +447,7 @@ Fase 5 si implementa progressivamente man mano che le liste vengono create.
 
 | File | Azione |
 | --- | --- |
+| `db/changelog/migrations_v2/00_schema/config/add-ricerca-visibile-tipi-ruoli.yaml` | **Nuovo** |
 | `db/changelog/migrations_v2/20_code/script/fn_search_soggetti_universale.yaml` | **Nuovo** |
 | `db/changelog/migrations_v2/20_code/script/fn_get_search_detail.yaml` | **Nuovo** |
 | `db/changelog/migrations_v2/10_indexes/anagrafiche/idx_soggetti_trgm.yaml` | **Nuovo** |

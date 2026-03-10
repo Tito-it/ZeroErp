@@ -79,5 +79,41 @@
   "confirm": {
     "delete_title": "Conferma eliminazione",
     "delete_message": "Sei sicuro di voler eliminare {name}? L'operazione non può essere annullata."
+  },
+  "search": {
+    "title": "Ricerca universale",
+    "select_type": "Tipo ruolo",
+    "placeholder": "Cerca per nome, CF/P.IVA, codice...",
+    "filter_comune": "Filtra per comune",
+    "min_chars": "Digitare almeno 3 caratteri",
+    "col_code": "Codice",
+    "col_name": "Ragione Sociale",
+    "col_fiscal_id": "CF / P.IVA",
+    "col_comune": "Comune",
+    "col_utility": "Utility",
+    "set_context": "Imposta contesto",
+    "open_detail": "Apri scheda completa",
+    "detail_code": "Codice",
+    "detail_instance": "Istanza",
+    "detail_utility": "Utility",
+    "detail_address": "Indirizzo",
+    "detail_status": "Stato",
+    "detail_description": "Descrizione",
+    "status_active": "Attivo",
+    "status_inactive": "Inattivo",
+    "tipo_ruolo": {
+      "CLIENTE": "Clienti",
+      "FORNITORE": "Fornitori",
+      "VENDITORE": "Venditori",
+      "DISTRIB": "Distributori",
+      "RESELLER": "Reseller",
+      "VETTORE": "Vettori",
+      "BANK": "Istituti di credito"
+    }
+  },
+  "context": {
+    "tooltip_search": "Ricerca universale",
+    "tooltip_clear": "Rimuovi contesto",
+    "filtered_by": "Risultati filtrati per: {name}"
   }
 }

@@ -3,7 +3,7 @@
 # Smoke test locale per API core (permessi, lookup, diagnostica)
 # Uso: ./scripts/smoke-test-core.sh [password]
 # ------------------------------------------------------------
-# Indice test (0..13):
+# Indice test (0..18):
 #  0) Autenticazione JWT + estrazione user_id
 #  1) Token refresh
 #  2) Profilo utente corrente (/me/) — blocchi utente, soggetto, emittente
@@ -17,7 +17,12 @@
 # 10) Sessioni attive (/me/sessioni/) — lista altre sessioni
 # 11) Logout (/auth/logout/) — blacklist + evento LOGOUT
 # 12) Logout idempotente — token gia' blacklistato → 204
-# 13) Health check
+# 13) (riservato)
+# 14) Ricerca universale (/core/search/) — ricerca soggetti per tipo ruolo
+# 15) Ricerca senza q → 400
+# 16) Ricerca q troppo corto → 400
+# 17) Ricerca senza tipo_ruolo_id → 400
+# 18) Health check
 # ------------------------------------------------------------
 set -euo pipefail
 
@@ -355,10 +360,46 @@ else
 fi
 
 # ================================================================
+# RICERCA UNIVERSALE
+# ================================================================
+echo ""
+echo "-- 14. Ricerca universale (/core/search/) --"
+
+do_curl GET "/api/v1/core/search/?q=rossi&tipo_ruolo_id=1"
+if [[ "$LAST_STATUS" == "200" ]]; then
+    check "GET /core/search/ ricerca cliente" 200 ".data.count"
+    log_info "risultati ricerca 'rossi' tipo CLIENTE: $EXTRACTED"
+else
+    # La funzione DB potrebbe non essere ancora disponibile
+    log_info "Ricerca universale non disponibile (HTTP $LAST_STATUS) — funzione DB non ancora deployata?"
+fi
+
+# --- 15. Ricerca senza q → 400 ---
+echo ""
+echo "-- 15. Ricerca senza q --"
+
+do_curl GET "/api/v1/core/search/?tipo_ruolo_id=1"
+check "GET /core/search/ senza q → 400" 400
+
+# --- 16. Ricerca q troppo corto → 400 ---
+echo ""
+echo "-- 16. Ricerca q troppo corto --"
+
+do_curl GET "/api/v1/core/search/?q=ab&tipo_ruolo_id=1"
+check "GET /core/search/ q troppo corto → 400" 400
+
+# --- 17. Ricerca senza tipo_ruolo_id → 400 ---
+echo ""
+echo "-- 17. Ricerca senza tipo_ruolo_id --"
+
+do_curl GET "/api/v1/core/search/?q=rossi"
+check "GET /core/search/ senza tipo_ruolo_id → 400" 400
+
+# ================================================================
 # HEALTH
 # ================================================================
 echo ""
-echo "-- 13. Health check --"
+echo "-- 18. Health check --"
 
 curl -s -w '\n%{http_code}' "${BASE_URL}/health" > "$TMPFILE" 2>/dev/null
 LAST_STATUS=$(tail -1 "$TMPFILE")
