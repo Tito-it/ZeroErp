@@ -1,0 +1,29 @@
+// Composable condiviso per il caricamento dettaglio row expansion nella ricerca universale.
+// Usato da ClienteDetail, FornitoreDetail e GenericDetail per evitare duplicazione.
+
+import { ref, watch } from 'vue'
+import api from '../api'
+import { useApiHandler } from '../useApiHandler'
+
+// Scopo: gestisce il caricamento lazy del dettaglio soggetto per tipo ruolo
+// dal backend (fn_get_search_detail). Ritorna detailRows reattivi e stato loading.
+export function useSearchDetail(props) {
+  const { execute, loading } = useApiHandler()
+  const detailRows = ref([])
+
+  async function loadDetail() {
+    const data = await execute(
+      () => api.get(`/core/search/${props.row.soggetto_id}/detail/`, {
+        params: { tipo_ruolo_id: props.row.tipo_ruolo_id }
+      }),
+      { silent: true }
+    )
+    if (data?.detail) {
+      detailRows.value = data.detail
+    }
+  }
+
+  watch(() => props.row.soggetto_id, loadDetail, { immediate: true })
+
+  return { detailRows, loading }
+}

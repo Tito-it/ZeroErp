@@ -255,6 +255,19 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Non puoi revocare la sessione corrente. Usa il logout.",
         ),
+        # ── Ricerca universale ──
+        "E_SEARCH_VALIDATION": ErrorPolicy(
+            code="E_SEARCH_VALIDATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri ricerca non validi.",
+        ),
+        "E_SEARCH_NOT_FOUND": ErrorPolicy(
+            code="E_SEARCH_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Nessun risultato trovato.",
+        ),
     }
 
     # Scopo: Gestisce `resolve` nel flusso applicativo del modulo.

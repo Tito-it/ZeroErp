@@ -8,6 +8,12 @@ from apps.core.api.views import (
     ApiPermessiAuditV1,
     ApiPermessiEffettiviV1,
 )
+from apps.core.api.search_view import (
+    LookupComuniView,
+    LookupTipiRuoliView,
+    SearchDetailView,
+    SearchUniversaleView,
+)
 from apps.core.api.views_tracciamento import (
     ApiAuditLogV1,
     ApiDominiTaskV1,
@@ -44,6 +50,16 @@ urlpatterns = [
         name="core-v1-lookup-codici",
     ),
     path(
+        "lookup/tipi-ruoli/",
+        LookupTipiRuoliView.as_view(),
+        name="core-v1-lookup-tipi-ruoli",
+    ),
+    path(
+        "lookup/comuni/",
+        LookupComuniView.as_view(),
+        name="core-v1-lookup-comuni",
+    ),
+    path(
         "users/<int:user_id>/permessi-effettivi/",
         ApiPermessiEffettiviV1.as_view(),
         name="core-v1-permessi-effettivi",
@@ -52,6 +68,17 @@ urlpatterns = [
         "users/<int:user_id>/permessi-audit/",
         ApiPermessiAuditV1.as_view(),
         name="core-v1-permessi-audit",
+    ),
+    # Ricerca universale soggetti
+    path(
+        "search/",
+        SearchUniversaleView.as_view(),
+        name="core-v1-search-universale",
+    ),
+    path(
+        "search/<uuid:soggetto_id>/detail/",
+        SearchDetailView.as_view(),
+        name="core-v1-search-detail",
     ),
     # Tracciamento processi e job
     path(

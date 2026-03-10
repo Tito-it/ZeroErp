@@ -23,7 +23,7 @@ export function useApiHandler() {
    * @param {string} [options.successMessage] - messaggio toast su successo (null = nessun toast)
    * @param {string} [options.errorMessage] - messaggio fallback se il backend non restituisce dettagli
    * @param {boolean} [options.silent] - true = nessun toast di errore (utile per polling)
-   * @returns {*} response.data in caso di successo, null in caso di errore
+   * @returns {*} data interna dall'envelope { data, meta } in caso di successo, null in caso di errore
    */
   async function execute(apiFn, options = {}) {
     loading.value = true
@@ -32,7 +32,9 @@ export function useApiHandler() {
       if (options.successMessage) {
         notify.success(options.successMessage)
       }
-      return response.data
+      // Unwrap dell'envelope standard backend { data: {...}, meta: {...} }
+      const body = response.data
+      return (body && typeof body === 'object' && 'data' in body) ? body.data : body
     } catch (err) {
       if (!options.silent) {
         const message = extractErrorMessage(err) || options.errorMessage

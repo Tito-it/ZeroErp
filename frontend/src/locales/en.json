@@ -79,5 +79,41 @@
   "confirm": {
     "delete_title": "Confirm deletion",
     "delete_message": "Are you sure you want to delete {name}? This action cannot be undone."
+  },
+  "search": {
+    "title": "Universal search",
+    "select_type": "Role type",
+    "placeholder": "Search by name, tax ID, code...",
+    "filter_comune": "Filter by municipality",
+    "min_chars": "Type at least 3 characters",
+    "col_code": "Code",
+    "col_name": "Business Name",
+    "col_fiscal_id": "Tax ID / VAT",
+    "col_comune": "Municipality",
+    "col_utility": "Utility",
+    "set_context": "Set context",
+    "open_detail": "Open full record",
+    "detail_code": "Code",
+    "detail_instance": "Instance",
+    "detail_utility": "Utility",
+    "detail_address": "Address",
+    "detail_status": "Status",
+    "detail_description": "Description",
+    "status_active": "Active",
+    "status_inactive": "Inactive",
+    "tipo_ruolo": {
+      "CLIENTE": "Customers",
+      "FORNITORE": "Suppliers",
+      "VENDITORE": "Salespeople",
+      "DISTRIB": "Distributors",
+      "RESELLER": "Resellers",
+      "VETTORE": "Carriers",
+      "BANK": "Banks"
+    }
+  },
+  "context": {
+    "tooltip_search": "Universal search",
+    "tooltip_clear": "Clear context",
+    "filtered_by": "Results filtered by: {name}"
   }
 }
