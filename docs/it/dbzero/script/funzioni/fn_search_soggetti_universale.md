@@ -2,14 +2,14 @@
 # ⚙️ Funzione `fn_search_soggetti_universale`
 
 ```sql
-CREATE FUNCTION fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_comune_id integer, p_emittente_ids integer[], p_limit integer, p_offset integer)
+CREATE FUNCTION fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_emittente_ids integer[], p_limit integer, p_offset integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_comune_id integer DEFAULT NULL::integer, p_emittente_ids integer[] DEFAULT NULL::integer[], p_limit integer DEFAULT 50, p_offset integer DEFAULT 0)
- RETURNS TABLE(total_count bigint, soggetto_id uuid, soggetto_ruolo_id bigint, tipo_ruolo_id integer, comune_id integer, soggetto_codice text, ragione_sociale_completa text, id_fiscale_univoco text, comune_descrizione character varying, utility_list text)
+CREATE OR REPLACE FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_emittente_ids integer[] DEFAULT NULL::integer[], p_limit integer DEFAULT 50, p_offset integer DEFAULT 0)
+ RETURNS TABLE(total_count bigint, soggetto_id uuid, soggetto_ruolo_id bigint, tipo_ruolo_id integer, soggetto_codice text, ragione_sociale_completa text, id_fiscale_univoco text, utility_list text)
  LANGUAGE plpgsql
  STABLE PARALLEL SAFE
 AS $function$
@@ -31,7 +31,6 @@ BEGIN
   -- Parametri:
   --   p_search_term:   testo di ricerca (minimo 3 caratteri)
   --   p_tipo_ruolo_id: ID tipo ruolo (obbligatorio, > 0)
-  --   p_comune_id:     filtro opzionale per comune
   --   p_emittente_ids: filtro opzionale per scope emittente
   --   p_limit:         righe per pagina (default 50, max 200)
   --   p_offset:        offset paginazione (default 0)
@@ -40,6 +39,12 @@ BEGIN
   --   Set di righe con total_count (window), dati soggetto
   --   e utility_list aggregata. Ordinamento per
   --   ragione_sociale_completa, soggetto_ruolo_id.
+  --
+  -- Nota:
+  --   Filtro per comune/indirizzo non presente nel livello 1
+  --   (soggetti.comune_id = comune nascita, non operativo).
+  --   Il filtro per indirizzo e' nel livello 2
+  --   (fn_get_search_detail) dove si risolve per ruolo.
   -- =========================================================
 
   -- Guard: tipo ruolo obbligatorio e valido
@@ -84,24 +89,18 @@ BEGIN
       s.id                             AS soggetto_id,
       sr.id                            AS soggetto_ruolo_id,
       sr.tipo_ruolo_id                 AS tipo_ruolo_id,
-      s.comune_id                      AS comune_id,
       s.codice                         AS soggetto_codice,
       s.ragione_sociale_completa       AS ragione_sociale_completa,
-      s.id_fiscale_univoco_cf_piva     AS id_fiscale_univoco,
-      c.descrizione                    AS comune_descrizione
+      s.id_fiscale_univoco_cf_piva     AS id_fiscale_univoco
     FROM anagrafiche.soggetti_ruoli sr
       JOIN anagrafiche.soggetti s
         ON s.id = sr.soggetto_id
-      LEFT JOIN config.comuni c
-        ON c.id = s.comune_id
     WHERE sr.tipo_ruolo_id = p_tipo_ruolo_id
       AND s.attivo = true
       AND (
         s.ragione_sociale_completa ILIKE v_search_pattern
         OR s.id_fiscale_univoco_cf_piva ILIKE v_search_pattern
       )
-      -- Filtro comune opzionale
-      AND (p_comune_id IS NULL OR s.comune_id = p_comune_id)
       -- Filtro scope emittente (da implementare se necessario)
     LIMIT c_hard_cap
   ),
@@ -119,8 +118,8 @@ BEGIN
         ON u.id = cl.utility_id
     GROUP BY
       f.soggetto_id, f.soggetto_ruolo_id, f.tipo_ruolo_id,
-      f.comune_id, f.soggetto_codice, f.ragione_sociale_completa,
-      f.id_fiscale_univoco, f.comune_descrizione
+      f.soggetto_codice, f.ragione_sociale_completa,
+      f.id_fiscale_univoco
   ),
   paged AS (
     -- CTE 3: paginazione con conteggio totale via window function
@@ -137,18 +136,16 @@ BEGIN
     p.soggetto_id,
     p.soggetto_ruolo_id,
     p.tipo_ruolo_id,
-    p.comune_id,
     p.soggetto_codice,
     p.ragione_sociale_completa,
     p.id_fiscale_univoco,
-    p.comune_descrizione,
     p.utility_list
   FROM paged p;
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_comune_id integer, p_emittente_ids integer[], p_limit integer, p_offset integer)
-IS 'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa e id_fiscale_univoco_cf_piva con ILIKE (pg_trgm). p_tipo_ruolo_id obbligatorio. Paginazione LIMIT/OFFSET + COUNT(*) OVER(). Hard cap 10.000 righe filtrate. Ritorna una riga per soggetto con utility aggregate.';
+COMMENT ON FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_emittente_ids integer[], p_limit integer, p_offset integer)
+IS 'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa e id_fiscale_univoco_cf_piva con ILIKE (pg_trgm). p_tipo_ruolo_id obbligatorio. Paginazione LIMIT/OFFSET + COUNT(*) OVER(). Hard cap 10.000 righe filtrate. Ritorna una riga per soggetto con utility aggregate. Filtro indirizzo/comune delegato al livello 2.';
 ```
 
 ---

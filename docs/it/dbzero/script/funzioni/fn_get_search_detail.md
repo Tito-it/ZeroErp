@@ -23,12 +23,12 @@ BEGIN
   --   universale). Ritorna JSONB con tutte le righe
   --   specifiche del soggetto per il tipo ruolo.
   --
-  --   CLIENTE: istanza, utility, indirizzo, stato_cliente.
-  --   FORNITORE: codice, attivo/inattivo, stato_operativo.
-  --   ALTRI: dati base soggetto_ruolo (meta, data_insert).
-  --
-  --   Ampliabile: aggiungere sezioni (contratti, saldi,
-  --   PDR/POD) senza modificare il livello 1.
+  --   CLIENTE: istanza, utility, indirizzo (da istanza o
+  --     fallback via fn_get_indirizzo RES), stato_cliente.
+  --   FORNITORE: codice, attivo/inattivo, stato_operativo,
+  --     indirizzo default (fn_get_indirizzo SEDEOP).
+  --   ALTRI: dati base soggetto_ruolo (meta, data_insert),
+  --     indirizzo default (fn_get_indirizzo RES).
   --
   -- Parametri:
   --   p_soggetto_id:   UUID del soggetto (obbligatorio)
@@ -92,6 +92,8 @@ BEGIN
 
   WHEN 'CLIENTE' THEN
     -- Tutte le righe cliente del soggetto con istanza, utility, indirizzo, stato
+    -- Indirizzo: da istanza_utility se presente, altrimenti fallback
+    -- via fn_get_indirizzo(soggetto_ruolo_id, 'RES') (master/fallback ruolo->soggetto)
     SELECT jsonb_build_object(
       'tipo_ruolo', v_tipo_ruolo_codice,
       'righe', COALESCE(jsonb_agg(row_detail ORDER BY row_detail->>'utility_codice', row_detail->>'stato_descrizione'), '[]'::jsonb)
@@ -108,8 +110,16 @@ BEGIN
         'stato_codice',        sc.codice_interno,
         'stato_descrizione',   sc.descrizione_breve,
         'stato_macro',         sc.codice,
-        'indirizzo',           COALESCE(idv.indirizzo_normalizzato, ''),
-        'comune',              COALESCE(idv.descrizione_comune, ''),
+        'indirizzo',           COALESCE(
+                                 idv.indirizzo_normalizzato,
+                                 fb_ind.indirizzo_completo,
+                                 ''
+                               ),
+        'comune',              COALESCE(
+                                 idv.descrizione_comune,
+                                 fb_ind.comune_descrizione,
+                                 ''
+                               ),
         'data_attivazione',    cl.data_attivazione,
         'data_chiusura',       cl.data_chiusura
       ) AS row_detail
@@ -122,14 +132,22 @@ BEGIN
           ON iu.id = cl.istanza_utility_id
         LEFT JOIN config.utilities u
           ON u.id = cl.utility_id
+        -- Indirizzo da istanza (se presente)
         LEFT JOIN anagrafiche.vw_indirizzi_dettaglio idv
           ON idv.indirizzo_dettaglio_id = iu.indirizzo_dettaglio_id
+        -- Fallback indirizzo: fn_get_indirizzo(RES) con policy master/fallback
+        -- Usato solo quando istanza non ha indirizzo_dettaglio_id
+        LEFT JOIN LATERAL (
+          SELECT gi.indirizzo_completo, gi.comune_descrizione
+          FROM script.fn_get_indirizzo(sr.id, 'RES') gi
+          LIMIT 1
+        ) fb_ind ON iu.indirizzo_dettaglio_id IS NULL
       WHERE sr.soggetto_id = p_soggetto_id
         AND sr.tipo_ruolo_id = p_tipo_ruolo_id
     ) sub;
 
   WHEN 'FORNITORE' THEN
-    -- Righe fornitore del soggetto
+    -- Righe fornitore del soggetto con indirizzo default
     SELECT jsonb_build_object(
       'tipo_ruolo', v_tipo_ruolo_codice,
       'righe', COALESCE(jsonb_agg(row_detail), '[]'::jsonb)
@@ -141,11 +159,19 @@ BEGIN
         'codice',              f.codice,
         'attivo',              f.attivo,
         'stato_operativo',     COALESCE(f.stato_operativo, ''),
-        'stato_descrizione',   CASE WHEN f.attivo THEN 'ATTIVO' ELSE 'INATTIVO' END
+        'stato_descrizione',   CASE WHEN f.attivo THEN 'ATTIVO' ELSE 'INATTIVO' END,
+        'indirizzo',           COALESCE(fb_ind.indirizzo_completo, ''),
+        'comune',              COALESCE(fb_ind.comune_descrizione, '')
       ) AS row_detail
       FROM anagrafiche.soggetti_ruoli sr
         JOIN anagrafiche.fornitori f
           ON f.soggetto_ruolo_id = sr.id
+        -- Indirizzo default fornitore: sede operativa con fallback
+        LEFT JOIN LATERAL (
+          SELECT gi.indirizzo_completo, gi.comune_descrizione
+          FROM script.fn_get_indirizzo(sr.id, 'SEDEOP') gi
+          LIMIT 1
+        ) fb_ind ON true
       WHERE sr.soggetto_id = p_soggetto_id
         AND sr.tipo_ruolo_id = p_tipo_ruolo_id
     ) sub;
@@ -161,9 +187,17 @@ BEGIN
         'soggetto_ruolo_id',  sr.id,
         'soggetto_id',        sr.soggetto_id,
         'meta',               COALESCE(sr.meta, '{}'::jsonb),
-        'data_insert',        sr.data_insert
+        'data_insert',        sr.data_insert,
+        'indirizzo',          COALESCE(fb_ind.indirizzo_completo, ''),
+        'comune',             COALESCE(fb_ind.comune_descrizione, '')
       ) AS row_detail
       FROM anagrafiche.soggetti_ruoli sr
+        -- Indirizzo default: residenza con fallback
+        LEFT JOIN LATERAL (
+          SELECT gi.indirizzo_completo, gi.comune_descrizione
+          FROM script.fn_get_indirizzo(sr.id, 'RES') gi
+          LIMIT 1
+        ) fb_ind ON true
       WHERE sr.soggetto_id = p_soggetto_id
         AND sr.tipo_ruolo_id = p_tipo_ruolo_id
     ) sub;
@@ -175,7 +209,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer)
-IS 'Dettaglio soggetto per tipo ruolo (livello 2 ricerca universale). Ritorna JSONB con sezione per tipo ruolo e tutte le righe specifiche. CLIENTE: istanza, utility, indirizzo, stato_cliente. FORNITORE: codice, attivo/inattivo, stato_operativo. ALTRI: dati base soggetto_ruolo (meta, data_insert). Ampliabile.';
+IS 'Dettaglio soggetto per tipo ruolo (livello 2 ricerca universale). JSONB con righe specifiche. CLIENTE: istanza+utility+stato+indirizzo (da istanza, fallback fn_get_indirizzo RES). FORNITORE: codice+attivo+indirizzo (fn_get_indirizzo SEDEOP). ALTRI: meta+data_insert+indirizzo (fn_get_indirizzo RES). Ampliabile.';
 ```
 
 ---
