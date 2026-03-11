@@ -59,25 +59,24 @@ da un'icona nella topbar in ogni schermata. Si apre come drawer da destra (640px
 ```text
 +----------------------------------------------------------------+
 | [Clienti v]   [  Cerca per nome, CF/P.IVA, codice...   ] [x]  |   <- fisso
-| Comune: [                                          v]          |   <- filtro secondario
 +----------------------------------------------------------------+
-| Codice   | Ragione Sociale    | CF / P.IVA       | Comune  | Utility  |
-|----------+--------------------+------------------+---------+----------|
-| S-0042   | Rossi Mario        | RSSMRA80A01F205X | Bergamo | GAS, EE  |
-| S-0108   | Bianchi Laura      | BNCLRA85B42F205Y | Milano  | EE       |
-| S-0200   | Eni Gas e Luce SpA | 00484960588      | Roma    | --       |
-+----------+--------------------+------------------+---------+----------+
-|  v Dettaglio (row expansion al click)                                  |
-|  ┌─ CLIENTE ─────────────────────────────────────────────────────────┐ |
-|  │ Codice   | Istanza  | Utility | Indirizzo          | Stato       │ |
-|  │ CLI-0042 | IST-001  | GAS     | Via Roma 12, BG    | ATTIVO      │ |
-|  │ CLI-0043 | IST-002  | GAS     | Via Dante 5, BG    | SOSPESO     │ |
-|  │ CLI-0108 | IST-003  | EE      | Via Roma 12, BG    | ATTIVO      │ |
-|  └───────────────────────────────────────────────────────────────────┘ |
-|  [Imposta contesto ->]        [Apri scheda completa ->]                |
-+------------------------------------------------------------------------+
-|                          [Paginazione]                                 |
-+------------------------------------------------------------------------+
+| Codice   | Ragione Sociale    | CF / P.IVA       | Utility  |
+|----------+--------------------+------------------+----------|
+| S-0042   | Rossi Mario        | RSSMRA80A01F205X | GAS, EE  |
+| S-0108   | Bianchi Laura      | BNCLRA85B42F205Y | EE       |
+| S-0200   | Eni Gas e Luce SpA | 00484960588      | --       |
++----------+--------------------+------------------+----------+
+|  v Dettaglio (row expansion al click)                                    |
+|  ┌─ CLIENTE ───────────────────────────────────────────────────────────┐ |
+|  │ Codice   | Istanza  | Utility | Indirizzo          | Comune | Stato│ |
+|  │ CLI-0042 | IST-001  | GAS     | Via Roma 12        | BG     | AT   │ |
+|  │ CLI-0043 | IST-002  | GAS     | Via Dante 5        | BG     | SF   │ |
+|  │ CLI-0108 | IST-003  | EE      | Via Roma 12        | BG     | AT   │ |
+|  └─────────────────────────────────────────────────────────────────────┘ |
+|  [Imposta contesto ->]        [Apri scheda completa ->]                  |
++--------------------------------------------------------------------------+
+|                          [Paginazione]                                   |
++--------------------------------------------------------------------------+
 ```
 
 ### Componenti del drawer
@@ -86,17 +85,18 @@ da un'icona nella topbar in ogni schermata. Si apre come drawer da destra (640px
   in `config.tipi_ruoli`. Il parametro `p_tipo_ruolo_id` e' **obbligatorio**.
 - **Campo di ricerca** — cerca su `ragione_sociale_completa` e `id_fiscale_univoco_cf_piva`.
   La ricerca parte dopo almeno 3 caratteri. Debounce 300ms.
-- **Filtro comune** — AutoComplete su `config.comuni`. Appare come filtro secondario
-  per ridurre risultati con cognomi comuni. Parametro `comune_id` inviato al backend.
 - **Tabella risultati (livello 1)** — DataTable PrimeVue, una riga per soggetto:
   - Codice (`soggetto_codice`)
   - Ragione Sociale (`ragione_sociale_completa`)
   - CF / P.IVA (`id_fiscale_univoco_cf_piva`)
-  - Comune (`comune_descrizione`)
   - Utility (`utility_list` — "GAS, EE" — solo per clienti, "--" per altri)
 - **Row expansion (livello 2)** — click su riga espande dettaglio inline per tipo ruolo.
   Mostra tutte le righe specifiche del soggetto per quel tipo ruolo (es. tutti i clienti
-  con relative istanze, indirizzi, stati). Dati caricati lazy (seconda chiamata API).
+  con relative istanze, indirizzi, comuni, stati). Dati caricati lazy (seconda chiamata API).
+  Indirizzo e comune sono risolti nel livello 2 tramite `fn_get_search_detail`:
+  - **CLIENTE**: prima `istanze_utilities.indirizzo_normalizzato`, fallback `fn_get_indirizzo(sr.id, 'RES')`
+  - **FORNITORE**: `fn_get_indirizzo(sr.id, 'SEDEOP')` (sede operativa con catena fallback)
+  - **Generico**: `fn_get_indirizzo(sr.id, 'RES')` (residenza con catena fallback)
   Ampliabile in futuro con informazioni aggiuntive (contratti, saldi, PDR/POD, ecc.).
 - **Azioni** — dalla riga espansa:
   - "Imposta contesto" — setta il contesto globale e chiude il drawer
@@ -107,12 +107,11 @@ da un'icona nella topbar in ogni schermata. Si apre come drawer da destra (640px
 1. L'utente clicca l'icona di ricerca nella topbar
 2. Si apre il drawer — seleziona tipo e digita almeno 3 caratteri
 3. Appaiono i risultati in tabella paginata
-4. (Opzionale) Filtra per comune per ridurre i risultati
-5. Click su riga — si espande il dettaglio inline
-6. "Imposta contesto" — il contesto globale viene impostato, drawer si chiude
-7. La chip del contesto appare nella topbar
-8. L'utente naviga liberamente — le schermate correlate si filtrano automaticamente
-9. Si chiude con ESC, clic fuori, o selezione contesto
+4. Click su riga — si espande il dettaglio inline con indirizzo e comune
+5. "Imposta contesto" — il contesto globale viene impostato, drawer si chiude
+6. La chip del contesto appare nella topbar
+7. L'utente naviga liberamente — le schermate correlate si filtrano automaticamente
+8. Si chiude con ESC, clic fuori, o selezione contesto
 
 ---
 
@@ -185,11 +184,13 @@ tipo ruolo selezionato, raggruppate per tipo ruolo.
 ```text
 Livello 1 — Lista soggetti (fn_search_soggetti_universale)
   Una riga per soggetto. Nessun JOIN su tabelle ruolo specifiche.
-  Colonne: Codice, Ragione Sociale, CF/P.IVA, Comune, Utility list.
+  Colonne: Codice, Ragione Sociale, CF/P.IVA, Utility list.
+  Nessun indirizzo/comune (risoluzione troppo costosa per-row su migliaia di righe).
 
 Livello 2 — Dettaglio per tipo ruolo (fn_get_search_detail)
   Tutte le righe specifiche del soggetto per quel tipo ruolo.
-  Es. per CLIENTE: tutti i clienti con istanza, utility, indirizzo, stato.
+  Es. per CLIENTE: tutti i clienti con istanza, utility, indirizzo, comune, stato.
+  Indirizzo e comune risolti per ogni riga con logica specifica per tipo ruolo.
   Chiamata API lazy — solo quando l'utente espande la riga.
 ```
 
@@ -204,11 +205,11 @@ SearchDrawer.vue
 
 Mappa componenti (per tipo ruolo, senza utility nel componente):
 
-| tipo_ruolo | Componente           | Dati nel dettaglio                                         |
-| ---------- | -------------------- | ---------------------------------------------------------- |
-| CLIENTE    | `ClienteDetail.vue`  | Tutte le righe cliente: istanza, utility, stato, indirizzo |
-| FORNITORE  | `FornitoreDetail.vue`| Codice, stato attivo/inattivo                              |
-| (altri)    | `GenericDetail.vue`  | Dati base del ruolo (ampliabile in futuro)                 |
+| tipo_ruolo | Componente           | Dati nel dettaglio                                                  |
+| ---------- | -------------------- | ------------------------------------------------------------------- |
+| CLIENTE    | `ClienteDetail.vue`  | Codice, istanza, utility, indirizzo, comune, stato                  |
+| FORNITORE  | `FornitoreDetail.vue`| Codice, indirizzo (sede operativa), comune, stato attivo/inattivo   |
+| (altri)    | `GenericDetail.vue`  | Codice, descrizione, indirizzo (residenza), comune                  |
 
 Il componente `ClienteDetail.vue` mostra una tabella interna con tutte le righe cliente
 del soggetto (una per istanza/utility). Non serve un componente separato per utility
@@ -310,7 +311,6 @@ In futuro si potra' propagare nell'URL (`?ctx=tipo_ruolo:soggetto_id`) per link 
 - Il tipo predefinito del selettore e' configurabile per ruolo utente nel profilo
 - La ricerca rispetta lo scope emittente: un utente OPERATIVO con whitelist emittenti
   vede solo soggetti/clienti nel proprio scope
-- Il filtro comune e' opzionale — riduce i risultati senza essere obbligatorio
 
 ---
 
@@ -322,11 +322,11 @@ In futuro si potra' propagare nell'URL (`?ctx=tipo_ruolo:soggetto_id`) per link 
 | Tabella `anagrafiche.soggetti_ruoli` con tipi ruolo | OK | Schema `anagrafiche` |
 | Colonna `id_fiscale_univoco_cf_piva` (COALESCE CF/P.IVA) | OK | `anagrafiche.soggetti` |
 | Tabella `config.utility` (GAS, EE, ACQUA, ecc.) | OK | Schema `config` |
-| Tabella `config.comuni` per filtro comune | OK | Schema `config` |
+| Tabella `config.comuni` per indirizzo livello 2 | OK | Schema `config` |
 | Tabella `anagrafiche.istanze_utilities` per stato "in corso" | OK | Schema `anagrafiche` |
 | Vista `vw_soggetti_ruoli_dettaglio` | OK | Schema `anagrafiche` |
 | `AppDrawer.vue` riutilizzabile (PrimeVue Drawer) | OK | `frontend/src/core/components/` |
-| PrimeVue 4.5 (Drawer, Chip, DataTable, AutoComplete) | OK | `package.json` |
+| PrimeVue 4.5 (Drawer, Chip, DataTable) | OK | `package.json` |
 | Store Pinia + `api.js` interceptor | OK | `frontend/src/stores/`, `frontend/src/core/` |
 | `search_validators.py` (min 3 caratteri) | OK | `apps/core/api/` |
 | `SearchBurstRateThrottle` | OK | `apps/core/api/throttling.py` |
@@ -346,8 +346,8 @@ In futuro si potra' propagare nell'URL (`?ctx=tipo_ruolo:soggetto_id`) per link 
 | 1.0 | Aggiungere colonna `ricerca_visibile BOOLEAN DEFAULT false` su `config.tipi_ruoli`. UPDATE a `true` per: CLIENTE, FORNITORE, VENDITORE, DISTRIB, RESELLER, VETTORE, BANK. Changeset Liquibase + aggiornare seed CSV | **Da fare** | -- |
 | 1.1 | Verificare/abilitare estensione `pg_trgm` su PostgreSQL | **Da fare** | -- |
 | 1.2 | Creare indice GIN trigram su `soggetti.ragione_sociale_completa` e `soggetti.id_fiscale_univoco_cf_piva` per performance ILIKE | **Da fare** | 1.1 |
-| 1.3 | Creare `script.fn_search_soggetti_universale(p_search_term, p_tipo_ruolo_id, p_comune_id, p_emittente_ids, p_limit, p_offset)` — `p_tipo_ruolo_id` obbligatorio. Cerca su `ragione_sociale_completa` e `id_fiscale_univoco_cf_piva` con ILIKE. Paginazione LIMIT/OFFSET + `COUNT(*) OVER()` + hard cap 10.000. Ritorna: `total_count`, `soggetto_id`, `soggetto_ruolo_id`, `tipo_ruolo_id`, `comune_id`, `soggetto_codice`, `ragione_sociale_completa`, `id_fiscale_univoco`, `comune_descrizione`, `utility_list`. Una riga per soggetto, nessun JOIN su tabelle ruolo specifiche. LEFT JOIN leggero su `clienti` + `utilities` solo per aggregare `utility_list` (string_agg) | **Da fare** | 1.1, 1.2 |
-| 1.4 | Creare `script.fn_get_search_detail(p_soggetto_id, p_tipo_ruolo_id)` — dettaglio per row expansion (livello 2). Ritorna tutte le righe specifiche del soggetto per il tipo ruolo: per CLIENTE tutte le righe con istanza, utility, indirizzo, stato (`stati_cliente`); per FORNITORE codice e stato attivo/inattivo; per altri tipi dati base. Output JSONB con sezioni per tipo ruolo, ampliabile in futuro | **Da fare** | 1.3 |
+| 1.3 | Creare `script.fn_search_soggetti_universale(p_search_term, p_tipo_ruolo_id, p_emittente_ids, p_limit, p_offset)` — 5 parametri, `p_tipo_ruolo_id` obbligatorio. Cerca su `ragione_sociale_completa` e `id_fiscale_univoco_cf_piva` con ILIKE. Paginazione LIMIT/OFFSET + `COUNT(*) OVER()` + hard cap 10.000. Ritorna: `total_count`, `soggetto_id`, `soggetto_ruolo_id`, `tipo_ruolo_id`, `soggetto_codice`, `ragione_sociale_completa`, `id_fiscale_univoco`, `utility_list`. Una riga per soggetto, nessun JOIN su tabelle ruolo specifiche. LEFT JOIN leggero su `clienti` + `utilities` solo per aggregare `utility_list` (string_agg). **Nota**: `p_comune_id` rimosso — filtro comune nel livello 1 impraticabile (risoluzione indirizzo row-level su migliaia di righe). Indirizzo e comune gestiti nel livello 2 | **Da fare** | 1.1, 1.2 |
+| 1.4 | Creare `script.fn_get_search_detail(p_soggetto_id, p_tipo_ruolo_id)` — dettaglio per row expansion (livello 2). Ritorna tutte le righe specifiche del soggetto per il tipo ruolo. **CLIENTE**: codice, istanza, utility, indirizzo (COALESCE istanza_normalizzato / fallback fn_get_indirizzo RES), comune, stato. **FORNITORE**: codice, indirizzo (fn_get_indirizzo SEDEOP), comune, stato attivo/inattivo. **Generico**: codice, descrizione, indirizzo (fn_get_indirizzo RES), comune. Output JSONB con sezioni per tipo ruolo, ampliabile in futuro | **Da fare** | 1.3 |
 | 1.5 | Test pgTAP per `fn_search_soggetti_universale` — casi: ricerca per nome, per CF/P.IVA, filtro tipo obbligatorio, filtro comune, scope emittente, risultati vuoti, paginazione, hard cap, utility_list aggregata | **Da fare** | 1.3 |
 | 1.6 | Test pgTAP per `fn_get_search_detail` — casi: dettaglio cliente (multi-istanza, multi-utility), fornitore, tipo generico | **Da fare** | 1.4 |
 | 1.7 | Changeset Liquibase per estensione, indici, funzioni | **Da fare** | 1.1-1.4 |
@@ -357,7 +357,7 @@ In futuro si potra' propagare nell'URL (`?ctx=tipo_ruolo:soggetto_id`) per link 
 | Step | Descrizione | Stato | Dipende da |
 | --- | --- | --- | --- |
 | 2.1 | Creare `SearchRepository` in `apps/core/db/search_repository.py` — `search_soggetti()` chiama `fn_search_soggetti_universale`, `get_search_detail()` chiama `fn_get_search_detail`, `is_tipo_ruolo_visibile()` verifica flag | **Completato** | 1.3, 1.4 |
-| 2.2 | Creare `SearchUniversaleView(APIView)` in `apps/core/api/search_view.py` — `GET /api/v1/core/search/` con params: `q` (min 3), `tipo_ruolo_id` (obbligatorio, validato contro `ricerca_visibile=true`), `comune_id` (opzionale), `page`, `page_size`. Applica scope emittente via `PermissionResolver`. `@extend_schema`. `is_search_endpoint = True` per throttling. Response: `{count, page, page_size, results: [...]}` | **Completato** | 2.1 |
+| 2.2 | Creare `SearchUniversaleView(APIView)` in `apps/core/api/search_view.py` — `GET /api/v1/core/search/` con params: `q` (min 3), `tipo_ruolo_id` (obbligatorio, validato contro `ricerca_visibile=true`), `page`, `page_size`. Applica scope emittente via `PermissionResolver`. `@extend_schema`. `is_search_endpoint = True` per throttling. Response: `{count, page, page_size, results: [...]}`. **Nota**: `comune_id` rimosso — filtro comune non piu' nel livello 1 | **Completato** | 2.1 |
 | 2.3 | Creare `SearchDetailView(APIView)` in `apps/core/api/search_view.py` — `GET /api/v1/core/search/<uuid:soggetto_id>/detail/?tipo_ruolo_id=N` — dettaglio per row expansion (livello 2). Verifica `ricerca_visibile` | **Completato** | 2.1 |
 | 2.4 | Registrare rotte in `apps/core/api/urls_v1.py` | **Completato** | 2.2, 2.3 |
 | 2.5 | Aggiungere error policies: `E_SEARCH_VALIDATION` (400), `E_SEARCH_NOT_FOUND` (404) | **Completato** | -- |
@@ -376,7 +376,7 @@ In futuro si potra' propagare nell'URL (`?ctx=tipo_ruolo:soggetto_id`) per link 
 
 | Step | Descrizione | Stato | Dipende da |
 | --- | --- | --- | --- |
-| 4.1 | Creare `SearchDrawer.vue` — drawer 640px con: dropdown tipo ruolo (caricato da lookup `config.tipi_ruoli` filtrato `ricerca_visibile=true`), input ricerca (debounce 300ms, min 3 char), AutoComplete comune, DataTable risultati livello 1 (Codice, Ragione Sociale, CF/P.IVA, Comune, Utility list), paginazione, row expansion livello 2 con componente dinamico per tipo ruolo | **Completato** | 2.2, 3.1, 3.2 |
+| 4.1 | Creare `SearchDrawer.vue` — drawer 640px con: dropdown tipo ruolo (caricato da lookup `config.tipi_ruoli` filtrato `ricerca_visibile=true`), input ricerca (debounce 300ms, min 3 char), DataTable risultati livello 1 (Codice, Ragione Sociale, CF/P.IVA, Utility list), paginazione condizionale, row expansion livello 2 con componente dinamico per tipo ruolo. **Nota**: AutoComplete comune rimosso — filtro comune nel livello 1 non praticabile | **Completato** | 2.2, 3.1, 3.2 |
 | 4.2 | Creare componenti dettaglio row expansion per tipo ruolo: `ClienteDetail.vue` (tabella interna multi-istanza con utility, indirizzo, stato), `FornitoreDetail.vue`, `GenericDetail.vue` (base per altri tipi) | **Completato** | 2.3 |
 | 4.3 | Creare `getDetailComponent(tipo_ruolo_codice)` — mappa tipo ruolo al componente corretto | **Completato** | 4.2 |
 | 4.4 | Aggiungere icona ricerca in `AppTopbar.vue` — click apre SearchDrawer | **Completato** | 4.1 |
@@ -413,10 +413,10 @@ Fase 5 si implementa progressivamente man mano che le liste vengono create.
 | --- | --- | --- |
 | 1 | Selettore tipo: tab o dropdown? | **Dropdown** — piu' compatto e scalabile |
 | 2 | Dove posizionare la ricerca? | **Drawer da topbar** — accessibile da qualsiasi schermata, non solo dalla home |
-| 3 | Colonne lista (livello 1) | **Codice, Ragione Sociale, CF/P.IVA, Comune, Utility list** — niente stato nel livello 1 |
+| 3 | Colonne lista (livello 1) | **Codice, Ragione Sociale, CF/P.IVA, Utility list** — niente stato, indirizzo o comune nel livello 1 (risoluzione indirizzo row-level impraticabile su migliaia di righe) |
 | 4 | Dettaglio riga: pop-up o inline? | **Row expansion** (inline) — l'utente resta nella lista, puo' confrontare piu' righe |
 | 5 | Ricerca su quali campi | **`ragione_sociale_completa`** + **`id_fiscale_univoco_cf_piva`** (colonna unica COALESCE) |
-| 6 | Filtro secondario | **Comune** — AutoComplete su `config.comuni`, parametro `comune_id` al backend |
+| 6 | Filtro secondario | **Rimosso** — il filtro comune nel livello 1 era impraticabile (risoluzione indirizzo row-level). Indirizzo e comune sono ora visibili nel livello 2 (dettaglio per tipo ruolo) |
 | 7 | Tipi disponibili nel dropdown | **Solo tipi ruolo con `ricerca_visibile = true`** — flag su `config.tipi_ruoli`, no permessi per utente |
 | 8 | Tipo ruolo obbligatorio | **Si'** — `p_tipo_ruolo_id` obbligatorio. La funzione cerca sempre per un tipo specifico |
 | 9 | Stato nel dettaglio | **Per clienti**: `config.stati_cliente` (AT, PR, SF, SC, CH, ecc.). **Fornitori**: attivo/inattivo. **Altri**: "-" |
@@ -426,7 +426,7 @@ Fase 5 si implementa progressivamente man mano che le liste vengono create.
 | 13 | Architettura lista | **Due livelli**: livello 1 = una riga per soggetto (nessun JOIN tabelle ruolo); livello 2 = tutte le righe specifiche per tipo ruolo (lazy) |
 | 14 | Paginazione DB | **LIMIT/OFFSET + COUNT(*) OVER() + hard cap 10.000** — un solo round-trip, offset pagination |
 | 15 | Strategia ricerca DB | **ILIKE + pg_trgm + indice GIN** — no tsvector (non serve ranking/stemming per nomi e CF/P.IVA) |
-| 16 | ID restituiti nel livello 1 | **`soggetto_id`, `soggetto_ruolo_id`, `tipo_ruolo_id`, `comune_id`** — nessun ID specifico per tabella ruolo (cliente_id, fornitore_id, ecc.) |
+| 16 | ID restituiti nel livello 1 | **`soggetto_id`, `soggetto_ruolo_id`, `tipo_ruolo_id`** — nessun ID specifico per tabella ruolo (cliente_id, fornitore_id, ecc.). `comune_id` rimosso |
 | 17 | Filtro tipi ruolo | **Flag `ricerca_visibile` su `config.tipi_ruoli`** — Si: CLIENTE, FORNITORE, VENDITORE, DISTRIB, RESELLER, VETTORE, BANK. No: GESTORE, EMITT_FISC, RIS_UMANA, PSP |
 
 ---

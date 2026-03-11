@@ -18,8 +18,8 @@ export function useSearchDetail(props) {
       }),
       { silent: true }
     )
-    if (data?.detail) {
-      detailRows.value = data.detail
+    if (data?.righe) {
+      detailRows.value = data.righe
     }
   }
 

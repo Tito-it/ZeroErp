@@ -34,11 +34,12 @@ const STATO_SEVERITY = {
 
 <template>
   <div class="detail-container">
-    <DataTable :value="detailRows" :loading="loading" size="small" stripedRows>
+    <DataTable :value="detailRows" :loading="loading" size="small" stripedRows class="app-datatable">
       <Column field="codice" :header="t('search.detail_code')" style="width: 100px" />
       <Column field="istanza_codice" :header="t('search.detail_instance')" style="width: 100px" />
       <Column field="utility_descrizione" :header="t('search.detail_utility')" style="width: 80px" />
       <Column field="indirizzo" :header="t('search.detail_address')" />
+      <Column field="comune" :header="t('search.col_comune')" style="width: 140px" />
       <Column field="stato_descrizione" :header="t('search.detail_status')" style="width: 130px">
         <template #body="{ data }">
           <Tag
@@ -49,18 +50,22 @@ const STATO_SEVERITY = {
           <span v-else>-</span>
         </template>
       </Column>
+      <Column :header="t('search.col_actions')" style="width: 160px" :exportable="false">
+        <template #body="{ data }">
+          <DetailActions
+            :row="row"
+            :detailRow="data"
+            @set-context="emit('set-context', $event)"
+            @open-detail="emit('open-detail', $event)"
+          />
+        </template>
+      </Column>
     </DataTable>
-
-    <DetailActions
-      :row="row"
-      @set-context="emit('set-context', $event)"
-      @open-detail="emit('open-detail', $event)"
-    />
   </div>
 </template>
 
 <style scoped>
 .detail-container {
-  padding: 0.5rem 0;
+  padding: 0.25rem 0;
 }
 </style>

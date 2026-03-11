@@ -49,7 +49,11 @@
       "Bash(grep -l \"DB_NAME\" *.sh .env*)",
       "Bash(source ../env.sh)",
       "Bash(.venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)",
-      "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings .venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)"
+      "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings .venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)",
+      "Read(//usr/local/bin/**)",
+      "Read(//tmp/**)",
+      "Bash(DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp DB_PASSWORD=secret DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS=\"localhost\" DJANGO_DEBUG=0 python manage.py test apps.core.tests.api.test_search_view -v 2)",
+      "Bash(systemctl list-units:*)"
     ],
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"

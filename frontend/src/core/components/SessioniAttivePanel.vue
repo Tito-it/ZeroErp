@@ -100,7 +100,7 @@ onMounted(fetchSessioni)
       <i class="pi pi-shield"></i>
       {{ t('sessions.other_active', { count: sessioni.length }) }}
     </h3>
-    <DataTable :value="sessioni" size="small" stripedRows>
+    <DataTable :value="sessioni" size="small" stripedRows class="app-datatable">
       <Column :header="t('sessions.device')">
         <template #body="{ data }">
           {{ parseUserAgent(data.user_agent) }}

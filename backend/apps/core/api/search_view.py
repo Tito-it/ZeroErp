@@ -3,9 +3,9 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Endpoint API ricerca universale soggetti (livello 1 e livello 2)
-# e lookup tipi ruolo / comuni per il drawer di ricerca.
+# e lookup tipi ruolo per il drawer di ricerca.
 # Espone GET /api/v1/core/search/, /search/<uuid>/detail/,
-# /lookup/tipi-ruoli/, /lookup/comuni/.
+# /lookup/tipi-ruoli/.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -56,16 +56,6 @@ def _require_tipo_ruolo_id(query_params, repo: SearchRepository) -> int:
     return tipo_ruolo_id
 
 
-# Scopo: Estrae comune_id opzionale da query params. Converte 0 a None
-# (0 non e' un comune valido).
-def _parse_comune_id(query_params) -> int | None:
-    raw = query_params.get("comune_id")
-    if not raw:
-        return None
-    value = qp_int_strict(raw, "comune_id", 0)
-    return value or None
-
-
 class LookupTipiRuoliView(APIView):
     """GET /api/v1/core/lookup/tipi-ruoli/ — tipi ruolo visibili per ricerca universale."""
 
@@ -106,55 +96,6 @@ class LookupTipiRuoliView(APIView):
         return success_response({"results": results})
 
 
-class LookupComuniView(APIView):
-    """GET /api/v1/core/lookup/comuni/ — autocompletamento comuni."""
-
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    is_search_endpoint = True
-    throttle_classes = [SearchBurstRateThrottle]
-
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="q",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=True,
-                description="Termine di ricerca (min 2 caratteri).",
-            ),
-        ],
-        responses={
-            200: inline_serializer(
-                name="LookupComuniResponse",
-                fields={
-                    "data": inline_serializer(
-                        name="LookupComuniData",
-                        fields={
-                            "results": serializers.ListField(
-                                child=serializers.DictField()
-                            ),
-                        },
-                    ),
-                    "meta": serializers.DictField(required=False),
-                },
-            )
-        },
-    )
-    # Scopo: Restituisce comuni filtrati per autocompletamento nel drawer ricerca.
-    def get(self, request: Request) -> JsonResponse:
-        q = qp_str(request.query_params.get("q"))
-        if not q or len(q) < 2:
-            raise ServiceError(
-                code="E_SEARCH_VALIDATION",
-                message="Parametri ricerca non validi.",
-                detail="Il parametro 'q' richiede almeno 2 caratteri.",
-            )
-        repo = SearchRepository()
-        results = repo.search_comuni(q)
-        return success_response({"results": results})
-
-
 class SearchUniversaleView(APIView):
     """GET /api/v1/core/search/ — ricerca soggetti livello 1 (una riga per soggetto)."""
 
@@ -178,13 +119,6 @@ class SearchUniversaleView(APIView):
                 location=OpenApiParameter.QUERY,
                 required=True,
                 description="ID tipo ruolo (obbligatorio). Solo tipi con ricerca_visibile=true.",
-            ),
-            OpenApiParameter(
-                name="comune_id",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Filtro opzionale per comune.",
             ),
             OpenApiParameter(
                 name="page",
@@ -238,7 +172,6 @@ class SearchUniversaleView(APIView):
 
         repo = SearchRepository()
         tipo_ruolo_id = _require_tipo_ruolo_id(request.query_params, repo)
-        comune_id = _parse_comune_id(request.query_params)
 
         page = qp_int_strict(request.query_params.get("page"), "page", 1)
         page_size = qp_int_strict(
@@ -269,7 +202,6 @@ class SearchUniversaleView(APIView):
         results, total_count = repo.search_soggetti(
             search_term=q,
             tipo_ruolo_id=tipo_ruolo_id,
-            comune_id=comune_id,
             emittente_ids=emittente_ids,
             limit=page_size,
             offset=offset,

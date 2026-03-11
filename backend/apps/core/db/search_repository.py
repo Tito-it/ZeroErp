@@ -30,7 +30,6 @@ class SearchRepository:
         *,
         search_term: str,
         tipo_ruolo_id: int,
-        comune_id: int | None = None,
         emittente_ids: list[int] | None = None,
         limit: int = 25,
         offset: int = 0,
@@ -45,7 +44,6 @@ class SearchRepository:
                   FROM script.fn_search_soggetti_universale(
                            p_search_term   := %s,
                            p_tipo_ruolo_id := %s,
-                           p_comune_id     := %s,
                            p_emittente_ids := %s,
                            p_limit         := %s,
                            p_offset        := %s
@@ -54,7 +52,6 @@ class SearchRepository:
                 [
                     search_term,
                     tipo_ruolo_id,
-                    comune_id,
                     pg_emittente_ids,
                     limit,
                     offset,
@@ -117,23 +114,6 @@ class SearchRepository:
                  WHERE ricerca_visibile = true
                  ORDER BY descrizione
                 """
-            )
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
-
-    # Scopo: Cerca comuni per autocompletamento, ILIKE su descrizione.
-    # Ritorna max 20 risultati ordinati per descrizione.
-    def search_comuni(self, query: str) -> list[dict[str, Any]]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, descrizione
-                  FROM config.comuni
-                 WHERE descrizione ILIKE %s
-                 ORDER BY descrizione
-                 LIMIT 20
-                """,
-                [f"%{query}%"],
             )
             cols = [c.name for c in cursor.description]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]

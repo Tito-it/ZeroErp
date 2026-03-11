@@ -12,7 +12,7 @@ def require_min_search_length(term: str | None, *, min_length: int = 3, field_na
     if len(term.strip()) >= min_length:
         return
     raise ServiceError(
-        code="E_PIPELINE_VALIDATION",
+        code="E_SEARCH_VALIDATION",
         message="Parametri ricerca non validi.",
         detail=f"{field_name} troppo corto (min {min_length}).",
     )
