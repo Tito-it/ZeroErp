@@ -1,0 +1,238 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Cambia config.regioni.descrizione da character(80) a character varying.
+# Salva dinamicamente tutte le viste e funzioni dipendenti,
+# droppa con CASCADE, altera la colonna, ricrea tutto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260311-01-alter-regioni-descrizione-to-varchar-mctit.yaml
+
+  - changeSet:
+      id: 20260311-01-alter-regioni-descrizione-to-varchar
+      author: mctit
+      comment: "Converte config.regioni.descrizione da char(80) a varchar — salva/ricrea automaticamente tutti gli oggetti dipendenti"
+      failOnError: true
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+
+              DO $$
+              -- ==========================================================
+              -- Scopo: cambiare config.regioni.descrizione da character(80)
+              --        a character varying, gestendo automaticamente tutta
+              --        la catena di dipendenze (viste e funzioni).
+              --
+              -- Strategia:
+              --   1. Raccoglie ricorsivamente tutti gli oggetti dipendenti
+              --      dalla colonna tramite pg_depend
+              --   2. Salva le definizioni (pg_get_viewdef / pg_get_functiondef)
+              --   3. Droppa gli oggetti in ordine inverso di dipendenza
+              --   4. Altera la colonna con btrim() per rimuovere padding
+              --   5. Ricrea gli oggetti nell'ordine originale
+              --
+              -- Nota: %TYPE non è applicabile nelle VIEW (solo PL/pgSQL).
+              --       Le viste ereditano i tipi dalle colonne sorgente,
+              --       quindi il cambio si propaga automaticamente.
+              -- ==========================================================
+              DECLARE
+                r record;
+                v_ddl_list text[] := '{}';      -- CREATE (ordine foglie→radice, eseguiti in REVERSE)
+                v_drop_list text[] := '{}';     -- DROP (ordine foglie→radice, eseguiti in ordine)
+                v_comment_list text[] := '{}';  -- COMMENT (eseguiti DOPO tutti i CREATE)
+                v_sql text;
+                v_kind text;
+                v_schema text;
+                v_name text;
+                v_full_name text;
+                v_def text;
+              BEGIN
+                -- --------------------------------------------------------
+                -- 1. Raccogliere tutti gli oggetti dipendenti dalla colonna
+                --    config.regioni.descrizione, ordinati per profondità
+                --    di dipendenza (foglie prima per il drop)
+                -- --------------------------------------------------------
+                FOR r IN
+                  WITH RECURSIVE deps AS (
+                    -- Oggetti che dipendono direttamente dalla colonna descrizione
+                    SELECT DISTINCT
+                      d.refobjid AS source_oid,
+                      d.objid AS dep_oid,
+                      d.classid,
+                      1 AS depth
+                    FROM pg_depend d
+                    JOIN pg_class c ON c.oid = d.refobjid
+                    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = d.refobjsubid
+                    WHERE c.relnamespace = 'config'::regnamespace
+                      AND c.relname = 'regioni'
+                      AND a.attname = 'descrizione'
+                      AND d.deptype = 'n'
+
+                    UNION
+
+                    -- Dipendenze transitive (funzioni che dipendono da viste, ecc.)
+                    SELECT DISTINCT
+                      deps.dep_oid,
+                      d2.objid,
+                      d2.classid,
+                      deps.depth + 1
+                    FROM deps
+                    JOIN pg_depend d2 ON d2.refobjid = deps.dep_oid
+                    WHERE d2.deptype = 'n'
+                      AND d2.objid <> d2.refobjid
+                      AND deps.depth < 10  -- limite sicurezza anti-loop
+                  )
+                  SELECT DISTINCT
+                    deps.dep_oid,
+                    deps.depth,
+                    CASE
+                      WHEN c.relkind = 'v' THEN 'VIEW'
+                      ELSE NULL
+                    END AS obj_kind_rel,
+                    CASE
+                      WHEN deps.classid = 'pg_proc'::regclass THEN 'FUNCTION'
+                      ELSE NULL
+                    END AS obj_kind_proc,
+                    n.nspname AS obj_schema,
+                    COALESCE(c.relname, p.proname) AS obj_name,
+                    deps.classid
+                  FROM deps
+                  LEFT JOIN pg_class c ON c.oid = deps.dep_oid AND deps.classid = 'pg_rewrite'::regclass
+                  LEFT JOIN pg_rewrite rw ON rw.oid = deps.dep_oid AND deps.classid = 'pg_rewrite'::regclass
+                  LEFT JOIN pg_class c2 ON c2.oid = rw.ev_class AND deps.classid = 'pg_rewrite'::regclass
+                  LEFT JOIN pg_proc p ON p.oid = deps.dep_oid AND deps.classid = 'pg_proc'::regclass
+                  LEFT JOIN pg_namespace n ON n.oid = COALESCE(c2.relnamespace, c.relnamespace, p.pronamespace)
+                  WHERE (c.relkind = 'v' OR deps.classid = 'pg_proc'::regclass)
+                  ORDER BY deps.depth DESC
+                LOOP
+                  -- Determinare tipo e nome completo
+                  IF r.obj_kind_proc = 'FUNCTION' THEN
+                    -- È una funzione
+                    v_def := pg_get_functiondef(r.dep_oid);
+                    v_full_name := r.dep_oid::regprocedure::text;
+                    v_drop_list := array_append(v_drop_list,
+                      format('DROP FUNCTION IF EXISTS %s CASCADE', v_full_name));
+                    v_ddl_list := array_append(v_ddl_list, v_def || ';');
+
+                    -- Preservare eventuale COMMENT (eseguito dopo tutti i CREATE)
+                    SELECT obj_description(r.dep_oid, 'pg_proc') INTO v_sql;
+                    IF v_sql IS NOT NULL THEN
+                      v_comment_list := array_append(v_comment_list,
+                        format('COMMENT ON FUNCTION %s IS %L;', v_full_name, v_sql));
+                    END IF;
+                  END IF;
+                END LOOP;
+
+                -- --------------------------------------------------------
+                -- 2. Raccogliere le viste dipendenti separatamente
+                --    (le pg_rewrite hanno bisogno di un trattamento diverso)
+                -- --------------------------------------------------------
+                FOR r IN
+                  WITH RECURSIVE vdeps AS (
+                    SELECT DISTINCT rw.ev_class AS view_oid, 1 AS depth
+                    FROM pg_depend d
+                    JOIN pg_class c ON c.oid = d.refobjid
+                    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = d.refobjsubid
+                    JOIN pg_rewrite rw ON rw.oid = d.objid
+                    WHERE c.relnamespace = 'config'::regnamespace
+                      AND c.relname = 'regioni'
+                      AND a.attname = 'descrizione'
+                      AND d.deptype = 'n'
+
+                    UNION
+
+                    SELECT DISTINCT rw2.ev_class, vdeps.depth + 1
+                    FROM vdeps
+                    JOIN pg_depend d2 ON d2.refobjid = vdeps.view_oid
+                    JOIN pg_rewrite rw2 ON rw2.oid = d2.objid
+                    JOIN pg_class c2 ON c2.oid = rw2.ev_class AND c2.relkind = 'v'
+                    WHERE d2.deptype = 'n'
+                      AND rw2.ev_class <> vdeps.view_oid
+                      AND vdeps.depth < 10
+                  ),
+                  -- Aggiungere anche viste che dipendono da funzioni dipendenti
+                  fdeps AS (
+                    SELECT DISTINCT rw.ev_class AS view_oid, 1 AS depth
+                    FROM pg_depend d
+                    JOIN pg_class c ON c.oid = d.refobjid
+                    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = d.refobjsubid
+                    JOIN pg_rewrite rw ON rw.oid = d.objid
+                    WHERE c.relnamespace = 'config'::regnamespace
+                      AND c.relname = 'regioni'
+                      AND a.attname = 'descrizione'
+                      AND d.deptype = 'n'
+                  ),
+                  all_views AS (
+                    SELECT view_oid, depth FROM vdeps
+                  )
+                  SELECT
+                    av.view_oid,
+                    n.nspname AS obj_schema,
+                    c.relname AS obj_name,
+                    av.depth
+                  FROM all_views av
+                  JOIN pg_class c ON c.oid = av.view_oid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  ORDER BY av.depth DESC
+                LOOP
+                  v_full_name := format('%I.%I', r.obj_schema, r.obj_name);
+                  v_def := pg_get_viewdef(r.view_oid, true);
+
+                  v_drop_list := array_append(v_drop_list,
+                    format('DROP VIEW IF EXISTS %s CASCADE', v_full_name));
+                  v_ddl_list := array_append(v_ddl_list,
+                    format('CREATE OR REPLACE VIEW %s AS %s;', v_full_name, v_def));
+
+                  -- Preservare eventuale COMMENT (eseguito dopo tutti i CREATE)
+                  SELECT obj_description(r.view_oid, 'pg_class') INTO v_sql;
+                  IF v_sql IS NOT NULL THEN
+                    v_comment_list := array_append(v_comment_list,
+                      format('COMMENT ON VIEW %s IS %L;', v_full_name, v_sql));
+                  END IF;
+                END LOOP;
+
+                -- --------------------------------------------------------
+                -- 3. Eseguire i DROP (foglie prima)
+                -- --------------------------------------------------------
+                RAISE NOTICE '--- DROP oggetti dipendenti (%) ---', array_length(v_drop_list, 1);
+                FOREACH v_sql IN ARRAY v_drop_list LOOP
+                  RAISE NOTICE 'DROP: %', v_sql;
+                  EXECUTE v_sql;
+                END LOOP;
+
+                -- --------------------------------------------------------
+                -- 4. ALTER colonna: character(80) → character varying
+                --    btrim() rimuove il padding fisso di char(80)
+                -- --------------------------------------------------------
+                RAISE NOTICE '--- ALTER TABLE config.regioni ---';
+                ALTER TABLE config.regioni
+                  ALTER COLUMN descrizione TYPE character varying
+                  USING btrim(descrizione);
+
+                -- --------------------------------------------------------
+                -- 5. Ricreare gli oggetti (ordine inverso: radici prima)
+                -- --------------------------------------------------------
+                RAISE NOTICE '--- RECREATE oggetti (%) ---', array_length(v_ddl_list, 1);
+                FOR i IN REVERSE array_length(v_ddl_list, 1)..1 LOOP
+                  v_sql := v_ddl_list[i];
+                  RAISE NOTICE 'CREATE: %', left(v_sql, 120);
+                  EXECUTE v_sql;
+                END LOOP;
+
+                -- --------------------------------------------------------
+                -- 6. Ripristinare i COMMENT (dopo che tutti gli oggetti esistono)
+                -- --------------------------------------------------------
+                IF array_length(v_comment_list, 1) > 0 THEN
+                  RAISE NOTICE '--- COMMENT oggetti (%) ---', array_length(v_comment_list, 1);
+                  FOREACH v_sql IN ARRAY v_comment_list LOOP
+                    RAISE NOTICE 'COMMENT: %', left(v_sql, 120);
+                    EXECUTE v_sql;
+                  END LOOP;
+                END IF;
+
+                RAISE NOTICE '--- Migrazione completata con successo ---';
+              END
+              $$;

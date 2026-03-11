@@ -15,8 +15,11 @@
 -- 10) Guard fn_get_search_detail: p_soggetto_id NULL lancia errore
 -- 11) Guard fn_get_search_detail: p_tipo_ruolo_id NULL lancia errore
 -- 12) fn_get_search_detail su soggetto esistente ritorna JSONB con chiave tipo_ruolo
+-- 13) fn_get_search_detail: tipo_ruolo nel JSONB corrisponde a codice_interno
+-- 14) fn_get_search_detail: p_utility_id NULL non cambia il risultato
+-- 15) fn_get_search_detail: righe e' un array JSONB
 -- ------------------------------------------------------------
-SELECT plan(12);
+SELECT plan(15);
 
 -- =========================================================
 -- Setup: recupera dati test dal DB
@@ -115,7 +118,7 @@ SELECT throws_ok(
 -- 7) Ricerca con termine valido: nessun errore
 SELECT lives_ok(
   format(
-    $$SELECT * FROM script.fn_search_soggetti_universale(%L, %s, NULL, NULL, 10, 0)$$,
+    $$SELECT * FROM script.fn_search_soggetti_universale(%L, %s, NULL, 10, 0)$$,
     (SELECT termine FROM tmp_search),
     (SELECT tipo_ruolo_id FROM tmp_ctx)
   ),
@@ -142,7 +145,7 @@ SELECT total_count, soggetto_id
 FROM script.fn_search_soggetti_universale(
   (SELECT termine FROM tmp_search),
   (SELECT tipo_ruolo_id FROM tmp_ctx),
-  NULL, NULL, 5, 0
+  NULL, 5, 0
 );
 
 SELECT ok(
@@ -188,6 +191,64 @@ SELECT ok(
     ) sub
   ),
   'fn_get_search_detail su soggetto esistente ritorna JSONB con chiave tipo_ruolo'
+);
+
+-- =========================================================
+-- Test 13: tipo_ruolo nel JSONB corrisponde a codice_interno
+-- =========================================================
+
+-- Il valore tipo_ruolo nel JSON deve essere codice_interno (es. CL, FO)
+-- non codice (es. CLIENTE, FORNITORE)
+SELECT ok(
+  (
+    SELECT (result->>'tipo_ruolo') = (SELECT tipo_ruolo_codice FROM tmp_ctx)
+       AND length(result->>'tipo_ruolo') <= 10  -- codice_interno e' breve
+    FROM (
+      SELECT script.fn_get_search_detail(
+        (SELECT soggetto_id FROM tmp_soggetto),
+        (SELECT tipo_ruolo_id FROM tmp_ctx)
+      ) AS result
+    ) sub
+  ),
+  'fn_get_search_detail: tipo_ruolo nel JSONB corrisponde a codice_interno'
+);
+
+-- =========================================================
+-- Test 14: p_utility_id NULL non cambia il risultato
+-- =========================================================
+
+SELECT is(
+  (
+    SELECT script.fn_get_search_detail(
+      (SELECT soggetto_id FROM tmp_soggetto),
+      (SELECT tipo_ruolo_id FROM tmp_ctx),
+      NULL
+    )
+  ),
+  (
+    SELECT script.fn_get_search_detail(
+      (SELECT soggetto_id FROM tmp_soggetto),
+      (SELECT tipo_ruolo_id FROM tmp_ctx)
+    )
+  ),
+  'fn_get_search_detail: p_utility_id NULL equivale a chiamata senza parametro'
+);
+
+-- =========================================================
+-- Test 15: righe e' un array JSONB
+-- =========================================================
+
+SELECT ok(
+  (
+    SELECT jsonb_typeof(result->'righe') = 'array'
+    FROM (
+      SELECT script.fn_get_search_detail(
+        (SELECT soggetto_id FROM tmp_soggetto),
+        (SELECT tipo_ruolo_id FROM tmp_ctx)
+      ) AS result
+    ) sub
+  ),
+  'fn_get_search_detail: righe e'' un array JSONB'
 );
 
 SELECT * FROM finish();

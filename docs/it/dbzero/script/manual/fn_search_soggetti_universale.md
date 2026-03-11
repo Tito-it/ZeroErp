@@ -23,7 +23,7 @@ La funzione **`script.fn_search_soggetti_universale`** implementa il **livello 1
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 
@@ -39,14 +39,14 @@ La funzione **`script.fn_search_soggetti_universale`** implementa il **livello 1
 
 ### Parametri di Input
 
-| Nome              | Tipo        | Obbligatorio | Default | Descrizione                                           |
-| ----------------- | ----------- | ------------ | ------- | ----------------------------------------------------- |
-| `p_search_term`   | `TEXT`      | Si           | —       | Testo di ricerca (minimo 3 caratteri)                 |
-| `p_tipo_ruolo_id` | `INTEGER`   | Si           | —       | ID tipo ruolo da `config.tipi_ruoli` (> 0)            |
-| `p_comune_id`     | `INTEGER`   | No           | `NULL`  | Filtro opzionale per comune residenza soggetto        |
-| `p_emittente_ids` | `INTEGER[]` | No           | `NULL`  | Filtro opzionale per scope emittente (da implementare)|
-| `p_limit`         | `INTEGER`   | No           | `50`    | Righe per pagina (max 200, cap automatico)            |
-| `p_offset`        | `INTEGER`   | No           | `0`     | Offset paginazione                                    |
+| Nome              | Tipo        | Obbligatorio | Default | Descrizione                                            |
+| ----------------- | ----------- | ------------ | ------- | ------------------------------------------------------ |
+| `p_search_term`   | `TEXT`      | Si           | —       | Testo di ricerca (minimo 3 caratteri)                  |
+| `p_tipo_ruolo_id` | `INTEGER`   | Si           | —       | ID tipo ruolo da `config.tipi_ruoli` (> 0)             |
+| `p_comune_id`     | `INTEGER`   | No           | `NULL`  | Filtro opzionale per comune residenza soggetto         |
+| `p_emittente_ids` | `INTEGER[]` | No           | `NULL`  | Filtro opzionale per scope emittente (da implementare) |
+| `p_limit`         | `INTEGER`   | No           | `50`    | Righe per pagina (max 200, cap automatico)             |
+| `p_offset`        | `INTEGER`   | No           | `0`     | Offset paginazione                                     |
 
 **Guard**: `p_tipo_ruolo_id` e `p_search_term` sono validati tramite `script.fn_log_and_raise_error` con codice `E_PARAMETRO_INVALIDO`.
 
@@ -56,8 +56,8 @@ La funzione **`script.fn_search_soggetti_universale`** implementa il **livello 1
 
 La funzione restituisce una tabella (`RETURNS TABLE`) con le seguenti colonne:
 
-| Colonna                    | Tipo      | Fonte / Note                                      |
-| -------------------------- | --------- | ------------------------------------------------- |
+| Colonna                    | Tipo      | Fonte / Note                                       |
+| -------------------------- | --------- | -------------------------------------------------- |
 | `total_count`              | `BIGINT`  | Conteggio totale via `COUNT(*) OVER()`             |
 | `soggetto_id`              | `UUID`    | `anagrafiche.soggetti.id`                          |
 | `soggetto_ruolo_id`        | `BIGINT`  | `anagrafiche.soggetti_ruoli.id`                    |
@@ -99,11 +99,11 @@ I LEFT JOIN su `clienti`/`utilities` nella CTE 2 producono `NULL` per ruoli dive
 
 ### Indici Utilizzati
 
-| Indice                                          | Tabella                  | Tipo     | Scopo                          |
-| ----------------------------------------------- | ------------------------ | -------- | ------------------------------ |
-| `ix_soggetti_ragione_sociale_completa_trgm`     | `anagrafiche.soggetti`   | GIN trgm | ILIKE su ragione_sociale       |
-| `ix_soggetti_id_fiscale_univoco_cf_piva_trgm`   | `anagrafiche.soggetti`   | GIN trgm | ILIKE su id_fiscale            |
-| `uq_soggetto_ruolo` (soggetto_id, tipo_ruolo_id)| `anagrafiche.soggetti_ruoli` | UNIQUE | Filtro tipo_ruolo_id       |
+| Indice                                           | Tabella                      | Tipo     | Scopo                    |
+| ------------------------------------------------ | ---------------------------- | -------- | ------------------------ |
+| `ix_soggetti_ragione_sociale_completa_trgm`      | `anagrafiche.soggetti`       | GIN trgm | ILIKE su ragione_sociale |
+| `ix_soggetti_id_fiscale_univoco_cf_piva_trgm`    | `anagrafiche.soggetti`       | GIN trgm | ILIKE su id_fiscale      |
+| `uq_soggetto_ruolo` (soggetto_id, tipo_ruolo_id) | `anagrafiche.soggetti_ruoli` | UNIQUE   | Filtro tipo_ruolo_id     |
 
 ---
 

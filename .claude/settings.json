@@ -49,7 +49,14 @@
       "Bash(grep -l \"DB_NAME\" *.sh .env*)",
       "Bash(source ../env.sh)",
       "Bash(.venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)",
-      "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings .venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)"
+      "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings .venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)",
+      "Bash(git checkout:*)",
+      "Bash(scripts/testpgtap.sh script/test-fn-get-entita-ruolo-detail.sql)",
+      "Bash(scripts/testpgtap.sh script/test-search-soggetti-universale.sql)",
+      "Bash(set -a)",
+      "Bash(source internal.env)",
+      "Bash(set +a)",
+      "Bash(psql -c \"SELECT prosrc FROM pg_proc WHERE proname = ''''fn_get_entita_ruolo_detail''''\")"
     ],
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"
