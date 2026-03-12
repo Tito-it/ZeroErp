@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_fornitori_guard_normalize.md" %}
 # ⚙️ Funzione `trgfn_fornitori_guard_normalize`
 
 ```sql

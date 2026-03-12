@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Elenco test (plan 12):
+-- Elenco test (plan 26):
 --  1) Funzione fn_search_soggetti_universale esiste nello schema script
 --  2) Funzione fn_get_search_detail esiste nello schema script
 --  3) Guard: p_tipo_ruolo_id NULL lancia errore
@@ -15,8 +15,22 @@
 -- 10) Guard fn_get_search_detail: p_soggetto_id NULL lancia errore
 -- 11) Guard fn_get_search_detail: p_tipo_ruolo_id NULL lancia errore
 -- 12) fn_get_search_detail su soggetto esistente ritorna JSONB con chiave tipo_ruolo
+-- 13) fn_get_search_detail: tipo_ruolo nel JSONB corrisponde a codice_interno
+-- 14) fn_get_search_detail: p_utility_id NULL non cambia il risultato
+-- 15) fn_get_search_detail: righe e' un array JSONB
+-- 16) Ricerca per codice soggetto trova il soggetto atteso
+-- 17) Ricerca per codice entita' (BA) trova il soggetto CL atteso
+-- 18) tipi_ruoli con entita_tabella NOT NULL hanno un regclass valido
+-- 19) Ordinamento per soggetto_codice non lancia errore
+-- 20) Ordinamento con colonna invalida lancia E_PARAMETRO_INVALIDO
+-- 21) Ordinamento DESC non lancia errore
+-- 22) Chiamata senza ordinamento (default) funziona come prima
+-- 23) Filtro emittente NULL non cambia risultato (fn_search)
+-- 24) Filtro emittente array vuoto esclude tutto per CL (fn_search)
+-- 25) fn_get_search_detail con p_emittente_ids NULL non lancia errore
+-- 26) fn_get_search_detail con p_emittente_ids array vuoto CL: righe vuote
 -- ------------------------------------------------------------
-SELECT plan(12);
+SELECT plan(26);
 
 -- =========================================================
 -- Setup: recupera dati test dal DB
@@ -115,7 +129,7 @@ SELECT throws_ok(
 -- 7) Ricerca con termine valido: nessun errore
 SELECT lives_ok(
   format(
-    $$SELECT * FROM script.fn_search_soggetti_universale(%L, %s, NULL, NULL, 10, 0)$$,
+    $$SELECT * FROM script.fn_search_soggetti_universale(%L, %s, NULL, 10, 0)$$,
     (SELECT termine FROM tmp_search),
     (SELECT tipo_ruolo_id FROM tmp_ctx)
   ),
@@ -142,7 +156,7 @@ SELECT total_count, soggetto_id
 FROM script.fn_search_soggetti_universale(
   (SELECT termine FROM tmp_search),
   (SELECT tipo_ruolo_id FROM tmp_ctx),
-  NULL, NULL, 5, 0
+  NULL, 5, 0
 );
 
 SELECT ok(
@@ -188,6 +202,258 @@ SELECT ok(
     ) sub
   ),
   'fn_get_search_detail su soggetto esistente ritorna JSONB con chiave tipo_ruolo'
+);
+
+-- =========================================================
+-- Test 13: tipo_ruolo nel JSONB corrisponde a codice_interno
+-- =========================================================
+
+-- Il valore tipo_ruolo nel JSON deve essere codice_interno (es. CL, FO)
+-- non codice (es. CLIENTE, FORNITORE)
+SELECT ok(
+  (
+    SELECT (result->>'tipo_ruolo') = (SELECT tipo_ruolo_codice FROM tmp_ctx)
+       AND length(result->>'tipo_ruolo') <= 10  -- codice_interno e' breve
+    FROM (
+      SELECT script.fn_get_search_detail(
+        (SELECT soggetto_id FROM tmp_soggetto),
+        (SELECT tipo_ruolo_id FROM tmp_ctx)
+      ) AS result
+    ) sub
+  ),
+  'fn_get_search_detail: tipo_ruolo nel JSONB corrisponde a codice_interno'
+);
+
+-- =========================================================
+-- Test 14: p_utility_id NULL non cambia il risultato
+-- =========================================================
+
+SELECT is(
+  (
+    SELECT script.fn_get_search_detail(
+      (SELECT soggetto_id FROM tmp_soggetto),
+      (SELECT tipo_ruolo_id FROM tmp_ctx),
+      NULL
+    )
+  ),
+  (
+    SELECT script.fn_get_search_detail(
+      (SELECT soggetto_id FROM tmp_soggetto),
+      (SELECT tipo_ruolo_id FROM tmp_ctx)
+    )
+  ),
+  'fn_get_search_detail: p_utility_id NULL equivale a chiamata senza parametro'
+);
+
+-- =========================================================
+-- Test 15: righe e' un array JSONB
+-- =========================================================
+
+SELECT ok(
+  (
+    SELECT jsonb_typeof(result->'righe') = 'array'
+    FROM (
+      SELECT script.fn_get_search_detail(
+        (SELECT soggetto_id FROM tmp_soggetto),
+        (SELECT tipo_ruolo_id FROM tmp_ctx)
+      ) AS result
+    ) sub
+  ),
+  'fn_get_search_detail: righe e'' un array JSONB'
+);
+
+-- =========================================================
+-- Test 16: Ricerca per codice soggetto
+-- =========================================================
+
+-- Cerca un soggetto per il suo codice (primi 4 char)
+CREATE TEMP TABLE tmp_soggetto_codice AS
+SELECT s.codice, sr.tipo_ruolo_id
+FROM anagrafiche.soggetti s
+  JOIN anagrafiche.soggetti_ruoli sr ON sr.soggetto_id = s.id
+WHERE s.attivo = true
+  AND s.codice IS NOT NULL
+  AND length(s.codice) >= 4
+ORDER BY sr.id
+LIMIT 1;
+
+SELECT ok(
+  CASE
+    WHEN (SELECT count(*) FROM tmp_soggetto_codice) = 0 THEN true
+    ELSE (
+      SELECT count(*) > 0
+      FROM script.fn_search_soggetti_universale(
+        (SELECT substring(codice FROM 1 FOR 4) FROM tmp_soggetto_codice),
+        (SELECT tipo_ruolo_id FROM tmp_soggetto_codice)
+      )
+    )
+  END,
+  'Ricerca per codice soggetto trova il soggetto atteso (o skip se nessun codice)'
+);
+
+-- =========================================================
+-- Test 17: Ricerca per codice entita' (BA per CL)
+-- =========================================================
+
+-- Cerca un cliente tramite codice billing_account
+CREATE TEMP TABLE tmp_ba_codice AS
+SELECT ba.codice, sr.tipo_ruolo_id
+FROM anagrafiche.clienti cl
+  JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
+  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = cl.soggetto_ruolo_id
+  JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+  JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
+WHERE tr.codice_interno = 'CL'
+  AND s.attivo = true
+  AND ba.codice IS NOT NULL
+  AND length(ba.codice) >= 3
+ORDER BY cl.id
+LIMIT 1;
+
+SELECT ok(
+  CASE
+    WHEN (SELECT count(*) FROM tmp_ba_codice) = 0 THEN true
+    ELSE (
+      SELECT count(*) > 0
+      FROM script.fn_search_soggetti_universale(
+        (SELECT codice FROM tmp_ba_codice),
+        (SELECT tipo_ruolo_id FROM tmp_ba_codice)
+      )
+    )
+  END,
+  'Ricerca per codice BA trova il soggetto CL atteso (o skip se nessun BA)'
+);
+
+-- =========================================================
+-- Test 18: Coerenza entita_tabella in tipi_ruoli
+-- =========================================================
+
+SELECT ok(
+  COALESCE(
+    (
+      SELECT bool_and(to_regclass(entita_tabella) IS NOT NULL)
+      FROM config.tipi_ruoli
+      WHERE entita_tabella IS NOT NULL
+    ),
+    true  -- nessun record con entita_tabella, ok
+  ),
+  'tipi_ruoli con entita_tabella NOT NULL hanno tutti un regclass valido'
+);
+
+-- =========================================================
+-- Test 19-22: Ordinamento dinamico
+-- =========================================================
+
+-- 19) Ordinamento per soggetto_codice non lancia errore
+SELECT lives_ok(
+  format(
+    $$SELECT * FROM script.fn_search_soggetti_universale(%L, %s, NULL, 10, 0, 'soggetto_codice', 'ASC')$$,
+    (SELECT termine FROM tmp_search),
+    (SELECT tipo_ruolo_id FROM tmp_ctx)
+  ),
+  'Ordinamento per soggetto_codice non lancia errore'
+);
+
+-- 20) Ordinamento con colonna invalida lancia E_PARAMETRO_INVALIDO
+SELECT throws_ok(
+  format(
+    $$SELECT * FROM script.fn_search_soggetti_universale(%L, %s, NULL, 10, 0, 'colonna_falsa', 'ASC')$$,
+    (SELECT termine FROM tmp_search),
+    (SELECT tipo_ruolo_id FROM tmp_ctx)
+  ),
+  'P0001',
+  NULL,
+  'Guard: p_order_by con colonna non in whitelist lancia errore'
+);
+
+-- 21) Ordinamento DESC non lancia errore
+SELECT lives_ok(
+  format(
+    $$SELECT * FROM script.fn_search_soggetti_universale(%L, %s, NULL, 10, 0, 'ragione_sociale_completa', 'DESC')$$,
+    (SELECT termine FROM tmp_search),
+    (SELECT tipo_ruolo_id FROM tmp_ctx)
+  ),
+  'Ordinamento DESC non lancia errore'
+);
+
+-- 22) Chiamata senza parametri ordinamento (default) funziona come prima
+SELECT lives_ok(
+  format(
+    $$SELECT * FROM script.fn_search_soggetti_universale(%L, %s, NULL, 10, 0)$$,
+    (SELECT termine FROM tmp_search),
+    (SELECT tipo_ruolo_id FROM tmp_ctx)
+  ),
+  'Chiamata senza ordinamento (default) funziona come prima'
+);
+
+-- =========================================================
+-- Test 23-24: Filtro scope emittente fn_search_soggetti_universale
+-- =========================================================
+
+-- Recupera tipo ruolo CL per test emittente
+CREATE TEMP TABLE tmp_cl_ctx AS
+SELECT tr.id AS tipo_ruolo_id
+FROM config.tipi_ruoli tr
+WHERE tr.codice_interno = 'CL'
+LIMIT 1;
+
+-- 23) p_emittente_ids NULL non cambia risultato (nessuna restrizione)
+SELECT lives_ok(
+  format(
+    $$SELECT * FROM script.fn_search_soggetti_universale(%L, %s, NULL, 10, 0)$$,
+    (SELECT termine FROM tmp_search),
+    (SELECT tipo_ruolo_id FROM tmp_ctx)
+  ),
+  'Filtro emittente NULL non cambia risultato (nessuna restrizione)'
+);
+
+-- 24) p_emittente_ids = '{}' (array vuoto) per CL esclude tutto
+SELECT ok(
+  CASE
+    WHEN (SELECT count(*) FROM tmp_cl_ctx) = 0 THEN true
+    ELSE (
+      SELECT count(*) = 0
+      FROM script.fn_search_soggetti_universale(
+        (SELECT termine FROM tmp_search),
+        (SELECT tipo_ruolo_id FROM tmp_cl_ctx),
+        '{}'::bigint[],
+        10, 0
+      )
+    )
+  END,
+  'Filtro emittente array vuoto per CL esclude tutto'
+);
+
+-- =========================================================
+-- Test 25-26: Filtro scope emittente fn_get_search_detail
+-- =========================================================
+
+-- 25) fn_get_search_detail con p_emittente_ids NULL: nessun errore
+SELECT lives_ok(
+  format(
+    $$SELECT script.fn_get_search_detail(%L::uuid, %s, NULL, NULL)$$,
+    (SELECT soggetto_id FROM tmp_soggetto),
+    (SELECT tipo_ruolo_id FROM tmp_ctx)
+  ),
+  'fn_get_search_detail con p_emittente_ids NULL non lancia errore'
+);
+
+-- 26) fn_get_search_detail CL con '{}' emittente: righe vuote
+SELECT ok(
+  CASE
+    WHEN (SELECT count(*) FROM tmp_cl_ctx) = 0 THEN true
+    ELSE (
+      SELECT jsonb_array_length(
+        (SELECT script.fn_get_search_detail(
+          (SELECT soggetto_id FROM tmp_soggetto),
+          (SELECT tipo_ruolo_id FROM tmp_cl_ctx),
+          NULL,
+          '{}'::bigint[]
+        ))->'righe'
+      ) = 0
+    )
+  END,
+  'fn_get_search_detail CL con emittente array vuoto: righe vuote'
 );
 
 SELECT * FROM finish();

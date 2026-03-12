@@ -41,6 +41,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_emittenti_fiscali_attivo | `CREATE INDEX ix_emittenti_fiscali_attivo ON anagrafiche.emittenti_fiscali USING btree (attivo)` |
+| ix_emittenti_fiscali_codice_trgm | `CREATE INDEX ix_emittenti_fiscali_codice_trgm ON anagrafiche.emittenti_fiscali USING gin (codice gin_trgm_ops)` |
 | pk_emittf | `CREATE UNIQUE INDEX pk_emittf ON anagrafiche.emittenti_fiscali USING btree (id)` |
 | uq:codice | `CREATE UNIQUE INDEX "uq:codice" ON anagrafiche.emittenti_fiscali USING btree (codice)` |
 | uq_emittenti_fiscali_ruolo | `CREATE UNIQUE INDEX uq_emittenti_fiscali_ruolo ON anagrafiche.emittenti_fiscali USING btree (soggetto_ruolo_id)` |

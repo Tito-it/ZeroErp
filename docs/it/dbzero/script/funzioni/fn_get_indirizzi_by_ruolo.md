@@ -9,10 +9,12 @@ CREATE FUNCTION fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id bigint)
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id bigint)
- RETURNS TABLE(tipo_indirizzo character varying, indirizzo_completo text, geoloc geometry, indirizzo_id bigint, soggetto_ruolo_id bigint, tipo_indirizzo_id integer, indirizzo_dettaglio_id bigint, indirizzo_libero text, is_normalizzato boolean, stato_id integer, stato_descrizione character varying, stato_iso2 character, regione_id integer, regione_descrizione character varying, provincia_id integer, provincia_sigla character varying, provincia_descrizione character varying, comune_id integer, comune_descrizione character varying, codice_postale_id integer, cap_codice character, locality character varying, administrative_area character varying, sublocality character varying, postal_box character varying)
+ RETURNS TABLE(tipo_indirizzo character varying, indirizzo_completo text, geoloc geometry, indirizzo_id bigint, soggetto_ruolo_id bigint, tipo_indirizzo_id integer, indirizzo_dettaglio_id bigint, indirizzo_libero text, is_normalizzato boolean, stato_id integer, stato_descrizione character varying, stato_iso2 character, regione_id integer, regione_descrizione character varying, provincia_id integer, provincia_sigla character, provincia_descrizione character, comune_id integer, comune_descrizione character varying, codice_postale_id integer, cap_codice character, locality character varying, administrative_area character varying, sublocality character varying, postal_box character varying)
  LANGUAGE sql
  STABLE
 AS $function$
+  -- Proiezione diretta dalla vista base, filtrata per scope RUOLO.
+  -- Nessun fallback applicato: delegato a fn_get_indirizzo.
   SELECT
     r.tipo_indirizzo_codice AS tipo_indirizzo,
     r.indirizzo_display     AS indirizzo_completo,

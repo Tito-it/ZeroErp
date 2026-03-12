@@ -14,7 +14,7 @@
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 (latest review 08-03-2026)
 La funzione **`script.fn_resolve_livello_area`** risolve il livello di accesso
@@ -24,10 +24,10 @@ effettivo di un utente per un'area funzionale, identificata tramite `schema_db`.
 
 ### Parametri di input
 
-| Parametro | Tipo | Descrizione |
-| --------- | ---- | ----------- |
-| `p_auth_user_id` | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID dell'utente Django. |
-| `p_area_schema_db` | `config.aree_funzionali.schema_db%TYPE` | Schema DB dell'area (es. `'vendite'`, `'anagrafiche'`). |
+| Parametro          | Tipo                                                    | Descrizione                                             |
+| ------------------ | ------------------------------------------------------- | ------------------------------------------------------- |
+| `p_auth_user_id`   | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID dell'utente Django.                                  |
+| `p_area_schema_db` | `config.aree_funzionali.schema_db%TYPE`                 | Schema DB dell'area (es. `'vendite'`, `'anagrafiche'`). |
 
 ---
 

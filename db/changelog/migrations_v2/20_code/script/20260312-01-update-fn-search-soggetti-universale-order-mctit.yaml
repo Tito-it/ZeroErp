@@ -1,0 +1,29 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Step intermedio: rimuove la vecchia firma a 5 parametri.
+# La funzione definitiva e' creata dalla -02 (con ordinamento
+# + filtro emittente).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260312-01-update-fn-search-soggetti-universale-order-mctit.yaml
+
+  - changeSet:
+      id: 20260312-01-update-fn-search-soggetti-universale-order
+      author: mctit
+      comment: "Rimuove vecchia firma a 5 parametri (integer[]). La funzione definitiva e' nella -02."
+      runOnChange: true
+      failOnError: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              -- Rimuove la vecchia firma a 5 parametri (da -10, con integer[])
+              -- per evitare ambiguita' di overload.
+              -- La funzione definitiva con ordinamento + filtro emittente
+              -- e' creata dal changeSet -02.
+              DROP FUNCTION IF EXISTS script.fn_search_soggetti_universale(text, integer, integer[], integer, integer);

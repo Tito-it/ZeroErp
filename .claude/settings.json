@@ -50,6 +50,7 @@
       "Bash(source ../env.sh)",
       "Bash(.venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)",
       "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings .venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)",
+
       "Read(//usr/local/bin/**)",
       "Read(//tmp/**)",
       "Bash(DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp DB_PASSWORD=secret DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS=\"localhost\" DJANGO_DEBUG=0 python manage.py test apps.core.tests.api.test_search_view -v 2)",
@@ -59,7 +60,21 @@
       "Bash(mv useNotify.js composables/useNotify.js)",
       "Bash(mv usePagination.js composables/usePagination.js)",
       "Bash(mv useConfirmAction.js composables/useConfirmAction.js)",
-      "Bash(mv useApiHandler.js composables/useApiHandler.js)"
+      "Bash(mv useApiHandler.js composables/useApiHandler.js)",
+
+      "Bash(git checkout:*)",
+      "Bash(scripts/testpgtap.sh script/test-fn-get-entita-ruolo-detail.sql)",
+      "Bash(scripts/testpgtap.sh script/test-search-soggetti-universale.sql)",
+      "Bash(set -a)",
+      "Bash(source internal.env)",
+      "Bash(set +a)",
+      "Bash(psql -c \"SELECT prosrc FROM pg_proc WHERE proname = ''''fn_get_entita_ruolo_detail''''\")",
+      "Bash(liquibase update:*)",
+      "Bash(scripts/testpgtap.sh config/test-tipi-ruoli-guard-entita-ref.sql)",
+      "Bash(/opt/liquibase update:*)",
+      "Bash(bash scripts/testpgtap.sh db/pgtap/script/test-search-soggetti-universale.sql)",
+      "Bash(bash scripts/testpgtap.sh db/pgtap/script/test-fn-get-entita-ruolo-detail.sql)",
+      "Bash(bash scripts/testpgtap.sh db/pgtap/config/test-tipi-ruoli-guard-entita-ref.sql)"
     ],
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"

@@ -26,7 +26,7 @@ E' progettata come **unico punto di accesso** per l'endpoint `GET /api/v1/core/m
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 * **Profilo utente completo in una chiamata**: evita al backend di orchestrare query multiple per comporre il profilo.
 
@@ -45,9 +45,9 @@ E' progettata come **unico punto di accesso** per l'endpoint `GET /api/v1/core/m
 
 ### Parametri di Input
 
-| Nome              | Tipo      | Obbligatorio | Descrizione                           |
-| ----------------- | --------- | ------------ | ------------------------------------- |
-| `p_auth_user_id`  | `INTEGER` | Si           | ID dell'utente Django (`auth_user.id`). Deve essere > 0. |
+| Nome             | Tipo      | Obbligatorio | Descrizione                                              |
+| ---------------- | --------- | ------------ | -------------------------------------------------------- |
+| `p_auth_user_id` | `INTEGER` | Si           | ID dell'utente Django (`auth_user.id`). Deve essere > 0. |
 
 **Guard**: se `NULL` o `<= 0`, lancia `invalid_parameter_value`. Se l'utente non esiste o non ha record ponte `risorse_umane_auth_user`, lancia `no_data_found`.
 
@@ -90,32 +90,32 @@ La funzione restituisce un **JSONB** con la seguente struttura:
 
 #### Dettaglio blocco `utente`
 
-| Chiave         | Tipo      | Fonte                |
-| -------------- | --------- | -------------------- |
-| `auth_user_id` | `INTEGER` | `auth_user.id`       |
-| `username`     | `VARCHAR` | `auth_user.username` |
+| Chiave         | Tipo      | Fonte                  |
+| -------------- | --------- | ---------------------- |
+| `auth_user_id` | `INTEGER` | `auth_user.id`         |
+| `username`     | `VARCHAR` | `auth_user.username`   |
 | `first_name`   | `VARCHAR` | `auth_user.first_name` |
 | `last_name`    | `VARCHAR` | `auth_user.last_name`  |
-| `email`        | `VARCHAR` | `auth_user.email`    |
+| `email`        | `VARCHAR` | `auth_user.email`      |
 
 #### Dettaglio blocco `risorse_umane`
 
-| Chiave                              | Tipo      | Fonte                                  |
-| ----------------------------------- | --------- | -------------------------------------- |
-| `risorsa_umana_id`                  | `BIGINT`  | `risorse_umane.id`                     |
-| `risorse_umane_auth_user_id`        | `BIGINT`  | `risorse_umane_auth_user.id`           |
-| `soggetto_ruolo_id`                 | `BIGINT`  | `risorse_umane.soggetto_ruolo_id`      |
-| `qualifica_id`                      | `INTEGER` | `risorse_umane.qualifica_id`           |
-| `qualifica_codice`                  | `VARCHAR` | `config.qualifiche.codice`             |
-| `qualifica_codice_interno`          | `VARCHAR` | `config.qualifiche.codice_interno`     |
-| `qualifica_descrizione`             | `TEXT`    | `config.qualifiche.descrizione`        |
-| `unita_organizzativa_id`            | `INTEGER` | `risorse_umane.unita_organizzativa_id` (nullable) |
-| `unita_organizzativa_codice`        | `VARCHAR` | `config.unita_organizzative.codice` (nullable)    |
-| `unita_organizzativa_codice_interno`| `VARCHAR` | `config.unita_organizzative.codice_interno` (nullable) |
-| `unita_organizzativa_descrizione`   | `TEXT`    | `config.unita_organizzative.descrizione` (nullable) |
-| `valido_dal`                        | `DATE`    | `risorse_umane.valido_dal`             |
-| `valido_al`                         | `DATE`    | `risorse_umane.valido_al` (nullable)   |
-| `attivo`                            | `BOOLEAN` | `risorse_umane.attivo`                 |
+| Chiave                               | Tipo      | Fonte                                                  |
+| ------------------------------------ | --------- | ------------------------------------------------------ |
+| `risorsa_umana_id`                   | `BIGINT`  | `risorse_umane.id`                                     |
+| `risorse_umane_auth_user_id`         | `BIGINT`  | `risorse_umane_auth_user.id`                           |
+| `soggetto_ruolo_id`                  | `BIGINT`  | `risorse_umane.soggetto_ruolo_id`                      |
+| `qualifica_id`                       | `INTEGER` | `risorse_umane.qualifica_id`                           |
+| `qualifica_codice`                   | `VARCHAR` | `config.qualifiche.codice`                             |
+| `qualifica_codice_interno`           | `VARCHAR` | `config.qualifiche.codice_interno`                     |
+| `qualifica_descrizione`              | `TEXT`    | `config.qualifiche.descrizione`                        |
+| `unita_organizzativa_id`             | `INTEGER` | `risorse_umane.unita_organizzativa_id` (nullable)      |
+| `unita_organizzativa_codice`         | `VARCHAR` | `config.unita_organizzative.codice` (nullable)         |
+| `unita_organizzativa_codice_interno` | `VARCHAR` | `config.unita_organizzative.codice_interno` (nullable) |
+| `unita_organizzativa_descrizione`    | `TEXT`    | `config.unita_organizzative.descrizione` (nullable)    |
+| `valido_dal`                         | `DATE`    | `risorse_umane.valido_dal`                             |
+| `valido_al`                          | `DATE`    | `risorse_umane.valido_al` (nullable)                   |
+| `attivo`                             | `BOOLEAN` | `risorse_umane.attivo`                                 |
 
 #### Dettaglio blocco `soggetto`
 
@@ -127,15 +127,15 @@ Se un emittente fiscale e' associato all'utente, il blocco contiene:
 
 **Campi specifici emittente:**
 
-| Chiave                      | Tipo      | Fonte                                     |
-| --------------------------- | --------- | ----------------------------------------- |
-| `emittente_fiscale_id`      | `BIGINT`  | `emittenti_fiscali.id`                    |
-| `emittente_fiscale_uid`     | `UUID`    | `emittenti_fiscali.uid`                   |
-| `emittente_codice`          | `VARCHAR` | `emittenti_fiscali.codice`                |
-| `emittente_descrizione`     | `VARCHAR` | `emittenti_fiscali.descrizione`           |
+| Chiave                      | Tipo      | Fonte                                          |
+| --------------------------- | --------- | ---------------------------------------------- |
+| `emittente_fiscale_id`      | `BIGINT`  | `emittenti_fiscali.id`                         |
+| `emittente_fiscale_uid`     | `UUID`    | `emittenti_fiscali.uid`                        |
+| `emittente_codice`          | `VARCHAR` | `emittenti_fiscali.codice`                     |
+| `emittente_descrizione`     | `VARCHAR` | `emittenti_fiscali.descrizione`                |
 | `user_emittente_fiscale_id` | `BIGINT`  | `user_emittenti_fiscali.id` (null se fallback) |
-| `regime_fiscale_rf`         | `VARCHAR` | `emittenti_fiscali.regime_fiscale_rf`     |
-| `valuta_id`                 | `INTEGER` | `emittenti_fiscali.valuta_id`             |
+| `regime_fiscale_rf`         | `VARCHAR` | `emittenti_fiscali.regime_fiscale_rf`          |
+| `valuta_id`                 | `INTEGER` | `emittenti_fiscali.valuta_id`                  |
 
 **Campi soggetto emittente:** tutti i campi di `fn_get_soggetto_dati_by_ruolo(emittenti_fiscali.soggetto_ruolo_id)`, mergiati nello stesso oggetto JSON.
 

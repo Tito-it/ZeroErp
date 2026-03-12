@@ -13,7 +13,7 @@
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 (latest review 08-03-2026)
 La funzione **`script.fn_get_emittenti_scope`** restituisce l'array di ID emittenti
@@ -23,8 +23,8 @@ fiscali autorizzati per un utente, letti dalla whitelist `config.user_emittenti_
 
 ### Parametri di input
 
-| Parametro | Tipo | Descrizione |
-| --------- | ---- | ----------- |
+| Parametro        | Tipo                                                    | Descrizione            |
+| ---------------- | ------------------------------------------------------- | ---------------------- |
 | `p_auth_user_id` | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID dell'utente Django. |
 
 ---

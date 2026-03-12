@@ -8,7 +8,7 @@
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 (latest review 08-03-2026)
 La funzione **`script.fn_get_ruolo_sistema`** restituisce il `ruolo_sistema`
@@ -21,8 +21,8 @@ Ritorna `NULL` se l'utente non ha record ponte (utente non mappato a risorsa uma
 
 ### Parametri di input
 
-| Parametro | Tipo | Descrizione |
-| --------- | ---- | ----------- |
+| Parametro        | Tipo                                                    | Descrizione                             |
+| ---------------- | ------------------------------------------------------- | --------------------------------------- |
 | `p_auth_user_id` | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID dell'utente Django (`auth_user.id`). |
 
 ---

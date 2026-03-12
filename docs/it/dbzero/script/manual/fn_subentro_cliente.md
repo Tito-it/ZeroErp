@@ -21,7 +21,7 @@
 
 ---
 
-### Scopo
+### 🎯 Scopo
 
 (latest review 01-03-26)
 
@@ -158,12 +158,12 @@ Se un qualsiasi passo fallisce, l'intera transazione viene annullata.
 
 ### Relazione con `fn_disdetta_cliente`
 
-| | `fn_subentro_cliente` | `fn_disdetta_cliente` |
-| --- | --- | --- |
-| Scopo | Chiudere il cliente uscente prima di un subentro | Cessare il servizio senza subentro |
-| Input | PDP + data attivazione nuovo | Cliente + data cessazione |
-| Dopo | Si crea un nuovo ciclo (istanza+BA+cliente) | Il PDP resta DISPONIBILE, nessun nuovo cliente |
-| BA | Il BA del vecchio cliente non viene toccato | Il BA non viene toccato (policy) |
+|       | `fn_subentro_cliente`                            | `fn_disdetta_cliente`                          |
+| ----- | ------------------------------------------------ | ---------------------------------------------- |
+| Scopo | Chiudere il cliente uscente prima di un subentro | Cessare il servizio senza subentro             |
+| Input | PDP + data attivazione nuovo                     | Cliente + data cessazione                      |
+| Dopo  | Si crea un nuovo ciclo (istanza+BA+cliente)      | Il PDP resta DISPONIBILE, nessun nuovo cliente |
+| BA    | Il BA del vecchio cliente non viene toccato      | Il BA non viene toccato (policy)               |
 
 ---
 

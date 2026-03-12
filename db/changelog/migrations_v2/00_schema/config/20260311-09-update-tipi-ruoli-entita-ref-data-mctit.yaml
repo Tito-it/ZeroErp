@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Valorizza entita_tabella e entita_colonna_codice per i
+# tipi ruolo che hanno una tabella entita' con codice.
+#
+# Mapping:
+#   CL     → anagrafiche.vw_clienti_codice_ba (codice BA)
+#   FO     → anagrafiche.fornitori            (codice)
+#   EF     → anagrafiche.emittenti_fiscali    (codice)
+#   VT     → anagrafiche.vettori              (codice)
+#   BANK_B → anagrafiche.bank_branches        (bank_code)
+#
+# Ruoli senza tabella codice (GE, RIS_UMANA, VE, DI, RE, PSP)
+# restano NULL → nessuna ricerca per codice entita'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260311-09-update-tipi-ruoli-entita-ref-data-mctit.yaml
+
+  - changeSet:
+      id: 20260311-09-update-tipi-ruoli-entita-ref-data
+      author: mctit
+      comment: "Valorizza entita_tabella/entita_colonna_codice per CL, FO, EF, VT, BANK_B"
+      failOnError: true
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              -- CL: codice in billing_account, esposto tramite vista
+              UPDATE config.tipi_ruoli
+                SET entita_tabella = 'anagrafiche.vw_clienti_codice_ba',
+                    entita_colonna_codice = NULL
+              WHERE codice_interno = 'CL';
+
+              -- FO: codice diretto in fornitori
+              UPDATE config.tipi_ruoli
+                SET entita_tabella = 'anagrafiche.fornitori',
+                    entita_colonna_codice = NULL
+              WHERE codice_interno = 'FO';
+
+              -- EF: codice in emittenti_fiscali
+              UPDATE config.tipi_ruoli
+                SET entita_tabella = 'anagrafiche.emittenti_fiscali',
+                    entita_colonna_codice = NULL
+              WHERE codice_interno = 'EF';
+
+              -- VT: codice in vettori
+              UPDATE config.tipi_ruoli
+                SET entita_tabella = 'anagrafiche.vettori',
+                    entita_colonna_codice = NULL
+              WHERE codice_interno = 'VT';
+
+              -- BANK_B: colonna bank_code (non 'codice')
+              UPDATE config.tipi_ruoli
+                SET entita_tabella = 'anagrafiche.bank_branches',
+                    entita_colonna_codice = 'bank_code'
+              WHERE codice_interno = 'BANK_B';

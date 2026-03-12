@@ -31,6 +31,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_vettori_attivo | `CREATE INDEX ix_vettori_attivo ON anagrafiche.vettori USING btree (attivo)` |
+| ix_vettori_codice_trgm | `CREATE INDEX ix_vettori_codice_trgm ON anagrafiche.vettori USING gin (codice gin_trgm_ops)` |
 | pk_vettori | `CREATE UNIQUE INDEX pk_vettori ON anagrafiche.vettori USING btree (id)` |
 | uq_vettori_codice | `CREATE UNIQUE INDEX uq_vettori_codice ON anagrafiche.vettori USING btree (codice)` |
 | uq_vettori_ruolo | `CREATE UNIQUE INDEX uq_vettori_ruolo ON anagrafiche.vettori USING btree (soggetto_ruolo_id)` |
