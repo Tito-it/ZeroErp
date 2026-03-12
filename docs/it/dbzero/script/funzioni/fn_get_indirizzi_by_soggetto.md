@@ -13,6 +13,9 @@ CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_soggetto(p_soggetto_id uui
  LANGUAGE sql
  STABLE
 AS $function$
+  -- Proiezione diretta dalla vista base, filtrata per scope SOGGETTO.
+  -- Ritorna SETOF vw_indirizzi_resolved_soggetto per compatibilità
+  -- con fn_get_indirizzo_by_soggetto che applica fallback.
   SELECT r.*
   FROM anagrafiche.vw_indirizzi_resolved_base r
   WHERE r.scope = 'SOGGETTO'

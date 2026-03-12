@@ -15,7 +15,7 @@
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 (latest review 08-03-2026)
 La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha
@@ -28,10 +28,10 @@ Funzione `fn_check_*`: puro boolean, no RAISE.
 
 ### Parametri di input
 
-| Parametro | Tipo | Descrizione |
-| --------- | ---- | ----------- |
-| `p_auth_user_id` | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID utente Django (o `NULL` per job batch). |
-| `p_emittente_fiscale_id` | `anagrafiche.emittenti_fiscali.id%TYPE` | ID emittente fiscale da verificare. |
+| Parametro                | Tipo                                                    | Descrizione                                |
+| ------------------------ | ------------------------------------------------------- | ------------------------------------------ |
+| `p_auth_user_id`         | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID utente Django (o `NULL` per job batch). |
+| `p_emittente_fiscale_id` | `anagrafiche.emittenti_fiscali.id%TYPE`                 | ID emittente fiscale da verificare.        |
 
 ---
 

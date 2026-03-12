@@ -48,6 +48,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_fornitori_attivo_stato | `CREATE INDEX ix_fornitori_attivo_stato ON anagrafiche.fornitori USING btree (attivo, stato_operativo)` |
+| ix_fornitori_codice_trgm | `CREATE INDEX ix_fornitori_codice_trgm ON anagrafiche.fornitori USING gin (codice gin_trgm_ops)` |
 | pk_fornitori | `CREATE UNIQUE INDEX pk_fornitori ON anagrafiche.fornitori USING btree (id)` |
 | uq_fornitori_codice | `CREATE UNIQUE INDEX uq_fornitori_codice ON anagrafiche.fornitori USING btree (codice)` |
 | uq_fornitori_soggetto_ruolo_id | `CREATE UNIQUE INDEX uq_fornitori_soggetto_ruolo_id ON anagrafiche.fornitori USING btree (soggetto_ruolo_id)` |

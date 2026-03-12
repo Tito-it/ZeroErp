@@ -15,7 +15,7 @@
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 (latest review 08-03-2026)
 La funzione **`script.fn_get_emittenti_scope_sr_ids`** restituisce i `soggetto_ruolo_id`
@@ -29,8 +29,8 @@ non `emittente_fiscale_id`, quindi serve questa mappatura aggiuntiva rispetto a
 
 ### Parametri di input
 
-| Parametro | Tipo | Descrizione |
-| --------- | ---- | ----------- |
+| Parametro        | Tipo                                                    | Descrizione            |
+| ---------------- | ------------------------------------------------------- | ---------------------- |
 | `p_auth_user_id` | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID dell'utente Django. |
 
 ---
@@ -39,12 +39,12 @@ non `emittente_fiscale_id`, quindi serve questa mappatura aggiuntiva rispetto a
 
 Ritorna `bigint[]`:
 
-| Caso | Ritorno | Effetto sul WHERE |
-| ---- | ------- | ----------------- |
-| ADMIN | `NULL` | Nessun filtro |
-| OPERATIVO senza whitelist | `NULL` | Nessun filtro |
-| OPERATIVO con whitelist [A, B] | `{srA, srB}` | `= ANY(array)` |
-| DISABILITATO / senza bridge | `'{}'::bigint[]` | Nessun match → 0 righe |
+| Caso                           | Ritorno          | Effetto sul WHERE      |
+| ------------------------------ | ---------------- | ---------------------- |
+| ADMIN                          | `NULL`           | Nessun filtro          |
+| OPERATIVO senza whitelist      | `NULL`           | Nessun filtro          |
+| OPERATIVO con whitelist [A, B] | `{srA, srB}`     | `= ANY(array)`         |
+| DISABILITATO / senza bridge    | `'{}'::bigint[]` | Nessun match → 0 righe |
 
 ---
 

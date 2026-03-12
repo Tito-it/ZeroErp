@@ -29,7 +29,7 @@ E' progettata come **punto di accesso generico** per ottenere una fotografia com
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 * **Aggregazione trasversale**: combina in un unico record le informazioni che altrimenti richiederebbero join multipli su 8 tabelle (soggetti_ruoli, soggetti, tipi_ruoli, tipi_soggetto_dettaglio, tipi_soggetto, titoli_cortesia, dati_societari, forme_giuridiche, province).
 
@@ -45,9 +45,9 @@ E' progettata come **punto di accesso generico** per ottenere una fotografia com
 
 ### Parametri di Input
 
-| Nome                   | Tipo     | Obbligatorio | Descrizione                                           |
-| ---------------------- | -------- | ------------ | ----------------------------------------------------- |
-| `p_soggetto_ruolo_id`  | `BIGINT` | Si           | ID del record `anagrafiche.soggetti_ruoli`. Deve essere > 0. |
+| Nome                  | Tipo     | Obbligatorio | Descrizione                                                  |
+| --------------------- | -------- | ------------ | ------------------------------------------------------------ |
+| `p_soggetto_ruolo_id` | `BIGINT` | Si           | ID del record `anagrafiche.soggetti_ruoli`. Deve essere > 0. |
 
 **Guard**: se `NULL` o `<= 0`, la funzione lancia `invalid_parameter_value`.
 
@@ -70,64 +70,64 @@ La funzione restituisce una **tabella** (`RETURNS TABLE`) con le seguenti colonn
 
 #### Dati anagrafici soggetto
 
-| Colonna                      | Tipo      | Fonte                              |
-| ---------------------------- | --------- | ---------------------------------- |
-| `soggetto_codice`            | `TEXT`    | `soggetti.codice`                  |
-| `ragione_sociale`            | `TEXT`    | `soggetti.ragione_sociale`         |
-| `ragione_sociale_completa`   | `TEXT`    | `soggetti.ragione_sociale_completa` (generato) |
-| `cognome`                    | `TEXT`    | `soggetti.cognome`                 |
-| `nome`                       | `TEXT`    | `soggetti.nome`                    |
-| `codice_fiscale`             | `TEXT`    | `soggetti.codice_fiscale`          |
-| `partita_iva`                | `TEXT`    | `soggetti.partita_iva`             |
+| Colonna                      | Tipo      | Fonte                                            |
+| ---------------------------- | --------- | ------------------------------------------------ |
+| `soggetto_codice`            | `TEXT`    | `soggetti.codice`                                |
+| `ragione_sociale`            | `TEXT`    | `soggetti.ragione_sociale`                       |
+| `ragione_sociale_completa`   | `TEXT`    | `soggetti.ragione_sociale_completa` (generato)   |
+| `cognome`                    | `TEXT`    | `soggetti.cognome`                               |
+| `nome`                       | `TEXT`    | `soggetti.nome`                                  |
+| `codice_fiscale`             | `TEXT`    | `soggetti.codice_fiscale`                        |
+| `partita_iva`                | `TEXT`    | `soggetti.partita_iva`                           |
 | `id_fiscale_univoco_cf_piva` | `TEXT`    | `soggetti.id_fiscale_univoco_cf_piva` (generato) |
-| `sesso`                      | `CHAR(1)` | `soggetti.sesso`                  |
-| `data_nascita`               | `DATE`    | `soggetti.data_nascita`           |
-| `soggetto_attivo`            | `BOOLEAN` | `soggetti.attivo`                 |
+| `sesso`                      | `CHAR(1)` | `soggetti.sesso`                                 |
+| `data_nascita`               | `DATE`    | `soggetti.data_nascita`                          |
+| `soggetto_attivo`            | `BOOLEAN` | `soggetti.attivo`                                |
 
 #### FK e ID collegati al soggetto
 
-| Colonna                      | Tipo      | Fonte                                  |
-| ---------------------------- | --------- | -------------------------------------- |
-| `stato_id`                   | `INTEGER` | `soggetti.stato_id` (FK config.stati)  |
-| `comune_id`                  | `INTEGER` | `soggetti.comune_id` (FK config.comuni)|
-| `titolo_cortesia_id`         | `INTEGER` | `soggetti.titolo_cortesia_id`          |
-| `tipo_soggetto_dettaglio_id` | `BIGINT`  | `soggetti.tipo_soggetto_dettaglio_id`  |
-| `default_contatto_id`        | `BIGINT`  | `soggetti.default_contatto_id`         |
+| Colonna                      | Tipo      | Fonte                                   |
+| ---------------------------- | --------- | --------------------------------------- |
+| `stato_id`                   | `INTEGER` | `soggetti.stato_id` (FK config.stati)   |
+| `comune_id`                  | `INTEGER` | `soggetti.comune_id` (FK config.comuni) |
+| `titolo_cortesia_id`         | `INTEGER` | `soggetti.titolo_cortesia_id`           |
+| `tipo_soggetto_dettaglio_id` | `BIGINT`  | `soggetti.tipo_soggetto_dettaglio_id`   |
+| `default_contatto_id`        | `BIGINT`  | `soggetti.default_contatto_id`          |
 
 #### Tipo soggetto (risolto)
 
-| Colonna                       | Tipo      | Fonte                                       |
-| ----------------------------- | --------- | ------------------------------------------- |
-| `tipo_soggetto_id`            | `VARCHAR` | `config.tipi_soggetto.id` (PF/PG/ENTE)     |
-| `tipo_soggetto_descrizione`   | `TEXT`    | `config.tipi_soggetto.descrizione`          |
-| `tipo_soggetto_codice_interno`| `VARCHAR` | `config.tipi_soggetto_dettaglio.codice_interno` |
+| Colonna                        | Tipo      | Fonte                                           |
+| ------------------------------ | --------- | ----------------------------------------------- |
+| `tipo_soggetto_id`             | `VARCHAR` | `config.tipi_soggetto.id` (PF/PG/ENTE)          |
+| `tipo_soggetto_descrizione`    | `TEXT`    | `config.tipi_soggetto.descrizione`              |
+| `tipo_soggetto_codice_interno` | `VARCHAR` | `config.tipi_soggetto_dettaglio.codice_interno` |
 
 #### Titolo cortesia (risolto)
 
-| Colonna                            | Tipo   | Fonte                                    |
-| ---------------------------------- | ------ | ---------------------------------------- |
-| `titolo_cortesia_descrizione`      | `TEXT` | `config.titoli_cortesia.descrizione`     |
-| `titolo_cortesia_descrizione_breve`| `TEXT` | `config.titoli_cortesia.descrizione_breve`|
+| Colonna                             | Tipo   | Fonte                                      |
+| ----------------------------------- | ------ | ------------------------------------------ |
+| `titolo_cortesia_descrizione`       | `TEXT` | `config.titoli_cortesia.descrizione`       |
+| `titolo_cortesia_descrizione_breve` | `TEXT` | `config.titoli_cortesia.descrizione_breve` |
 
 #### Dati societari (nullable)
 
-| Colonna                     | Tipo      | Fonte                                       |
-| --------------------------- | --------- | ------------------------------------------- |
-| `has_dati_societari`        | `BOOLEAN` | `dati_societari.id IS NOT NULL`             |
-| `dati_societari_id`         | `BIGINT`  | `dati_societari.id`                         |
-| `forma_giuridica_id`        | `INTEGER` | `dati_societari.forma_giuridica_id`         |
-| `forma_giuridica_codice`    | `TEXT`    | `config.forme_giuridiche.codice`            |
-| `forma_giuridica_descrizione`| `TEXT`   | `config.forme_giuridiche.descrizione`       |
-| `id_prov_iscri_rea`         | `INTEGER` | `dati_societari.id_prov_iscri_rea`          |
-| `provincia_iscri_rea_sigla` | `TEXT`    | `config.province.sigla`                     |
-| `iscrizione_rea`            | `VARCHAR` | `dati_societari.iscrizione_rea`             |
-| `capitale_sociale`          | `NUMERIC` | `dati_societari.capitale_sociale`           |
-| `socio_unico`               | `TEXT`    | `dati_societari.socio_unico` (enum -> text) |
-| `liquidazione`              | `TEXT`    | `dati_societari.liquidazione` (enum -> text)|
-| `destinatario_fe`           | `VARCHAR` | `dati_societari.destinatario_fe`            |
-| `pec_fatturazione`          | `VARCHAR` | `dati_societari.pec_fatturazione`           |
-| `codice_sdi`                | `VARCHAR` | `dati_societari.codice_sdi`                 |
-| `data_costituzione`         | `DATE`    | `dati_societari.data_costituzione`          |
+| Colonna                       | Tipo      | Fonte                                        |
+| ----------------------------- | --------- | -------------------------------------------- |
+| `has_dati_societari`          | `BOOLEAN` | `dati_societari.id IS NOT NULL`              |
+| `dati_societari_id`           | `BIGINT`  | `dati_societari.id`                          |
+| `forma_giuridica_id`          | `INTEGER` | `dati_societari.forma_giuridica_id`          |
+| `forma_giuridica_codice`      | `TEXT`    | `config.forme_giuridiche.codice`             |
+| `forma_giuridica_descrizione` | `TEXT`    | `config.forme_giuridiche.descrizione`        |
+| `id_prov_iscri_rea`           | `INTEGER` | `dati_societari.id_prov_iscri_rea`           |
+| `provincia_iscri_rea_sigla`   | `TEXT`    | `config.province.sigla`                      |
+| `iscrizione_rea`              | `VARCHAR` | `dati_societari.iscrizione_rea`              |
+| `capitale_sociale`            | `NUMERIC` | `dati_societari.capitale_sociale`            |
+| `socio_unico`                 | `TEXT`    | `dati_societari.socio_unico` (enum -> text)  |
+| `liquidazione`                | `TEXT`    | `dati_societari.liquidazione` (enum -> text) |
+| `destinatario_fe`             | `VARCHAR` | `dati_societari.destinatario_fe`             |
+| `pec_fatturazione`            | `VARCHAR` | `dati_societari.pec_fatturazione`            |
+| `codice_sdi`                  | `VARCHAR` | `dati_societari.codice_sdi`                  |
+| `data_costituzione`           | `DATE`    | `dati_societari.data_costituzione`           |
 
 Se il `soggetto_ruolo_id` non esiste, la funzione restituisce **zero righe** (nessun errore).
 

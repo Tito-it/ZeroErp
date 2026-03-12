@@ -12,6 +12,7 @@
 - [api_response_envelope](manual/api_response_envelope.md) — Definire il formato uniforme delle risposte successo/errore per tutte le API.
 - [api_retry_policies](manual/api_retry_policies.md) — Uniformare gestione idempotency key e semantica retry lato API.
 - [api_routing_core](manual/api_routing_core.md) — Documentare il routing core tra path legacy e path versionato v1.
+- [api_search_universale](manual/api_search_universale.md) — Espone la ricerca universale soggetti a due livelli: lista paginata (livello 1) e dettaglio per tipo ruolo con row expansion (livello 2).
 - [api_search_validation](manual/api_search_validation.md) — Evitare query di ricerca troppo generiche che degradano performance e selettivita`.
 - [api_sessioni_attive](manual/api_sessioni_attive.md) — Permette all'utente autenticato di visualizzare le proprie sessioni attive (esclusa quella corrente) e di revocare sessioni sospette.
 - [api_throttling](manual/api_throttling.md) — Limitare burst di chiamate sugli endpoint search per proteggere backend e DB.

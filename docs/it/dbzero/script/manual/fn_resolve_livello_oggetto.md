@@ -14,7 +14,7 @@
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 (latest review 08-03-2026)
 La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso
@@ -27,12 +27,12 @@ via `fn_resolve_livello_area`.
 
 ### Parametri di input
 
-| Parametro | Tipo | Descrizione |
-| --------- | ---- | ----------- |
-| `p_auth_user_id` | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID dell'utente Django. |
-| `p_app_label` | `config.user_override_oggetti.app_label%TYPE` | App Django (es. `'vendite'`). |
-| `p_model_name` | `config.user_override_oggetti.model_name%TYPE` | Nome model Django (es. `'fatture'`). |
-| `p_area_schema_db` | `config.aree_funzionali.schema_db%TYPE` | Schema DB dell'area, usato per fallback. |
+| Parametro          | Tipo                                                    | Descrizione                              |
+| ------------------ | ------------------------------------------------------- | ---------------------------------------- |
+| `p_auth_user_id`   | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID dell'utente Django.                   |
+| `p_app_label`      | `config.user_override_oggetti.app_label%TYPE`           | App Django (es. `'vendite'`).            |
+| `p_model_name`     | `config.user_override_oggetti.model_name%TYPE`          | Nome model Django (es. `'fatture'`).     |
+| `p_area_schema_db` | `config.aree_funzionali.schema_db%TYPE`                 | Schema DB dell'area, usato per fallback. |
 
 ---
 
