@@ -21,10 +21,12 @@ con stato, ecc.). Il backend delega la logica alle funzioni DB
 
 | Parametro | Tipo | Obbl. | Default | Descrizione |
 |---|---|---|---|---|
-| `q` | string | Si | — | Termine di ricerca (min 3 caratteri). Cerca su `ragione_sociale_completa` e `id_fiscale_univoco_cf_piva` |
+| `q` | string | Si | — | Termine di ricerca (min 3 caratteri). Cerca su `ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`, `codice` soggetto e codice entita' dinamico |
 | `tipo_ruolo_id` | int | Si | — | ID tipo ruolo. Solo tipi con `ricerca_visibile = true` in `config.tipi_ruoli` |
 | `page` | int | No | 1 | Numero pagina |
 | `page_size` | int | No | 25 | Dimensione pagina (min 1, max 100) |
+| `order_by` | string | No | `ragione_sociale_completa` | Colonna di ordinamento. Valori ammessi: `ragione_sociale_completa`, `soggetto_codice`, `id_fiscale_univoco`, `utility_list` |
+| `order_dir` | string | No | `ASC` | Direzione ordinamento: `ASC` o `DESC` |
 
 **Nota**: il parametro `comune_id` e' stato rimosso. Il filtro per comune nel livello 1
 era impraticabile (risoluzione indirizzo row-level su migliaia di righe). Indirizzo e
@@ -59,9 +61,10 @@ comune sono ora visibili nel livello 2 (dettaglio per tipo ruolo).
 
 #### Input (query params)
 
-| Parametro | Tipo | Obbl. | Descrizione |
-|---|---|---|---|
-| `tipo_ruolo_id` | int | Si | ID tipo ruolo per il dettaglio |
+| Parametro | Tipo | Obbl. | Default | Descrizione |
+|---|---|---|---|---|
+| `tipo_ruolo_id` | int | Si | — | ID tipo ruolo per il dettaglio |
+| `utility_id` | int | No | null | Filtro opzionale per utility specifica (solo CLIENTE). Quando valorizzato, restituisce solo le righe di quella utility |
 
 #### Output (200)
 
@@ -78,16 +81,23 @@ Esempio per CLIENTE:
 {
   "data": {
     "tipo_ruolo": "CLIENTE",
-    "soggetto_id": "uuid",
     "righe": [
       {
+        "cliente_id": 20,
         "codice": "CLI-0042",
+        "soggetto_ruolo_id": 64,
         "istanza_codice": "IST-001",
-        "utility_descrizione": "GAS",
+        "istanza_id": 29,
+        "utility_id": 2,
+        "utility_codice": "GAS",
         "indirizzo": "Via Roma 12",
         "comune": "Bergamo",
         "stato_codice": "AT",
-        "stato_descrizione": "Attivo"
+        "stato_descrizione": "Attivo",
+        "stato_macro": "AT",
+        "stato_cliente_id": 1,
+        "data_attivazione": "2024-01-15",
+        "data_chiusura": null
       }
     ]
   },
@@ -139,8 +149,8 @@ Esempio per CLIENTE:
 
 | Oggetto | Schema | Tipo |
 |---|---|---|
-| `fn_search_soggetti_universale` | `script` | Funzione — ricerca livello 1 (5 parametri, senza comune_id) |
-| `fn_get_search_detail` | `script` | Funzione — dettaglio livello 2 (con indirizzo/comune per tutti i tipi) |
+| `fn_search_soggetti_universale` | `script` | Funzione — ricerca livello 1 (7 parametri: p_search_term, p_tipo_ruolo_id, p_emittente_ids, p_limit, p_offset, p_order_by, p_order_dir) |
+| `fn_get_search_detail` | `script` | Funzione — dettaglio livello 2 (3 parametri: soggetto_id, tipo_ruolo_id, utility_id opzionale) |
 | `fn_get_indirizzo` | `script` | Funzione — risoluzione indirizzo con catena fallback (usata nel livello 2) |
 | `tipi_ruoli` | `config` | Tabella — colonna `ricerca_visibile` |
 | `fn_get_emittenti_scope` | `script` | Funzione — scope emittente |
@@ -162,7 +172,7 @@ Esempio per CLIENTE:
   (changeset Liquibase in Fase 1, step 1.0 del WIP)
 - Le funzioni DB `fn_search_soggetti_universale` e `fn_get_search_detail` devono essere
   presenti nello schema `script` (Fase 1, step 1.3 e 1.4)
-- `fn_search_soggetti_universale` ha signature a 5 parametri (rimosso `p_comune_id`)
-- `fn_get_search_detail` ora include indirizzo e comune per tutti i tipi ruolo
+- `fn_search_soggetti_universale` ha signature a 7 parametri (`p_search_term`, `p_tipo_ruolo_id`, `p_emittente_ids`, `p_limit`, `p_offset`, `p_order_by`, `p_order_dir`). I 2 nuovi parametri di ordinamento sono opzionali (default `ragione_sociale_completa ASC`)
+- `fn_get_search_detail` ha 3 parametri (`p_soggetto_id`, `p_tipo_ruolo_id`, `p_utility_id` opzionale). Restituisce `codice` nel JSONB per CLIENTE e FORNITORE
 - Lo smoke test sezione 14 gestisce gracefully il caso in cui la funzione DB non sia
   ancora disponibile

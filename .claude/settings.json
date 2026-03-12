@@ -53,7 +53,13 @@
       "Read(//usr/local/bin/**)",
       "Read(//tmp/**)",
       "Bash(DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp DB_PASSWORD=secret DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS=\"localhost\" DJANGO_DEBUG=0 python manage.py test apps.core.tests.api.test_search_view -v 2)",
-      "Bash(systemctl list-units:*)"
+      "Bash(systemctl list-units:*)",
+      "Bash(grep -E '\\\\.js$')",
+      "Bash(grep -h \"export const use\" /home/tid/apps/ZeroErp/frontend/src/stores/*.js)",
+      "Bash(mv useNotify.js composables/useNotify.js)",
+      "Bash(mv usePagination.js composables/usePagination.js)",
+      "Bash(mv useConfirmAction.js composables/useConfirmAction.js)",
+      "Bash(mv useApiHandler.js composables/useApiHandler.js)"
     ],
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"

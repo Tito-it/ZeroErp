@@ -87,6 +87,7 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 
 - Codice frontend in `frontend/`
 - **Documento di riferimento obbligatorio**: `docs/it/frontend/frontend-standards.md` — leggere PRIMA di qualsiasi intervento sul frontend
+- **Guida sviluppo frontend**: `docs/it/dev/work-in-progress/frontend/guida-sviluppo-frontend.md` — convenzioni componenti, composable, routing, CSS, pattern operativi
 - Stack: Vue 3.5, Vite 7, PrimeVue 4.5, Pinia 3, Vue Router 5, vue-i18n 10, Axios
 - Runtime: Node.js 24 LTS (gestito via nvm)
 - Dipendenze: `frontend/package.json`

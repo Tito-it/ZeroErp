@@ -43,7 +43,6 @@ La funzione **`script.fn_search_soggetti_universale`** implementa il **livello 1
 | ----------------- | ----------- | ------------ | ------- | ----------------------------------------------------- |
 | `p_search_term`   | `TEXT`      | Si           | —       | Testo di ricerca (minimo 3 caratteri)                 |
 | `p_tipo_ruolo_id` | `INTEGER`   | Si           | —       | ID tipo ruolo da `config.tipi_ruoli` (> 0)            |
-| `p_comune_id`     | `INTEGER`   | No           | `NULL`  | Filtro opzionale per comune residenza soggetto        |
 | `p_emittente_ids` | `INTEGER[]` | No           | `NULL`  | Filtro opzionale per scope emittente (da implementare)|
 | `p_limit`         | `INTEGER`   | No           | `50`    | Righe per pagina (max 200, cap automatico)            |
 | `p_offset`        | `INTEGER`   | No           | `0`     | Offset paginazione                                    |
@@ -62,11 +61,9 @@ La funzione restituisce una tabella (`RETURNS TABLE`) con le seguenti colonne:
 | `soggetto_id`              | `UUID`    | `anagrafiche.soggetti.id`                          |
 | `soggetto_ruolo_id`        | `BIGINT`  | `anagrafiche.soggetti_ruoli.id`                    |
 | `tipo_ruolo_id`            | `INTEGER` | `anagrafiche.soggetti_ruoli.tipo_ruolo_id`         |
-| `comune_id`                | `INTEGER` | `anagrafiche.soggetti.comune_id`                   |
 | `soggetto_codice`          | `TEXT`    | `anagrafiche.soggetti.codice`                      |
 | `ragione_sociale_completa` | `TEXT`    | `anagrafiche.soggetti.ragione_sociale_completa`    |
 | `id_fiscale_univoco`       | `TEXT`    | `anagrafiche.soggetti.id_fiscale_univoco_cf_piva`  |
-| `comune_descrizione`       | `VARCHAR` | `config.comuni.descrizione`                        |
 | `utility_list`             | `TEXT`    | `string_agg(DISTINCT codice_interno)` da utilities |
 
 Se nessun soggetto corrisponde, la funzione restituisce **zero righe**.
@@ -79,8 +76,7 @@ Se nessun soggetto corrisponde, la funzione restituisce **zero righe**.
 filtered (CTE 1)
   soggetti_ruoli sr
     INNER JOIN soggetti s       ON s.id = sr.soggetto_id
-    LEFT  JOIN comuni c         ON c.id = s.comune_id
-  WHERE tipo_ruolo + ILIKE + comune opzionale
+  WHERE tipo_ruolo + ILIKE
   LIMIT 10.000  (hard cap)
 
 with_utility (CTE 2)
@@ -112,17 +108,17 @@ I LEFT JOIN su `clienti`/`utilities` nella CTE 2 producono `NULL` per ruoli dive
 ```sql
 -- 1) Ricerca clienti per nome, prima pagina
 SELECT * FROM script.fn_search_soggetti_universale(
-  'Rossi', 1, NULL, NULL, 50, 0
+  'Rossi', 1, NULL, 50, 0
 );
 
--- 2) Ricerca fornitori per P.IVA parziale, con filtro comune
+-- 2) Ricerca fornitori per P.IVA parziale
 SELECT * FROM script.fn_search_soggetti_universale(
-  '0123456', 2, 1015, NULL, 25, 0
+  '0123456', 2, NULL, 25, 0
 );
 
 -- 3) Seconda pagina (offset 50)
 SELECT * FROM script.fn_search_soggetti_universale(
-  'Rossi', 1, NULL, NULL, 50, 50
+  'Rossi', 1, NULL, 50, 50
 );
 ```
 

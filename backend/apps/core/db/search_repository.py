@@ -33,6 +33,8 @@ class SearchRepository:
         emittente_ids: list[int] | None = None,
         limit: int = 25,
         offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         # Converti emittente_ids in array PostgreSQL o None
         pg_emittente_ids = emittente_ids if emittente_ids else None
@@ -46,7 +48,9 @@ class SearchRepository:
                            p_tipo_ruolo_id := %s,
                            p_emittente_ids := %s,
                            p_limit         := %s,
-                           p_offset        := %s
+                           p_offset        := %s,
+                           p_order_by      := %s,
+                           p_order_dir     := %s
                        ) r
                 """,
                 [
@@ -55,6 +59,8 @@ class SearchRepository:
                     pg_emittente_ids,
                     limit,
                     offset,
+                    order_by,
+                    order_dir,
                 ],
             )
             rows = cursor.fetchall()
@@ -84,16 +90,18 @@ class SearchRepository:
         *,
         soggetto_id: str,
         tipo_ruolo_id: int,
+        utility_id: int | None = None,
     ) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT script.fn_get_search_detail(
                            p_soggetto_id   := %s::uuid,
-                           p_tipo_ruolo_id := %s
+                           p_tipo_ruolo_id := %s,
+                           p_utility_id    := %s
                        )
                 """,
-                [soggetto_id, tipo_ruolo_id],
+                [soggetto_id, tipo_ruolo_id, utility_id],
             )
             row = cursor.fetchone()
 

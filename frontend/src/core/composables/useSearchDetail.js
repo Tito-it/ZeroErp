@@ -3,7 +3,7 @@
 
 import { ref, watch } from 'vue'
 import api from '../api'
-import { useApiHandler } from '../useApiHandler'
+import { useApiHandler } from './useApiHandler'
 
 // Scopo: gestisce il caricamento lazy del dettaglio soggetto per tipo ruolo
 // dal backend (fn_get_search_detail). Ritorna detailRows reattivi e stato loading.
@@ -12,10 +12,10 @@ export function useSearchDetail(props) {
   const detailRows = ref([])
 
   async function loadDetail() {
+    if (!props.row?.soggetto_id) return
+    const params = { tipo_ruolo_id: props.row.tipo_ruolo_id }
     const data = await execute(
-      () => api.get(`/core/search/${props.row.soggetto_id}/detail/`, {
-        params: { tipo_ruolo_id: props.row.tipo_ruolo_id }
-      }),
+      () => api.get(`/core/search/${props.row.soggetto_id}/detail/`, { params }),
       { silent: true }
     )
     if (data?.righe) {
@@ -23,7 +23,7 @@ export function useSearchDetail(props) {
     }
   }
 
-  watch(() => props.row.soggetto_id, loadDetail, { immediate: true })
+  watch(() => props.row?.soggetto_id, (val) => { if (val) loadDetail() }, { immediate: true })
 
   return { detailRows, loading }
 }

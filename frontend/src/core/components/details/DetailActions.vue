@@ -20,18 +20,19 @@ function buildPayload() {
 <template>
   <div class="detail-actions-inline">
     <Button
-      :label="t('search.set_context_short')"
       icon="pi pi-check-circle"
       size="small"
+      rounded
       v-tooltip.top="t('search.set_context_hint')"
       @click="emit('set-context', buildPayload())"
     />
     <Button
-      :label="t('search.open_detail_short')"
       icon="pi pi-external-link"
       size="small"
+      rounded
       severity="secondary"
       text
+      v-tooltip.top="t('search.open_detail_short')"
       @click="emit('open-detail', buildPayload())"
     />
   </div>

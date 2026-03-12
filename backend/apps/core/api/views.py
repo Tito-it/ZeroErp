@@ -70,6 +70,7 @@ class ApiDiagnosticsErrorEnvelopeV1(ApiDiagnosticsErrorEnvelope):
     # Versione canonica protetta: richiede JWT su /api/v1/*
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
 
 class ApiLookupCodici(APIView):
@@ -137,6 +138,7 @@ class ApiLookupCodici(APIView):
 class ApiLookupCodiciV1(ApiLookupCodici):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
 
 class ApiPermessiEffettivi(APIView):
@@ -234,6 +236,7 @@ class ApiPermessiEffettivi(APIView):
 class ApiPermessiEffettiviV1(ApiPermessiEffettivi):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
 
 class ApiPermessiAudit(APIView):
@@ -343,3 +346,4 @@ class ApiPermessiAudit(APIView):
 class ApiPermessiAuditV1(ApiPermessiAudit):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True

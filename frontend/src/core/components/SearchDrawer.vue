@@ -8,13 +8,11 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
 import api from '../api'
-import { useApiHandler } from '../useApiHandler'
-import { usePagination } from '../usePagination'
+import { useApiHandler } from '../composables/useApiHandler'
+import { usePagination } from '../composables/usePagination'
 import { useContextStore } from '../../stores/context'
 import { DRAWER_WIDTH } from '../constants'
-import ClienteDetail from './details/ClienteDetail.vue'
-import FornitoreDetail from './details/FornitoreDetail.vue'
-import GenericDetail from './details/GenericDetail.vue'
+import SearchDetailTable from './details/SearchDetailTable.vue'
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
@@ -32,21 +30,15 @@ const selectedTipoRuolo = ref(null)
 const searchTerm = ref('')
 const results = ref([])
 const expandedRows = ref({})
+const sortField = ref(null)
+const sortOrder = ref(null)
 let debounceTimer = null
 
-// Mappa tipo ruolo -> componente dettaglio
-const DETAIL_COMPONENTS = {
-  CLIENTE: ClienteDetail,
-  FORNITORE: FornitoreDetail
-}
+// Mappa tipo ruolo codice -> variante del componente dettaglio
+const DETAIL_VARIANTS = { CLIENTE: 'cliente', FORNITORE: 'fornitore' }
 
-// Scopo: restituisce il componente dettaglio corretto per il tipo ruolo
-function getDetailComponent(tipoRuoloCodice) {
-  return DETAIL_COMPONENTS[tipoRuoloCodice] || GenericDetail
-}
-
-const currentDetailComponent = computed(() => {
-  return getDetailComponent(selectedTipoRuolo.value?.codice)
+const currentDetailVariant = computed(() => {
+  return DETAIL_VARIANTS[selectedTipoRuolo.value?.codice] || 'generic'
 })
 
 // Scopo: mostra il paginator solo se i risultati superano una pagina
@@ -78,7 +70,8 @@ async function doSearch() {
   const params = {
     q: searchTerm.value,
     tipo_ruolo_id: selectedTipoRuolo.value.id,
-    ...pagination.queryParams.value
+    ...pagination.queryParams.value,
+    ...(sortField.value ? { order_by: sortField.value, order_dir: sortOrder.value === 1 ? 'ASC' : 'DESC' } : {})
   }
 
   const data = await execute(
@@ -104,16 +97,26 @@ function onSearchInput() {
 // Cleanup timer al dismount per evitare leak
 onUnmounted(() => clearTimeout(debounceTimer))
 
-// Scopo: cambiando tipo ruolo, riesegue la ricerca e resetta espansioni
+// Scopo: cambiando tipo ruolo, riesegue la ricerca e resetta espansioni e ordinamento
 function onFilterChange() {
   pagination.reset()
   expandedRows.value = {}
+  sortField.value = null
+  sortOrder.value = null
   doSearch()
 }
 
 // Scopo: gestisce il cambio pagina nella tabella risultati
 function onPage(event) {
   pagination.onPage(event)
+  doSearch()
+}
+
+// Scopo: gestisce il click sull'header colonna per ordinamento
+function onSort(event) {
+  sortField.value = event.sortField
+  sortOrder.value = event.sortOrder
+  pagination.reset()
   doSearch()
 }
 
@@ -164,7 +167,7 @@ watch(() => props.visible, (newVal) => {
   <Drawer
     :visible="visible"
     position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
+    :style="{ width: DRAWER_WIDTH.WIDE }"
     :modal="true"
     :dismissable="true"
     @update:visible="emit('update:visible', $event)"
@@ -216,12 +219,16 @@ watch(() => props.visible, (newVal) => {
         size="small"
         stripedRows
         lazy
+        removableSort
+        :sortField="sortField"
+        :sortOrder="sortOrder"
         :totalRecords="pagination.totalRecords.value"
         :rows="pagination.rows.value"
         :first="pagination.first.value"
         :rowsPerPageOptions="pagination.rowsOptions"
         :paginator="showPaginator"
         @page="onPage"
+        @sort="onSort"
         class="search-results-table app-datatable"
       >
         <template #empty>
@@ -231,13 +238,14 @@ watch(() => props.visible, (newVal) => {
         </template>
 
         <Column expander style="width: 3rem" />
-        <Column field="soggetto_codice" :header="t('search.col_code')" style="width: 90px" />
-        <Column field="ragione_sociale_completa" :header="t('search.col_name')" />
-        <Column field="id_fiscale_univoco" :header="t('search.col_fiscal_id')" style="width: 160px" />
+        <Column field="soggetto_codice" :header="t('search.col_code')" sortable style="width: 90px" />
+        <Column field="ragione_sociale_completa" :header="t('search.col_name')" sortable />
+        <Column field="id_fiscale_univoco" :header="t('search.col_fiscal_id')" sortable style="width: 160px" />
         <Column
           v-if="selectedTipoRuolo?.codice === 'CLIENTE'"
           field="utility_list"
           :header="t('search.col_utility')"
+          sortable
           style="width: 80px"
         >
           <template #body="{ data }">
@@ -246,9 +254,9 @@ watch(() => props.visible, (newVal) => {
         </Column>
 
         <template #expansion="{ data }">
-          <component
-            :is="currentDetailComponent"
+          <SearchDetailTable
             :row="data"
+            :variant="currentDetailVariant"
             @set-context="handleSetContext"
             @open-detail="handleOpenDetail"
           />

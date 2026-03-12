@@ -1,11 +1,19 @@
 <script setup>
+// Scopo: dashboard home — benvenuto, sessioni attive, 4 card placeholder dashboard
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
-import { DOMAINS } from '../navigation'
 import SessioniAttivePanel from '../components/SessioniAttivePanel.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
+
+// 4 card placeholder per futura dashboard KPI
+const dashCards = [
+  { key: 'dash-1', labelKey: 'home.dash_1', icon: 'pi pi-wrench' },
+  { key: 'dash-2', labelKey: 'home.dash_2', icon: 'pi pi-wrench' },
+  { key: 'dash-3', labelKey: 'home.dash_3', icon: 'pi pi-wrench' },
+  { key: 'dash-4', labelKey: 'home.dash_4', icon: 'pi pi-wrench' }
+]
 </script>
 
 <template>
@@ -14,16 +22,15 @@ const auth = useAuthStore()
 
     <SessioniAttivePanel />
 
-    <div class="domain-grid">
-      <router-link
-        v-for="domain in DOMAINS"
-        :key="domain.key"
-        :to="domain.to"
-        class="domain-card"
+    <div class="dashboard-grid">
+      <div
+        v-for="card in dashCards"
+        :key="card.key"
+        class="dash-card"
       >
-        <i :class="domain.icon"></i>
-        <span>{{ t(`nav.${domain.key}`) }}</span>
-      </router-link>
+        <i :class="card.icon"></i>
+        <span>{{ t(card.labelKey) }}</span>
+      </div>
     </div>
   </div>
 </template>
@@ -44,14 +51,14 @@ const auth = useAuthStore()
   color: var(--p-text-color);
 }
 
-.domain-grid {
+.dashboard-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 1rem;
   width: 100%;
 }
 
-.domain-card {
+.dash-card {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -60,37 +67,30 @@ const auth = useAuthStore()
   border-radius: var(--app-card-radius);
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
-  color: var(--p-text-color);
-  text-decoration: none;
+  color: var(--p-text-muted-color);
   font-size: 0.9rem;
   font-weight: 500;
-  transition: border-color var(--app-transition-fast), background var(--app-transition-fast);
 }
 
-.domain-card:hover {
-  border-color: var(--app-card-hover-border);
-  background: var(--app-card-hover-bg);
-}
-
-.domain-card i {
+.dash-card i {
   font-size: 1.75rem;
-  color: var(--app-card-icon-color);
+  color: var(--p-text-muted-color);
 }
 
 /* Tablet landscape */
 @media (max-width: 1024px) {
-  .domain-grid {
+  .dashboard-grid {
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   }
 }
 
-/* Tablet portrait */
+/* Tablet portrait / mobile */
 @media (max-width: 768px) {
-  .domain-grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 
-  .domain-card {
+  .dash-card {
     padding: 1.25rem 0.75rem;
   }
 }

@@ -1,41 +1,71 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-
-const SIDEBAR_KEY = 'sidebar_collapsed'
-const TABLET_BREAKPOINT = 1024
+import { BREAKPOINTS } from '../core/constants'
+import { local, STORAGE_KEYS } from '../core/storage'
 
 export const useUiStore = defineStore('ui', () => {
-  const storedValue = localStorage.getItem(SIDEBAR_KEY)
+  const storedValue = local.get(STORAGE_KEYS.SIDEBAR_COLLAPSED)
   const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280)
 
-  const isTablet = computed(() => windowWidth.value <= TABLET_BREAKPOINT)
-
-  // Se non c'è preferenza salvata e siamo su tablet, parte collassata
-  const sidebarCollapsed = ref(storedValue !== null ? storedValue === 'true' : isTablet.value)
-
-  // Su tablet la sidebar parte collassata, ma l'utente può espanderla
-  const effectiveSidebarCollapsed = computed(() => {
-    return sidebarCollapsed.value
+  // Layout mode: mobile / tablet / desktop
+  const layoutMode = computed(() => {
+    if (windowWidth.value < BREAKPOINTS.MOBILE) return 'mobile'
+    if (windowWidth.value < BREAKPOINTS.TABLET) return 'tablet'
+    return 'desktop'
   })
+
+  const isTablet = computed(() => layoutMode.value === 'tablet')
+  const isMobile = computed(() => layoutMode.value === 'mobile')
+  const isDesktop = computed(() => layoutMode.value === 'desktop')
+
+  // La sidebar inline si mostra solo su desktop e tablet (su mobile e' overlay/drawer)
+  const sidebarInline = computed(() => layoutMode.value !== 'mobile')
+
+  // Se non c'e' preferenza salvata e siamo su tablet, parte collassata
+  const sidebarCollapsed = ref(
+    storedValue !== null ? storedValue === 'true' : !isDesktop.value
+  )
+
+  const effectiveSidebarCollapsed = computed(() => sidebarCollapsed.value)
+
+  // Search drawer — stato condiviso tra AppLayout (shortcut) e AppTopbar (pulsante)
+  const searchDrawerVisible = ref(false)
+
+  function openSearchDrawer() { searchDrawerVisible.value = true }
 
   function toggleSidebar() {
     sidebarCollapsed.value = !sidebarCollapsed.value
-    localStorage.setItem(SIDEBAR_KEY, sidebarCollapsed.value)
+    local.set(STORAGE_KEYS.SIDEBAR_COLLAPSED, sidebarCollapsed.value)
   }
 
   function updateWindowWidth() {
-    const wasTablet = isTablet.value
+    const prevMode = layoutMode.value
     windowWidth.value = window.innerWidth
-    // Collassa automaticamente quando si entra in modalità tablet
-    if (!wasTablet && isTablet.value) {
+    // Collassa automaticamente quando si passa a tablet
+    if (prevMode === 'desktop' && layoutMode.value === 'tablet') {
       sidebarCollapsed.value = true
     }
   }
 
-  // Listener resize
+  // Listener resize con cleanup HMR
   if (typeof window !== 'undefined') {
-    window.addEventListener('resize', updateWindowWidth)
+    window.addEventListener('resize', updateWindowWidth, { passive: true })
+    if (import.meta.hot) {
+      import.meta.hot.dispose(() => window.removeEventListener('resize', updateWindowWidth))
+    }
   }
 
-  return { sidebarCollapsed, isTablet, effectiveSidebarCollapsed, toggleSidebar }
+  return {
+    windowWidth,
+    layoutMode,
+    isTablet,
+    isMobile,
+    isDesktop,
+    sidebarInline,
+    sidebarCollapsed,
+    effectiveSidebarCollapsed,
+    searchDrawerVisible,
+    openSearchDrawer,
+    toggleSidebar
+  }
 })

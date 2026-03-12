@@ -1,13 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '../core/api'
-
-const TOKEN_KEY = 'access_token'
-const REFRESH_KEY = 'refresh_token'
+import { DOMAINS } from '../core/navigation'
+import { local, STORAGE_KEYS } from '../core/storage'
+import { useNavigationStore } from './navigation'
+import { useTabsStore } from './tabs'
 
 export const useAuthStore = defineStore('auth', () => {
-  const accessToken = ref(localStorage.getItem(TOKEN_KEY) || null)
-  const refreshToken = ref(localStorage.getItem(REFRESH_KEY) || null)
+  const accessToken = ref(local.get(STORAGE_KEYS.ACCESS_TOKEN))
+  const refreshToken = ref(local.get(STORAGE_KEYS.REFRESH_TOKEN))
 
   // Profilo utente caricato dall'endpoint /me/
   // Struttura JSONB: { utente, ruolo_sistema, risorse_umane, soggetto, emittente }
@@ -32,25 +33,30 @@ export const useAuthStore = defineStore('auth', () => {
   function setTokens(access, refresh) {
     accessToken.value = access
     refreshToken.value = refresh
-    localStorage.setItem(TOKEN_KEY, access)
-    localStorage.setItem(REFRESH_KEY, refresh)
+    local.set(STORAGE_KEYS.ACCESS_TOKEN, access)
+    local.set(STORAGE_KEYS.REFRESH_TOKEN, refresh)
   }
 
   function clearTokens() {
     accessToken.value = null
     refreshToken.value = null
     user.value = null
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(REFRESH_KEY)
+    local.remove(STORAGE_KEYS.ACCESS_TOKEN)
+    local.remove(STORAGE_KEYS.REFRESH_TOKEN)
+    useTabsStore().closeAll()
+    useNavigationStore().clearAll()
   }
 
   async function fetchProfile() {
     try {
       const response = await api.get('/core/me/')
-      console.log('[fetchProfile] response.data:', JSON.stringify(response.data))
       user.value = response.data.data
+      if (!user.value) {
+        throw new Error('Profilo vuoto: risposta API senza dati utente')
+      }
     } catch (err) {
-      console.error('[fetchProfile] Errore caricamento profilo:', err.response?.status, err.response?.data || err.message)
+      user.value = null
+      throw err
     }
   }
 
@@ -86,12 +92,21 @@ export const useAuthStore = defineStore('auth', () => {
     clearTokens()
   }
 
+  // Domini visibili per l'utente corrente (filtra adminOnly in base a ruolo_sistema)
+  const isAdmin = computed(() => user.value?.ruolo_sistema === 'ADMIN')
+
+  const visibleDomains = computed(() => {
+    return DOMAINS.filter(d => !d.adminOnly || isAdmin.value)
+  })
+
   return {
     accessToken,
     refreshToken,
     user,
     isAuthenticated,
+    isAdmin,
     displayName,
+    visibleDomains,
     login,
     logout,
     tryRefreshToken,

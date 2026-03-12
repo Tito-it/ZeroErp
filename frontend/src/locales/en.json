@@ -25,7 +25,71 @@
     "magazzino": "Warehouse",
     "pagamenti": "Payments",
     "contabilita": "Accounting",
-    "collapse": "Collapse"
+    "amm-software": "Admin Software",
+    "collapse": "Collapse",
+    "back_home": "Home",
+    "set_favorite": "Set as default",
+    "remove_favorite": "Remove favorite"
+  },
+  "nav_menu": {
+    "amm-software": {
+      "operatori": "Operators",
+      "profili-reparto": "Department Profiles",
+      "permessi": "Permissions",
+      "audit-log": "Audit Log"
+    }
+  },
+  "tabs": {
+    "close": "Close tab",
+    "close_confirm_title": "Unsaved changes",
+    "close_confirm_message": "There are unsaved changes. Close anyway?",
+    "close_confirm_accept": "Close without saving",
+    "close_confirm_reject": "Cancel"
+  },
+  "errors": {
+    "not_found_title": "Page not found",
+    "not_found_message": "The requested page does not exist.",
+    "forbidden_title": "Access denied",
+    "forbidden_message": "You do not have permission to access this area.",
+    "back_home": "Back to Home"
+  },
+  "placeholder": {
+    "wip_title": "Under construction",
+    "wip_message": "Features are currently being developed.",
+    "coming_soon": "Coming soon",
+    "amm_software_operatori": {
+      "title": "Operator Management",
+      "features": [
+        "System operator listing",
+        "Create and edit operators",
+        "Department profile assignment",
+        "Active/inactive status management"
+      ]
+    },
+    "amm_software_profili_reparto": {
+      "title": "Department Profiles",
+      "features": [
+        "Define department profiles",
+        "Configure permissions per profile",
+        "Assign operational areas"
+      ]
+    },
+    "amm_software_permessi": {
+      "title": "Permissions Configuration",
+      "features": [
+        "Permissions matrix per profile",
+        "Single operator permission override",
+        "Effective permissions overview"
+      ]
+    },
+    "amm_software_audit_log": {
+      "title": "Audit & Sessions",
+      "features": [
+        "Operator access logs",
+        "Active sessions history",
+        "Critical changes tracking"
+      ]
+    }
   },
   "auth": {
     "username": "Username",
@@ -53,7 +117,11 @@
   },
   "home": {
     "welcome_user": "Welcome, {name}",
-    "welcome_fallback": "user"
+    "welcome_fallback": "user",
+    "dash_1": "Dashboard 1",
+    "dash_2": "Dashboard 2",
+    "dash_3": "Dashboard 3",
+    "dash_4": "Dashboard 4"
   },
   "profile": {
     "role_admin": "Administrator",

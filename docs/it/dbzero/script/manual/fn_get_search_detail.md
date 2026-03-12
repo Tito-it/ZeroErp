@@ -43,12 +43,15 @@ La funzione **`script.fn_get_search_detail`** implementa il **livello 2** della 
 
 ### Parametri di Input
 
-| Nome              | Tipo      | Obbligatorio | Descrizione                                    |
-| ----------------- | --------- | ------------ | ---------------------------------------------- |
-| `p_soggetto_id`   | `UUID`    | Si           | UUID del soggetto da `anagrafiche.soggetti`    |
-| `p_tipo_ruolo_id` | `INTEGER` | Si           | ID tipo ruolo da `config.tipi_ruoli` (> 0)     |
+| Nome              | Tipo      | Obbligatorio | Default | Descrizione                                    |
+| ----------------- | --------- | ------------ | ------- | ---------------------------------------------- |
+| `p_soggetto_id`   | `UUID`    | Si           | —       | UUID del soggetto da `anagrafiche.soggetti`    |
+| `p_tipo_ruolo_id` | `INTEGER` | Si           | —       | ID tipo ruolo da `config.tipi_ruoli` (> 0)     |
+| `p_utility_id`    | `INTEGER` | No           | `NULL`  | Filtro per utility specifica (solo CLIENTE)    |
 
-**Guard**: entrambi validati tramite `script.fn_log_and_raise_error` con codice `E_PARAMETRO_INVALIDO`. Se il `tipo_ruolo_id` non esiste in `config.tipi_ruoli`, viene lanciato `E_GENERICO`.
+Quando `p_utility_id` e' valorizzato, il dettaglio CLIENTE restituisce solo le righe di quella utility, evitando di mescolare dati tra utility diverse. Ignorato per gli altri tipi ruolo.
+
+**Guard**: `p_soggetto_id` e `p_tipo_ruolo_id` validati tramite `script.fn_log_and_raise_error` con codice `E_PARAMETRO_INVALIDO`. Se il `tipo_ruolo_id` non esiste in `config.tipi_ruoli`, viene lanciato `E_GENERICO`.
 
 ---
 
@@ -72,6 +75,7 @@ Ogni elemento dell'array rappresenta una riga cliente (un record `anagrafiche.cl
 | Campo               | Tipo      | Fonte                                       |
 | ------------------- | --------- | ------------------------------------------- |
 | `cliente_id`        | `BIGINT`  | `anagrafiche.clienti.id`                    |
+| `codice`            | `VARCHAR` | `anagrafiche.clienti.codice`                |
 | `soggetto_ruolo_id` | `BIGINT`  | `anagrafiche.clienti.soggetto_ruolo_id`     |
 | `istanza_codice`    | `VARCHAR` | `anagrafiche.istanze_utilities.codice`      |
 | `istanza_id`        | `BIGINT`  | `anagrafiche.istanze_utilities.id`          |
@@ -132,18 +136,24 @@ Il JOIN a `vw_indirizzi_dettaglio` recupera indirizzo normalizzato e comune dire
 ### Esempi di Utilizzo
 
 ```sql
--- 1) Dettaglio cliente per row expansion
+-- 1) Dettaglio cliente per row expansion (tutte le utility)
 SELECT script.fn_get_search_detail(
   'a1b2c3d4-...'::uuid, 1
 );
 
--- 2) Dettaglio fornitore
+-- 2) Dettaglio cliente filtrato per utility specifica
+SELECT script.fn_get_search_detail(
+  'a1b2c3d4-...'::uuid, 1, 2
+);
+
+-- 3) Dettaglio fornitore (p_utility_id ignorato)
 SELECT script.fn_get_search_detail(
   'a1b2c3d4-...'::uuid, 2
 );
 
--- 3) Uso nel backend (Python)
--- cursor.execute("SELECT script.fn_get_search_detail(%s, %s)", [soggetto_id, tipo_ruolo_id])
+-- 4) Uso nel backend (Python)
+-- cursor.execute("SELECT script.fn_get_search_detail(%s, %s, %s)",
+--                [soggetto_id, tipo_ruolo_id, utility_id])
 -- result = cursor.fetchone()[0]  # JSONB -> dict Python
 ```
 

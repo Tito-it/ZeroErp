@@ -1,8 +1,8 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import { createI18n } from 'vue-i18n'
 import App from './App.vue'
 import router from './router'
+import i18n from './core/i18n'
 
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
@@ -12,16 +12,6 @@ import Aura from '@primeuix/themes/aura'
 import 'primeicons/primeicons.css'
 import './assets/theme.css'
 import './assets/main.css'
-
-import it from './locales/it.json'
-import en from './locales/en.json'
-
-const i18n = createI18n({
-  legacy: false,
-  locale: 'it',
-  fallbackLocale: 'en',
-  messages: { it, en }
-})
 
 const app = createApp(App)
 

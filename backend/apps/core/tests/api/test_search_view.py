@@ -17,13 +17,16 @@ Indice test eseguiti:
  8) SearchUniversaleApiTests.test_search_page_size_troppo_grande
  9) SearchUniversaleApiTests.test_search_risultati_vuoti
 10) SearchUniversaleApiTests.test_search_scope_emittente
-11) SearchDetailApiTests.test_detail_ok
-12) SearchDetailApiTests.test_detail_requires_jwt
-13) SearchDetailApiTests.test_detail_tipo_ruolo_obbligatorio
-14) SearchDetailApiTests.test_detail_tipo_ruolo_non_visibile
-15) SearchDetailApiTests.test_detail_not_found
-16) LookupTipiRuoliApiTests.test_lookup_tipi_ruoli_ok
-17) LookupTipiRuoliApiTests.test_lookup_tipi_ruoli_requires_jwt
+11) SearchUniversaleApiTests.test_search_order_by_valido
+12) SearchUniversaleApiTests.test_search_order_by_invalido
+13) SearchUniversaleApiTests.test_search_order_dir_invalido
+14) SearchDetailApiTests.test_detail_ok
+15) SearchDetailApiTests.test_detail_requires_jwt
+16) SearchDetailApiTests.test_detail_tipo_ruolo_obbligatorio
+17) SearchDetailApiTests.test_detail_tipo_ruolo_non_visibile
+18) SearchDetailApiTests.test_detail_not_found
+19) LookupTipiRuoliApiTests.test_lookup_tipi_ruoli_ok
+20) LookupTipiRuoliApiTests.test_lookup_tipi_ruoli_requires_jwt
 """
 
 from unittest.mock import Mock, patch
@@ -161,6 +164,36 @@ class SearchUniversaleApiTests(SimpleTestCase):
         self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1")
         kwargs = mock_search.call_args.kwargs
         self.assertEqual(kwargs["emittente_ids"], [7, 12])
+
+    # Scopo: Verifica che order_by e order_dir vengono passati al repository.
+    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=None)
+    @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
+    @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_search_order_by_valido(self, _mock_auth, mock_search, _mock_visibile, _mock_emittenti):
+        mock_search.return_value = ([_SOGGETTO_ROW], 1)
+        self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1&order_by=soggetto_codice&order_dir=DESC")
+        kwargs = mock_search.call_args.kwargs
+        self.assertEqual(kwargs["order_by"], "soggetto_codice")
+        self.assertEqual(kwargs["order_dir"], "DESC")
+
+    # Scopo: Verifica che order_by con colonna non ammessa restituisce 400.
+    @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_search_order_by_invalido(self, _mock_auth, _mock_visibile):
+        response = self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1&order_by=colonna_inesistente")
+        self.assertEqual(response.status_code, 400)
+        body = response.json()["error"]
+        self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
+
+    # Scopo: Verifica che order_dir con valore non valido restituisce 400.
+    @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_search_order_dir_invalido(self, _mock_auth, _mock_visibile):
+        response = self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1&order_by=soggetto_codice&order_dir=RANDOM")
+        self.assertEqual(response.status_code, 400)
+        body = response.json()["error"]
+        self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
 
 
 class SearchDetailApiTests(SimpleTestCase):

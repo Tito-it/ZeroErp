@@ -88,7 +88,14 @@
   --app-table-stripe-bg: color-mix(in srgb, var(--p-surface-700) 30%, transparent);
   --app-table-hover-bg: color-mix(in srgb, var(--p-primary-color) 8%, transparent);
 
+  /* ===== Sidebar mobile (drawer overlay) ===== */
+  --app-sidebar-mobile-width: 280px;
+
+  /* ===== Topbar mobile ===== */
+  --app-topbar-mobile-height: 44px;
+
   /* ===== Breakpoint (documentazione — usare valori fissi nei @media) ===== */
-  /* Tablet landscape / desktop compatto: 1024px */
-  /* Tablet portrait: 768px */
+  /* Desktop: >= 1024px */
+  /* Tablet: 768px - 1023px */
+  /* Mobile: < 768px */
 }

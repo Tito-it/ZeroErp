@@ -25,7 +25,71 @@
     "magazzino": "Magazzino",
     "pagamenti": "Pagamenti",
     "contabilita": "Contabilità",
-    "collapse": "Comprimi"
+    "amm-software": "Amm. Software",
+    "collapse": "Comprimi",
+    "back_home": "Home",
+    "set_favorite": "Imposta come default",
+    "remove_favorite": "Rimuovi preferito"
+  },
+  "nav_menu": {
+    "amm-software": {
+      "operatori": "Operatori",
+      "profili-reparto": "Profili Reparto",
+      "permessi": "Permessi",
+      "audit-log": "Audit Log"
+    }
+  },
+  "tabs": {
+    "close": "Chiudi tab",
+    "close_confirm_title": "Modifiche non salvate",
+    "close_confirm_message": "Ci sono modifiche non salvate. Chiudere comunque?",
+    "close_confirm_accept": "Chiudi senza salvare",
+    "close_confirm_reject": "Annulla"
+  },
+  "errors": {
+    "not_found_title": "Pagina non trovata",
+    "not_found_message": "La pagina richiesta non esiste.",
+    "forbidden_title": "Accesso negato",
+    "forbidden_message": "Non hai i permessi per accedere a questa area.",
+    "back_home": "Torna alla Home"
+  },
+  "placeholder": {
+    "wip_title": "Area in costruzione",
+    "wip_message": "Le funzionalità sono in fase di sviluppo.",
+    "coming_soon": "Prossimamente",
+    "amm_software_operatori": {
+      "title": "Gestione Operatori",
+      "features": [
+        "Elenco operatori di sistema",
+        "Creazione e modifica operatori",
+        "Assegnazione profili reparto",
+        "Gestione stato attivo/inattivo"
+      ]
+    },
+    "amm_software_profili_reparto": {
+      "title": "Profili Reparto",
+      "features": [
+        "Definizione profili reparto",
+        "Configurazione permessi per profilo",
+        "Assegnazione aree operative"
+      ]
+    },
+    "amm_software_permessi": {
+      "title": "Configurazione Permessi",
+      "features": [
+        "Matrice permessi per profilo",
+        "Override permessi singolo operatore",
+        "Visualizzazione permessi effettivi"
+      ]
+    },
+    "amm_software_audit_log": {
+      "title": "Audit e Sessioni",
+      "features": [
+        "Log accessi operatori",
+        "Storico sessioni attive",
+        "Tracciamento modifiche critiche"
+      ]
+    }
   },
   "auth": {
     "username": "Username",
@@ -53,7 +117,11 @@
   },
   "home": {
     "welcome_user": "Benvenuto, {name}",
-    "welcome_fallback": "utente"
+    "welcome_fallback": "utente",
+    "dash_1": "Dashboard 1",
+    "dash_2": "Dashboard 2",
+    "dash_3": "Dashboard 3",
+    "dash_4": "Dashboard 4"
   },
   "profile": {
     "role_admin": "Amministratore",

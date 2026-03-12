@@ -2,7 +2,8 @@
 export const DRAWER_WIDTH = {
   SIMPLE: '480px',    // tabelle di lookup, config
   STANDARD: '640px',  // anagrafiche, catalogo
-  COMPLEX: '800px'    // pratiche, contratti
+  COMPLEX: '800px',   // pratiche, contratti
+  WIDE: '960px'       // ricerca universale, liste con dettaglio
 }
 
 // Durata toast in millisecondi
@@ -16,4 +17,25 @@ export const TOAST_DURATION = {
 export const PAGINATION = {
   DEFAULT_ROWS: 25,
   ROWS_OPTIONS: [10, 25, 50, 100]
+}
+
+// Content tabs
+export const TABS = {
+  MAX_OPEN: 10
+}
+
+// Breakpoint responsive (valori fissi usati nei @media e nello store ui)
+export const BREAKPOINTS = {
+  MOBILE: 768,
+  TABLET: 1024
+}
+
+// Keyboard shortcuts
+export const SHORTCUTS = {
+  SEARCH: { key: 'k', ctrl: true, shift: false },
+  NEXT_TAB: { key: 'Tab', ctrl: true, shift: false },
+  PREV_TAB: { key: 'Tab', ctrl: true, shift: true },
+  CLOSE_TAB: { key: 'w', ctrl: true, shift: false },
+  TOGGLE_SIDEBAR: { key: 'b', ctrl: true, shift: false },
+  GO_HOME: { key: 'Home', ctrl: true, shift: false }
 }

@@ -19,7 +19,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.core.api.payload_validators import paginated_envelope, qp_int_strict, qp_str
 from apps.core.api.permissions import ZeroERPPermission
-from apps.core.api.search_validators import require_min_search_length
+from apps.core.api.search_validators import require_min_search_length, validate_order_params
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
 from apps.core.db.search_repository import SearchRepository
@@ -61,6 +61,7 @@ class LookupTipiRuoliView(APIView):
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
     @extend_schema(
         parameters=[
@@ -101,6 +102,7 @@ class SearchUniversaleView(APIView):
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
     is_search_endpoint = True
     throttle_classes = [SearchBurstRateThrottle]
 
@@ -133,6 +135,20 @@ class SearchUniversaleView(APIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description="Dimensione pagina (default 25, max 100).",
+            ),
+            OpenApiParameter(
+                name="order_by",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Colonna di ordinamento. Valori: ragione_sociale_completa, soggetto_codice, id_fiscale_univoco, utility_list.",
+            ),
+            OpenApiParameter(
+                name="order_dir",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Direzione ordinamento: ASC (default) o DESC.",
             ),
         ],
         responses={
@@ -192,6 +208,12 @@ class SearchUniversaleView(APIView):
                 detail=f"page_size deve essere compreso tra {_PAGE_SIZE_MIN} e {_PAGE_SIZE_MAX}.",
             )
 
+        # Ordinamento opzionale
+        order_by, order_dir = validate_order_params(
+            qp_str(request.query_params.get("order_by")),
+            qp_str(request.query_params.get("order_dir")),
+        )
+
         # Scope emittente
         cache: dict = {}
         emittente_ids = PermissionResolver.get_emittenti_ids(
@@ -205,6 +227,8 @@ class SearchUniversaleView(APIView):
             emittente_ids=emittente_ids,
             limit=page_size,
             offset=offset,
+            order_by=order_by,
+            order_dir=order_dir,
         )
 
         data = paginated_envelope(results, total_count, page, page_size)
@@ -216,6 +240,7 @@ class SearchDetailView(APIView):
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
     @extend_schema(
         parameters=[
@@ -225,6 +250,13 @@ class SearchDetailView(APIView):
                 location=OpenApiParameter.QUERY,
                 required=True,
                 description="ID tipo ruolo per il dettaglio.",
+            ),
+            OpenApiParameter(
+                name="utility_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filtro opzionale per utility specifica (solo CLIENTE).",
             ),
         ],
         responses={
@@ -244,9 +276,14 @@ class SearchDetailView(APIView):
         repo = SearchRepository()
         tipo_ruolo_id = _require_tipo_ruolo_id(request.query_params, repo)
 
+        # utility_id opzionale — filtra dettaglio CLIENTE per utility specifica
+        raw_utility = request.query_params.get("utility_id")
+        utility_id = qp_int_strict(raw_utility, "utility_id", None) if raw_utility else None
+
         result = repo.get_search_detail(
             soggetto_id=str(soggetto_id),
             tipo_ruolo_id=tipo_ruolo_id,
+            utility_id=utility_id,
         )
 
         if result is None:

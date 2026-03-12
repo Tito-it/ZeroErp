@@ -115,6 +115,7 @@ class ApiAuditLog(APIView):
 class ApiAuditLogV1(ApiAuditLog):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
 
 # ==================================================================
@@ -159,6 +160,7 @@ class ApiDominiTask(APIView):
 class ApiDominiTaskV1(ApiDominiTask):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
 
 # ==================================================================
@@ -212,6 +214,7 @@ class ApiTaskRegistry(APIView):
 class ApiTaskRegistryV1(ApiTaskRegistry):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
 
 # ==================================================================
@@ -269,6 +272,7 @@ class ApiTaskImplementations(APIView):
 class ApiTaskImplementationsV1(ApiTaskImplementations):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
 
 # ==================================================================
@@ -340,6 +344,7 @@ class ApiJobRuns(APIView):
 class ApiJobRunsV1(ApiJobRuns):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
 
 # ==================================================================
@@ -381,3 +386,4 @@ class ApiJobSummary(APIView):
 class ApiJobSummaryV1(ApiJobSummary):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True

@@ -27,6 +27,7 @@ class LogoutView(APIView):
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
     @extend_schema(summary="Logout utente", responses={204: None})
     # Scopo: Blacklista il refresh token corrente e registra evento LOGOUT.
