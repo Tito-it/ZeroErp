@@ -9,7 +9,6 @@ from apps.core.api.views import (
     ApiPermessiEffettiviV1,
 )
 from apps.core.api.search_view import (
-    LookupComuniView,
     LookupTipiRuoliView,
     SearchDetailView,
     SearchUniversaleView,
@@ -53,11 +52,6 @@ urlpatterns = [
         "lookup/tipi-ruoli/",
         LookupTipiRuoliView.as_view(),
         name="core-v1-lookup-tipi-ruoli",
-    ),
-    path(
-        "lookup/comuni/",
-        LookupComuniView.as_view(),
-        name="core-v1-lookup-comuni",
     ),
     path(
         "users/<int:user_id>/permessi-effettivi/",

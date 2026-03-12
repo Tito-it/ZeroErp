@@ -1,32 +1,30 @@
 <script setup>
-import { ref, computed } from 'vue'
+// Scopo: topbar principale — emittente, area title, context chip, ricerca, data.
+// Su mobile mostra hamburger per aprire il drawer sidebar.
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import Button from 'primevue/button'
 import Chip from 'primevue/chip'
 import { useAuthStore } from '../../stores/auth'
+import { useUiStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
+import { resolveTabLabel } from '../navigation'
 import SearchDrawer from './SearchDrawer.vue'
 
 const { t, locale } = useI18n()
 const route = useRoute()
 const auth = useAuthStore()
+const ui = useUiStore()
 const context = useContextStore()
 
-const searchDrawerVisible = ref(false)
+defineProps({
+  showHamburger: { type: Boolean, default: false }
+})
+const emit = defineEmits(['toggle-menu'])
 
 const areaTitle = computed(() => {
-  const meta = route.meta
-  const parts = []
-
-  if (meta.domain) {
-    parts.push(t(`nav.${meta.domain}`))
-  }
-  if (meta.section) {
-    parts.push(meta.section)
-  }
-
-  return parts.join(' / ')
+  return resolveTabLabel(route.meta, t) || ''
 })
 
 const companyName = computed(() => {
@@ -47,7 +45,17 @@ const formattedDate = computed(() => {
 <template>
   <header class="app-topbar">
     <div class="topbar-left">
-      <i class="pi pi-building"></i>
+      <!-- Hamburger su mobile -->
+      <Button
+        v-if="showHamburger"
+        icon="pi pi-bars"
+        text
+        rounded
+        size="small"
+        class="topbar-hamburger"
+        @click="emit('toggle-menu')"
+      />
+      <i v-else class="pi pi-building"></i>
       <span v-if="companyName" class="topbar-company">{{ companyName }}</span>
     </div>
 
@@ -78,14 +86,14 @@ const formattedDate = computed(() => {
         size="small"
         v-tooltip.bottom="t('context.tooltip_search')"
         class="topbar-search-btn"
-        @click="searchDrawerVisible = true"
+        @click="ui.openSearchDrawer()"
       />
 
       <span class="topbar-date">{{ formattedDate }}</span>
     </div>
   </header>
 
-  <SearchDrawer v-model:visible="searchDrawerVisible" />
+  <SearchDrawer v-model:visible="ui.searchDrawerVisible" />
 </template>
 
 <style scoped>
@@ -111,6 +119,10 @@ const formattedDate = computed(() => {
 
 .topbar-left i {
   font-size: 0.9rem;
+}
+
+.topbar-hamburger {
+  color: var(--app-topbar-breadcrumb-color);
 }
 
 .topbar-company {
@@ -171,8 +183,24 @@ const formattedDate = computed(() => {
   white-space: nowrap;
 }
 
-/* Tablet — il nome azienda si tronca con ellipsis, non sparisce */
-@media (max-width: 768px) {
+/* Mobile — nasconde data e azienda, semplifica */
+@media (max-width: 767px) {
+  .topbar-company,
+  .topbar-date {
+    display: none;
+  }
+
+  .topbar-left i.pi-building {
+    display: none;
+  }
+
+  .context-chip-label {
+    max-width: 120px;
+  }
+}
+
+/* Tablet — il nome azienda si tronca con ellipsis */
+@media (max-width: 1024px) and (min-width: 768px) {
   .topbar-company {
     max-width: 120px;
   }

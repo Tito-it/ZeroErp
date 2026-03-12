@@ -49,15 +49,15 @@ La funzione **`script.fn_search_soggetti_universale`** implementa il **livello 1
 
 ### Parametri di Input
 
-| Nome              | Tipo        | Obbligatorio | Default | Descrizione                                            |
-| ----------------- | ----------- | ------------ | ------- | ------------------------------------------------------ |
-| `p_search_term`   | `TEXT`      | Si           | —       | Testo di ricerca (minimo 3 caratteri)                  |
-| `p_tipo_ruolo_id` | `INTEGER`   | Si           | —       | ID tipo ruolo da `config.tipi_ruoli` (> 0)             |
-| `p_emittente_ids` | `BIGINT[]`  | No           | `NULL`  | Scope emittente: soggetto_ruolo_id emittenti (solo CL) |
-| `p_limit`         | `INTEGER`   | No           | `50`    | Righe per pagina (max 200, cap automatico)             |
-| `p_offset`        | `INTEGER`   | No           | `0`     | Offset paginazione                                     |
-| `p_order_by`      | `TEXT`      | No           | `NULL`  | Colonna di ordinamento (whitelist, vedi sotto)         |
-| `p_order_dir`     | `TEXT`      | No           | `'ASC'` | Direzione ordinamento: `ASC` o `DESC`                  |
+| Nome              | Tipo       | Obbligatorio | Default | Descrizione                                            |
+| ----------------- | ---------- | ------------ | ------- | ------------------------------------------------------ |
+| `p_search_term`   | `TEXT`     | Si           | —       | Testo di ricerca (minimo 3 caratteri)                  |
+| `p_tipo_ruolo_id` | `INTEGER`  | Si           | —       | ID tipo ruolo da `config.tipi_ruoli` (> 0)             |
+| `p_emittente_ids` | `BIGINT[]` | No           | `NULL`  | Scope emittente: soggetto_ruolo_id emittenti (solo CL) |
+| `p_limit`         | `INTEGER`  | No           | `50`    | Righe per pagina (max 200, cap automatico)             |
+| `p_offset`        | `INTEGER`  | No           | `0`     | Offset paginazione                                     |
+| `p_order_by`      | `TEXT`     | No           | `NULL`  | Colonna di ordinamento (whitelist, vedi sotto)         |
+| `p_order_dir`     | `TEXT`     | No           | `'ASC'` | Direzione ordinamento: `ASC` o `DESC`                  |
 
 **Guard**: `p_tipo_ruolo_id` e `p_search_term` sono validati tramite `script.fn_log_and_raise_error` con codice `E_PARAMETRO_INVALIDO`. Anche `p_order_by` e' validato: se fornito e non nella whitelist, lancia `E_PARAMETRO_INVALIDO`.
 
@@ -186,16 +186,16 @@ L'ordinamento usa `format('%I %s')` per quotare il nome colonna e previene SQL i
 
 ### Indici Utilizzati
 
-| Indice                                           | Tabella                        | Tipo     | Scopo                         |
-| ------------------------------------------------ | ------------------------------ | -------- | ----------------------------- |
-| `ix_soggetti_ragione_sociale_completa_trgm`      | `anagrafiche.soggetti`         | GIN trgm | ILIKE su ragione_sociale      |
-| `ix_soggetti_id_fiscale_univoco_trgm`            | `anagrafiche.soggetti`         | GIN trgm | ILIKE su id_fiscale           |
-| `ix_soggetti_codice_trgm`                        | `anagrafiche.soggetti`         | GIN trgm | ILIKE su codice soggetto      |
-| `ix_billing_account_codice_trgm`                 | `anagrafiche.billing_account`  | GIN trgm | ILIKE su codice BA (CL)       |
-| `ix_fornitori_codice_trgm`                       | `anagrafiche.fornitori`        | GIN trgm | ILIKE su codice fornitore     |
-| `ix_emittenti_fiscali_codice_trgm`               | `anagrafiche.emittenti_fiscali`| GIN trgm | ILIKE su codice EF            |
-| `ix_vettori_codice_trgm`                         | `anagrafiche.vettori`          | GIN trgm | ILIKE su codice vettore       |
-| `ix_bank_branches_bank_code_trgm`                | `anagrafiche.bank_branches`    | GIN trgm | ILIKE su bank_code            |
+| Indice                                      | Tabella                         | Tipo     | Scopo                     |
+| ------------------------------------------- | ------------------------------- | -------- | ------------------------- |
+| `ix_soggetti_ragione_sociale_completa_trgm` | `anagrafiche.soggetti`          | GIN trgm | ILIKE su ragione_sociale  |
+| `ix_soggetti_id_fiscale_univoco_trgm`       | `anagrafiche.soggetti`          | GIN trgm | ILIKE su id_fiscale       |
+| `ix_soggetti_codice_trgm`                   | `anagrafiche.soggetti`          | GIN trgm | ILIKE su codice soggetto  |
+| `ix_billing_account_codice_trgm`            | `anagrafiche.billing_account`   | GIN trgm | ILIKE su codice BA (CL)   |
+| `ix_fornitori_codice_trgm`                  | `anagrafiche.fornitori`         | GIN trgm | ILIKE su codice fornitore |
+| `ix_emittenti_fiscali_codice_trgm`          | `anagrafiche.emittenti_fiscali` | GIN trgm | ILIKE su codice EF        |
+| `ix_vettori_codice_trgm`                    | `anagrafiche.vettori`           | GIN trgm | ILIKE su codice vettore   |
+| `ix_bank_branches_bank_code_trgm`           | `anagrafiche.bank_branches`     | GIN trgm | ILIKE su bank_code        |
 
 ---
 

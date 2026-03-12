@@ -1,5 +1,6 @@
 import axios from 'axios'
 import router from '../router'
+import { local, STORAGE_KEYS } from './storage'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
@@ -11,7 +12,7 @@ const api = axios.create({
 
 // Interceptor request — aggiunge il token JWT ad ogni chiamata
 api.interceptors.request.use(config => {
-  const token = localStorage.getItem('access_token')
+  const token = local.get(STORAGE_KEYS.ACCESS_TOKEN)
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -47,7 +48,7 @@ api.interceptors.response.use(
     }
 
     // Tenta il refresh del token
-    const refreshToken = localStorage.getItem('refresh_token')
+    const refreshToken = local.get(STORAGE_KEYS.REFRESH_TOKEN)
     if (!refreshToken) {
       redirectToLogin()
       return Promise.reject(error)
@@ -74,7 +75,7 @@ api.interceptors.response.use(
         { headers: { 'Content-Type': 'application/json' } }
       )
       const newToken = response.data.access
-      localStorage.setItem('access_token', newToken)
+      local.set(STORAGE_KEYS.ACCESS_TOKEN, newToken)
       originalRequest.headers.Authorization = `Bearer ${newToken}`
       onRefreshSuccess(newToken)
       return api(originalRequest)
@@ -89,8 +90,8 @@ api.interceptors.response.use(
 )
 
 function redirectToLogin() {
-  localStorage.removeItem('access_token')
-  localStorage.removeItem('refresh_token')
+  local.remove(STORAGE_KEYS.ACCESS_TOKEN)
+  local.remove(STORAGE_KEYS.REFRESH_TOKEN)
   // Usa il router per evitare page reload; preserva la rotta per redirect post-login
   const currentPath = router.currentRoute?.value?.fullPath
   router.push({

@@ -13,21 +13,20 @@ Indice test eseguiti:
  4) SearchUniversaleApiTests.test_search_q_troppo_corto
  5) SearchUniversaleApiTests.test_search_tipo_ruolo_obbligatorio
  6) SearchUniversaleApiTests.test_search_tipo_ruolo_non_visibile
- 7) SearchUniversaleApiTests.test_search_filtro_comune
- 8) SearchUniversaleApiTests.test_search_paginazione
- 9) SearchUniversaleApiTests.test_search_page_size_troppo_grande
-10) SearchUniversaleApiTests.test_search_risultati_vuoti
-11) SearchUniversaleApiTests.test_search_scope_emittente
-12) SearchDetailApiTests.test_detail_ok
-13) SearchDetailApiTests.test_detail_requires_jwt
-14) SearchDetailApiTests.test_detail_tipo_ruolo_obbligatorio
-15) SearchDetailApiTests.test_detail_tipo_ruolo_non_visibile
-16) SearchDetailApiTests.test_detail_not_found
-17) LookupTipiRuoliApiTests.test_lookup_tipi_ruoli_ok
-18) LookupTipiRuoliApiTests.test_lookup_tipi_ruoli_requires_jwt
-19) LookupComuniApiTests.test_lookup_comuni_ok
-20) LookupComuniApiTests.test_lookup_comuni_requires_jwt
-21) LookupComuniApiTests.test_lookup_comuni_q_troppo_corto
+ 7) SearchUniversaleApiTests.test_search_paginazione
+ 8) SearchUniversaleApiTests.test_search_page_size_troppo_grande
+ 9) SearchUniversaleApiTests.test_search_risultati_vuoti
+10) SearchUniversaleApiTests.test_search_scope_emittente
+11) SearchUniversaleApiTests.test_search_order_by_valido
+12) SearchUniversaleApiTests.test_search_order_by_invalido
+13) SearchUniversaleApiTests.test_search_order_dir_invalido
+14) SearchDetailApiTests.test_detail_ok
+15) SearchDetailApiTests.test_detail_requires_jwt
+16) SearchDetailApiTests.test_detail_tipo_ruolo_obbligatorio
+17) SearchDetailApiTests.test_detail_tipo_ruolo_non_visibile
+18) SearchDetailApiTests.test_detail_not_found
+19) LookupTipiRuoliApiTests.test_lookup_tipi_ruoli_ok
+20) LookupTipiRuoliApiTests.test_lookup_tipi_ruoli_requires_jwt
 """
 
 from unittest.mock import Mock, patch
@@ -46,8 +45,6 @@ _SOGGETTO_ROW = {
     "soggetto_codice": "S-0042",
     "ragione_sociale_completa": "Rossi Mario",
     "id_fiscale_univoco": "RSSMRA80A01F205X",
-    "comune_id": 5,
-    "comune_descrizione": "Bergamo",
     "utility_list": "GAS, EE",
 }
 
@@ -104,7 +101,7 @@ class SearchUniversaleApiTests(SimpleTestCase):
         response = self.client.get(_SEARCH_URL + "?q=ro&tipo_ruolo_id=1")
         self.assertEqual(response.status_code, 400)
         body = response.json()["error"]
-        self.assertEqual(body["code"], "E_PIPELINE_VALIDATION")
+        self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
 
     # Scopo: Verifica che senza tipo_ruolo_id restituisce 400.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -122,17 +119,6 @@ class SearchUniversaleApiTests(SimpleTestCase):
         self.assertEqual(response.status_code, 400)
         body = response.json()["error"]
         self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
-
-    # Scopo: Verifica che comune_id viene passato al repository.
-    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=None)
-    @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
-    @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_search_filtro_comune(self, _mock_auth, mock_search, _mock_visibile, _mock_emittenti):
-        mock_search.return_value = ([_SOGGETTO_ROW], 1)
-        self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1&comune_id=5")
-        kwargs = mock_search.call_args.kwargs
-        self.assertEqual(kwargs["comune_id"], 5)
 
     # Scopo: Verifica che page e page_size vengono passati correttamente.
     @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=None)
@@ -178,6 +164,36 @@ class SearchUniversaleApiTests(SimpleTestCase):
         self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1")
         kwargs = mock_search.call_args.kwargs
         self.assertEqual(kwargs["emittente_ids"], [7, 12])
+
+    # Scopo: Verifica che order_by e order_dir vengono passati al repository.
+    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=None)
+    @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
+    @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_search_order_by_valido(self, _mock_auth, mock_search, _mock_visibile, _mock_emittenti):
+        mock_search.return_value = ([_SOGGETTO_ROW], 1)
+        self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1&order_by=soggetto_codice&order_dir=DESC")
+        kwargs = mock_search.call_args.kwargs
+        self.assertEqual(kwargs["order_by"], "soggetto_codice")
+        self.assertEqual(kwargs["order_dir"], "DESC")
+
+    # Scopo: Verifica che order_by con colonna non ammessa restituisce 400.
+    @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_search_order_by_invalido(self, _mock_auth, _mock_visibile):
+        response = self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1&order_by=colonna_inesistente")
+        self.assertEqual(response.status_code, 400)
+        body = response.json()["error"]
+        self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
+
+    # Scopo: Verifica che order_dir con valore non valido restituisce 400.
+    @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_search_order_dir_invalido(self, _mock_auth, _mock_visibile):
+        response = self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1&order_by=soggetto_codice&order_dir=RANDOM")
+        self.assertEqual(response.status_code, 400)
+        body = response.json()["error"]
+        self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
 
 
 class SearchDetailApiTests(SimpleTestCase):
@@ -232,16 +248,10 @@ class SearchDetailApiTests(SimpleTestCase):
 
 
 _LOOKUP_TIPI_RUOLI_URL = "/api/v1/core/lookup/tipi-ruoli/"
-_LOOKUP_COMUNI_URL = "/api/v1/core/lookup/comuni/"
 
 _TIPI_RUOLI_RESULT = [
     {"id": 1, "codice": "CLIENTE", "descrizione": "Cliente"},
     {"id": 2, "codice": "FORNITORE", "descrizione": "Fornitore"},
-]
-
-_COMUNI_RESULT = [
-    {"id": 5, "codice": "016024", "descrizione": "Bergamo"},
-    {"id": 12, "codice": "016125", "descrizione": "Bergeggi"},
 ]
 
 
@@ -266,33 +276,3 @@ class LookupTipiRuoliApiTests(SimpleTestCase):
     def test_lookup_tipi_ruoli_requires_jwt(self):
         response = self.client.get(_LOOKUP_TIPI_RUOLI_URL)
         self.assertEqual(response.status_code, 401)
-
-
-class LookupComuniApiTests(SimpleTestCase):
-    # Scopo: Prepara il contesto comune del test.
-    def setUp(self) -> None:
-        cache.clear()
-        self.client = Client()
-
-    # Scopo: Verifica ricerca comuni OK.
-    @patch("apps.core.api.search_view.SearchRepository.search_comuni")
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_lookup_comuni_ok(self, _mock_auth, mock_search):
-        mock_search.return_value = _COMUNI_RESULT
-        response = self.client.get(_LOOKUP_COMUNI_URL + "?q=berg")
-        self.assertEqual(response.status_code, 200)
-        data = response.json()["data"]
-        self.assertEqual(len(data["results"]), 2)
-
-    # Scopo: Verifica che senza JWT restituisce 401.
-    def test_lookup_comuni_requires_jwt(self):
-        response = self.client.get(_LOOKUP_COMUNI_URL + "?q=berg")
-        self.assertEqual(response.status_code, 401)
-
-    # Scopo: Verifica che q con meno di 2 caratteri restituisce 400.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_lookup_comuni_q_troppo_corto(self, _mock_auth):
-        response = self.client.get(_LOOKUP_COMUNI_URL + "?q=b")
-        self.assertEqual(response.status_code, 400)
-        body = response.json()["error"]
-        self.assertEqual(body["code"], "E_SEARCH_VALIDATION")

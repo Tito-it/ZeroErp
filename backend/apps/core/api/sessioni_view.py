@@ -39,6 +39,7 @@ class SessioniAttiveListView(APIView):
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
     @extend_schema(
         summary="Lista altre sessioni attive utente",
@@ -76,6 +77,7 @@ class SessioneRevocaView(APIView):
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
     @extend_schema(summary="Revoca sessione specifica", responses={204: None})
     # Scopo: Revoca una sessione per sid — blacklista tutti i token JWT associati.

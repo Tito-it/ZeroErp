@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
+import LogoBrand from '../components/LogoBrand.vue'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
@@ -36,8 +37,7 @@ async function handleLogin() {
   <div class="login-page">
     <div class="login-card">
       <div class="login-logo">
-        <span class="logo-icon">Z</span>
-        <span class="logo-text">ZeroERP</span>
+        <LogoBrand size="large" />
       </div>
 
       <form @submit.prevent="handleLogin" class="login-form">
@@ -101,29 +101,8 @@ async function handleLogin() {
 
 .login-logo {
   display: flex;
-  align-items: center;
   justify-content: center;
-  gap: 0.75rem;
   margin-bottom: 2rem;
-}
-
-.logo-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--app-logo-radius);
-  background: var(--app-logo-bg);
-  color: var(--app-logo-color);
-  font-weight: 700;
-  font-size: 1.3rem;
-}
-
-.logo-text {
-  font-weight: 700;
-  font-size: 1.5rem;
-  color: var(--p-text-color);
 }
 
 .login-form {

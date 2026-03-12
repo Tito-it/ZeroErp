@@ -143,8 +143,18 @@ class ZeroERPPermission(BasePermission):
             # Determina area funzionale dal model o dall'attributo della view
             area_schema_db = self._resolve_area(view, cache)
             if area_schema_db is None:
-                # Nessun model collegato e nessun area_funzionale dichiarata
-                return True
+                # Fail-closed: nessun model collegato e nessun area_funzionale.
+                # Le view che intenzionalmente non richiedono area devono
+                # dichiarare skip_area_check = True.
+                if getattr(view, "skip_area_check", False):
+                    return True
+                logger.warning(
+                    "security.permission_denied user_id=%s reason=area_non_definita "
+                    "view=%s path=%s",
+                    user.id, type(view).__name__, request.path,
+                )
+                self.message = "Non hai i permessi per questa operazione."
+                return False
 
             # Risolvi livello (oggetto o area)
             app_label, model_name = self._get_model_meta(view)

@@ -3,9 +3,9 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Endpoint API ricerca universale soggetti (livello 1 e livello 2)
-# e lookup tipi ruolo / comuni per il drawer di ricerca.
+# e lookup tipi ruolo per il drawer di ricerca.
 # Espone GET /api/v1/core/search/, /search/<uuid>/detail/,
-# /lookup/tipi-ruoli/, /lookup/comuni/.
+# /lookup/tipi-ruoli/.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.core.api.payload_validators import paginated_envelope, qp_int_strict, qp_str
 from apps.core.api.permissions import ZeroERPPermission
-from apps.core.api.search_validators import require_min_search_length
+from apps.core.api.search_validators import require_min_search_length, validate_order_params
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
 from apps.core.db.search_repository import SearchRepository
@@ -56,21 +56,12 @@ def _require_tipo_ruolo_id(query_params, repo: SearchRepository) -> int:
     return tipo_ruolo_id
 
 
-# Scopo: Estrae comune_id opzionale da query params. Converte 0 a None
-# (0 non e' un comune valido).
-def _parse_comune_id(query_params) -> int | None:
-    raw = query_params.get("comune_id")
-    if not raw:
-        return None
-    value = qp_int_strict(raw, "comune_id", 0)
-    return value or None
-
-
 class LookupTipiRuoliView(APIView):
     """GET /api/v1/core/lookup/tipi-ruoli/ — tipi ruolo visibili per ricerca universale."""
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
     @extend_schema(
         parameters=[
@@ -106,60 +97,12 @@ class LookupTipiRuoliView(APIView):
         return success_response({"results": results})
 
 
-class LookupComuniView(APIView):
-    """GET /api/v1/core/lookup/comuni/ — autocompletamento comuni."""
-
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    is_search_endpoint = True
-    throttle_classes = [SearchBurstRateThrottle]
-
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="q",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=True,
-                description="Termine di ricerca (min 2 caratteri).",
-            ),
-        ],
-        responses={
-            200: inline_serializer(
-                name="LookupComuniResponse",
-                fields={
-                    "data": inline_serializer(
-                        name="LookupComuniData",
-                        fields={
-                            "results": serializers.ListField(
-                                child=serializers.DictField()
-                            ),
-                        },
-                    ),
-                    "meta": serializers.DictField(required=False),
-                },
-            )
-        },
-    )
-    # Scopo: Restituisce comuni filtrati per autocompletamento nel drawer ricerca.
-    def get(self, request: Request) -> JsonResponse:
-        q = qp_str(request.query_params.get("q"))
-        if not q or len(q) < 2:
-            raise ServiceError(
-                code="E_SEARCH_VALIDATION",
-                message="Parametri ricerca non validi.",
-                detail="Il parametro 'q' richiede almeno 2 caratteri.",
-            )
-        repo = SearchRepository()
-        results = repo.search_comuni(q)
-        return success_response({"results": results})
-
-
 class SearchUniversaleView(APIView):
     """GET /api/v1/core/search/ — ricerca soggetti livello 1 (una riga per soggetto)."""
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
     is_search_endpoint = True
     throttle_classes = [SearchBurstRateThrottle]
 
@@ -180,13 +123,6 @@ class SearchUniversaleView(APIView):
                 description="ID tipo ruolo (obbligatorio). Solo tipi con ricerca_visibile=true.",
             ),
             OpenApiParameter(
-                name="comune_id",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Filtro opzionale per comune.",
-            ),
-            OpenApiParameter(
                 name="page",
                 type=int,
                 location=OpenApiParameter.QUERY,
@@ -199,6 +135,20 @@ class SearchUniversaleView(APIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description="Dimensione pagina (default 25, max 100).",
+            ),
+            OpenApiParameter(
+                name="order_by",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Colonna di ordinamento. Valori: ragione_sociale_completa, soggetto_codice, id_fiscale_univoco, utility_list.",
+            ),
+            OpenApiParameter(
+                name="order_dir",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Direzione ordinamento: ASC (default) o DESC.",
             ),
         ],
         responses={
@@ -238,7 +188,6 @@ class SearchUniversaleView(APIView):
 
         repo = SearchRepository()
         tipo_ruolo_id = _require_tipo_ruolo_id(request.query_params, repo)
-        comune_id = _parse_comune_id(request.query_params)
 
         page = qp_int_strict(request.query_params.get("page"), "page", 1)
         page_size = qp_int_strict(
@@ -259,6 +208,12 @@ class SearchUniversaleView(APIView):
                 detail=f"page_size deve essere compreso tra {_PAGE_SIZE_MIN} e {_PAGE_SIZE_MAX}.",
             )
 
+        # Ordinamento opzionale
+        order_by, order_dir = validate_order_params(
+            qp_str(request.query_params.get("order_by")),
+            qp_str(request.query_params.get("order_dir")),
+        )
+
         # Scope emittente
         cache: dict = {}
         emittente_ids = PermissionResolver.get_emittenti_ids(
@@ -269,10 +224,11 @@ class SearchUniversaleView(APIView):
         results, total_count = repo.search_soggetti(
             search_term=q,
             tipo_ruolo_id=tipo_ruolo_id,
-            comune_id=comune_id,
             emittente_ids=emittente_ids,
             limit=page_size,
             offset=offset,
+            order_by=order_by,
+            order_dir=order_dir,
         )
 
         data = paginated_envelope(results, total_count, page, page_size)
@@ -284,6 +240,7 @@ class SearchDetailView(APIView):
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
     @extend_schema(
         parameters=[
@@ -293,6 +250,13 @@ class SearchDetailView(APIView):
                 location=OpenApiParameter.QUERY,
                 required=True,
                 description="ID tipo ruolo per il dettaglio.",
+            ),
+            OpenApiParameter(
+                name="utility_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filtro opzionale per utility specifica (solo CLIENTE).",
             ),
         ],
         responses={
@@ -312,9 +276,14 @@ class SearchDetailView(APIView):
         repo = SearchRepository()
         tipo_ruolo_id = _require_tipo_ruolo_id(request.query_params, repo)
 
+        # utility_id opzionale — filtra dettaglio CLIENTE per utility specifica
+        raw_utility = request.query_params.get("utility_id")
+        utility_id = qp_int_strict(raw_utility, "utility_id", None) if raw_utility else None
+
         result = repo.get_search_detail(
             soggetto_id=str(soggetto_id),
             tipo_ruolo_id=tipo_ruolo_id,
+            utility_id=utility_id,
         )
 
         if result is None:

@@ -25,6 +25,7 @@ class UserProfileView(APIView):
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
+    skip_area_check = True
 
     @extend_schema(
         summary="Profilo utente corrente",

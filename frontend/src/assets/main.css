@@ -24,3 +24,28 @@ a {
   color: inherit;
   text-decoration: none;
 }
+
+/* ===== Classe utility DataTable compatta =====
+ * Applicare class="app-datatable" su un wrapper o direttamente sulla DataTable.
+ * Usa le variabili --app-table-* definite in theme.css per personalizzazione centralizzata.
+ */
+.app-datatable {
+  font-size: var(--app-table-font-size);
+}
+
+.app-datatable .p-datatable-thead > tr > th {
+  padding: var(--app-table-header-padding);
+  font-size: var(--app-table-header-font-size);
+}
+
+.app-datatable .p-datatable-tbody > tr > td {
+  padding: var(--app-table-cell-padding);
+}
+
+.app-datatable .p-datatable-tbody > tr.p-datatable-row-odd {
+  background: var(--app-table-stripe-bg);
+}
+
+.app-datatable .p-datatable-tbody > tr:hover {
+  background: var(--app-table-hover-bg);
+}

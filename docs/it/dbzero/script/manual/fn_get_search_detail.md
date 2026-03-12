@@ -158,7 +158,7 @@ Il filtro scope emittente si applica solo nel ramo CL. Per FO e ELSE il parametr
 ### Esempi di Utilizzo
 
 ```sql
--- 1) Dettaglio cliente per row expansion
+-- 1) Dettaglio cliente per row expansion (tutte le utility)
 SELECT script.fn_get_search_detail(
   'a1b2c3d4-...'::uuid, 1
 );

@@ -28,6 +28,7 @@ export const useContextStore = defineStore('context', () => {
   const tipoRuoloCodice = ref(null)
   const soggettoId = ref(null)
   const soggettoRuoloId = ref(null)
+  const entitaId = ref(null)
   const label = ref('')
   const meta = ref(null)
 
@@ -49,6 +50,7 @@ export const useContextStore = defineStore('context', () => {
     tipoRuoloCodice.value = payload.tipo_ruolo_codice || null
     soggettoId.value = payload.soggetto_id
     soggettoRuoloId.value = payload.soggetto_ruolo_id
+    entitaId.value = payload.entita_id || null
     label.value = payload.label || ''
     meta.value = payload.meta || null
   }
@@ -59,6 +61,7 @@ export const useContextStore = defineStore('context', () => {
     tipoRuoloCodice.value = null
     soggettoId.value = null
     soggettoRuoloId.value = null
+    entitaId.value = null
     label.value = ''
     meta.value = null
   }
@@ -68,6 +71,7 @@ export const useContextStore = defineStore('context', () => {
     tipoRuoloCodice,
     soggettoId,
     soggettoRuoloId,
+    entitaId,
     label,
     meta,
     hasContext,

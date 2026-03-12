@@ -1,6 +1,6 @@
 import { useToast } from 'primevue/usetoast'
 import { useI18n } from 'vue-i18n'
-import { TOAST_DURATION } from './constants'
+import { TOAST_DURATION } from '../constants'
 
 export function useNotify() {
   const toast = useToast()

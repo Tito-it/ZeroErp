@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfirm } from 'primevue/useconfirm'
-import { useToast } from 'primevue/usetoast'
+import { useNotify } from '../composables/useNotify'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
@@ -10,7 +10,7 @@ import api from '../api'
 
 const { t } = useI18n()
 const confirm = useConfirm()
-const toast = useToast()
+const notify = useNotify()
 
 const sessioni = ref([])
 const loading = ref(false)
@@ -76,18 +76,10 @@ function confermaRevoca(sessione) {
 async function revocaSessione(jti) {
   try {
     await api.post(`/core/me/sessioni/${jti}/revoca/`)
-    toast.add({
-      severity: 'success',
-      summary: t('sessions.revoke_success'),
-      life: 3000
-    })
+    notify.success(t('sessions.revoke_success'))
     await fetchSessioni()
   } catch {
-    toast.add({
-      severity: 'error',
-      summary: t('notifications.generic_error'),
-      life: 3000
-    })
+    notify.error()
   }
 }
 
@@ -100,7 +92,7 @@ onMounted(fetchSessioni)
       <i class="pi pi-shield"></i>
       {{ t('sessions.other_active', { count: sessioni.length }) }}
     </h3>
-    <DataTable :value="sessioni" size="small" stripedRows>
+    <DataTable :value="sessioni" size="small" stripedRows class="app-datatable">
       <Column :header="t('sessions.device')">
         <template #body="{ data }">
           {{ parseUserAgent(data.user_agent) }}

@@ -13,7 +13,7 @@
 //     :rows="pagination.rows.value" @page="pagination.onPage">
 
 import { ref, computed } from 'vue'
-import { PAGINATION } from './constants'
+import { PAGINATION } from '../constants'
 
 export function usePagination(options = {}) {
   const page = ref(1)
