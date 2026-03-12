@@ -16,7 +16,7 @@
 - [fn_get_default_by_param](funzioni/fn_get_default_by_param.md) — (latest update 21-12-25) Recuperare in modo dinamico un valore (tipicamente una **PK**) da una tabella qualsiasi, basandosi su un **codice parametro**.
 - [fn_get_emittenti_scope](funzioni/fn_get_emittenti_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_get_emittenti_scope`** restituisce l'array di ID emittenti fiscali autorizzati per un utente, letti dalla whitelist `config.user_emittenti_fiscali`.
 - [fn_get_emittenti_scope_sr_ids](funzioni/fn_get_emittenti_scope_sr_ids.md) — (latest review 08-03-2026) La funzione **`script.fn_get_emittenti_scope_sr_ids`** restituisce i `soggetto_ruolo_id` degli emittenti fiscali autorizzati per un utente.
-- [fn_get_entita_ruolo_detail](funzioni/fn_get_entita_ruolo_detail.md) — * **Dati entita' per ruolo**: dato un `soggetto_ruolo_id`, recupera automaticamente il tipo ruolo e interroga la tabella specifica per quel ruolo.
+- [fn_get_entita_ruolo_detail](funzioni/fn_get_entita_ruolo_detail.md)
 - [fn_get_indirizzi_by_ruolo](funzioni/fn_get_indirizzi_by_ruolo.md) — (latest review 15-02-26) Restituisce tutti gli **indirizzi** associati a uno specifico `soggetto_ruolo`, producendo per ciascuno:
 - [fn_get_indirizzi_by_soggetto](funzioni/fn_get_indirizzi_by_soggetto.md) — (latest review 15-02-26) Restituisce tutti gli **indirizzi** associati direttamente a un **soggetto** (`anagrafiche.indirizzi_soggetti`), utilizzando come sorgente la vista `anagrafiche.vw_indirizzi_resolved_soggetto` per ottenere un output **uniforme e human-readable**.
 - [fn_get_indirizzo](funzioni/fn_get_indirizzo.md) — *(latest review 01-12-25)* La funzione **`script.fn_get_indirizzo`** restituisce **uno o più indirizzi tecnici** associati a un determinato **`soggetto_ruolo`**, filtrando per **tipo di indirizzo** identificato dal **codice interno** (`config.tipi_indirizzi.codice_interno`).
@@ -46,7 +46,7 @@
 - [fn_norm_via](funzioni/fn_norm_via.md)
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_area`** risolve il livello di accesso effettivo di un utente per un'area funzionale, identificata tramite `schema_db`.
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
-- [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
+- [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md)
 - [fn_subentro_cliente](funzioni/fn_subentro_cliente.md) — (latest review 01-03-26)
 - [fn_valida_codice_fiscale](funzioni/fn_valida_codice_fiscale.md) — * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo. * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere. * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 - [fn_valida_partita_iva](funzioni/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:

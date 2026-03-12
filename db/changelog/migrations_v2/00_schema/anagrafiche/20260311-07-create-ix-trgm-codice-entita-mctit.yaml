@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Indici GIN gin_trgm_ops sulle colonne codice delle tabelle
+# entita' usate dalla ricerca universale.
+# Supportano ILIKE '%substring%' con performance accettabili.
+#
+# Tabelle:
+#   - anagrafiche.soggetti.codice           (tutti i ruoli)
+#   - anagrafiche.billing_account.codice    (CL via vista)
+#   - anagrafiche.fornitori.codice          (FO)
+#   - anagrafiche.emittenti_fiscali.codice  (EF)
+#   - anagrafiche.vettori.codice            (VT)
+#   - anagrafiche.bank_branches.bank_code   (BANK_B)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260311-07-create-ix-trgm-codice-entita-mctit.yaml
+
+  - changeSet:
+      id: 20260311-07-create-ix-trgm-codice-entita
+      author: mctit
+      comment: "Indici GIN trgm su colonne codice per ricerca universale ILIKE"
+      failOnError: true
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              -- Soggetti: codice soggetto, usato da tutti i ruoli nella CTE filtered
+              CREATE INDEX IF NOT EXISTS ix_soggetti_codice_trgm
+                ON anagrafiche.soggetti
+                USING gin (codice gin_trgm_ops);
+
+              -- Billing account: codice BA, usato dal ramo CL via vw_clienti_codice_ba
+              CREATE INDEX IF NOT EXISTS ix_billing_account_codice_trgm
+                ON anagrafiche.billing_account
+                USING gin (codice gin_trgm_ops);
+
+              -- Fornitori: codice fornitore, usato dal ramo FO
+              CREATE INDEX IF NOT EXISTS ix_fornitori_codice_trgm
+                ON anagrafiche.fornitori
+                USING gin (codice gin_trgm_ops);
+
+              -- Emittenti fiscali: codice emittente, usato dal ramo EF
+              CREATE INDEX IF NOT EXISTS ix_emittenti_fiscali_codice_trgm
+                ON anagrafiche.emittenti_fiscali
+                USING gin (codice gin_trgm_ops);
+
+              -- Vettori: codice vettore, usato dal ramo VT
+              CREATE INDEX IF NOT EXISTS ix_vettori_codice_trgm
+                ON anagrafiche.vettori
+                USING gin (codice gin_trgm_ops);
+
+              -- Bank branches: bank_code, usato dal ramo BANK_B
+              CREATE INDEX IF NOT EXISTS ix_bank_branches_bank_code_trgm
+                ON anagrafiche.bank_branches
+                USING gin (bank_code gin_trgm_ops);

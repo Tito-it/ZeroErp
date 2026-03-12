@@ -56,7 +56,13 @@
       "Bash(set -a)",
       "Bash(source internal.env)",
       "Bash(set +a)",
-      "Bash(psql -c \"SELECT prosrc FROM pg_proc WHERE proname = ''''fn_get_entita_ruolo_detail''''\")"
+      "Bash(psql -c \"SELECT prosrc FROM pg_proc WHERE proname = ''''fn_get_entita_ruolo_detail''''\")",
+      "Bash(liquibase update:*)",
+      "Bash(scripts/testpgtap.sh config/test-tipi-ruoli-guard-entita-ref.sql)",
+      "Bash(/opt/liquibase update:*)",
+      "Bash(bash scripts/testpgtap.sh db/pgtap/script/test-search-soggetti-universale.sql)",
+      "Bash(bash scripts/testpgtap.sh db/pgtap/script/test-fn-get-entita-ruolo-detail.sql)",
+      "Bash(bash scripts/testpgtap.sh db/pgtap/config/test-tipi-ruoli-guard-entita-ref.sql)"
     ],
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"

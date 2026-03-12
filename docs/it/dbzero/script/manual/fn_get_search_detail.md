@@ -50,11 +50,12 @@ La funzione **`script.fn_get_search_detail`** implementa il **livello 2** della 
 
 ### Parametri di Input
 
-| Nome              | Tipo      | Obbligatorio | Default | Descrizione                                                                  |
-| ----------------- | --------- | ------------ | ------- | ---------------------------------------------------------------------------- |
-| `p_soggetto_id`   | `UUID`    | Si           | —       | UUID del soggetto da `anagrafiche.soggetti`                                  |
-| `p_tipo_ruolo_id` | `INTEGER` | Si           | —       | ID tipo ruolo da `config.tipi_ruoli` (> 0)                                   |
-| `p_utility_id`    | `INTEGER` | No           | `NULL`  | Filtra righe CL per utility; passato a `fn_get_entita_ruolo_detail` per ELSE |
+| Nome              | Tipo       | Obbligatorio | Default | Descrizione                                                                  |
+| ----------------- | ---------- | ------------ | ------- | ---------------------------------------------------------------------------- |
+| `p_soggetto_id`   | `UUID`     | Si           | —       | UUID del soggetto da `anagrafiche.soggetti`                                  |
+| `p_tipo_ruolo_id` | `INTEGER`  | Si           | —       | ID tipo ruolo da `config.tipi_ruoli` (> 0)                                   |
+| `p_utility_id`    | `INTEGER`  | No           | `NULL`  | Filtra righe CL per utility; passato a `fn_get_entita_ruolo_detail` per ELSE |
+| `p_emittente_ids` | `BIGINT[]` | No           | `NULL`  | Scope emittente: soggetto_ruolo_id emittenti (solo CL)                       |
 
 **Guard**: `p_soggetto_id` e `p_tipo_ruolo_id` validati tramite `script.fn_log_and_raise_error` con codice `E_PARAMETRO_INVALIDO`. Se il `tipo_ruolo_id` non esiste in `config.tipi_ruoli`, viene lanciato `E_GENERICO`.
 
@@ -143,7 +144,14 @@ soggetti_ruoli sr
 WHERE sr.soggetto_id = p_soggetto_id
   AND sr.tipo_ruolo_id = p_tipo_ruolo_id
   AND (p_utility_id IS NULL OR cl.utility_id = p_utility_id)
+  AND (p_emittente_ids IS NULL OR EXISTS (
+    SELECT 1 FROM emittenti_fiscali_billing_account efba
+    WHERE efba.billing_account_id = cl.billing_account_id
+      AND efba.emittente_soggetto_ruolo_id = ANY(p_emittente_ids)
+  ))
 ```
+
+Il filtro scope emittente si applica solo nel ramo CL. Per FO e ELSE il parametro `p_emittente_ids` viene ignorato. Semantica: `NULL` = nessuna restrizione, array = filtra, `'{}'` = zero risultati.
 
 ---
 

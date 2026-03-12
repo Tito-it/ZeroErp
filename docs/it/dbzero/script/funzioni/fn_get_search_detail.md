@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_get_search_detail`
 
 ```sql
-CREATE FUNCTION fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer)
+CREATE FUNCTION fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer, p_emittente_ids bigint[])
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer DEFAULT NULL::integer)
+CREATE OR REPLACE FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer DEFAULT NULL::integer, p_emittente_ids bigint[] DEFAULT NULL::bigint[])
  RETURNS jsonb
  LANGUAGE plpgsql
  STABLE PARALLEL SAFE
@@ -67,13 +67,16 @@ BEGIN
   END IF;
 
   -- Costruisci dettaglio in base al codice_interno del tipo ruolo
-  -- (codice_interno è immutabile, protetto da trgfn_lock_columns)
+  -- (codice_interno e' immutabile, protetto da trgfn_lock_columns)
   CASE v_tipo_ruolo_codice
 
   WHEN 'CL' THEN
     -- Righe cliente: per ogni cliente del soggetto_ruolo,
-    -- istanza_utility + indirizzo + dati entità via fn_get_entita_ruolo_detail.
+    -- istanza_utility + indirizzo + dati entita'.
     -- Indirizzo: da istanza_utility se presente, fallback fn_get_indirizzo RES.
+    -- Filtro scope emittente: se p_emittente_ids IS NOT NULL,
+    -- mostra solo clienti il cui billing_account e' collegato
+    -- a un emittente autorizzato via emittenti_fiscali_billing_account.
     SELECT jsonb_build_object(
       'tipo_ruolo', v_tipo_ruolo_codice,
       'righe', COALESCE(jsonb_agg(row_detail ORDER BY row_detail->>'utility_codice', row_detail->>'stato_descrizione'), '[]'::jsonb)
@@ -130,10 +133,19 @@ BEGIN
       WHERE sr.soggetto_id = p_soggetto_id
         AND sr.tipo_ruolo_id = p_tipo_ruolo_id
         AND (p_utility_id IS NULL OR cl.utility_id = p_utility_id)
+        -- Filtro scope emittente: solo clienti collegati
+        -- a emittenti autorizzati via billing_account
+        AND (p_emittente_ids IS NULL OR EXISTS (
+          SELECT 1
+          FROM anagrafiche.emittenti_fiscali_billing_account efba
+          WHERE efba.billing_account_id = cl.billing_account_id
+            AND efba.emittente_soggetto_ruolo_id = ANY(p_emittente_ids)
+        ))
     ) sub;
 
   WHEN 'FO' THEN
-    -- Righe fornitore: entita_detail + indirizzo sede operativa
+    -- Righe fornitore: entita_detail + indirizzo sede operativa.
+    -- Nessun filtro emittente per FO.
     SELECT jsonb_build_object(
       'tipo_ruolo', v_tipo_ruolo_codice,
       'righe', COALESCE(jsonb_agg(row_detail), '[]'::jsonb)
@@ -162,9 +174,10 @@ BEGIN
     ) sub;
 
   ELSE
-    -- Qualsiasi altro tipo ruolo: dati entità + indirizzo residenza.
+    -- Qualsiasi altro tipo ruolo: dati entita' + indirizzo residenza.
     -- fn_get_entita_ruolo_detail gestisce tutti i casi specifici
     -- (EF, VT, GE, BANK_B, RIS_UMANA, generici).
+    -- Nessun filtro emittente per ruoli non-CL.
     SELECT jsonb_build_object(
       'tipo_ruolo', v_tipo_ruolo_codice,
       'entita_detail', script.fn_get_entita_ruolo_detail(sr.id, p_utility_id),
@@ -193,8 +206,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer)
-IS 'Dettaglio soggetto per tipo ruolo (livello 2 ricerca universale). JSONB con righe specifiche. CL: istanza+utility+billing_account+stato+indirizzo+date ciclo vita. FO: codice+attivo+indirizzo SEDEOP. ELSE: entita_detail via fn_get_entita_ruolo_detail + indirizzo RES.';
+COMMENT ON FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer, p_emittente_ids bigint[])
+IS 'Dettaglio soggetto per tipo ruolo (livello 2 ricerca universale). JSONB con righe specifiche. CL: istanza+utility+billing_account+stato+indirizzo+date+filtro scope emittente via emittenti_fiscali_billing_account. FO: codice+attivo+indirizzo SEDEOP. ELSE: entita_detail via fn_get_entita_ruolo_detail + indirizzo RES.';
 ```
 
 ---

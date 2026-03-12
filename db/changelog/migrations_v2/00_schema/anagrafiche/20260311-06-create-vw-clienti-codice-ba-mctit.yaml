@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Vista anagrafiche.vw_clienti_codice_ba:
+#   Espone per ogni riga cliente i dati necessari alla ricerca
+#   universale per codice (billing_account) e al dettaglio
+#   entita' (fn_get_entita_ruolo_detail ramo CL).
+#
+#   Colonne allineate al JSONB prodotto dal ramo CL di
+#   fn_get_entita_ruolo_detail: entita_id, billing_account_id,
+#   codice, utility_id, stato, date ciclo vita.
+#
+#   Usata come target dinamico in tipi_ruoli.entita_tabella
+#   per il tipo ruolo CL, dato che il codice risiede in
+#   billing_account e non direttamente in clienti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260311-06-create-vw-clienti-codice-ba-mctit.yaml
+
+  - changeSet:
+      id: 20260311-06-create-vw-clienti-codice-ba
+      author: mctit
+      comment: "Vista clienti + billing_account per ricerca codice e dettaglio entita' CL"
+      runOnChange: true
+      failOnError: true
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS anagrafiche.vw_clienti_codice_ba;
+              CREATE OR REPLACE VIEW anagrafiche.vw_clienti_codice_ba AS
+              -- Vista flat clienti → billing_account → stato_cliente.
+              -- Riusa le stesse colonne del ramo CL di
+              -- fn_get_entita_ruolo_detail + soggetto_ruolo_id per join.
+              SELECT
+                cl.soggetto_ruolo_id,
+                cl.id,
+                cl.id                    AS entita_id,
+                cl.billing_account_id,
+                ba.codice,
+                cl.utility_id,
+                cl.stato_cliente_id,
+                sc.codice_interno        AS stato_codice,
+                sc.descrizione_breve     AS stato_descrizione,
+                cl.data_attivazione,
+                cl.data_sospensione,
+                cl.data_riattivazione,
+                cl.data_chiusura
+              FROM anagrafiche.clienti cl
+                JOIN config.stati_cliente sc
+                  ON sc.id = cl.stato_cliente_id
+                LEFT JOIN anagrafiche.billing_account ba
+                  ON ba.id = cl.billing_account_id;
+
+              COMMENT ON VIEW anagrafiche.vw_clienti_codice_ba IS
+                'Vista flat clienti con codice da billing_account, stato e date ciclo vita. Usata per ricerca codice universale (entita_tabella in tipi_ruoli) e come source dati per dettaglio entita'' CL.';

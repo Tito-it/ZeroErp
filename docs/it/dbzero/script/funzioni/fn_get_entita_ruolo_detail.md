@@ -15,7 +15,20 @@ CREATE OR REPLACE FUNCTION script.fn_get_entita_ruolo_detail(p_soggetto_ruolo_id
 AS $function$
 DECLARE
   v_tipo_ruolo_codice  config.tipi_ruoli.codice_interno%TYPE;
+  v_entita_tabella     config.tipi_ruoli.entita_tabella%TYPE;
+  v_rel_oid            oid;
   v_result             jsonb;
+  -- Colonne di sistema da escludere dal JSONB output.
+  -- id viene escluso e reinserito come entita_id.
+  -- soggetto_ruolo_id e' il filtro, non serve nell'output.
+  c_exclude_cols       constant text[] := ARRAY[
+    'id', 'soggetto_ruolo_id',
+    'data_insert', 'user_insert',
+    'data_update', 'user_update',
+    'tx_id', 'storicizza'
+  ];
+  -- Frammento SQL per filtro utility_id (vuoto se non applicabile)
+  v_utility_filter     text := '';
 BEGIN
   -- Guard: parametro obbligatorio
   IF p_soggetto_ruolo_id IS NULL THEN
@@ -32,12 +45,14 @@ BEGIN
     );
   END IF;
 
-  -- Recupera codice_interno del tipo ruolo associato
-  SELECT tr.codice_interno INTO v_tipo_ruolo_codice
+  -- Recupera codice_interno e entita_tabella dal tipo ruolo
+  SELECT tr.codice_interno, tr.entita_tabella
+    INTO v_tipo_ruolo_codice, v_entita_tabella
   FROM anagrafiche.soggetti_ruoli sr
     JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
   WHERE sr.id = p_soggetto_ruolo_id;
 
+  -- Guard: soggetto_ruolo_id deve esistere
   IF v_tipo_ruolo_codice IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
@@ -52,142 +67,47 @@ BEGIN
     );
   END IF;
 
-  -- Dispatch per codice_interno (immutabile, protetto da trgfn_lock_columns)
-  CASE v_tipo_ruolo_codice
+  IF v_entita_tabella IS NOT NULL THEN
+    -- Query dinamica sulla tabella/vista entita'.
+    -- to_jsonb(e.*) converte tutta la riga in JSONB,
+    -- poi si strippano le colonne di sistema e id,
+    -- e si aggiunge entita_id (= e.id originale).
+    v_rel_oid := v_entita_tabella::regclass;
 
-  WHEN 'CL' THEN
-    -- Cliente: N righe per soggetto_ruolo (una per istanza_utility).
-    -- Codice da billing_account. Date ciclo vita e stato.
-    -- p_utility_id filtra per utility specifica se fornito.
-    SELECT jsonb_build_object(
-      'tipo_ruolo', v_tipo_ruolo_codice,
-      'righe', COALESCE(jsonb_agg(row_detail ORDER BY row_detail->>'billing_account_codice'), '[]'::jsonb)
-    ) INTO v_result
-    FROM (
-      SELECT jsonb_build_object(
-        'entita_id',               cl.id,
-        'billing_account_id',      cl.billing_account_id,
-        'billing_account_codice',  ba.codice,
-        'utility_id',              cl.utility_id,
-        'stato_cliente_id',        cl.stato_cliente_id,
-        'stato_codice',            sc.codice_interno,
-        'stato_descrizione',       sc.descrizione_breve,
-        'data_attivazione',        cl.data_attivazione,
-        'data_sospensione',        cl.data_sospensione,
-        'data_riattivazione',      cl.data_riattivazione,
-        'data_chiusura',           cl.data_chiusura
-      ) AS row_detail
-      FROM anagrafiche.clienti cl
-        JOIN config.stati_cliente sc ON sc.id = cl.stato_cliente_id
-        LEFT JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
-      WHERE cl.soggetto_ruolo_id = p_soggetto_ruolo_id
-        AND (p_utility_id IS NULL OR cl.utility_id = p_utility_id)
-    ) sub;
+    -- Filtro opzionale per utility_id: attivo solo se
+    -- la tabella ha la colonna utility_id e il parametro
+    -- e' fornito (evita errore su tabelle senza utility_id)
+    IF p_utility_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM pg_catalog.pg_attribute a
+      WHERE a.attrelid = v_rel_oid
+        AND a.attname  = 'utility_id'
+        AND a.attnum   > 0
+        AND NOT a.attisdropped
+    ) THEN
+      v_utility_filter := format(' AND e.utility_id = %s', p_utility_id);
+    END IF;
 
-  WHEN 'FO' THEN
-    -- Fornitore: 1 riga per soggetto_ruolo (UQ).
-    SELECT jsonb_build_object(
-      'tipo_ruolo', v_tipo_ruolo_codice,
-      'righe', COALESCE(jsonb_agg(row_detail), '[]'::jsonb)
-    ) INTO v_result
-    FROM (
+    -- $1 = p_soggetto_ruolo_id
+    -- $2 = v_tipo_ruolo_codice
+    -- $3 = c_exclude_cols (text[] colonne da strippare)
+    EXECUTE format('
       SELECT jsonb_build_object(
-        'entita_id',    f.id,
-        'codice',       f.codice,
-        'attivo',       f.attivo
-      ) AS row_detail
-      FROM anagrafiche.fornitori f
-      WHERE f.soggetto_ruolo_id = p_soggetto_ruolo_id
-    ) sub;
-
-  WHEN 'EF' THEN
-    -- Emittente fiscale: 1 riga per soggetto_ruolo (UQ).
-    SELECT jsonb_build_object(
-      'tipo_ruolo', v_tipo_ruolo_codice,
-      'righe', COALESCE(jsonb_agg(row_detail), '[]'::jsonb)
-    ) INTO v_result
-    FROM (
-      SELECT jsonb_build_object(
-        'entita_id',    ef.id,
-        'codice',       ef.codice,
-        'descrizione',  ef.descrizione,
-        'attivo',       ef.attivo
-      ) AS row_detail
-      FROM anagrafiche.emittenti_fiscali ef
-      WHERE ef.soggetto_ruolo_id = p_soggetto_ruolo_id
-    ) sub;
-
-  WHEN 'VT' THEN
-    -- Vettore: 1 riga per soggetto_ruolo (UQ).
-    SELECT jsonb_build_object(
-      'tipo_ruolo', v_tipo_ruolo_codice,
-      'righe', COALESCE(jsonb_agg(row_detail), '[]'::jsonb)
-    ) INTO v_result
-    FROM (
-      SELECT jsonb_build_object(
-        'entita_id',    v.id,
-        'codice',       v.codice,
-        'descrizione',  v.descrizione,
-        'attivo',       v.attivo
-      ) AS row_detail
-      FROM anagrafiche.vettori v
-      WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
-    ) sub;
-
-  WHEN 'GE' THEN
-    -- Gestore: 1 riga (singleton).
-    SELECT jsonb_build_object(
-      'tipo_ruolo', v_tipo_ruolo_codice,
-      'righe', COALESCE(jsonb_agg(row_detail), '[]'::jsonb)
-    ) INTO v_result
-    FROM (
-      SELECT jsonb_build_object(
-        'entita_id',    g.id,
-        'descrizione',  g.descrizione
-      ) AS row_detail
-      FROM anagrafiche.gestori g
-      WHERE g.soggetto_ruolo_id = p_soggetto_ruolo_id
-    ) sub;
-
-  WHEN 'BANK_B' THEN
-    -- Istituto di credito: N filiali per soggetto_ruolo.
-    SELECT jsonb_build_object(
-      'tipo_ruolo', v_tipo_ruolo_codice,
-      'righe', COALESCE(jsonb_agg(row_detail ORDER BY row_detail->>'bank_code', row_detail->>'branch_code'), '[]'::jsonb)
-    ) INTO v_result
-    FROM (
-      SELECT jsonb_build_object(
-        'entita_id',    bb.id,
-        'bank_code',    bb.bank_code,
-        'branch_code',  bb.branch_code,
-        'bic_swift',    bb.bic_swift,
-        'name',         bb.name,
-        'attivo',       bb.attivo
-      ) AS row_detail
-      FROM anagrafiche.bank_branches bb
-      WHERE bb.soggetto_ruolo_id = p_soggetto_ruolo_id
-    ) sub;
-
-  WHEN 'RIS_UMANA' THEN
-    -- Risorsa umana: 1 riga per soggetto_ruolo (UQ).
-    SELECT jsonb_build_object(
-      'tipo_ruolo', v_tipo_ruolo_codice,
-      'righe', COALESCE(jsonb_agg(row_detail), '[]'::jsonb)
-    ) INTO v_result
-    FROM (
-      SELECT jsonb_build_object(
-        'entita_id',    ru.id,
-        'attivo',       ru.attivo,
-        'valido_dal',   ru.valido_dal,
-        'valido_al',    ru.valido_al
-      ) AS row_detail
-      FROM anagrafiche.risorse_umane ru
-      WHERE ru.soggetto_ruolo_id = p_soggetto_ruolo_id
-    ) sub;
+        ''tipo_ruolo'', $2,
+        ''righe'', COALESCE(jsonb_agg(
+          (to_jsonb(e.*) - $3)
+          || jsonb_build_object(''entita_id'', e.id)
+        ), ''[]''::jsonb)
+      )
+      FROM %s e
+      WHERE e.soggetto_ruolo_id = $1
+      %s
+    ', v_rel_oid::regclass, v_utility_filter)
+    INTO v_result
+    USING p_soggetto_ruolo_id, v_tipo_ruolo_codice, c_exclude_cols;
 
   ELSE
-    -- Ruoli senza tabella dedicata (VE, DI, RE, PSP):
-    -- restituisce meta da soggetti_ruoli
+    -- Nessuna tabella entita' per questo tipo ruolo
+    -- (VE, DI, RE, PSP, ecc.): restituisce meta da soggetti_ruoli
     SELECT jsonb_build_object(
       'tipo_ruolo', v_tipo_ruolo_codice,
       'righe', jsonb_build_array(
@@ -200,14 +120,14 @@ BEGIN
     FROM anagrafiche.soggetti_ruoli sr
     WHERE sr.id = p_soggetto_ruolo_id;
 
-  END CASE;
+  END IF;
 
   RETURN COALESCE(v_result, jsonb_build_object('tipo_ruolo', v_tipo_ruolo_codice, 'righe', '[]'::jsonb));
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_entita_ruolo_detail(p_soggetto_ruolo_id bigint, p_utility_id integer)
-IS 'Dati entità specifici per tipo ruolo in JSONB. CL: billing_account+date+stato (filtro opzionale utility_id). FO: codice+attivo. EF: codice+descrizione+attivo. VT: codice+descrizione+attivo. GE: descrizione. BANK_B: bank_code+branch_code+bic_swift. RIS_UMANA: attivo+validità. ELSE: meta da soggetti_ruoli.';
+IS 'Dati entita'' specifici per tipo ruolo in JSONB (versione dinamica). Usa tipi_ruoli.entita_tabella per query dinamica con to_jsonb + strip colonne sistema. p_utility_id filtra se la tabella ha utility_id. Se entita_tabella IS NULL, restituisce meta da soggetti_ruoli.';
 ```
 
 ---
