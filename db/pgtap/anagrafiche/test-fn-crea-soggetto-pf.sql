@@ -7,15 +7,18 @@
 --   2. Verifica tipo_soggetto_dettaglio_id = PR
 --   3. Verifica ragione_sociale_completa normalizzata
 --   4. Verifica contatto default creato
---   5. Errore: codice fiscale duplicato
+--   5. Errore: codice fiscale già presente
 --   6. Errore: cognome vuoto
 --   7. Errore: email NULL
+--   8. Creazione con p_comune_nascita_id valorizzato
+--   9. Verifica comune_id salvato correttamente su soggetti
 -- ------------------------------------------------------------
 BEGIN;
-SELECT plan(7);
+SELECT plan(9);
 
 -- =========================================================
 -- Setup
+-- CF validi con checksum corretto (hardcoded, rollback a fine test)
 -- =========================================================
 CREATE TEMP TABLE tmp_sogg_pf_ctx (
   soggetto_id  uuid,
@@ -25,7 +28,7 @@ CREATE TEMP TABLE tmp_sogg_pf_ctx (
 
 INSERT INTO tmp_sogg_pf_ctx (test_cf, test_email)
 VALUES (
-  'TSTSOGGPF' || lpad(floor(random() * 1000000)::text, 7, '0'),
+  'PNZFDN78A01L219Y',
   'test_sogg_pf_' || floor(random() * 1000000)::text || '@test.local'
 );
 
@@ -35,11 +38,11 @@ VALUES (
 SELECT lives_ok(
     format(
       $$SELECT anagrafiche.fn_crea_soggetto_pf(
-        p_cognome := 'Verdi',
-        p_nome := 'Luigi',
+        p_cognome := 'Ponzi',
+        p_nome := 'Ferdinando',
         p_codice_fiscale := %L,
         p_email := %L,
-        p_data_nascita := '1985-06-20',
+        p_data_nascita := '1978-01-01',
         p_sesso := 'M'
       ) $$,
       (SELECT test_cf FROM tmp_sogg_pf_ctx),
@@ -92,7 +95,7 @@ SELECT ok(
   );
 
 -- =========================================================
--- 5) Errore: codice fiscale duplicato
+-- 5) Errore: codice fiscale duplicato (stesso CF del test 1)
 -- =========================================================
 SELECT throws_matching(
     format(
@@ -105,18 +108,20 @@ SELECT throws_matching(
       (SELECT test_cf FROM tmp_sogg_pf_ctx),
       (SELECT test_email FROM tmp_sogg_pf_ctx)
     ),
-    'E_ADMIN_CF_DUPLICATO',
+    'Codice fiscale gia',
     '5. Errore codice fiscale duplicato'
   );
 
 -- =========================================================
 -- 6) Errore: cognome vuoto
+-- Guard scatta PRIMA della validazione CF, quindi il CF
+-- non viene mai verificato dal trigger.
 -- =========================================================
 SELECT throws_matching(
     $$SELECT anagrafiche.fn_crea_soggetto_pf(
       p_cognome := '',
       p_nome := 'Test',
-      p_codice_fiscale := 'TSTCOGNVUOTO00000',
+      p_codice_fiscale := 'LCCRLD80A01L736X',
       p_email := 'cognome_vuoto@test.local'
     ) $$,
     'Cognome obbligatorio',
@@ -125,16 +130,48 @@ SELECT throws_matching(
 
 -- =========================================================
 -- 7) Errore: email NULL
+-- Guard scatta PRIMA della validazione CF.
 -- =========================================================
 SELECT throws_matching(
     $$SELECT anagrafiche.fn_crea_soggetto_pf(
       p_cognome := 'Test',
       p_nome := 'EmailNull',
-      p_codice_fiscale := 'TSTEMAILNULL00000',
+      p_codice_fiscale := 'LCCRLD80A01L736X',
       p_email := NULL
     ) $$,
     'Email obbligatoria',
     '7. Errore email NULL'
+  );
+
+-- =========================================================
+-- 8) Creazione con p_comune_nascita_id valorizzato
+-- =========================================================
+SELECT lives_ok(
+    format(
+      $$SELECT anagrafiche.fn_crea_soggetto_pf(
+        p_cognome := 'Pra',
+        p_nome := 'Franco',
+        p_codice_fiscale := 'PRAFNC80A01F205N',
+        p_email := %L,
+        p_data_nascita := '1980-01-01',
+        p_sesso := 'M',
+        p_comune_nascita_id := (SELECT id FROM config.comuni ORDER BY id LIMIT 1)
+      ) $$,
+      'test_comune_nasc_' || floor(random() * 1000000)::text || '@test.local'
+    ),
+    '8. Creazione con p_comune_nascita_id senza errori'
+  );
+
+-- =========================================================
+-- 9) Verifica comune_id salvato correttamente su soggetti
+-- =========================================================
+SELECT ok(
+    EXISTS (
+      SELECT 1 FROM anagrafiche.soggetti
+      WHERE cognome = 'Pra' AND nome = 'Franco'
+        AND comune_id = (SELECT id FROM config.comuni ORDER BY id LIMIT 1)
+    ),
+    '9. comune_id salvato correttamente su soggetti'
   );
 
 SELECT * FROM finish();
