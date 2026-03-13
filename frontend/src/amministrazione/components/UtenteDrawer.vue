@@ -170,31 +170,31 @@ function onClose() {
       <TabView>
         <TabPanel :header="t('amm.tab_dati')">
           <div class="form-grid">
-            <div class="field">
+            <div class="form-field">
               <label>{{ t('common.cognome') }}</label>
               <InputText v-model="editForm.cognome" class="w-full" />
             </div>
-            <div class="field">
+            <div class="form-field">
               <label>{{ t('common.nome') }}</label>
               <InputText v-model="editForm.nome" class="w-full" />
             </div>
-            <div class="field">
+            <div class="form-field">
               <label>{{ t('common.email') }}</label>
               <InputText v-model="editForm.email" class="w-full" />
             </div>
-            <div class="field">
+            <div class="form-field">
               <label>{{ t('amm.field_ruolo') }}</label>
               <Select v-model="editForm.ruolo_sistema" :options="ruoloOptions"
                 option-label="label" option-value="value" class="w-full" />
             </div>
-            <div class="field">
+            <div class="form-field">
               <label>{{ t('amm.field_reparto') }}</label>
               <Select v-model="editForm.unita_organizzativa_id"
                 :options="unitaOrg.items.value"
                 option-label="descrizione" option-value="id"
                 class="w-full" :placeholder="t('amm.select_reparto')" />
             </div>
-            <div class="field">
+            <div class="form-field">
               <label>{{ t('amm.field_valido_al') }}</label>
               <DatePicker v-model="editForm.valido_al" date-format="yy-mm-dd" class="w-full" />
             </div>
@@ -238,12 +238,12 @@ function onClose() {
       <!-- Collocazione operatore (specifico dominio) -->
       <h4 class="mt-4">{{ t('amm.section_collocazione') }}</h4>
       <div class="form-grid">
-        <div class="field">
+        <div class="form-field">
           <label>{{ t('amm.field_ruolo') }}</label>
           <Select v-model="collocazione.ruolo_sistema" :options="ruoloOptions"
             option-label="label" option-value="value" class="w-full" />
         </div>
-        <div class="field">
+        <div class="form-field">
           <label>{{ t('amm.field_qualifica') }} *</label>
           <Select v-model="collocazione.qualifica_id"
             :options="qualifiche.items.value"
@@ -251,7 +251,7 @@ function onClose() {
             option-label="descrizione" option-value="id"
             class="w-full" :placeholder="t('amm.select_qualifica')" />
         </div>
-        <div class="field">
+        <div class="form-field">
           <label>{{ t('amm.field_reparto') }}</label>
           <Select v-model="collocazione.unita_organizzativa_id"
             :options="unitaOrg.items.value"
@@ -270,19 +270,4 @@ function onClose() {
   </Drawer>
 </template>
 
-<style scoped>
-.form-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.field label {
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-</style>
+<!-- Stili .form-grid e .form-field definiti in main.css -->

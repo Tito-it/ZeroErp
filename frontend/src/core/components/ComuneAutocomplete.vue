@@ -5,6 +5,7 @@
 import { ref, computed } from 'vue'
 import AutoComplete from 'primevue/autocomplete'
 import { searchComuni } from '../apiCore'
+import { useServerAutocomplete } from '../composables/useServerAutocomplete'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -16,10 +17,12 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue'])
 
-const suggestions = ref([])
-const selected = ref(null)
-const loading = ref(false)
+const { suggestions, loading, onSearch } = useServerAutocomplete(
+  (query) => searchComuni(query),
+  { minLength: 2, debounceMs: 300 }
+)
 
+const selected = ref(null)
 const placeholder = computed(() => t('common.select_comune'))
 
 function formatLabel(item) {
@@ -27,20 +30,6 @@ function formatLabel(item) {
   return item.provincia_sigla
     ? `${item.descrizione} (${item.provincia_sigla})`
     : item.descrizione
-}
-
-async function onSearch({ query }) {
-  if (!query || query.length < 2) {
-    suggestions.value = []
-    return
-  }
-  loading.value = true
-  try {
-    const res = await searchComuni(query)
-    suggestions.value = res.data.data.results
-  } finally {
-    loading.value = false
-  }
 }
 
 function onSelect(event) {

@@ -2,9 +2,10 @@
 // Scopo: Autocomplete stradario con ricerca server-side filtrata per comune.
 // Mostra indirizzo_normalizzato, emette l'oggetto selezionato via v-model.
 
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import AutoComplete from 'primevue/autocomplete'
 import { searchStradario } from '../apiCore'
+import { useServerAutocomplete } from '../composables/useServerAutocomplete'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -17,24 +18,12 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue'])
 
-const suggestions = ref([])
-const loading = ref(false)
+const { suggestions, loading, onSearch } = useServerAutocomplete(
+  (query) => searchStradario(props.comuneId, query),
+  { minLength: 2, debounceMs: 300 }
+)
 
 const placeholder = computed(() => t('common.select_via'))
-
-async function onSearch({ query }) {
-  if (!query || query.length < 2 || !props.comuneId) {
-    suggestions.value = []
-    return
-  }
-  loading.value = true
-  try {
-    const res = await searchStradario(props.comuneId, query)
-    suggestions.value = res.data.data.results
-  } finally {
-    loading.value = false
-  }
-}
 
 function formatLabel(item) {
   if (!item) return ''

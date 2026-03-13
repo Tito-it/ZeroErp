@@ -17,22 +17,22 @@ defineProps({
 </script>
 
 <template>
-  <div class="auth-form">
-    <div class="field">
+  <div class="form-grid">
+    <div class="form-field">
       <label>{{ t('common.username') }} *</label>
       <InputText v-model="form.username" :disabled="disabled" class="w-full" />
     </div>
-    <div class="field">
+    <div class="form-field">
       <label>{{ t('common.email') }} *</label>
       <InputText v-model="form.email" type="email" :disabled="disabled" class="w-full" />
     </div>
     <template v-if="showPassword">
-      <div class="field">
+      <div class="form-field">
         <label>{{ t('common.password') }} *</label>
         <Password v-model="form.password" :disabled="disabled"
           :feedback="false" toggleMask class="w-full" />
       </div>
-      <div class="field">
+      <div class="form-field">
         <label>{{ t('common.password_confirm') }} *</label>
         <Password v-model="form.password_confirm" :disabled="disabled"
           :feedback="false" toggleMask class="w-full"
@@ -45,19 +45,4 @@ defineProps({
   </div>
 </template>
 
-<style scoped>
-.auth-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.field label {
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-</style>
+<!-- Stili .form-grid e .form-field definiti in main.css -->

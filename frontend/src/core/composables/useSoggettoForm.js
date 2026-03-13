@@ -21,9 +21,7 @@ export function useSoggettoForm(options = {}) {
     ragione_sociale: '',
     // Comuni PF/PG
     codice_fiscale: '',
-    partita_iva: '',
-    // Contatto default
-    email: ''
+    partita_iva: ''
   })
 
   // Lookup tipi soggetto dettaglio
@@ -77,7 +75,6 @@ export function useSoggettoForm(options = {}) {
 
     if (!form.codice_fiscale.trim()) errors.push('codice_fiscale')
     if (showPartitaIva.value && !form.partita_iva.trim()) errors.push('partita_iva')
-    if (!form.email.trim()) errors.push('email')
 
     return errors
   }
@@ -93,7 +90,6 @@ export function useSoggettoForm(options = {}) {
     form.ragione_sociale = ''
     form.codice_fiscale = ''
     form.partita_iva = ''
-    form.email = ''
     matriceIndirizzi.value = []
   }
 
