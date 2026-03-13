@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test unitari POST creazione utente modulo Amm. Software.
+# Tutti i test usano mock — nessuna dipendenza da DB reale (CI-compatible).
+# ------------------------------------------------------------
+
+"""
+Indice test eseguiti:
+ 1) test_crea_utente_success — POST crea utente con successo
+ 2) test_crea_utente_missing_cognome — POST senza cognome -> errore
+ 3) test_crea_utente_missing_password — POST senza password -> errore
+ 4) test_crea_utente_missing_uo — POST senza unita_organizzativa_id -> errore
+ 5) test_crea_utente_password_hashed — POST verifica che password venga hashata
+ 6) test_crea_utente_permission_denied — OPERATIVO non puo' creare
+"""
+
+import json
+from unittest import TestCase
+from unittest.mock import MagicMock, patch
+
+from apps.amm_software.api.views import UtentiListView
+
+
+SAMPLE_DETAIL = {
+    "auth_user_id": 42,
+    "username": "nuovo_op",
+    "email": "nuovo@test.it",
+    "first_name": "Luca",
+    "last_name": "Bianchi",
+    "ruolo_sistema": "OPERATIVO",
+    "is_active": True,
+    "unita_organizzativa_id": 10,
+    "unita_organizzativa_nome": "Reparto A",
+    "risorsa_umana_id": 200,
+    "attivo": True,
+    "valido_al": None,
+    "data_insert": "2026-03-12",
+    "override_aree_count": 0,
+    "override_azioni_count": 0,
+    "emittenti_count": 0,
+}
+
+VALID_PAYLOAD = {
+    "cognome": "Bianchi",
+    "nome": "Luca",
+    "username": "nuovo_op",
+    "email": "nuovo@test.it",
+    "password": "SecurePass123!",
+    "unita_organizzativa_id": 10,
+}
+
+
+def _make_admin_request(payload: dict) -> MagicMock:
+    """Crea una request mock POST con payload JSON e utente ADMIN."""
+    request = MagicMock()
+    request.method = "POST"
+    request.content_type = "application/json"
+    request.body = json.dumps(payload).encode("utf-8")
+    request.data = payload
+    request.user = MagicMock(is_authenticated=True, is_superuser=True, id=1)
+    request.META = {"CONTENT_TYPE": "application/json"}
+    return request
+
+
+def _make_operativo_request(payload: dict) -> MagicMock:
+    """Crea una request mock POST con utente OPERATIVO."""
+    request = _make_admin_request(payload)
+    request.user = MagicMock(is_authenticated=True, is_superuser=False, id=2)
+    return request
+
+
+class TestCreaUtenteSuccess(TestCase):
+    """POST /api/v1/amm-software/utenti/ — creazione con successo."""
+
+    @patch("apps.amm_software.api.views.handle_post_json")
+    def test_crea_utente_success(self, mock_handle):
+        """POST crea utente con successo — handler invocato."""
+        mock_handle.return_value = MagicMock(status_code=200)
+        view = UtentiListView()
+        request = _make_admin_request(VALID_PAYLOAD)
+
+        view.post(request)
+        mock_handle.assert_called_once()
+        # Verifica che handler kwarg sia passato
+        _, kwargs = mock_handle.call_args
+        self.assertIn("handler", kwargs)
+
+    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.api.views.make_password", return_value="hashed_pw")
+    @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.parse_json_body")
+    def test_crea_utente_password_hashed(
+        self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
+    ):
+        """POST verifica che password venga hashata prima di passare al DB."""
+        mock_parse.return_value = VALID_PAYLOAD
+        mock_repo = MagicMock()
+        mock_repo.crea_operatore.return_value = 42
+        mock_repo.get_utente_detail.return_value = SAMPLE_DETAIL
+        mock_repo_cls.return_value = mock_repo
+
+        view = UtentiListView()
+        request = _make_admin_request(VALID_PAYLOAD)
+        response = view.post(request)
+
+        mock_make_pw.assert_called_once_with("SecurePass123!")
+        call_kwargs = mock_repo.crea_operatore.call_args
+        self.assertEqual(call_kwargs.kwargs["password_hash"], "hashed_pw")
+        self.assertEqual(response.status_code, 200)
+
+
+class TestCreaUtenteValidation(TestCase):
+    """POST /api/v1/amm-software/utenti/ — validazione campi obbligatori."""
+
+    @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.parse_json_body")
+    def test_crea_utente_missing_cognome(self, mock_parse, mock_idemp, mock_reqid):
+        """POST senza cognome -> errore validazione."""
+        payload = {**VALID_PAYLOAD, "cognome": ""}
+        mock_parse.return_value = payload
+
+        view = UtentiListView()
+        request = _make_admin_request(payload)
+        response = view.post(request)
+
+        data = json.loads(response.content)
+        self.assertIn("error", data)
+
+    @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.parse_json_body")
+    def test_crea_utente_missing_password(self, mock_parse, mock_idemp, mock_reqid):
+        """POST senza password -> errore validazione."""
+        payload = {**VALID_PAYLOAD, "password": ""}
+        mock_parse.return_value = payload
+
+        view = UtentiListView()
+        request = _make_admin_request(payload)
+        response = view.post(request)
+
+        data = json.loads(response.content)
+        self.assertIn("error", data)
+
+    @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.parse_json_body")
+    def test_crea_utente_missing_uo(self, mock_parse, mock_idemp, mock_reqid):
+        """POST senza unita_organizzativa_id -> errore validazione."""
+        payload = {**VALID_PAYLOAD}
+        payload.pop("unita_organizzativa_id")
+        mock_parse.return_value = payload
+
+        view = UtentiListView()
+        request = _make_admin_request(payload)
+        response = view.post(request)
+
+        data = json.loads(response.content)
+        self.assertIn("error", data)
+
+
+class TestCreaUtentePermission(TestCase):
+    """POST /api/v1/amm-software/utenti/ — verifica permessi."""
+
+    @patch("apps.core.api.permissions.PermissionResolver")
+    @patch("apps.core.api.permissions.ZeroERPPermission._get_cache", return_value={})
+    @patch("apps.core.api.permissions.ZeroERPPermission._save_cache_to_redis")
+    def test_crea_utente_permission_denied(self, mock_save, mock_cache, mock_resolver):
+        """OPERATIVO non puo' creare utenti."""
+        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+
+        view = UtentiListView()
+        request = _make_operativo_request(VALID_PAYLOAD)
+        view.request = request
+
+        from apps.core.api.permissions import IsAdminZeroERP
+        perm = IsAdminZeroERP()
+        result = perm.has_permission(request, view)
+        self.assertFalse(result)

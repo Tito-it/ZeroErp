@@ -25,8 +25,9 @@ Indice test eseguiti:
 16) SearchDetailApiTests.test_detail_tipo_ruolo_obbligatorio
 17) SearchDetailApiTests.test_detail_tipo_ruolo_non_visibile
 18) SearchDetailApiTests.test_detail_not_found
-19) LookupTipiRuoliApiTests.test_lookup_tipi_ruoli_ok
-20) LookupTipiRuoliApiTests.test_lookup_tipi_ruoli_requires_jwt
+19) SearchDetailApiTests.test_detail_scope_emittente
+20) LookupTipiRuoliApiTests.test_lookup_tipi_ruoli_ok
+21) LookupTipiRuoliApiTests.test_lookup_tipi_ruoli_requires_jwt
 """
 
 from unittest.mock import Mock, patch
@@ -203,10 +204,11 @@ class SearchDetailApiTests(SimpleTestCase):
         self.client = Client()
 
     # Scopo: Verifica dettaglio soggetto con risultato OK.
+    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=None)
     @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
     @patch("apps.core.api.search_view.SearchRepository.get_search_detail")
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_detail_ok(self, _mock_auth, mock_detail, _mock_visibile):
+    def test_detail_ok(self, _mock_auth, mock_detail, _mock_visibile, _mock_emittenti):
         mock_detail.return_value = _DETAIL_RESULT
         response = self.client.get(_DETAIL_URL + "?tipo_ruolo_id=1")
         self.assertEqual(response.status_code, 200)
@@ -237,14 +239,26 @@ class SearchDetailApiTests(SimpleTestCase):
         self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
 
     # Scopo: Verifica che soggetto non trovato restituisce 404.
+    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=None)
     @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
     @patch("apps.core.api.search_view.SearchRepository.get_search_detail", return_value=None)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_detail_not_found(self, _mock_auth, _mock_detail, _mock_visibile):
+    def test_detail_not_found(self, _mock_auth, _mock_detail, _mock_visibile, _mock_emittenti):
         response = self.client.get(_DETAIL_URL + "?tipo_ruolo_id=1")
         self.assertEqual(response.status_code, 404)
         body = response.json()["error"]
         self.assertEqual(body["code"], "E_SEARCH_NOT_FOUND")
+
+    # Scopo: Verifica che emittente_ids viene passato al repository nel dettaglio.
+    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=[7, 12])
+    @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
+    @patch("apps.core.api.search_view.SearchRepository.get_search_detail")
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_detail_scope_emittente(self, _mock_auth, mock_detail, _mock_visibile, _mock_emittenti):
+        mock_detail.return_value = _DETAIL_RESULT
+        self.client.get(_DETAIL_URL + "?tipo_ruolo_id=1")
+        kwargs = mock_detail.call_args.kwargs
+        self.assertEqual(kwargs["emittente_ids"], [7, 12])
 
 
 _LOOKUP_TIPI_RUOLI_URL = "/api/v1/core/lookup/tipi-ruoli/"

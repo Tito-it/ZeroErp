@@ -271,7 +271,7 @@ class SearchDetailView(APIView):
     )
     # Scopo: Gestisce la richiesta GET di dettaglio soggetto per tipo ruolo (livello 2).
     # Carica lazy il dettaglio specifico per tipo ruolo tramite fn_get_search_detail.
-    # Valida tipo_ruolo_id e verifica ricerca_visibile.
+    # Valida tipo_ruolo_id, verifica ricerca_visibile e applica scope emittente.
     def get(self, request: Request, soggetto_id: str) -> JsonResponse:
         repo = SearchRepository()
         tipo_ruolo_id = _require_tipo_ruolo_id(request.query_params, repo)
@@ -280,10 +280,17 @@ class SearchDetailView(APIView):
         raw_utility = request.query_params.get("utility_id")
         utility_id = qp_int_strict(raw_utility, "utility_id", None) if raw_utility else None
 
+        # Scope emittente — stesso filtro della search list
+        cache: dict = {}
+        emittente_ids = PermissionResolver.get_emittenti_ids(
+            request.user, cache=cache
+        )
+
         result = repo.get_search_detail(
             soggetto_id=str(soggetto_id),
             tipo_ruolo_id=tipo_ruolo_id,
             utility_id=utility_id,
+            emittente_ids=emittente_ids,
         )
 
         if result is None:
