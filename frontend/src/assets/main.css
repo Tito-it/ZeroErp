@@ -49,3 +49,24 @@ a {
 .app-datatable .p-datatable-tbody > tr:hover {
   background: var(--app-table-hover-bg);
 }
+
+/* ===== Classe utility form field =====
+ * Layout verticale label + input usato da tutti i form building block.
+ * Singola source of truth — non duplicare in stili scoped dei componenti.
+ */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.form-field label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
